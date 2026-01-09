@@ -1,6 +1,11 @@
-﻿namespace DefaultNamespace;
+﻿namespace Casazen.API.Services;
 
-public class BookingService
+public interface IBookingService
+{
+    
+}
+
+public class BookingService : IBookingService
 {
     
 }

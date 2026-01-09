@@ -1,6 +1,6 @@
-﻿namespace DefaultNamespace;
+﻿namespace Casazen.API.Data;
 
-public class AppDbContext
+public abstract class AppDbContext
 {
     
 }

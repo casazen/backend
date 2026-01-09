@@ -1,6 +1,11 @@
-﻿namespace DefaultNamespace;
+﻿namespace Casazen.API.Services;
 
-public class PropertyService
+public interface IPropertyService
+{
+    
+}
+
+public class PropertyService : IPropertyService
 {
     
 }

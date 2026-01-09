@@ -1,4 +1,4 @@
-﻿namespace DefaultNamespace;
+﻿namespace Casazen.API.Controllers;
 
 public class PaymentsController
 {

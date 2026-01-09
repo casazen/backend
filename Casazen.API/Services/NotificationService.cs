@@ -1,6 +1,11 @@
-﻿namespace DefaultNamespace;
+﻿namespace Casazen.API.Services;
 
-public class NotificationService
+public interface INotificationService
+{
+    
+}
+
+public class NotificationService : INotificationService
 {
     
 }

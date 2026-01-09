@@ -1,6 +1,11 @@
-﻿namespace DefaultNamespace;
+﻿namespace Casazen.API.Services;
 
-public class PaymentService
+public interface IPaymentService
+{
+    
+}
+
+public class PaymentService : IPaymentService
 {
     
 }

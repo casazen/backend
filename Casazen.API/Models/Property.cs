@@ -10,7 +10,7 @@ public class Property
     public Guid OwnerId { get; set; }
     
     [Required, MaxLength(100)]
-    public string Name { get; set; };
+    public string Name { get; set; }
     
     [MaxLength(2000)]
     public string Description { get; set; }
