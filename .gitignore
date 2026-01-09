@@ -1,0 +1,36 @@
+## Rider
+.idea/
+*.sln.iml
+
+## Visual Studio
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+.vscode/
+
+## Dependencies
+packages/
+.nuget/
+
+## Local environment
+.env
+.env.local
+.env.*.local
+
+## Database
+*.mdf
+*.ldf
+*.db
+*.db-shm
+*.db-wal
+
+## Logs
+logs/
+*.log
+
+## OS
+.DS_Store
+Thumbs.db

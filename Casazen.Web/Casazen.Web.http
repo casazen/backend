@@ -1,0 +1,6 @@
+@Casazen.Web_HostAddress = http://localhost:5037
+
+GET {{Casazen.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
