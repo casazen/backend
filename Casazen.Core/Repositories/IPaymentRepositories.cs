@@ -5,6 +5,7 @@ namespace Casazen.Core.Repositories;
 public interface IPaymentRepository
 {
     Task<Payment?> GetByIdAsync(Guid id);
+    Task<Payment?> GetByTransactionIdAsync(string transactionId);
     Task<IEnumerable<Payment>> GetByBookingAsync(Guid bookingId);
     Task<IEnumerable<Payment>> GetAllAsync();
     Task<Payment> AddAsync(Payment payment);

@@ -33,16 +33,22 @@ public class BookingsController(IBookingService bookingService, ILogger<Bookings
     [HttpPost]
     public async Task<ActionResult<Booking>> Create([FromBody] Booking booking)
     {
+        logger.LogInformation("Creating booking for property: {PropertyId}", booking.PropertyId);
         var isAvailable = await bookingService.IsPropertyAvailableAsync(
-            booking.PropertyId, 
-            booking.CheckInDate, 
+            booking.PropertyId,
+            booking.CheckInDate,
             booking.CheckOutDate
         );
 
         if (!isAvailable)
+        {
+            logger.LogWarning("Property not available: {PropertyId} from {CheckIn} to {CheckOut}",
+                booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
             return BadRequest("Property not available for these dates");
+        }
 
         var created = await bookingService.CreateBookingAsync(booking);
+        logger.LogInformation("Booking created: {BookingId}", created.Id);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
@@ -61,11 +67,13 @@ public class BookingsController(IBookingService bookingService, ILogger<Bookings
     [HttpDelete("{id}")]
     public async Task<IActionResult> Cancel(Guid id)
     {
+        logger.LogInformation("Cancelling booking: {BookingId}", id);
         var existing = await bookingService.GetBookingAsync(id);
         if (existing == null)
             return NotFound();
 
         await bookingService.CancelBookingAsync(id);
+        logger.LogInformation("Booking cancelled: {BookingId}", id);
         return NoContent();
     }
 

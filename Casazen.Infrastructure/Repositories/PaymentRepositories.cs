@@ -14,6 +14,13 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
             .FirstOrDefaultAsync(p => p.Id == id);
     }
 
+    public async Task<Payment?> GetByTransactionIdAsync(string transactionId)
+    {
+        return await context.Payments
+            .Include(p => p.Booking)
+            .FirstOrDefaultAsync(p => p.TransactionId == transactionId);
+    }
+
     public async Task<IEnumerable<Payment>> GetByBookingAsync(Guid bookingId)
     {
         return await context.Payments

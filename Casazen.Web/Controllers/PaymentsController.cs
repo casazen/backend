@@ -13,6 +13,7 @@ public class PaymentsController(IPaymentService paymentService, ILogger<Payments
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Payment>>> GetAll()
     {
+        logger.LogInformation("Getting all payments");
         var payments = await paymentService.GetAllPaymentsAsync();
         return Ok(payments);
     }
@@ -34,9 +35,13 @@ public class PaymentsController(IPaymentService paymentService, ILogger<Payments
     [HttpPost("{id}/process")]
     public async Task<IActionResult> Process(Guid id)
     {
+        logger.LogInformation("Processing payment: {PaymentId}", id);
         var success = await paymentService.ProcessPaymentAsync(id);
         if (!success)
+        {
+            logger.LogWarning("Payment processing failed: {PaymentId}", id);
             return BadRequest("Payment processing failed");
+        }
 
         var payment = await paymentService.GetPaymentAsync(id);
         return Ok(payment);

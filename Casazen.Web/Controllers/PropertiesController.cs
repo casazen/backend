@@ -35,8 +35,10 @@ public class PropertiesController(IPropertyService propertyService, ILogger<Prop
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
+        logger.LogInformation("Creating property for user: {UserId}", userId);
         property.OwnerId = Guid.Parse(userId);
         var created = await propertyService.CreatePropertyAsync(property);
+        logger.LogInformation("Property created: {PropertyId}", created.Id);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
@@ -55,11 +57,13 @@ public class PropertiesController(IPropertyService propertyService, ILogger<Prop
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
+        logger.LogInformation("Deleting property: {PropertyId}", id);
         var existing = await propertyService.GetPropertyAsync(id);
         if (existing == null)
             return NotFound();
 
         await propertyService.DeletePropertyAsync(id);
+        logger.LogInformation("Property deleted: {PropertyId}", id);
         return NoContent();
     }
 

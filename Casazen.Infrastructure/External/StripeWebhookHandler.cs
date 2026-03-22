@@ -1,6 +1,7 @@
 ﻿using Stripe;
 using Casazen.Core.Repositories;
 using Casazen.Core.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
@@ -40,7 +41,14 @@ public class StripeWebhookHandler(
             return;
 
         logger.LogInformation("Payment succeeded: {PaymentIntentId}", paymentIntent.Id);
-        // Update payment status in database
+
+        var transactionId = paymentIntent.Id;
+        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
+        if (payment != null)
+        {
+            payment.Status = Core.Entities.PaymentStatus.Completed;
+            await paymentRepository.UpdateAsync(payment);
+        }
     }
 
     private async Task HandlePaymentFailedAsync(PaymentIntent? paymentIntent)
@@ -49,7 +57,14 @@ public class StripeWebhookHandler(
             return;
 
         logger.LogInformation("Payment failed: {PaymentIntentId}", paymentIntent.Id);
-        // Update payment status in database
+
+        var transactionId = paymentIntent.Id;
+        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
+        if (payment != null)
+        {
+            payment.Status = Core.Entities.PaymentStatus.Failed;
+            await paymentRepository.UpdateAsync(payment);
+        }
     }
 
     private async Task HandleRefundAsync(Charge? charge)
@@ -58,6 +73,13 @@ public class StripeWebhookHandler(
             return;
 
         logger.LogInformation("Charge refunded: {ChargeId}", charge.Id);
-        // Update payment status in database
+
+        var transactionId = charge.PaymentIntentId;
+        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
+        if (payment != null)
+        {
+            payment.Status = Core.Entities.PaymentStatus.Refunded;
+            await paymentRepository.UpdateAsync(payment);
+        }
     }
 }

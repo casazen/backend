@@ -12,6 +12,8 @@ public class ChannelFactory(IServiceProvider serviceProvider, ILogger<ChannelFac
 {
     public IChannelAdapter GetAdapter(string platform)
     {
+        logger.LogDebug("Getting adapter for platform: {Platform}", platform);
+
         return platform.ToLower() switch
         {
             "airbnb" => serviceProvider.GetRequiredService<AirbnbAdapter>(),

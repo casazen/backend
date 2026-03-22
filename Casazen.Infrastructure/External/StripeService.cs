@@ -1,4 +1,5 @@
-﻿using Stripe;
+﻿using Microsoft.Extensions.Logging;
+using Stripe;
 
 namespace Casazen.Infrastructure.External;
 
@@ -9,13 +10,8 @@ public interface IStripeService
     Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null);
 }
 
-public class StripeService(IConfiguration configuration, ILogger<StripeService> logger) : IStripeService
+public class StripeService(ILogger<StripeService> logger) : IStripeService
 {
-    public StripeService(IConfiguration configuration, ILogger<StripeService> logger)
-    {
-        StripeConfiguration.ApiKey = configuration["Stripe:SecretKey"];
-    }
-
     public async Task<PaymentIntent> CreatePaymentIntentAsync(long amount, string currency, Dictionary<string, string> metadata)
     {
         try
