@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Core.Entities;
 
 [Table("Bookings")]
-public abstract class Booking
+public class Booking
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

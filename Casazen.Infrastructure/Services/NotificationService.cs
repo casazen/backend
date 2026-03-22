@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 

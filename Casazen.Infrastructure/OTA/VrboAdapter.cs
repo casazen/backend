@@ -1,4 +1,6 @@
-﻿namespace Casazen.Infrastructure.OTA;
+﻿using Microsoft.Extensions.Logging;
+
+namespace Casazen.Infrastructure.OTA;
 
 public class VrboAdapter(HttpClient httpClient, ILogger<VrboAdapter> logger) : IChannelAdapter
 {

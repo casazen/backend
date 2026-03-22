@@ -4,6 +4,7 @@ namespace Casazen.Core.Services;
 
 public interface IBookingService
 {
+    Task<IEnumerable<Booking>> GetAllBookingsAsync();
     Task<Booking?> GetBookingAsync(Guid id);
     Task<IEnumerable<Booking>> GetPropertyBookingsAsync(Guid propertyId);
     Task<IEnumerable<Booking>> GetGuestBookingsAsync(Guid guestId);

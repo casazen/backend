@@ -1,4 +1,6 @@
-﻿using SendGrid;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using SendGrid;
 using SendGrid.Helpers.Mail;
 
 namespace Casazen.Infrastructure.External;
@@ -8,17 +10,9 @@ public interface ISendGridService
     Task<bool> SendEmailAsync(string to, string subject, string htmlContent);
 }
 
-public class SendGridService(IConfiguration configuration, ILogger<SendGridService> logger) : ISendGridService
+public class SendGridService(IConfiguration configuration, ILogger<SendGridService> logger, ISendGridClient client) : ISendGridService
 {
-    private readonly SendGridClient _client;
-    private readonly string _fromEmail;
-
-    public SendGridService(IConfiguration configuration, ILogger<SendGridService> logger)
-    {
-        var apiKey = configuration["Email:SendGridApiKey"];
-        _fromEmail = configuration["Email:FromAddress"] ?? "noreply@casazen.app";
-        _client = new SendGridClient(apiKey);
-    }
+    private readonly string _fromEmail =  configuration["Email:FromAddress"] ?? "noreply@casazen.app";
 
     public async Task<bool> SendEmailAsync(string to, string subject, string htmlContent)
     {
@@ -34,7 +28,7 @@ public class SendGridService(IConfiguration configuration, ILogger<SendGridServi
             };
             msg.AddTo(toEmail);
 
-            var response = await _client.SendEmailAsync(msg);
+            var response = await client.SendEmailAsync(msg);
             logger.LogInformation("Email sent to {To}: {StatusCode}", to, response.StatusCode);
             return response.IsSuccessStatusCode;
         }

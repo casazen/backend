@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Core.Entities;
 
 [Table("Properties")]
-public abstract class Property
+public class Property
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

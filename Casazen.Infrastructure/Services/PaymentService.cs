@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 

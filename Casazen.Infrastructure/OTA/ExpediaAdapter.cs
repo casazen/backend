@@ -1,4 +1,6 @@
-﻿namespace Casazen.Infrastructure.OTA;
+﻿using Microsoft.Extensions.Logging;
+
+namespace Casazen.Infrastructure.OTA;
 
 public class ExpediaAdapter(HttpClient httpClient, ILogger<ExpediaAdapter> logger) : IChannelAdapter
 {

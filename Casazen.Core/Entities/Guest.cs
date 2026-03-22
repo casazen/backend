@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Casazen.Core.Entities;
 
 [Table("Guests")]
-public abstract class Guest
+public class Guest
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

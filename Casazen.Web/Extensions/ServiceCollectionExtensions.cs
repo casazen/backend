@@ -7,6 +7,7 @@ using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 

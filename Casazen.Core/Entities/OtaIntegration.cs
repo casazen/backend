@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Casazen.Core.Entities;
 
 [Table("OtaIntegrations")]
-public abstract class OtaIntegration
+public class OtaIntegration
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

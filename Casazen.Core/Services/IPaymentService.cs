@@ -5,6 +5,7 @@ namespace Casazen.Core.Services;
 public interface IPaymentService
 {
     Task<Payment?> GetPaymentAsync(Guid id);
+    Task<IEnumerable<Payment>> GetAllPaymentsAsync();
     Task<IEnumerable<Payment>> GetBookingPaymentsAsync(Guid bookingId);
     Task<Payment> CreatePaymentAsync(Payment payment);
     Task<bool> ProcessPaymentAsync(Guid paymentId);
