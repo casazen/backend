@@ -1,86 +1,84 @@
-# Skill: Diff Context - Confronto Vecchio e Nuovo Contesto
+# Skill: Diff Context - Compare Previous and Current Context
 
-## Descrizione
-Questa skill descrive come confrontare lo stato precedente e attuale dei file di contesto normativo per identificare cambiamenti, novita' e aggiornamenti.
+## Description
+This skill describes how to compare the previous and current state of regulatory context files to identify changes, updates, and new elements.
 
-## Quando Usarla
-- Prima di aggiornare un file di contesto, per capire cosa e' cambiato
-- Dopo un aggiornamento normativo, per produrre un changelog
-- Per verificare se un aggiornamento ha introdotto nuovi requisiti
+## When to Use It
+- Before updating a context file, to understand what has changed
+- After a regulatory update, to produce a changelog
+- To verify whether an update introduced new requirements
 
-## Procedura
+## Procedure
 
-### Step 1: Snapshot Precedente
-Leggi il file `_last_updated.json` per ottenere:
-- Data ultimo aggiornamento
-- Hash dell'indice precedente
+### Step 1: Previous Snapshot
+Read the `_last_updated.json` file to obtain:
+- Last update date
+- Previous index hash
 
-Se l'hash non e' disponibile (prima esecuzione), considera tutto come "nuovo".
+If the hash is not available (first execution), consider everything as "new".
 
-### Step 2: Lettura Stato Attuale
-Leggi tutti i file in `.claude/context/regulations/` e `.claude/context/_index.md`.
+### Step 2: Current State Reading
+Read all files in `.claude/context/regulations/` and `.claude/context/_index.md`.
 
-### Step 3: Confronto
-Per ogni file di contesto, confronta:
+### Step 3: Comparison
+For each context file, compare:
 
-| Aspetto | Cosa Cercare |
-|---------|-------------|
-| **Nuovi file** | File in `regulations/` che non esistevano prima |
-| **File modificati** | Contenuto diverso rispetto all'ultima lettura |
-| **Nuovi requisiti** | Obblighi non presenti nella versione precedente |
-| **Scadenze cambiate** | Date di entrata in vigore modificate |
-| **Sanzioni aggiornate** | Importi o tipologie di sanzioni cambiate |
-| **Abrogazioni** | Norme abrogate o sostituite |
+| Aspect | What to Look For |
+|--------|-----------------|
+| **New files** | Files in `regulations/` that did not exist before |
+| **Modified files** | Content differs from the last read |
+| **New requirements** | Obligations not present in the previous version |
+| **Changed deadlines** | Modified effective dates |
+| **Updated penalties** | Changes in amounts or types of penalties |
+| **Repeals** | Regulations repealed or replaced |
 
-### Step 4: Generazione Diff Report
+### Step 4: Diff Report Generation
 
-Formato output:
+Output format:
 
-```markdown
-# Diff Report - [DATA]
+    # Diff Report - [DATE]
 
-## Confronto con ultimo aggiornamento del [DATA_PRECEDENTE]
+    ## Comparison with last update on [PREVIOUS_DATE]
 
-### Nuovi File
-- `regulations/[nome].md` - [breve descrizione]
+    ### New Files
+    - `regulations/[name].md` - [short description]
 
-### File Modificati
-- `regulations/[nome].md`
-  - AGGIUNTO: [descrizione novita']
-  - MODIFICATO: [cosa e' cambiato]
-  - RIMOSSO: [cosa non e' piu' valido]
+    ### Modified Files
+    - `regulations/[name].md`
+      - ADDED: [description of new content]
+      - MODIFIED: [what has changed]
+      - REMOVED: [what is no longer valid]
 
-### Nuovi Requisiti Identificati
-| Requisito | Fonte | Scadenza | Priorita' |
-|-----------|-------|----------|-----------|
-| [desc] | [legge] | [data] | CRITICAL/HIGH/MEDIUM/LOW |
+    ### New Requirements Identified
+    | Requirement | Source | Deadline | Priority |
+    |-------------|--------|----------|----------|
+    | [desc] | [law] | [date] | CRITICAL/HIGH/MEDIUM/LOW |
 
-### Requisiti Rimossi/Abrogati
-| Requisito | Motivo |
-|-----------|--------|
-| [desc] | [abrogato da / sostituito da] |
+    ### Removed/Repealed Requirements
+    | Requirement | Reason |
+    |-------------|--------|
+    | [desc] | [repealed by / replaced by] |
 
-### Nessun Cambiamento
-- `regulations/[nome].md` - invariato
-```
+    ### No Changes
+    - `regulations/[name].md` - unchanged
 
-### Step 5: Aggiornamento Metadata
-Dopo il confronto, aggiorna `_last_updated.json` con il nuovo stato.
+### Step 5: Metadata Update
+After the comparison, update `_last_updated.json` with the new state.
 
-## Gestione Casi Speciali
+## Special Cases Handling
 
-### Prima Esecuzione
-Se `_last_updated.json` ha `last_update: null`:
-- Tratta tutto come "nuovo"
-- Non generare un diff, ma un report iniziale
+### First Execution
+If `_last_updated.json` has `last_update: null`:
+- Treat everything as "new"
+- Do not generate a diff, but an initial report
 
-### File Corrotto o Mancante
-Se un file di contesto e' mancante o corrotto:
-- Segnala nel report
-- Ricrealo dal contesto disponibile
-- Annota che i dati potrebbero essere incompleti
+### Corrupted or Missing File
+If a context file is missing or corrupted:
+- Report it
+- Recreate it from the available context
+- Note that data may be incomplete
 
-## Best Practice
-- Esegui sempre il diff PRIMA di sovrascrivere i file di contesto
-- Conserva il diff report per tracciabilita'
-- I nuovi requisiti identificati nel diff devono essere passati all'`analyzer_agent`
+## Best Practices
+- Always run the diff BEFORE overwriting context files
+- Store the diff report for traceability
+- New requirements identified in the diff must be passed to the `analyzer_agent`

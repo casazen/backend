@@ -1,84 +1,81 @@
-# Skill: Scrape Source - Scraping Sorgenti Istituzionali
+# Skill: Scrape Source - Scraping Institutional Sources
 
-## Descrizione
-Questa skill descrive come fare scraping di sorgenti istituzionali italiane ed europee per estrarre informazioni normative rilevanti usando gli strumenti di Claude Code.
+## Description
+This skill describes how to scrape Italian and European institutional sources to extract relevant regulatory information using Claude Code tools.
 
-## Quando Usarla
-- Quando devi raccogliere il testo di una legge, decreto o regolamento
-- Quando devi verificare aggiornamenti su siti istituzionali
-- Quando devi estrarre contenuto strutturato da pagine web normative
+## When to Use It
+- When you need to retrieve the text of a law, decree, or regulation
+- When you need to check updates on institutional websites
+- When you need to extract structured content from regulatory web pages
 
-## Sorgenti Supportate
+## Supported Sources
 
-### Sorgenti Italiane
-| Sorgente | URL Base | Note |
-|----------|----------|------|
-| Gazzetta Ufficiale | gazzettaufficiale.it | Testi di legge ufficiali |
-| Agenzia delle Entrate | agenziaentrate.gov.it | Circolari, risoluzioni, guide |
-| Ministero del Turismo | ministeroturismo.gov.it | Normativa turistica, CIN |
-| Normattiva | normattiva.it | Testi coordinati delle leggi |
-| BDSR | bdsr.ministeroturismo.it | Banca Dati Strutture Ricettive |
+### Italian Sources
+| Source | Base URL | Notes |
+|--------|----------|-------|
+| Official Gazette | gazzettaufficiale.it | Official legal texts |
+| Revenue Agency | agenziaentrate.gov.it | Circulars, rulings, guides |
+| Ministry of Tourism | ministeroturismo.gov.it | Tourism regulations, CIN |
+| Normattiva | normattiva.it | Consolidated legal texts |
+| BDSR | bdsr.ministeroturismo.it | Accommodation Facilities Database |
 
-### Sorgenti Europee
-| Sorgente | URL Base | Note |
-|----------|----------|------|
-| EUR-Lex | eur-lex.europa.eu | Direttive e regolamenti UE |
-| European Commission | ec.europa.eu | Proposte e comunicazioni |
+### European Sources
+| Source | Base URL | Notes |
+|--------|----------|-------|
+| EUR-Lex | eur-lex.europa.eu | EU directives and regulations |
+| European Commission | ec.europa.eu | Proposals and communications |
 
-## Procedura
+## Procedure
 
-### Step 1: Ricerca
-```
-WebSearch("termine di ricerca site:dominio.gov.it")
-```
-Usa termini specifici e limita al dominio istituzionale.
+### Step 1: Search
+
+    WebSearch("search term site:domain.gov.it")
+
+Use specific terms and restrict the query to the institutional domain.
 
 ### Step 2: Fetch
-```
-WebFetch(url, "Estrai il testo normativo principale, inclusi: titolo completo, numero e data del provvedimento, articoli rilevanti, date di entrata in vigore, eventuali sanzioni previste")
-```
 
-### Step 3: Validazione
-Verifica che il contenuto estratto contenga:
-- [x] Riferimento normativo completo (es. "D.L. 145/2023, art. 13-ter")
-- [x] Data di pubblicazione/entrata in vigore
-- [x] Testo degli articoli rilevanti
-- [x] Eventuali modifiche successive
+    WebFetch(url, "Extract the main regulatory text, including: full title, number and date of the act, relevant articles, effective dates, and any applicable penalties")
 
-### Step 4: Strutturazione
-Organizza il contenuto estratto in questo formato:
+### Step 3: Validation
+Verify that the extracted content includes:
+- [x] Full regulatory reference (e.g., "D.L. 145/2023, art. 13-ter")
+- [x] Publication/effective date
+- [x] Relevant article text
+- [x] Any subsequent amendments
 
-```markdown
-# [Titolo del Provvedimento]
+### Step 4: Structuring
+Organize the extracted content in the following format:
 
-- **Tipo**: Decreto Legge / Legge / Direttiva UE / Circolare
-- **Numero**: [numero/anno]
-- **Data pubblicazione**: [data]
-- **Data entrata in vigore**: [data]
-- **Sorgente**: [URL]
-- **Data consultazione**: [data odierna]
+    # [Title of the Act]
 
-## Sintesi
-[breve riassunto dell'obbligo]
+    - **Type**: Decree Law / Law / EU Directive / Circular
+    - **Number**: [number/year]
+    - **Publication date**: [date]
+    - **Effective date**: [date]
+    - **Source**: [URL]
+    - **Consultation date**: [current date]
 
-## Articoli Rilevanti
-### Art. [N] - [Titolo]
-[testo o sintesi dell'articolo]
+    ## Summary
+    [brief summary of the obligation]
 
-## Impatto su CasaZen
-[descrizione di come questo provvedimento impatta il sistema]
+    ## Relevant Articles
+    ### Art. [N] - [Title]
+    [text or summary of the article]
 
-## Sanzioni
-[eventuali sanzioni per non conformita']
-```
+    ## Impact on CasaZen
+    [description of how this regulation impacts the system]
 
-## Gestione Errori
-- Se la pagina non e' raggiungibile: annota nel report e prova una sorgente alternativa
-- Se il contenuto e' un PDF: usa `WebFetch` con prompt specifico per estrarre il testo
-- Se il contenuto e' troppo lungo: chiedi di estrarre solo le sezioni rilevanti per gli affitti brevi
+    ## Penalties
+    [any penalties for non-compliance]
 
-## Best Practice
-- Preferisci sempre `normattiva.it` per i testi coordinati delle leggi (includono modifiche successive)
-- Per le circolari dell'Agenzia delle Entrate, cerca anche le FAQ correlate
-- Salva sempre la data di consultazione per tracciabilita'
-- Non fidarti di sorgenti non istituzionali per il testo esatto della legge
+## Error Handling
+- If the page is not reachable: note it in the report and try an alternative source
+- If the content is a PDF: use `WebFetch` with a specific prompt to extract the text
+- If the content is too long: request extraction of only relevant sections (e.g., short-term rentals)
+
+## Best Practices
+- Always prefer `normattiva.it` for consolidated legal texts (includes amendments)
+- For Revenue Agency circulars, also check related FAQs
+- Always store the consultation date for traceability
+- Do not rely on non-institutional sources for the exact legal text  

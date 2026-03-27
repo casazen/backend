@@ -1,118 +1,114 @@
-# Skill: Write User Story - Generazione User Story Ben Formate
+# Skill: Write User Story - Well-Structured User Story Generation
 
-## Descrizione
-Questa skill descrive come scrivere user story ben strutturate a partire da requisiti normativi o gap analysis. Le user story prodotte sono pronte per diventare issue GitHub.
+## Description
+This skill describes how to write well-structured user stories starting from regulatory requirements or gap analysis. The generated user stories are ready to be turned into GitHub issues.
 
-> **Riusabile cross-project**: questa skill e' generica e puo' essere usata in qualsiasi progetto.
+> **Cross-project reusable**: this skill is generic and can be used in any project.
 
-## Quando Usarla
-- Quando l'`analyzer_agent` ha identificato un gap normativo
-- Quando bisogna trasformare un requisito tecnico in un task comprensibile
-- Quando si creano issue GitHub dal `github_agent`
+## When to Use It
+- When the `analyzer_agent` has identified a regulatory gap
+- When a technical requirement needs to be transformed into a clear task
+- When creating GitHub issues via the `github_agent`
 
-## Formato User Story
+## User Story Format
 
-### Template Base
-```
-Come [RUOLO],
-voglio [AZIONE/FUNZIONALITA'],
-in modo da [BENEFICIO/VALORE].
-```
+### Base Template
 
-### Ruoli Comuni (CasaZen)
-- **proprietario** - gestisce proprieta' e affitti
-- **ospite** - prenota e soggiorna
-- **amministratore** - gestisce il sistema
-- **sistema** - operazioni automatiche
+    As a [ROLE],
+    I want [ACTION/FEATURE],
+    so that [BENEFIT/VALUE].
 
-### Template Completo per Issue
+### Common Roles (CasaZen)
+- **owner** - manages properties and rentals
+- **guest** - books and stays
+- **administrator** - manages the system
+- **system** - automated operations
 
-```markdown
-## User Story
-Come **[ruolo]**, voglio **[azione]**, in modo da **[beneficio]**.
+### Full Template for Issue
 
-## Contesto
-[Perche' questa funzionalita' e' necessaria. Riferimento normativo se applicabile.]
+    ## User Story
+    As a **[role]**, I want **[action]**, so that **[benefit]**.
 
-## Requisiti Funzionali
-- [ ] [requisito 1]
-- [ ] [requisito 2]
-- [ ] [requisito N]
+    ## Context
+    [Why this feature is needed. Regulatory reference if applicable.]
 
-## Requisiti Non Funzionali
-- [ ] [performance, sicurezza, etc.]
+    ## Functional Requirements
+    - [ ] [requirement 1]
+    - [ ] [requirement 2]
+    - [ ] [requirement N]
 
-## Acceptance Criteria
-- [ ] GIVEN [precondizione], WHEN [azione], THEN [risultato atteso]
-- [ ] GIVEN [precondizione], WHEN [azione], THEN [risultato atteso]
+    ## Non-Functional Requirements
+    - [ ] [performance, security, etc.]
 
-## Note Tecniche
-[suggerimenti implementativi, file da modificare, pattern da seguire]
+    ## Acceptance Criteria
+    - [ ] GIVEN [precondition], WHEN [action], THEN [expected result]
+    - [ ] GIVEN [precondition], WHEN [action], THEN [expected result]
 
-## Riferimenti
-- [link normativa]
-- [link documentazione]
-```
+    ## Technical Notes
+    [implementation hints, files to modify, patterns to follow]
 
-## Regole di Scrittura
+    ## References
+    - [regulatory link]
+    - [documentation link]
+
+## Writing Rules
 
 ### DO
-- Scrivi dal punto di vista dell'utente, non del sistema
-- Usa un linguaggio chiaro e non ambiguo
-- Includi sempre acceptance criteria verificabili
-- Specifica il contesto normativo quando applicabile
-- Indica la priorita' suggerita
+- Write from the user's perspective, not the system
+- Use clear and unambiguous language
+- Always include verifiable acceptance criteria
+- Specify regulatory context when applicable
+- Indicate suggested priority
 
 ### DON'T
-- Non usare gergo tecnico nella user story (riservalo alle note tecniche)
-- Non combinare piu' funzionalita' in una sola story (principio INVEST - Independent)
-- Non scrivere story troppo vaghe ("migliorare la compliance")
-- Non omettere i criteri di accettazione
+- Do not use technical jargon in the user story (reserve it for technical notes)
+- Do not combine multiple features into a single story (INVEST principle - Independent)
+- Do not write vague stories ("improve compliance")
+- Do not omit acceptance criteria
 
-## Esempio Completo
+## Complete Example
 
-**Input**: Gap CRITICAL - Manca la gestione del Codice CIN nelle proprieta'
+**Input**: CRITICAL gap - Missing CIN code management in properties
 
 **Output**:
-```markdown
-## User Story
-Come **proprietario**, voglio **registrare e gestire il Codice CIN delle mie proprieta'**, in modo da **essere conforme all'obbligo normativo ed evitare sanzioni da 800 a 8.000 euro**.
 
-## Contesto
-Il D.L. 145/2023 (art. 13-ter) ha introdotto l'obbligo del Codice Identificativo Nazionale (CIN)
-per tutte le strutture destinate a locazioni brevi. Il CIN deve essere:
-- Ottenuto tramite la BDSR (Banca Dati Strutture Ricettive)
-- Esposto negli annunci su tutte le piattaforme OTA
-- Esposto fisicamente all'esterno dell'immobile
+    ## User Story
+    As an **owner**, I want to **register and manage the CIN code of my properties**, so that **I comply with regulatory requirements and avoid penalties ranging from €800 to €8,000**.
 
-## Requisiti Funzionali
-- [ ] Campo CIN nell'entita' Property (formato: IT-XXXXX-XXXXXXXXXX)
-- [ ] Validazione formato CIN
-- [ ] Visualizzazione CIN nella scheda proprieta'
-- [ ] Inclusione CIN nei dati sincronizzati con le OTA
-- [ ] Alert per proprieta' senza CIN registrato
+    ## Context
+    Decree Law 145/2023 (art. 13-ter) introduced the obligation of the National Identification Code (CIN)
+    for all properties used for short-term rentals. The CIN must:
+    - Be obtained through the BDSR (Accommodation Facilities Database)
+    - Be displayed in listings across all OTA platforms
+    - Be physically displayed outside the property
 
-## Requisiti Non Funzionali
-- [ ] Il CIN deve essere cifrato a riposo nel database
-- [ ] Log di audit per modifiche al CIN
+    ## Functional Requirements
+    - [ ] CIN field in the Property entity (format: IT-XXXXX-XXXXXXXXXX)
+    - [ ] CIN format validation
+    - [ ] Display CIN in the property details page
+    - [ ] Include CIN in data synchronized with OTAs
+    - [ ] Alert for properties without a registered CIN
 
-## Acceptance Criteria
-- [ ] GIVEN una proprieta' senza CIN, WHEN accedo alla dashboard, THEN vedo un alert di non conformita'
-- [ ] GIVEN un CIN valido, WHEN lo inserisco nella proprieta', THEN viene salvato e mostrato nella scheda
-- [ ] GIVEN una proprieta' con CIN, WHEN sincronizzo con una OTA, THEN il CIN e' incluso nei dati
+    ## Non-Functional Requirements
+    - [ ] CIN must be encrypted at rest in the database
+    - [ ] Audit log for CIN changes
 
-## Note Tecniche
-- Aggiungere campo `CinCode` all'entita' `Property` in `Casazen.Core/Entities/`
-- Creare migration EF Core per la colonna
-- Aggiornare gli adapter OTA in `Casazen.Infrastructure/OTA/` per includere il CIN
-- Aggiungere validazione con regex per il formato CIN
+    ## Acceptance Criteria
+    - [ ] GIVEN a property without CIN, WHEN I access the dashboard, THEN I see a non-compliance alert
+    - [ ] GIVEN a valid CIN, WHEN I enter it in the property, THEN it is saved and displayed
+    - [ ] GIVEN a property with CIN, WHEN I sync with an OTA, THEN the CIN is included in the data
 
-## Riferimenti
-- D.L. 145/2023, art. 13-ter
-- https://bdsr.ministeroturismo.it
-```
+    ## Technical Notes
+    - Add `CinCode` field to `Property` entity in `Casazen.Core/Entities/`
+    - Create EF Core migration for the column
+    - Update OTA adapters in `Casazen.Infrastructure/OTA/` to include CIN
+    - Add regex validation for CIN format
 
-## Dimensionamento
-- Una user story dovrebbe essere completabile in 1-5 giorni di sviluppo
-- Se e' piu' grande, spezzala in piu' story (epic -> stories)
-- Indica se la story fa parte di un epic piu' ampio
+    ## References
+    - Decree Law 145/2023, art. 13-ter
+    - https://bdsr.ministeroturismo.it
+
+## Sizing
+- A user story should be completable within 1–5 days of development
+- If larger, split it into multiple stories (epic → stories)
+- Indicate if the story belongs to a broader epic  
