@@ -35,6 +35,7 @@ logs/
 .DS_Store
 Thumbs.db
 
-## Claude Code (local only)
-.claude/
+## Claude Code
+# .claude/ - Regulatory Intelligence system (committed to repo)
+# CLAUDE.md - Project context (local only, not committed)
 CLAUDE.md

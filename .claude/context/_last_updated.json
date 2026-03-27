@@ -1,0 +1,55 @@
+{
+  "last_update": "2026-03-27T00:00:00Z",
+  "last_agent_run": "regulatory_agent",
+  "index_hash": "06d619a990524237f3f6b5100d0bd12f",
+  "sources_checked": [
+    "https://www.rent2cash.it/guida-affitti-brevi-2026-normativa-tassazione/",
+    "https://www.fiscoetasse.com/new-rassegna-stampa/2970-cedolare-secca-affitti-brevi-le-novita-dal-2026.html",
+    "https://www.anbba.it/regole-affitti-brevi-2026-guida-anbba/",
+    "https://www.lodgify.com/blog/it/codice-cin-affitti-brevi/",
+    "https://www.pratichecasa.it/parere-di-un-esperto/cin-alloggi-turistici-2026/",
+    "https://www.regione.toscana.it/-/codice-identificativo-nazionale-cin-per-le-locazioni-turistiche-e-le-strutture-ricettive-turistiche",
+    "https://www.idealista.it/news/vacanze/mercato-turistico/2026/01/15/312295-tassa-di-soggiorno-2026-quanto-aumenta-e-come-cambiano-le-tariffe-nelle-citta",
+    "https://www.tuttotributi.it/imposta-di-soggiorno-il-gettito-2026-arriva-a-13-miliardi/",
+    "https://www.facile.it/mutui/news/cedolare-secca-affitti-brevi-2026.html",
+    "https://www.anbba.it/vademecum-locazioni-turistiche-2026/",
+    "https://affittibrevi360.it/disbrigo-check-in-burocrazia/comunicazioni-alla-questura-per-gli-affitti-brevi-cosa-devi-sapere/",
+    "https://checkinfacile.com/blog/multa-alloggiati-web-sanzioni.html",
+    "https://www.agenziaentrate.gov.it/portale/scambio-automatico-di-informazioni-comunicate-dai-gestori-di-piattaforme-dac7/infogen-scambio-automatico-di-informazioni-comunicate-dai-gestori-di-piattaforme-dac7-imprese",
+    "https://fidocommercialista.it/dac7",
+    "https://www.tiburzibardelli.it/dac7-comunicazione-dei-dati-in-scadenza-il-2-febbraio-2026/",
+    "https://www.lodgify.com/blog/it/gdpr-proprietari-case-vacanze/",
+    "https://www.isegretideglihost.it/informativa-privacy-locazioni-turistiche-gdpr/",
+    "https://chekin.com/it/blog/regolamento-ue/",
+    "https://www.today.it/politica/affitti-brevi-nuove-regole-2026.html",
+    "https://wiisy.app/affitti-brevi-2026-cosa-cambia-con-la-legge-di-bilancio/"
+  ],
+  "files_created": [
+    "regulations/cin.md",
+    "regulations/fiscale.md",
+    "regulations/imposta_soggiorno.md",
+    "regulations/alloggiati.md",
+    "regulations/ota_normativa.md",
+    "regulations/gdpr.md",
+    "regulations/regionale.md",
+    "regulations/sicurezza.md"
+  ],
+  "summary": {
+    "total_sources": 20,
+    "files_created": 8,
+    "major_updates": [
+      "CIN: scadenza 01/03/2026, sanzioni €800-€8.000",
+      "Fiscale: Partita IVA obbligatoria dal 3° immobile (era 5°)",
+      "Imposta soggiorno: aumenti generalizzati, incremento olimpico 2026",
+      "DAC7: scadenza comunicazione 02/02/2026",
+      "Regolamento UE 2024/1028: entrata in vigore 20/05/2026",
+      "Normativa regionale: sentenza Corte legittima regole regionali"
+    ],
+    "urgent_deadlines": [
+      "CIN: 01/03/2026 per operatori esistenti",
+      "DAC7: 02/02/2026 comunicazione dati 2025",
+      "Regolamento UE affitti brevi: 20/05/2026 obbligo verifica CIN su OTA"
+    ]
+  },
+  "notes": "Prima esecuzione completa regulatory_agent. Tutti i macro-argomenti popolati con normativa aggiornata al 2026."
+}
