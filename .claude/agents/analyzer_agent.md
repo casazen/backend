@@ -70,8 +70,10 @@ For each CRITICAL or HIGH priority gap, prepare a user story draft using the `wr
 - `Read` - reading context and codebase files
 - `Grep` - codebase search
 - `Glob` - file search by pattern
-- `diff_context` skill - old/new context comparison
-- `write_user_story` skill - user story generation
+- **Global skills**:
+  - `write_user_story` - user story generation (from ~/.claude/skills/)
+- **Project skills**:
+  - `diff_context` - context comparison (domain-specific)
 
 ## Expected Output
 - Gap analysis report in Markdown format

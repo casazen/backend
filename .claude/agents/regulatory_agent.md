@@ -22,7 +22,7 @@ Use `WebSearch` to search for recent regulatory updates on these topics:
 7. "GDPR affitti brevi"
 8. "normativa regionale affitti brevi [main regions]"
 
-For each relevant result, use `WebFetch` to get the full page content.
+For each relevant result, use the `scrape_web_source` skill (global) to fetch and extract content.
 
 ### Phase 2: Classification
 For each new development found, classify according to the macro-topics defined in `_index.md`:
@@ -69,8 +69,10 @@ This summary will be used by the `analyzer_agent` for gap analysis.
 - `WebSearch` - regulatory search
 - `WebFetch` - institutional page reading
 - `Read` / `Write` / `Edit` - context file management
-- `scrape_source` skill - institutional source scraping
-- `classify_topic` skill - regulatory classification
+- **Global skills**:
+  - `scrape_web_source` - web scraping (from ~/.claude/skills/)
+- **Project skills**:
+  - `classify_topic` - regulatory classification (domain-specific)
 
 ## Expected Output
 - Updated files in `.claude/context/regulations/`

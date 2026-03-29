@@ -1,0 +1,227 @@
+{
+  "project": {
+    "name": "CasaZen",
+    "description": "Vacation rental property management system with OTA integration and regulatory compliance",
+    "domain": "Short-term rental management, Italian vacation rentals",
+    "version": "1.0.0",
+    "repository": "https://github.com/user/casazen"
+  },
+
+  "tech_stack": {
+    "framework": ".NET 10",
+    "language": "C# 13",
+    "runtime": "ASP.NET Core",
+    "database": "SQL Server 2022+",
+    "orm": "Entity Framework Core",
+    "authentication": "Auth0 (JWT)",
+    "payments": "Stripe",
+    "email": "SendGrid",
+    "testing": {
+      "framework": "xUnit",
+      "mocking": "Moq",
+      "coverage_tool": "Coverlet"
+    },
+    "ci_cd": "GitHub Actions"
+  },
+
+  "architecture": {
+    "pattern": "Layered Architecture",
+    "layers": [
+      {
+        "name": "Presentation",
+        "project": "Casazen.Web",
+        "description": "ASP.NET Core Web API, Controllers, DTOs, Middleware"
+      },
+      {
+        "name": "Business Logic",
+        "project": "Casazen.Core",
+        "description": "Domain entities, Service interfaces, Business rules"
+      },
+      {
+        "name": "Data Access",
+        "project": "Casazen.Infrastructure",
+        "description": "EF Core, Repositories, External service integrations"
+      },
+      {
+        "name": "Tests",
+        "project": "Casazen.Tests",
+        "description": "Unit and integration tests"
+      }
+    ],
+    "patterns": [
+      "Repository Pattern",
+      "Dependency Injection",
+      "Service Layer",
+      "Adapter Pattern (for OTA integrations)"
+    ]
+  },
+
+  "project_structure": {
+    "solution_file": "Casazen.sln",
+    "projects": {
+      "web": "Casazen.Web/",
+      "core": "Casazen.Core/",
+      "infrastructure": "Casazen.Infrastructure/",
+      "tests": "Casazen.Tests/"
+    },
+    "key_directories": {
+      "entities": "Casazen.Core/Entities/",
+      "interfaces": "Casazen.Core/Interfaces/",
+      "services": "Casazen.Core/Services/",
+      "repositories": "Casazen.Infrastructure/Repositories/",
+      "controllers": "Casazen.Web/Controllers/",
+      "migrations": "Casazen.Infrastructure/Data/Migrations/",
+      "ota_adapters": "Casazen.Infrastructure/OTA/",
+      "external_services": "Casazen.Infrastructure/External/",
+      "tests_unit": "Casazen.Tests/Unit/",
+      "tests_integration": "Casazen.Tests/Integration/"
+    }
+  },
+
+  "coding_conventions": {
+    "style_guide": "Microsoft C# Coding Conventions",
+    "formatting": {
+      "indentation": "4 spaces",
+      "line_length": 120,
+      "braces": "Allman style (braces on new line)"
+    },
+    "naming": {
+      "classes": "PascalCase",
+      "methods": "PascalCase",
+      "variables": "camelCase",
+      "constants": "UPPER_CASE",
+      "interfaces": "IPascalCase",
+      "private_fields": "_camelCase (with underscore prefix)"
+    },
+    "principles": [
+      "SOLID principles",
+      "DRY (Don't Repeat Yourself)",
+      "KISS (Keep It Simple, Stupid)",
+      "YAGNI (You Aren't Gonna Need It)"
+    ],
+    "async": {
+      "use_async_await": true,
+      "async_suffix": "Async (e.g., GetUserAsync)",
+      "avoid_blocking": "Never use .Result or .Wait()"
+    },
+    "error_handling": {
+      "use_specific_exceptions": true,
+      "include_helpful_messages": true,
+      "log_with_context": true
+    }
+  },
+
+  "testing": {
+    "frameworks": ["xUnit", "Moq", "FluentAssertions"],
+    "test_naming": "MethodName_Scenario_ExpectedBehavior",
+    "test_pattern": "Arrange-Act-Assert (AAA)",
+    "coverage_targets": {
+      "critical_business_logic": "100%",
+      "services_repositories": "80%",
+      "controllers": "70%",
+      "overall": "75%"
+    },
+    "test_commands": {
+      "run_all": "dotnet test",
+      "run_specific": "dotnet test --filter \"FullyQualifiedName~TestClassName\"",
+      "with_coverage": "dotnet test --collect:\"XPlat Code Coverage\""
+    }
+  },
+
+  "database": {
+    "provider": "SQL Server",
+    "connection_string_location": "appsettings.Development.json (not committed)",
+    "migrations": {
+      "create": "dotnet ef migrations add MigrationName --project Casazen.Infrastructure",
+      "apply": "dotnet ef database update --project Casazen.Infrastructure",
+      "rollback": "dotnet ef database update PreviousMigration --project Casazen.Infrastructure"
+    },
+    "conventions": {
+      "table_names": "PascalCase plural (e.g., Properties, Bookings)",
+      "column_names": "PascalCase (e.g., FirstName, CreatedAt)",
+      "foreign_keys": "EntityIdForeignEntity (e.g., PropertyIdOwner)"
+    }
+  },
+
+  "api": {
+    "base_path": "/api",
+    "versioning": "URL-based (e.g., /api/v1/users)",
+    "authentication": "JWT Bearer tokens (Auth0)",
+    "documentation": "Swagger/OpenAPI at /swagger",
+    "conventions": {
+      "endpoints": "RESTful (GET, POST, PUT, DELETE)",
+      "responses": "Standard HTTP status codes",
+      "error_format": "Problem Details (RFC 7807)"
+    }
+  },
+
+  "external_integrations": {
+    "auth0": {
+      "purpose": "Authentication and authorization",
+      "config_location": "appsettings.json > Auth0"
+    },
+    "stripe": {
+      "purpose": "Payment processing",
+      "webhooks": "Casazen.Infrastructure/External/StripeWebhookHandler.cs"
+    },
+    "sendgrid": {
+      "purpose": "Email notifications",
+      "templates": "Managed in SendGrid dashboard"
+    },
+    "ota_platforms": {
+      "airbnb": "Casazen.Infrastructure/OTA/AirbnbAdapter.cs",
+      "booking_com": "Casazen.Infrastructure/OTA/BookingAdapter.cs",
+      "expedia": "Casazen.Infrastructure/OTA/ExpediaAdapter.cs",
+      "vrbo": "Casazen.Infrastructure/OTA/VrboAdapter.cs"
+    }
+  },
+
+  "compliance": {
+    "regulatory_context": "Italian and European regulations for short-term rentals",
+    "key_regulations": [
+      "D.L. 145/2023 (CIN code requirement)",
+      "Alloggiati Web (guest police reporting)",
+      "Tourist tax (regional variations)",
+      "GDPR (data protection)",
+      "Cedolare secca (flat-rate tax)",
+      "DAC7 (platform reporting)"
+    ],
+    "regulatory_intelligence": {
+      "enabled": true,
+      "agents": [
+        "regulatory_agent (collects updates)",
+        "analyzer_agent (gap analysis)",
+        "github_agent (creates issues)"
+      ],
+      "context_location": ".claude/context/"
+    }
+  },
+
+  "git": {
+    "main_branch": "main",
+    "branch_naming": "feature/description, fix/description, hotfix/description",
+    "commit_convention": "Conventional Commits (feat:, fix:, docs:, etc.)",
+    "commit_attribution": "No AI co-authorship (user preference)"
+  },
+
+  "deployment": {
+    "ci_cd_pipeline": ".github/workflows/",
+    "environments": ["Development", "Staging", "Production"],
+    "deployment_checklist": "Defined in release_manager agent"
+  },
+
+  "documentation": {
+    "main_readme": "README.md",
+    "project_context": "CLAUDE.md (local only, not committed)",
+    "api_docs": "Swagger at /swagger",
+    "changelog": "CHANGELOG.md (Keep a Changelog format)",
+    "architecture": "docs/architecture.md"
+  },
+
+  "language": {
+    "code": "English (comments, variables, methods)",
+    "documentation": "English (README, user stories, issues)",
+    "ui": "Italian (end-user facing)",
+    "note": "All generated content MUST be in English per project policy"
+  }
+}

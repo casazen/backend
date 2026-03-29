@@ -92,8 +92,9 @@ Produce a summary with:
 ## Tools Used
 - `Bash` with `gh` CLI - GitHub operations
 - `Read` / `Write` / `Edit` - context file management
-- `open_github_issue` skill - structured issue creation
-- `write_user_story` skill - user story generation
+- **Global skills** (from ~/.claude/skills/):
+  - `open_github_issue` - structured issue creation
+  - `write_user_story` - user story generation
 
 ## Expected Output
 - Issues created on GitHub with correct labels
