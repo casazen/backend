@@ -68,7 +68,8 @@ jobs:
           dotnet build --configuration Release --no-restore
 
           # Use code_reviewer agent for comprehensive review (Sonnet for deep analysis)
-          REVIEW_OUTPUT=$(claude --model sonnet -p "You are the code_reviewer agent for CasaZen. Review all commits made today ($(date -u +%Y-%m-%d)) using 'git log --since=\"today 00:00:00\" --until=\"today 23:59:59\" --patch'.
+          REVIEW_OUTPUT=$(claude --model sonnet -p "$(cat <<'PROMPT_EOF'
+You are the code_reviewer agent for CasaZen. Review all commits made today ($(date -u +%Y-%m-%d)) using 'git log --since="today 00:00:00" --until="today 23:59:59" --patch'.
 
 **Review Criteria**:
 1. **Code Quality**: Adherence to C# conventions, SOLID principles, clean code
@@ -83,7 +84,9 @@ jobs:
 - CRITICAL_ISSUES: [YES|NO]
 - SUMMARY: One-line summary
 
-Provide detailed findings with file references (file:line), categorized by severity (CRITICAL, HIGH, MEDIUM, LOW). Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep" 2>&1)
+Provide detailed findings with file references (file:line), categorized by severity (CRITICAL, HIGH, MEDIUM, LOW). Do NOT save to files.
+PROMPT_EOF
+)" --allowedTools "Bash,Read,Glob,Grep" 2>&1)
 
           echo "$REVIEW_OUTPUT"
 
