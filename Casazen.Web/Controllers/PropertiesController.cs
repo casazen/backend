@@ -17,7 +17,7 @@ public class PropertiesController(IPropertyService propertyService, ILogger<Prop
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var properties = await propertyService.GetOwnerPropertiesAsync(Guid.Parse(userId));
+        var properties = await propertyService.GetOwnerPropertiesAsync(userId);
         return Ok(properties);
     }
 
@@ -36,7 +36,7 @@ public class PropertiesController(IPropertyService propertyService, ILogger<Prop
             return Unauthorized();
 
         logger.LogInformation("Creating property for user: {UserId}", userId);
-        property.OwnerId = Guid.Parse(userId);
+        property.OwnerId = userId;
         var created = await propertyService.CreatePropertyAsync(property);
         logger.LogInformation("Property created: {PropertyId}", created.Id);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);

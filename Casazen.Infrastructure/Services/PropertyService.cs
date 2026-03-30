@@ -12,7 +12,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return await repository.GetByIdAsync(id);
     }
 
-    public async Task<IEnumerable<Property>> GetOwnerPropertiesAsync(Guid ownerId)
+    public async Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId)
     {
         return await repository.GetByOwnerAsync(ownerId);
     }

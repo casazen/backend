@@ -109,7 +109,7 @@ namespace Casazen.Infrastructure.Migrations
                         column: x => x.GuestId,
                         principalTable: "Guests",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_Bookings_Properties_PropertyId",
                         column: x => x.PropertyId,

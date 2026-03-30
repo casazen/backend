@@ -15,7 +15,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .FirstOrDefaultAsync(p => p.Id == id);
     }
 
-    public async Task<IEnumerable<Property>> GetByOwnerAsync(Guid ownerId)
+    public async Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId)
     {
         return await context.Properties
             .Where(p => p.OwnerId == ownerId && p.IsActive)

@@ -43,7 +43,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasMany(g => g.Bookings)
             .WithOne(b => b.Guest)
             .HasForeignKey(b => b.GuestId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);

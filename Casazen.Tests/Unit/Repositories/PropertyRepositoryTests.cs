@@ -30,7 +30,7 @@ public class PropertyRepositoryTests
             Name = "Test Property",
             City = "Test City",
             Address = "Test Address",
-            OwnerId = Guid.NewGuid()
+            OwnerId = "auth0|test_user_123"
         };
 
         // Act
@@ -52,7 +52,7 @@ public class PropertyRepositoryTests
             Name = "Rome Property",
             City = "Rome",
             Address = "Via Roma",
-            OwnerId = Guid.NewGuid()
+            OwnerId = "auth0|test_user_123"
         });
 
         await _repository.AddAsync(new Property
@@ -60,7 +60,7 @@ public class PropertyRepositoryTests
             Name = "Milan Property",
             City = "Milan",
             Address = "Via Milano",
-            OwnerId = Guid.NewGuid()
+            OwnerId = "auth0|test_user_123"
         });
 
         // Act

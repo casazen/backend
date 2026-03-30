@@ -11,8 +11,8 @@ public class Property
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Required]
-    public Guid OwnerId { get; set; }
+    [Required, MaxLength(255)]
+    public string OwnerId { get; set; } = string.Empty;
 
     [Required, MaxLength(100)]
     public string Name { get; set; } = string.Empty;

@@ -5,7 +5,7 @@ namespace Casazen.Core.Repositories;
 public interface IPropertyRepository
 {
     Task<Property?> GetByIdAsync(Guid id);
-    Task<IEnumerable<Property>> GetByOwnerAsync(Guid ownerId);
+    Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string city, int? bedrooms, decimal? maxPrice);
     Task<Property> AddAsync(Property property);
