@@ -69,24 +69,24 @@ jobs:
 
           # Use code_reviewer agent for comprehensive review (Sonnet for deep analysis)
           REVIEW_OUTPUT=$(claude --model sonnet -p "$(cat <<'PROMPT_EOF'
-You are the code_reviewer agent for CasaZen. Review all commits made today ($(date -u +%Y-%m-%d)) using 'git log --since="today 00:00:00" --until="today 23:59:59" --patch'.
+          You are the code_reviewer agent for CasaZen. Review all commits made today using 'git log --since="today 00:00:00" --until="today 23:59:59" --patch'.
 
-**Review Criteria**:
-1. **Code Quality**: Adherence to C# conventions, SOLID principles, clean code
-2. **Security**: SQL injection, XSS, auth bypasses, secrets exposure, input validation
-3. **Async/Await**: Proper usage, no .Result/.Wait(), correct cancellation tokens
-4. **Testing**: Test coverage for new code, TDD followed, test quality
-5. **CLAUDE.md Compliance**: Follows project guidelines and guardrails
-6. **GitHub Flow**: Proper branch naming, commit messages (Conventional Commits)
+          **Review Criteria**:
+          1. **Code Quality**: Adherence to C# conventions, SOLID principles, clean code
+          2. **Security**: SQL injection, XSS, auth bypasses, secrets exposure, input validation
+          3. **Async/Await**: Proper usage, no .Result/.Wait(), correct cancellation tokens
+          4. **Testing**: Test coverage for new code, TDD followed, test quality
+          5. **CLAUDE.md Compliance**: Follows project guidelines and guardrails
+          6. **GitHub Flow**: Proper branch naming, commit messages (Conventional Commits)
 
-**Output Format** (write to stdout, parse with grep):
-- QUALITY_SCORE: [A|B|C|D|F]
-- CRITICAL_ISSUES: [YES|NO]
-- SUMMARY: One-line summary
+          **Output Format** (write to stdout, parse with grep):
+          - QUALITY_SCORE: [A|B|C|D|F]
+          - CRITICAL_ISSUES: [YES|NO]
+          - SUMMARY: One-line summary
 
-Provide detailed findings with file references (file:line), categorized by severity (CRITICAL, HIGH, MEDIUM, LOW). Do NOT save to files.
-PROMPT_EOF
-)" --allowedTools "Bash,Read,Glob,Grep" 2>&1)
+          Provide detailed findings with file references (file:line), categorized by severity (CRITICAL, HIGH, MEDIUM, LOW). Do NOT save to files.
+          PROMPT_EOF
+          )" --allowedTools "Bash,Read,Glob,Grep" 2>&1)
 
           echo "$REVIEW_OUTPUT"
 
@@ -180,40 +180,43 @@ PROMPT_EOF
           echo "Critical Issues: $HAS_CRITICAL_ISSUES"
 
           # Use release_manager agent to decide on merging and deployment (Sonnet for critical decisions)
-          RELEASE_OUTPUT=$(claude --model sonnet -p "You are the release_manager agent for CasaZen following **GitHub Flow**:
-- Feature branches → PR to main → Review → Merge to main → Deploy from main
+          RELEASE_OUTPUT=$(claude --model sonnet -p "$(cat <<'PROMPT_EOF'
+          You are the release_manager agent for CasaZen following **GitHub Flow**:
+          - Feature branches → PR to main → Review → Merge to main → Deploy from main
 
-**Context**:
-- Code Review Result: $CODE_REVIEW_RESULT
-- Quality Score: $QUALITY_SCORE
-- Has Critical Issues: $HAS_CRITICAL_ISSUES
+          **Context**:
+          - Code Review Result: ${CODE_REVIEW_RESULT}
+          - Quality Score: ${QUALITY_SCORE}
+          - Has Critical Issues: ${HAS_CRITICAL_ISSUES}
 
-**Your Tasks**:
-1. **Review Open PRs**: Use 'gh pr list --state open --base main' and 'gh pr view <number>' for details
-2. **Check CI/CD Status**: Use 'gh pr checks <number>' to verify all checks passed
-3. **Review Code Quality**: Read the code review results from previous step
-4. **Make Merge Decision**:
-   - If code review is 'approved' (A/B score) AND all CI checks pass AND no critical issues → MERGE to main
-   - If code review is 'approved_with_comments' (C score) AND all CI checks pass AND no critical issues → MERGE to main with monitoring
-   - If code review is 'changes_requested' (D/F score) OR critical issues exist → DO NOT MERGE, request changes
-5. **Decide Deployment Environment**:
-   - Quality A + no issues → production
-   - Quality B + no issues → staging (with plan for production)
-   - Quality C + no issues → development
-   - Any critical issues → DO NOT DEPLOY
+          **Your Tasks**:
+          1. **Review Open PRs**: Use 'gh pr list --state open --base main' and 'gh pr view <number>' for details
+          2. **Check CI/CD Status**: Use 'gh pr checks <number>' to verify all checks passed
+          3. **Review Code Quality**: Read the code review results from previous step
+          4. **Make Merge Decision**:
+             - If code review is 'approved' (A/B score) AND all CI checks pass AND no critical issues → MERGE to main
+             - If code review is 'approved_with_comments' (C score) AND all CI checks pass AND no critical issues → MERGE to main with monitoring
+             - If code review is 'changes_requested' (D/F score) OR critical issues exist → DO NOT MERGE, request changes
+          5. **Decide Deployment Environment**:
+             - Quality A + no issues → production
+             - Quality B + no issues → staging (with plan for production)
+             - Quality C + no issues → development
+             - Any critical issues → DO NOT DEPLOY
 
-**Actions**:
-- Merge approved PRs: 'gh pr merge <number> --squash --delete-branch'
-- Request changes: 'gh pr review <number> --request-changes --body \"<feedback>\"'
-- Add PR comments with deployment recommendations
+          **Actions**:
+          - Merge approved PRs: 'gh pr merge <number> --squash --delete-branch'
+          - Request changes: 'gh pr review <number> --request-changes --body "<feedback>"'
+          - Add PR comments with deployment recommendations
 
-**Output Format** (write to stdout for parsing):
-- PR_MERGED: [number of PRs merged, e.g., 2]
-- DEPLOYMENT_ENV: [production|staging|development|none]
-- DEPLOYMENT_DECISION: [deploy|hold|block]
-- SUMMARY: One-line summary
+          **Output Format** (write to stdout for parsing):
+          - PR_MERGED: [number of PRs merged, e.g., 2]
+          - DEPLOYMENT_ENV: [production|staging|development|none]
+          - DEPLOYMENT_DECISION: [deploy|hold|block]
+          - SUMMARY: One-line summary
 
-Provide detailed rationale for each decision. Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep" 2>&1)
+          Provide detailed rationale for each decision. Do NOT save to files.
+          PROMPT_EOF
+          )" --allowedTools "Bash,Read,Glob,Grep" 2>&1)
 
           echo "$RELEASE_OUTPUT"
 
@@ -259,7 +262,7 @@ Provide detailed rationale for each decision. Do NOT save to files." --allowedTo
           TODAY=$(date -u +%Y-%m-%d)
           REPORT_FILE="daily-report-$TODAY.html"
 
-          cat > $REPORT_FILE <<EOF
+          cat > $REPORT_FILE <<'HTML_EOF'
           <!DOCTYPE html>
           <html>
           <head>
@@ -287,7 +290,7 @@ Provide detailed rationale for each decision. Do NOT save to files." --allowedTo
           <body>
             <h1>🏠 CasaZen - Daily Testing & Review Report</h1>
             <div class="summary">
-              <strong>Date:</strong> $TODAY<br>
+              <strong>Date:</strong> ${TODAY}<br>
               <strong>Report Time:</strong> $(date -u +'%H:%M:%S UTC')<br>
               <strong>Repository:</strong> casazen/backend<br>
               <strong>Workflow:</strong> GitHub Flow (feature → PR → main → deploy)
@@ -361,7 +364,7 @@ Provide detailed rationale for each decision. Do NOT save to files." --allowedTo
             </div>
           </body>
           </html>
-          EOF
+          HTML_EOF
 
           echo "report_file=$REPORT_FILE" >> $GITHUB_OUTPUT
 
@@ -374,7 +377,7 @@ Provide detailed rationale for each decision. Do NOT save to files." --allowedTo
           curl -X POST https://api.sendgrid.com/v3/mail/send \
             -H "Authorization: Bearer $SENDGRID_API_KEY" \
             -H "Content-Type: application/json" \
-            -d @- <<EOF
+            -d @- <<'JSON_EOF'
           {
             "personalizations": [{
               "to": [{"email": "luca.lamal@hotmail.it", "name": "Luca La Malfa"}],
@@ -389,7 +392,7 @@ Provide detailed rationale for each decision. Do NOT save to files." --allowedTo
               "value": $(cat $REPORT_FILE | jq -Rs .)
             }]
           }
-          EOF
+          JSON_EOF
 
           if [ $? -eq 0 ]; then
             echo "✅ Email report sent successfully to luca.lamal@hotmail.it"
