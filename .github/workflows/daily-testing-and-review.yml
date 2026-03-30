@@ -1,0 +1,449 @@
+name: Daily Testing & Review Orchestrator
+
+on:
+  schedule:
+    # Runs every day at 5:00 PM UTC (6:00 PM CET, 7:00 PM CEST)
+    - cron: '0 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  run-tests:
+    name: Run Comprehensive Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      test_result: ${{ steps.test.outputs.result }}
+      test_summary: ${{ steps.test.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js (for Claude Code)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build project
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test Engineer - Run All Tests
+        id: test
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🧪 Running comprehensive test suite..."
+
+          # Run tests with coverage
+          dotnet test --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger "trx;LogFileName=test-results.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults
+
+          TEST_EXIT_CODE=$?
+
+          # Use test_engineer agent to analyze test results
+          claude -p "You are the test_engineer agent for CasaZen. Analyze the test results in ./TestResults/ directory. Review the .trx file and coverage reports. Identify: (1) Total tests run, (2) Passed/Failed/Skipped counts, (3) Code coverage percentages, (4) Any failing tests with details, (5) Coverage gaps in critical areas. Compare coverage against targets in .claude/config/project.json (Critical: 100%, Services: 80%, Controllers: 70%). Generate a comprehensive test report and save it to .claude/reports/test-report-$(date +%Y%m%d).md with recommendations for improvement." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+          # Set outputs
+          if [ $TEST_EXIT_CODE -eq 0 ]; then
+            echo "result=success" >> $GITHUB_OUTPUT
+            echo "summary=All tests passed ✅" >> $GITHUB_OUTPUT
+          else
+            echo "result=failure" >> $GITHUB_OUTPUT
+            echo "summary=Some tests failed ❌" >> $GITHUB_OUTPUT
+          fi
+
+          exit $TEST_EXIT_CODE
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            TestResults/
+            .claude/reports/test-report-*.md
+          retention-days: 30
+
+  code-review:
+    name: Code Review
+    needs: run-tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      review_result: ${{ steps.review.outputs.result }}
+      review_summary: ${{ steps.review.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js (for Claude Code)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Get Today's Changes
+        id: changes
+        run: |
+          # Get all commits from today
+          TODAY=$(date -u +%Y-%m-%d)
+          COMMITS=$(git log --since="$TODAY 00:00:00" --until="$TODAY 23:59:59" --oneline)
+
+          if [ -z "$COMMITS" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No commits found for today"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
+            echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+            echo "✅ Found $COMMIT_COUNT commits from today"
+          fi
+
+      - name: Code Reviewer - Review Changes
+        id: review
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "👀 Reviewing code changes from today..."
+
+          # Use code_reviewer agent to review today's changes
+          claude -p "You are the code_reviewer agent for CasaZen. Review all commits made today ($(date -u +%Y-%m-%d)) by running 'git log --since='today 00:00:00' --until='today 23:59:59' --patch'. Check for: (1) Code quality and adherence to Microsoft C# conventions, (2) Security vulnerabilities (SQL injection, XSS, authentication bypasses), (3) Proper async/await usage, (4) Test coverage for new code, (5) Compliance with CLAUDE.md guidelines. Generate a detailed code review report and save it to .claude/reports/code-review-$(date +%Y%m%d).md. Assign a quality score (A-F) and list any critical issues that must be fixed before merge." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+          # Set outputs based on review
+          echo "result=completed" >> $GITHUB_OUTPUT
+          echo "summary=Code review completed 📋" >> $GITHUB_OUTPUT
+
+      - name: No Changes to Review
+        if: steps.changes.outputs.has_changes == 'false'
+        run: |
+          echo "result=skipped" >> $GITHUB_OUTPUT
+          echo "summary=No changes to review ⏭️" >> $GITHUB_OUTPUT
+
+      - name: Upload Review Report
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-report
+          path: .claude/reports/code-review-*.md
+          retention-days: 30
+
+  pr-management:
+    name: PR Review & Merge Decision
+    needs: [run-tests, code-review]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      pr_result: ${{ steps.pr.outputs.result }}
+      pr_summary: ${{ steps.pr.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (for Claude Code)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Download Reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-report*'
+          path: .claude/reports/
+          merge-multiple: true
+
+      - name: Check Open PRs
+        id: check-prs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get open PRs created by the dev bot or today
+          PRS=$(gh pr list --state open --json number,title,createdAt,author)
+          PR_COUNT=$(echo "$PRS" | jq '. | length')
+
+          echo "pr_count=$PR_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$PR_COUNT" -gt 0 ]; then
+            echo "has_prs=true" >> $GITHUB_OUTPUT
+            echo "✅ Found $PR_COUNT open PRs"
+          else
+            echo "has_prs=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No open PRs found"
+          fi
+
+      - name: Release Manager - PR Review
+        id: pr
+        if: steps.check-prs.outputs.has_prs == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🚀 Release Manager: Reviewing PRs for merge..."
+
+          # Use release_manager agent to review PRs and decide on merging
+          claude -p "You are the release_manager agent for CasaZen. Review all open pull requests using 'gh pr list --state open'. For each PR: (1) Read the test report (.claude/reports/test-report-$(date +%Y%m%d).md), (2) Read the code review report (.claude/reports/code-review-$(date +%Y%m%d).md), (3) Check CI/CD status using 'gh pr checks', (4) Verify all tests passed, (5) Verify code review quality score is B or better. Based on these criteria, decide whether to APPROVE and MERGE or REQUEST CHANGES. If all checks pass, merge the PR using 'gh pr merge --auto --squash'. Generate a PR management report and save it to .claude/reports/pr-management-$(date +%Y%m%d).md with decisions and rationale for each PR." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+          echo "result=completed" >> $GITHUB_OUTPUT
+          echo "summary=PR review completed 🎯" >> $GITHUB_OUTPUT
+
+      - name: No PRs to Review
+        if: steps.check-prs.outputs.has_prs == 'false'
+        run: |
+          echo "result=skipped" >> $GITHUB_OUTPUT
+          echo "summary=No PRs to review ⏭️" >> $GITHUB_OUTPUT
+
+      - name: Upload PR Management Report
+        if: steps.check-prs.outputs.has_prs == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-management-report
+          path: .claude/reports/pr-management-*.md
+          retention-days: 30
+
+  commit-reports:
+    name: Commit Daily Reports
+    needs: [run-tests, code-review, pr-management]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Reports
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Copy Reports to Repository
+        run: |
+          mkdir -p .claude/reports
+          find artifacts/ -name "*.md" -exec cp {} .claude/reports/ \;
+
+      - name: Commit Reports
+        run: |
+          git config user.name "casazen-dev-bot[bot]"
+          git config user.email "casazen-dev-bot[bot]@users.noreply.github.com"
+
+          git add .claude/reports/ || true
+
+          if git diff --staged --quiet; then
+            echo "No reports to commit"
+          else
+            git commit -m "chore: daily testing and review reports [automated]"
+            git push
+          fi
+
+  send-email-report:
+    name: Send Daily Report Email
+    needs: [run-tests, code-review, pr-management]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download All Reports
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate Email Report
+        id: email
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          REPORT_FILE="daily-report-$TODAY.html"
+
+          cat > $REPORT_FILE <<EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+              h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+              h2 { color: #34495e; margin-top: 30px; border-left: 4px solid #3498db; padding-left: 10px; }
+              .summary { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
+              .status { padding: 5px 10px; border-radius: 3px; font-weight: bold; }
+              .success { background: #2ecc71; color: white; }
+              .failure { background: #e74c3c; color: white; }
+              .warning { background: #f39c12; color: white; }
+              .info { background: #3498db; color: white; }
+              table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+              th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+              th { background: #34495e; color: white; }
+              .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d; font-size: 0.9em; }
+            </style>
+          </head>
+          <body>
+            <h1>🏠 CasaZen - Daily Development Report</h1>
+            <div class="summary">
+              <strong>Date:</strong> $TODAY<br>
+              <strong>Report Time:</strong> $(date -u +'%H:%M:%S UTC')<br>
+              <strong>Repository:</strong> casazen/backend
+            </div>
+
+            <h2>📊 Executive Summary</h2>
+            <table>
+              <tr>
+                <th>Component</th>
+                <th>Status</th>
+                <th>Details</th>
+              </tr>
+              <tr>
+                <td>Testing</td>
+                <td><span class="status ${{ needs.run-tests.outputs.test_result == 'success' && 'success' || 'failure' }}">${{ needs.run-tests.outputs.test_result || 'N/A' }}</span></td>
+                <td>${{ needs.run-tests.outputs.test_summary || 'No test data' }}</td>
+              </tr>
+              <tr>
+                <td>Code Review</td>
+                <td><span class="status info">${{ needs.code-review.outputs.review_result || 'N/A' }}</span></td>
+                <td>${{ needs.code-review.outputs.review_summary || 'No review data' }}</td>
+              </tr>
+              <tr>
+                <td>PR Management</td>
+                <td><span class="status info">${{ needs.pr-management.outputs.pr_result || 'N/A' }}</span></td>
+                <td>${{ needs.pr-management.outputs.pr_summary || 'No PR data' }}</td>
+              </tr>
+            </table>
+
+            <h2>🧪 Testing Results</h2>
+            <p><strong>Status:</strong> <span class="status ${{ needs.run-tests.outputs.test_result == 'success' && 'success' || 'failure' }}">${{ needs.run-tests.outputs.test_result || 'UNKNOWN' }}</span></p>
+            <p>${{ needs.run-tests.outputs.test_summary || 'No detailed test information available' }}</p>
+            <p><em>Full test report available in repository: .claude/reports/test-report-$TODAY.md</em></p>
+
+            <h2>👀 Code Review</h2>
+            <p><strong>Status:</strong> <span class="status info">${{ needs.code-review.outputs.review_result || 'N/A' }}</span></p>
+            <p>${{ needs.code-review.outputs.review_summary || 'No changes were reviewed today' }}</p>
+            <p><em>Full code review report available in repository: .claude/reports/code-review-$TODAY.md</em></p>
+
+            <h2>🚀 Pull Request Management</h2>
+            <p><strong>Status:</strong> <span class="status info">${{ needs.pr-management.outputs.pr_result || 'N/A' }}</span></p>
+            <p>${{ needs.pr-management.outputs.pr_summary || 'No pull requests were managed today' }}</p>
+            <p><em>Full PR management report available in repository: .claude/reports/pr-management-$TODAY.md</em></p>
+
+            <h2>📈 Next Steps</h2>
+            <ul>
+              <li>Review detailed reports in the repository</li>
+              <li>Address any failing tests or critical code review findings</li>
+              <li>Monitor merged PRs in production</li>
+              <li>Next development cycle: Tomorrow at 08:00 UTC</li>
+            </ul>
+
+            <div class="footer">
+              <p>
+                🤖 This report was automatically generated by the CasaZen Daily Testing & Review Orchestrator<br>
+                📧 Questions? Check the workflow logs: <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a><br>
+                🏠🧘 CasaZen - Vacation rentals without stress!
+              </p>
+            </div>
+          </body>
+          </html>
+          EOF
+
+          echo "report_file=$REPORT_FILE" >> $GITHUB_OUTPUT
+
+      - name: Send Email via SendGrid
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          REPORT_FILE: ${{ steps.email.outputs.report_file }}
+        run: |
+          # Send email using SendGrid API
+          curl -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "personalizations": [{
+              "to": [{"email": "luca.lamal@hotmail.it", "name": "Luca La Malfa"}],
+              "subject": "CasaZen Daily Report - $(date -u +%Y-%m-%d)"
+            }],
+            "from": {
+              "email": "noreply@casazen.app",
+              "name": "CasaZen Dev Bot"
+            },
+            "content": [{
+              "type": "text/html",
+              "value": $(cat $REPORT_FILE | jq -Rs .)
+            }]
+          }
+          EOF
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Email report sent successfully to luca.lamal@hotmail.it"
+          else
+            echo "❌ Failed to send email report"
+            exit 1
+          fi
+
+  workflow-summary:
+    name: Workflow Summary
+    needs: [run-tests, code-review, pr-management, send-email-report]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## 🌆 Daily Testing & Review Summary - $(date -u +'%Y-%m-%d')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Execution Time**: $(date -u +'%H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 🧪 Testing" >> $GITHUB_STEP_SUMMARY
+          echo "- **Result**: ${{ needs.run-tests.outputs.test_result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Summary**: ${{ needs.run-tests.outputs.test_summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 👀 Code Review" >> $GITHUB_STEP_SUMMARY
+          echo "- **Result**: ${{ needs.code-review.outputs.review_result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Summary**: ${{ needs.code-review.outputs.review_summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 🚀 PR Management" >> $GITHUB_STEP_SUMMARY
+          echo "- **Result**: ${{ needs.pr-management.outputs.pr_result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Summary**: ${{ needs.pr-management.outputs.pr_summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 📧 Email Report" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ needs.send-email-report.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Recipient**: luca.lamal@hotmail.it" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "**All reports committed to**: .claude/reports/" >> $GITHUB_STEP_SUMMARY
+          echo "**Next development cycle**: Tomorrow at 08:00 UTC" >> $GITHUB_STEP_SUMMARY

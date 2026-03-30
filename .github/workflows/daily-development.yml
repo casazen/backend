@@ -1,0 +1,229 @@
+name: Daily Development Orchestrator
+
+on:
+  schedule:
+    # Runs every day at 8:00 AM UTC (9:00 AM CET, 10:00 AM CEST)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      force_new_issues:
+        description: 'Force creation of new issues even if backlog exists'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  check-backlog:
+    name: Check Issue Backlog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_issues: ${{ steps.check.outputs.has_issues }}
+      issue_number: ${{ steps.check.outputs.issue_number }}
+      issue_count: ${{ steps.check.outputs.issue_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for open issues
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get open issues excluding regulatory compliance issues
+          ISSUES=$(gh issue list \
+            --state open \
+            --label "!regulatory" \
+            --json number,title,labels,createdAt \
+            --limit 100)
+
+          ISSUE_COUNT=$(echo "$ISSUES" | jq '. | length')
+          echo "issue_count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$ISSUE_COUNT" -gt 0 ]; then
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            # Get the oldest issue for implementation
+            OLDEST_ISSUE=$(echo "$ISSUES" | jq -r '.[0].number')
+            echo "issue_number=$OLDEST_ISSUE" >> $GITHUB_OUTPUT
+            echo "✅ Found $ISSUE_COUNT open issues. Oldest: #$OLDEST_ISSUE"
+          else
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No open issues found in backlog"
+          fi
+
+  implement-issue:
+    name: Implement Issue
+    needs: check-backlog
+    if: needs.check-backlog.outputs.has_issues == 'true' && github.event.inputs.force_new_issues != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js (for Claude Code)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure Git
+        run: |
+          git config user.name "casazen-dev-bot[bot]"
+          git config user.email "casazen-dev-bot[bot]@users.noreply.github.com"
+
+      - name: Plan Implementation
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
+        run: |
+          echo "📋 Planning implementation for issue #$ISSUE_NUM"
+
+          # Get issue details
+          ISSUE_DATA=$(gh issue view $ISSUE_NUM --json title,body,labels)
+          ISSUE_TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
+
+          echo "Issue: $ISSUE_TITLE"
+
+          # Use issue_planner agent to create implementation plan
+          claude -p "You are the issue_planner agent. Read issue #$ISSUE_NUM from GitHub using 'gh issue view $ISSUE_NUM'. Create a detailed implementation plan following the project guidelines in CLAUDE.md and .claude/config/project.json. Break down the work into specific tasks with clear acceptance criteria. Save the plan to .claude/sprint/issue-$ISSUE_NUM-plan.md" --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Implement Feature
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
+        run: |
+          echo "🔨 Implementing issue #$ISSUE_NUM"
+
+          # Use feature_developer agent to implement the feature
+          claude -p "You are the feature_developer agent. Read the implementation plan from .claude/sprint/issue-$ISSUE_NUM-plan.md. Implement the feature following the plan, adhering to coding conventions in CLAUDE.md. Create or update necessary files, add tests, and ensure code quality. When done, create a feature branch and commit your changes with a descriptive commit message following Conventional Commits format. DO NOT include 'Co-Authored-By: Claude' in commit messages (per project policy). Reference issue #$ISSUE_NUM in the commit message." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Update Issue Status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
+        run: |
+          # Add comment to issue about implementation
+          gh issue comment $ISSUE_NUM --body "🤖 **Automated Development Update**
+
+Implementation completed by daily development orchestrator.
+- ✅ Implementation plan created
+- ✅ Feature implemented following project guidelines
+- ✅ Changes committed to feature branch
+
+Next steps:
+- Daily testing orchestrator will run tests at 5 PM UTC
+- Code review and PR management will follow
+
+**Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+
+          # Add in-progress label
+          gh issue edit $ISSUE_NUM --add-label "in-progress,automated-dev"
+
+  create-new-issues:
+    name: Define New Issues
+    needs: check-backlog
+    if: (needs.check-backlog.outputs.has_issues == 'false' || github.event.inputs.force_new_issues == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (for Claude Code)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Product Owner - Gather Requirements
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📊 Product Owner: Analyzing project needs..."
+
+          # Use product_owner agent to identify new features/improvements
+          claude -p "You are the product_owner agent for CasaZen. Analyze the current project state by reading CLAUDE.md, README.md, and recent commits. Review .claude/context/ for regulatory compliance needs. Identify 2-3 high-priority features or improvements needed for the vacation rental management system. Consider: (1) Regulatory compliance (Italian short-term rental laws), (2) OTA integrations improvements, (3) User experience enhancements, (4) Bug fixes from production. Save your analysis to .claude/sprint/daily-$(date +%Y%m%d)-requirements.md with prioritized feature proposals." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Architect - Design Solutions
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🏗️ Architect: Designing technical solutions..."
+
+          # Use architect agent to design implementation approach
+          claude -p "You are the architect agent for CasaZen. Read the requirements from .claude/sprint/daily-$(date +%Y%m%d)-requirements.md created by the product_owner. For each proposed feature, design the technical implementation approach considering the layered architecture (Web → Core → Infrastructure). Specify which layers/components will be affected, database changes needed, external integrations, and testing strategy. Follow the architecture patterns defined in .claude/config/project.json. Save your design to .claude/sprint/daily-$(date +%Y%m%d)-architecture.md" --allowedTools "Read,Write,Edit,Glob,Grep"
+
+      - name: Scrum Master - Create GitHub Issues
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📝 Scrum Master: Creating GitHub issues..."
+
+          # Use scrum_master agent to create well-structured GitHub issues
+          claude -p "You are the scrum_master agent for CasaZen. Read the requirements (.claude/sprint/daily-$(date +%Y%m%d)-requirements.md) and architecture design (.claude/sprint/daily-$(date +%Y%m%d)-architecture.md). For the top 2 highest-priority items, create detailed GitHub issues using 'gh issue create'. Each issue should include: clear title, detailed description, acceptance criteria, technical implementation notes from the architect, priority label, and relevant labels (feature/bug/enhancement). Follow the project's issue template structure. After creating issues, save a summary to .claude/sprint/daily-$(date +%Y%m%d)-issues-created.md" --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Commit Sprint Planning Documents
+        run: |
+          git config user.name "casazen-dev-bot[bot]"
+          git config user.email "casazen-dev-bot[bot]@users.noreply.github.com"
+
+          git add .claude/sprint/ || true
+
+          if git diff --staged --quiet; then
+            echo "No sprint planning documents to commit"
+          else
+            git commit -m "chore: daily sprint planning - new issues defined [automated]"
+            git push
+          fi
+
+  summary:
+    name: Daily Development Summary
+    needs: [check-backlog, implement-issue, create-new-issues]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## 🌅 Daily Development Summary - $(date -u +'%Y-%m-%d')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Execution Time**: $(date -u +'%H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.check-backlog.outputs.has_issues }}" == "true" ]; then
+            echo "### 🔨 Implementation Mode" >> $GITHUB_STEP_SUMMARY
+            echo "- **Issue Count**: ${{ needs.check-backlog.outputs.issue_count }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Implemented**: #${{ needs.check-backlog.outputs.issue_number }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status**: ${{ needs.implement-issue.result }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### 📋 Planning Mode" >> $GITHUB_STEP_SUMMARY
+            echo "- **Backlog Status**: Empty - New issues created" >> $GITHUB_STEP_SUMMARY
+            echo "- **Planning Status**: ${{ needs.create-new-issues.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps**: Daily testing orchestrator runs at 17:00 UTC" >> $GITHUB_STEP_SUMMARY
