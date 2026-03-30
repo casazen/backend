@@ -62,7 +62,7 @@ jobs:
     needs: check-backlog
     if: needs.check-backlog.outputs.has_issues == 'true' && github.event.inputs.force_new_issues != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -102,8 +102,19 @@ jobs:
 
           echo "Issue: $ISSUE_TITLE"
 
-          # Use issue_planner agent to create implementation plan
-          claude -p "You are the issue_planner agent. Read issue #$ISSUE_NUM from GitHub using 'gh issue view $ISSUE_NUM'. Create a detailed implementation plan following the project guidelines in CLAUDE.md and .claude/config/project.json. Break down the work into specific tasks with clear acceptance criteria. Save the plan to .claude/sprint/issue-$ISSUE_NUM-plan.md" --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+          # Use issue_planner agent to create implementation plan and post as GitHub comment
+          claude --model haiku -p "You are the issue_planner agent. Read issue #$ISSUE_NUM from GitHub using 'gh issue view $ISSUE_NUM'. Create a detailed implementation plan following the project guidelines in CLAUDE.md. Break down the work into specific tasks with clear acceptance criteria. Post the plan as a comment on issue #$ISSUE_NUM using 'gh issue comment $ISSUE_NUM --body \"<plan>\"'. Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep"
+
+      - name: TDD - Write Tests First
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
+        run: |
+          echo "🧪 Test Engineer: Writing tests (TDD approach)..."
+
+          # Use test_engineer agent to write tests BEFORE implementation (Sonnet for code writing)
+          claude --model sonnet -p "You are the test_engineer agent following TDD (Test-Driven Development). Read issue #$ISSUE_NUM and the implementation plan using 'gh issue view $ISSUE_NUM'. Write comprehensive tests BEFORE the code is implemented. Create test files in the appropriate test project (Casazen.Tests) following the AAA pattern (Arrange-Act-Assert). Tests should cover: (1) Happy path scenarios, (2) Edge cases, (3) Error conditions, (4) Integration points. Use Moq for mocking. Follow naming convention: MethodName_Scenario_ExpectedBehavior. Commit the tests with message 'test: add tests for issue #$ISSUE_NUM (TDD)'. Do NOT include 'Co-Authored-By: Claude' in commit messages." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
       - name: Implement Feature
         env:
@@ -111,10 +122,81 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
         run: |
-          echo "🔨 Implementing issue #$ISSUE_NUM"
+          echo "🔨 Feature Developer: Implementing to make tests pass..."
 
-          # Use feature_developer agent to implement the feature
-          claude -p "You are the feature_developer agent. Read the implementation plan from .claude/sprint/issue-$ISSUE_NUM-plan.md. Implement the feature following the plan, adhering to coding conventions in CLAUDE.md. Create or update necessary files, add tests, and ensure code quality. When done, create a feature branch and commit your changes with a descriptive commit message following Conventional Commits format. DO NOT include 'Co-Authored-By: Claude' in commit messages (per project policy). Reference issue #$ISSUE_NUM in the commit message." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+          # Use feature_developer agent to implement the feature (tests already exist) (Sonnet for code writing)
+          claude --model sonnet -p "You are the feature_developer agent. Read issue #$ISSUE_NUM using 'gh issue view $ISSUE_NUM' and check the tests that were just created by the test_engineer. Your goal is to implement the feature so that all tests pass. Follow TDD red-green-refactor: the tests are already written (red), now make them pass (green), then refactor if needed. Adhere to coding conventions in CLAUDE.md. Run 'dotnet test' to verify tests pass. When done, commit your changes with a descriptive message following Conventional Commits format. DO NOT include 'Co-Authored-By: Claude' in commit messages. Reference issue #$ISSUE_NUM." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Update Documentation
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
+        run: |
+          echo "📝 Doc Writer: Updating project documentation..."
+
+          # Use doc_writer agent to update project documentation (Haiku for docs)
+          claude --model haiku -p "You are the doc_writer agent. Review the changes made for issue #$ISSUE_NUM using 'git log' and 'git diff'. Update project documentation as needed: (1) README.md - if new features, API endpoints, or setup steps were added, (2) CLAUDE.md - if new conventions, patterns, or guidelines should be documented, (3) API documentation comments in code if endpoints were added/modified. Keep documentation concise, accurate, and in English (except end-user UI text). Commit documentation updates with message 'docs: update documentation for issue #$ISSUE_NUM'. DO NOT include 'Co-Authored-By: Claude' in commit messages." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Create Pull Request (GitHub Flow)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ needs.check-backlog.outputs.issue_number }}
+        run: |
+          echo "🚀 Creating Pull Request following GitHub Flow..."
+
+          # Get current branch name
+          CURRENT_BRANCH=$(git branch --show-current)
+
+          # Check if we're on main (if so, skip PR creation)
+          if [ "$CURRENT_BRANCH" == "main" ]; then
+            echo "⚠️ Already on main branch. Creating feature branch first..."
+            # Get issue title for branch name
+            ISSUE_TITLE=$(gh issue view $ISSUE_NUM --json title -q '.title')
+            BRANCH_NAME="feature/issue-$ISSUE_NUM-$(echo $ISSUE_TITLE | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | cut -c1-30)"
+
+            git checkout -b "$BRANCH_NAME"
+            git push -u origin "$BRANCH_NAME"
+            CURRENT_BRANCH="$BRANCH_NAME"
+          else
+            # Push current branch
+            git push -u origin "$CURRENT_BRANCH" || echo "Branch already pushed"
+          fi
+
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --base main --json number -q '.[0].number' || echo "")
+
+          if [ -z "$EXISTING_PR" ]; then
+            # Create PR
+            gh pr create \
+              --base main \
+              --head "$CURRENT_BRANCH" \
+              --title "$(gh issue view $ISSUE_NUM --json title -q '.title')" \
+              --body "## Summary
+Implements issue #$ISSUE_NUM
+
+## Changes
+- ✅ Tests written following TDD
+- ✅ Feature implemented
+- ✅ Documentation updated
+- ✅ All tests passing
+
+## Test Plan
+- Unit tests: \`dotnet test\`
+- Integration tests included
+- TDD approach followed (tests written first)
+
+Closes #$ISSUE_NUM
+
+---
+🤖 Generated by CasaZen Daily Development Orchestrator
+🔄 GitHub Flow: feature → PR → main → deploy" \
+              --label "automated-dev"
+
+            echo "✅ Pull request created successfully"
+          else
+            echo "ℹ️ Pull request already exists: #$EXISTING_PR"
+          fi
 
       - name: Update Issue Status
         env:
@@ -126,12 +208,16 @@ jobs:
 
 Implementation completed by daily development orchestrator.
 - ✅ Implementation plan created
-- ✅ Feature implemented following project guidelines
+- ✅ Tests written (TDD approach)
+- ✅ Feature implemented (all tests passing)
+- ✅ Documentation updated
 - ✅ Changes committed to feature branch
+- ✅ Pull request created to main branch
 
 Next steps:
-- Daily testing orchestrator will run tests at 5 PM UTC
+- Daily testing orchestrator will run comprehensive tests at 5 PM UTC
 - Code review and PR management will follow
+- If approved, PR will be merged to main
 
 **Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
@@ -148,6 +234,8 @@ Next steps:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js (for Claude Code)
         uses: actions/setup-node@v4
@@ -157,6 +245,11 @@ Next steps:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
+      - name: Configure Git
+        run: |
+          git config user.name "casazen-dev-bot[bot]"
+          git config user.email "casazen-dev-bot[bot]@users.noreply.github.com"
+
       - name: Product Owner - Gather Requirements
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -164,17 +257,46 @@ Next steps:
         run: |
           echo "📊 Product Owner: Analyzing project needs..."
 
-          # Use product_owner agent to identify new features/improvements
-          claude -p "You are the product_owner agent for CasaZen. Analyze the current project state by reading CLAUDE.md, README.md, and recent commits. Review .claude/context/ for regulatory compliance needs. Identify 2-3 high-priority features or improvements needed for the vacation rental management system. Consider: (1) Regulatory compliance (Italian short-term rental laws), (2) OTA integrations improvements, (3) User experience enhancements, (4) Bug fixes from production. Save your analysis to .claude/sprint/daily-$(date +%Y%m%d)-requirements.md with prioritized feature proposals." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+          # Use product_owner agent to identify new features/improvements (Haiku for analysis)
+          claude --model haiku -p "You are the product_owner agent for CasaZen. Analyze the current project state by reading CLAUDE.md, README.md, and recent commits. Review .claude/context/ for regulatory compliance needs. Identify 2-3 high-priority features or improvements needed for the vacation rental management system. Consider: (1) Regulatory compliance (Italian short-term rental laws), (2) OTA integrations improvements, (3) User experience enhancements, (4) Bug fixes from production. Output your analysis directly with prioritized feature proposals. Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep"
 
-      - name: Architect - Design Solutions
+      - name: Architect - Design Solutions & Create Diagrams
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          echo "🏗️ Architect: Designing technical solutions..."
+          echo "🏗️ Architect: Designing technical solutions with Mermaid diagrams..."
 
-          # Use architect agent to design implementation approach
-          claude -p "You are the architect agent for CasaZen. Read the requirements from .claude/sprint/daily-$(date +%Y%m%d)-requirements.md created by the product_owner. For each proposed feature, design the technical implementation approach considering the layered architecture (Web → Core → Infrastructure). Specify which layers/components will be affected, database changes needed, external integrations, and testing strategy. Follow the architecture patterns defined in .claude/config/project.json. Save your design to .claude/sprint/daily-$(date +%Y%m%d)-architecture.md" --allowedTools "Read,Write,Edit,Glob,Grep"
+          # Create architecture directory if it doesn't exist
+          mkdir -p .claude/architecture
+
+          # Use architect agent to design implementation approach with Mermaid diagrams (Sonnet for complex design)
+          # Mermaid Live Editor: https://mermaid.live (free online tool for architects)
+          claude --model sonnet -p "You are the architect agent for CasaZen. Based on the requirements analysis from the previous step (visible in workflow logs), design the technical implementation approach for the top 2-3 features considering the layered architecture (Web → Core → Infrastructure) as defined in CLAUDE.md.
+
+**CRITICAL**: Save your architectural design to a new markdown file in .claude/architecture/ named with today's date (e.g., architecture-2026-03-31.md).
+
+In the markdown file, include:
+
+1. **Architecture Diagrams using Mermaid** (these render automatically on GitHub and can be edited at https://mermaid.live):
+   - Component diagram showing affected layers (use \`graph TD\`)
+   - Sequence diagram for main flows (use \`sequenceDiagram\`)
+   - Entity relationship diagram if DB changes needed (use \`erDiagram\`)
+
+2. **Design Details**:
+   - Layers/components affected
+   - Database schema changes
+   - External integrations required
+   - Testing strategy
+   - Security considerations
+
+Example Mermaid syntax:
+\`\`\`mermaid
+graph TD
+    A[Web Layer] --> B[Core Layer]
+    B --> C[Infrastructure Layer]
+\`\`\`
+
+After creating the file, commit it with message 'docs: add architecture design for <features>'. Do NOT include 'Co-Authored-By: Claude'." --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
       - name: Scrum Master - Create GitHub Issues
         env:
@@ -183,22 +305,8 @@ Next steps:
         run: |
           echo "📝 Scrum Master: Creating GitHub issues..."
 
-          # Use scrum_master agent to create well-structured GitHub issues
-          claude -p "You are the scrum_master agent for CasaZen. Read the requirements (.claude/sprint/daily-$(date +%Y%m%d)-requirements.md) and architecture design (.claude/sprint/daily-$(date +%Y%m%d)-architecture.md). For the top 2 highest-priority items, create detailed GitHub issues using 'gh issue create'. Each issue should include: clear title, detailed description, acceptance criteria, technical implementation notes from the architect, priority label, and relevant labels (feature/bug/enhancement). Follow the project's issue template structure. After creating issues, save a summary to .claude/sprint/daily-$(date +%Y%m%d)-issues-created.md" --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
-
-      - name: Commit Sprint Planning Documents
-        run: |
-          git config user.name "casazen-dev-bot[bot]"
-          git config user.email "casazen-dev-bot[bot]@users.noreply.github.com"
-
-          git add .claude/sprint/ || true
-
-          if git diff --staged --quiet; then
-            echo "No sprint planning documents to commit"
-          else
-            git commit -m "chore: daily sprint planning - new issues defined [automated]"
-            git push
-          fi
+          # Use scrum_master agent to create well-structured GitHub issues (Haiku for creating issues)
+          claude --model haiku -p "You are the scrum_master agent for CasaZen. Based on the requirements and architecture design from the previous workflow steps (visible in logs), create detailed GitHub issues for the top 2 highest-priority items using 'gh issue create'. Each issue should include: clear title, detailed description with the requirement and architecture notes, acceptance criteria, technical implementation notes, priority label, and relevant labels (feature/bug/enhancement). Output a summary of created issues. Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep"
 
   summary:
     name: Daily Development Summary
