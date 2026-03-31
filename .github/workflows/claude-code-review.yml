@@ -1,0 +1,136 @@
+name: Claude Code Review
+
+# Follows official standards: https://code.claude.com/docs/en/github-actions
+# Uses claude-code-action@v1 for automated PR reviews
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+on:
+  # Automatic review on PR events
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches:
+      - main
+      - develop
+
+  # Manual trigger via @claude mentions in PR/issue comments
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+  # Allow manual workflow dispatch for testing
+  workflow_dispatch:
+
+jobs:
+  code-review:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Skip if:
+    # - PR is draft (unless ready_for_review event)
+    # - Comment doesn't contain @claude trigger
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better context
+
+      # Standard Claude Code Action (official approach)
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Automatic review prompt (when triggered by PR events)
+          prompt: |
+            Review this pull request for code quality, security, and compliance with project standards.
+
+            Follow the guidelines in REVIEW.md and CLAUDE.md.
+
+            **Review Focus**:
+            1. Security vulnerabilities (SQL injection, XSS, auth bypass, secrets)
+            2. Italian regulatory compliance (CIN codes, GDPR, tourist tax)
+            3. Async/await patterns (no .Result/.Wait())
+            4. Test coverage for new features
+            5. Architecture adherence (repository pattern, DI, layer separation)
+
+            **Actions**:
+            - Analyze the PR diff and surrounding code
+            - Post inline comments on specific lines with issues
+            - Tag findings by severity (🔴 Critical, 🟡 High, 🟢 Medium, ⚪ Low)
+            - Provide actionable feedback with file:line references
+
+            **Note**: For @claude mentions, respond directly to the user's request.
+
+          # Claude Code CLI arguments
+          claude_args: |
+            --max-turns 10
+            --model claude-sonnet-4-6
+            --append-system-prompt "You are reviewing code for CasaZen, a vacation rental management platform for the Italian market. Pay special attention to regulatory compliance (D.L. 145/2023 for CIN codes) and security."
+
+      - name: Summary Comment
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = context.payload.pull_request?.number || context.issue.number;
+            if (!pr_number) return;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr_number,
+              body: `
+            ✅ **Claude Code Review Completed**
+
+            Review findings have been posted as inline comments. Check the **Files changed** tab for detailed feedback.
+
+            **Next Steps**:
+            - Address 🔴 Critical and 🟡 High severity issues before merging
+            - 🟢 Medium and ⚪ Low issues are optional improvements
+
+            Need another review? Comment \`@claude review\` to trigger a re-review.
+
+            ---
+            *Automated by [Claude Code](https://code.claude.com/docs/en/code-review)*
+            `
+            });
+
+  # Optional: Run tests before review (ensures code builds)
+  pre-review-checks:
+    name: Pre-Review Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test --configuration Release --no-build --verbosity minimal
+
+      - name: Check formatting
+        run: dotnet format --verify-no-changes --verbosity diagnostic
+        continue-on-error: true  # Don't block review on formatting
