@@ -3,7 +3,7 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- .NET 10 SDK
+- .NET 10 SDK 
 - SQL Server 2022+
 - Docker (optional)
 
