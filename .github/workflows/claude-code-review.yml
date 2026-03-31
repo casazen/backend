@@ -10,18 +10,22 @@ permissions:
   id-token: write  # Required for OIDC token authentication with Claude App
 
 on:
-  # Automatic review on PR events
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
-    branches:
-      - main
-      - develop
+  # TEMPORARILY DISABLED - Using local review (/code-review-local) for cost savings
+  # Will enable later when budget allows
+  # Uncomment sections below to re-enable automated reviews
 
-  # Manual trigger via @claude mentions in PR/issue comments
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
+  # # Automatic review on PR events
+  # pull_request:
+  #   types: [opened, synchronize, ready_for_review]
+  #   branches:
+  #     - main
+  #     - develop
+
+  # # Manual trigger via @claude mentions in PR/issue comments
+  # issue_comment:
+  #   types: [created]
+  # pull_request_review_comment:
+  #   types: [created]
 
   # Allow manual workflow dispatch for testing
   workflow_dispatch:
@@ -32,14 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    # Skip if:
-    # - PR is draft (unless ready_for_review event)
-    # - Comment doesn't contain @claude trigger
-    if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      github.event_name == 'workflow_dispatch'
+    # Only runs on manual workflow dispatch (automated triggers disabled for cost savings)
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout repository

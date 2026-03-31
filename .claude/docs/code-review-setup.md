@@ -11,10 +11,20 @@ CasaZen uses **standardized** Claude Code automated reviews with two modes:
 1. **Automated GitHub Actions Review**: Runs automatically on PR events
 2. **Local Review**: Run manually before opening a PR (via skill)
 
+**Current Strategy** (as of 2026-03-31):
+> ⚠️ **Automated GitHub Actions review is TEMPORARILY DISABLED** for cost savings.
+>
+> **Active approach**: Use `/code-review-local` skill **after** developer opens PR
+> - Zero cost (runs locally)
+> - Same standards as automated review
+> - Manual invocation required
+>
+> **Future**: GitHub Actions will be re-enabled when budget allows. Workflow is configured and ready (only triggers are disabled).
+
 **Key Files**:
 - `REVIEW.md` - Review-specific guidelines (auto-discovered by Claude)
-- `.github/workflows/claude-code-review.yml` - Automated PR review workflow
-- `.claude/skills/code-review-local.md` - Local review skill
+- `.github/workflows/claude-code-review.yml` - Automated PR review workflow (currently disabled)
+- `.claude/skills/code-review-local.md` - Local review skill (currently active)
 
 ---
 
@@ -65,11 +75,13 @@ CasaZen uses **standardized** Claude Code automated reviews with two modes:
 
 ### Automated Review (GitHub Actions)
 
-**Trigger Conditions**:
+> ⚠️ **Currently disabled** - see "Local Review" section below for active approach
+
+**Trigger Conditions** (when re-enabled):
 - ✅ PR opened/updated (if not draft)
 - ✅ PR marked ready for review
 - ✅ `@claude review` or `@claude` mentioned in PR/issue comment
-- ✅ Manual workflow dispatch
+- ✅ Manual workflow dispatch (currently the only active trigger)
 
 **What Claude Checks** (from REVIEW.md):
 1. 🔴 **Critical**: Security, secrets, regulatory compliance, deadlock risks
@@ -89,22 +101,72 @@ CasaZen uses **standardized** Claude Code automated reviews with two modes:
 - **Summary comment**: PR conversation
 - **Check run**: Actions tab → Claude Code Review
 
-### Local Review (Before PR)
+### Local Review ⭐ **CURRENT ACTIVE APPROACH**
 
-**Usage**:
+**Usage** (run AFTER PR is opened):
 ```bash
-# In Claude Code CLI
+# In Claude Code CLI, invoke after developer opens PR
 /code-review-local
 
 # Or invoke manually
-claude -p "Run code-review-local skill to review my current changes"
+claude -p "Run code-review-local skill to review the PR changes"
 ```
 
+**Workflow**:
+1. Developer opens PR on GitHub
+2. Developer or reviewer runs `/code-review-local` in Claude Code CLI
+3. Claude analyzes the PR diff locally (no GitHub Actions cost)
+4. Claude posts review findings in CLI output
+5. Developer addresses issues and pushes updates
+6. Repeat step 2 if needed for re-review
+
 **Benefits**:
-- Catch issues before opening PR
-- Faster feedback loop
-- No GitHub Actions minutes consumed
-- Same standards as automated review
+- **Zero cost** - runs locally, no API consumption via GitHub Actions
+- Catch issues before merging
+- Faster feedback loop (no workflow queue time)
+- Same standards as automated review (uses REVIEW.md)
+
+**Limitations**:
+- Manual invocation required (not automatic)
+- No inline PR comments on GitHub (output in CLI only)
+- Developer must copy findings into PR comments if needed
+
+---
+
+## 🔄 Re-enabling Automated Review (Future)
+
+When ready to enable automated GitHub Actions review:
+
+1. **Edit `.github/workflows/claude-code-review.yml`**:
+   ```yaml
+   on:
+     # Uncomment these sections:
+     pull_request:
+       types: [opened, synchronize, ready_for_review]
+       branches:
+         - main
+         - develop
+
+     issue_comment:
+       types: [created]
+     pull_request_review_comment:
+       types: [created]
+
+     workflow_dispatch:
+   ```
+
+2. **Update the `if` condition in the `code-review` job**:
+   ```yaml
+   if: |
+     (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+     (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+     (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+     github.event_name == 'workflow_dispatch'
+   ```
+
+3. **Commit and push** - automated reviews will start on next PR
+
+4. **Update this documentation** to reflect active automated review
 
 ---
 
@@ -166,13 +228,17 @@ on:
 
 ## 💡 Best Practices
 
-### For Developers
+### For Developers (Current Local Review Workflow)
 
-1. **Run Local Review First**:
+1. **After Opening PR, Run Local Review**:
    ```bash
+   # Developer opens PR on GitHub first
+   gh pr create --base main --title "..." --body "..."
+
+   # Then run local review
    /code-review-local
    ```
-   Fix issues before opening PR → faster review cycle
+   Catch issues immediately after PR creation
 
 2. **Address Critical Issues**:
    - 🔴 Critical: Must fix before merge
@@ -180,17 +246,17 @@ on:
    - 🟢 Medium: Fix if time permits
    - ⚪ Low: Optional improvements
 
-3. **Use @claude for Questions**:
+3. **Request Re-Review After Fixes**:
+   ```bash
+   # After addressing review findings and pushing updates
+   /code-review-local
    ```
-   @claude how should I implement authentication for this endpoint?
-   @claude is this the right approach for handling CIN validation?
-   ```
+   Verify issues are resolved
 
-4. **Request Re-Review**:
-   ```
-   @claude review
-   ```
-   After addressing feedback, trigger a fresh review
+4. **Document Review in PR**:
+   - Copy key findings from CLI output to PR comments
+   - Summarize what was fixed
+   - Tag reviewer when ready for final review
 
 ### For Maintainers
 

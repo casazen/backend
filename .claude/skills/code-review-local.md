@@ -1,20 +1,22 @@
 ---
 name: code-review-local
-description: Run code review locally before opening a PR
+description: Run code review locally after opening a PR (current active approach)
 invocable: true
 tags: [review, quality, testing]
 ---
 
-# Local Code Review
+# Local Code Review ⭐ **PRIMARY REVIEW METHOD**
 
-> **Purpose**: Review your changes locally before opening a PR to catch issues early
+> **Purpose**: Review PR changes locally to catch issues before merging (cost-free alternative to GitHub Actions)
+>
+> **Current Strategy**: Automated GitHub Actions review is disabled for cost savings. This local skill is the **active approach**.
 
 ## When to Use
 
-- Before committing code
-- Before opening a PR
+- **After opening a PR** (primary workflow) ✅
 - After addressing review comments
-- When you want immediate feedback
+- Before requesting final approval
+- When you want immediate feedback without triggering paid workflow
 
 ## Review Process
 
@@ -105,11 +107,20 @@ Next Steps:
 
 ## Notes
 
-- This is a **local preview** of what the automated GitHub Actions review will check
-- Catching issues early saves time in the PR review cycle
+- **Current approach**: This is the **primary review method** (GitHub Actions review is disabled)
+- **Zero cost**: Runs locally, no API consumption via GitHub Actions
+- **Same standards**: Follows REVIEW.md and CLAUDE.md guidelines (identical to automated review)
+- **Workflow**: Developer opens PR → Run this skill → Address findings → Merge
 - Review is based on current git diff (committed + uncommitted changes)
 - For full context, ensure you're on the correct branch
 
+## Future Migration
+
+When automated GitHub Actions review is re-enabled:
+- This skill will remain useful for **pre-PR review** (catch issues before opening PR)
+- GitHub Actions will handle **post-PR review** (automatic inline comments)
+- Both approaches use the same standards (REVIEW.md)
+
 ---
 
-**Related**: @REVIEW.md | @.claude/rules/ | [Claude Code Review](https://code.claude.com/docs/en/code-review)
+**Related**: @REVIEW.md | @.claude/rules/ | @.claude/docs/code-review-setup.md | [Claude Code Review](https://code.claude.com/docs/en/code-review)
