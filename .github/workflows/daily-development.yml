@@ -2,8 +2,8 @@ name: Daily Development Orchestrator
 
 on:
   schedule:
-    # Runs every day at 7:00 AM UTC (9:00 AM CET, 10:00 AM CEST)
-    - cron: '0 8 * * *'
+    # Runs every day at 7:10 AM UTC (8:10 AM CET, 9:10 AM CEST)
+    - cron: '10 7 * * *'
   workflow_dispatch:
 
 permissions:
