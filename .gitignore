@@ -39,3 +39,4 @@ Thumbs.db
 # .claude/ - Regulatory Intelligence system (committed to repo)
 # CLAUDE.md - Project context (local only, not committed)
 CLAUDE.md
+.claude/settings.local.json  # User-specific settings (permissions, local config)
