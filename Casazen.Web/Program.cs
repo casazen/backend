@@ -1,13 +1,25 @@
-﻿using Casazen.Infrastructure.Data;
+﻿using Casazen.Core.Repositories;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Repositories;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ✅ SOLO DbContext per EF tools (niente altro!)
+// Database
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")!));
 
-// ✅ Solo API base
+// Repositories
+builder.Services.AddScoped<IGuestRepository, GuestRepository>();
+builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
+
+// Services
+builder.Services.AddScoped<IGuestService, GuestService>();
+builder.Services.AddScoped<IPropertyService, PropertyService>();
+
+// API
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
