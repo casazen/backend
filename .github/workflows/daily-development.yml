@@ -2,15 +2,9 @@ name: Daily Development Orchestrator
 
 on:
   schedule:
-    # Runs every day at 8:00 AM UTC (9:00 AM CET, 10:00 AM CEST)
+    # Runs every day at 7:00 AM UTC (9:00 AM CET, 10:00 AM CEST)
     - cron: '0 8 * * *'
   workflow_dispatch:
-    inputs:
-      force_new_issues:
-        description: 'Force creation of new issues even if backlog exists'
-        required: false
-        default: 'false'
-        type: boolean
 
 permissions:
   contents: write
@@ -60,9 +54,8 @@ jobs:
   implement-issue:
     name: Implement Issue
     needs: check-backlog
-    if: needs.check-backlog.outputs.has_issues == 'true' && github.event.inputs.force_new_issues != 'true'
+    if: needs.check-backlog.outputs.has_issues == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -233,96 +226,10 @@ jobs:
 
           # Add in-progress label
           gh issue edit $ISSUE_NUM --add-label "in-progress,automated-dev"
-
-  create-new-issues:
-    name: Define New Issues
-    needs: check-backlog
-    if: (needs.check-backlog.outputs.has_issues == 'false' || github.event.inputs.force_new_issues == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js (for Claude Code)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: Configure Git
-        run: |
-          git config user.name "casazen-dev-bot[bot]"
-          git config user.email "casazen-dev-bot[bot]@users.noreply.github.com"
-
-      - name: Product Owner - Gather Requirements
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "📊 Product Owner: Analyzing project needs..."
-
-          # Use product_owner agent to identify new features/improvements (Haiku for analysis)
-          claude --model haiku -p "You are the product_owner agent for CasaZen. Analyze the current project state by reading CLAUDE.md, README.md, and recent commits. Review .claude/context/ for regulatory compliance needs. Identify 2-3 high-priority features or improvements needed for the vacation rental management system. Consider: (1) Regulatory compliance (Italian short-term rental laws), (2) OTA integrations improvements, (3) User experience enhancements, (4) Bug fixes from production. Output your analysis directly with prioritized feature proposals. Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep"
-
-      - name: Architect - Design Solutions & Create Diagrams
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          echo "🏗️ Architect: Designing technical solutions with Mermaid diagrams..."
-
-          # Create architecture directory if it doesn't exist
-          mkdir -p .claude/architecture
-
-          # Use architect agent to design implementation approach with Mermaid diagrams (Sonnet for complex design)
-          claude --model sonnet -p "$(cat <<'PROMPT_EOF'
-          You are the architect agent for CasaZen. Based on the requirements analysis from the previous step (visible in workflow logs), design the technical implementation approach for the top 2-3 features considering the layered architecture (Web → Core → Infrastructure) as defined in CLAUDE.md.
-
-          **CRITICAL**: Save your architectural design to a new markdown file in .claude/architecture/ named with today's date (e.g., architecture-2026-03-31.md).
-
-          In the markdown file, include:
-
-          1. **Architecture Diagrams using Mermaid** (these render automatically on GitHub and can be edited at https://mermaid.live):
-             - Component diagram showing affected layers (use `graph TD`)
-             - Sequence diagram for main flows (use `sequenceDiagram`)
-             - Entity relationship diagram if DB changes needed (use `erDiagram`)
-
-          2. **Design Details**:
-             - Layers/components affected
-             - Database schema changes
-             - External integrations required
-             - Testing strategy
-             - Security considerations
-
-          Example Mermaid syntax:
-          ```mermaid
-          graph TD
-              A[Web Layer] --> B[Core Layer]
-              B --> C[Infrastructure Layer]
-          ```
-
-          After creating the file, commit it with message 'docs: add architecture design for <features>'. Do NOT include 'Co-Authored-By: Claude'.
-          PROMPT_EOF
-          )" --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
-
-      - name: Scrum Master - Create GitHub Issues
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "📝 Scrum Master: Creating GitHub issues..."
-
-          # Use scrum_master agent to create well-structured GitHub issues (Haiku for creating issues)
-          claude --model haiku -p "You are the scrum_master agent for CasaZen. Based on the requirements and architecture design from the previous workflow steps (visible in logs), create detailed GitHub issues for the top 2 highest-priority items using 'gh issue create'. Each issue should include: clear title, detailed description with the requirement and architecture notes, acceptance criteria, technical implementation notes, priority label, and relevant labels (feature/bug/enhancement). Output a summary of created issues. Do NOT save to files." --allowedTools "Bash,Read,Glob,Grep"
-
+          
   summary:
     name: Daily Development Summary
-    needs: [check-backlog, implement-issue, create-new-issues]
+    needs: [check-backlog, implement-issue]
     if: always()
     runs-on: ubuntu-latest
 
@@ -342,7 +249,6 @@ jobs:
           else
             echo "### 📋 Planning Mode" >> $GITHUB_STEP_SUMMARY
             echo "- **Backlog Status**: Empty - New issues created" >> $GITHUB_STEP_SUMMARY
-            echo "- **Planning Status**: ${{ needs.create-new-issues.result }}" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
