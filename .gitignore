@@ -40,3 +40,4 @@ Thumbs.db
 # CLAUDE.md - Project context (local only, not committed)
 CLAUDE.md
 .claude/settings.local.json  # User-specific settings (permissions, local config)
+/get-token.sh

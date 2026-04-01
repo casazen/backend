@@ -24,8 +24,8 @@ public class AirbnbAdapterTests
         _mockHttp = new MockHttpMessageHandler();
         _mockLogger = new Mock<ILogger<AirbnbAdapter>>();
         _mockRateLimiter = new Mock<OtaRateLimiter>();
-        _mockRateLimiter.Setup(x => x.AcquireAsync(It.IsAny<string>()))
-            .ReturnsAsync(new RateLimitToken());
+        _mockRateLimiter.Setup(x => x.AcquireAsync(It.IsAny<string>(), CancellationToken.None))
+            .ReturnsAsync(new OtaRateLimiter.RateLimitToken(It.IsAny<SemaphoreSlim>(), It.IsAny<string>(), It.IsAny<ILogger>()));
         var httpClient = _mockHttp.ToHttpClient();
         _adapter = new AirbnbAdapter(httpClient, _mockLogger.Object, _mockRateLimiter.Object);
     }

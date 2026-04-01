@@ -12,6 +12,7 @@ using Casazen.Web.Infrastructure;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -58,6 +59,13 @@ builder.Services.AddScoped<StripeWebhookHandler>();
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
+// Authentication & Authorization
+builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
+builder.Services.AddCasazenAuthorization();
+
+// CORS
+builder.Services.AddCasazenCors(builder.Configuration);
+
 // Background Jobs
 builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
@@ -67,15 +75,59 @@ builder.Services.AddScoped<StripeWebhookJob>();
 // API
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "CasaZen API",
+        Version = "v1",
+        Description = "Vacation rental property management system for Italian market"
+    });
+
+    // JWT Bearer Authentication for Swagger UI
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                },
+                Scheme = "oauth2",
+                Name = "Bearer",
+                In = ParameterLocation.Header
+            },
+            new List<string>()
+        }
+    });
+});
 
 var app = builder.Build();
 
+// Swagger (must be before Authentication to allow anonymous access to swagger.json)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// CORS (must be before Authentication)
+app.UseCors("AllowFrontend");
+
+// Authentication & Authorization (must be in this order)
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Hangfire Dashboard (Development only for security)
 app.UseHangfireDashboard("/hangfire", new DashboardOptions

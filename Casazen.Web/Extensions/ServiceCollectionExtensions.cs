@@ -28,14 +28,21 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddCasazenAuthentication(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddCasazenAuthentication(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
-                options.Authority = configuration["Auth0:Domain"];
+                var domain = configuration["Auth0:Domain"];
+                options.Authority = $"https://{domain}";
                 options.Audience = configuration["Auth0:Audience"];
                 options.TokenValidationParameters.NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
+
+                // Disable HTTPS requirement in development
+                if (environment.IsDevelopment())
+                {
+                    options.RequireHttpsMetadata = false;
+                }
             });
 
         return services;

@@ -130,7 +130,7 @@ public class OtaRateLimiter
         }
     }
 
-    private class RateLimitToken : IDisposable
+    public class RateLimitToken : IDisposable
     {
         private readonly SemaphoreSlim _semaphore;
         private readonly string _platform;
@@ -143,6 +143,7 @@ public class OtaRateLimiter
             _platform = platform;
             _logger = logger;
         }
+        
 
         public void Dispose()
         {
