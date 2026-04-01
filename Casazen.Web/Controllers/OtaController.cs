@@ -1,4 +1,6 @@
 ﻿using Casazen.Core.Services;
+using Casazen.Web.BackgroundJobs;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,34 +9,69 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class OtaController(IOtaManager otaManager, ILogger<OtaController> logger) : ControllerBase
+public class OtaController : ControllerBase
 {
+    private readonly IOtaManager _otaManager;
+    private readonly IBackgroundJobClient _backgroundJobClient;
+    private readonly ILogger<OtaController> _logger;
+
+    public OtaController(
+        IOtaManager otaManager,
+        IBackgroundJobClient backgroundJobClient,
+        ILogger<OtaController> logger)
+    {
+        _otaManager = otaManager;
+        _backgroundJobClient = backgroundJobClient;
+        _logger = logger;
+    }
+
     [HttpPost("sync")]
-    public async Task<IActionResult> SyncAll([FromQuery] Guid propertyId)
+    public IActionResult SyncAll([FromQuery] Guid propertyId)
     {
         try
         {
-            var success = await otaManager.SyncAllAsync(propertyId);
-            return success ? Ok(new { message = "Sync completed successfully" }) : BadRequest("Sync failed");
+            // Queue job for background processing instead of blocking the request
+            var jobId = _backgroundJobClient.Enqueue<OtaSyncJob>(job =>
+                job.ExecuteAsync(propertyId));
+
+            _logger.LogInformation("OTA sync job queued for property {PropertyId} with job ID {JobId}", propertyId, jobId);
+
+            return Accepted(new
+            {
+                message = "Sync job queued",
+                jobId,
+                propertyId
+            });
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "OTA sync error");
+            _logger.LogError(ex, "Error queuing OTA sync job");
             return StatusCode(500, "Internal server error");
         }
     }
 
     [HttpPost("sync-platform")]
-    public async Task<IActionResult> SyncPlatform([FromQuery] string platform, [FromQuery] string externalId)
+    public IActionResult SyncPlatform([FromQuery] string platform, [FromQuery] string externalId)
     {
         try
         {
-            var success = await otaManager.SyncPlatformAsync(platform, externalId);
-            return success ? Ok(new { message = $"{platform} sync completed" }) : BadRequest("Sync failed");
+            // Queue platform-specific sync job
+            var jobId = _backgroundJobClient.Enqueue<OtaSyncJob>(job =>
+                job.ExecutePlatformSyncAsync(platform, externalId));
+
+            _logger.LogInformation("{Platform} sync job queued for {ExternalId} with job ID {JobId}", platform, externalId, jobId);
+
+            return Accepted(new
+            {
+                message = $"{platform} sync job queued",
+                jobId,
+                platform,
+                externalId
+            });
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, $"Platform {platform} sync error");
+            _logger.LogError(ex, "Error queuing {Platform} sync job", platform);
             return StatusCode(500, "Internal server error");
         }
     }
@@ -44,12 +81,12 @@ public class OtaController(IOtaManager otaManager, ILogger<OtaController> logger
     {
         try
         {
-            var status = await otaManager.GetSyncStatusAsync(propertyId);
+            var status = await _otaManager.GetSyncStatusAsync(propertyId);
             return Ok(status);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Get status error");
+            _logger.LogError(ex, "Get status error");
             return StatusCode(500, "Internal server error");
         }
     }
@@ -59,12 +96,12 @@ public class OtaController(IOtaManager otaManager, ILogger<OtaController> logger
     {
         try
         {
-            var success = await otaManager.UpdatePricingAsync(propertyId, newPrice);
+            var success = await _otaManager.UpdatePricingAsync(propertyId, newPrice);
             return success ? Ok(new { message = "Pricing updated" }) : BadRequest("Update failed");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Pricing update error");
+            _logger.LogError(ex, "Pricing update error");
             return StatusCode(500, "Internal server error");
         }
     }
@@ -74,12 +111,12 @@ public class OtaController(IOtaManager otaManager, ILogger<OtaController> logger
     {
         try
         {
-            var success = await otaManager.ValidateIntegrationAsync(platform, apiKey);
+            var success = await _otaManager.ValidateIntegrationAsync(platform, apiKey);
             return success ? Ok(new { valid = true }) : Ok(new { valid = false });
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Validation error");
+            _logger.LogError(ex, "Validation error");
             return StatusCode(500, "Internal server error");
         }
     }
