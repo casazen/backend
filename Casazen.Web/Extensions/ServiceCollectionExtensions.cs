@@ -5,11 +5,13 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.OTA;
+using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Polly;
 
 namespace Casazen.Web.Extensions;
 
@@ -91,16 +93,54 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services)
+    public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
+        // Register rate limiter as singleton (shared across all OTA adapters)
+        services.AddSingleton<OtaRateLimiter>();
+
         services.AddScoped<IChannelFactory, ChannelFactory>();
-        services.AddScoped<AirbnbAdapter>();
-        services.AddScoped<BookingComAdapter>();
-        services.AddScoped<ExpediaAdapter>();
-        services.AddScoped<VrboAdapter>();
-        services.AddScoped<TripAdvisorAdapter>();
-        services.AddScoped<AgodaAdapter>();
+
+        // Configure HttpClients for each OTA adapter with Polly policies
+        ConfigureOtaHttpClient<AirbnbAdapter>(services, configuration, "Airbnb");
+        ConfigureOtaHttpClient<BookingComAdapter>(services, configuration, "BookingCom");
+        ConfigureOtaHttpClient<ExpediaAdapter>(services, configuration, "Expedia");
+        ConfigureOtaHttpClient<VrboAdapter>(services, configuration, "Vrbo");
+        ConfigureOtaHttpClient<TripAdvisorAdapter>(services, configuration, "TripAdvisor");
+        ConfigureOtaHttpClient<AgodaAdapter>(services, configuration, "Agoda");
+
         return services;
+    }
+
+    private static void ConfigureOtaHttpClient<TAdapter>(
+        IServiceCollection services,
+        IConfiguration configuration,
+        string platform) where TAdapter : class
+    {
+        var resilienceConfig = configuration.GetSection($"OTA:Resilience:{platform}");
+        var retryCount = resilienceConfig.GetValue<int>("RetryCount", 3);
+        var circuitBreakerFailures = resilienceConfig.GetValue<int>("CircuitBreakerFailures", 5);
+        var circuitBreakerDuration = TimeSpan.FromSeconds(resilienceConfig.GetValue<int>("CircuitBreakerDurationSeconds", 60));
+        var timeout = TimeSpan.FromSeconds(resilienceConfig.GetValue<int>("TimeoutSeconds", 30));
+
+        services.AddHttpClient<TAdapter>(client =>
+        {
+            client.Timeout = timeout.Add(TimeSpan.FromSeconds(5)); // Add buffer for retries
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            client.DefaultRequestHeaders.Add("User-Agent", "CasaZen/1.0");
+        })
+        .AddPolicyHandler((serviceProvider, request) =>
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<TAdapter>>();
+            var context = new Context { ["Platform"] = platform };
+
+            return PollyPolicies.GetCombinedPolicy(
+                retryCount,
+                circuitBreakerFailures,
+                circuitBreakerDuration,
+                timeout,
+                logger
+            ).WithPolicyKey($"{platform}-resilience");
+        });
     }
 
     public static IApplicationBuilder UseCasazenMiddleware(this IApplicationBuilder app)
