@@ -34,6 +34,65 @@ public class Guest
     [MaxLength(100)]
     public string Country { get; set; } = string.Empty;
 
+    // Alloggiati Web - Required fields for Italian police reporting
+    public DateTime? DateOfBirth { get; set; }
+
+    [MaxLength(100)]
+    public string PlaceOfBirth { get; set; } = string.Empty;
+
+    [MaxLength(100)]
+    public string Nationality { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    public string DocumentType { get; set; } = string.Empty; // "Passport", "ID Card", etc.
+
+    [MaxLength(50)]
+    public string DocumentNumber { get; set; } = string.Empty;
+
+    public DateTime? DocumentIssueDate { get; set; }
+
+    public DateTime? DocumentExpiryDate { get; set; }
+
+    [MaxLength(100)]
+    public string DocumentIssuingCountry { get; set; } = string.Empty;
+
+    // GDPR Compliance
+    /// <summary>
+    /// Timestamp when user gave consent for data processing
+    /// </summary>
+    public DateTime? DataProcessingConsentDate { get; set; }
+
+    /// <summary>
+    /// Timestamp when user gave consent for marketing communications
+    /// </summary>
+    public DateTime? MarketingConsentDate { get; set; }
+
+    /// <summary>
+    /// IP address from which consent was given
+    /// </summary>
+    [MaxLength(50)]
+    public string ConsentIpAddress { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Date when data should be automatically deleted (GDPR retention policy)
+    /// </summary>
+    public DateTime? DataRetentionExpiryDate { get; set; }
+
+    /// <summary>
+    /// Flag indicating user requested right to erasure (GDPR Article 17)
+    /// </summary>
+    public bool ErasureRequested { get; set; } = false;
+
+    /// <summary>
+    /// Date when erasure was requested
+    /// </summary>
+    public DateTime? ErasureRequestedDate { get; set; }
+
+    /// <summary>
+    /// Date when data was anonymized/deleted
+    /// </summary>
+    public DateTime? DataAnonymizedDate { get; set; }
+
     [MaxLength(1000)]
     public string Notes { get; set; } = string.Empty;
 
