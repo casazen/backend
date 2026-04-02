@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
@@ -50,6 +51,11 @@ public class Property
 
     [MaxLength(1000)]
     public string HouseRules { get; set; } = string.Empty;
+
+    // Italian regulatory compliance - D.L. 145/2023
+    [MaxLength(25)]
+    [CinCode]
+    public string? CinCode { get; set; } // Format: IT-XXXXX-XXXXXXXXXX
 
     public bool IsActive { get; set; } = true;
 
