@@ -45,11 +45,24 @@ public class PropertiesController(IPropertyService propertyService, ILogger<Prop
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] Property property)
     {
+        var userId = User.FindFirst("sub")?.Value;
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
         var existing = await propertyService.GetPropertyAsync(id);
         if (existing == null)
             return NotFound();
 
+        // Authorization check: verify ownership
+        if (existing.OwnerId != userId)
+        {
+            logger.LogWarning("User {UserId} attempted to update property {PropertyId} owned by {OwnerId}",
+                userId, id, existing.OwnerId);
+            return Forbid();
+        }
+
         property.Id = id;
+        property.OwnerId = userId; // Ensure OwnerId cannot be changed
         await propertyService.UpdatePropertyAsync(property);
         return NoContent();
     }
@@ -57,13 +70,25 @@ public class PropertiesController(IPropertyService propertyService, ILogger<Prop
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        logger.LogInformation("Deleting property: {PropertyId}", id);
+        var userId = User.FindFirst("sub")?.Value;
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        logger.LogInformation("User {UserId} attempting to delete property: {PropertyId}", userId, id);
         var existing = await propertyService.GetPropertyAsync(id);
         if (existing == null)
             return NotFound();
 
+        // Authorization check: verify ownership
+        if (existing.OwnerId != userId)
+        {
+            logger.LogWarning("User {UserId} attempted to delete property {PropertyId} owned by {OwnerId}",
+                userId, id, existing.OwnerId);
+            return Forbid();
+        }
+
         await propertyService.DeletePropertyAsync(id);
-        logger.LogInformation("Property deleted: {PropertyId}", id);
+        logger.LogInformation("Property deleted: {PropertyId} by user {UserId}", id, userId);
         return NoContent();
     }
 

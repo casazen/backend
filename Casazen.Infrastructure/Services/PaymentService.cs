@@ -30,28 +30,44 @@ public class PaymentService(
         return await repository.AddAsync(payment);
     }
 
-    public async Task<bool> ProcessPaymentAsync(Guid paymentId)
+    public async Task<Payment> ProcessPaymentAsync(Guid paymentId)
     {
         var payment = await repository.GetByIdAsync(paymentId);
         if (payment == null)
-            return false;
+            throw new KeyNotFoundException($"Payment {paymentId} not found");
 
+        if (payment.Status == PaymentStatus.Completed)
+            throw new InvalidOperationException("Payment already processed");
+
+        // TODO: Implement actual Stripe integration
+        // For now, just update status
+        payment.Status = PaymentStatus.Processing;
+        payment.ProcessedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(payment);
+
+        // Simulate successful payment
         payment.Status = PaymentStatus.Completed;
         await repository.UpdateAsync(payment);
+
         logger.LogInformation("Payment {Id} processed", paymentId);
-        return true;
+        return payment;
     }
 
-    public async Task<bool> RefundPaymentAsync(Guid paymentId, decimal? amount = null)
+    public async Task<Payment> RefundPaymentAsync(Guid paymentId, decimal? amount = null)
     {
         var payment = await repository.GetByIdAsync(paymentId);
         if (payment == null)
-            return false;
+            throw new KeyNotFoundException($"Payment {paymentId} not found");
 
+        if (payment.Status != PaymentStatus.Completed)
+            throw new InvalidOperationException("Can only refund completed payments");
+
+        // TODO: Implement actual Stripe refund
         payment.Status = amount.HasValue ? PaymentStatus.PartiallyRefunded : PaymentStatus.Refunded;
         await repository.UpdateAsync(payment);
+
         logger.LogInformation("Payment {Id} refunded", paymentId);
-        return true;
+        return payment;
     }
 
     public async Task<decimal> GetTotalRevenueAsync(Guid propertyId, DateTime startDate, DateTime endDate)

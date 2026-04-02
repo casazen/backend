@@ -206,8 +206,16 @@ public class PropertiesControllerTests
     public async Task Update_WithValidId_UpdatesProperty()
     {
         // Arrange
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+
         var propertyId = Guid.NewGuid();
-        var existingProperty = new Property { Id = propertyId, Name = "Original" };
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = userId
+        };
         var updatedProperty = new Property
         {
             Id = propertyId,
@@ -234,6 +242,9 @@ public class PropertiesControllerTests
     public async Task Update_WithNonExistentId_ReturnsNotFound()
     {
         // Arrange
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+
         var propertyId = Guid.NewGuid();
         var updatedProperty = new Property { Name = "Updated" };
 
@@ -249,11 +260,111 @@ public class PropertiesControllerTests
     }
 
     [Fact]
+    public async Task Update_AsOwner_SuccessfullyUpdates()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = userId
+        };
+        var updatedProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Updated",
+            City = "Rome",
+            Address = "Via Roma 1"
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
+            .ReturnsAsync(updatedProperty);
+
+        // Act
+        var result = await _controller.Update(propertyId, updatedProperty);
+
+        // Assert
+        Assert.IsType<NoContentResult>(result);
+        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
+            p => p.Id == propertyId && p.OwnerId == userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Update_AsNonOwner_ReturnsForbidden()
+    {
+        // Arrange
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = ownerId // Owned by different user
+        };
+        var updatedProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Malicious Update"
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+
+        // Act
+        var result = await _controller.Update(propertyId, updatedProperty);
+
+        // Assert
+        Assert.IsType<ForbidResult>(result);
+        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        // Arrange - User without "sub" claim
+        var claims = new List<Claim>();
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var claimsPrincipal = new ClaimsPrincipal(identity);
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+        };
+
+        var propertyId = Guid.NewGuid();
+        var updatedProperty = new Property { Name = "Updated" };
+
+        // Act
+        var result = await _controller.Update(propertyId, updatedProperty);
+
+        // Assert
+        Assert.IsType<UnauthorizedResult>(result);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Delete_WithValidId_DeletesProperty()
     {
         // Arrange
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+
         var propertyId = Guid.NewGuid();
-        var existingProperty = new Property { Id = propertyId, Name = "To Delete" };
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "To Delete",
+            OwnerId = userId
+        };
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.DeletePropertyAsync(propertyId)).ReturnsAsync(true);
@@ -271,6 +382,9 @@ public class PropertiesControllerTests
     public async Task Delete_WithNonExistentId_ReturnsNotFound()
     {
         // Arrange
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+
         var propertyId = Guid.NewGuid();
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
 
@@ -280,6 +394,83 @@ public class PropertiesControllerTests
         // Assert
         Assert.IsType<NotFoundResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.DeletePropertyAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Delete_AsOwner_SuccessfullyDeletes()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "To Delete",
+            OwnerId = userId
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.DeletePropertyAsync(propertyId)).ReturnsAsync(true);
+
+        // Act
+        var result = await _controller.Delete(propertyId);
+
+        // Assert
+        Assert.IsType<NoContentResult>(result);
+        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.DeletePropertyAsync(propertyId), Times.Once);
+    }
+
+    [Fact]
+    public async Task Delete_AsNonOwner_ReturnsForbidden()
+    {
+        // Arrange
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "To Delete",
+            OwnerId = ownerId // Owned by different user
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+
+        // Act
+        var result = await _controller.Delete(propertyId);
+
+        // Assert
+        Assert.IsType<ForbidResult>(result);
+        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.DeletePropertyAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Delete_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        // Arrange - User without "sub" claim
+        var claims = new List<Claim>();
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var claimsPrincipal = new ClaimsPrincipal(identity);
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+        };
+
+        var propertyId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.Delete(propertyId);
+
+        // Assert
+        Assert.IsType<UnauthorizedResult>(result);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
         _mockService.Verify(x => x.DeletePropertyAsync(It.IsAny<Guid>()), Times.Never);
     }
 
