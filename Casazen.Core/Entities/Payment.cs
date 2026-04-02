@@ -18,6 +18,12 @@ public class Payment
     [Precision(18, 2)]
     public decimal Amount { get; set; }
 
+    /// <summary>
+    /// Total amount refunded so far (for partial refunds tracking)
+    /// </summary>
+    [Precision(18, 2)]
+    public decimal RefundedAmount { get; set; } = 0m;
+
     [Required]
     public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
 
