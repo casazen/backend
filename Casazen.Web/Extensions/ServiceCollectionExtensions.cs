@@ -36,7 +36,10 @@ public static class ServiceCollectionExtensions
                 var domain = configuration["Auth0:Domain"];
                 options.Authority = $"https://{domain}";
                 options.Audience = configuration["Auth0:Audience"];
+
+                // Map Auth0 custom claims to ASP.NET Core claims
                 options.TokenValidationParameters.NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
+                options.TokenValidationParameters.RoleClaimType = "https://casazen.app/roles";
 
                 // Disable HTTPS requirement in development
                 if (environment.IsDevelopment())
