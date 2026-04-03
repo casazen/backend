@@ -10,4 +10,7 @@ public interface IPropertyService
     Task<Property> UpdatePropertyAsync(Property property);
     Task<bool> DeletePropertyAsync(Guid id);
     Task<IEnumerable<Property>> SearchAsync(string city, int? bedrooms, decimal? maxPrice);
+    Task<Property> AddImageAsync(Guid propertyId, string imageUrl);
+    Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex);
+    Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls);
 }

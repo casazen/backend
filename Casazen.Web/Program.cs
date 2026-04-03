@@ -39,9 +39,8 @@ builder.Services.AddHangfire(configuration => configuration
 builder.Services.AddHangfireServer();
 
 // Repositories
+builder.Services.AddCasazenRepositories();
 builder.Services.AddScoped<IGuestRepository, GuestRepository>();
-builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
-builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 
 // External Services
 builder.Services.AddSendGrid(options =>
@@ -50,10 +49,10 @@ builder.Services.AddSendGrid(options =>
 });
 
 // Services
+builder.Services.AddCasazenServices();
 builder.Services.AddScoped<IGuestService, GuestService>();
-builder.Services.AddScoped<IPropertyService, PropertyService>();
-builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
+builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 
 // OTA Integrations with resilience patterns
@@ -121,6 +120,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Static files (for serving uploaded images)
+app.UseStaticFiles();
 
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");

@@ -13,14 +13,16 @@ namespace Casazen.Tests.Unit.Controllers;
 public class PropertiesControllerTests
 {
     private readonly Mock<IPropertyService> _mockService;
+    private readonly Mock<IImageStorageService> _mockImageStorage;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
     public PropertiesControllerTests()
     {
         _mockService = new Mock<IPropertyService>();
+        _mockImageStorage = new Mock<IImageStorageService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
-        _controller = new PropertiesController(_mockService.Object, _mockLogger.Object);
+        _controller = new PropertiesController(_mockService.Object, _mockImageStorage.Object, _mockLogger.Object);
     }
 
     [Fact]
@@ -544,6 +546,290 @@ public class PropertiesControllerTests
         Assert.NotEqual(attemptedOwnerId, capturedProperty.OwnerId);
     }
 
+    // Image Management Tests
+
+    [Fact]
+    public async Task UploadImages_AsOwner_UploadsSuccessfully()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = userId,
+            PhotoUrls = new List<string>()
+        };
+
+        var mockFile = CreateMockFormFile("test.jpg", "image/jpeg", 1024);
+        var uploadedUrl = "/uploads/properties/test.jpg";
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+        _mockImageStorage.Setup(x => x.ValidateImage(mockFile)).Returns(true);
+        _mockImageStorage.Setup(x => x.UploadImageAsync(mockFile, propertyId)).ReturnsAsync(uploadedUrl);
+        _mockService.Setup(x => x.AddImageAsync(propertyId, uploadedUrl)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.UploadImages(propertyId, new List<IFormFile> { mockFile });
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        _mockImageStorage.Verify(x => x.UploadImageAsync(mockFile, propertyId), Times.Once);
+        _mockService.Verify(x => x.AddImageAsync(propertyId, uploadedUrl), Times.Once);
+    }
+
+    [Fact]
+    public async Task UploadImages_AsNonOwner_ReturnsForbidden()
+    {
+        // Arrange
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = ownerId
+        };
+
+        var mockFile = CreateMockFormFile("test.jpg", "image/jpeg", 1024);
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.UploadImages(propertyId, new List<IFormFile> { mockFile });
+
+        // Assert
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockImageStorage.Verify(x => x.UploadImageAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadImages_WithInvalidFile_ReturnsBadRequest()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = userId,
+            PhotoUrls = new List<string>()
+        };
+
+        var mockFile = CreateMockFormFile("test.txt", "text/plain", 1024);
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+        _mockImageStorage.Setup(x => x.ValidateImage(mockFile)).Returns(false);
+
+        // Act
+        var result = await _controller.UploadImages(propertyId, new List<IFormFile> { mockFile });
+
+        // Assert
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        _mockImageStorage.Verify(x => x.UploadImageAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadImages_ExceedingLimit_ReturnsBadRequest()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = userId,
+            PhotoUrls = Enumerable.Range(1, 20).Select(i => $"/uploads/{i}.jpg").ToList()
+        };
+
+        var mockFile = CreateMockFormFile("test.jpg", "image/jpeg", 1024);
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.UploadImages(propertyId, new List<IFormFile> { mockFile });
+
+        // Assert
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        _mockImageStorage.Verify(x => x.UploadImageAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteImage_AsOwner_DeletesSuccessfully()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var imageUrl = "/uploads/properties/test.jpg";
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = userId,
+            PhotoUrls = new List<string> { imageUrl, "/uploads/2.jpg" }
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+        _mockService.Setup(x => x.RemoveImageAsync(propertyId, 0)).ReturnsAsync(property);
+        _mockImageStorage.Setup(x => x.DeleteImageAsync(imageUrl)).Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _controller.DeleteImage(propertyId, 0);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        _mockService.Verify(x => x.RemoveImageAsync(propertyId, 0), Times.Once);
+        _mockImageStorage.Verify(x => x.DeleteImageAsync(imageUrl), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteImage_AsNonOwner_ReturnsForbidden()
+    {
+        // Arrange
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = ownerId,
+            PhotoUrls = new List<string> { "/uploads/1.jpg" }
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.DeleteImage(propertyId, 0);
+
+        // Assert
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.RemoveImageAsync(It.IsAny<Guid>(), It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteImage_WithInvalidIndex_ReturnsBadRequest()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = userId,
+            PhotoUrls = new List<string> { "/uploads/1.jpg" }
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.DeleteImage(propertyId, 5);
+
+        // Assert
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        _mockService.Verify(x => x.RemoveImageAsync(It.IsAny<Guid>(), It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReorderImages_AsOwner_ReordersSuccessfully()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = userId,
+            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg", "/uploads/3.jpg" }
+        };
+
+        var newOrder = new List<string> { "/uploads/3.jpg", "/uploads/1.jpg", "/uploads/2.jpg" };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+        _mockService.Setup(x => x.ReorderImagesAsync(propertyId, newOrder)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.ReorderImages(propertyId, newOrder);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        _mockService.Verify(x => x.ReorderImagesAsync(propertyId, newOrder), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReorderImages_AsNonOwner_ReturnsForbidden()
+    {
+        // Arrange
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            OwnerId = ownerId,
+            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg" }
+        };
+
+        var newOrder = new List<string> { "/uploads/2.jpg", "/uploads/1.jpg" };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.ReorderImages(propertyId, newOrder);
+
+        // Assert
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.ReorderImagesAsync(It.IsAny<Guid>(), It.IsAny<List<string>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetImages_WithValidProperty_ReturnsImages()
+    {
+        // Arrange
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            Name = "Test Property",
+            PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg" }
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+
+        // Act
+        var result = await _controller.GetImages(propertyId);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var urls = Assert.IsAssignableFrom<List<string>>(okResult.Value);
+        Assert.Equal(2, urls.Count);
+    }
+
     private void SetupUserClaims(string userId)
     {
         var claims = new List<Claim>
@@ -557,5 +843,21 @@ public class PropertiesControllerTests
         {
             HttpContext = new DefaultHttpContext { User = claimsPrincipal }
         };
+    }
+
+    private IFormFile CreateMockFormFile(string fileName, string contentType, long length)
+    {
+        var mockFile = new Mock<IFormFile>();
+        mockFile.Setup(f => f.FileName).Returns(fileName);
+        mockFile.Setup(f => f.ContentType).Returns(contentType);
+        mockFile.Setup(f => f.Length).Returns(length);
+
+        var content = new byte[length];
+        var stream = new MemoryStream(content);
+        mockFile.Setup(f => f.OpenReadStream()).Returns(stream);
+        mockFile.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        return mockFile.Object;
     }
 }
