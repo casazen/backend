@@ -1,5 +1,6 @@
 ﻿using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -10,12 +11,17 @@ namespace Casazen.Tests.Unit.Services;
 public class BookingServiceTests
 {
     private readonly Mock<IBookingRepository> _mockRepository;
+    private readonly Mock<ICancellationService> _mockCancellationService;
     private readonly BookingService _service;
 
     public BookingServiceTests()
     {
         _mockRepository = new Mock<IBookingRepository>();
-        _service = new BookingService(_mockRepository.Object, new Mock<ILogger<BookingService>>().Object);
+        _mockCancellationService = new Mock<ICancellationService>();
+        _service = new BookingService(
+            _mockRepository.Object,
+            _mockCancellationService.Object,
+            new Mock<ILogger<BookingService>>().Object);
     }
 
     [Fact]
@@ -62,15 +68,13 @@ public class BookingServiceTests
     {
         // Arrange
         var bookingId = Guid.NewGuid();
-        var booking = new Booking { Id = bookingId, Status = BookingStatus.Confirmed };
-        _mockRepository.Setup(x => x.GetByIdAsync(bookingId)).ReturnsAsync(booking);
-        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Booking>())).ReturnsAsync(booking);
+        _mockCancellationService.Setup(x => x.ProcessCancellationAsync(bookingId, null)).ReturnsAsync(true);
 
         // Act
         var result = await _service.CancelBookingAsync(bookingId);
 
         // Assert
         Assert.True(result);
-        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        _mockCancellationService.Verify(x => x.ProcessCancellationAsync(bookingId, null), Times.Once);
     }
 }

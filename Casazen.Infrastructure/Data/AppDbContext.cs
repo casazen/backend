@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<OtaIntegration> OtaIntegrations { get; set; } = null!;
+    public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +45,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithOne(b => b.Guest)
             .HasForeignKey(b => b.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // CancellationPolicy -> Properties (One to Many)
+        modelBuilder.Entity<CancellationPolicy>()
+            .HasMany(c => c.Properties)
+            .WithOne(p => p.CancellationPolicy)
+            .HasForeignKey(p => p.CancellationPolicyId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
