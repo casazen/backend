@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Repositories;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
@@ -42,6 +42,9 @@ builder.Services.AddHangfireServer();
 builder.Services.AddScoped<IGuestRepository, GuestRepository>();
 builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
+builder.Services.AddScoped<IBookingRepository, BookingRepository>();
+builder.Services.AddScoped<ITaxRateRepository, TaxRateRepository>();
+builder.Services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
 
 // External Services
 builder.Services.AddSendGrid(options =>
@@ -52,9 +55,14 @@ builder.Services.AddSendGrid(options =>
 // Services
 builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
+builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
+builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
+builder.Services.AddScoped<IGdprService, GdprService>();
+builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
@@ -71,6 +79,8 @@ builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
 builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
+builder.Services.AddScoped<AlloggiatiWebReportJob>();
+builder.Services.AddScoped<GdprDataRetentionJob>();
 
 // API
 builder.Services.AddControllers();
@@ -84,7 +94,6 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Vacation rental property management system for Italian market"
     });
 
-    // JWT Bearer Authentication for Swagger UI
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
@@ -144,24 +153,31 @@ app.Run();
 
 void ConfigureRecurringJobs()
 {
-    // OTA Sync - Run every hour for all active properties
-    // In production, this would query for all properties and queue individual jobs
+    // OTA Sync - every hour
     RecurringJob.AddOrUpdate<OtaSyncJob>(
         "ota-sync-all",
-        job => job.ExecuteAsync(Guid.Empty), // Placeholder - replace with actual property iteration logic
+        job => job.ExecuteAsync(Guid.Empty),
         Cron.Hourly,
-        new RecurringJobOptions
-        {
-            TimeZone = TimeZoneInfo.Utc
-        });
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    // Booking Pull - Run every 15 minutes
+    // Booking Pull - every 15 minutes
     RecurringJob.AddOrUpdate<BookingPullJob>(
         "booking-pull-all",
-        job => job.ExecuteAsync(Guid.Empty), // Placeholder - replace with actual property iteration logic
-        "*/15 * * * *", // Every 15 minutes
-        new RecurringJobOptions
-        {
-            TimeZone = TimeZoneInfo.Utc
-        });
+        job => job.ExecuteAsync(Guid.Empty),
+        "*/15 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    // Alloggiati Web retry - every 6 hours (for failed/pending reports)
+    RecurringJob.AddOrUpdate<AlloggiatiWebReportJob>(
+        "alloggiati-retry-failed",
+        job => job.RetryFailedReportsAsync(),
+        "0 */6 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    // GDPR Data Retention - daily at 2am UTC
+    RecurringJob.AddOrUpdate<GdprDataRetentionJob>(
+        "gdpr-data-retention",
+        job => job.ExecuteAsync(),
+        "0 2 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
