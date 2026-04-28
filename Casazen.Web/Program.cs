@@ -47,6 +47,7 @@ if (!string.IsNullOrEmpty(connectionString))
 }
 
 // Repositories
+builder.Services.AddCasazenRepositories();
 builder.Services.AddScoped<IGuestRepository, GuestRepository>();
 builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
@@ -60,12 +61,14 @@ builder.Services.AddSendGrid(options =>
 });
 
 // Services
+builder.Services.AddCasazenServices();
 builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
+builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
@@ -137,6 +140,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Static files (for serving uploaded images)
+app.UseStaticFiles();
 
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
