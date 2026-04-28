@@ -104,6 +104,26 @@ public class BookingsController(
         if (booking == null)
             return NotFound();
 
+        // Validate status transition
+        if (booking.Status != BookingStatus.Confirmed)
+        {
+            return BadRequest(new
+            {
+                Error = "Invalid status transition",
+                Message = $"Can only check-in bookings with Confirmed status. Current status: {booking.Status}"
+            });
+        }
+
+        // Validate date
+        if (booking.CheckInDate.Date > DateTime.UtcNow.Date)
+        {
+            return BadRequest(new
+            {
+                Error = "Check-in date not reached",
+                Message = $"Cannot check-in before check-in date: {booking.CheckInDate:yyyy-MM-dd}"
+            });
+        }
+
         booking.Status = BookingStatus.CheckedIn;
         await bookingService.UpdateBookingAsync(booking);
 
@@ -121,6 +141,26 @@ public class BookingsController(
         var booking = await bookingService.GetBookingAsync(id);
         if (booking == null)
             return NotFound();
+
+        // Validate status transition
+        if (booking.Status != BookingStatus.CheckedIn)
+        {
+            return BadRequest(new
+            {
+                Error = "Invalid status transition",
+                Message = $"Can only check-out bookings with CheckedIn status. Current status: {booking.Status}"
+            });
+        }
+
+        // Validate date
+        if (booking.CheckOutDate.Date > DateTime.UtcNow.Date)
+        {
+            return BadRequest(new
+            {
+                Error = "Check-out date not reached",
+                Message = $"Cannot check-out before check-out date: {booking.CheckOutDate:yyyy-MM-dd}"
+            });
+        }
 
         booking.Status = BookingStatus.CheckedOut;
         await bookingService.UpdateBookingAsync(booking);
