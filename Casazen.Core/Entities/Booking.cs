@@ -45,6 +45,22 @@ public class Booking
     [Precision(18, 2)]
     public decimal TotalPrice { get; set; }
 
+    /// <summary>
+    /// Tourist tax amount calculated based on city rates (Italian law)
+    /// </summary>
+    [Precision(18, 2)]
+    public decimal TouristTaxAmount { get; set; }
+
+    /// <summary>
+    /// Number of adults for tourist tax calculation (children may be exempt)
+    /// </summary>
+    public int NumberOfAdults { get; set; }
+
+    /// <summary>
+    /// Number of children (may be exempt from tourist tax based on age)
+    /// </summary>
+    public int NumberOfChildren { get; set; }
+
     [MaxLength(1000)]
     public string SpecialRequests { get; set; } = string.Empty;
 

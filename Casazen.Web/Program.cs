@@ -18,33 +18,40 @@ using SendGrid.Extensions.DependencyInjection;
 var builder = WebApplication.CreateBuilder(args);
 
 // Database
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")!));
+{
+    if (!string.IsNullOrEmpty(connectionString))
+        options.UseSqlServer(connectionString);
+    else
+        options.UseInMemoryDatabase("CasazenTest");
+});
 
-// Hangfire Configuration
-builder.Services.AddHangfire(configuration => configuration
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection")!, new SqlServerStorageOptions
-    {
-        CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-        SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-        QueuePollInterval = TimeSpan.Zero,
-        UseRecommendedIsolationLevel = true,
-        DisableGlobalLocks = true
-    }));
+// Hangfire Configuration (skipped when no connection string, e.g. in CI/test)
+if (!string.IsNullOrEmpty(connectionString))
+{
+    builder.Services.AddHangfire(configuration => configuration
+        .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UseSqlServerStorage(connectionString, new SqlServerStorageOptions
+        {
+            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+            QueuePollInterval = TimeSpan.Zero,
+            UseRecommendedIsolationLevel = true,
+            DisableGlobalLocks = true
+        }));
 
-// Add Hangfire server
-builder.Services.AddHangfireServer();
+    builder.Services.AddHangfireServer();
+}
 
 // Repositories
 builder.Services.AddScoped<IGuestRepository, GuestRepository>();
 builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
-builder.Services.AddScoped<ITaxRateRepository, TaxRateRepository>();
-builder.Services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
+builder.Services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
 
 // External Services
 builder.Services.AddSendGrid(options =>
@@ -56,7 +63,7 @@ builder.Services.AddSendGrid(options =>
 builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
-builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
@@ -138,46 +145,34 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Hangfire Dashboard (Development only for security)
-app.UseHangfireDashboard("/hangfire", new DashboardOptions
+// Hangfire Dashboard and recurring jobs (only when Hangfire is configured)
+if (!string.IsNullOrEmpty(connectionString))
 {
-    Authorization = new[] { new HangfireAuthorizationFilter(app.Environment.IsDevelopment()) }
-});
+    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = new[] { new HangfireAuthorizationFilter(app.Environment.IsDevelopment()) }
+    });
+
+    ConfigureRecurringJobs();
+}
 
 app.MapControllers();
-
-// Configure Recurring Jobs
-ConfigureRecurringJobs();
 
 app.Run();
 
 void ConfigureRecurringJobs()
 {
-    // OTA Sync - every hour
     RecurringJob.AddOrUpdate<OtaSyncJob>(
         "ota-sync-all",
         job => job.ExecuteAsync(Guid.Empty),
         Cron.Hourly,
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    // Booking Pull - every 15 minutes
     RecurringJob.AddOrUpdate<BookingPullJob>(
         "booking-pull-all",
         job => job.ExecuteAsync(Guid.Empty),
         "*/15 * * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    // Alloggiati Web retry - every 6 hours (for failed/pending reports)
-    RecurringJob.AddOrUpdate<AlloggiatiWebReportJob>(
-        "alloggiati-retry-failed",
-        job => job.RetryFailedReportsAsync(),
-        "0 */6 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    // GDPR Data Retention - daily at 2am UTC
-    RecurringJob.AddOrUpdate<GdprDataRetentionJob>(
-        "gdpr-data-retention",
-        job => job.ExecuteAsync(),
-        "0 2 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
+
+public partial class Program { }

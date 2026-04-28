@@ -12,8 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<OtaIntegration> OtaIntegrations { get; set; } = null!;
-    public DbSet<TaxRate> TaxRates { get; set; } = null!;
-    public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
+    public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,8 +62,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Booking>().HasIndex(b => b.Status);
         modelBuilder.Entity<Payment>().HasIndex(p => p.BookingId);
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
-        modelBuilder.Entity<TaxRate>().HasIndex(t => new { t.City, t.EffectiveFrom });
-        modelBuilder.Entity<AlloggiatiWebReport>().HasIndex(r => r.BookingId);
-        modelBuilder.Entity<AlloggiatiWebReport>().HasIndex(r => r.Status);
+        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
+        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
+        modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
     }
 }
