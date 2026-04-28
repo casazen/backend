@@ -64,7 +64,7 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy
-                    .WithOrigins("http://localhost:3000", "https://casazen.app")
+                    .WithOrigins("http://localhost:3000", "http://localhost:5173", "https://casazen.app")
                     .AllowAnyMethod()
                     .AllowAnyHeader()
                     .AllowCredentials();
@@ -75,19 +75,24 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenRepositories(this IServiceCollection services)
     {
+        services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
         return services;
     }
 
     public static IServiceCollection AddCasazenServices(this IServiceCollection services)
     {
+        services.AddScoped<IUserService, UserService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ITouristTaxService, TouristTaxService>();
+        services.AddScoped<IGdprService, GdprService>();
         return services;
     }
 
