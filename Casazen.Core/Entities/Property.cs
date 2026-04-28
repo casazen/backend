@@ -33,17 +33,25 @@ public class Property
     public decimal Latitude { get; set; }
     public decimal Longitude { get; set; }
 
+    [Range(1, 100, ErrorMessage = "Bedrooms must be between 1 and 100")]
     public int Bedrooms { get; set; }
+
+    [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
     public int Bathrooms { get; set; }
+
+    [Range(1, 100, ErrorMessage = "Max guests must be between 1 and 100")]
     public int MaxGuests { get; set; }
 
     [Precision(18, 2)]
+    [Range(0.01, 100000, ErrorMessage = "Nightly rate must be between €0.01 and €100,000")]
     public decimal NightlyRate { get; set; }
 
     [Precision(18, 2)]
+    [Range(0, 10000, ErrorMessage = "Cleaning fee must be between €0 and €10,000")]
     public decimal CleaningFee { get; set; }
 
     [Precision(18, 2)]
+    [Range(0, 50000, ErrorMessage = "Damage deposit must be between €0 and €50,000")]
     public decimal DamageDeposit { get; set; }
 
     public List<string> Amenities { get; set; } = new();

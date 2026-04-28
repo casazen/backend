@@ -16,7 +16,7 @@ public class PollyPoliciesTests
         _mockLogger = new Mock<ILogger>();
     }
 
-    [Fact(Skip = "Temporarily disabled")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetRetryPolicy_ShouldRetryOnTransientError()
     {
         // Arrange
@@ -41,7 +41,7 @@ public class PollyPoliciesTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact(Skip = "Temporarily disabled")]
+ [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetCircuitBreakerPolicy_ShouldOpenCircuitAfterFailures()
     {
         // Arrange
@@ -72,7 +72,7 @@ public class PollyPoliciesTests
         Assert.Equal(attemptCountBeforeCircuitOpen, attemptCount); // No new attempt should be made
     }
 
-    [Fact(Skip = "Temporarily disabled")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetTimeoutPolicy_ShouldTimeoutLongRunningRequests()
     {
         // Arrange
@@ -87,7 +87,7 @@ public class PollyPoliciesTests
             }));
     }
 
-    [Fact(Skip = "Temporarily disabled")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetCombinedPolicy_ShouldApplyAllPolicies()
     {
         // Arrange
@@ -119,7 +119,7 @@ public class PollyPoliciesTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact(Skip = "Temporarily disabled")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetRetryPolicy_ShouldLogRetryAttempts()
     {
         // Arrange
@@ -149,7 +149,7 @@ public class PollyPoliciesTests
             Times.AtLeastOnce);
     }
 
-    [Fact(Skip = "Temporarily disabled")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetCircuitBreakerPolicy_ShouldLogCircuitStateChanges()
     {
         // Arrange
