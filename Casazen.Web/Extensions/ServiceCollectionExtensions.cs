@@ -79,6 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
         return services;
     }
 
@@ -90,6 +91,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ITouristTaxService, TouristTaxService>();
+        services.AddScoped<IGdprService, GdprService>();
         return services;
     }
 
