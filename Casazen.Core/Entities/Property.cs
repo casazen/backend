@@ -65,6 +65,14 @@ public class Property
     [CinCode]
     public string? CinCode { get; set; } // Format: IT-XXXXX-XXXXXXXXXX
 
+    // Timezone for booking date handling (IANA timezone ID)
+    [MaxLength(50)]
+    public string Timezone { get; set; } = "Europe/Rome"; // Default for Italian properties
+
+    [ForeignKey("CancellationPolicy")]
+    public Guid? CancellationPolicyId { get; set; }
+    public virtual CancellationPolicy? CancellationPolicy { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
