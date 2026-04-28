@@ -1,5 +1,7 @@
-﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.BackgroundJobs;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,13 +10,17 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class BookingsController(IBookingService bookingService, ILogger<BookingsController> logger) : ControllerBase
+public class BookingsController(
+    IBookingService bookingService,
+    ITaxCalculationService taxCalculationService,
+    IAlloggiatiWebService alloggiatiWebService,
+    ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Booking>>> GetAll([FromQuery] Guid? propertyId)
     {
         IEnumerable<Booking> bookings;
-        
+
         if (propertyId.HasValue)
             bookings = await bookingService.GetPropertyBookingsAsync(propertyId.Value);
         else
@@ -47,8 +53,12 @@ public class BookingsController(IBookingService bookingService, ILogger<Bookings
             return BadRequest("Property not available for these dates");
         }
 
+        booking.TouristTax = await taxCalculationService.CalculateTouristTaxAsync(
+            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
+        booking.TotalPrice = booking.BasePrice + booking.TouristTax;
+
         var created = await bookingService.CreateBookingAsync(booking);
-        logger.LogInformation("Booking created: {BookingId}", created.Id);
+        logger.LogInformation("Booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
@@ -96,6 +106,12 @@ public class BookingsController(IBookingService bookingService, ILogger<Bookings
 
         booking.Status = BookingStatus.CheckedIn;
         await bookingService.UpdateBookingAsync(booking);
+
+        // Mandatory guest registration with police database within 24h (D.L. 286/1998, Art. 7)
+        BackgroundJob.Enqueue<AlloggiatiWebReportJob>(
+            job => job.ReportGuestAsync(booking.GuestId, booking.Id));
+
+        logger.LogInformation("Check-in completed for booking {BookingId}, queued Alloggiati Web report", id);
         return Ok(booking);
     }
 
@@ -109,5 +125,12 @@ public class BookingsController(IBookingService bookingService, ILogger<Bookings
         booking.Status = BookingStatus.CheckedOut;
         await bookingService.UpdateBookingAsync(booking);
         return Ok(booking);
+    }
+
+    [HttpGet("{id}/alloggiati-status")]
+    public async Task<IActionResult> GetAlloggiatiStatus(Guid id)
+    {
+        var report = await alloggiatiWebService.GetReportStatusAsync(id);
+        return report == null ? NotFound() : Ok(report);
     }
 }
