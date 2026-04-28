@@ -13,6 +13,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<OtaIntegration> OtaIntegrations { get; set; } = null!;
     public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
+    public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
+    public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
+    public DbSet<TaxRate> TaxRates { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

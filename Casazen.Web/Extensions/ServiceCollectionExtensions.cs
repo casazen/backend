@@ -83,6 +83,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
+        services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
+        services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
+        services.AddScoped<ITaxRateRepository, TaxRateRepository>();
         return services;
     }
 
