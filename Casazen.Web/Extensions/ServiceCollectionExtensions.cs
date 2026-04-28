@@ -64,7 +64,7 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy
-                    .WithOrigins("http://localhost:3000", "https://casazen.app")
+                    .WithOrigins("http://localhost:3000", "http://localhost:5173", "https://casazen.app")
                     .AllowAnyMethod()
                     .AllowAnyHeader()
                     .AllowCredentials();
