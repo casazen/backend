@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.VisualStudio.TestPlatform.TestHost;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
