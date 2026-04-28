@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Repositories;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
@@ -67,6 +67,9 @@ builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
+builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
+builder.Services.AddScoped<IGdprService, GdprService>();
+builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
@@ -83,6 +86,8 @@ builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
 builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
+builder.Services.AddScoped<AlloggiatiWebReportJob>();
+builder.Services.AddScoped<GdprDataRetentionJob>();
 
 // API
 builder.Services.AddControllers();
@@ -96,7 +101,6 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Vacation rental property management system for Italian market"
     });
 
-    // JWT Bearer Authentication for Swagger UI
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
