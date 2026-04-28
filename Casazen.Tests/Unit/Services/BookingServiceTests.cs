@@ -32,11 +32,15 @@ public class BookingServiceTests
         {
             PropertyId = Guid.NewGuid(),
             GuestId = Guid.NewGuid(),
-            CheckInDate = DateTime.Now.AddDays(1),
-            CheckOutDate = DateTime.Now.AddDays(5),
-            TotalPrice = 500m
+            CheckInDate = DateTime.UtcNow.AddDays(1),
+            CheckOutDate = DateTime.UtcNow.AddDays(5),
+            TotalPrice = 500m,
+            NumberOfGuests = 2
         };
         _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>())).ReturnsAsync(booking);
+        _mockRepository.Setup(x => x.IsAvailableAsync(
+            It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(true);
 
         // Act
         var result = await _service.CreateBookingAsync(booking);
@@ -45,6 +49,8 @@ public class BookingServiceTests
         Assert.NotNull(result);
         Assert.Equal(booking.PropertyId, result.PropertyId);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Once);
+        _mockRepository.Verify(x => x.IsAvailableAsync(
+            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate), Times.Once);
     }
 
     [Fact]

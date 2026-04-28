@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
 
@@ -18,40 +18,41 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         base.OnModelCreating(modelBuilder);
 
-        // Property -> Bookings (One to Many)
         modelBuilder.Entity<Property>()
             .HasMany(p => p.Bookings)
             .WithOne(b => b.Property)
             .HasForeignKey(b => b.PropertyId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Property -> OtaIntegrations (One to Many)
         modelBuilder.Entity<Property>()
             .HasMany(p => p.OtaIntegrations)
             .WithOne(o => o.Property)
             .HasForeignKey(o => o.PropertyId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Booking -> Payments (One to Many)
         modelBuilder.Entity<Booking>()
             .HasMany(b => b.Payments)
             .WithOne(p => p.Booking)
             .HasForeignKey(p => p.BookingId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Guest -> Bookings (One to Many)
         modelBuilder.Entity<Guest>()
             .HasMany(g => g.Bookings)
             .WithOne(b => b.Guest)
             .HasForeignKey(b => b.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // CancellationPolicy -> Properties (One to Many)
-        modelBuilder.Entity<CancellationPolicy>()
-            .HasMany(c => c.Properties)
-            .WithOne(p => p.CancellationPolicy)
-            .HasForeignKey(p => p.CancellationPolicyId)
-            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .HasOne(r => r.Booking)
+            .WithMany(b => b.AlloggiatiWebReports)
+            .HasForeignKey(r => r.BookingId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .HasOne(r => r.Guest)
+            .WithMany(g => g.AlloggiatiWebReports)
+            .HasForeignKey(r => r.GuestId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
