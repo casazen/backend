@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Casazen.Core.Entities;
@@ -96,8 +96,69 @@ public class Guest
     [MaxLength(1000)]
     public string Notes { get; set; } = string.Empty;
 
+    // Alloggiati Web Required Fields (Italian Law Decree 286/1998, Art. 7)
+    public DateTime? DateOfBirth { get; set; }
+
+    [MaxLength(100)]
+    public string PlaceOfBirth { get; set; } = string.Empty;
+
+    [MaxLength(3)]
+    public string Nationality { get; set; } = string.Empty;
+
+    public DocumentType? DocumentType { get; set; }
+
+    [MaxLength(50)]
+    public string DocumentNumber { get; set; } = string.Empty;
+
+    [MaxLength(3)]
+    public string DocumentIssuingCountry { get; set; } = string.Empty;
+
+    public DateTime? DocumentIssueDate { get; set; }
+
+    public DateTime? DocumentExpiryDate { get; set; }
+
+    public Gender? Gender { get; set; }
+
+    // GDPR Compliance Fields (GDPR Articles 6, 7, 13-17)
+    public DateTime? ConsentDate { get; set; }
+
+    [MaxLength(50)]
+    public string ConsentVersion { get; set; } = string.Empty;
+
+    public bool MarketingConsent { get; set; } = false;
+
+    public DateTime? MarketingConsentDate { get; set; }
+
+    public DateTime DataRetentionUntil { get; set; } = DateTime.UtcNow.AddYears(7);
+
+    [MaxLength(200)]
+    public string DataProcessingPurpose { get; set; } = "Booking Management";
+
+    public bool IsDeleted { get; set; } = false;
+
+    public DateTime? DeletedAt { get; set; }
+
+    [MaxLength(500)]
+    public string DeletionReason { get; set; } = string.Empty;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
+    public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
+}
+
+public enum DocumentType
+{
+    Passport,
+    IdentityCard,
+    DriversLicense,
+    Other
+}
+
+public enum Gender
+{
+    Male,
+    Female,
+    Other
 }

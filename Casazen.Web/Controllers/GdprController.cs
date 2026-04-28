@@ -5,133 +5,44 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/gdpr")]
 [Authorize]
-public class GdprController(
-    IGdprService gdprService,
-    ILogger<GdprController> logger) : ControllerBase
+public class GdprController(IGdprService gdprService, ILogger<GdprController> logger) : ControllerBase
 {
-    /// <summary>
-    /// Request data erasure (GDPR Article 17 - Right to be forgotten)
-    /// </summary>
-    [HttpPost("erasure-request")]
-    public async Task<IActionResult> RequestErasure([FromBody] ErasureRequest request)
+    /// <summary>GDPR Article 15 - Right of Access: export all personal data for a guest.</summary>
+    [HttpGet("guests/{id}/export")]
+    public async Task<IActionResult> ExportGuestData(Guid id)
     {
-        try
-        {
-            var success = await gdprService.RequestDataErasureAsync(request.GuestId, request.Reason);
-
-            if (!success)
-                return NotFound($"Guest {request.GuestId} not found");
-
-            logger.LogInformation(
-                "GDPR erasure requested by user {UserId} for guest {GuestId}",
-                User.FindFirst("sub")?.Value, request.GuestId);
-
-            return Ok(new
-            {
-                message = "Erasure request submitted successfully. " +
-                         "Data will be anonymized within 30 days as per GDPR requirements.",
-                guestId = request.GuestId,
-                requestedAt = DateTime.UtcNow
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error processing erasure request for guest {GuestId}", request.GuestId);
-            return StatusCode(500, new { error = "Failed to process erasure request" });
-        }
+        logger.LogInformation("GDPR data export requested for guest {GuestId}", id);
+        var data = await gdprService.ExportGuestDataAsync(id);
+        return Ok(data);
     }
 
-    /// <summary>
-    /// Anonymize guest data (Admin only - execute erasure)
-    /// </summary>
-    [HttpPost("anonymize/{guestId}")]
-    [Authorize(Policy = "AdminOnly")]
-    public async Task<IActionResult> AnonymizeData(Guid guestId)
+    /// <summary>GDPR Article 17 - Right to Erasure: delete and anonymize guest data.</summary>
+    [HttpDelete("guests/{id}")]
+    public async Task<IActionResult> DeleteGuestData(Guid id, [FromQuery] string reason = "User request")
     {
-        try
-        {
-            var success = await gdprService.AnonymizeGuestDataAsync(guestId);
-
-            if (!success)
-                return NotFound($"Guest {guestId} not found");
-
-            logger.LogInformation(
-                "Guest data anonymized by admin {UserId} for guest {GuestId}",
-                User.FindFirst("sub")?.Value, guestId);
-
-            return Ok(new
-            {
-                message = "Guest data anonymized successfully. GDPR Article 17 compliance completed.",
-                guestId,
-                anonymizedAt = DateTime.UtcNow
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning(ex, "Cannot anonymize guest {GuestId}: {Error}", guestId, ex.Message);
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error anonymizing guest {GuestId}", guestId);
-            return StatusCode(500, new { error = "Failed to anonymize guest data" });
-        }
+        logger.LogInformation("GDPR deletion requested for guest {GuestId}", id);
+        await gdprService.DeleteGuestDataAsync(id, reason);
+        return NoContent();
     }
 
-    /// <summary>
-    /// Get pending erasure requests (Admin only)
-    /// </summary>
-    [HttpGet("pending-erasures")]
-    [Authorize(Policy = "AdminOnly")]
-    public async Task<IActionResult> GetPendingErasures()
+    /// <summary>Anonymize guest personal data while preserving booking records.</summary>
+    [HttpPost("guests/{id}/anonymize")]
+    public async Task<IActionResult> AnonymizeGuestData(Guid id)
     {
-        var pendingRequests = await gdprService.GetPendingErasureRequestsAsync();
-
-        return Ok(pendingRequests.Select(g => new
-        {
-            g.Id,
-            g.Email,
-            g.FirstName,
-            g.LastName,
-            g.ErasureRequestedDate,
-            DaysSinceRequest = g.ErasureRequestedDate.HasValue
-                ? (DateTime.UtcNow - g.ErasureRequestedDate.Value).Days
-                : 0
-        }));
+        logger.LogInformation("GDPR anonymization requested for guest {GuestId}", id);
+        await gdprService.AnonymizeGuestDataAsync(id);
+        return NoContent();
     }
 
-    /// <summary>
-    /// Export guest data (GDPR Article 15 - Right to access)
-    /// </summary>
-    [HttpGet("export/{guestId}")]
-    public async Task<IActionResult> ExportData(Guid guestId)
+    /// <summary>Update guest marketing consent status.</summary>
+    [HttpPut("guests/{id}/consent")]
+    public async Task<IActionResult> UpdateConsent(Guid id, [FromBody] UpdateConsentRequest request)
     {
-        try
-        {
-            // Verify user has access to this guest's data
-            var userId = User.FindFirst("sub")?.Value;
-            // TODO: Add authorization check to verify user owns this data
-
-            var export = await gdprService.ExportGuestDataAsync(guestId);
-
-            logger.LogInformation(
-                "Guest data exported by user {UserId} for guest {GuestId}",
-                userId, guestId);
-
-            return Ok(export);
-        }
-        catch (KeyNotFoundException)
-        {
-            return NotFound($"Guest {guestId} not found");
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error exporting data for guest {GuestId}", guestId);
-            return StatusCode(500, new { error = "Failed to export guest data" });
-        }
+        await gdprService.UpdateConsentAsync(id, request.MarketingConsent);
+        return NoContent();
     }
 }
 
-public record ErasureRequest(Guid GuestId, string Reason);
+public record UpdateConsentRequest(bool MarketingConsent);
