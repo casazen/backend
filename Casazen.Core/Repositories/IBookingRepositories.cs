@@ -13,4 +13,6 @@ public interface IBookingRepository
     Task<Booking> AddAsync(Booking booking);
     Task<Booking> UpdateAsync(Booking booking);
     Task DeleteAsync(Guid id);
+    Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source);
+    Task<Booking> UpsertOtaBookingAsync(Booking booking);
 }

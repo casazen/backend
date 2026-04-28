@@ -43,8 +43,7 @@ public class Guest
     [MaxLength(100)]
     public string Nationality { get; set; } = string.Empty;
 
-    [MaxLength(50)]
-    public string DocumentType { get; set; } = string.Empty; // "Passport", "ID Card", etc.
+    public DocumentType? DocumentType { get; set; }
 
     [MaxLength(50)]
     public string DocumentNumber { get; set; } = string.Empty;
@@ -61,11 +60,6 @@ public class Guest
     /// Timestamp when user gave consent for data processing
     /// </summary>
     public DateTime? DataProcessingConsentDate { get; set; }
-
-    /// <summary>
-    /// Timestamp when user gave consent for marketing communications
-    /// </summary>
-    public DateTime? MarketingConsentDate { get; set; }
 
     /// <summary>
     /// IP address from which consent was given
@@ -95,27 +89,6 @@ public class Guest
 
     [MaxLength(1000)]
     public string Notes { get; set; } = string.Empty;
-
-    // Alloggiati Web Required Fields (Italian Law Decree 286/1998, Art. 7)
-    public DateTime? DateOfBirth { get; set; }
-
-    [MaxLength(100)]
-    public string PlaceOfBirth { get; set; } = string.Empty;
-
-    [MaxLength(3)]
-    public string Nationality { get; set; } = string.Empty;
-
-    public DocumentType? DocumentType { get; set; }
-
-    [MaxLength(50)]
-    public string DocumentNumber { get; set; } = string.Empty;
-
-    [MaxLength(3)]
-    public string DocumentIssuingCountry { get; set; } = string.Empty;
-
-    public DateTime? DocumentIssueDate { get; set; }
-
-    public DateTime? DocumentExpiryDate { get; set; }
 
     public Gender? Gender { get; set; }
 

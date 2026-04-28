@@ -119,7 +119,7 @@ public class PollyPoliciesTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-o    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetRetryPolicy_ShouldLogRetryAttempts()
     {
         // Arrange

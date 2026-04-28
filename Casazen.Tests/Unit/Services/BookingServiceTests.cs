@@ -11,16 +11,13 @@ namespace Casazen.Tests.Unit.Services;
 public class BookingServiceTests
 {
     private readonly Mock<IBookingRepository> _mockRepository;
-    private readonly Mock<ICancellationService> _mockCancellationService;
     private readonly BookingService _service;
 
     public BookingServiceTests()
     {
         _mockRepository = new Mock<IBookingRepository>();
-        _mockCancellationService = new Mock<ICancellationService>();
         _service = new BookingService(
             _mockRepository.Object,
-            _mockCancellationService.Object,
             new Mock<ILogger<BookingService>>().Object);
     }
 
@@ -74,13 +71,15 @@ public class BookingServiceTests
     {
         // Arrange
         var bookingId = Guid.NewGuid();
-        _mockCancellationService.Setup(x => x.ProcessCancellationAsync(bookingId, null)).ReturnsAsync(true);
+        var booking = new Booking { Id = bookingId, Status = BookingStatus.Confirmed };
+        _mockRepository.Setup(x => x.GetByIdAsync(bookingId)).ReturnsAsync(booking);
+        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Booking>())).ReturnsAsync(booking);
 
         // Act
         var result = await _service.CancelBookingAsync(bookingId);
 
         // Assert
         Assert.True(result);
-        _mockCancellationService.Verify(x => x.ProcessCancellationAsync(bookingId, null), Times.Once);
+        _mockRepository.Verify(x => x.UpdateAsync(It.Is<Booking>(b => b.Status == BookingStatus.Cancelled)), Times.Once);
     }
 }

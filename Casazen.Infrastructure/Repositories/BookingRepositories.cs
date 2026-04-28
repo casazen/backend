@@ -87,4 +87,34 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             await context.SaveChangesAsync();
         }
     }
+
+    public async Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source)
+    {
+        return await context.Bookings
+            .FirstOrDefaultAsync(b => b.PropertyId == propertyId
+                && b.ExternalId == externalId
+                && b.Source == source);
+    }
+
+    public async Task<Booking> UpsertOtaBookingAsync(Booking booking)
+    {
+        var existing = await GetByExternalIdAsync(booking.PropertyId, booking.ExternalId, booking.Source);
+        if (existing != null)
+        {
+            existing.Status = booking.Status;
+            existing.TotalPrice = booking.TotalPrice;
+            existing.CheckInDate = booking.CheckInDate;
+            existing.CheckOutDate = booking.CheckOutDate;
+            existing.GuestId = booking.GuestId;
+            existing.NumberOfGuests = booking.NumberOfGuests;
+            existing.UpdatedAt = DateTime.UtcNow;
+            context.Bookings.Update(existing);
+            await context.SaveChangesAsync();
+            return existing;
+        }
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+        return booking;
+    }
 }
