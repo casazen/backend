@@ -158,7 +158,7 @@ public class AirbnbAdapterTests
         Assert.Equal("Pending", secondBooking.Status);
     }
 
-on    [Fact(Skip = "Temporarily disabled - needs proper Airbnb API setup")]
+    [Fact(Skip = "Temporarily disabled - needs proper Airbnb API setup")]
     public async Task GetBookingsAsync_WithEmptyResponse_ReturnsEmptyList()
     {
         // Arrange
