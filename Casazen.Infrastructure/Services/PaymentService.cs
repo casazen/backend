@@ -59,14 +59,42 @@ public class PaymentService(
         if (payment == null)
             throw new KeyNotFoundException($"Payment {paymentId} not found");
 
-        if (payment.Status != PaymentStatus.Completed)
-            throw new InvalidOperationException("Can only refund completed payments");
+        if (payment.Status != PaymentStatus.Completed && payment.Status != PaymentStatus.PartiallyRefunded)
+            throw new InvalidOperationException("Can only refund completed or partially refunded payments");
+
+        // Default to full refund if no amount specified
+        var refundAmount = amount ?? (payment.Amount - payment.RefundedAmount);
+
+        // Validate refund amount
+        if (refundAmount <= 0)
+            throw new InvalidOperationException("Refund amount must be greater than zero");
+
+        var remainingAmount = payment.Amount - payment.RefundedAmount;
+        if (refundAmount > remainingAmount)
+            throw new InvalidOperationException(
+                $"Cannot refund €{refundAmount}. Only €{remainingAmount} remaining (already refunded €{payment.RefundedAmount} of €{payment.Amount})");
 
         // TODO: Implement actual Stripe refund
-        payment.Status = amount.HasValue ? PaymentStatus.PartiallyRefunded : PaymentStatus.Refunded;
+        // For now, just update status and tracking
+
+        payment.RefundedAmount += refundAmount;
+
+        // Update status based on total refunded
+        if (payment.RefundedAmount >= payment.Amount)
+        {
+            payment.Status = PaymentStatus.Refunded;
+        }
+        else
+        {
+            payment.Status = PaymentStatus.PartiallyRefunded;
+        }
+
         await repository.UpdateAsync(payment);
 
-        logger.LogInformation("Payment {Id} refunded", paymentId);
+        logger.LogInformation(
+            "Payment {Id} refunded €{Amount}. Total refunded: €{TotalRefunded} of €{OriginalAmount}",
+            paymentId, refundAmount, payment.RefundedAmount, payment.Amount);
+
         return payment;
     }
 
