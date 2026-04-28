@@ -4,6 +4,7 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402133639_AddRefundTrackingAndValidation")]
+    partial class AddRefundTrackingAndValidation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -45,12 +48,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("NumberOfAdults")
-                        .HasColumnType("int");
-
-                    b.Property<int>("NumberOfChildren")
-                        .HasColumnType("int");
-
                     b.Property<int>("NumberOfGuests")
                         .HasColumnType("int");
 
@@ -69,10 +66,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("TotalPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TouristTaxAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
@@ -108,11 +101,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("ConsentIpAddress")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("Country")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -121,49 +109,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("DataAnonymizedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DataProcessingConsentDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DataRetentionExpiryDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DateOfBirth")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DocumentExpiryDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DocumentIssueDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DocumentIssuingCountry")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("DocumentNumber")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("DocumentType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
-
-                    b.Property<bool>("ErasureRequested")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("ErasureRequestedDate")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -171,14 +120,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime?>("MarketingConsentDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Nationality")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -193,11 +134,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<string>("PlaceOfBirth")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<string>("PostalCode")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -207,8 +143,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email");
 
                     b.ToTable("Guests");
                 });
@@ -411,61 +345,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OwnerId");
 
                     b.ToTable("Properties");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.TouristTaxRate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("City")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("EffectiveFrom")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("EffectiveTo")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("MaxNights")
-                        .HasColumnType("int");
-
-                    b.Property<int>("MinimumAge")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<decimal>("RatePerPersonPerNight")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("RegionCode")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("City");
-
-                    b.HasIndex("City", "IsActive", "EffectiveFrom");
-
-                    b.ToTable("TouristTaxRates");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.User", b =>
