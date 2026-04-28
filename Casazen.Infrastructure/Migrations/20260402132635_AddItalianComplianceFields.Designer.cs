@@ -4,6 +4,7 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402132635_AddItalianComplianceFields")]
+    partial class AddItalianComplianceFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -288,19 +291,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("Method")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("ProcessedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("RefundedAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<int>("Status")
                         .HasColumnType("int");
-
-                    b.Property<string>("StripePaymentIntentId")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("TransactionId")
                         .IsRequired()
@@ -337,10 +329,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Bedrooms")
                         .HasColumnType("int");
-
-                    b.Property<string>("CinCode")
-                        .HasMaxLength(25)
-                        .HasColumnType("nvarchar(25)");
 
                     b.Property<string>("City")
                         .IsRequired()
