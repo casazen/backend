@@ -78,6 +78,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenRepositories(this IServiceCollection services)
     {
+        services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
@@ -86,6 +87,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenServices(this IServiceCollection services)
     {
+        services.AddScoped<IUserService, UserService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IOtaManager, OtaManager>();
