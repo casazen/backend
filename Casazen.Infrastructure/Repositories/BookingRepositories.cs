@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -55,12 +55,17 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
     public async Task<bool> IsAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut)
     {
+        // Normalize to date-only to prevent time-component false conflicts (e.g. same-day turnover).
+        // A checkout on Apr 5 at 10:00 and a checkin on Apr 5 at 15:00 is a valid same-day turnover.
+        var checkInDate = checkIn.Date;
+        var checkOutDate = checkOut.Date;
+
         var conflicting = await context.Bookings
             .AnyAsync(b => b.PropertyId == propertyId &&
-                      b.CheckInDate < checkOut &&
-                      b.CheckOutDate > checkIn &&
+                      b.CheckInDate.Date < checkOutDate &&
+                      b.CheckOutDate.Date > checkInDate &&
                       b.Status != BookingStatus.Cancelled);
-        
+
         return !conflicting;
     }
 
