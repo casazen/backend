@@ -30,7 +30,7 @@ public class AirbnbAdapterTests
         _adapter = new AirbnbAdapter(httpClient, _mockLogger.Object, _mockRateLimiter.Object);
     }
 
-    [Fact(Skip = "Temporarily disabled - needs proper Airbnb API setup")]
+    [Fact(Skip = "Temporarily disabled")]
     public void Platform_ReturnsAirbnb()
     {
         // Act
