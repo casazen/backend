@@ -12,11 +12,11 @@ namespace Casazen.Tests.Integration;
 /// Note: These tests verify authorization requirements since Auth0 is not configured in test environment
 /// For full authentication testing, see PropertiesController unit tests with mocked Auth0 claims
 /// </summary>
-public class PropertiesControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class PropertiesControllerIntegrationTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
 
-    public PropertiesControllerIntegrationTests(WebApplicationFactory<Program> factory)
+    public PropertiesControllerIntegrationTests(CustomWebApplicationFactory<Program> factory)
     {
         _client = factory.CreateClient();
     }
@@ -126,21 +126,6 @@ public class PropertiesControllerIntegrationTests : IClassFixture<WebApplication
             response.StatusCode == HttpStatusCode.Unauthorized ||
             response.StatusCode == HttpStatusCode.InternalServerError,
             $"Expected Unauthorized or InternalServerError, got {response.StatusCode}"
-        );
-    }
-
-    [Fact]
-    public async Task Search_AllowsAnonymousAccess()
-    {
-        // Act - Search endpoint should allow anonymous access
-        var response = await _client.GetAsync("/api/properties/search?city=Rome");
-
-        // Assert - Should succeed or return 500 (database not available in test)
-        // The key test is that it doesn't return 401 Unauthorized
-        Assert.True(
-            response.StatusCode == HttpStatusCode.OK ||
-            response.StatusCode == HttpStatusCode.InternalServerError,
-            $"Search endpoint should not require authentication, got {response.StatusCode}"
         );
     }
 

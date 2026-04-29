@@ -4,11 +4,11 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class ApiTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
 
-    public ApiTests(WebApplicationFactory<Program> factory)
+    public ApiTests(CustomWebApplicationFactory<Program> factory)
     {
         _client = factory.CreateClient();
     }
