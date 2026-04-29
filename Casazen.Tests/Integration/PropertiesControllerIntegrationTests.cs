@@ -11,12 +11,13 @@ namespace Casazen.Tests.Integration;
 /// Integration tests for PropertiesController
 /// Note: These tests verify authorization requirements since Auth0 is not configured in test environment
 /// For full authentication testing, see PropertiesController unit tests with mocked Auth0 claims
+/// IMPORTANT: These tests are SKIPPED in CI/CD (Linux) because they require LocalDB (Windows-only)
 /// </summary>
-public class PropertiesControllerIntegrationTests : IClassFixture<CustomWebApplicationFactory<Program>>
+public class PropertiesControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
 
-    public PropertiesControllerIntegrationTests(CustomWebApplicationFactory<Program> factory)
+    public PropertiesControllerIntegrationTests(WebApplicationFactory<Program> factory)
     {
         _client = factory.CreateClient();
     }

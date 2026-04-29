@@ -72,7 +72,8 @@
       "Bash(curl:*)",
       "Bash(dotnet clean:*)",
       "Bash(dotnet list:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

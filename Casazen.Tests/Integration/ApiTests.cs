@@ -4,11 +4,15 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-public class ApiTests : IClassFixture<CustomWebApplicationFactory<Program>>
+/// <summary>
+/// Basic API integration tests
+/// IMPORTANT: These tests are SKIPPED in CI/CD (Linux) because they require LocalDB (Windows-only)
+/// </summary>
+public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
 
-    public ApiTests(CustomWebApplicationFactory<Program> factory)
+    public ApiTests(WebApplicationFactory<Program> factory)
     {
         _client = factory.CreateClient();
     }
