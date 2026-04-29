@@ -1,6 +1,9 @@
+using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Casazen.Tests.Integration;
 
@@ -14,24 +17,36 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Set environment before configuration
+        // Set environment to Test
         builder.UseEnvironment("Test");
 
+        // Override configuration to remove connection string
         builder.ConfigureAppConfiguration((context, config) =>
         {
-            // Clear existing configuration sources to ensure clean state
-            config.Sources.Clear();
-
-            // Add minimal configuration without connection string
-            // This will cause Program.cs to:
-            // 1. Use InMemoryDatabase instead of SQL Server (line 27)
-            // 2. Skip Hangfire initialization (line 31)
+            // Add override configuration with highest priority to nullify connection string
+            // This ensures Hangfire is not initialized and InMemoryDatabase is used
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DefaultConnection"] = string.Empty,
-                ["Auth0:Domain"] = "test-domain.auth0.com",
-                ["Auth0:Audience"] = "test-audience",
-                ["Logging:LogLevel:Default"] = "Warning"
+                ["ConnectionStrings:DefaultConnection"] = null
+            }!);
+        });
+
+        // Also override services to ensure DbContext uses InMemory
+        builder.ConfigureServices(services =>
+        {
+            // Remove existing DbContext registration
+            var descriptor = services.SingleOrDefault(
+                d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));
+
+            if (descriptor != null)
+            {
+                services.Remove(descriptor);
+            }
+
+            // Add InMemory DbContext
+            services.AddDbContext<AppDbContext>(options =>
+            {
+                options.UseInMemoryDatabase("TestDb_" + Guid.NewGuid());
             });
         });
     }
