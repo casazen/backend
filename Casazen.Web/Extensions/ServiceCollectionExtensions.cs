@@ -104,7 +104,8 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenExternalServices(this IServiceCollection services)
     {
-        services.AddScoped<Auth0Service>();
+        // Note: Auth0Service was removed as dead code (never used)
+        // JWT authentication is handled directly by AddCasazenAuthentication()
         services.AddScoped<SendGridService>();
         services.AddScoped<StripeService>();
         services.AddSingleton<StripeWebhookHandler>();
