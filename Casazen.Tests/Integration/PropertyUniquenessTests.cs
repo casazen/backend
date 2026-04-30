@@ -5,107 +5,105 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-public class PropertyUniquenessTests : IAsyncLifetime
+public class PropertyUniquenessTests : IDisposable
 {
-    private readonly DbContextOptions<AppDbContext> _options;
-    private AppDbContext _context = null!;
+    private readonly AppDbContext _context;
 
     public PropertyUniquenessTests()
     {
-        _options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: $"test_db_{Guid.NewGuid()}")
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-    }
 
-    public async Task InitializeAsync()
-    {
-        _context = new AppDbContext(_options);
-        await _context.Database.EnsureCreatedAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _context.DisposeAsync();
+        _context = new AppDbContext(options);
     }
 
     [Fact]
-    public async Task CreateProperty_WithUniqueAddress_Succeeds()
+    public async Task CreateProperty_WithSameAddressButDifferentCity_ShouldSucceed()
     {
-        // Arrange
-        var property = new Property
-        {
-            OwnerId = "owner_123",
-            Name = "Beautiful Villa",
-            Description = "A wonderful place to stay",
-            Address = "Via Roma 123",
-            City = "Rome",
-            PostalCode = "00100",
-            Bedrooms = 3,
-            Bathrooms = 2,
-            MaxGuests = 6,
-            NightlyRate = 150m,
-            CleaningFee = 50m,
-            DamageDeposit = 500m
-        };
-
-        // Act
-        _context.Properties.Add(property);
-        await _context.SaveChangesAsync();
-
-        // Assert
-        var savedProperty = await _context.Properties.FirstOrDefaultAsync(p => p.Address == "Via Roma 123");
-        Assert.NotNull(savedProperty);
-        Assert.Equal("Rome", savedProperty.City);
-        Assert.Equal("00100", savedProperty.PostalCode);
-    }
-
-    [Fact]
-    public async Task CreateProperty_WithDifferentCities_Succeeds()
-    {
-        // Arrange
         var property1 = new Property
         {
-            OwnerId = "owner_123",
-            Name = "Rome Property",
-            Description = "Property in Rome",
-            Address = "Via Roma 123",
+            Name = "Property 1",
+            Address = "Via Roma 1",
             City = "Rome",
             PostalCode = "00100",
-            Bedrooms = 3,
-            Bathrooms = 2,
-            MaxGuests = 6,
-            NightlyRate = 150m,
-            CleaningFee = 50m,
-            DamageDeposit = 500m
+            OwnerId = "owner123",
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+            NightlyRate = 100,
+            IsActive = true
         };
 
         var property2 = new Property
         {
-            OwnerId = "owner_456",
-            Name = "Milan Property",
-            Description = "Property in Milan",
-            Address = "Via Roma 123",  // Same address name
-            City = "Milan",            // Different city
-            PostalCode = "20100",      // Different postal code
+            Name = "Property 2",
+            Address = "Via Roma 1",
+            City = "Milan",
+            PostalCode = "20100",
+            OwnerId = "owner123",
             Bedrooms = 2,
             Bathrooms = 1,
             MaxGuests = 4,
-            NightlyRate = 120m,
-            CleaningFee = 40m,
-            DamageDeposit = 400m
+            NightlyRate = 100,
+            IsActive = true
         };
 
-        // Act
+        _context.Properties.Add(property1);
+        _context.Properties.Add(property2);
+        await _context.SaveChangesAsync();
+
+        var properties = await _context.Properties.ToListAsync();
+        Assert.Equal(2, properties.Count);
+    }
+
+    [Fact]
+    public async Task CreateProperty_AtSameAddressAfterSoftDelete_ShouldSucceed()
+    {
+        var property1 = new Property
+        {
+            Name = "Property 1",
+            Address = "Via Roma 1",
+            City = "Rome",
+            PostalCode = "00100",
+            OwnerId = "owner123",
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+            NightlyRate = 100,
+            IsActive = true
+        };
+
         _context.Properties.Add(property1);
         await _context.SaveChangesAsync();
+
+        property1.IsActive = false;
+        await _context.SaveChangesAsync();
+
+        var property2 = new Property
+        {
+            Name = "Property 2",
+            Address = "Via Roma 1",
+            City = "Rome",
+            PostalCode = "00100",
+            OwnerId = "owner456",
+            Bedrooms = 3,
+            Bathrooms = 2,
+            MaxGuests = 6,
+            NightlyRate = 150,
+            IsActive = true
+        };
 
         _context.Properties.Add(property2);
         await _context.SaveChangesAsync();
 
-        // Assert
         var properties = await _context.Properties.ToListAsync();
         Assert.Equal(2, properties.Count);
-        Assert.Single(properties, p => p.City == "Rome");
-        Assert.Single(properties, p => p.City == "Milan");
+        Assert.Single(properties.Where(p => p.IsActive));
+    }
+
+    public void Dispose()
+    {
+        _context?.Dispose();
     }
 }

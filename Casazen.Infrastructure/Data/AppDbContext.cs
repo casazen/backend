@@ -60,6 +60,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
+
+        // Unique constraint on property address for active properties only
+        // Allows soft-deleted properties to be re-created at same address
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
+            .IsUnique()
+            .HasFilter("[IsActive] = 1");
+
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.GuestId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.CheckInDate);
