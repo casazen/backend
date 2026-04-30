@@ -86,6 +86,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
         services.AddScoped<ITaxRateRepository, TaxRateRepository>();
+        services.AddScoped<IOtaIntegrationRepository, OtaIntegrationRepository>();
         return services;
     }
 
@@ -99,6 +100,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<IGdprService, GdprService>();
+        services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         return services;
     }
 
