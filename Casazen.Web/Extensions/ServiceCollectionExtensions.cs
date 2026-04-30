@@ -1,5 +1,7 @@
 ﻿// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
+using System.Security.Claims;
+using System.Text.Json;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -39,7 +41,34 @@ public static class ServiceCollectionExtensions
 
                 // Map Auth0 custom claims to ASP.NET Core claims
                 options.TokenValidationParameters.NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
-                options.TokenValidationParameters.RoleClaimType = "https://casazen.app/roles";
+                options.TokenValidationParameters.RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
+
+                // Transform Auth0 custom role claim to standard role claims
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = context =>
+                    {
+                        if (context.Principal?.Identity is ClaimsIdentity identity)
+                        {
+                            var rolesClaim = context.Principal.FindFirst("https://casazen.app/roles");
+                            if (rolesClaim != null)
+                            {
+                                // Auth0 sends roles as JSON array
+                                var roles = JsonSerializer.Deserialize<string[]>(rolesClaim.Value);
+                                if (roles != null)
+                                {
+                                    foreach (var role in roles)
+                                    {
+                                        identity.AddClaim(new Claim(
+                                            "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+                                            role));
+                                    }
+                                }
+                            }
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
 
                 // Disable HTTPS requirement in development
                 if (environment.IsDevelopment())
@@ -106,7 +135,8 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenExternalServices(this IServiceCollection services)
     {
-        services.AddScoped<Auth0Service>();
+        // Note: Auth0Service was removed as dead code (never used)
+        // JWT authentication is handled directly by AddCasazenAuthentication()
         services.AddScoped<SendGridService>();
         services.AddScoped<StripeService>();
         services.AddSingleton<StripeWebhookHandler>();
