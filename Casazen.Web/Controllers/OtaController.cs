@@ -8,7 +8,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "PropertyOwner")]
 public class OtaController : ControllerBase
 {
     private readonly IOtaManager _otaManager;

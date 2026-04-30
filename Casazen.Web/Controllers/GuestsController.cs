@@ -8,7 +8,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "PropertyOwner")]
 public class GuestsController(IGuestService guestService, ILogger<GuestsController> logger) : ControllerBase
 {
     [HttpGet]
