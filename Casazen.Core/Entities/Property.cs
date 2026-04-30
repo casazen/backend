@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Enums;
 using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,7 +55,7 @@ public class Property
     [Range(0, 50000, ErrorMessage = "Damage deposit must be between €0 and €50,000")]
     public decimal DamageDeposit { get; set; }
 
-    public List<string> Amenities { get; set; } = new();
+    public List<PropertyAmenity> Amenities { get; set; } = new();
     public List<string> PhotoUrls { get; set; } = new();
 
     [MaxLength(1000)]

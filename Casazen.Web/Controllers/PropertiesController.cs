@@ -7,7 +7,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "PropertyOwner")]
 public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
