@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -181,7 +182,7 @@ public class MigrationTests : IDisposable
             CleaningFee = 75.00m,
             DamageDeposit = 300.00m,
             OwnerId = "auth0|test_user_123",
-            Amenities = new List<string> { "WiFi", "Kitchen", "Parking" },
+            Amenities = new List<PropertyAmenity> { PropertyAmenity.WiFi, PropertyAmenity.Kitchen, PropertyAmenity.FreeParking },
             PhotoUrls = new List<string> { "https://example.com/photo1.jpg" },
             HouseRules = "No smoking, No pets",
             IsActive = true
@@ -203,7 +204,7 @@ public class MigrationTests : IDisposable
         Assert.Equal(150.00m, savedProperty.NightlyRate);
         Assert.Equal(75.00m, savedProperty.CleaningFee);
         Assert.Equal(300.00m, savedProperty.DamageDeposit);
-        Assert.Contains("WiFi", savedProperty.Amenities);
+        Assert.Contains(PropertyAmenity.WiFi, savedProperty.Amenities);
         Assert.True(savedProperty.IsActive);
         Assert.Equal("auth0|test_user_123", savedProperty.OwnerId);
     }
