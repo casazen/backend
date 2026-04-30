@@ -11,7 +11,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "PropertyOwner")]
 public class BookingsController(
     IBookingService bookingService,
     ITaxCalculationService taxCalculationService,
