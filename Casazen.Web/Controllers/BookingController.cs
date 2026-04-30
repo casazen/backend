@@ -1,6 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.DTOs;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +16,7 @@ public class BookingsController(
     IBookingService bookingService,
     ITaxCalculationService taxCalculationService,
     IAlloggiatiWebService alloggiatiWebService,
+    IPropertyService propertyService,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -88,13 +91,52 @@ public class BookingsController(
     }
 
     [HttpGet("calendar")]
-    public async Task<ActionResult<IEnumerable<Booking>>> GetCalendar(
+    public async Task<ActionResult<CalendarResponseDto>> GetCalendar(
         [FromQuery] Guid propertyId,
         [FromQuery] DateTime startDate,
-        [FromQuery] DateTime endDate)
+        [FromQuery] DateTime endDate,
+        [FromQuery] string? timezone = null)
     {
-        var bookings = await bookingService.GetCalendarAsync(propertyId, startDate, endDate);
-        return Ok(bookings);
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null)
+            return NotFound("Property not found");
+
+        var targetTimezone = timezone ?? property.Timezone;
+
+        if (!TimezoneHelper.IsValidTimezone(targetTimezone))
+            return BadRequest($"Invalid timezone: {targetTimezone}");
+
+        var startDateUtc = TimezoneHelper.ConvertLocalToUtc(startDate, targetTimezone);
+        var endDateUtc = TimezoneHelper.ConvertLocalToUtc(endDate, targetTimezone);
+
+        var bookings = await bookingService.GetCalendarAsync(propertyId, startDateUtc, endDateUtc);
+
+        var utcOffsetMinutes = TimezoneHelper.GetUtcOffsetMinutes(targetTimezone, DateTime.UtcNow);
+
+        var calendarBookings = bookings.Select(b => new CalendarBookingDto
+        {
+            Id = b.Id,
+            PropertyId = b.PropertyId,
+            GuestId = b.GuestId,
+            CheckInDate = TimezoneHelper.ConvertUtcToLocal(b.CheckInDate, targetTimezone),
+            CheckOutDate = TimezoneHelper.ConvertUtcToLocal(b.CheckOutDate, targetTimezone),
+            CheckInDateUtc = b.CheckInDate,
+            CheckOutDateUtc = b.CheckOutDate,
+            Status = b.Status.ToString(),
+            Source = b.Source.ToString(),
+            NumberOfGuests = b.NumberOfGuests,
+            TotalPrice = b.TotalPrice,
+            GuestName = b.Guest != null ? $"{b.Guest.FirstName} {b.Guest.LastName}".Trim() : ""
+        }).ToList();
+
+        var response = new CalendarResponseDto
+        {
+            Timezone = targetTimezone,
+            UtcOffsetMinutes = utcOffsetMinutes,
+            Bookings = calendarBookings
+        };
+
+        return Ok(response);
     }
 
     [HttpPost("{id}/check-in")]
