@@ -139,6 +139,14 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+
+    // Log Swagger URLs
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("====================================================");
+    logger.LogInformation("🔵 Swagger UI available at:");
+    logger.LogInformation("   → http://localhost:5000/swagger");
+    logger.LogInformation("   → https://localhost:5001/swagger");
+    logger.LogInformation("====================================================");
 }
 
 // Static files (for serving uploaded images)
@@ -163,6 +171,33 @@ if (!string.IsNullOrEmpty(connectionString))
 }
 
 app.MapControllers();
+
+// Log application URLs on startup
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("====================================================");
+    logger.LogInformation("✅ CasaZen Backend Started Successfully!");
+    logger.LogInformation("====================================================");
+    logger.LogInformation("📡 API Endpoints:");
+    logger.LogInformation("   → http://localhost:5000/api/");
+    logger.LogInformation("   → https://localhost:5001/api/");
+    logger.LogInformation("");
+    if (app.Environment.IsDevelopment())
+    {
+        logger.LogInformation("📖 Swagger Documentation:");
+        logger.LogInformation("   → http://localhost:5000/swagger");
+        logger.LogInformation("   → https://localhost:5001/swagger");
+        logger.LogInformation("");
+    }
+    if (!string.IsNullOrEmpty(connectionString))
+    {
+        logger.LogInformation("📊 Hangfire Dashboard:");
+        logger.LogInformation("   → http://localhost:5000/hangfire");
+        logger.LogInformation("   → https://localhost:5001/hangfire");
+    }
+    logger.LogInformation("====================================================");
+});
 
 app.Run();
 
