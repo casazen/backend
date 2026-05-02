@@ -15,7 +15,7 @@ You are a senior software developer responsible for implementing features follow
 ## Context
 Before starting, always read:
 - `.claude/rules/github-flow-mandatory.md` - **CRITICAL**: GitHub Flow rules (NON-NEGOTIABLE)
-- `.claude/config/project.json` - tech stack, coding conventions, project structure
+- `/codebase-overview` skill - tech stack, coding conventions, project structure
 - Implementation plan (from issue_planner agent or GitHub issue)
 - `CLAUDE.md` for project-specific guidelines
 - Relevant existing code to understand patterns

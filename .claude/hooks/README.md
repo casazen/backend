@@ -1,61 +1,73 @@
-# Preprocessing Hooks
+# Hooks
 
-Hooks that run before tool execution to reduce token usage by filtering verbose output.
+Real executable hooks that fire automatically during Claude Code sessions.
 
-## Available Hooks
+Hooks are configured in `.claude/settings.json` and call scripts in `hooks/scripts/`.
 
-### `filter-test-output.sh`
-**Trigger**: Before `dotnet test`, `npm test`, `pytest`, `go test`
-**Action**: Filters output to show only failures and test summary
-**Token Savings**: 80-90%
+---
 
-### `filter-build-output.sh`
-**Trigger**: Before `dotnet build`, `npm run build`, `mvn compile`
-**Action**: Filters output to show only errors, warnings, and build status
-**Token Savings**: 70-80%
+## Active Hooks
+
+### 1. `filter-test-output.sh` — PreToolUse on `dotnet test`
+
+**Trigger**: any `Bash` tool call containing `dotnet test`
+**Script**: `.claude/hooks/scripts/filter-test-output.sh`
+**Savings**: ~80-90% token reduction on test runs
+
+Strips verbose passing-test output, keeps only:
+- Test failure blocks + stack traces
+- Summary lines (Passed/Failed/Skipped counts)
+
+### 2. `filter-build-output.sh` — PreToolUse on `dotnet build`
+
+**Trigger**: any `Bash` tool call containing `dotnet build`
+**Script**: `.claude/hooks/scripts/filter-build-output.sh`
+**Savings**: ~70-80% token reduction on build runs
+
+Strips informational lines, keeps only:
+- Compiler errors (`error CS...`)
+- Compiler warnings (`warning CS...`)
+- Build success/failure status line
+
+### 3. `session-context.sh` — UserPromptSubmit
+
+**Trigger**: first user message in each session
+**Script**: `.claude/hooks/scripts/session-context.sh`
+**Cost**: ~100 tokens per session (minimal)
+
+Injects a compact project context snapshot:
+- Tech stack + layer summary
+- Regulatory context last updated date
+- Roadmap status (EXISTS / MISSING)
+- Open issue count
+- Quick-start skill reminders
+
+---
+
+## Scripts
+
+```
+.claude/hooks/scripts/
+  filter-test-output.sh   PreToolUse — dotnet test output filter
+  filter-build-output.sh  PreToolUse — dotnet build output filter
+  session-context.sh      UserPromptSubmit — compact session bootstrap
+```
+
+---
 
 ## Configuration
 
-Hooks are activated in `.claude/settings.json`:
+Hooks are wired in `.claude/settings.json` under the `"hooks"` key.
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/filter-test-output.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+To disable a hook temporarily: remove or comment its entry in `settings.json`.
 
-## Testing Hooks
+---
 
-To test if a hook is working:
+## What is NOT a hook (moved to `.claude/workflows/`)
 
-1. Run a command that triggers the hook (e.g., `dotnet test`)
-2. Check the output - it should be filtered
-3. If not working, check hook file is executable: `chmod +x .claude/hooks/*.sh`
+The following process documents were previously misplaced in `hooks/common/` — they are not executable hooks, they are workflow specifications invoked by skills:
 
-## Disabling Hooks
-
-Temporarily disable by commenting out in `settings.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": []  // Empty array disables all hooks
-  }
-}
-```
-
-## Reference
-
-https://code.claude.com/docs/en/hooks
+- `feature-implementation.md` → `.claude/workflows/feature-implementation.md`
+- `compliance-feature-creation.md` → `.claude/workflows/compliance-feature-creation.md`
+- `contract-audit.md` → `.claude/workflows/contract-audit.md`
+- `review-process.md` → `.claude/workflows/common/review-process.md`

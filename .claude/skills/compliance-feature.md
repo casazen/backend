@@ -1,48 +1,80 @@
 ---
 name: compliance-feature
-description: Regulatory-driven feature creation (updates + gap analysis + competitive research + backlog)
+description: Run the full compliance-driven planning workflow. Updates Italian regulations, runs gap analysis vs. codebase, researches competitors, and creates a prioritized GitHub issue backlog. If no product roadmap exists, runs a strategic refinement meeting first.
 invocable: true
 ---
 
 # Compliance-Driven Feature Creation
 
-Execute full compliance workflow: regulatory updates → gap analysis → competitive research → feature backlog → GitHub issues.
+## Agents
 
-## Workflow
+| Agent | Role |
+|---|---|
+| `@product_owner` | Vision, personas, epics (only if roadmap missing) |
+| `@architect` | Feasibility, architecture, effort (only if roadmap missing) |
+| `@regulatory_agent` | Scan Italian regulations (8 topics) |
+| `@analyzer_agent` | Gap analysis: MISSING / PARTIAL / OUTDATED / COMPLIANT |
+| `@scrum_master_casazen` | Issue creation on GitHub (max 10, linked to epics) |
 
-Load full workflow definition:
+## Prerequisites
 
+```bash
+# Check if roadmap exists
+Test-Path .claude/context/planning/product-roadmap.md
+
+# Check epics
+gh issue list --label epic --state open
 ```
-Read .claude/hooks/compliance-feature-creation.md
+
+**If roadmap or epics are missing** → run Refinement Meeting (in-memory):
+- `@product_owner`: vision + personas + strategic goals + epic candidates
+- `@architect`: feasibility + architecture + effort + risks
+- `@scrum_master_casazen`: consolidate → write `product-roadmap.md` + create epic issues
+
+## Execution Steps
+
+**1. Regulatory Update** (`@regulatory_agent`):
+- WebSearch + WebFetch: ministeroturismo.gov.it, gazzettaufficiale.it, agenziaentrate.gov.it, normattiva.it, EUR-Lex
+- Classify via `.claude/context/agent-guides/classify_topic.md`
+- Update `.claude/context/regulations/*.md`, `_index.md`, `_last_updated.json`
+
+**2. Gap Analysis** (`@analyzer_agent`):
+- Read updated regulations
+- Grep/Glob codebase for existing features
+- Classify: MISSING | PARTIAL | OUTDATED | COMPLIANT
+- Prioritize: 🔴 CRITICAL | 🟡 HIGH | 🟢 MEDIUM | ⚪ LOW
+
+**3. Competitive Research**:
+- WebSearch: "Lodgify [feature]", "Guesty [feature]", "Hostaway [feature]"
+- Build feature matrix: what competitors offer vs. what CasaZen lacks
+
+**4. Feature Planning**:
+- Priority: compliance deadline > severity > competitor pressure
+- Effort: S (1-2 days) / M (3-5 days) / L (1-2 weeks) / XL (>2 weeks)
+- Scope: backend | frontend | fullstack
+
+**5. Issue Creation** (`@scrum_master_casazen`):
+```bash
+gh issue create --repo casazen/backend \
+  --title "[COMPLIANCE] <title>" \
+  --label "compliance,priority:critical,scope:backend,effort:M" \
+  --milestone "<deadline>" \
+  --body "<template>"
 ```
+Max 10 issues per run. Create CRITICAL first. Cross-link FE↔BE issues.
 
-Then execute the workflow as documented, orchestrating:
-- `@regulatory_agent` (update Italian regulations)
-- `@analyzer_agent` (gap analysis vs codebase)
-- `@scrum_master_casazen` (issue creation)
+## Output
 
-## Quick Summary
-
-The workflow will:
-0. ✅ **Verify planning & epics** - if missing, trigger strategic refinement meeting
-   - Involves: `@product_owner` (vision), `@architect` (feasibility), `@scrum_master_casazen` (coordination)
-   - Creates: Product roadmap + Epic issues on GitHub
-1. ✅ Update Italian regulations (CIN, Alloggiati Web, Tourist Tax, GDPR)
-2. ✅ Analyze compliance gaps in codebase
-3. ✅ Research competitor features (Lodgify, Guesty, Hostaway)
-4. ✅ Check existing features in codebase
-5. ✅ Create prioritized backlog (P0 critical → P3 nice-to-have)
-6. ✅ Open GitHub Issues for implementation (under relevant epics)
-
-**Output**:
-- `.claude/context/planning/product-roadmap.md` (consolidated: vision + feasibility + roadmap)
-- Epic issues on GitHub (if didn't exist)
+- `.claude/context/planning/product-roadmap.md` (created if missing)
+- Epic issues on GitHub (created if missing)
 - `.claude/context/regulations/` updated
-- `.claude/context/gap-analysis-YYYY-MM-DD.md` created
-- N GitHub Issues created (prioritized backlog, linked to epics)
+- `.claude/context/gap-analysis-YYYY-MM-DD.md`
+- N GitHub Issues (prioritized, linked to epics)
 
-**Note**: Refinement meeting discussion happens in-memory (no intermediate files)
+**Next step**: `/feature-implementation` to implement P0/P1 features.
 
-**Next step**: Use `/feature-implementation` to implement P0/P1 features
+**Cadence**: Monthly or when a new regulation is published.
 
-**Cadence**: Monthly (or ad-hoc when new regulation published)
+## Full Workflow Spec
+
+`.claude/workflows/compliance-feature-creation.md`

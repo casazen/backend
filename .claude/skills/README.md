@@ -1,54 +1,58 @@
-# Skills - On-Demand Instructions
+# Skills
 
-Skills provide detailed instructions that load only when invoked, keeping base context small.
+On-demand instructions invoked with `/skill-name`. Skills load only when called, keeping the base context small.
+
+Each skill is **self-contained**: it does not redirect to another file (no thin-invoker pattern). The full execution instructions are embedded directly in the skill file.
+
+---
 
 ## Available Skills
 
-### `codebase-overview`
-**Usage**: `/codebase-overview`
-**Purpose**: Get instant project architecture overview without file exploration
-**When**: Starting work, onboarding, navigation questions
-**Replaces**: 10-20 file reads for basic codebase understanding
+### Process Skills (orchestrate agents + workflows)
 
-### `migration-workflow`
-**Usage**: `/migration-workflow`
-**Purpose**: Complete EF Core migration workflow (create → test → apply)
-**When**: Modifying database schema (entities, relationships, indexes)
-**Replaces**: Repeated reading of migration docs
+| Skill | Invocation | What it does |
+|---|---|---|
+| `compliance-feature` | `/compliance-feature` | Regulatory scan → gap analysis → GitHub issue backlog |
+| `feature-implementation` | `/feature-implementation` | GitHub issue → branch → PR → review → merge |
+| `contract-audit` | `/contract-audit` | FE/BE API alignment audit → GitHub issues |
+| `create-cross-repo-issues` | `/create-cross-repo-issues` | Create paired FE+BE GitHub issues (delegates to `@scrum_master_casazen`) |
 
-## Creating New Skills
+### Reference Skills (instant lookup, no agent needed)
 
-1. Create `.claude/skills/{skill-name}.md`
-2. Add frontmatter:
-   ```yaml
-   ---
-   name: skill-name
-   description: Brief description (shown in skill list)
-   invocable: true
-   ---
-   ```
-3. Write detailed instructions in markdown
-4. Invoke with `/{skill-name}` or via Skill tool
+| Skill | Invocation | What it does |
+|---|---|---|
+| `codebase-overview` | `/codebase-overview` | Architecture snapshot (replaces exploring 10-20 files) |
+| `code-review-local` | `/code-review-local` | Manual PR code review (GitHub Actions disabled for cost) |
+| `migration-workflow` | `/migration-workflow` | EF Core migration create → review → apply steps |
+| `list-issues` | `/list-issues` | Live GitHub issue query (replaces deprecated static file) |
 
-## Skill vs. CLAUDE.md
+### Template Skills (generate structured output)
 
-**CLAUDE.md**: Always loaded, should be concise (< 500 lines)
-- Project overview
-- Links to detailed rules
-- Essential conventions
+| Skill | Invocation | What it does |
+|---|---|---|
+| `write-user-story` | `/write-user-story` | Generate a compliance-ready GitHub issue from a regulatory gap |
+| `open-github-issue` | `/open-github-issue` | Create a GitHub issue with the CasaZen compliance template |
 
-**Skills**: Loaded on-demand, can be verbose
-- Detailed workflows
-- Step-by-step procedures
-- Domain knowledge
+---
+
+## Design Principles
+
+- **Self-contained**: each skill file contains full execution instructions
+- **No thin-invoker**: skills do not just `Read <other-file>` — they embed the essential steps
+- **On-demand**: skills are NOT loaded into base context; they load only when invoked
+- **Token-efficient**: skills avoid duplicating content already in `CLAUDE.md` or `.claude/rules/`
+
+Full workflow specs (for deeper reference): `.claude/workflows/`
+
+---
 
 ## Token Savings
 
-Moving workflows from CLAUDE.md to skills:
-- **Base context**: 20-30% smaller
-- **Per-session**: Load only needed skills (not all workflows)
-- **Cumulative**: Significant savings on long conversations
+Skills reduce the base context loaded at session start by ~20-30%.
 
-## Reference
-
-https://code.claude.com/docs/en/skills
+| Replaced by skill | Token savings |
+|---|---|
+| `codebase-overview` | Replaces reading 10-20 files (~5,000 tokens) |
+| `migration-workflow` | Replaces reading migration docs (~1,000 tokens) |
+| `list-issues` | Replaces static `open_issues.md` file (~3,000 tokens) |
+| `code-review-local` | Replaces reading full review setup docs (~2,000 tokens) |

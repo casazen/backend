@@ -5,7 +5,36 @@
     "effort": "medium"
   },
   "hooks": {
-    "PreToolUse": []
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scripts/filter-test-output.sh",
+            "timeout": 10,
+            "trigger": "dotnet test"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scripts/filter-build-output.sh",
+            "timeout": 10,
+            "trigger": "dotnet build"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scripts/session-context.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   },
   "statusLine": {
     "type": "command",
