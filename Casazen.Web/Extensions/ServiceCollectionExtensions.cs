@@ -13,6 +13,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication;
 using Polly;
 
 namespace Casazen.Web.Extensions;
@@ -37,47 +38,47 @@ public static class ServiceCollectionExtensions
             {
                 var domain = configuration["Auth0:Domain"];
                 var audience = configuration["Auth0:Audience"];
-                
+
                 options.Authority = $"https://{domain}";
                 options.Audience = audience;
 
-                // IMPORTANT: Token validation parameters
                 options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
                 {
                     ValidateIssuer = true,
                     ValidIssuer = $"https://{domain}/",
-                    // TEMPORARY: Disable audience validation for debugging
-                    ValidateAudience = false,
-                    // Accept both API audience and Auth0 userinfo audience
-                    // ValidAudiences = new[] { audience, $"https://{domain}/userinfo" },
+                    ValidateAudience = true,
+                    ValidAudience = audience,
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
                     NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
                     RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
                 };
 
-                // Transform Auth0 custom role claim to standard role claims
                 options.Events = new JwtBearerEvents
                 {
                     OnAuthenticationFailed = context =>
                     {
-                        Console.WriteLine($"[Auth Debug] Authentication failed: {context.Exception.Message}");
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILogger<JwtBearerHandler>>();
+                        logger.LogWarning("Authentication failed: {Error}", context.Exception.Message);
                         return Task.CompletedTask;
                     },
                     OnChallenge = context =>
                     {
-                        Console.WriteLine($"[Auth Debug] Auth challenge: {context.Error}, {context.ErrorDescription}");
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILogger<JwtBearerHandler>>();
+                        logger.LogWarning("Auth challenge — error: {Error}, description: {Description}",
+                            context.Error, context.ErrorDescription);
                         return Task.CompletedTask;
                     },
                     OnTokenValidated = context =>
                     {
-                        Console.WriteLine("[Auth Debug] Token validated successfully");
+                        // Map Auth0 custom roles claim to standard .NET role claims
                         if (context.Principal?.Identity is ClaimsIdentity identity)
                         {
                             var rolesClaim = context.Principal.FindFirst("https://casazen.app/roles");
                             if (rolesClaim != null)
                             {
-                                // Auth0 sends roles as JSON array
                                 var roles = JsonSerializer.Deserialize<string[]>(rolesClaim.Value);
                                 if (roles != null)
                                 {
@@ -94,7 +95,7 @@ public static class ServiceCollectionExtensions
                     }
                 };
 
-                // Disable HTTPS requirement in development
+                // Disable HTTPS requirement in development only
                 if (environment.IsDevelopment())
                 {
                     options.RequireHttpsMetadata = false;
