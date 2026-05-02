@@ -42,19 +42,19 @@ Skills are **self-contained**: full execution instructions embedded directly, no
 
 ---
 
-## OpenCode Command Integration
+## Command Integration (dual-mode)
 
-The main workflow skills are also wired as OpenCode commands in `opencode.json`:
+Workflow skills are wired as invocable commands in both tools:
 
-| Type in TUI | Runs |
-|---|---|
-| `/feature-implementation` | feature-implementation skill + workflow |
-| `/compliance-feature` | compliance-feature skill + workflow |
-| `/contract-audit` | contract-audit skill + workflow |
-| `/code-review` | code-review-local skill |
-| `/context` | session context summary |
-| `/codebase-overview` | architecture reference |
-| `/migration` | EF Core migration workflow |
+| Command | Claude Code | OpenCode |
+|---|---|---|
+| `/feature-implementation` | `.claude/commands/feature-implementation.md` | `opencode.json` command |
+| `/compliance-feature` | `.claude/commands/compliance-feature.md` | `opencode.json` command |
+| `/contract-audit` | `.claude/commands/contract-audit.md` | `opencode.json` command |
+| `/code-review` | `.claude/commands/code-review.md` | `opencode.json` command |
+| `/context` | `.claude/commands/context.md` | `opencode.json` command |
+| `/codebase-overview` | `.claude/commands/codebase-overview.md` | `opencode.json` command |
+| `/migration` | `.claude/commands/migration.md` | `opencode.json` command |
 
 ---
 

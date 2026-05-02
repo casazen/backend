@@ -55,17 +55,20 @@ Injects a compact project context snapshot:
 
 ---
 
-## Usage
+## Configuration
 
-**OpenCode** does not use PreToolUse hooks the same way Claude Code does.
-The filter scripts are available in `hooks/scripts/` and can be:
-- Invoked manually from bash during development
-- Called from OpenCode commands via `!` shell interpolation (see `opencode.json`)
-- Called from CI/CD pipelines
+### Claude Code
+Hooks are wired in `.claude/settings.json` (PreToolUse, correct schema):
+- `Bash(dotnet test*)` → `filter-test-output.sh`
+- `Bash(dotnet build*)` → `filter-build-output.sh`
 
-The `session-context.sh` script is invoked by the `/context` command in `opencode.json`.
+`session-context.sh` is invoked by the `/context` command in `.claude/commands/context.md`.
 
-To disable a filter: remove the `!` shell call from the relevant command in `opencode.json`.
+### OpenCode
+The filter scripts can be called via `!` shell interpolation in commands (see `opencode.json`).
+`session-context.sh` is invoked by the `/context` command in `opencode.json`.
+
+To disable a filter: remove its entry from `settings.json` (Claude Code) or the `!` call in `opencode.json` (OpenCode).
 
 ---
 

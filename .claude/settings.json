@@ -4,7 +4,28 @@
     "enabled": true,
     "effort": "medium"
   },
-  "hooks": {},
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(dotnet test*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scripts/filter-test-output.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(dotnet build*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scripts/filter-build-output.sh"
+          }
+        ]
+      }
+    ]
+  },
   "statusLine": {
     "type": "command",
     "command": ""

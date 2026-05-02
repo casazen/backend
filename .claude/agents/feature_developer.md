@@ -1,13 +1,16 @@
 ---
 name: feature-developer
 description: Implements features following CasaZen coding standards. Use when implementing code changes for GitHub issues. Creates branch, implements code + tests, opens PR, and runs code-review-local skill. Never merges to main directly.
+# --- OpenCode ---
 mode: subagent
-model: adesso-ai-hub/claude-sonnet-4-6
 permission:
   edit: allow
   bash: allow
   webfetch: deny
   websearch: deny
+# --- Claude Code ---
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: sonnet
 ---
 
 # Feature Developer Agent (CasaZen Override)
