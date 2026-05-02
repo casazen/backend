@@ -44,3 +44,9 @@ Thumbs.db
 CLAUDE.md
 .claude/settings.local.json  # User-specific settings (permissions, local config)
 /get-token.sh
+
+## OpenCode
+opencode.json  # Contains API keys - never commit
+
+## Windows artifacts
+nul

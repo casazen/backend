@@ -7,18 +7,36 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
+// TEMPORARY: Disabled for debugging - Re-enable in production!
+// [Authorize(Policy = "PropertyOwner")]
 public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
+    [HttpGet("health")]
+    [AllowAnonymous]
+    public IActionResult HealthCheck()
+    {
+        logger.LogInformation("Health check called - backend is working!");
+        return Ok(new { status = "healthy", message = "Backend is running", timestamp = DateTime.UtcNow });
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Property>>> GetAll()
     {
+        logger.LogInformation("GetAll properties called");
+        logger.LogInformation($"User authenticated: {User.Identity?.IsAuthenticated}");
+        logger.LogInformation($"User identity name: {User.Identity?.Name}");
+        
         var userId = User.FindFirst("sub")?.Value;
+        logger.LogInformation($"User ID from sub claim: {userId}");
+        
         if (string.IsNullOrEmpty(userId))
+        {
+            logger.LogWarning("No sub claim found in token");
             return Unauthorized();
+        }
 
         var properties = await propertyService.GetOwnerPropertiesAsync(userId);
         return Ok(properties);
