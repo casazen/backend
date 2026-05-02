@@ -49,6 +49,11 @@ public class TouristTaxService(
         return totalTax;
     }
 
+    public async Task<TouristTaxRate?> GetTaxRateByIdAsync(Guid id)
+    {
+        return await repository.GetByIdAsync(id);
+    }
+
     public async Task<TouristTaxRate?> GetTaxRateAsync(string city, DateTime date)
     {
         return await repository.GetActiveByCityAsync(city, date);
