@@ -544,9 +544,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<decimal>("Latitude")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("Longitude")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("MaxGuests")

@@ -58,6 +58,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(r => r.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Precision for GPS coordinates
+        modelBuilder.Entity<Property>()
+            .Property(p => p.Latitude)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<Property>()
+            .Property(p => p.Longitude)
+            .HasPrecision(18, 2);
+
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
