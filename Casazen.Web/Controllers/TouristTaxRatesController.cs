@@ -23,6 +23,23 @@ public class TouristTaxRatesController(
     }
 
     /// <summary>
+    /// Get tourist tax rate by ID
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<TouristTaxRate>> GetById(Guid id)
+    {
+        var rate = await touristTaxService.GetTaxRateByIdAsync(id);
+
+        if (rate == null)
+        {
+            logger.LogWarning("Tourist tax rate not found: {Id}", id);
+            return NotFound(new { message = $"Tourist tax rate with ID {id} not found" });
+        }
+
+        return Ok(rate);
+    }
+
+    /// <summary>
     /// Get active tax rate for a specific city
     /// </summary>
     [HttpGet("city/{city}")]
@@ -87,12 +104,81 @@ public class TouristTaxRatesController(
                 "Tourist tax rate saved for city {City}: €{Rate}/person/night",
                 result.City, result.RatePerPersonPerNight);
 
-            return CreatedAtAction(nameof(GetByCity), new { city = result.City }, result);
+            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error saving tourist tax rate for city {City}", taxRate.City);
             return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Update tourist tax rate by ID (Admin only)
+    /// </summary>
+    [HttpPut("{id}")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<TouristTaxRate>> Update(Guid id, [FromBody] TouristTaxRate taxRate)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var existing = await touristTaxService.GetTaxRateByIdAsync(id);
+        if (existing == null)
+        {
+            logger.LogWarning("Tourist tax rate not found for update: {Id}", id);
+            return NotFound(new { message = $"Tourist tax rate with ID {id} not found" });
+        }
+
+        try
+        {
+            taxRate.Id = id; // Ensure ID cannot be changed
+            taxRate.UpdatedAt = DateTime.UtcNow;
+            var result = await touristTaxService.SaveTaxRateAsync(taxRate);
+
+            logger.LogInformation(
+                "Tourist tax rate updated for city {City}: €{Rate}/person/night",
+                result.City, result.RatePerPersonPerNight);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error updating tourist tax rate {Id} for city {City}", id, taxRate.City);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Delete tourist tax rate by ID (Admin only)
+    /// </summary>
+    [HttpDelete("{id}")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        logger.LogInformation("Deleting tourist tax rate: {Id}", id);
+
+        var existing = await touristTaxService.GetTaxRateByIdAsync(id);
+        if (existing == null)
+        {
+            logger.LogWarning("Tourist tax rate not found for deletion: {Id}", id);
+            return NotFound(new { message = $"Tourist tax rate with ID {id} not found" });
+        }
+
+        try
+        {
+            // Soft delete by setting IsActive = false
+            existing.IsActive = false;
+            existing.UpdatedAt = DateTime.UtcNow;
+            await touristTaxService.SaveTaxRateAsync(existing);
+
+            logger.LogInformation("Tourist tax rate soft-deleted: {Id} for city {City}", id, existing.City);
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deleting tourist tax rate {Id}", id);
+            return StatusCode(500, new { error = "Failed to delete tourist tax rate" });
         }
     }
 }

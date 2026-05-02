@@ -10,6 +10,11 @@ public interface ITouristTaxService
     Task<decimal> CalculateTouristTaxAsync(string city, int numberOfAdults, int numberOfChildren, DateTime checkIn, DateTime checkOut);
 
     /// <summary>
+    /// Get tax rate by ID
+    /// </summary>
+    Task<TouristTaxRate?> GetTaxRateByIdAsync(Guid id);
+
+    /// <summary>
     /// Get active tax rate for a city
     /// </summary>
     Task<TouristTaxRate?> GetTaxRateAsync(string city, DateTime date);
