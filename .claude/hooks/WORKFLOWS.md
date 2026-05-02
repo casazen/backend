@@ -58,7 +58,9 @@ Read .claude/hooks/contract-audit.md
 **Quando usarlo**: Quando ci sono issue da implementare (backlog grooming)
 
 **Cosa fa**:
-1. Analizza issue aperte (FE + BE)
+0. **Prerequisites Check**: Verifica issue aperte
+   - Se nessuna issue → Auto-trigger `/compliance-feature` per generare backlog
+1. Analizza issue aperte (FE + BE, escluse epics)
 2. Raggruppa feature correlate
 3. Crea piano implementazione (BE-first, FE-first, o parallelo)
 4. Coordina `@feature_developer` per implementare
@@ -70,6 +72,8 @@ Read .claude/hooks/contract-audit.md
 - PR aperte e revisionate (FE + BE)
 - Issue chiuse dopo merge
 - Report finale (APPROVED o ESCALATION)
+
+**Auto-trigger**: Se backlog vuoto, esegue automaticamente `/compliance-feature`
 
 **Invocazione**:
 ```bash
@@ -85,22 +89,32 @@ Read .claude/hooks/feature-implementation.md
 ### 3. Compliance-Driven Feature Creation
 
 **File**: `compliance-feature-creation.md`
-**Agenti**: `@regulatory_agent`, `@analyzer_agent`, `@scrum_master_casazen`
+**Agenti**: `@product_owner`, `@architect`, `@scrum_master_casazen`, `@regulatory_agent`, `@analyzer_agent`
 **Quando usarlo**: Mensile (monitoring normativo) o ad-hoc (nuova legge pubblicata)
 
 **Cosa fa**:
+0. **Planning & Epics Check**: Verifica roadmap e epics esistenti
+   - Se mancano → **Refinement Meeting** (in-memory discussion):
+     - `@product_owner`: Vision, personas, strategic goals, epic candidates
+     - `@architect`: Technical feasibility, architecture, effort, risks
+     - `@scrum_master_casazen`: Consolidamento, roadmap finale, epic creation
+   - Output: Product roadmap consolidato + Epic issues su GitHub
 1. Aggiorna normative italiane (CIN, Alloggiati Web, Tourist Tax, GDPR)
 2. Analizza gap tra norme e codebase
 3. Ricerca competitor (cosa fanno Lodgify, Guesty, Hostaway)
 4. Verifica feature esistenti in codebase
 5. Crea backlog prioritizzato (P0 compliance → P3 nice-to-have)
-6. Apre GitHub Issue via `@scrum_master_casazen`
+6. Apre GitHub Issue via `@scrum_master_casazen` (linkate ad epics)
 
 **Output**:
+- `.claude/context/planning/product-roadmap.md` (se non esisteva - consolidato)
+- Epic issues su GitHub (se non esistevano)
 - `.claude/context/regulations/` aggiornato
 - `.claude/context/gap-analysis-YYYY-MM-DD.md`
 - Backlog feature (con priorità, effort, scope)
-- N issue create su GitHub (pronte per implementazione)
+- N issue create su GitHub (pronte per implementazione, linkate ad epics)
+
+**Note**: Refinement meeting avviene in-memory (no file intermedi), solo roadmap finale scritto su disco
 
 **Invocazione**:
 ```bash
@@ -130,21 +144,48 @@ Read .claude/hooks/compliance-feature-creation.md
 
 ## 🔄 Flusso Tipico
 
-### Scenario 1: Nuova Normativa Pubblicata
+### Scenario 1: Primo Avvio (No Planning/Epics)
+
+```
+1. /feature-implementation
+   → Nessuna issue → Auto-trigger /compliance-feature
+
+2. /compliance-feature (triggered)
+   → Nessun planning → Refinement Meeting (in-memory):
+     - @product_owner: Vision & epics
+     - @architect: Feasibility & risks
+     - @scrum_master_casazen: Roadmap consolidato + Epic creation
+   → Crea product-roadmap.md
+   → Crea 5 epic issues su GitHub
+
+3. /compliance-feature (continua)
+   → Aggiorna norme + gap analysis + competitive research
+   → Crea feature issues (linkate ad epics)
+
+4. /feature-implementation (resume)
+   → Implementa feature P0 (critical) prima
+   → Review cycle + merge
+
+5. Deploy to production
+```
+
+### Scenario 2: Run Successivi (Planning Esiste)
 
 ```
 1. /compliance-feature
+   → Planning esiste → SKIP refinement meeting
    → Aggiorna norme + gap analysis + competitive research
-   → Crea issue GitHub
+   → Crea nuove feature issues (sotto epics esistenti)
 
 2. /feature-implementation
-   → Implementa feature P0 (critical) prima
+   → Issue esistono → Procedi direttamente
+   → Implementa feature prioritizzate
    → Review cycle + merge
 
 3. Deploy to production
 ```
 
-### Scenario 2: Sprint Planning
+### Scenario 3: Sprint Planning con Contract Audit
 
 ```
 1. /contract-audit

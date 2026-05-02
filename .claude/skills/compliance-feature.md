@@ -35,11 +35,13 @@ The workflow will:
 6. ✅ Open GitHub Issues for implementation (under relevant epics)
 
 **Output**:
-- `.claude/context/planning/product-roadmap.md` (if didn't exist)
+- `.claude/context/planning/product-roadmap.md` (consolidated: vision + feasibility + roadmap)
 - Epic issues on GitHub (if didn't exist)
 - `.claude/context/regulations/` updated
 - `.claude/context/gap-analysis-YYYY-MM-DD.md` created
 - N GitHub Issues created (prioritized backlog, linked to epics)
+
+**Note**: Refinement meeting discussion happens in-memory (no intermediate files)
 
 **Next step**: Use `/feature-implementation` to implement P0/P1 features
 

@@ -121,7 +121,9 @@ Convocare **refinement meeting strategico** con:
 
 ---
 
-### Phase 1: Strategic Planning Discussion
+### Phase 1: Strategic Planning Discussion (In-Memory)
+
+**IMPORTANTE**: Le discussioni tra agenti avvengono **in memoria** senza creare file intermedi. Solo l'output finale consolidato sarà scritto su disco.
 
 Invoca i tre agenti in sequenza per discussione collaborativa:
 
@@ -129,7 +131,7 @@ Invoca i tre agenti in sequenza per discussione collaborativa:
 
 **Prompt per @product_owner**:
 ```markdown
-@product_owner, avvia strategic planning per CasaZen.
+@product_owner, partecipa a strategic planning per CasaZen.
 
 **Contesto**:
 - Prodotto: Piattaforma gestione affitti brevi (Italia)
@@ -145,12 +147,14 @@ Invoca i tre agenti in sequenza per discussione collaborativa:
    - Market trends (competitor analysis)
    - User pain points
 
-**Output**:
-- Document `.claude/context/planning/product-vision.md`
-- Lista epics candidate con business value
+**IMPORTANTE**: Rispondi in conversazione (in-memory), NON creare file .md
+Il tuo output sarà usato da @architect per technical analysis
+
+**Formato Output**:
+Restituisci analisi strutturata in markdown (in conversazione) pronta per @architect
 ```
 
-**Output atteso**:
+**Output atteso (in conversazione)**:
 ```markdown
 ## Product Vision
 
@@ -204,10 +208,10 @@ Invoca i tre agenti in sequenza per discussione collaborativa:
 ```markdown
 @architect, valuta technical feasibility delle epics proposte da @product_owner.
 
-**Input**: Epics candidate da `.claude/context/planning/product-vision.md`
+**Input**: Output di @product_owner (fornito sopra nella conversazione)
 
 **Task**:
-1. Per ogni epic, analizza:
+1. Per ogni epic proposta da @product_owner, analizza:
    - ✅ **Feasibility**: Tecnicamente realizzabile? Blockers?
    - 🏗️ **Architecture Impact**: Nuovi servizi? Integration esterne? DB schema changes?
    - ⏱️ **Effort Estimate**: Small (< 2 settimane), Medium (2-4 sett), Large (> 1 mese)
@@ -216,13 +220,17 @@ Invoca i tre agenti in sequenza per discussione collaborativa:
 
 2. Proponi **Technical Architecture** per top 3 epics (priorità)
 
-**Output**:
-- Document `.claude/context/planning/technical-feasibility.md`
+**IMPORTANTE**: Rispondi in conversazione (in-memory), NON creare file .md
+Il tuo output sarà usato da @scrum_master_casazen per consolidamento finale
+
+**Formato Output**:
+Restituisci analisi tecnica strutturata in markdown (in conversazione) con:
+- Feasibility assessment per epic
 - Architecture diagrams (mermaid) per epics complesse
 - Risk mitigation strategies
 ```
 
-**Output atteso**:
+**Output atteso (in conversazione)**:
 ```markdown
 ## Technical Feasibility Analysis
 
@@ -301,24 +309,26 @@ graph LR
 
 ---
 
-#### 3. Scrum Master - Coordination & Backlog Creation
+#### 3. Scrum Master - Coordination & Final Consolidation
 
 **Prompt per @scrum_master_casazen**:
 ```markdown
-@scrum_master_casazen, coordina la creazione di planning e epics finali.
+@scrum_master_casazen, consolida planning e crea epics finali.
 
-**Input**:
-- Product vision: `.claude/context/planning/product-vision.md`
-- Technical feasibility: `.claude/context/planning/technical-feasibility.md`
+**Input (dalla conversazione)**:
+- Product vision & epics da @product_owner (output sopra)
+- Technical feasibility da @architect (output sopra)
 
 **Task**:
-1. **Consolida feedback** da @product_owner e @architect
+1. **Consolida feedback** da @product_owner e @architect (in memoria)
 2. **Finalizza Epics** (max 5 epics per roadmap):
    - Combina business value + technical feasibility
    - Risolvi conflitti priorità (business vs tech)
    - Ordina per priorità finale
 
-3. **Crea Product Roadmap**: `.claude/context/planning/product-roadmap.md`
+3. **Crea Product Roadmap FILE** ⭐ **UNICO FILE DA SCRIVERE**:
+   - Path: `.claude/context/planning/product-roadmap.md`
+   - Includi: Vision (da @product_owner) + Feasibility (da @architect) + Roadmap finale
    - Timeline: Q2-Q3 2026
    - Epics con dependencies graph
    - Resource allocation estimate
@@ -367,11 +377,51 @@ graph LR
 - N GitHub issues created (epics)
 ```
 
-**Output atteso**:
+**Output atteso (product-roadmap.md - consolidato completo)**:
 ```markdown
 ## Product Roadmap: Q2-Q3 2026
 
-**Vision**: Automatizzare compliance e operazioni per affitti brevi in Italia
+---
+
+## Product Vision (from @product_owner)
+
+**Mission**: Semplificare gestione affitti brevi in Italia, automatizzando compliance e sync OTA.
+
+**Target Market**:
+- Property manager (10-50 proprietà)
+- Host individuali (1-5 proprietà)
+- Agenzie immobiliari
+
+**Strategic Goals** (Q2-Q3 2026):
+1. 🔴 100% Compliance normativa italiana (P0)
+2. 🟡 OTA sync real-time (Airbnb, Booking.com)
+3. 🟢 Guest self-service (check-in, pagamenti)
+4. 🔵 Analytics & reporting fiscale
+5. 🟣 Multi-property management dashboard
+
+---
+
+## Technical Feasibility (from @architect)
+
+### Epic-Level Analysis
+
+**Epic 1: Regulatory Compliance Automation**
+- ✅ Feasibility: HIGH
+- 🏗️ Architecture: Background workers, Gov API integration, DB schema changes
+- ⏱️ Effort: Medium (3-4 settimane)
+- ⚠️ Risks: Gov API downtime, changing regulations
+
+**Epic 2: OTA Real-Time Sync**
+- ✅ Feasibility: MEDIUM
+- 🏗️ Architecture: Webhook listeners, event-driven sync, conflict resolution
+- ⏱️ Effort: Large (6-8 settimane)
+- ⚠️ Risks: Rate limiting, API changes
+
+**Epic 3-5**: [Similar structure...]
+
+---
+
+## Roadmap (consolidated)
 
 ### Epic Prioritization Matrix
 
@@ -423,10 +473,13 @@ graph TD
 ### Output STEP 0.1
 
 Al termine del refinement meeting:
-- ✅ `.claude/context/planning/product-vision.md` (product owner)
-- ✅ `.claude/context/planning/technical-feasibility.md` (architect)
-- ✅ `.claude/context/planning/product-roadmap.md` (scrum master - consolidated)
+- ✅ **Discussioni in-memory** tra @product_owner, @architect, @scrum_master_casazen
+- ✅ **UNICO FILE SCRITTO**: `.claude/context/planning/product-roadmap.md` (consolidato completo)
+  - Include: Vision, Technical Feasibility, Roadmap, Epics
+  - Tutti gli insights dei 3 agenti in un unico documento
 - ✅ 5 GitHub issues create (label `epic`)
+
+**Benefit**: No file intermedi, conversazione fluida, output finale completo
 
 **Next**: Procedi con **STEP 1 - Regulatory Update** per popolare epics con feature specifiche.
 
