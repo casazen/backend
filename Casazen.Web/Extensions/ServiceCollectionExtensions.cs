@@ -36,18 +36,42 @@ public static class ServiceCollectionExtensions
             .AddJwtBearer(options =>
             {
                 var domain = configuration["Auth0:Domain"];
+                var audience = configuration["Auth0:Audience"];
+                
                 options.Authority = $"https://{domain}";
-                options.Audience = configuration["Auth0:Audience"];
+                options.Audience = audience;
 
-                // Map Auth0 custom claims to ASP.NET Core claims
-                options.TokenValidationParameters.NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
-                options.TokenValidationParameters.RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
+                // IMPORTANT: Token validation parameters
+                options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = $"https://{domain}/",
+                    // TEMPORARY: Disable audience validation for debugging
+                    ValidateAudience = false,
+                    // Accept both API audience and Auth0 userinfo audience
+                    // ValidAudiences = new[] { audience, $"https://{domain}/userinfo" },
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+                    RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
+                };
 
                 // Transform Auth0 custom role claim to standard role claims
                 options.Events = new JwtBearerEvents
                 {
+                    OnAuthenticationFailed = context =>
+                    {
+                        Console.WriteLine($"[Auth Debug] Authentication failed: {context.Exception.Message}");
+                        return Task.CompletedTask;
+                    },
+                    OnChallenge = context =>
+                    {
+                        Console.WriteLine($"[Auth Debug] Auth challenge: {context.Error}, {context.ErrorDescription}");
+                        return Task.CompletedTask;
+                    },
                     OnTokenValidated = context =>
                     {
+                        Console.WriteLine("[Auth Debug] Token validated successfully");
                         if (context.Principal?.Identity is ClaimsIdentity identity)
                         {
                             var rolesClaim = context.Principal.FindFirst("https://casazen.app/roles");
@@ -84,7 +108,10 @@ public static class ServiceCollectionExtensions
     {
         services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
-            .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "Admin"));
+            // DEVELOPMENT: Allow any authenticated user (remove role requirement for testing)
+            .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser());
+            // PRODUCTION: Uncomment below and remove above line
+            // .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "Admin"));
 
         return services;
     }
@@ -96,7 +123,7 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy
-                    .WithOrigins("http://localhost:3000", "http://localhost:5173", "https://casazen.app")
+                    .WithOrigins("http://localhost:3000", "http://localhost:5173","http://localhost:5174","http://localhost:5175", "https://casazen.app")
                     .AllowAnyMethod()
                     .AllowAnyHeader()
                     .AllowCredentials();

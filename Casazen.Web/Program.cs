@@ -155,6 +155,30 @@ app.UseStaticFiles();
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
 
+// DEBUG: Log all incoming requests
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("=== Incoming Request ===");
+    logger.LogInformation($"Path: {context.Request.Path}");
+    logger.LogInformation($"Method: {context.Request.Method}");
+    
+    if (context.Request.Headers.ContainsKey("Authorization"))
+    {
+        var authHeader = context.Request.Headers["Authorization"].ToString();
+        logger.LogInformation($"Authorization header present: {authHeader.Substring(0, Math.Min(50, authHeader.Length))}...");
+    }
+    else
+    {
+        logger.LogWarning("No Authorization header found!");
+    }
+    
+    await next();
+    
+    logger.LogInformation($"Response Status: {context.Response.StatusCode}");
+    logger.LogInformation("=== Request Complete ===");
+});
+
 // Authentication & Authorization (must be in this order)
 app.UseAuthentication();
 app.UseAuthorization();
