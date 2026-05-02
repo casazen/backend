@@ -8,7 +8,6 @@
 
 set -euo pipefail
 
-CONTEXT_FILE=".claude/context/codebase_map.md"
 LAST_UPDATED=".claude/context/_last_updated.json"
 ROADMAP=".claude/context/planning/product-roadmap.md"
 

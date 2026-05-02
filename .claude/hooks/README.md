@@ -55,19 +55,30 @@ Injects a compact project context snapshot:
 
 ---
 
-## Configuration
+## Usage
 
-Hooks are wired in `.claude/settings.json` under the `"hooks"` key.
+**OpenCode** does not use PreToolUse hooks the same way Claude Code does.
+The filter scripts are available in `hooks/scripts/` and can be:
+- Invoked manually from bash during development
+- Called from OpenCode commands via `!` shell interpolation (see `opencode.json`)
+- Called from CI/CD pipelines
 
-To disable a hook temporarily: remove or comment its entry in `settings.json`.
+The `session-context.sh` script is invoked by the `/context` command in `opencode.json`.
+
+To disable a filter: remove the `!` shell call from the relevant command in `opencode.json`.
 
 ---
 
-## What is NOT a hook (moved to `.claude/workflows/`)
+## What is NOT in hooks/
 
-The following process documents were previously misplaced in `hooks/common/` — they are not executable hooks, they are workflow specifications invoked by skills:
+Workflow process specs are in `.claude/workflows/` — not here.
+The old `hooks/common/review-process.md` has been removed; canonical version is `.claude/workflows/common/review-process.md`.
 
-- `feature-implementation.md` → `.claude/workflows/feature-implementation.md`
-- `compliance-feature-creation.md` → `.claude/workflows/compliance-feature-creation.md`
-- `contract-audit.md` → `.claude/workflows/contract-audit.md`
-- `review-process.md` → `.claude/workflows/common/review-process.md`
+Workflow specs:
+- `feature-implementation` → `.claude/workflows/feature-implementation.md`
+- `compliance-feature-creation` → `.claude/workflows/compliance-feature-creation.md`
+- `contract-audit` → `.claude/workflows/contract-audit.md`
+- `review-process` → `.claude/workflows/common/review-process.md`
+
+Skills (invocable via `/command-name`):
+- `.claude/skills/<name>/SKILL.md` — each skill is a directory containing `SKILL.md`
