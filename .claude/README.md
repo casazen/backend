@@ -1,5 +1,9 @@
 # CasaZen - Automated Development System
 
+> **Start here**: Before reading this file, see the two core process guides at the repository root:
+> - **[PLANNING.md](../PLANNING.md)** — how to create the backlog (regulatory analysis, roadmap, epics)
+> - **[DEVELOPMENT.md](../DEVELOPMENT.md)** — how to implement features (branch → code → PR → review → merge)
+
 This document explains the automated development system powered by Claude agents and GitHub Actions.
 
 ## Overview
@@ -275,5 +279,6 @@ Daily reports sent to: `luca.lamal@hotmail.it`
 
 ---
 
-**Last Updated**: 2026-03-31
-**System Version**: 2.0 (Streamlined)
+**Last Updated**: 2026-05-02
+**System Version**: 2.1 (Process-Centric)
+**Core Process Guides**: [PLANNING.md](../PLANNING.md) | [DEVELOPMENT.md](../DEVELOPMENT.md)

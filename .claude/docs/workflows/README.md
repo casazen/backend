@@ -1,263 +1,258 @@
 # CasaZen Workflow Automation
 
-> **Architettura ottimizzata**: Processi comuni riutilizzabili + Workflow specializzati
+> **Optimized architecture**: Reusable common processes + Specialized workflows
 
 ---
 
-## 📋 Struttura
+## Structure
 
 ```
-.claude/hooks/
-├── common/
-│   └── review-process.md          # ⚙️ Processo review riutilizzabile (max 3 iter)
-├── contract-audit.md              # 🔍 FE/BE sync gap analysis
-├── feature-implementation.md      # 🚀 Issue → PR con review cycle
-├── compliance-feature-creation.md # 📜 Regulatory → Feature backlog
-├── README.md                      # 📖 Preprocessing hooks documentation
-└── WORKFLOWS.md                   # 📖 Questa documentazione
+.claude/docs/workflows/
+├── README.md                      # This file — workflow index
+├── feature-implementation.md      # Issue → PR with review cycle
+├── compliance-feature-creation.md # Regulatory → Feature backlog
+└── contract-audit.md              # FE/BE sync gap analysis
+
+.claude/hooks/common/
+└── review-process.md              # Reusable review process (max 3 iterations)
 ```
+
+**Entry points** (root-level guides that reference these workflows):
+- `PLANNING.md` — how to create the backlog
+- `DEVELOPMENT.md` — how to implement features
 
 ---
 
-## 🎯 Workflow Disponibili
+## Available Workflows
 
-### 1. Contract Audit (FE/BE Sync)
-
-**File**: `contract-audit.md`
-**Agente**: `@scrum_master_casazen`
-**Quando usarlo**: Periodicamente (es. ogni 2 settimane) o prima di major release
-
-**Cosa fa**:
-1. Legge backend (API, DTOs, controllers)
-2. Legge frontend (types, api client, queries)
-3. Identifica disallineamenti (types, endpoints, docs)
-4. Apre GitHub Issue per ogni gap (categorizzate per severità)
-5. Crea issue riepilogativa
-
-**Output**:
-- N issue su `casazen/frontend` (types, API client, hooks)
-- M issue su `casazen/backend` (docs)
-- 1 issue riepilogativa su backend
-
-**Invocazione**:
-```bash
-# Manuale (carica file in contesto)
-Read .claude/hooks/contract-audit.md
-
-# Oppure via skill (se configurato)
-/contract-audit
-```
-
----
-
-### 2. Feature Implementation (Issue → PR)
+### 1. Feature Implementation (Issue → PR)
 
 **File**: `feature-implementation.md`
-**Agente principale**: `@scrum_master_casazen`
-**Collaboratori**: `@feature_developer`, `@code_reviewer`, `@release_manager`
-**Quando usarlo**: Quando ci sono issue da implementare (backlog grooming)
+**Primary agent**: `@scrum_master_casazen`
+**Collaborators**: `@feature_developer`, `@code_reviewer`, `@release_manager`
+**When to use**: When there are issues to implement (sprint execution)
 
-**Cosa fa**:
-0. **Prerequisites Check**: Verifica issue aperte
-   - Se nessuna issue → Auto-trigger `/compliance-feature` per generare backlog
-1. Analizza issue aperte (FE + BE, escluse epics)
-2. Raggruppa feature correlate
-3. Crea piano implementazione (BE-first, FE-first, o parallelo)
-4. Coordina `@feature_developer` per implementare
-5. Avvia review cycle (usa `common/review-process.md`)
-6. Gestisce merge via `@release_manager`
+**What it does**:
+0. **Prerequisites check**: Verify open issues exist
+   - If none → auto-trigger `/compliance-feature` to generate backlog
+1. Analyze open issues (FE + BE, excluding epics)
+2. Group related features and plan implementation order
+3. Coordinate `@feature_developer` to implement
+4. Run review cycle (uses `common/review-process.md`)
+5. Manage merge via `@release_manager`
 
 **Output**:
-- Piano implementazione per ogni feature group
-- PR aperte e revisionate (FE + BE)
-- Issue chiuse dopo merge
-- Report finale (APPROVED o ESCALATION)
+- Implementation plan per feature group
+- PR opened and reviewed (FE + BE)
+- Issues closed after merge
+- Final report (APPROVED or ESCALATION)
 
-**Auto-trigger**: Se backlog vuoto, esegue automaticamente `/compliance-feature`
+**Auto-trigger**: If backlog is empty, automatically runs `/compliance-feature`
 
-**Invocazione**:
+**Invocation**:
 ```bash
-# Manuale
-Read .claude/hooks/feature-implementation.md
-
-# Oppure via skill
+# Via skill (recommended)
 /feature-implementation
+
+# Or load workflow file directly
+Read .claude/docs/workflows/feature-implementation.md
 ```
 
 ---
 
-### 3. Compliance-Driven Feature Creation
+### 2. Compliance-Driven Feature Creation
 
 **File**: `compliance-feature-creation.md`
-**Agenti**: `@product_owner`, `@architect`, `@scrum_master_casazen`, `@regulatory_agent`, `@analyzer_agent`
-**Quando usarlo**: Mensile (monitoring normativo) o ad-hoc (nuova legge pubblicata)
+**Agents**: `@regulatory_agent`, `@analyzer_agent`, `@scrum_master_casazen`
+**Supporting**: `@product_owner`, `@architect` (if roadmap missing)
+**When to use**: Monthly (regulatory monitoring) or ad-hoc (new regulation published)
 
-**Cosa fa**:
-0. **Planning & Epics Check**: Verifica roadmap e epics esistenti
-   - Se mancano → **Refinement Meeting** (in-memory discussion):
+**What it does**:
+0. **Planning & Epics check**: Verify roadmap and active epics exist
+   - If missing → **Refinement Meeting** (in-memory):
      - `@product_owner`: Vision, personas, strategic goals, epic candidates
      - `@architect`: Technical feasibility, architecture, effort, risks
-     - `@scrum_master_casazen`: Consolidamento, roadmap finale, epic creation
-   - Output: Product roadmap consolidato + Epic issues su GitHub
-1. Aggiorna normative italiane (CIN, Alloggiati Web, Tourist Tax, GDPR)
-2. Analizza gap tra norme e codebase
-3. Ricerca competitor (cosa fanno Lodgify, Guesty, Hostaway)
-4. Verifica feature esistenti in codebase
-5. Crea backlog prioritizzato (P0 compliance → P3 nice-to-have)
-6. Apre GitHub Issue via `@scrum_master_casazen` (linkate ad epics)
+     - `@scrum_master_casazen`: Consolidation, final roadmap, epic creation
+   - Output: Consolidated product roadmap + Epic issues on GitHub
+1. Update Italian regulations (CIN, Alloggiati Web, Tourist Tax, GDPR)
+2. Analyze gap between regulations and codebase
+3. Research competitors (Lodgify, Guesty, Hostaway)
+4. Verify existing features in codebase
+5. Create prioritized backlog (P0 compliance → P3 nice-to-have)
+6. Open GitHub Issues via `@scrum_master_casazen` (linked to epics)
 
 **Output**:
-- `.claude/context/planning/product-roadmap.md` (se non esisteva - consolidato)
-- Epic issues su GitHub (se non esistevano)
-- `.claude/context/regulations/` aggiornato
-- `.claude/context/gap-analysis-YYYY-MM-DD.md`
-- Backlog feature (con priorità, effort, scope)
-- N issue create su GitHub (pronte per implementazione, linkate ad epics)
+- `.claude/context/planning/product-roadmap.md` (created if missing)
+- Epic issues on GitHub (created if missing)
+- `.claude/context/regulations/` updated
+- `.claude/context/gap-analysis-YYYY-MM-DD.md` created
+- Feature backlog (with priority, effort, scope)
+- N GitHub Issues created (linked to epics)
 
-**Note**: Refinement meeting avviene in-memory (no file intermedi), solo roadmap finale scritto su disco
+**Note**: Refinement meeting happens in-memory (no intermediate files); only the final roadmap is written to disk.
 
-**Invocazione**:
+**Invocation**:
 ```bash
-# Manuale
-Read .claude/hooks/compliance-feature-creation.md
-
-# Oppure via skill
+# Via skill (recommended)
 /compliance-feature
+
+# Or load workflow file directly
+Read .claude/docs/workflows/compliance-feature-creation.md
 ```
 
 ---
 
-## ⚙️ Processo Comune: Code Review
+### 3. Contract Audit (FE/BE Sync)
 
-**File**: `common/review-process.md`
-**Quando si usa**: Automaticamente in `feature-implementation.md` e altri workflow
+**File**: `contract-audit.md`
+**Agent**: `@scrum_master_casazen`
+**When to use**: Every 2 weeks, or before a major release
 
-**Caratteristiche**:
-- ✅ Max 3 iterazioni review per PR
-- ✅ Severity-based findings (🔴 🟡 🟢 ⚪)
-- ✅ Anti-loop: dopo 3 iter, escalation automatica
-- ✅ Review incrementale: solo modifiche delta, non tutto
+**What it does**:
+1. Reads backend (API, DTOs, controllers)
+2. Reads frontend (types, API client, query hooks)
+3. Identifies misalignments (types, endpoints, documentation)
+4. Opens a GitHub Issue per gap (categorized by severity)
+5. Creates a summary issue
 
-**Non invocare direttamente** - è un processo riutilizzabile referenziato da altri workflow.
+**Output**:
+- N issues on `casazen/frontend` (types, API client, hooks)
+- M issues on `casazen/backend` (docs, contract)
+- 1 summary issue on backend
+
+**Invocation**:
+```bash
+# Via skill (recommended)
+/contract-audit
+
+# Or load workflow file directly
+Read .claude/docs/workflows/contract-audit.md
+```
 
 ---
 
-## 🔄 Flusso Tipico
+## Common Process: Code Review
 
-### Scenario 1: Primo Avvio (No Planning/Epics)
+**File**: `common/review-process.md`
+**When it is used**: Automatically within `feature-implementation.md` and other workflows
+
+**Characteristics**:
+- Max 3 review iterations per PR
+- Severity-based findings (🔴 🟡 🟢 ⚪)
+- Anti-loop: automatic escalation after 3 iterations with unresolved blockers
+- Incremental review: only delta changes re-examined between iterations
+
+**Do not invoke directly** — it is a reusable process referenced by other workflows.
+
+---
+
+## Typical Flows
+
+### Scenario 1: First Run (No Planning or Epics)
 
 ```
 1. /feature-implementation
-   → Nessuna issue → Auto-trigger /compliance-feature
+   → No issues exist → auto-trigger /compliance-feature
 
 2. /compliance-feature (triggered)
-   → Nessun planning → Refinement Meeting (in-memory):
-     - @product_owner: Vision & epics
-     - @architect: Feasibility & risks
-     - @scrum_master_casazen: Roadmap consolidato + Epic creation
-   → Crea product-roadmap.md
-   → Crea 5 epic issues su GitHub
+   → No roadmap → Refinement Meeting (in-memory):
+       @product_owner: Vision & epics
+       @architect: Feasibility & risks
+       @scrum_master_casazen: Consolidated roadmap + Epic creation
+   → Creates product-roadmap.md
+   → Creates 5 epic issues on GitHub
 
-3. /compliance-feature (continua)
-   → Aggiorna norme + gap analysis + competitive research
-   → Crea feature issues (linkate ad epics)
+3. /compliance-feature (continues)
+   → Updates regulations + gap analysis + competitive research
+   → Creates feature issues (linked to epics)
 
-4. /feature-implementation (resume)
-   → Implementa feature P0 (critical) prima
+4. /feature-implementation (resumes)
+   → Implements P0 (critical) features first
    → Review cycle + merge
 
 5. Deploy to production
 ```
 
-### Scenario 2: Run Successivi (Planning Esiste)
+### Scenario 2: Subsequent Runs (Planning Exists)
 
 ```
 1. /compliance-feature
-   → Planning esiste → SKIP refinement meeting
-   → Aggiorna norme + gap analysis + competitive research
-   → Crea nuove feature issues (sotto epics esistenti)
+   → Roadmap exists → SKIP refinement meeting
+   → Updates regulations + gap analysis + competitive research
+   → Creates new feature issues (under existing epics)
 
 2. /feature-implementation
-   → Issue esistono → Procedi direttamente
-   → Implementa feature prioritizzate
+   → Issues exist → proceed directly
+   → Implements prioritized features
    → Review cycle + merge
 
 3. Deploy to production
 ```
 
-### Scenario 3: Sprint Planning con Contract Audit
+### Scenario 3: Sprint Planning with Contract Audit
 
 ```
 1. /contract-audit
-   → Identifica disallineamenti FE/BE
-   → Crea issue sync
+   → Identifies FE/BE misalignments
+   → Creates sync issues
 
 2. /feature-implementation
-   → Implementa tutte le issue sync
-   → + feature dal backlog prodotto
+   → Implements all sync issues
+   → + features from existing backlog
 
 3. Review + merge
 ```
 
-### Scenario 3: Pre-Release Audit
+### Scenario 4: Pre-Release Audit
 
 ```
 1. /contract-audit
-   → Verifica che FE e BE siano allineati
-   → 0 issue = OK per release
-   → N issue = Fix prima di release
+   → Verifies FE and BE are aligned
+   → 0 issues = OK for release
+   → N issues = Fix before release
 
-2. Se issue trovate → /feature-implementation
+2. If issues found → /feature-implementation
 ```
 
 ---
 
-## 📊 Metriche & Monitoring
+## Metrics & Monitoring
 
-### KPI da Tracciare
+### KPIs to Track
 
-- **Contract Audit**:
-  - Disallineamenti FE/BE per categoria (types, API, docs)
-  - Tempo medio risoluzione issue sync
+**Contract Audit**:
+- FE/BE misalignments by category (types, API, docs)
+- Average issue resolution time
 
-- **Feature Implementation**:
-  - Issue chiuse per sprint
-  - Review iterations media (target: <2)
-  - Escalation rate (target: <5%)
+**Feature Implementation**:
+- Issues closed per sprint
+- Average review iterations (target: <2)
+- Escalation rate (target: <5%)
 
-- **Compliance**:
-  - Compliance score (% gap risolti vs identificati)
-  - Time-to-compliance (giorni da normativa a deploy)
-  - Competitive gap (feature mancanti vs competitor)
+**Compliance**:
+- Compliance score (% gaps resolved vs identified)
+- Time-to-compliance (days from regulation to deploy)
+- Competitive gap (missing features vs competitors)
 
 ---
 
-## 🛠️ Customizzazione
+## Adding a New Workflow
 
-### Aggiungere Nuovo Workflow
-
-1. Crea `.claude/hooks/<workflow-name>.md`
-2. Se usa review, referenzia `common/review-process.md`:
+1. Create `.claude/docs/workflows/<workflow-name>.md`
+2. If it uses code review, reference `common/review-process.md`:
    ```markdown
    ## Review
-   Segui processo standard: `@.claude/hooks/common/review-process.md`
+   Follow standard process: `@.claude/hooks/common/review-process.md`
    ```
-3. Aggiungi sezione in questo WORKFLOWS.md
-4. Opzionale: crea skill invocabile in `.claude/skills/`
-
-### Modificare Review Process
-
-Edita `common/review-process.md`:
-- Cambia max iterazioni (default 3)
-- Aggiungi severity level custom
-- Modifica criteri APPROVED/ESCALATION
-
-**Attenzione**: modifiche si propagano a tutti i workflow che lo usano.
+3. Add a skill in `.claude/skills/<workflow-name>.md`
+4. Add a section to this README
+5. Reference from `PLANNING.md` or `DEVELOPMENT.md` as appropriate
 
 ---
 
-## 📚 Riferimenti
+## References
 
+- **Entry points**: `PLANNING.md` (root), `DEVELOPMENT.md` (root)
 - **GitHub Flow**: `.claude/rules/github-flow-mandatory.md`
 - **Code Style**: `.claude/rules/code-style.md`
 - **Security**: `.claude/rules/security.md`
@@ -266,16 +261,5 @@ Edita `common/review-process.md`:
 
 ---
 
-## 🔐 Permessi GitHub
-
-I workflow richiedono GitHub MCP con permessi:
-- ✅ Read: Issues, PR, Code
-- ✅ Write: Issues, PR comments
-- ❌ No merge diretto (solo `@release_manager`)
-
-Configurazione: `.claude/settings.json` → MCP servers
-
----
-
-**Last Updated**: 2026-05-01
+**Last Updated**: 2026-05-02
 **Maintained By**: CasaZen Development Team
