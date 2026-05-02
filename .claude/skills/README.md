@@ -1,54 +1,68 @@
-# Skills - On-Demand Instructions
+# Skills
 
-Skills provide detailed instructions that load only when invoked, keeping base context small.
+On-demand instructions invoked via OpenCode commands or the `skill` tool.
+Each skill is a **directory** containing a `SKILL.md` file (OpenCode format).
+
+```
+.claude/skills/
+  <name>/
+    SKILL.md   ← required filename, required frontmatter (name + description)
+```
+
+Skills are **self-contained**: full execution instructions embedded directly, no thin-invoker pattern.
+
+---
 
 ## Available Skills
 
-### `codebase-overview`
-**Usage**: `/codebase-overview`
-**Purpose**: Get instant project architecture overview without file exploration
-**When**: Starting work, onboarding, navigation questions
-**Replaces**: 10-20 file reads for basic codebase understanding
+### Process Skills (orchestrate agents + multi-step workflows)
 
-### `migration-workflow`
-**Usage**: `/migration-workflow`
-**Purpose**: Complete EF Core migration workflow (create → test → apply)
-**When**: Modifying database schema (entities, relationships, indexes)
-**Replaces**: Repeated reading of migration docs
+| Directory | Command | What it does |
+|---|---|---|
+| `compliance-feature/` | `/compliance-feature` | Regulatory scan → gap analysis → GitHub issue backlog |
+| `feature-implementation/` | `/feature-implementation` | GitHub issue → branch → PR → review → merge |
+| `contract-audit/` | `/contract-audit` | FE/BE API alignment audit → GitHub issues |
+| `create-cross-repo-issues/` | `/create-cross-repo-issues` | Create paired FE+BE GitHub issues |
 
-## Creating New Skills
+### Reference Skills (instant lookup)
 
-1. Create `.claude/skills/{skill-name}.md`
-2. Add frontmatter:
-   ```yaml
-   ---
-   name: skill-name
-   description: Brief description (shown in skill list)
-   invocable: true
-   ---
-   ```
-3. Write detailed instructions in markdown
-4. Invoke with `/{skill-name}` or via Skill tool
+| Directory | Command | What it does |
+|---|---|---|
+| `codebase-overview/` | `/codebase-overview` | Architecture snapshot (replaces exploring 10-20 files) |
+| `code-review-local/` | `/code-review` | PR code review (primary method — GitHub Actions disabled) |
+| `migration-workflow/` | `/migration` | EF Core migration create → review → apply → verify |
+| `list-issues/` | (use `gh` CLI directly) | Live GitHub issue queries |
 
-## Skill vs. CLAUDE.md
+### Template Skills (generate structured output)
 
-**CLAUDE.md**: Always loaded, should be concise (< 500 lines)
-- Project overview
-- Links to detailed rules
-- Essential conventions
+| Directory | Command | What it does |
+|---|---|---|
+| `write-user-story/` | (invoked by agents) | Compliance-ready user story from regulatory gap |
+| `open-github-issue/` | (invoked by agents) | GitHub issue creation procedure |
 
-**Skills**: Loaded on-demand, can be verbose
-- Detailed workflows
-- Step-by-step procedures
-- Domain knowledge
+---
 
-## Token Savings
+## Command Integration (dual-mode)
 
-Moving workflows from CLAUDE.md to skills:
-- **Base context**: 20-30% smaller
-- **Per-session**: Load only needed skills (not all workflows)
-- **Cumulative**: Significant savings on long conversations
+Workflow skills are wired as invocable commands in both tools:
 
-## Reference
+| Command | Claude Code | OpenCode |
+|---|---|---|
+| `/feature-implementation` | `.claude/commands/feature-implementation.md` | `opencode.json` command |
+| `/compliance-feature` | `.claude/commands/compliance-feature.md` | `opencode.json` command |
+| `/contract-audit` | `.claude/commands/contract-audit.md` | `opencode.json` command |
+| `/code-review` | `.claude/commands/code-review.md` | `opencode.json` command |
+| `/context` | `.claude/commands/context.md` | `opencode.json` command |
+| `/codebase-overview` | `.claude/commands/codebase-overview.md` | `opencode.json` command |
+| `/migration` | `.claude/commands/migration.md` | `opencode.json` command |
 
-https://code.claude.com/docs/en/skills
+---
+
+## Design Principles
+
+- **Directory per skill**: `skills/<name>/SKILL.md` — required by OpenCode discovery
+- **Self-contained**: no `Read <other-file>` indirection — full steps embedded
+- **On-demand**: loaded only when invoked, not in base context
+- **Agent chains documented**: each process skill shows who calls who + handoff artifacts
+
+Full workflow specs (deeper reference): `.claude/workflows/`

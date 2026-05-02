@@ -149,19 +149,64 @@ Custom skills available in `.claude/skills/`:
 
 ```
 .claude/
-├── README.md                    # This file
-├── agents/                      # Project-specific agents
-│   ├── regulatory_agent.md
-│   ├── analyzer_agent.md
-│   ├── github_agent.md
-│   └── scrum_master_casazen.md
-├── context/                     # Regulatory and domain context
-│   ├── domain.md
-│   ├── codebase_map.md
-│   ├── open_issues.md
-│   ├── _index.md
-│   ├── _last_updated.json
-│   └── regulations/             # Italian short-term rental regulations
+├── README.md                    # This file — system overview
+├── settings.json                # Hook configuration + model settings
+├── settings.local.json          # Local permissions (not committed)
+│
+├── agents/                      # Project-specific subagents
+│   ├── regulatory_agent.md      # Italian regulation scanner (monthly)
+│   ├── analyzer_agent.md        # Compliance gap analysis
+│   ├── github_agent.md          # GitHub issue creation (Haiku model)
+│   ├── scrum_master_casazen.md  # Cross-repo BE↔FE coordination
+│   └── feature_developer.md    # CasaZen override: adds mandatory /code-review-local
+│
+├── workflows/                   # ← CANONICAL workflow specs (invoked by skills)
+│   ├── README.md
+│   ├── feature-implementation.md
+│   ├── compliance-feature-creation.md
+│   ├── contract-audit.md
+│   └── common/
+│       └── review-process.md   # Shared review protocol (max 3 iterations, anti-loop)
+│
+├── hooks/                       # Real executable hooks (shell scripts)
+│   ├── README.md
+│   └── scripts/
+│       ├── filter-test-output.sh    # PreToolUse: strip passing test noise (~80% savings)
+│       ├── filter-build-output.sh   # PreToolUse: strip build info noise (~70% savings)
+│       └── session-context.sh       # UserPromptSubmit: compact session bootstrap
+│
+├── skills/                      # On-demand invocable skills (/skill-name)
+│   ├── README.md
+│   ├── compliance-feature.md    # /compliance-feature  — self-contained
+│   ├── feature-implementation.md # /feature-implementation — self-contained
+│   ├── contract-audit.md        # /contract-audit — self-contained
+│   ├── create_cross_repo_issues.md # /create-cross-repo-issues
+│   ├── codebase-overview.md     # /codebase-overview
+│   ├── code-review-local.md     # /code-review-local
+│   ├── migration-workflow.md    # /migration-workflow
+│   ├── list-issues.md           # /list-issues
+│   ├── write_user_story.md      # /write-user-story
+│   └── open_github_issue.md     # /open-github-issue
+│
+├── rules/                       # Non-negotiable project rules
+│   ├── github-flow-mandatory.md ← CRITICAL: no direct merges to main
+│   ├── code-style.md
+│   ├── security.md
+│   ├── integrations.md
+│   ├── compliance.md
+│   ├── git-workflow.md
+│   └── gotchas.md
+│
+├── context/                     # Persistent domain knowledge
+│   ├── domain.md                # Application domain
+│   ├── codebase_map.md          # Implemented vs. missing features
+│   ├── _index.md                # Regulatory index (8 macro-topics)
+│   ├── _last_updated.json       # Last regulatory agent run metadata
+│   ├── agent-guides/            # Sub-instructions loaded by agents at runtime
+│   │   ├── classify_topic.md
+│   │   ├── diff_context.md
+│   │   └── scrape_source.md
+│   └── regulations/             # Italian regulatory reference files
 │       ├── cin.md
 │       ├── alloggiati.md
 │       ├── imposta_soggiorno.md
@@ -170,19 +215,12 @@ Custom skills available in `.claude/skills/`:
 │       ├── ota_normativa.md
 │       ├── sicurezza.md
 │       └── regionale.md
-├── skills/                      # Custom skills
-└── settings.local.json          # Local settings
+│
+└── docs/                        # Setup and admin documentation (not invoked by agents)
+    ├── code-review-setup.md     # How to re-enable GitHub Actions code review
+    └── workflows/               # ← DEPRECATED: moved to .claude/workflows/
+        └── README.md            # Redirect notice with old→new path mapping
 ```
-
-**What's NOT here anymore** (intentionally removed to reduce noise):
-- ❌ `sprint/` - No local planning files (agents output directly to GitHub)
-- ❌ `reports/` - No local reports (results in GitHub artifacts + email)
-- ❌ `config/` - Moved to root CLAUDE.md and README.md
-- ❌ `coordination/` - Not needed
-- ❌ `learning/` - Not needed
-- ❌ `workflows/` - Not needed
-- ❌ `AGENT_SYSTEM.md` - Consolidated here
-- ❌ `ORCHESTRATORS.md` - Consolidated here
 
 ---
 
@@ -275,5 +313,6 @@ Daily reports sent to: `luca.lamal@hotmail.it`
 
 ---
 
-**Last Updated**: 2026-03-31
-**System Version**: 2.0 (Streamlined)
+**Last Updated**: 2026-05-02
+**System Version**: 3.0 (Optimized — real hooks wired, workflow paths consolidated, skills self-contained)
+**Core Process Guides**: [PLANNING.md](../PLANNING.md) | [DEVELOPMENT.md](../DEVELOPMENT.md)
