@@ -7,8 +7,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-// TEMPORARY: Disabled for debugging - Re-enable in production!
-// [Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "PropertyOwner")]
 public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
