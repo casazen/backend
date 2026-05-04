@@ -79,7 +79,12 @@
       "Bash(dotnet ef migrations:*)",
       "Bash(dotnet ef database update:*)",
       "Bash(dotnet ef dbcontext scaffold:*)",
-      "Bash(sqlcmd:*)"
+      "Bash(sqlcmd:*)",
+      "Bash(done)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(lsof:*)"
     ]
   }
 }

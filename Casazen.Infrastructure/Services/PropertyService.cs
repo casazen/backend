@@ -41,7 +41,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return true;
     }
 
-    public async Task<IEnumerable<Property>> SearchAsync(string city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
         logger.LogInformation("Searching properties: city={City}, bedrooms={Bedrooms}, maxPrice={MaxPrice}", city, bedrooms, maxPrice);
         return await repository.SearchAsync(city, bedrooms, maxPrice);

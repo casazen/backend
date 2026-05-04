@@ -115,7 +115,7 @@ public class PropertiesController(
     [HttpGet("search")]
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<Property>>> Search(
-        [FromQuery] string city,
+        [FromQuery] string? city,
         [FromQuery] int? bedrooms,
         [FromQuery] decimal? maxPrice)
     {

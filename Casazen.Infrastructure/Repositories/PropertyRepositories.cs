@@ -29,7 +29,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Property>> SearchAsync(string city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
         var query = context.Properties.AsQueryable();
         
