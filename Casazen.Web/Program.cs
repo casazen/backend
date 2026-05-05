@@ -9,8 +9,10 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Middleware;
 using Hangfire;
 using Hangfire.SqlServer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
@@ -93,7 +95,27 @@ builder.Services.AddScoped<AlloggiatiWebReportJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
 
 // API
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Override default 400 response with RFC 7807 Problem Details for model validation errors
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var problemDetails = new ValidationProblemDetails(context.ModelState)
+            {
+                Type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest,
+                Instance = $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}",
+            };
+            problemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+
+            return new BadRequestObjectResult(problemDetails)
+            {
+                ContentTypes = { "application/problem+json" },
+            };
+        };
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -155,29 +177,8 @@ app.UseStaticFiles();
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
 
-// DEBUG: Log all incoming requests
-app.Use(async (context, next) =>
-{
-    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("=== Incoming Request ===");
-    logger.LogInformation($"Path: {context.Request.Path}");
-    logger.LogInformation($"Method: {context.Request.Method}");
-    
-    if (context.Request.Headers.ContainsKey("Authorization"))
-    {
-        var authHeader = context.Request.Headers["Authorization"].ToString();
-        logger.LogInformation($"Authorization header present: {authHeader.Substring(0, Math.Min(50, authHeader.Length))}...");
-    }
-    else
-    {
-        logger.LogWarning("No Authorization header found!");
-    }
-    
-    await next();
-    
-    logger.LogInformation($"Response Status: {context.Response.StatusCode}");
-    logger.LogInformation("=== Request Complete ===");
-});
+// Global error handling — must be early in pipeline to catch all exceptions
+app.UseErrorHandling();
 
 // Authentication & Authorization (must be in this order)
 app.UseAuthentication();
