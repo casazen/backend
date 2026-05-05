@@ -27,13 +27,23 @@ public class PropertiesController(
         logger.LogInformation("GetAll properties called");
         logger.LogInformation($"User authenticated: {User.Identity?.IsAuthenticated}");
         logger.LogInformation($"User identity name: {User.Identity?.Name}");
-        
-        var userId = User.FindFirst("sub")?.Value;
-        logger.LogInformation($"User ID from sub claim: {userId}");
-        
+
+        // Try multiple claim types to find user ID
+        var userId = User.FindFirst("sub")?.Value
+                     ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+        logger.LogInformation($"User ID from claims: {userId}");
+
+        // DEBUG: Log all claims
+        foreach (var claim in User.Claims)
+        {
+            logger.LogInformation($"Claim: {claim.Type} = {claim.Value}");
+        }
+
         if (string.IsNullOrEmpty(userId))
         {
-            logger.LogWarning("No sub claim found in token");
+            logger.LogWarning("No user ID claim found in token");
             return Unauthorized();
         }
 
