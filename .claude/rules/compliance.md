@@ -11,4 +11,7 @@
 - **Guest data**: GDPR-compliant, Alloggiati Web integration, data retention applies
 - **Tourist tax**: regional rates in `TaxRate` entity — NEVER hardcode
 
-Check `@.claude/context/regulations/` before implementing compliance features.
+## Loading Regulatory Context (lazy — load only what you need)
+1. Read `.claude/context/regulations/_index.md` for a topic overview
+2. Load the **single** relevant file (e.g. `cin.md`, `gdpr.md`) — do NOT load the whole directory
+3. Load additional files only if the task explicitly spans multiple regulations
