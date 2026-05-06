@@ -12,13 +12,17 @@ jobs:
   trigger-step1-clarification:
     name: "Step 1 — Clarification"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'raw-requirement'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get issue number
         id: issue
@@ -40,6 +44,10 @@ jobs:
   handle-clarification-reply:
     name: "Step 1 — Process PO Reply"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     if: |
       github.event_name == 'issue_comment' &&
       github.event.action == 'created' &&
@@ -47,7 +55,7 @@ jobs:
       contains(github.event.issue.labels.*.name, 'awaiting-clarification')
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get issue number
         id: issue
@@ -69,13 +77,17 @@ jobs:
   trigger-council:
     name: "Step 1 — Council Review"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'council-ready'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get issue number
         id: issue
@@ -98,13 +110,17 @@ jobs:
   trigger-step2:
     name: "Step 2 — Task Dispatcher"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'approved'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get issue number
         id: issue
@@ -127,13 +143,17 @@ jobs:
   trigger-step3:
     name: "Step 3 — Implementation"
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'in-sprint'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get issue number
         id: issue
