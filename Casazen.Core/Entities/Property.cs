@@ -82,4 +82,5 @@ public class Property
     // Navigation
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<OtaIntegration> OtaIntegrations { get; set; } = new List<OtaIntegration>();
+    public virtual PricingAdapterConfig? PricingAdapterConfig { get; set; }
 }
