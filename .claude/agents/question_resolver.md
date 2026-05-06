@@ -74,7 +74,7 @@ Please reply to this comment. Once answered, the pipeline will resume automatica
 <!-- issue-id: $ISSUE_NUMBER -->"
 ```
 
-Output: `STATUS=awaiting ROUND=$NEXT_ROUND` — stop here.
+Print `STATUS=awaiting ROUND=$NEXT_ROUND` to stdout and stop.
 
 ## Step 5 — All resolved (or max rounds reached): unblock
 
@@ -101,15 +101,15 @@ Decision: [PO answer, concise — one sentence max]
 "
 ```
 
-### 5b — Remove `open-questions` label, re-add `approved`
+### 5b — Remove `open-questions` label
 
 ```bash
 gh issue edit $ISSUE_NUMBER \
-  --remove-label "open-questions" \
-  --add-label "approved"
+  --remove-label "open-questions"
 ```
 
-This re-adds `approved`, which auto-triggers Step 2 dispatch via GitHub Actions.
+Do NOT re-add `approved` here — the caller (`/step2-dispatch`) manages that and
+continues with dispatch immediately after resolution.
 
 ### 5c — Unblock child tasks
 
@@ -144,22 +144,30 @@ gh issue list --repo casazen/frontend \
 ### 5d — Post resolution summary on the Epic
 
 ```bash
-gh issue comment $ISSUE_NUMBER --body "## ✅ Open Questions Resolved — Pipeline Unblocked
+gh issue comment $ISSUE_NUMBER --body "## ✅ Open Questions Resolved
 
-All questions have been answered. Here is a summary of decisions recorded:
+All questions have been answered. Decisions recorded:
 
 [For each question:]
 - **[Question topic]**: [one-line decision]
 
-**Next**: Step 2 dispatch has been re-triggered automatically (label \`approved\` restored).
 Child tasks with label \`blocked\` have been unblocked.
+Step 2 dispatch will now proceed.
 
 <!-- pipeline: open-questions-resolved -->"
 ```
 
+## Output contract
+
+The caller (`/step2-dispatch`) reads stdout to decide whether to proceed:
+
+- **All resolved**: print `STATUS=resolved` as the last line of stdout
+- **Follow-up posted**: print `STATUS=awaiting ROUND=N` as the last line of stdout
+
 ## Rules
 
 - Never modify source code or non-issue files
+- Never re-add the `approved` label — the caller manages that
 - A "deferred" or "accepted risk" answer counts as resolved — do not block on missing certainty
 - Maximum 2 follow-up rounds; after round 2, unblock unconditionally and note any deferred items
 - If `gh` CLI returns an error, report it and stop

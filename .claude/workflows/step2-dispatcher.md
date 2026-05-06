@@ -13,17 +13,21 @@ Auto-triggered by: GitHub Actions on label `approved`
 ## Label State Machine
 
 ```
-approved  ← input (backlog item from Step 1)
-  ↓ [Pre-flight — @scrum-master-casazen: open questions check]
-  │  ⚠️ Open Questions found?
-  ├─ YES → add "open-questions", remove "approved" → STOP
-  │         ↓ [PO replies to blocking comment]
-  │         [@question-resolver: evaluate answers]
-  │           all resolved?
-  │           ├─ YES → update body, remove "open-questions",
-  │           │         add "approved" → re-triggers Step 2
-  │           └─ NO  → post follow-up (max 2 rounds total)
-  └─ NO  ↓
+/step2-dispatch <issue>
+  ↓ [Pre-flight — open questions check]
+  │  open-questions label OR ⚠️ Open Questions in body?
+  ├─ YES + no PO reply yet  → post blocking comment, add "open-questions",
+  │                            remove "approved" → STOP
+  │                            ↓ PO replies, then re-runs /step2-dispatch
+  ├─ YES + PO reply found   → [@question-resolver inline]
+  │                              all resolved?
+  │                              ├─ YES → update body (✅ Decisions),
+  │                              │         remove "open-questions",
+  │                              │         remove "blocked" from tasks
+  │                              │         → continue to Phase A ↓
+  │                              └─ NO  → post follow-up, STOP
+  │                                        (max 2 rounds)
+  └─ NO open questions       → verify "approved" label, continue ↓
   ↓ [Phase A — @analyzer-agent: dependency map]
   ↓ [Phase B — @feature-developer: decompose into tasks]
   ↓ [Phase C — @scrum-master-casazen: create GitHub issues]
@@ -36,28 +40,43 @@ in-sprint  → triggers Step 3 per task
 
 ## Pre-flight — Open Questions Gate
 
-**Entry condition**: label `approved`
+**Entry condition**: any (the `approved` label check is skipped when open questions are present)
 
-Before starting Phase A, `@scrum-master-casazen` checks whether the Epic body
-contains unresolved open questions of any kind (legal, regulatory, technical,
-business, or any other decision that must be made before implementation).
+Before starting Phase A, check for open questions of any kind (legal, regulatory,
+technical, business, or any other decision that must be made before implementation).
 
 ```bash
-# Check for unresolved open questions section
+# 1. Detect open questions: body section OR label
 OPEN_Q=$(gh issue view $ISSUE_NUMBER --json body \
   --jq '.body | test("⚠️ Open Questions")')
-
-# Also check for the pipeline label set by Step 1
 HAS_LABEL=$(gh issue view $ISSUE_NUMBER --json labels \
   --jq '[.labels[].name] | contains(["open-questions"])')
 
 if [ "$OPEN_Q" = "true" ] || [ "$HAS_LABEL" = "true" ]; then
-  # Extract the open questions section for the blocking comment
-  QUESTIONS=$(gh issue view $ISSUE_NUMBER --json body --jq '.body' \
-    | awk '/⚠️ Open Questions/,/^## [^⚠]/' \
-    | grep -v '^## [^⚠]')
 
-  gh issue comment $ISSUE_NUMBER --repo casazen/backend --body "$(cat <<'EOF'
+  # 2. Check whether the PO has already replied after the blocking comment marker
+  PO_REPLIED=$(gh issue view $ISSUE_NUMBER --json comments \
+    --jq '
+      .comments
+      | to_entries
+      | (map(select(.value.body | contains("open-questions-round:"))) | last) as $gate
+      | if $gate == null then "false"
+        else
+          .[$gate.key+1:]
+          | map(select(.value.author.login != "github-actions[bot]" and
+                       (.value.body | contains("open-questions-round:") | not)))
+          | length > 0
+          | tostring
+        end
+    ')
+
+  if [ "$PO_REPLIED" = "false" ]; then
+    # No reply yet — post blocking comment and stop
+    QUESTIONS=$(gh issue view $ISSUE_NUMBER --json body --jq '.body' \
+      | awk '/⚠️ Open Questions/,/^## [^⚠]/' \
+      | grep -v '^## [^⚠]')
+
+    gh issue comment $ISSUE_NUMBER --repo casazen/backend --body "$(cat <<'EOF'
 ## ⛔ Step 2 Dispatch Blocked — Open Questions Unresolved
 
 This Epic contains unresolved **Open Questions** that require a decision
@@ -69,11 +88,12 @@ ${QUESTIONS}
 
 ### How to unblock
 
-**Reply to this comment** with your answers/decisions for each question above.
-The pipeline will evaluate your answers automatically and re-trigger dispatch
-if all questions are resolved. You do not need to edit the issue body.
+**Reply to this comment** with your answers/decisions for each question above,
+then re-run `/step2-dispatch $ISSUE_NUMBER`.
+The pipeline will evaluate your answers and proceed if all questions are resolved.
+You do not need to edit the issue body.
 
-> Tip: a "we accept this risk" or "defer to post-MVP" counts as a valid answer.
+> Tip: "we accept this risk" or "defer to post-MVP" counts as a valid answer.
 
 <!-- open-questions-round: 0 -->
 <!-- issue-id: $ISSUE_NUMBER -->
@@ -82,38 +102,38 @@ if all questions are resolved. You do not need to edit the issue body.
 EOF
 )"
 
-  gh issue edit $ISSUE_NUMBER --repo casazen/backend \
-    --add-label "open-questions" \
-    --remove-label "approved"
+    gh issue edit $ISSUE_NUMBER --repo casazen/backend \
+      --add-label "open-questions" \
+      --remove-label "approved"
 
-  echo "DISPATCH BLOCKED: Open questions detected on issue #$ISSUE_NUMBER. See comment for details."
-  exit 1
+    echo "DISPATCH BLOCKED: No answers yet on issue #$ISSUE_NUMBER. See comment."
+    exit 1
+  fi
+
+  # 3. PO has replied — invoke @question-resolver inline to evaluate answers
+  echo "Open questions detected but PO has replied. Invoking @question-resolver..."
+  RESOLUTION=$(/question-resolver $ISSUE_NUMBER)
+
+  if echo "$RESOLUTION" | grep -q "STATUS=resolved"; then
+    # All resolved — @question-resolver already updated body and labels.
+    # Continue to Phase A below.
+    echo "All questions resolved. Proceeding with dispatch."
+  else
+    # Some unresolved — @question-resolver posted follow-up. Stop here.
+    echo "Some questions still unresolved. Dispatch paused. See follow-up comment."
+    exit 1
+  fi
+
 fi
+
+# 4. No open questions (or just resolved) — verify approved label
+gh issue view $ISSUE_NUMBER --json labels --jq '.labels[].name' \
+  | grep -q "^approved$" \
+  || { echo "ERROR: issue #$ISSUE_NUMBER does not have label 'approved'"; exit 1; }
 ```
 
-**Unblocking**: reply to the blocking comment with decisions. `@question-resolver` runs
-automatically on new comments, evaluates answers, and restores `approved` if resolved.
-
----
-
-## Re-entry — Answer Processing (`@question-resolver`)
-
-**Trigger**: label `open-questions` + new human comment on the issue
-
-Auto-triggered by: GitHub Actions on `issue_comment` event when issue has label `open-questions`.
-
-```bash
-/question-resolver $ISSUE_NUMBER
-```
-
-`@question-resolver` handles the full loop:
-- Reads the `## ⚠️ Open Questions` section from the issue body
-- Reads the latest PO comment as answers
-- If all resolved: updates body (`## ✅ Decisions`), removes `open-questions`,
-  adds `approved`, removes `blocked` from child tasks
-- If some unresolved: posts follow-up (max 2 rounds via `<!-- open-questions-round: N -->`)
-
-See `.claude/agents/question_resolver.md` for full logic.
+**PO flow**: reply to the blocking comment → re-run `/step2-dispatch <issue>` →
+`@question-resolver` evaluates inline → if resolved, dispatch proceeds immediately.
 
 ---
 
