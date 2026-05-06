@@ -95,6 +95,7 @@ builder.Services.AddCasazenCors(builder.Configuration);
 // Background Jobs
 builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
+builder.Services.AddScoped<DynamicPricingJob>();
 builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
@@ -244,6 +245,12 @@ void ConfigureRecurringJobs()
         "booking-pull-all",
         job => job.ExecuteAsync(Guid.Empty),
         "*/15 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    RecurringJob.AddOrUpdate<DynamicPricingJob>(
+        "dynamic-pricing-adaptation",
+        job => job.ExecuteAsync(),
+        "0 2 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 
