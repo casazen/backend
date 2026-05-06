@@ -144,27 +144,62 @@ Input: dependency map from Phase A + original Epic body.
 
 ## Phase C — Issue Creation (`@scrum-master-casazen`)
 
-Create issues in the canonical order produced by Phase B.
+### Pre-flight: ensure labels exist on both repos
 
-### BE tasks
+Run this **before** creating any issues. FE labels must exist on `casazen/frontend`; if they don't, create them. Never fall back to creating FE issues on the backend repo.
+
+```bash
+# Ensure pipeline labels exist on casazen/frontend
+for LABEL in "task:e99695:Atomic implementation task" \
+             "sprint-candidate:bfd4f2:Task available for sprint selection" \
+             "fe:e4b429:Frontend scope" \
+             "in-sprint:0e8a16:Task selected for current sprint" \
+             "merged:6f42c1:Task PR has been merged" \
+             "effort:XS:c5def5:< 4 hours" \
+             "effort:S:c5def5:0.5-1 day" \
+             "effort:M:c5def5:1-2 days"; do
+  NAME=$(echo $LABEL | cut -d: -f1-2 | tr ':' ':')
+  # Use gh label create with --force to skip if already exists
+done
+
+# Concise equivalent — run each independently:
+gh label create "task"           --color "e99695" --description "Atomic implementation task"        --repo casazen/frontend 2>/dev/null || true
+gh label create "sprint-candidate" --color "bfd4f2" --description "Task available for sprint selection" --repo casazen/frontend 2>/dev/null || true
+gh label create "fe"             --color "e4b429" --description "Frontend scope"                   --repo casazen/frontend 2>/dev/null || true
+gh label create "in-sprint"      --color "0e8a16" --description "Task selected for current sprint" --repo casazen/frontend 2>/dev/null || true
+gh label create "merged"         --color "6f42c1" --description "Task PR has been merged"          --repo casazen/frontend 2>/dev/null || true
+gh label create "effort:XS"      --color "c5def5" --description "< 4 hours"                       --repo casazen/frontend 2>/dev/null || true
+gh label create "effort:S"       --color "c5def5" --description "0.5-1 day"                       --repo casazen/frontend 2>/dev/null || true
+gh label create "effort:M"       --color "c5def5" --description "1-2 days"                        --repo casazen/frontend 2>/dev/null || true
+
+# Verify gh can access casazen/frontend before proceeding:
+gh repo view casazen/frontend --json name \
+  || { echo "ERROR: cannot access casazen/frontend. Ensure GITHUB_TOKEN has repo scope on the frontend org."; exit 1; }
+```
+
+### BE tasks — always on `casazen/backend`
 
 ```bash
 gh issue create \
   --repo casazen/backend \
   --title "[BE] <action verb> <noun>" \
   --label "task,sprint-candidate,be,effort:S" \
-  --body "<task body from Phase B BE template>"
+  --body-file <task_body_tempfile>
 ```
 
-### FE tasks
+### FE tasks — always on `casazen/frontend`
+
+**CRITICAL**: FE issues MUST be created on `casazen/frontend`. Never create FE issues on `casazen/backend` as a fallback. If `casazen/frontend` is inaccessible, abort and report the error.
 
 ```bash
 gh issue create \
   --repo casazen/frontend \
   --title "[FE] <action verb> <noun>" \
   --label "task,sprint-candidate,fe,effort:S" \
-  --body "<task body from Phase B FE template>"
+  --body-file <task_body_tempfile>
 ```
+
+Use `--body-file` with a temp file for all issue bodies (avoids bash escaping issues with backticks, code blocks, and special characters).
 
 ### Dependency cross-linking
 
