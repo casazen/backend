@@ -1,0 +1,148 @@
+name: Step Pipeline Transitions
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+
+  # Job 1: label raw-requirement → /step1-refine N (clarifier, haiku)
+  trigger-step1-clarification:
+    name: "Step 1 — Clarification"
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'raw-requirement'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get issue number
+        id: issue
+        run: echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+
+      - name: Run Step 1 — Clarifier
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model claude-haiku-4-5-20251001 \
+            --allowedTools "Bash,Read,Grep,Glob" \
+            --permission-prompt-mode acceptEdits \
+            -p "/step1-refine ${{ steps.issue.outputs.number }}"
+
+  # Job 2: issue_comment on awaiting-clarification issue, non-bot author → /step1-refine N mode=read-answers (haiku)
+  handle-clarification-reply:
+    name: "Step 1 — Process PO Reply"
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(github.event.issue.labels.*.name, 'awaiting-clarification')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get issue number
+        id: issue
+        run: echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+
+      - name: Run Step 1 — Read Answers
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model claude-haiku-4-5-20251001 \
+            --allowedTools "Bash,Read,Grep,Glob" \
+            --permission-prompt-mode acceptEdits \
+            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=read-answers"
+
+  # Job 3: label council-ready → /step1-refine N mode=council (sonnet, AGENT_TEAMS)
+  trigger-council:
+    name: "Step 1 — Council Review"
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'council-ready'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get issue number
+        id: issue
+        run: echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+
+      - name: Run Step 1 — Council
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model claude-sonnet-4-6 \
+            --allowedTools "Bash,Read,Grep,Glob" \
+            --permission-prompt-mode acceptEdits \
+            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=council"
+
+  # Job 4: label approved → /step2-dispatch N (sonnet, AGENT_TEAMS)
+  trigger-step2:
+    name: "Step 2 — Task Dispatcher"
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'approved'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get issue number
+        id: issue
+        run: echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+
+      - name: Run Step 2 — Dispatcher
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model claude-sonnet-4-6 \
+            --allowedTools "Bash,Read,Grep,Glob" \
+            --permission-prompt-mode acceptEdits \
+            -p "/step2-dispatch ${{ steps.issue.outputs.number }}"
+
+  # Job 5: label in-sprint → /step3-implement N (sonnet, AGENT_TEAMS)
+  trigger-step3:
+    name: "Step 3 — Implementation"
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'in-sprint'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get issue number
+        id: issue
+        run: echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+
+      - name: Run Step 3 — Implement
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model claude-sonnet-4-6 \
+            --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
+            --permission-prompt-mode acceptEdits \
+            -p "/step3-implement ${{ steps.issue.outputs.number }}"

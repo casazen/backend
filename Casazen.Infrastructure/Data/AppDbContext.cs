@@ -17,6 +17,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
     public DbSet<TaxRate> TaxRates { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
+    public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
+    public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,5 +88,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
         modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
+
+        // PricingAdapterConfig → Property
+        modelBuilder.Entity<PricingAdapterConfig>()
+            .HasOne(c => c.Property)
+            .WithMany()
+            .HasForeignKey(c => c.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PricingAdapterConfig>()
+            .HasIndex(c => new { c.PropertyId, c.IsEnabled });
+
+        // PricingHistory → Property
+        modelBuilder.Entity<PricingHistory>()
+            .HasOne(h => h.Property)
+            .WithMany()
+            .HasForeignKey(h => h.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PricingHistory>()
+            .HasIndex(h => new { h.PropertyId, h.AdaptationDate });
     }
 }
