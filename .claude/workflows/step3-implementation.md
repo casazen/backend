@@ -5,7 +5,10 @@
 **Closure Coordinator**: `@scrum-master-casazen`
 
 Invoked via: `/step3-implement <task_number> [task_number ...]`
-Auto-triggered by: GitHub Actions on label `in-sprint`
+Auto-triggered by: GitHub Actions (`step-transitions.yml`)
+- Label `in-sprint` → starts implementation (Job 5)
+- PR merged → Phase E closure (Job 6: `trigger-step3-post-merge`)
+- Issue closed → auto-unblock dependents (Job 7: `trigger-unblock-on-close`)
 
 ---
 
@@ -23,11 +26,14 @@ in-sprint  ← input (task from Step 2)
       ↓ [Phase C — /code-review-local: max 3 iterations]
       PR ready for manual review
       ↓ [Phase D — human developer merges PR]
-      merged  (label added on task issue)
-      ↓ [Phase E — @scrum-master-casazen: Epic closure check]
+      ↓ [Phase E — GitHub Actions: close task + Epic check]  ← trigger-step3-post-merge
       [all tasks merged?]
         YES → Epic closed + codebase_map.md updated
         NO  → continue
+      ↓ [Phase F — GitHub Actions: auto-unblock]             ← trigger-unblock-on-close
+      [open in-sprint tasks blocked by this one?]
+        YES → /step3-implement <next-task> (automatic)
+        NO  → done
 ```
 
 ---
@@ -153,9 +159,17 @@ On APPROVED:
 
 ## Phase D — Human Merge
 
-The developer reviews the PR manually and merges. No automation.
+The developer reviews the PR manually and merges. No automation in this phase.
 
-After merge is detected (PR state = `MERGED`):
+On merge, GitHub Actions (`trigger-step3-post-merge`) automatically fires Phase E.
+
+---
+
+## Phase E — Task Closure + Epic Check (automated: `trigger-step3-post-merge`)
+
+Triggered by: `pull_request: closed` + `merged == true` in `step-transitions.yml`.
+
+Extracts `Closes #N` from the PR body, then runs `@scrum-master-casazen`:
 
 ```bash
 # Add merged label on task issue
@@ -165,10 +179,6 @@ gh issue edit $TASK_NUMBER --add-label "merged"
 gh issue close $TASK_NUMBER \
   --comment "Implemented in PR #$PR_NUMBER. Merged to main."
 ```
-
----
-
-## Phase E — Epic Closure Check (`@scrum-master-casazen`)
 
 ```bash
 # Find the Epic reference from task issue body ("Part of: casazen/backend#N")
@@ -210,6 +220,28 @@ git add .claude/context/codebase_map.md
 git commit -m "docs: update codebase_map after Epic #$EPIC_NUMBER delivery"
 git push origin main
 ```
+
+---
+
+## Phase F — Auto-Unblock (automated: `trigger-unblock-on-close`)
+
+Triggered by: `issues: closed` with `state_reason == 'completed'` in `step-transitions.yml`.
+
+When a task issue is closed, GitHub Actions searches for open issues with label `in-sprint` that reference it as a dependency:
+
+```bash
+# Find in-sprint tasks blocked by the just-closed issue
+gh issue list --repo casazen/backend \
+  --label "in-sprint" \
+  --json number,body \
+  --jq ".[] | select(.body | contains(\"Blocked by: casazen/backend#$CLOSED_ISSUE\"))"
+
+# For each match: verify ALL Blocked-by references are now closed
+# If all deps resolved → /step3-implement <issue_number>
+# If some deps still open → post comment listing remaining blockers
+```
+
+This creates an automatic cascade: when task A is merged, task B (which was waiting on A) starts without any manual intervention.
 
 ---
 
