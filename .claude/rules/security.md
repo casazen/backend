@@ -1,24 +1,8 @@
-# Security & Critical Guardrails
+# Security Guardrails
 
-> **IMPORTANT**: Non-negotiable rules to prevent serious issues
-
-## Secrets Management
-- **NEVER** commit `appsettings.Development.json` (contains secrets: Auth0, Stripe, SendGrid keys)
-- **NEVER** commit API keys, connection strings, or credentials
-- Setup: Copy `appsettings.json` to `appsettings.Development.json` and fill in secrets locally
-
-## Authentication & Authorization
-- **NEVER** bypass authentication checks (all endpoints protected unless explicitly public)
-- JWT tokens validated on every request via Auth0
-
-## Input Validation
-- **ALWAYS** validate user input at API boundaries (use data annotations + model validation)
-- **NEVER** use string concatenation for SQL queries (SQL injection risk - use EF Core or parameterized queries)
-
-## External Communications
-- **ALWAYS** use HTTPS for external API calls (Auth0, Stripe, SendGrid)
-- **MUST** verify webhook signatures for Stripe (prevent spoofing)
-
-## Error Handling
-- **ALWAYS** log errors with context (use ILogger, include relevant IDs)
-- Never expose internal errors to external APIs
+- **NEVER** commit `appsettings.Development.json` or any secrets/API keys
+- **NEVER** bypass auth checks — all endpoints require JWT (Auth0) unless explicitly public
+- **ALWAYS** validate input at API boundaries (data annotations + model validation)
+- **NEVER** string-concatenate SQL — use EF Core or parameterized queries
+- **ALWAYS** use HTTPS for external calls; verify Stripe webhook signatures
+- **ALWAYS** log errors with context (`ILogger` + relevant IDs); never expose internals externally
