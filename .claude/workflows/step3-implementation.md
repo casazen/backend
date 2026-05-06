@@ -14,8 +14,10 @@ Auto-triggered by: GitHub Actions on label `in-sprint`
 ```
 in-sprint  ← input (task from Step 2)
   ↓ [Phase A — pre-flight checks]
-  │  dependencies met?
-  ├─ NO  → stop, report blocked dependencies
+  │  label "blocked" present?
+  ├─ YES → remove "in-sprint", post comment, STOP
+  │  dependencies (Blocked by: #N) met?
+  ├─ NO  → post comment, STOP
   └─ YES →
       ↓ [Phase B — @feature-developer: branch + implement + PR]
       ↓ [Phase C — /code-review-local: max 3 iterations]
@@ -39,14 +41,28 @@ For each task number provided:
 gh issue view $TASK_NUMBER --json labels --jq '.labels[].name' | grep -q "^in-sprint$" \
   || { echo "ERROR: issue #$TASK_NUMBER does not have label in-sprint"; exit 1; }
 
-# 2. Read issue body to find dependencies
+# 2. Check for blocked label — task has unresolved open questions or explicit blocker
+HAS_BLOCKED=$(gh issue view $TASK_NUMBER --json labels \
+  --jq '[.labels[].name] | contains(["blocked"])')
+if [ "$HAS_BLOCKED" = "true" ]; then
+  gh issue comment $TASK_NUMBER \
+    --body "⛔ **Step 3 aborted**: this task has label \`blocked\` and cannot be implemented yet.
+
+Resolve the blocking condition first (see the task body or the parent Epic for open questions),
+then remove the \`blocked\` label before re-adding \`in-sprint\`."
+  gh issue edit $TASK_NUMBER --remove-label "in-sprint"
+  echo "BLOCKED: task #$TASK_NUMBER has label 'blocked'. Implementation aborted."
+  exit 1
+fi
+
+# 3. Read issue body to find dependencies
 gh issue view $TASK_NUMBER --json body --jq '.body'
 
-# 3. For each "Blocked by: casazen/<repo>#N" found in body, verify the issue is closed
+# 4. For each "Blocked by: casazen/<repo>#N" found in body, verify the issue is closed
 gh issue view $DEP_NUMBER --repo casazen/backend --json state --jq '.state' | grep -q "CLOSED" \
   || { echo "BLOCKED: dependency #$DEP_NUMBER is not yet closed"; exit 1; }
 
-# 4. Determine scope from labels
+# 5. Determine scope from labels
 SCOPE=$(gh issue view $TASK_NUMBER --json labels --jq '[.labels[].name] | map(select(. == "be" or . == "fe")) | .[0]')
 # be → casazen/backend, fe → casazen/frontend
 ```
