@@ -125,6 +125,8 @@ Scan each regulation file for matching obligations. Produce:
 - **Regulation match**: CIN / Alloggiati Web / GDPR / Tourist Tax / Cedolare Secca / OTA Normativa / none
 - **Severity**: CRITICAL / HIGH / MEDIUM / NONE
 - **Deadline**: if applicable
+<<<<<<< claude/keen-hawking-cf7aac
+=======
 - **Open Questions**: list any questions that require human decision before
   implementation can safely proceed (e.g., interpretation of a regulation,
   commercialista confirmation, legal review of OTA clauses). Use this format:
@@ -136,6 +138,7 @@ Scan each regulation file for matching obligations. Produce:
 
   If none: omit this section entirely. Only include questions that are
   genuinely blocking — not hypothetical or low-risk items.
+>>>>>>> main
 
 ### `@analyzer-agent` output
 
@@ -155,11 +158,14 @@ For each area touched by the requirement, classify:
 
 Synthesize council outputs into one backlog issue.
 
+<<<<<<< claude/keen-hawking-cf7aac
+=======
 **Before creating the issue**: check whether any council agent (especially
 `@regulatory-agent`) produced an `## Open Questions` section in its output.
 If yes, the backlog item must include a `## ⚠️ Open Questions` section and
 receive the label `open-questions` in addition to `pending-po-approval`.
 
+>>>>>>> main
 ```bash
 gh issue create \
   --repo casazen/backend \
@@ -200,6 +206,8 @@ As a [role], I want [action], so that [benefit].
 ## Dependencies
 [Cross-repo? casazen/frontend? External service? or "none"]
 
+<<<<<<< claude/keen-hawking-cf7aac
+=======
 ## ⚠️ Open Questions
 > Include this section ONLY if @regulatory-agent or another council agent
 > flagged unresolved questions. When all questions are resolved, the PO
@@ -209,6 +217,7 @@ As a [role], I want [action], so that [benefit].
 - [ ] [Question 1] — requires: [PO / commercialista / legal]
 - [ ] [Question 2] — requires: [...]
 
+>>>>>>> main
 ## References
 - Original issue: #ORIGINAL_ISSUE_NUMBER
 - Duplicate check: [none found / see #N]
@@ -216,6 +225,8 @@ EOF
 )"
 ```
 
+<<<<<<< claude/keen-hawking-cf7aac
+=======
 If the backlog item includes `## ⚠️ Open Questions`, add the `open-questions` label:
 
 ```bash
@@ -228,6 +239,7 @@ body for `⚠️ Open Questions`). The PO does **not** need to edit the issue bo
 manually — reply to the blocking comment with decisions, and `@question-resolver`
 will update the body, remove `open-questions`, and restore `approved` automatically.
 
+>>>>>>> main
 If `@architect` identified FE scope, create a linked issue on frontend:
 
 ```bash

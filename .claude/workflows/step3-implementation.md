@@ -14,10 +14,15 @@ Auto-triggered by: GitHub Actions on label `in-sprint`
 ```
 in-sprint  ← input (task from Step 2)
   ↓ [Phase A — pre-flight checks]
+<<<<<<< claude/keen-hawking-cf7aac
+  │  dependencies met?
+  ├─ NO  → stop, report blocked dependencies
+=======
   │  label "blocked" present?
   ├─ YES → remove "in-sprint", post comment, STOP
   │  dependencies (Blocked by: #N) met?
   ├─ NO  → post comment, STOP
+>>>>>>> main
   └─ YES →
       ↓ [Phase B — @feature-developer: branch + implement + PR]
       ↓ [Phase C — /code-review-local: max 3 iterations]
@@ -38,6 +43,19 @@ For each task number provided:
 
 ```bash
 # 1. Verify label in-sprint
+<<<<<<< claude/keen-hawking-cf7aac
+gh issue view $TASK_NUMBER --json labels --jq '.labels[].name' | grep -q "^in-sprint$" \
+  || { echo "ERROR: issue #$TASK_NUMBER does not have label in-sprint"; exit 1; }
+
+# 2. Read issue body to find dependencies
+gh issue view $TASK_NUMBER --json body --jq '.body'
+
+# 3. For each "Blocked by: casazen/<repo>#N" found in body, verify the issue is closed
+gh issue view $DEP_NUMBER --repo casazen/backend --json state --jq '.state' | grep -q "CLOSED" \
+  || { echo "BLOCKED: dependency #$DEP_NUMBER is not yet closed"; exit 1; }
+
+# 4. Determine scope from labels
+=======
 # CRITICAL: NEVER add this label yourself. Only the human Scrum Master can move a task
 # from sprint-candidate to in-sprint. If the label is missing, stop and report.
 gh issue view $TASK_NUMBER --json labels --jq '.labels[].name' | grep -q "^in-sprint$" \
@@ -65,6 +83,7 @@ gh issue view $DEP_NUMBER --repo casazen/backend --json state --jq '.state' | gr
   || { echo "BLOCKED: dependency #$DEP_NUMBER is not yet closed"; exit 1; }
 
 # 5. Determine scope from labels
+>>>>>>> main
 SCOPE=$(gh issue view $TASK_NUMBER --json labels --jq '[.labels[].name] | map(select(. == "be" or . == "fe")) | .[0]')
 # be → casazen/backend, fe → casazen/frontend
 ```

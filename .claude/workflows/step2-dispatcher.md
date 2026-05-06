@@ -13,6 +13,9 @@ Auto-triggered by: GitHub Actions on label `approved`
 ## Label State Machine
 
 ```
+<<<<<<< claude/keen-hawking-cf7aac
+approved  ← input (backlog item from Step 1)
+=======
 /step2-dispatch <issue>
   ↓ [Pre-flight — open questions check]
   │  open-questions label OR ⚠️ Open Questions in body?
@@ -28,6 +31,7 @@ Auto-triggered by: GitHub Actions on label `approved`
   │                              └─ NO  → post follow-up, STOP
   │                                        (max 2 rounds)
   └─ NO open questions       → verify "approved" label, continue ↓
+>>>>>>> main
   ↓ [Phase A — @analyzer-agent: dependency map]
   ↓ [Phase B — @feature-developer: decompose into tasks]
   ↓ [Phase C — @scrum-master-casazen: create GitHub issues]
@@ -38,6 +42,8 @@ in-sprint  → triggers Step 3 per task
 
 ---
 
+<<<<<<< claude/keen-hawking-cf7aac
+=======
 ## Pre-flight — Open Questions Gate
 
 **Entry condition**: any (the `approved` label check is skipped when open questions are present)
@@ -137,6 +143,7 @@ gh issue view $ISSUE_NUMBER --json labels --jq '.labels[].name' \
 
 ---
 
+>>>>>>> main
 ## Phase A — Dependency Mapping (`@analyzer-agent`)
 
 ```bash
