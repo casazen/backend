@@ -35,6 +35,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
           ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Qwen does not support Anthropic prompt caching; enable LiteLLM-level caching
+          # on the proxy side (cache: {type: redis, ttl: 300}) to avoid re-billing the
+          # same system-prompt tokens across repeated runs of the same step.
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
@@ -180,6 +183,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
           ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Claude Haiku supports Anthropic prompt caching (cache_control: ephemeral).
+          # Claude Code sends cache_control automatically for system prompts > 1024 tokens.
+          # Ensure the proxy forwards the Anthropic-specific headers without stripping them.
+          CLAUDE_CODE_ENABLE_PROMPT_CACHING: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model claude-haiku-4-5-20251001 \
@@ -223,6 +230,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
           ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_ENABLE_PROMPT_CACHING: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model claude-haiku-4-5-20251001 \
@@ -263,6 +271,7 @@ jobs:
           ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+          CLAUDE_CODE_ENABLE_PROMPT_CACHING: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model claude-haiku-4-5-20251001 \
