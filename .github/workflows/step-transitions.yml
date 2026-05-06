@@ -211,8 +211,10 @@ jobs:
 
       - name: Extract task number from PR body
         id: task
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          TASK_NUM=$(echo '${{ github.event.pull_request.body }}' | grep -oP '(?i)(?<=Closes #)\d+' | head -1)
+          TASK_NUM=$(echo "$PR_BODY" | grep -oP '(?i)(?<=Closes #)\d+' | head -1)
           echo "number=${TASK_NUM}" >> $GITHUB_OUTPUT
 
       - name: Run Phase E — Task closure + Epic check
