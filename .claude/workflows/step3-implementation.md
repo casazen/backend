@@ -38,8 +38,10 @@ For each task number provided:
 
 ```bash
 # 1. Verify label in-sprint
+# CRITICAL: NEVER add this label yourself. Only the human Scrum Master can move a task
+# from sprint-candidate to in-sprint. If the label is missing, stop and report.
 gh issue view $TASK_NUMBER --json labels --jq '.labels[].name' | grep -q "^in-sprint$" \
-  || { echo "ERROR: issue #$TASK_NUMBER does not have label in-sprint"; exit 1; }
+  || { echo "ERROR: issue #$TASK_NUMBER does not have label 'in-sprint'. Only the human Scrum Master can select tasks for the sprint. Add the label manually and re-run."; exit 1; }
 
 # 2. Check for blocked label — task has unresolved open questions or explicit blocker
 HAS_BLOCKED=$(gh issue view $TASK_NUMBER --json labels \
