@@ -27,7 +27,7 @@ jobs:
       - name: Run Step 1 — Clarifier
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
@@ -56,7 +56,7 @@ jobs:
       - name: Run Step 1 — Read Answers
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
@@ -84,7 +84,7 @@ jobs:
       - name: Run Step 1 — Council
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
@@ -113,7 +113,7 @@ jobs:
       - name: Run Step 2 — Dispatcher
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
@@ -142,7 +142,7 @@ jobs:
       - name: Run Step 3 — Implement
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
