@@ -224,8 +224,9 @@ gh issue edit $NEW_ISSUE_NUMBER --repo casazen/backend \
 ```
 
 Step 2 checks for this label as a secondary gate (in addition to scanning the
-body for `⚠️ Open Questions`). The PO must remove `open-questions` before
-re-adding `approved`.
+body for `⚠️ Open Questions`). The PO does **not** need to edit the issue body
+manually — reply to the blocking comment with decisions, and `@question-resolver`
+will update the body, remove `open-questions`, and restore `approved` automatically.
 
 If `@architect` identified FE scope, create a linked issue on frontend:
 
