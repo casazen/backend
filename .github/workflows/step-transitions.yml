@@ -2,9 +2,11 @@ name: Step Pipeline Transitions
 
 on:
   issues:
-    types: [labeled]
+    types: [labeled, closed]
   issue_comment:
     types: [created]
+  pull_request:
+    types: [closed]
 
 jobs:
 
@@ -185,3 +187,84 @@ jobs:
             --verbose \
             --dangerously-skip-permissions \
             -p "/step3-implement ${{ steps.issue.outputs.number }}" 2>&1
+
+  # Job 6: PR merged → Phase E (close task + Epic check)
+  trigger-step3-post-merge:
+    name: "Step 3 — Post-Merge (Phase E)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Extract task number from PR body
+        id: task
+        run: |
+          TASK_NUM=$(echo '${{ github.event.pull_request.body }}' | grep -oP '(?i)(?<=Closes #)\d+' | head -1)
+          echo "number=${TASK_NUM}" >> $GITHUB_OUTPUT
+
+      - name: Run Phase E — Task closure + Epic check
+        if: steps.task.outputs.number != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model qwen-3.5-122b-sovereign \
+            --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
+            --verbose \
+            --dangerously-skip-permissions \
+            -p "Phase E post-merge for task #${{ steps.task.outputs.number }} (PR #${{ github.event.pull_request.number }} merged to main). Follow Phase E in .claude/workflows/step3-implementation.md exactly: (1) add label 'merged' to the task issue, (2) close the task issue with a comment referencing PR #${{ github.event.pull_request.number }}, (3) find the Epic from the task body ('Part of: casazen/backend#N'), (4) check if ALL task issues of that Epic are closed, (5) if all are closed: close the Epic with a delivery summary and commit an update to .claude/context/codebase_map.md directly to main." 2>&1
+
+  # Job 7: issue closed → auto-unblock dependent in-sprint tasks
+  trigger-unblock-on-close:
+    name: "Auto-Unblock — Start dependent tasks"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'closed' &&
+      github.event.issue.state_reason == 'completed'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Run auto-unblock check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+        run: |
+          npx @anthropic-ai/claude-code@latest \
+            --model qwen-3.5-122b-sovereign \
+            --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
+            --verbose \
+            --dangerously-skip-permissions \
+            -p "Issue #${{ github.event.issue.number }} was just closed as completed. Search for all open issues that have label 'in-sprint' AND reference 'Blocked by: casazen/backend#${{ github.event.issue.number }}' in their body. For each such issue: (1) check ALL 'Blocked by:' lines in the body — if every referenced dependency is now closed, run /step3-implement <issue_number> to start its implementation; (2) if some dependencies are still open, post a comment on the task listing which ones remain open." 2>&1
