@@ -37,8 +37,9 @@ jobs:
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
+            --verbose \
             --dangerously-skip-permissions \
-            -p "/step1-refine ${{ steps.issue.outputs.number }}"
+            -p "/step1-refine ${{ steps.issue.outputs.number }}" 2>&1
 
   # Job 2: issue_comment on awaiting-clarification issue, non-bot author → /step1-refine N mode=read-answers (haiku)
   handle-clarification-reply:
@@ -70,8 +71,9 @@ jobs:
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
+            --verbose \
             --dangerously-skip-permissions \
-            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=read-answers"
+            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=read-answers" 2>&1
 
   # Job 3: label council-ready → /step1-refine N mode=council (AGENT_TEAMS)
   trigger-council:
@@ -103,8 +105,9 @@ jobs:
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
+            --verbose \
             --dangerously-skip-permissions \
-            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=council"
+            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=council" 2>&1
 
   # Job 4: label approved → /step2-dispatch N (AGENT_TEAMS)
   trigger-step2:
@@ -136,8 +139,9 @@ jobs:
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
+            --verbose \
             --dangerously-skip-permissions \
-            -p "/step2-dispatch ${{ steps.issue.outputs.number }}"
+            -p "/step2-dispatch ${{ steps.issue.outputs.number }}" 2>&1
 
   # Job 5: label in-sprint → /step3-implement N (AGENT_TEAMS)
   trigger-step3:
@@ -169,5 +173,6 @@ jobs:
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
+            --verbose \
             --dangerously-skip-permissions \
-            -p "/step3-implement ${{ steps.issue.outputs.number }}"
+            -p "/step3-implement ${{ steps.issue.outputs.number }}" 2>&1
