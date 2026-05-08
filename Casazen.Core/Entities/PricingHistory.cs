@@ -58,4 +58,6 @@ public class PricingHistory
     [Required]
     [MaxLength(50)]
     public string SyncStatus { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

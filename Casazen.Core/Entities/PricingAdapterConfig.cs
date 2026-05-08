@@ -26,7 +26,11 @@ public class PricingAdapterConfig
     /// </summary>
     [Required]
     [MaxLength(50)]
-    public string Frequency { get; set; } = string.Empty;
+    public string AdaptationFrequency { get; set; } = string.Empty;
+
+    public bool IncludeSeasonality { get; set; } = true;
+
+    public bool IncludePublicHolidays { get; set; } = true;
 
     /// <summary>
     /// UTC timestamp of the last successful pricing adaptation run.
@@ -37,4 +41,8 @@ public class PricingAdapterConfig
     /// UTC timestamp of the next scheduled pricing adaptation run.
     /// </summary>
     public DateTime? NextScheduledRunAt { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
