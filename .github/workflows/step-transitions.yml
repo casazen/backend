@@ -185,6 +185,7 @@ jobs:
             --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
             --verbose \
+            --output-format json \
             --dangerously-skip-permissions \
             -p "/step3-implement ${{ steps.issue.outputs.number }}" 2>&1
 
