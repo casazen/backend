@@ -115,6 +115,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
           ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
