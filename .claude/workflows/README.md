@@ -14,7 +14,7 @@ Each workflow is invoked via a **command** (e.g., `/step1-refine`) or a **skill*
 |---|---|---|---|
 | `step1-requirement-refine.md` | `/step1-refine` | requirement_clarifier, product-owner, architect, regulatory_agent, analyzer_agent, scrum_master_casazen | Label `raw-requirement` / `council-ready` |
 | `step2-dispatcher.md` | `/step2-dispatch` | analyzer_agent, feature_developer (planning), scrum_master_casazen | Label `approved` |
-| `step3-implementation.md` | `/step3-implement` | feature_developer, code_reviewer, scrum_master_casazen | Label `in-sprint` / PR merged / issue closed |
+| `step3-implementation.md` | `/step3-implement` | feature_developer, code_reviewer, scrum_master_casazen | Label `in-sprint` |
 
 GitHub Actions auto-triggers: `.github/workflows/step-transitions.yml`
 
@@ -56,9 +56,7 @@ label raw-requirement (or /step1-refine N)
       → @feature-developer: branch + implement + PR (parallel if independent)
       → /code-review-local (max 3 iterations)
       → [human merges PR]
-      → GitHub Actions (trigger-step3-post-merge): close task + label merged
-      → @scrum-master-casazen: Epic closure check + update codebase_map.md
-      → GitHub Actions (trigger-unblock-on-close): start next blocked in-sprint task
+      → @scrum-master-casazen: close Epic + update codebase_map.md
 ```
 
 ### First Run (no roadmap/epics)
@@ -139,7 +137,7 @@ label raw-requirement (or /step1-refine N)
 | `be` / `fe` | @scrum-master-casazen | Repo scope |
 | `effort:XS/S/M` | @scrum-master-casazen | Size estimate |
 | `in-sprint` | human SM | Triggers Step 3 implementation |
-| `merged` | GitHub Actions (Phase E) | Task PR has been merged; triggers auto-unblock of dependent tasks |
+| `merged` | @scrum-master-casazen | Task PR has been merged |
 
 ---
 

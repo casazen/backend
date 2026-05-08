@@ -1,34 +1,17 @@
 # Italian Regulatory Compliance
 
-## Domain Context
-**Domain**: Short-term rental management in Italy
-**Regulations**: D.L. 145/2023 (CIN codes), Alloggiati Web, Tourist tax, GDPR, Cedolare secca
+**Domain**: Short-term rental Italy — D.L. 145/2023 (CIN), Alloggiati Web, tourist tax, GDPR, cedolare secca
 
-## Regulatory Intelligence System
-Automated agents monitor compliance:
-- **regulatory_agent**: Collects regulatory updates from Italian government sources
-- **analyzer_agent**: Analyzes gaps between regulations and codebase
-- **github_agent**: Creates GitHub issues for compliance gaps
+## Agents
+- `regulatory_agent`: monitors Italian gov sources
+- `analyzer_agent`: gaps vs codebase → `github_agent`: creates issues
 
-**Context Location**: @.claude/context/ (domain knowledge, regulations, codebase gaps)
+## Rules
+- **CIN**: format `IT-XXXXX-XXXXXXXXXX`, validate + store per property (D.L. 145/2023)
+- **Guest data**: GDPR-compliant, Alloggiati Web integration, data retention applies
+- **Tourist tax**: regional rates in `TaxRate` entity — NEVER hardcode
 
-## Compliance Features
-When implementing features related to:
-
-### CIN Codes
-- Format: IT-XXXXX-XXXXXXXXXX
-- Required per D.L. 145/2023
-- Must be validated and stored for each property
-
-### Guest Data
-- GDPR compliant handling required
-- Alloggiati Web reporting integration
-- Data retention policies apply
-
-### Tourist Tax
-- Regional variations exist (not uniform across Italy)
-- Automated calculation based on region/city
-- Rates stored in database (check `TaxRate` entity)
-- **NEVER** hardcode tax rates
-
-**Always check** @.claude/context/regulations/ for current requirements before implementing compliance features.
+## Loading Regulatory Context (lazy — load only what you need)
+1. Read `.claude/context/regulations/_index.md` for a topic overview
+2. Load the **single** relevant file (e.g. `cin.md`, `gdpr.md`) — do NOT load the whole directory
+3. Load additional files only if the task explicitly spans multiple regulations

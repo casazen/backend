@@ -1,27 +1,16 @@
-# Code Style Rules
+# Code Style
 
-## Async Operations
-- **ALWAYS** use async/await for I/O (database, HTTP, file operations)
-- **ALWAYS** suffix async methods with "Async": `GetUserAsync()`, `SaveBookingAsync()`
-- **NEVER** use `.Result` or `.Wait()` (causes deadlocks)
+## Async
+- Use async/await for all I/O; suffix methods with `Async` (e.g. `GetUserAsync`)
+- NEVER `.Result` or `.Wait()` — deadlock risk
 
 ## Database
-- **MUST** create EF Core migration for any schema change (entities, relationships, indexes)
-- **MUST** test migrations locally before committing
-- Migration naming: `Add{Feature}` (e.g., `AddCinCodeToProperty`)
-- Commands:
-  ```bash
-  dotnet ef migrations add MigrationName --project Casazen.Infrastructure
-  dotnet ef database update --project Casazen.Infrastructure
-  ```
+- EF Core migration required for every schema change: `dotnet ef migrations add Add<Feature> --project Casazen.Infrastructure`
+- Test migration locally before committing
 
 ## Testing
-- Test naming: `MethodName_Scenario_ExpectedBehavior`
-- Pattern: Arrange-Act-Assert (AAA)
-- Use Moq for mocking: `Mock<IRepository>`, not manual mocks
-- Coverage targets: Critical logic 100%, Services 80%, Controllers 70%
+- Naming: `MethodName_Scenario_ExpectedBehavior` | Pattern: AAA | Mocking: `Mock<IRepository>`
+- Coverage: critical 100%, services 80%, controllers 70%
 
 ## Before Committing
-- [ ] Tests pass: `dotnet test`
-- [ ] Code formatted: `dotnet format --verify-no-changes`
-- [ ] No compiler warnings
+`dotnet test` · `dotnet format --verify-no-changes` · no compiler warnings

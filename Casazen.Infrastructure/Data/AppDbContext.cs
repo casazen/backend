@@ -92,8 +92,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // PricingAdapterConfig → Property
         modelBuilder.Entity<PricingAdapterConfig>()
             .HasOne(c => c.Property)
-            .WithOne(p => p.PricingAdapterConfig)
-            .HasForeignKey<PricingAdapterConfig>(c => c.PropertyId)
+            .WithMany()
+            .HasForeignKey(c => c.PropertyId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<PricingAdapterConfig>()

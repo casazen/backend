@@ -17,7 +17,7 @@ namespace Casazen.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("ProductVersion", "10.0.1")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -492,19 +492,10 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("AdaptationFrequency")
+                    b.Property<string>("Frequency")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IncludePublicHolidays")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IncludeSeasonality")
-                        .HasColumnType("bit");
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
@@ -518,13 +509,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("PropertyId")
-                        .IsUnique();
 
                     b.HasIndex("PropertyId", "IsEnabled");
 
@@ -548,9 +533,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<decimal>("NewPrice")
                         .HasPrecision(18, 2)
@@ -904,8 +886,8 @@ namespace Casazen.Infrastructure.Migrations
             modelBuilder.Entity("Casazen.Core.Entities.PricingAdapterConfig", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
-                        .WithOne("PricingAdapterConfig")
-                        .HasForeignKey("Casazen.Core.Entities.PricingAdapterConfig", "PropertyId")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -956,8 +938,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Bookings");
 
                     b.Navigation("OtaIntegrations");
-
-                    b.Navigation("PricingAdapterConfig");
                 });
 #pragma warning restore 612, 618
         }
