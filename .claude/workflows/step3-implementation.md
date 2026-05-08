@@ -20,7 +20,7 @@ in-sprint  ← input (task from Step 2)
   ├─ NO  → post comment, STOP
   └─ YES →
       ↓ [Phase B — @feature-developer: branch + implement + PR]
-      ↓ [Phase C — /code-review-local: max 3 iterations]
+      ↓ [Phase C — post comment, CI review runs automatically]
       PR ready for manual review
       ↓ [Phase D — human developer merges PR]
       merged  (label added on task issue)
@@ -127,26 +127,12 @@ Part of: casazen/backend#$EPIC_NUMBER
 
 ## Phase C — Automated Review
 
-After PR is open, run `/code-review-local`.
+The PR triggers `claude-code-review.yml` automatically. No action needed here.
 
-See `.claude/workflows/common/review-process.md` for full protocol (max 3 iterations).
-
-```
-Iteration 1:
-  Run /code-review-local
-  Fix 🔴 Critical + 🟡 High findings
-  Push fixes, re-run review (delta only)
-
-Iteration 2 (if needed):
-  Review delta only
-  Fix remaining 🔴 Critical findings
-
-Iteration 3 (if needed):
-  If still unresolved 🔴 Critical → produce escalation report, stop
-
-On APPROVED:
-  Post on task issue:
-  "🔍 PR ready for manual review: <PR_URL>"
+Post on task issue once PR is open:
+```bash
+gh issue comment $TASK_NUMBER \
+  --body "🔍 PR ready for review: $PR_URL — automated review running via CI."
 ```
 
 ---
@@ -244,7 +230,7 @@ Example for `/step3-implement 10 11 12 13`:
 
 ## Notes
 
-- Max 3 review iterations per PR (anti-loop guard from `common/review-process.md`)
+- Code review handled by `claude-code-review.yml` on PR open — do NOT run `/code-review-local` in CI
 - FE tasks require the dependent BE PR to be **merged** (not just approved) before starting
 - `@scrum-master-casazen` handles Epic closure only — it does not implement code
 - `codebase_map.md` commit goes directly to main (documentation-only, no feature code)

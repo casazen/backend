@@ -26,11 +26,12 @@ jobs:
 
       - name: Run Step 1 — Clarifier
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-haiku-4-5-20251001 \
+            --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --permission-prompt-mode acceptEdits \
             -p "/step1-refine ${{ steps.issue.outputs.number }}"
@@ -54,11 +55,12 @@ jobs:
 
       - name: Run Step 1 — Read Answers
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-haiku-4-5-20251001 \
+            --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --permission-prompt-mode acceptEdits \
             -p "/step1-refine ${{ steps.issue.outputs.number }} mode=read-answers"
@@ -81,12 +83,13 @@ jobs:
 
       - name: Run Step 1 — Council
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-sonnet-4-6 \
+            --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --permission-prompt-mode acceptEdits \
             -p "/step1-refine ${{ steps.issue.outputs.number }} mode=council"
@@ -109,12 +112,12 @@ jobs:
 
       - name: Run Step 2 — Dispatcher
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-sonnet-4-6 \
+            --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --permission-prompt-mode acceptEdits \
             -p "/step2-dispatch ${{ steps.issue.outputs.number }}"
@@ -137,12 +140,13 @@ jobs:
 
       - name: Run Step 3 — Implement
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-sonnet-4-6 \
+            --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
             --permission-prompt-mode acceptEdits \
             -p "/step3-implement ${{ steps.issue.outputs.number }}"
