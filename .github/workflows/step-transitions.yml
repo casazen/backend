@@ -37,7 +37,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model qwen-3.5-122b-sovereign \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
@@ -71,7 +71,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model qwen-3.5-122b-sovereign \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
@@ -105,7 +105,7 @@ jobs:
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model qwen-3.5-122b-sovereign \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
@@ -139,7 +139,7 @@ jobs:
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model qwen-3.5-122b-sovereign \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
@@ -182,7 +182,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-haiku-4-5-20251001 \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
@@ -225,7 +225,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-haiku-4-5-20251001 \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
@@ -265,7 +265,7 @@ jobs:
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-haiku-4-5-20251001 \
+            --model qwen-3.6-35b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
             --verbose \
             --dangerously-skip-permissions \
