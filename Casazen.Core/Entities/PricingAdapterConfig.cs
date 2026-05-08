@@ -28,9 +28,9 @@ public class PricingAdapterConfig
     [MaxLength(50)]
     public string AdaptationFrequency { get; set; } = string.Empty;
 
-    public bool IncludeSeasonality { get; set; } = true;
+    public bool IncludeSeasonality { get; set; } = false;
 
-    public bool IncludePublicHolidays { get; set; } = true;
+    public bool IncludePublicHolidays { get; set; } = false;
 
     /// <summary>
     /// UTC timestamp of the last successful pricing adaptation run.
