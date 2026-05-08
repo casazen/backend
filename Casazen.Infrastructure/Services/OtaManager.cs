@@ -211,8 +211,7 @@ public class OtaManager(
                 ChangeReason = "Batch OTA price update",
                 AiConfidence = 1.0m,
                 OtasSynced = JsonSerializer.Serialize(syncedPlatforms),
-                SyncStatus = overallSuccess ? "synced" : "failed",
-                CreatedAt = DateTime.UtcNow
+                SyncStatus = overallSuccess ? "synced" : "failed"
             };
 
             await pricingHistoryRepository.AddAsync(pricingHistory);

@@ -75,8 +75,7 @@ public class PricingAdapterService(
             ChangeReason = changeReason,
             AiConfidence = aiConfidence,
             OtasSynced = otasSynced ?? string.Empty,
-            SyncStatus = syncStatus ?? "Pending",
-            CreatedAt = DateTime.UtcNow
+            SyncStatus = syncStatus ?? "Pending"
         };
 
         var result = await historyRepository.AddAsync(history);
