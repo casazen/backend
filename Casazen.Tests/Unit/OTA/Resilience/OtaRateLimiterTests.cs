@@ -61,7 +61,7 @@ public class OtaRateLimiterTests
         var token3Task = rateLimiter.AcquireAsync("Airbnb");
 
         // Give it a small delay to ensure it's blocked
-        await Task.Delay(100);
+        await Task.Delay(150);
         Assert.False(token3Task.IsCompleted); // Should still be waiting
 
         // Release one token
