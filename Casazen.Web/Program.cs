@@ -55,12 +55,16 @@ builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
+builder.Services.AddScoped<IPricingAdapterConfigRepository, PricingAdapterConfigRepository>();
+builder.Services.AddScoped<IPricingHistoryRepository, PricingHistoryRepository>();
 
 // External Services
 builder.Services.AddSendGrid(options =>
 {
     options.ApiKey = builder.Configuration["Email:SendGridApiKey"] ?? string.Empty;
 });
+builder.Services.AddHttpClient<PublicHolidayService>();
+builder.Services.AddMemoryCache();
 
 // Services
 builder.Services.AddCasazenServices();
@@ -75,6 +79,8 @@ builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
+builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
+builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
@@ -89,6 +95,7 @@ builder.Services.AddCasazenCors(builder.Configuration);
 // Background Jobs
 builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
+builder.Services.AddScoped<DynamicPricingJob>();
 builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
@@ -238,6 +245,12 @@ void ConfigureRecurringJobs()
         "booking-pull-all",
         job => job.ExecuteAsync(Guid.Empty),
         "*/15 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    RecurringJob.AddOrUpdate<DynamicPricingJob>(
+        "dynamic-pricing-adaptation",
+        job => job.ExecuteAsync(),
+        "0 2 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 
