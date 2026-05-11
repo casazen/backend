@@ -569,6 +569,83 @@ public class PropertiesControllerTests
         Assert.Equal(authenticatedUserId, capturedProperty.OwnerId);
     }
 
+    [Fact]
+    public async Task Create_WithNameIdentifierClaim_SetsOwnerId()
+    {
+        // Arrange — simulate token that carries NameIdentifier instead of "sub"
+        var userId = "auth0|nameidentifier_user_789";
+        var claims = new List<Claim>
+        {
+            new Claim(System.Security.Claims.ClaimTypes.NameIdentifier, userId)
+            // Note: no "sub" claim — exercises the fallback path in GetAuthenticatedUserId()
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var claimsPrincipal = new ClaimsPrincipal(identity);
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+        };
+
+        var request = new CreatePropertyRequest
+        {
+            Name = "NameIdentifier Property",
+            City = "Milan",
+            Address = "Via Milano 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 75m
+        };
+
+        Property? capturedProperty = null;
+        _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
+            .Callback<Property>(p => capturedProperty = p)
+            .ReturnsAsync((Property p) => p);
+
+        // Act
+        var result = await _controller.Create(request);
+
+        // Assert — NameIdentifier fallback is used; OwnerId matches
+        Assert.IsType<CreatedAtActionResult>(result.Result);
+        Assert.NotNull(capturedProperty);
+        Assert.Equal(userId, capturedProperty.OwnerId);
+        _mockService.Verify(x => x.CreatePropertyAsync(It.Is<Property>(p => p.OwnerId == userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Create_WithoutOwnerIdInRequest_SetsOwnerIdFromJwt()
+    {
+        // Arrange — CreatePropertyRequest has no OwnerId field; it must always come from JWT
+        var jwtSubject = "auth0|jwt_subject_user_456";
+        SetupUserClaims(jwtSubject);
+
+        // The DTO deliberately has no OwnerId property — this is the core fix from issue #143
+        var request = new CreatePropertyRequest
+        {
+            Name = "JWT OwnerId Property",
+            City = "Florence",
+            Address = "Via Firenze 5",
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+            NightlyRate = 120m
+        };
+
+        Property? capturedProperty = null;
+        _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
+            .Callback<Property>(p => capturedProperty = p)
+            .ReturnsAsync((Property p) => p);
+
+        // Act
+        var result = await _controller.Create(request);
+
+        // Assert — OwnerId is set from JWT, not from request body (there is no such field)
+        var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
+        Assert.NotNull(capturedProperty);
+        Assert.Equal(jwtSubject, capturedProperty.OwnerId);
+        _mockService.Verify(x => x.CreatePropertyAsync(It.Is<Property>(p => p.OwnerId == jwtSubject)), Times.Once);
+    }
+
     // Image Management Tests
 
     [Fact]
