@@ -40,6 +40,7 @@ public enum PropertyAmenity
     Balcony = 44,
     BBQGrill = 45,
     BeachAccess = 46,
+    Terrace = 47,
 
     // Parking & Transportation
     FreeParking = 50,
