@@ -87,6 +87,50 @@ public class PricingAdapterService(
         return result;
     }
 
+    public async Task DisableConfigAsync(Guid propertyId)
+    {
+        var config = await configRepository.GetByPropertyIdAsync(propertyId);
+        if (config == null) return;
+        config.IsEnabled = false;
+        await configRepository.UpdateAsync(config);
+        logger.LogInformation("Disabled AI pricing for property {PropertyId}", propertyId);
+    }
+
+    public async Task<(IEnumerable<PricingHistory> Items, int Total)> GetHistoryPagedAsync(
+        Guid propertyId, DateTime from, DateTime to, int page, int pageSize)
+    {
+        var all = (await historyRepository.GetByPropertyIdAndDateRangeAsync(propertyId, from, to)).ToList();
+        var total = all.Count;
+        var items = all.Skip((page - 1) * pageSize).Take(pageSize);
+        return (items, total);
+    }
+
+    public async Task<IEnumerable<(DateTime Date, decimal SuggestedPrice, decimal BasePrice, string Reason)>> PreviewPricesAsync(
+        Guid propertyId, decimal basePrice, PricingAdapterConfig config)
+    {
+        var results = new List<(DateTime, decimal, decimal, string)>();
+        var today = DateTime.UtcNow.Date;
+
+        for (var i = 0; i < 90; i++)
+        {
+            var date = today.AddDays(i);
+            var multiplier = await CalculatePricingMultiplierAsync(date, config.IncludeSeasonality, config.IncludePublicHolidays);
+            var suggested = Math.Round(basePrice * multiplier, 2);
+            var reason = GetPriceReason(multiplier);
+            results.Add((date, suggested, basePrice, reason));
+        }
+
+        return results;
+    }
+
+    private static string GetPriceReason(decimal multiplier) => multiplier switch
+    {
+        >= 1.5m => "holiday",
+        > 1.0m => "high_season",
+        < 1.0m => "low_season",
+        _ => "standard"
+    };
+
     /// <summary>
     /// Calculate seasonal multiplier based on month.
     /// High season (June-August): 1.3x

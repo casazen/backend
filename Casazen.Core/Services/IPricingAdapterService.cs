@@ -36,4 +36,21 @@ public interface IPricingAdapterService
         decimal aiConfidence,
         string? otasSynced = null,
         string? syncStatus = null);
+
+    /// <summary>
+    /// Disable AI pricing for a property by setting IsEnabled = false.
+    /// </summary>
+    Task DisableConfigAsync(Guid propertyId);
+
+    /// <summary>
+    /// Get paginated pricing history for a property within a date range.
+    /// </summary>
+    Task<(IEnumerable<PricingHistory> Items, int Total)> GetHistoryPagedAsync(
+        Guid propertyId, DateTime from, DateTime to, int page, int pageSize);
+
+    /// <summary>
+    /// Preview suggested prices for the next 90 days without persisting any changes.
+    /// </summary>
+    Task<IEnumerable<(DateTime Date, decimal SuggestedPrice, decimal BasePrice, string Reason)>> PreviewPricesAsync(
+        Guid propertyId, decimal basePrice, PricingAdapterConfig config);
 }

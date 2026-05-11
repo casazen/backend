@@ -78,6 +78,16 @@ public class DynamicPricingJob
     }
 
     /// <summary>
+    /// Manual one-off trigger for a single property. Skips silently if config is missing or disabled.
+    /// </summary>
+    public async Task ExecuteForPropertyAsync(Guid propertyId)
+    {
+        var config = await _configRepository.GetByPropertyIdAsync(propertyId);
+        if (config == null || !config.IsEnabled) return;
+        await ProcessPropertyAsync(config);
+    }
+
+    /// <summary>
     /// Process a single property: compute prices for next 90 days, record history, trigger OTA sync.
     /// </summary>
     private async Task ProcessPropertyAsync(Core.Entities.PricingAdapterConfig config)
