@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -159,6 +160,12 @@ builder.Services.AddSwaggerGen(options =>
             new List<string>()
         }
     });
+
+    options.EnableAnnotations();
+
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    options.IncludeXmlComments(xmlPath);
 });
 
 var app = builder.Build();

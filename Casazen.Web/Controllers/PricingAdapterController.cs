@@ -5,6 +5,7 @@ using Casazen.Web.DTOs;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Casazen.Web.Controllers;
 
@@ -14,6 +15,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/pricing-adapter")]
 [Authorize]
+[SwaggerTag("Pricing Adapter")]
 public class PricingAdapterController(
     IPricingAdapterService pricingService,
     IPropertyService propertyService,
