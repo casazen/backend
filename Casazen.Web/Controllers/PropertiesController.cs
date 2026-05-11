@@ -57,6 +57,17 @@ public class PropertiesController(
         return property == null ? NotFound() : Ok(property);
     }
 
+    /// <summary>
+    /// Creates a new property for the authenticated owner.
+    /// </summary>
+    /// <remarks>
+    /// <c>OwnerId</c> is derived from the caller's JWT <c>sub</c> claim and must not be supplied
+    /// in the request body. Any client-side attempt to specify <c>OwnerId</c> is ignored.
+    /// </remarks>
+    /// <param name="request">Property details. See <see cref="CreatePropertyRequest"/> for required fields.</param>
+    /// <returns>The newly created property with its assigned <c>Id</c> and <c>OwnerId</c>.</returns>
+    /// <response code="201">Property created successfully.</response>
+    /// <response code="401">The caller is not authenticated.</response>
     [HttpPost]
     public async Task<ActionResult<Property>> Create([FromBody] CreatePropertyRequest request)
     {
@@ -71,6 +82,21 @@ public class PropertiesController(
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
+    /// <summary>
+    /// Updates an existing property. Only the property owner may perform this operation.
+    /// </summary>
+    /// <remarks>
+    /// <c>OwnerId</c> is never accepted from the request body; ownership is always verified
+    /// against the authenticated caller's JWT <c>sub</c> claim. Sending an <c>OwnerId</c> field
+    /// in the body has no effect and will not change the property owner.
+    /// </remarks>
+    /// <param name="id">The unique identifier of the property to update.</param>
+    /// <param name="request">Updated property details. See <see cref="UpdatePropertyRequest"/> for available fields.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="204">Property updated successfully.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller is not the owner of this property.</response>
+    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePropertyRequest request)
     {
