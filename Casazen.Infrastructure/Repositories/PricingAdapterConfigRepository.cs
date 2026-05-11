@@ -42,7 +42,6 @@ public class PricingAdapterConfigRepository(AppDbContext context) : IPricingAdap
 
     public async Task UpdateAsync(PricingAdapterConfig config)
     {
-        config.UpdatedAt = DateTime.UtcNow;
         context.PricingAdapterConfigs.Update(config);
         await context.SaveChangesAsync();
     }

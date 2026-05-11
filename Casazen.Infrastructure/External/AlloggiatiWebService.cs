@@ -9,7 +9,6 @@ namespace Casazen.Infrastructure.External;
 public class AlloggiatiWebService(
     IGuestRepository guestRepository,
     IAlloggiatiWebReportRepository reportRepository,
-    IConfiguration configuration,
     ILogger<AlloggiatiWebService> logger) : IAlloggiatiWebService
 {
     public async Task ReportGuestAsync(Guid guestId, Guid bookingId)

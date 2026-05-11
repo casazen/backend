@@ -2,11 +2,9 @@ name: Step Pipeline Transitions
 
 on:
   issues:
-    types: [labeled, closed]
+    types: [labeled]
   issue_comment:
     types: [created]
-  pull_request:
-    types: [closed]
 
 jobs:
 
@@ -14,17 +12,13 @@ jobs:
   trigger-step1-clarification:
     name: "Step 1 — Clarification"
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'raw-requirement'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Get issue number
         id: issue
@@ -33,7 +27,7 @@ jobs:
       - name: Run Step 1 — Clarifier
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Qwen does not support Anthropic prompt caching; enable LiteLLM-level caching
           # on the proxy side (cache: {type: redis, ttl: 300}) to avoid re-billing the
@@ -42,18 +36,13 @@ jobs:
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
-            --verbose \
-            --dangerously-skip-permissions \
-            -p "/step1-refine ${{ steps.issue.outputs.number }}" 2>&1
+            --permission-prompt-mode acceptEdits \
+            -p "/step1-refine ${{ steps.issue.outputs.number }}"
 
   # Job 2: issue_comment on awaiting-clarification issue, non-bot author → /step1-refine N mode=read-answers (haiku)
   handle-clarification-reply:
     name: "Step 1 — Process PO Reply"
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     if: |
       github.event_name == 'issue_comment' &&
       github.event.action == 'created' &&
@@ -61,7 +50,7 @@ jobs:
       contains(github.event.issue.labels.*.name, 'awaiting-clarification')
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Get issue number
         id: issue
@@ -70,31 +59,26 @@ jobs:
       - name: Run Step 1 — Read Answers
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
-            --verbose \
-            --dangerously-skip-permissions \
-            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=read-answers" 2>&1
+            --permission-prompt-mode acceptEdits \
+            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=read-answers"
 
-  # Job 3: label council-ready → /step1-refine N mode=council (AGENT_TEAMS)
+  # Job 3: label council-ready → /step1-refine N mode=council (sonnet, AGENT_TEAMS)
   trigger-council:
     name: "Step 1 — Council Review"
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'council-ready'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Get issue number
         id: issue
@@ -103,32 +87,27 @@ jobs:
       - name: Run Step 1 — Council
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
-            --verbose \
-            --dangerously-skip-permissions \
-            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=council" 2>&1
+            --permission-prompt-mode acceptEdits \
+            -p "/step1-refine ${{ steps.issue.outputs.number }} mode=council"
 
-  # Job 4: label approved → /step2-dispatch N (AGENT_TEAMS)
+  # Job 4: label approved → /step2-dispatch N (sonnet, AGENT_TEAMS)
   trigger-step2:
     name: "Step 2 — Task Dispatcher"
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'approved'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Get issue number
         id: issue
@@ -137,42 +116,27 @@ jobs:
       - name: Run Step 2 — Dispatcher
         env:
           ANTHROPIC_API_KEY: ${{ secrets.SOVEREIGN_API_KEY }}
-          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de
+          ANTHROPIC_BASE_URL: https://adesso-ai-hub.3asabc.de/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
             --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Grep,Glob" \
-            --verbose \
-            --dangerously-skip-permissions \
-            -p "/step2-dispatch ${{ steps.issue.outputs.number }}" 2>&1
+            --permission-prompt-mode acceptEdits \
+            -p "/step2-dispatch ${{ steps.issue.outputs.number }}"
 
-  # Job 5: label in-sprint → /step3-implement N (AGENT_TEAMS)
+  # Job 5: label in-sprint → /step3-implement N (sonnet, AGENT_TEAMS)
   trigger-step3:
     name: "Step 3 — Implementation"
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
       github.event.label.name == 'in-sprint'
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Configure git identity
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
+      - uses: actions/checkout@v3
 
       - name: Get issue number
         id: issue
@@ -274,8 +238,7 @@ jobs:
           CLAUDE_CODE_ENABLE_PROMPT_CACHING: "1"
         run: |
           npx @anthropic-ai/claude-code@latest \
-            --model claude-haiku-4-5-20251001 \
+            --model qwen-3.5-122b-sovereign \
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
-            --verbose \
-            --dangerously-skip-permissions \
-            -p "Issue #${{ github.event.issue.number }} was just closed as completed. Search for all open issues that have label 'in-sprint' AND reference 'Blocked by: casazen/backend#${{ github.event.issue.number }}' in their body. For each such issue: (1) check ALL 'Blocked by:' lines in the body — if every referenced dependency is now closed, run /step3-implement <issue_number> to start its implementation; (2) if some dependencies are still open, post a comment on the task listing which ones remain open." 2>&1
+            --permission-prompt-mode acceptEdits \
+            -p "/step3-implement ${{ steps.issue.outputs.number }}"
