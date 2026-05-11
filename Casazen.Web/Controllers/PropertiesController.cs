@@ -1,5 +1,6 @@
 ﻿using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -29,9 +30,7 @@ public class PropertiesController(
         logger.LogInformation($"User identity name: {User.Identity?.Name}");
 
         // Try multiple claim types to find user ID
-        var userId = User.FindFirst("sub")?.Value
-                     ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                     ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+        var userId = GetAuthenticatedUserId();
 
         logger.LogInformation($"User ID from claims: {userId}");
 
@@ -59,23 +58,23 @@ public class PropertiesController(
     }
 
     [HttpPost]
-    public async Task<ActionResult<Property>> Create([FromBody] Property property)
+    public async Task<ActionResult<Property>> Create([FromBody] CreatePropertyRequest request)
     {
-        var userId = User.FindFirst("sub")?.Value;
+        var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
         logger.LogInformation("Creating property for user: {UserId}", userId);
-        property.OwnerId = userId;
+        var property = request.ToProperty(userId);
         var created = await propertyService.CreatePropertyAsync(property);
         logger.LogInformation("Property created: {PropertyId}", created.Id);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] Property property)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePropertyRequest request)
     {
-        var userId = User.FindFirst("sub")?.Value;
+        var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -91,16 +90,15 @@ public class PropertiesController(
             return Forbid();
         }
 
-        property.Id = id;
-        property.OwnerId = userId; // Ensure OwnerId cannot be changed
-        await propertyService.UpdatePropertyAsync(property);
+        request.ApplyTo(existing);
+        await propertyService.UpdatePropertyAsync(existing);
         return NoContent();
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var userId = User.FindFirst("sub")?.Value;
+        var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -138,7 +136,7 @@ public class PropertiesController(
     [HttpPost("{id}/images")]
     public async Task<ActionResult<Property>> UploadImages(Guid id, [FromForm] List<IFormFile> images)
     {
-        var userId = User.FindFirst("sub")?.Value;
+        var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -203,7 +201,7 @@ public class PropertiesController(
     [HttpDelete("{id}/images/{imageIndex}")]
     public async Task<ActionResult<Property>> DeleteImage(Guid id, int imageIndex)
     {
-        var userId = User.FindFirst("sub")?.Value;
+        var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -253,7 +251,7 @@ public class PropertiesController(
     [HttpPut("{id}/images/order")]
     public async Task<ActionResult<Property>> ReorderImages(Guid id, [FromBody] List<string> orderedImageUrls)
     {
-        var userId = User.FindFirst("sub")?.Value;
+        var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -285,4 +283,9 @@ public class PropertiesController(
             return StatusCode(500, new { error = "Failed to reorder images" });
         }
     }
+
+    private string? GetAuthenticatedUserId() =>
+        User.FindFirst("sub")?.Value
+        ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+        ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 }
