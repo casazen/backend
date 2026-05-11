@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
+using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -109,11 +110,15 @@ public class PropertiesControllerTests
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
 
-        var inputProperty = new Property
+        var request = new CreatePropertyRequest
         {
             Name = "New Property",
             City = "Rome",
-            Address = "Via Roma 1"
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
         };
 
         var createdProperty = new Property
@@ -129,7 +134,7 @@ public class PropertiesControllerTests
             .ReturnsAsync(createdProperty);
 
         // Act
-        var result = await _controller.Create(inputProperty);
+        var result = await _controller.Create(request);
 
         // Assert
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
@@ -153,10 +158,10 @@ public class PropertiesControllerTests
             HttpContext = new DefaultHttpContext { User = claimsPrincipal }
         };
 
-        var property = new Property { Name = "New Property" };
+        var request = new CreatePropertyRequest { Name = "New Property", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
         // Act
-        var result = await _controller.Create(property);
+        var result = await _controller.Create(request);
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result.Result);
@@ -173,11 +178,15 @@ public class PropertiesControllerTests
         // Arrange
         SetupUserClaims(userId);
 
-        var inputProperty = new Property
+        var request = new CreatePropertyRequest
         {
             Name = "Test Property",
             City = "Rome",
-            Address = "Via Roma 1"
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
         };
 
         var createdProperty = new Property
@@ -193,7 +202,7 @@ public class PropertiesControllerTests
             .ReturnsAsync(createdProperty);
 
         // Act
-        var result = await _controller.Create(inputProperty);
+        var result = await _controller.Create(request);
 
         // Assert
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
@@ -218,20 +227,23 @@ public class PropertiesControllerTests
             Name = "Original",
             OwnerId = userId
         };
-        var updatedProperty = new Property
+        var request = new UpdatePropertyRequest
         {
-            Id = propertyId,
             Name = "Updated",
             City = "Rome",
-            Address = "Via Roma 1"
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
         };
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
-            .ReturnsAsync(updatedProperty);
+            .ReturnsAsync(existingProperty);
 
         // Act
-        var result = await _controller.Update(propertyId, updatedProperty);
+        var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<NoContentResult>(result);
@@ -248,12 +260,12 @@ public class PropertiesControllerTests
         SetupUserClaims(userId);
 
         var propertyId = Guid.NewGuid();
-        var updatedProperty = new Property { Name = "Updated" };
+        var request = new UpdatePropertyRequest { Name = "Updated", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act
-        var result = await _controller.Update(propertyId, updatedProperty);
+        var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<NotFoundResult>(result);
@@ -275,24 +287,28 @@ public class PropertiesControllerTests
             Name = "Original",
             OwnerId = userId
         };
-        var updatedProperty = new Property
+        var request = new UpdatePropertyRequest
         {
-            Id = propertyId,
             Name = "Updated",
             City = "Rome",
-            Address = "Via Roma 1"
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
         };
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
-            .ReturnsAsync(updatedProperty);
+            .ReturnsAsync(existingProperty);
 
         // Act
-        var result = await _controller.Update(propertyId, updatedProperty);
+        var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        // ApplyTo mutates existingProperty in place; OwnerId and Id are preserved
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId && p.OwnerId == userId)), Times.Once);
     }
@@ -312,16 +328,21 @@ public class PropertiesControllerTests
             Name = "Original",
             OwnerId = ownerId // Owned by different user
         };
-        var updatedProperty = new Property
+        var request = new UpdatePropertyRequest
         {
-            Id = propertyId,
-            Name = "Malicious Update"
+            Name = "Malicious Update",
+            Address = "Via Roma 1",
+            City = "Rome",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
         };
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
 
         // Act
-        var result = await _controller.Update(propertyId, updatedProperty);
+        var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<ForbidResult>(result);
@@ -342,10 +363,10 @@ public class PropertiesControllerTests
         };
 
         var propertyId = Guid.NewGuid();
-        var updatedProperty = new Property { Name = "Updated" };
+        var request = new UpdatePropertyRequest { Name = "Updated", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
         // Act
-        var result = await _controller.Update(propertyId, updatedProperty);
+        var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result);
@@ -518,18 +539,21 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Create_OverridesOwnerId_WithAuthenticatedUser()
     {
-        // Arrange - User tries to create property with different OwnerId
+        // Arrange - OwnerId is not part of CreatePropertyRequest; it is always taken from JWT
         var authenticatedUserId = "auth0|authenticated_user";
-        var attemptedOwnerId = "auth0|different_user";
 
         SetupUserClaims(authenticatedUserId);
 
-        var inputProperty = new Property
+        var request = new CreatePropertyRequest
         {
             Name = "Test Property",
             City = "Rome",
             Address = "Via Roma 1",
-            OwnerId = attemptedOwnerId // User tries to set different owner
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+            // No OwnerId field — intentionally excluded from the DTO
         };
 
         Property? capturedProperty = null;
@@ -538,12 +562,11 @@ public class PropertiesControllerTests
             .ReturnsAsync((Property p) => p);
 
         // Act
-        await _controller.Create(inputProperty);
+        await _controller.Create(request);
 
-        // Assert - OwnerId should be overridden with authenticated user's ID
+        // Assert - OwnerId is always set from the authenticated user's JWT claim
         Assert.NotNull(capturedProperty);
         Assert.Equal(authenticatedUserId, capturedProperty.OwnerId);
-        Assert.NotEqual(attemptedOwnerId, capturedProperty.OwnerId);
     }
 
     // Image Management Tests
