@@ -173,6 +173,9 @@ public class PricingAdapterController(
             return Forbid();
         }
 
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 50;
+
         var startDate = from ?? DateTime.UtcNow.AddDays(-90);
         var endDate = to ?? DateTime.UtcNow;
 
