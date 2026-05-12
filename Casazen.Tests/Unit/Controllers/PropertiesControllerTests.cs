@@ -1108,6 +1108,20 @@ public class PropertiesControllerTests
         Assert.IsType<ForbidResult>(result.Result);
     }
 
+    [Fact]
+    public async Task UploadDocument_PropertyNotFound_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|user");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var mockFile = CreateMockFormFile("doc.pdf", "application/pdf", 1024);
+        var result = await _controller.UploadDocument(propertyId, mockFile, "CinCertificate");
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockDocumentService.Verify(x => x.UploadDocumentAsync(It.IsAny<Guid>(), It.IsAny<IFormFile>(), It.IsAny<DocumentType>(), It.IsAny<string>()), Times.Never);
+    }
+
     // ─── DeleteDocument ──────────────────────────────────────────────────────────
 
     [Fact]
