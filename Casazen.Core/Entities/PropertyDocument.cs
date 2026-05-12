@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Enums;
 
 namespace Casazen.Core.Entities;
 
@@ -14,15 +15,17 @@ public class PropertyDocument
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
-    [Required, MaxLength(100)]
-    public string DocumentType { get; set; } = string.Empty;
-
     [Required, MaxLength(500)]
     public string FileName { get; set; } = string.Empty;
 
     [Required, MaxLength(2000)]
-    public string FileUrl { get; set; } = string.Empty;
+    public string StorageUrl { get; set; } = string.Empty;
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    [Required]
+    public DocumentType DocumentType { get; set; }
+
+    [Required, MaxLength(255)]
+    public string UploadedBy { get; set; } = string.Empty;
+
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 }

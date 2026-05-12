@@ -120,5 +120,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<PropertyDocument>()
             .HasIndex(d => d.PropertyId)
             .HasDatabaseName("IX_PropertyDocuments_PropertyId");
+
+        modelBuilder.Entity<PropertyDocument>()
+            .Property(d => d.DocumentType)
+            .HasConversion<string>()
+            .HasMaxLength(100);
     }
 }
