@@ -54,7 +54,7 @@ public class PropertyDocumentService(
 
         logger.LogInformation("Deleting document {DocumentId} with storage URL {StorageUrl}", documentId, document.StorageUrl);
 
-        await storageService.DeleteImageAsync(document.StorageUrl);
         await documentRepository.DeleteAsync(documentId);
+        await storageService.DeleteImageAsync(document.StorageUrl);
     }
 }
