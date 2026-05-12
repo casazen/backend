@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
@@ -19,6 +20,7 @@ namespace Casazen.Web.Controllers;
 public class PricingAdapterController(
     IPricingAdapterService pricingService,
     IPropertyService propertyService,
+    IPropertyAuthorizationService authorizationService,
     IBackgroundJobClient backgroundJobClient,
     ILogger<PricingAdapterController> logger) : ControllerBase
 {
@@ -46,7 +48,7 @@ public class PricingAdapterController(
 
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to update pricing config for property {PropertyId} owned by {OwnerId}",
                 userId, propertyId, property.OwnerId);
@@ -90,7 +92,7 @@ public class PricingAdapterController(
 
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to read pricing config for property {PropertyId} owned by {OwnerId}",
                 userId, propertyId, property.OwnerId);
@@ -123,7 +125,7 @@ public class PricingAdapterController(
 
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to disable pricing config for property {PropertyId} owned by {OwnerId}",
                 userId, propertyId, property.OwnerId);
@@ -168,7 +170,7 @@ public class PricingAdapterController(
 
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to read pricing history for property {PropertyId} owned by {OwnerId}",
                 userId, propertyId, property.OwnerId);
@@ -227,7 +229,7 @@ public class PricingAdapterController(
 
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to trigger pricing sync for property {PropertyId} owned by {OwnerId}",
                 userId, propertyId, property.OwnerId);
@@ -264,7 +266,7 @@ public class PricingAdapterController(
 
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null) return NotFound();
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to preview pricing for property {PropertyId} owned by {OwnerId}",
                 userId, propertyId, property.OwnerId);
@@ -292,8 +294,11 @@ public class PricingAdapterController(
 
     private string? GetUserId() =>
         User.FindFirst("sub")?.Value
-        ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+    private IEnumerable<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
 
     private static PricingAdapterConfigResponse ToResponse(PricingAdapterConfig config) => new()
     {

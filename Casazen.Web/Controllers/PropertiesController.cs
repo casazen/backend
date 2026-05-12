@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using System.Security.Claims;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -12,6 +13,7 @@ namespace Casazen.Web.Controllers;
 public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
+    IPropertyAuthorizationService authorizationService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     [HttpGet("health")]
@@ -108,8 +110,7 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        // Authorization check: verify ownership
-        if (existing.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, existing.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to update property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
@@ -133,8 +134,7 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        // Authorization check: verify ownership
-        if (existing.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, existing.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to delete property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
@@ -166,12 +166,11 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // Verify ownership
         var property = await propertyService.GetPropertyAsync(id);
         if (property == null)
             return NotFound();
 
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to upload images to property {PropertyId} owned by {OwnerId}",
                 userId, id, property.OwnerId);
@@ -231,12 +230,11 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // Verify ownership
         var property = await propertyService.GetPropertyAsync(id);
         if (property == null)
             return NotFound();
 
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to delete image from property {PropertyId} owned by {OwnerId}",
                 userId, id, property.OwnerId);
@@ -281,12 +279,11 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // Verify ownership
         var property = await propertyService.GetPropertyAsync(id);
         if (property == null)
             return NotFound();
 
-        if (property.OwnerId != userId)
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
         {
             logger.LogWarning("User {UserId} attempted to reorder images for property {PropertyId} owned by {OwnerId}",
                 userId, id, property.OwnerId);
@@ -312,6 +309,9 @@ public class PropertiesController(
 
     private string? GetAuthenticatedUserId() =>
         User.FindFirst("sub")?.Value
-        ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+    private IEnumerable<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
 }

@@ -15,6 +15,7 @@ public class PropertiesControllerTests
 {
     private readonly Mock<IPropertyService> _mockService;
     private readonly Mock<IImageStorageService> _mockImageStorage;
+    private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -22,9 +23,13 @@ public class PropertiesControllerTests
     {
         _mockService = new Mock<IPropertyService>();
         _mockImageStorage = new Mock<IImageStorageService>();
+        _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
-        _controller = new PropertiesController(_mockService.Object, _mockImageStorage.Object, _mockLogger.Object);
+        _controller = new PropertiesController(_mockService.Object, _mockImageStorage.Object, _mockAuthz.Object, _mockLogger.Object);
     }
+
+    private void AllowAuthorization() =>
+        _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).Returns(true);
 
     [Fact]
     public async Task GetAll_WithAuthenticatedUser_ReturnsUserProperties()
@@ -219,6 +224,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var existingProperty = new Property
@@ -279,6 +285,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var existingProperty = new Property
@@ -326,7 +333,7 @@ public class PropertiesControllerTests
         {
             Id = propertyId,
             Name = "Original",
-            OwnerId = ownerId // Owned by different user
+            OwnerId = ownerId
         };
         var request = new UpdatePropertyRequest
         {
@@ -380,6 +387,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var existingProperty = new Property
@@ -426,6 +434,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var existingProperty = new Property
@@ -460,7 +469,7 @@ public class PropertiesControllerTests
         {
             Id = propertyId,
             Name = "To Delete",
-            OwnerId = ownerId // Owned by different user
+            OwnerId = ownerId
         };
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
@@ -654,6 +663,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var property = new Property
@@ -715,6 +725,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var property = new Property
@@ -744,6 +755,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var property = new Property
@@ -772,6 +784,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var imageUrl = "/uploads/properties/test.jpg";
@@ -829,6 +842,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var property = new Property
@@ -855,6 +869,7 @@ public class PropertiesControllerTests
         // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
+        AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
         var property = new Property
