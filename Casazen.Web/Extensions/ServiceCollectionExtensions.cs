@@ -111,8 +111,8 @@ public static class ServiceCollectionExtensions
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
             // DEVELOPMENT: Allow any authenticated user (remove role requirement for testing)
             .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser());
-            // PRODUCTION: Uncomment below and remove above line
-            // .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "Admin"));
+        // PRODUCTION: Uncomment below and remove above line
+        // .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "Admin"));
 
         return services;
     }
@@ -124,7 +124,7 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy
-                    .WithOrigins("http://localhost:3000", "http://localhost:5173","http://localhost:5174","http://localhost:5175", "https://casazen.app")
+                    .WithOrigins("http://localhost:3000", "http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "https://casazen.app")
                     .AllowAnyMethod()
                     .AllowAnyHeader()
                     .AllowCredentials();

@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
+    public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -89,11 +90,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
         modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
 
-        // PricingAdapterConfig → Property
+        // PricingAdapterConfig → Property (1-to-1)
         modelBuilder.Entity<PricingAdapterConfig>()
             .HasOne(c => c.Property)
-            .WithMany()
-            .HasForeignKey(c => c.PropertyId)
+            .WithOne(p => p.PricingAdapterConfig)
+            .HasForeignKey<PricingAdapterConfig>(c => c.PropertyId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<PricingAdapterConfig>()
@@ -108,5 +109,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<PricingHistory>()
             .HasIndex(h => new { h.PropertyId, h.AdaptationDate });
+
+        // PropertyDocument → Property
+        modelBuilder.Entity<PropertyDocument>()
+            .HasOne(d => d.Property)
+            .WithMany(p => p.PropertyDocuments)
+            .HasForeignKey(d => d.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PropertyDocument>()
+            .HasIndex(d => d.PropertyId)
+            .HasDatabaseName("IX_PropertyDocuments_PropertyId");
     }
 }
