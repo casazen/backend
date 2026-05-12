@@ -109,10 +109,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
-            // DEVELOPMENT: Allow any authenticated user (remove role requirement for testing)
-            .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser());
-        // PRODUCTION: Uncomment below and remove above line
-        // .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "Admin"));
+            .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "PropertyManager", "Admin"));
 
         return services;
     }
@@ -161,6 +158,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IImageStorageService, LocalImageStorageService>();
+        services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         return services;
     }
 

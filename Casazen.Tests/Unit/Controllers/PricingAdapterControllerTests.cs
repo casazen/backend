@@ -19,6 +19,7 @@ public class PricingAdapterControllerTests
 {
     private readonly Mock<IPricingAdapterService> _mockPricingService;
     private readonly Mock<IPropertyService> _mockPropertyService;
+    private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IBackgroundJobClient> _mockBackgroundJobClient;
     private readonly Mock<ILogger<PricingAdapterController>> _mockLogger;
     private readonly PricingAdapterController _controller;
@@ -30,14 +31,19 @@ public class PricingAdapterControllerTests
     {
         _mockPricingService = new Mock<IPricingAdapterService>();
         _mockPropertyService = new Mock<IPropertyService>();
+        _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockBackgroundJobClient = new Mock<IBackgroundJobClient>();
         _mockLogger = new Mock<ILogger<PricingAdapterController>>();
         _controller = new PricingAdapterController(
             _mockPricingService.Object,
             _mockPropertyService.Object,
+            _mockAuthz.Object,
             _mockBackgroundJobClient.Object,
             _mockLogger.Object);
     }
+
+    private void AllowAuthorization() =>
+        _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).Returns(true);
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -82,6 +88,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId));
 
@@ -100,6 +107,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
 
@@ -116,6 +124,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act
@@ -163,6 +172,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
         _mockPricingService.Setup(x => x.SaveConfigAsync(It.IsAny<PricingAdapterConfig>()))
@@ -228,6 +238,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId));
         _mockPricingService.Setup(x => x.DisableConfigAsync(propertyId)).Returns(Task.CompletedTask);
@@ -246,6 +257,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
 
@@ -294,6 +306,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
 
         var items = new List<PricingHistory>
@@ -353,6 +366,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId, enabled: true));
         _mockBackgroundJobClient
@@ -374,6 +388,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId, enabled: false));
 
@@ -391,6 +406,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
 
@@ -438,6 +454,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId));
 
@@ -461,6 +478,7 @@ public class PricingAdapterControllerTests
         // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
+        AllowAuthorization();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
 

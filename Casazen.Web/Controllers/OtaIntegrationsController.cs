@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -10,11 +11,22 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = "PropertyOwner")]
 public class OtaIntegrationsController(
     IOtaIntegrationService otaIntegrationService,
+    IPropertyService propertyService,
+    IPropertyAuthorizationService authorizationService,
     ILogger<OtaIntegrationsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<OtaIntegrationDto>>> GetAll(Guid propertyId)
     {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null) return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
         logger.LogInformation("Getting OTA integrations for property {PropertyId}", propertyId);
         var integrations = await otaIntegrationService.GetPropertyIntegrationsAsync(propertyId);
 
@@ -36,6 +48,15 @@ public class OtaIntegrationsController(
     [HttpGet("{id}")]
     public async Task<ActionResult<OtaIntegrationDto>> Get(Guid propertyId, Guid id)
     {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null) return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
         logger.LogInformation("Getting OTA integration {Id} for property {PropertyId}", id, propertyId);
         var integration = await otaIntegrationService.GetIntegrationAsync(id);
 
@@ -62,6 +83,15 @@ public class OtaIntegrationsController(
         Guid propertyId,
         [FromBody] CreateOtaIntegrationRequest request)
     {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null) return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
         if (request.PropertyId != propertyId)
             return BadRequest("Property ID in URL must match request body");
 
@@ -95,6 +125,15 @@ public class OtaIntegrationsController(
         Guid id,
         [FromBody] UpdateOtaIntegrationRequest request)
     {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null) return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
         logger.LogInformation("Updating OTA integration {Id} for property {PropertyId}", id, propertyId);
 
         var existing = await otaIntegrationService.GetIntegrationAsync(id);
@@ -113,6 +152,15 @@ public class OtaIntegrationsController(
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid propertyId, Guid id)
     {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null) return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
         logger.LogInformation("Deleting OTA integration {Id} for property {PropertyId}", id, propertyId);
 
         var existing = await otaIntegrationService.GetIntegrationAsync(id);
@@ -123,4 +171,12 @@ public class OtaIntegrationsController(
 
         return NoContent();
     }
+
+    private string? GetUserId() =>
+        User.FindFirst("sub")?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+    private IEnumerable<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
 }
