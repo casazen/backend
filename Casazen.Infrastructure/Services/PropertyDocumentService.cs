@@ -23,20 +23,30 @@ public class PropertyDocumentService(
 
         var storageUrl = await storageService.UploadImageAsync(file, propertyId);
 
-        var document = new PropertyDocument
+        try
         {
-            PropertyId = propertyId,
-            FileName = file.FileName,
-            StorageUrl = storageUrl,
-            DocumentType = documentType,
-            UploadedBy = uploadedBy,
-            UploadedAt = DateTime.UtcNow
-        };
+            var document = new PropertyDocument
+            {
+                PropertyId = propertyId,
+                FileName = file.FileName,
+                StorageUrl = storageUrl,
+                DocumentType = documentType,
+                UploadedBy = uploadedBy,
+                UploadedAt = DateTime.UtcNow
+            };
 
-        logger.LogInformation("Uploading document {FileName} of type {DocumentType} for property {PropertyId} by {UploadedBy}",
-            file.FileName, documentType, propertyId, uploadedBy);
+            logger.LogInformation("Uploading document {FileName} of type {DocumentType} for property {PropertyId} by {UploadedBy}",
+                file.FileName, documentType, propertyId, uploadedBy);
 
-        return await documentRepository.AddAsync(document);
+            return await documentRepository.AddAsync(document);
+        }
+        catch
+        {
+            logger.LogWarning("DB save failed after storage upload for property {PropertyId}; rolling back storage file {StorageUrl}",
+                propertyId, storageUrl);
+            await storageService.DeleteImageAsync(storageUrl);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId)

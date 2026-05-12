@@ -174,9 +174,11 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         };
     }
 
+    private static readonly Regex CinRegex = new(@"^IT-\d{5}-\d{10}$", RegexOptions.Compiled);
+
     private static CinStatus ResolveCinStatus(string? cinCode)
     {
         if (string.IsNullOrWhiteSpace(cinCode)) return CinStatus.Missing;
-        return Regex.IsMatch(cinCode, @"^IT-\d{5}-\d{10}$") ? CinStatus.Valid : CinStatus.Invalid;
+        return CinRegex.IsMatch(cinCode) ? CinStatus.Valid : CinStatus.Invalid;
     }
 }
