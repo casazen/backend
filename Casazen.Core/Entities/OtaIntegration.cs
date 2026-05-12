@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Enums;
 
 namespace Casazen.Core.Entities;
 
@@ -30,6 +31,13 @@ public class OtaIntegration
     public bool SyncEnabled { get; set; } = true;
 
     public DateTime LastSyncAt { get; set; }
+
+    [MaxLength(50)]
+    public string? SyncStatus { get; set; }
+
+    [MaxLength(2000)]
+    public string? LastSyncError { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
