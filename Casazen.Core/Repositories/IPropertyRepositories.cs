@@ -12,4 +12,5 @@ public interface IPropertyRepository
     Task<Property> UpdateAsync(Property property);
     Task DeleteAsync(Guid id);
     Task<bool> ExistsAsync(Guid id);
+    Task<Property?> GetPropertyDetailAsync(Guid id);
 }

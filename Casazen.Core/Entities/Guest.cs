@@ -43,7 +43,7 @@ public class Guest
     [MaxLength(100)]
     public string Nationality { get; set; } = string.Empty;
 
-    public DocumentType? DocumentType { get; set; }
+    public GuestDocumentType? DocumentType { get; set; }
 
     [MaxLength(50)]
     public string DocumentNumber { get; set; } = string.Empty;
@@ -121,7 +121,7 @@ public class Guest
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
 }
 
-public enum DocumentType
+public enum GuestDocumentType
 {
     Passport,
     IdentityCard,

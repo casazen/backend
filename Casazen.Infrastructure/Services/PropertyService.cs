@@ -1,4 +1,7 @@
-﻿using Casazen.Core.Entities;
+﻿using System.Text.RegularExpressions;
+using Casazen.Core.DTOs;
+using Casazen.Core.Entities;
+using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -106,5 +109,74 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
 
         logger.LogInformation("Reordering images for property {PropertyId}", propertyId);
         return await repository.UpdateAsync(property);
+    }
+
+    public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
+    {
+        var property = await repository.GetPropertyDetailAsync(propertyId)
+            ?? throw new InvalidOperationException($"Property {propertyId} not found");
+
+        var now = DateTime.UtcNow;
+        return new PropertyDetailResponse
+        {
+            Id = property.Id,
+            OwnerId = property.OwnerId,
+            Name = property.Name,
+            Description = property.Description,
+            Address = property.Address,
+            City = property.City,
+            PostalCode = property.PostalCode,
+            Bedrooms = property.Bedrooms,
+            Bathrooms = property.Bathrooms,
+            MaxGuests = property.MaxGuests,
+            NightlyRate = property.NightlyRate,
+            CleaningFee = property.CleaningFee,
+            DamageDeposit = property.DamageDeposit,
+            CinCode = property.CinCode,
+            CinStatus = ResolveCinStatus(property.CinCode),
+            IsActive = property.IsActive,
+            CreatedAt = property.CreatedAt,
+            UpdatedAt = property.UpdatedAt,
+            Documents = property.PropertyDocuments.Select(d => new PropertyDocumentDto
+            {
+                Id = d.Id,
+                FileName = d.FileName,
+                StorageUrl = d.StorageUrl,
+                DocumentType = d.DocumentType,
+                UploadedBy = d.UploadedBy,
+                UploadedAt = d.UploadedAt
+            }).ToList(),
+            OtaIntegrations = property.OtaIntegrations.Select(o => new OtaIntegrationDto
+            {
+                Id = o.Id,
+                Platform = o.Platform,
+                ExternalPropertyId = o.ExternalPropertyId,
+                IsActive = o.IsActive,
+                SyncEnabled = o.SyncEnabled,
+                LastSyncAt = o.LastSyncAt,
+                SyncStatus = o.SyncStatus != null && Enum.TryParse<OtaSyncStatus>(o.SyncStatus, out var status) ? status : null,
+                LastSyncError = o.LastSyncError
+            }).ToList(),
+            BookingsSummary = new BookingsSummaryDto
+            {
+                TotalBookings = property.Bookings.Count,
+                UpcomingBookings = property.Bookings.Count(b =>
+                    b.CheckInDate > now && b.Status == BookingStatus.Confirmed),
+                ActiveBookings = property.Bookings.Count(b =>
+                    b.CheckInDate <= now && b.CheckOutDate > now && b.Status == BookingStatus.CheckedIn),
+                NextCheckIn = property.Bookings
+                    .Where(b => b.CheckInDate > now)
+                    .MinBy(b => b.CheckInDate)?.CheckInDate,
+                NextCheckOut = property.Bookings
+                    .Where(b => b.CheckOutDate > now)
+                    .MinBy(b => b.CheckOutDate)?.CheckOutDate
+            }
+        };
+    }
+
+    private static CinStatus ResolveCinStatus(string? cinCode)
+    {
+        if (string.IsNullOrWhiteSpace(cinCode)) return CinStatus.Missing;
+        return Regex.IsMatch(cinCode, @"^IT-\d{5}-\d{10}$") ? CinStatus.Valid : CinStatus.Invalid;
     }
 }
