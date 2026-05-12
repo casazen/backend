@@ -46,7 +46,7 @@ public class OtaIntegrationDto
     public bool IsActive { get; set; }
     public bool SyncEnabled { get; set; }
     public DateTime LastSyncAt { get; set; }
-    public string? SyncStatus { get; set; }
+    public OtaSyncStatus? SyncStatus { get; set; }
     public string? LastSyncError { get; set; }
 }
 
@@ -57,11 +57,4 @@ public class BookingsSummaryDto
     public int ActiveBookings { get; set; }
     public DateTime? NextCheckIn { get; set; }
     public DateTime? NextCheckOut { get; set; }
-}
-
-public enum CinStatus
-{
-    Valid,
-    Missing,
-    Invalid
 }
