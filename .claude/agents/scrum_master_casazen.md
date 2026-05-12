@@ -88,42 +88,76 @@ gh issue comment $EPIC_ISSUE --repo casazen/backend --body "## Task Breakdown �
 After a task PR is merged, check whether the parent Epic is complete.
 
 ```bash
-# Find Epic from task body ("Part of: casazen/backend#N")
-EPIC_NUMBER=<extracted>
+# 1. Extract Epic number from merged task body
+EPIC_NUMBER=$(gh issue view $TASK_NUMBER --repo casazen/backend --json body \
+  --jq '.body' | grep -oP 'Part of: casazen/backend#\K[0-9]+')
 
-# Get all tasks
-ALL_TASKS=$(gh issue list --repo casazen/backend \
-  --search "Part of: casazen/backend#$EPIC_NUMBER" \
-  --json number,state,labels)
+[ -z "$EPIC_NUMBER" ] && { echo "No Epic reference — skipping."; exit 0; }
 
-OPEN_COUNT=$(echo $ALL_TASKS | jq '[.[] | select(.state == "OPEN")] | length')
+# 2. Read task list from Epic's "Task Breakdown" comment (authoritative — no text-search)
+BREAKDOWN=$(gh issue view $EPIC_NUMBER --repo casazen/backend \
+  --json comments \
+  --jq '[.comments[] | select(.body | test("Task Breakdown"))] | last | .body')
+
+[ -z "$BREAKDOWN" ] || [ "$BREAKDOWN" = "null" ] && {
+  echo "ERROR: Epic #$EPIC_NUMBER missing 'Task Breakdown' comment — stop and investigate."
+  exit 1
+}
+
+BE_TASKS=$(echo "$BREAKDOWN" | grep -oP '(?<=\[[ x]\] #)[0-9]+')
+FE_TASKS=$(echo "$BREAKDOWN" | grep -oP '(?<=casazen/frontend#)[0-9]+')
+
+# 3. Check each task individually by issue number
+OPEN_COUNT=0
+for n in $BE_TASKS; do
+  STATE=$(gh issue view $n --repo casazen/backend --json state --jq '.state')
+  [ "$STATE" = "OPEN" ] && OPEN_COUNT=$((OPEN_COUNT+1))
+done
+for n in $FE_TASKS; do
+  STATE=$(gh issue view $n --repo casazen/frontend --json state --jq '.state')
+  [ "$STATE" = "OPEN" ] && OPEN_COUNT=$((OPEN_COUNT+1))
+done
 ```
 
 If `OPEN_COUNT > 0`: stop, nothing to do.
 
 If `OPEN_COUNT == 0`:
 ```bash
+ALL_DELIVERED=$(
+  for n in $BE_TASKS; do echo "- casazen/backend#$n"; done
+  for n in $FE_TASKS; do echo "- casazen/frontend#$n"; done
+)
+
 # 1. Close Epic
 gh issue close $EPIC_NUMBER --repo casazen/backend --comment "## Delivery Summary
 All tasks completed and merged.
 
 ### Tasks delivered
-$(echo $ALL_TASKS | jq -r '.[] | "- #\(.number)"')
+$ALL_DELIVERED
 
 ### Changes
-[Summarize from task titles]"
+[Summarize from task titles]
+
+### Documentation updated
+- \`.claude/context/codebase_map.md\` — features marked COMPLIANT
+- \`docs/\` — updated where applicable (see commit)"
 
 # 2. Update codebase map
 # Edit .claude/context/codebase_map.md: mark delivered features as COMPLIANT
 
-# 3. Commit map update
+# 3. Update /docs where content changed
+# - docs/TECHNICAL.md  → new endpoints, entities, or DB schema
+# - docs/PROJECT.md    → feature list or roadmap status
+# - docs/BUSINESS.md   → business rules or regulatory context
+# Skip files where nothing changed — no filler content
+
+# 4. Commit all documentation updates together
 git checkout main && git pull
 git add .claude/context/codebase_map.md
-git commit -m "docs: update codebase_map after Epic #$EPIC_NUMBER delivery"
+git add docs/TECHNICAL.md docs/PROJECT.md docs/BUSINESS.md  # only if actually modified
+git commit -m "docs: update codebase_map and /docs after Epic #$EPIC_NUMBER delivery"
 git push origin main
 ```
-
-If Epic spans both repos, also check `casazen/frontend` tasks before closing.
 
 ---
 

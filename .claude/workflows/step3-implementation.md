@@ -157,43 +157,83 @@ gh issue close $TASK_NUMBER \
 ## Phase E — Epic Closure Check (`@scrum-master-casazen`)
 
 ```bash
-# Find the Epic reference from task issue body ("Part of: casazen/backend#N")
-EPIC_NUMBER=<extracted from issue body>
+# 1. Extract Epic number from merged task body ("Part of: casazen/backend#N")
+EPIC_NUMBER=$(gh issue view $TASK_NUMBER --repo casazen/backend --json body \
+  --jq '.body' | grep -oP 'Part of: casazen/backend#\K[0-9]+')
 
-# Get all tasks that are part of this Epic
-ALL_TASKS=$(gh issue list --repo casazen/backend \
-  --search "Part of: casazen/backend#$EPIC_NUMBER" \
-  --json number,state,labels)
+if [ -z "$EPIC_NUMBER" ]; then
+  echo "No Epic reference in task #$TASK_NUMBER — skipping closure check."
+  exit 0
+fi
 
-# Check if all are closed (state=CLOSED) or labeled "merged"
-OPEN_COUNT=$(echo $ALL_TASKS | jq '[.[] | select(.state == "OPEN")] | length')
+# 2. Read all task numbers from the Epic's "Task Breakdown" comment
+#    (written by @scrum-master-casazen in Step 2, Phase C — authoritative task list)
+BREAKDOWN=$(gh issue view $EPIC_NUMBER --repo casazen/backend \
+  --json comments \
+  --jq '[.comments[] | select(.body | test("Task Breakdown"))] | last | .body')
+
+if [ -z "$BREAKDOWN" ] || [ "$BREAKDOWN" = "null" ]; then
+  echo "ERROR: Epic #$EPIC_NUMBER has no 'Task Breakdown' comment. Cannot determine task list — stop and investigate."
+  exit 1
+fi
+
+BE_TASKS=$(echo "$BREAKDOWN" | grep -oP '(?<=\[[ x]\] #)[0-9]+')
+FE_TASKS=$(echo "$BREAKDOWN" | grep -oP '(?<=casazen/frontend#)[0-9]+')
+
+# 3. Check each task individually by issue number (no text-search dependency)
+OPEN_COUNT=0
+
+for n in $BE_TASKS; do
+  STATE=$(gh issue view $n --repo casazen/backend --json state --jq '.state')
+  [ "$STATE" = "OPEN" ] && OPEN_COUNT=$((OPEN_COUNT+1))
+done
+
+for n in $FE_TASKS; do
+  STATE=$(gh issue view $n --repo casazen/frontend --json state --jq '.state')
+  [ "$STATE" = "OPEN" ] && OPEN_COUNT=$((OPEN_COUNT+1))
+done
 ```
 
-If all tasks are closed:
+If `OPEN_COUNT > 0`: stop, nothing to do.
+
+If `OPEN_COUNT == 0`:
 
 ```bash
+# Build delivered task list
+ALL_DELIVERED=$(
+  for n in $BE_TASKS; do echo "- casazen/backend#$n"; done
+  for n in $FE_TASKS; do echo "- casazen/frontend#$n"; done
+)
+
 # 1. Close the Epic with delivery summary
-gh issue close $EPIC_NUMBER --comment "## Delivery Summary
+gh issue close $EPIC_NUMBER --repo casazen/backend --comment "## Delivery Summary
 
 All tasks completed and merged.
 
 ### Tasks delivered
-$(echo $ALL_TASKS | jq -r '.[] | "- #\(.number)"')
+$ALL_DELIVERED
 
 ### Changes
 - [Summarize what was built from task titles]
 
-### Codebase map updated
-See commit: [commit hash after map update]"
+### Documentation updated
+- \`.claude/context/codebase_map.md\` — features marked COMPLIANT
+- \`docs/\` — updated where applicable (see commit)"
 
 # 2. Update codebase_map.md
-# Edit .claude/context/codebase_map.md to reflect newly implemented features
-# Mark affected features as COMPLIANT
+# Edit .claude/context/codebase_map.md: mark delivered features as COMPLIANT
 
-# 3. Commit the map update
+# 3. Update /docs where content changed
+# - docs/TECHNICAL.md  → new endpoints, entities, or DB schema
+# - docs/PROJECT.md    → feature list or roadmap status
+# - docs/BUSINESS.md   → business rules or regulatory context
+# Do NOT touch files where nothing relevant changed — no filler content
+
+# 4. Commit all documentation updates in a single commit
 git checkout main && git pull
 git add .claude/context/codebase_map.md
-git commit -m "docs: update codebase_map after Epic #$EPIC_NUMBER delivery"
+git add docs/TECHNICAL.md docs/PROJECT.md docs/BUSINESS.md  # only if actually modified
+git commit -m "docs: update codebase_map and /docs after Epic #$EPIC_NUMBER delivery"
 git push origin main
 ```
 
@@ -233,5 +273,7 @@ Example for `/step3-implement 10 11 12 13`:
 - Code review handled by `claude-code-review.yml` on PR open — do NOT run `/code-review-local` in CI
 - FE tasks require the dependent BE PR to be **merged** (not just approved) before starting
 - `@scrum-master-casazen` handles Epic closure only — it does not implement code
-- `codebase_map.md` commit goes directly to main (documentation-only, no feature code)
-- If the Epic spans both repos, `@scrum-master-casazen` checks FE tasks on `casazen/frontend` too before closing the Epic
+- Documentation commits (Phase E step 4) go directly to main — documentation-only, no feature code
+- Epic task lookup uses the "Task Breakdown" comment (not `gh issue list --search`) — this is the authoritative task list and avoids GitHub search inconsistency
+- If the Epic spans both repos, `@scrum-master-casazen` checks both `casazen/backend` and `casazen/frontend` tasks before closing the Epic
+- `docs/` update is mandatory in Phase E — skip only files where nothing changed, never skip the step entirely
