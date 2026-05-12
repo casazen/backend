@@ -144,6 +144,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
         services.AddScoped<ITaxRateRepository, TaxRateRepository>();
         services.AddScoped<IOtaIntegrationRepository, OtaIntegrationRepository>();
+        services.AddScoped<IPropertyDocumentRepository, PropertyDocumentRepository>();
         return services;
     }
 
@@ -158,6 +159,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<IGdprService, GdprService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
+        services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
+        services.AddScoped<IImageStorageService, LocalImageStorageService>();
         return services;
     }
 
