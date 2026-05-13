@@ -54,6 +54,11 @@ public class PropertyDocumentService(
         return await documentRepository.GetByPropertyIdAsync(propertyId);
     }
 
+    public async Task<PropertyDocument?> GetDocumentAsync(Guid documentId)
+    {
+        return await documentRepository.GetByIdAsync(documentId);
+    }
+
     public async Task DeleteDocumentAsync(Guid documentId)
     {
         var document = await documentRepository.GetByIdAsync(documentId);

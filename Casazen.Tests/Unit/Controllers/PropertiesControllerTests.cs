@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
@@ -16,6 +18,7 @@ public class PropertiesControllerTests
     private readonly Mock<IPropertyService> _mockService;
     private readonly Mock<IImageStorageService> _mockImageStorage;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
+    private readonly Mock<IPropertyDocumentService> _mockDocumentService;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -24,8 +27,14 @@ public class PropertiesControllerTests
         _mockService = new Mock<IPropertyService>();
         _mockImageStorage = new Mock<IImageStorageService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
+        _mockDocumentService = new Mock<IPropertyDocumentService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
-        _controller = new PropertiesController(_mockService.Object, _mockImageStorage.Object, _mockAuthz.Object, _mockLogger.Object);
+        _controller = new PropertiesController(
+            _mockService.Object,
+            _mockImageStorage.Object,
+            _mockAuthz.Object,
+            _mockDocumentService.Object,
+            _mockLogger.Object);
     }
 
     private void AllowAuthorization() =>
@@ -943,6 +952,248 @@ public class PropertiesControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var urls = Assert.IsAssignableFrom<List<string>>(okResult.Value);
         Assert.Equal(2, urls.Count);
+    }
+
+    // ─── GetDetail ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetDetail_AsOwner_ReturnsOk()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var detail = new PropertyDetailResponse { Id = propertyId, OwnerId = userId };
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(detail);
+
+        var result = await _controller.GetDetail(propertyId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<PropertyDetailResponse>(ok.Value);
+        Assert.Equal(propertyId, response.Id);
+    }
+
+    [Fact]
+    public async Task GetDetail_AsNonOwner_ReturnsForbidden()
+    {
+        SetupUserClaims("auth0|attacker");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
+            .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = "auth0|owner" });
+
+        var result = await _controller.GetDetail(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetDetail_PropertyNotFound_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|user");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
+            .ThrowsAsync(new InvalidOperationException("not found"));
+
+        var result = await _controller.GetDetail(propertyId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    // ─── GetDocuments ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetDocuments_AsOwner_ReturnsOk()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        _mockDocumentService.Setup(x => x.GetByPropertyIdAsync(propertyId))
+            .ReturnsAsync([new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId, FileName = "doc.pdf" }]);
+
+        var result = await _controller.GetDocuments(propertyId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var docs = Assert.IsAssignableFrom<IEnumerable<PropertyDocumentDto>>(ok.Value);
+        Assert.Single(docs);
+    }
+
+    [Fact]
+    public async Task GetDocuments_AsNonOwner_ReturnsForbidden()
+    {
+        SetupUserClaims("auth0|attacker");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = "auth0|owner" });
+
+        var result = await _controller.GetDocuments(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetDocuments_PropertyNotFound_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|user");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var result = await _controller.GetDocuments(propertyId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    // ─── UploadDocument ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UploadDocument_AsOwner_ReturnsCreated()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+
+        var document = new PropertyDocument
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId,
+            FileName = "cin.pdf",
+            DocumentType = DocumentType.CinCertificate
+        };
+        var mockFile = CreateMockFormFile("cin.pdf", "application/pdf", 1024);
+        _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.CinCertificate, userId))
+            .ReturnsAsync(document);
+
+        var result = await _controller.UploadDocument(propertyId, mockFile, "CinCertificate");
+
+        Assert.IsType<CreatedAtActionResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UploadDocument_InvalidDocumentType_ReturnsBadRequest()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+
+        var mockFile = CreateMockFormFile("doc.pdf", "application/pdf", 1024);
+
+        var result = await _controller.UploadDocument(propertyId, mockFile, "InvalidType");
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UploadDocument_AsNonOwner_ReturnsForbidden()
+    {
+        SetupUserClaims("auth0|attacker");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = "auth0|owner" });
+
+        var mockFile = CreateMockFormFile("doc.pdf", "application/pdf", 1024);
+        var result = await _controller.UploadDocument(propertyId, mockFile, "CinCertificate");
+
+        Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UploadDocument_PropertyNotFound_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|user");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var mockFile = CreateMockFormFile("doc.pdf", "application/pdf", 1024);
+        var result = await _controller.UploadDocument(propertyId, mockFile, "CinCertificate");
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockDocumentService.Verify(x => x.UploadDocumentAsync(It.IsAny<Guid>(), It.IsAny<IFormFile>(), It.IsAny<DocumentType>(), It.IsAny<string>()), Times.Never);
+    }
+
+    // ─── DeleteDocument ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DeleteDocument_AsOwner_ReturnsNoContent()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var docId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(docId))
+            .ReturnsAsync(new PropertyDocument { Id = docId, PropertyId = propertyId });
+        _mockDocumentService.Setup(x => x.DeleteDocumentAsync(docId)).Returns(Task.CompletedTask);
+
+        var result = await _controller.DeleteDocument(propertyId, docId);
+
+        Assert.IsType<NoContentResult>(result);
+        _mockDocumentService.Verify(x => x.DeleteDocumentAsync(docId), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteDocument_DocumentBelongsToDifferentProperty_ReturnsNotFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var otherPropertyId = Guid.NewGuid();
+        var docId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(docId))
+            .ReturnsAsync(new PropertyDocument { Id = docId, PropertyId = otherPropertyId });
+
+        var result = await _controller.DeleteDocument(propertyId, docId);
+
+        Assert.IsType<NotFoundResult>(result);
+        _mockDocumentService.Verify(x => x.DeleteDocumentAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteDocument_AsNonOwner_ReturnsForbidden()
+    {
+        SetupUserClaims("auth0|attacker");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = "auth0|owner" });
+
+        var result = await _controller.DeleteDocument(propertyId, Guid.NewGuid());
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task DeleteDocument_DocumentNotFound_ReturnsNotFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(It.IsAny<Guid>())).ReturnsAsync((PropertyDocument?)null);
+
+        var result = await _controller.DeleteDocument(propertyId, Guid.NewGuid());
+
+        Assert.IsType<NotFoundResult>(result);
     }
 
     private void SetupUserClaims(string userId)

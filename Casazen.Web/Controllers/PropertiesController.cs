@@ -1,5 +1,7 @@
 ﻿using System.Security.Claims;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -14,6 +16,7 @@ public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
     IPropertyAuthorizationService authorizationService,
+    IPropertyDocumentService documentService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     [HttpGet("health")]
@@ -306,6 +309,145 @@ public class PropertiesController(
             return StatusCode(500, new { error = "Failed to reorder images" });
         }
     }
+
+    // ─── Detail + Documents ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the full detail view of a property, including documents, OTA integrations (no API keys), and bookings summary.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <returns>A <see cref="PropertyDetailResponse"/> with aggregate data.</returns>
+    /// <response code="200">Property detail returned successfully.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    [HttpGet("{id}/detail")]
+    public async Task<ActionResult<PropertyDetailResponse>> GetDetail(Guid id)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        PropertyDetailResponse detail;
+        try
+        {
+            detail = await propertyService.GetPropertyDetailAsync(id);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+
+        if (!authorizationService.CanAccess(userId, detail.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        return Ok(detail);
+    }
+
+    /// <summary>
+    /// Lists all documents attached to a property.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <returns>Collection of <see cref="PropertyDocumentDto"/>.</returns>
+    /// <response code="200">Documents returned successfully.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    [HttpGet("{id}/documents")]
+    public async Task<ActionResult<IEnumerable<PropertyDocumentDto>>> GetDocuments(Guid id)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        var documents = await documentService.GetByPropertyIdAsync(id);
+        return Ok(documents.Select(ToDocumentDto));
+    }
+
+    /// <summary>
+    /// Uploads a document to a property. Accepts multipart/form-data.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <param name="file">The document file to upload.</param>
+    /// <param name="documentType">The document type (e.g. <c>CinCertificate</c>, <c>FloorPlan</c>).</param>
+    /// <returns>The created <see cref="PropertyDocumentDto"/>.</returns>
+    /// <response code="201">Document uploaded successfully.</response>
+    /// <response code="400">Invalid document type value.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    [HttpPost("{id}/documents")]
+    public async Task<ActionResult<PropertyDocumentDto>> UploadDocument(
+        Guid id,
+        [FromForm] IFormFile file,
+        [FromForm] string documentType)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        if (!Enum.TryParse<DocumentType>(documentType, ignoreCase: true, out var docType))
+            return BadRequest(new { error = $"Invalid document type: {documentType}" });
+
+        var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
+        return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
+    }
+
+    /// <summary>
+    /// Deletes a document from a property.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <param name="docId">The unique identifier of the document to delete.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="204">Document deleted successfully.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">Property or document not found.</response>
+    [HttpDelete("{id}/documents/{docId}")]
+    public async Task<IActionResult> DeleteDocument(Guid id, Guid docId)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        var document = await documentService.GetDocumentAsync(docId);
+        if (document == null || document.PropertyId != id)
+            return NotFound();
+
+        await documentService.DeleteDocumentAsync(docId);
+        return NoContent();
+    }
+
+    private static PropertyDocumentDto ToDocumentDto(PropertyDocument d) => new()
+    {
+        Id = d.Id,
+        FileName = d.FileName,
+        StorageUrl = d.StorageUrl,
+        DocumentType = d.DocumentType,
+        UploadedBy = d.UploadedBy,
+        UploadedAt = d.UploadedAt
+    };
 
     private string? GetAuthenticatedUserId() =>
         User.FindFirst("sub")?.Value
