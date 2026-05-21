@@ -1,0 +1,144 @@
+{
+  "uid": "casazen-performance",
+  "title": "CasaZen Agent — Performance",
+  "tags": ["casazen", "performance", "latency"],
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+
+    {
+      "id": 1, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "title": "Median Job Duration",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "fieldOptions": { "defaults": { "unit": "ms" } } },
+      "targets": [{
+        "expr": "histogram_quantile(0.50, sum(rate(casazen_job_duration_ms_bucket[1h])) by (le))",
+        "legendFormat": "p50"
+      }]
+    },
+
+    {
+      "id": 2, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "title": "p95 Job Duration",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": {
+          "unit": "ms",
+          "thresholds": { "steps": [
+            { "color": "green",  "value": 0 },
+            { "color": "yellow", "value": 60000 },
+            { "color": "red",    "value": 120000 }
+          ] }
+        } }
+      },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(casazen_job_duration_ms_bucket[1h])) by (le))",
+        "legendFormat": "p95"
+      }]
+    },
+
+    {
+      "id": 3, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "title": "Median Turns",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "fieldOptions": { "defaults": { "unit": "short", "decimals": 1 } } },
+      "targets": [{
+        "expr": "histogram_quantile(0.50, sum(rate(casazen_job_turns_bucket[24h])) by (le))",
+        "legendFormat": "p50 turns"
+      }]
+    },
+
+    {
+      "id": 4, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "title": "API Time Share",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "value",
+        "fieldOptions": { "defaults": { "unit": "percentunit" } }
+      },
+      "targets": [{
+        "expr": "sum(rate(casazen_job_duration_api_ms_sum[1h])) / (sum(rate(casazen_job_duration_ms_sum[1h])) + 1e-9)",
+        "legendFormat": "API share"
+      }]
+    },
+
+    {
+      "id": 10, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "title": "Duration Percentiles (p50 / p95 / p99)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(casazen_job_duration_ms_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(casazen_job_duration_ms_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(casazen_job_duration_ms_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+
+    {
+      "id": 11, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "title": "Duration by Model",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (model, le) (rate(casazen_job_duration_ms_bucket[5m])))",
+        "legendFormat": "p95 — {{ model }}"
+      }]
+    },
+
+    {
+      "id": 12, "type": "heatmap", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "title": "Job Duration Heatmap",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "options": {
+        "calculate": false,
+        "yAxis": { "unit": "ms" },
+        "color": { "mode": "scheme", "scheme": "Spectral" }
+      },
+      "targets": [{
+        "expr": "sum(rate(casazen_job_duration_ms_bucket[5m])) by (le)",
+        "legendFormat": "{{le}}",
+        "format": "heatmap"
+      }]
+    },
+
+    {
+      "id": 13, "type": "heatmap", "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "title": "Conversation Turns Heatmap",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "calculate": false,
+        "color": { "mode": "scheme", "scheme": "Blues" }
+      },
+      "targets": [{
+        "expr": "sum(rate(casazen_job_turns_bucket[1h])) by (le)",
+        "legendFormat": "{{le}}",
+        "format": "heatmap"
+      }]
+    },
+
+    {
+      "id": 14, "type": "table", "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "title": "Slowest Jobs — by Event Type (p99)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p99 Duration" }, "properties": [{ "id": "unit", "value": "ms" }] }
+        ]
+      },
+      "targets": [{
+        "expr": "histogram_quantile(0.99, sum by (event_type, le) (rate(casazen_job_duration_ms_bucket[24h]))) * 1000",
+        "legendFormat": "{{ event_type }}",
+        "instant": true
+      }],
+      "transformations": [
+        { "id": "labelsToFields", "options": { "valueLabel": "event_type" } },
+        { "id": "sortBy",         "options": { "fields": [{ "desc": true, "displayName": "Value" }] } }
+      ]
+    }
+
+  ]
+}

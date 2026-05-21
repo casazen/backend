@@ -1,0 +1,131 @@
+{
+  "uid": "casazen-consumption",
+  "title": "CasaZen Agent — Consumption",
+  "tags": ["casazen", "cost", "tokens"],
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+
+    {
+      "id": 1, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "title": "Total Cost Today (USD)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": { "unit": "currencyUSD", "decimals": 4 } }
+      },
+      "targets": [{
+        "expr": "sum(increase(casazen_job_cost_usd_sum[24h]))",
+        "legendFormat": "Cost today"
+      }]
+    },
+
+    {
+      "id": 2, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "title": "Total Cost This Week (USD)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "value",
+        "fieldOptions": { "defaults": { "unit": "currencyUSD", "decimals": 4 } }
+      },
+      "targets": [{ "expr": "sum(increase(casazen_job_cost_usd_sum[7d]))", "legendFormat": "Cost 7d" }]
+    },
+
+    {
+      "id": 3, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "title": "Input Tokens Today",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "fieldOptions": { "defaults": { "unit": "short" } } },
+      "targets": [{ "expr": "sum(increase(casazen_tokens_input_total[24h]))", "legendFormat": "" }]
+    },
+
+    {
+      "id": 4, "type": "stat", "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "title": "Cache Hit Rate Today",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "steps": [
+            { "color": "red",    "value": 0 },
+            { "color": "yellow", "value": 0.3 },
+            { "color": "green",  "value": 0.6 }
+          ] }
+        } }
+      },
+      "targets": [{
+        "expr": "sum(increase(casazen_tokens_cache_read_total[24h])) / (sum(increase(casazen_tokens_input_total[24h])) + 1e-9)",
+        "legendFormat": "Cache hit ratio"
+      }]
+    },
+
+    {
+      "id": 10, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "title": "Cost Over Time — by Model",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "calcs": ["sum"] } },
+      "targets": [{
+        "expr": "sum by (model) (increase(casazen_job_cost_usd_sum[1h]))",
+        "legendFormat": "{{ model }}"
+      }]
+    },
+
+    {
+      "id": 11, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "title": "Token Usage — Input vs Output",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum(increase(casazen_tokens_input_total[1h]))",  "legendFormat": "Input tokens" },
+        { "expr": "sum(increase(casazen_tokens_output_total[1h]))", "legendFormat": "Output tokens" },
+        { "expr": "sum(increase(casazen_tokens_cache_read_total[1h]))", "legendFormat": "Cache read tokens" }
+      ]
+    },
+
+    {
+      "id": 12, "type": "barchart", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "title": "Cost by Event Type (7d)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "options": { "orientation": "horizontal", "legend": { "displayMode": "list" } },
+      "targets": [{
+        "expr": "sum by (event_type) (increase(casazen_job_cost_usd_sum[7d]))",
+        "legendFormat": "{{ event_type }}"
+      }]
+    },
+
+    {
+      "id": 13, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "title": "Avg Cost per Job — by Event Type",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "targets": [{
+        "expr": "sum by (event_type) (rate(casazen_job_cost_usd_sum[1h])) / sum by (event_type) (rate(casazen_job_cost_usd_count[1h]) + 1e-9)",
+        "legendFormat": "{{ event_type }}"
+      }]
+    },
+
+    {
+      "id": 14, "type": "timeseries", "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "title": "Cache Tokens — Read vs Creation",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr": "sum by (model) (increase(casazen_tokens_cache_read_total[1h]))",
+          "legendFormat": "cache_read — {{ model }}"
+        },
+        {
+          "expr": "sum by (model) (increase(casazen_tokens_cache_creation_total[1h]))",
+          "legendFormat": "cache_create — {{ model }}"
+        }
+      ]
+    }
+
+  ]
+}

@@ -1,0 +1,107 @@
+name: casazen-observability
+
+# Mounts .agent-sessions from the repo root into Promtail.
+# Set SESSIONS_DIR to the absolute Windows path of .agent-sessions before running:
+#   $env:SESSIONS_DIR = "C:\Users\luca.la-malfa\private-project\casazen\backend\.agent-sessions"
+#   docker compose up -d
+
+services:
+
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: casazen-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor traceToMetrics
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+    networks:
+      - observability
+
+  # ── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.3.1
+    container_name: casazen-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - observability
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach WebhookRunner on Windows host
+
+  # ── Loki ───────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: casazen-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./config/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+    networks:
+      - observability
+
+  # ── Promtail ───────────────────────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: casazen-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./config/promtail-config.yml:/etc/promtail/config.yml:ro
+      # Mount the .agent-sessions directory from the Windows host
+      # Usage: set SESSIONS_DIR env var before docker compose up
+      - ${SESSIONS_DIR:-./.agent-sessions-placeholder}:/agent-sessions:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - observability
+
+  # ── Tempo ──────────────────────────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: casazen-tempo
+    command: -config.file=/etc/tempo/config.yml
+    ports:
+      - "3200:3200"    # Tempo HTTP API + Grafana datasource
+      - "4317:4317"    # OTLP gRPC (WebhookRunner sends traces here)
+      - "4318:4318"    # OTLP HTTP (alternative)
+    volumes:
+      - ./config/tempo-config.yml:/etc/tempo/config.yml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+    networks:
+      - observability
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+
+networks:
+  observability:
+    name: casazen-observability

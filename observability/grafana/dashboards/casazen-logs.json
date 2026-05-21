@@ -1,0 +1,139 @@
+{
+  "uid": "casazen-logs",
+  "title": "CasaZen Agent — Logs & Traces",
+  "tags": ["casazen", "logs", "tracing"],
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "job_id",
+        "label": "Job ID",
+        "type": "textbox",
+        "current": { "value": "" },
+        "hide": 0
+      },
+      {
+        "name": "issue_num",
+        "label": "Issue #",
+        "type": "textbox",
+        "current": { "value": "" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "id": 1, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "title": "Error Rate (1h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "steps": [
+            { "color": "green",  "value": 0 },
+            { "color": "yellow", "value": 0.05 },
+            { "color": "red",    "value": 0.20 }
+          ] }
+        } }
+      },
+      "targets": [{
+        "expr": "sum(increase(casazen_jobs_total{status='failed'}[1h])) / (sum(increase(casazen_jobs_total[1h])) + 1e-9)",
+        "legendFormat": "Error rate"
+      }]
+    },
+
+    {
+      "id": 2, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "title": "Failed Jobs (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": { "thresholds": { "steps": [
+          { "color": "green", "value": 0 },
+          { "color": "red",   "value": 1 }
+        ] } } }
+      },
+      "targets": [{ "expr": "sum(increase(casazen_jobs_total{status='failed'}[24h]))", "legendFormat": "" }]
+    },
+
+    {
+      "id": 10, "type": "logs", "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
+      "title": "All Session Events (Live)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showLabels": true,
+        "showTime": true,
+        "wrapLogMessage": false
+      },
+      "targets": [{
+        "expr": "{job=\"casazen_agent\"}",
+        "legendFormat": ""
+      }]
+    },
+
+    {
+      "id": 11, "type": "logs", "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "title": "Errors and Failures",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showTime": true
+      },
+      "targets": [{
+        "expr": "{job=\"casazen_agent\", level=\"error\"} | json",
+        "legendFormat": ""
+      }]
+    },
+
+    {
+      "id": 12, "type": "logs", "gridPos": { "h": 10, "w": 12, "x": 0, "y": 24 },
+      "title": "Job Timeline — filter by Job ID",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Set the Job ID variable above to trace a single job",
+      "options": {
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showTime": true
+      },
+      "targets": [{
+        "expr": "{job=\"casazen_agent\", job_id=\"$job_id\"}",
+        "legendFormat": ""
+      }]
+    },
+
+    {
+      "id": 13, "type": "logs", "gridPos": { "h": 10, "w": 12, "x": 12, "y": 24 },
+      "title": "Job Timeline — filter by Issue #",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Set the Issue # variable above to see all jobs for an issue",
+      "options": {
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showTime": true
+      },
+      "targets": [{
+        "expr": "{job=\"casazen_agent\", issue_num=\"$issue_num\"}",
+        "legendFormat": ""
+      }]
+    },
+
+    {
+      "id": 20, "type": "nodeGraph", "gridPos": { "h": 12, "w": 24, "x": 0, "y": 34 },
+      "title": "Service Graph (Tempo)",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "targets": [{
+        "queryType": "serviceMap"
+      }]
+    }
+
+  ]
+}
