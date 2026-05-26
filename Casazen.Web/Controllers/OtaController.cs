@@ -12,17 +12,38 @@ namespace Casazen.Web.Controllers;
 public class OtaController : ControllerBase
 {
     private readonly IOtaManager _otaManager;
+    private readonly IOtaIntegrationService _otaIntegrationService;
     private readonly IBackgroundJobClient _backgroundJobClient;
     private readonly ILogger<OtaController> _logger;
 
     public OtaController(
         IOtaManager otaManager,
+        IOtaIntegrationService otaIntegrationService,
         IBackgroundJobClient backgroundJobClient,
         ILogger<OtaController> logger)
     {
         _otaManager = otaManager;
+        _otaIntegrationService = otaIntegrationService;
         _backgroundJobClient = backgroundJobClient;
         _logger = logger;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetIntegrations([FromQuery] Guid? propertyId)
+    {
+        try
+        {
+            if (!propertyId.HasValue)
+                return Ok(Array.Empty<object>());
+
+            var integrations = await _otaIntegrationService.GetPropertyIntegrationsAsync(propertyId.Value);
+            return Ok(integrations);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving OTA integrations for property {PropertyId}", propertyId);
+            return StatusCode(500, "Internal server error");
+        }
     }
 
     [HttpPost("sync")]

@@ -13,7 +13,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authentication;
 using Polly;
 
 namespace Casazen.Web.Extensions;
@@ -109,7 +108,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
-            .AddPolicy("PropertyOwner", policy => policy.RequireRole("PropertyOwner", "PropertyManager", "Admin"));
+            .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser());
 
         return services;
     }

@@ -386,7 +386,7 @@ public class PropertiesController(
     [HttpPost("{id}/documents")]
     public async Task<ActionResult<PropertyDocumentDto>> UploadDocument(
         Guid id,
-        [FromForm] IFormFile file,
+        IFormFile file,
         [FromForm] string documentType)
     {
         var userId = GetAuthenticatedUserId();
