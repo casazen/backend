@@ -24,7 +24,7 @@ public class PropertyDetailResponse
     public DateTime UpdatedAt { get; set; }
 
     public IReadOnlyList<PropertyDocumentDto> Documents { get; set; } = [];
-    public IReadOnlyList<OtaIntegrationDto> OtaIntegrations { get; set; } = [];
+    public IReadOnlyList<OtaIntegrationSummaryDto> OtaIntegrations { get; set; } = [];
     public BookingsSummaryDto BookingsSummary { get; set; } = new();
 }
 
@@ -38,7 +38,7 @@ public class PropertyDocumentDto
     public DateTime UploadedAt { get; set; }
 }
 
-public class OtaIntegrationDto
+public class OtaIntegrationSummaryDto
 {
     public Guid Id { get; set; }
     public string Platform { get; set; } = string.Empty;

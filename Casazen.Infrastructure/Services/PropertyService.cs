@@ -146,7 +146,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
                 UploadedBy = d.UploadedBy,
                 UploadedAt = d.UploadedAt
             }).ToList(),
-            OtaIntegrations = property.OtaIntegrations.Select(o => new OtaIntegrationDto
+            OtaIntegrations = property.OtaIntegrations.Select(o => new OtaIntegrationSummaryDto
             {
                 Id = o.Id,
                 Platform = o.Platform,
