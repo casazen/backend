@@ -11,6 +11,7 @@
 | [BUSINESS.md](BUSINESS.md) | Domain entities, business processes, rules, glossary | Product Owner, Business Analyst, stakeholders |
 | [TECHNICAL.md](TECHNICAL.md) | Architecture, API reference, data model, design patterns, infrastructure | Backend developers |
 | [PROJECT.md](PROJECT.md) | Compressed AI context — stack, layout, conventions, gotchas | AI agents, onboarding developers |
+| [INFRA.md](INFRA.md) | Hosting setup: Supabase + Railway + Vercel, multi-env release, release bundles | DevOps, backend developers |
 
 ### Backend quick links
 

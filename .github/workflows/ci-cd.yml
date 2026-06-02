@@ -2,21 +2,22 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
     tags:
-      - 'v*'  # Trigger on version tags (v1.0.0, v1.2.3, etc.)
+      - 'v*'
   pull_request:
-    branches: [ main, develop ]
+    branches: [main]
 
 jobs:
   build:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
@@ -28,35 +29,87 @@ jobs:
 
       - name: Test
         run: |
-          # Skip WebApplicationFactory integration tests that require LocalDB (Windows-only)
-          # These tests are covered by unit tests and run locally on Windows
           dotnet test --configuration Release --no-build --verbosity normal \
             --filter "FullyQualifiedName!~PropertiesControllerIntegrationTests&FullyQualifiedName!~ApiTests"
 
-  deploy-dev:
+      - name: Check formatting
+        run: dotnet format --verify-no-changes
+
+  deploy-test:
+    name: Deploy to Railway Test
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: test
+      url: ${{ vars.RAILWAY_TEST_URL }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t casazen-api:dev .
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
-      - name: Deploy to dev
-        run: echo "Deploy to development environment"
+      - name: Deploy to Railway test environment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service "${{ vars.RAILWAY_SERVICE_TEST }}" \
+            --environment test \
+            --detach
+
+      - name: Wait and health check
+        run: |
+          echo "Waiting 60s for Railway test deployment..."
+          sleep 60
+          curl -f "${{ vars.RAILWAY_TEST_URL }}/api/health" \
+            --retry 6 --retry-delay 10 --retry-connrefused
 
   deploy-prod:
+    name: Deploy to Railway Production
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: ${{ vars.RAILWAY_PROD_URL }}
+    # GitHub environment protection rules: require manual approval before this job runs
+    # Configure in: Settings → Environments → production → Required reviewers
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t casazen-api:${{ github.ref_name }} .
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
-      - name: Deploy to production
-        run: echo "Deploy to production environment"
+      - name: Deploy to Railway production
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service "${{ vars.RAILWAY_SERVICE_PROD }}" \
+            --environment production \
+            --detach
+
+      - name: Wait for production deployment
+        run: |
+          echo "Waiting 90s for Railway production deployment..."
+          sleep 90
+
+      - name: Production health check
+        run: |
+          curl -f "${{ vars.RAILWAY_PROD_URL }}/api/health" \
+            --retry 5 --retry-delay 15 --retry-connrefused
+          echo "✅ Production healthy"
+
+      - name: Smoke test production (auth gate)
+        run: |
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${{ vars.RAILWAY_PROD_URL }}/api/properties")
+          echo "Auth gate: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/properties, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Production auth gate OK"
