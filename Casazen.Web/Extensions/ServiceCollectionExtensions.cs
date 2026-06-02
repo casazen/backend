@@ -108,7 +108,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
-            .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser());
+            .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
+            .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"));
 
         return services;
     }

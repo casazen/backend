@@ -7,5 +7,6 @@ public enum DocumentType
     InsurancePolicy,
     PropertyLicense,
     SafetyCompliance,
+    Ape,
     Other
 }

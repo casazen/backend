@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
@@ -15,14 +16,18 @@ public class WebhooksController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly ILogger<WebhooksController> _logger;
 
+    private readonly ILeaseWorkflowService _leaseWorkflowService;
+
     public WebhooksController(
         IBackgroundJobClient backgroundJobClient,
         IConfiguration configuration,
-        ILogger<WebhooksController> logger)
+        ILogger<WebhooksController> logger,
+        ILeaseWorkflowService leaseWorkflowService)
     {
         _backgroundJobClient = backgroundJobClient;
         _configuration = configuration;
         _logger = logger;
+        _leaseWorkflowService = leaseWorkflowService;
     }
 
     /// <summary>
@@ -111,6 +116,46 @@ public class WebhooksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing {Platform} webhook", platform);
+            return StatusCode(500, "Internal server error");
+        }
+    }
+
+    /// <summary>
+    /// Handles e-signature provider callbacks (signing completed/partially signed).
+    /// Validates provider signature header and queues background processing.
+    /// </summary>
+    [HttpPost("esign")]
+    public async Task<IActionResult> ESignWebhook()
+    {
+        try
+        {
+            var payload = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+            var signatureHeader = Request.Headers["X-ESign-Signature"].ToString();
+            var webhookSecret = _configuration["ESign:WebhookSecret"];
+
+            if (!string.IsNullOrEmpty(webhookSecret) && !string.IsNullOrEmpty(signatureHeader))
+            {
+                var expectedSig = Convert.ToHexString(
+                    System.Security.Cryptography.HMACSHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes(webhookSecret),
+                        System.Text.Encoding.UTF8.GetBytes(payload)));
+
+                if (!string.Equals(signatureHeader, expectedSig, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Invalid e-sign webhook signature");
+                    return BadRequest("Invalid signature");
+                }
+            }
+
+            _backgroundJobClient.Enqueue<ESignWebhookJob>(job =>
+                job.ProcessEventAsync(payload));
+
+            _logger.LogInformation("Queued e-sign webhook event for background processing");
+            return Ok(new { received = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing e-sign webhook");
             return StatusCode(500, "Internal server error");
         }
     }
