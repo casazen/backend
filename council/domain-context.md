@@ -1,22 +1,16 @@
-# Domain Context: CasaZen
+# Domain Context: CasaZen AI-SDLC Design
 
-> API-first Italian property management platform targeting short-term vacation rentals with OTA automation, mandatory regulatory compliance, and AI-driven dynamic pricing.
+> Vacation rental property management platform for the Italian market. Full-stack: ASP.NET Core 10 REST API + React 19 SPA. The council's mission is to design a 6-stage AI-SDLC with quality harness loops for both stacks.
 
 ---
 
 ## overview
 
-CasaZen is a backend-first (ASP.NET Core / .NET 10) SaaS platform designed for Italian property owners and small property management companies. It automates the most burdensome aspects of managing vacation rental properties in Italy:
+CasaZen is a vacation-rental property management platform targeting Italian short-term rental operators. It enables property managers to list properties, manage bookings, process payments via Stripe, sync inventory across 6 OTA channels (Airbnb, Booking.com, Expedia, VRBO, TripAdvisor, Agoda), and comply with Italian law.
 
-- **Multi-channel OTA synchronization**: Airbnb, Booking.com, Expedia, VRBO, TripAdvisor, Agoda (6 platforms; only Airbnb has a live integration — others are stubs)
-- **Italian regulatory compliance**: CIN national registration (D.L. 145/2023), Alloggiati Web police reporting, tourist tax calculation and collection by municipality, GDPR
-- **AI dynamic pricing**: infrastructure implemented (PricingAdapterConfig, PricingHistory with confidence scores, 6 endpoints); no external AI provider wired up yet
-- **Booking & guest management**: full lifecycle (Pending→Confirmed→CheckedIn→CheckedOut→Cancelled), tourist tax auto-calculation, partial refunds
-- **Payments**: Stripe integration with webhook signature verification
+The council is designing the **AI-SDLC**: the full development lifecycle governed by AI agent councils, one per stage, each with a quality harness loop that enforces stage-specific gates before the next stage can start.
 
-**Current status**: Well-architected, layered codebase with 14 core entities, ~35 API endpoints, strong test culture, and active development. Approaching feature-completeness on the Italian short-term rental vertical — but still largely an MVP relative to the full vision.
-
-**Strategic context for this council**: The owner wants to use CasaZen as a launchpad to disrupt the property management software market (both short-term and long-term rentals) by leveraging AI. The council must audit current state, challenge assumptions, and propose a bold pivot or expansion that wins a defensible market segment.
+**Target outcome**: a `.claude/sdlc/` folder with 6 stage directories, each containing a harness (quality loop), a stage coordinator, and specialist agents for that stage's work.
 
 ---
 
@@ -24,69 +18,50 @@ CasaZen is a backend-first (ASP.NET Core / .NET 10) SaaS platform designed for I
 
 | Stakeholder | Role / Interest | Authority | Notes |
 |---|---|---|---|
-| Luca (product owner / founder) | Product vision, market strategy, prioritization | Decision | Full authority; wants radical / disruptive proposals |
-| Italian property owners (primary users) | Reduce admin burden, ensure compliance, maximize revenue | Advisory | Pain: multi-platform dashboards, police reports, tax calculations |
-| Small PMCs (property management companies) | Manage 5–50 properties, need scalable tooling | Advisory | Underserved by current tools; high willingness-to-pay |
-| Guests | Smooth booking experience, price transparency | Informed | Indirect users via OTA or future direct-booking channel |
-| Italian regulators | CIN compliance, police reporting, GDPR | Informed | Non-negotiable constraints but also moat for compliant platforms |
-
----
-
-## market-landscape
-
-**Short-term rental software (Italy & Europe)**:
-- **Incumbents**: Lodgify, Hostaway, Guesty, Smoobu, Beds24 — all channel managers with PMS features; crowded, feature-parity race
-- **Gaps in incumbents**: (1) Italian regulatory compliance is manual or third-party add-on; (2) AI pricing is bolt-on (PriceDynamics, Pricelabs) not native; (3) no platform owns "regulatory intelligence" as a feature
-- **Long-term rental software**: Immobiliare.it SaaS tools, Gestionale360, custom Excel — extremely fragmented, low innovation, no AI
-
-**Disruption levers observed in market**:
-1. AI-native underwriting (no incumbent uses AI for yield management end-to-end)
-2. Regulatory-first moat: CIN, Alloggiati Web automation creates lock-in
-3. Direct-booking engine bypassing OTA fees (Airbnb charges 3% host fee; 15%+ guest fee)
-4. Long-term rental expansion: same compliance stack applies (GDPR, SCIA, deposito cauzionale digitale); 10x larger TAM than short-term
-5. AI "property advisor" (pricing + demand forecasting + regulatory alerts) as premium tier
-
-**TAM estimates** (Italy):
-- ~600,000 active short-term rental listings (Airbnb + Booking.com)
-- ~4 million residential rental units (long-term)
-- ~15,000 property management companies
+| Property owners / managers | Primary users: manage properties, bookings, compliance | Informed | Italian market; UI must be in Italian |
+| Guests | Book via OTAs or direct | Informed | Identity data subject to GDPR + Alloggiati Web |
+| Italian authorities | CIN registry, police reporting, tourist tax collection | Regulatory | D.L.145/2023, D.L.286/1998 Art.7 |
+| CasaZen dev team | Build and maintain the platform | Decision | Both repos: casazen/backend, casazen/frontend |
 
 ---
 
 ## regulatory-environment
 
-| Regulation | Scope | CasaZen status |
+**Italian rental compliance — embedded in harness quality gates, not a standalone agent:**
+
+| Regulation | Requirement | Stage where enforced |
 |---|---|---|
-| D.L. 145/2023 (CIN) | National CIN code mandatory per property | Implemented — validation, storage |
-| D.L. 286/1998 (Alloggiati Web) | Police reporting within 24h of check-in | Implemented — AlloggiatiWebReport entity, client |
-| GDPR / D.Lgs. 196/2003 | Guest data retention, right to erasure, export | Implemented — consent, erasure endpoints |
-| Tourist tax (IMU/tassa soggiorno) | Varies by municipality; collected by host | Implemented — TaxRate entity per city |
-| Cedolare secca | Flat tax regime for rental income reporting | Not implemented |
-| SCIA (short-term rental notification) | Municipal notification per property | Not implemented |
-| Deposito cauzionale digitale | Digital security deposit (emerging) | Not implemented |
+| D.L. 145/2023 (CIN) | Every property must have a CIN code `IT-XXXXX-XXXXXXXXXX`. Validated by `[CinCode]` attribute. | Development (gate), Review (audit) |
+| D.L. 286/1998 Art.7 (Alloggiati Web) | Guest identity submitted to Italian police within 24h of check-in. Handled via background job, must respond in <3s. | Development (gate), Review (audit) |
+| GDPR Art.17 | Guest data erasure on request. 7-year default retention. `GdprDataRetentionJob` handles automatic anonymisation. | Development (gate), Review (audit) |
+| Tourist tax (tassa di soggiorno) | Rates vary by municipality. Stored in `TouristTaxRate` entity. Never hardcode. | Development (gate) |
+| GDPR general | Personal data: consent recorded, retention enforced, exports available | Development (gate) |
 
-**Strategic note**: Italian regulatory compliance is a genuine moat. Any platform that automates Alloggiati Web + CIN + tourist tax reliably already has a hard-to-replicate advantage.
+**Key rule**: when a harness quality gate checks compliance, it must verify these specific items, not generic "GDPR compliance" boilerplate.
 
 ---
 
-## financial-context
+## tech-stack
 
-- **Current model**: Not defined (pre-revenue / MVP stage)
-- **Comparable SaaS pricing** (channel managers): €30–€150/month per property; Guesty at €300+/month for PMCs
-- **AI pricing tools** (Pricelabs, PriceDynamics): €10–€20/month/property as bolt-on
-- **Direct-booking commission avoidance**: saving 15–18% OTA fees is a compelling value prop for a direct booking engine
-- **Key financial levers**: (1) per-property subscription; (2) transaction fee on Stripe payments; (3) premium AI advisory tier; (4) white-label for PMCs
+**Backend (casazen/backend):**
+- C# 13 / .NET 10 / ASP.NET Core Web API
+- SQL Server 2022 + EF Core 10 (code-first, migrations in `Casazen.Infrastructure/Migrations/`)
+- Auth0 JWT Bearer on all `/api` endpoints except `/health` and `/properties/search`
+- Hangfire (background jobs: OTA sync, Alloggiati Web, GDPR retention, email queue, pricing)
+- Stripe .NET SDK (webhook signature verification mandatory)
+- SendGrid (template IDs only — no inline HTML)
+- Polly (retry + circuit-breaker + rate-limit per OTA platform)
+- xUnit (unit + integration tests); `dotnet test` + `dotnet format --verify-no-changes` before any PR
 
----
-
-## operational-context
-
-- **Development team**: Solo founder / small team; single active contributor on backend
-- **Frontend**: Separate repository (casazen/frontend); React-based; field naming conflicts with backend not yet resolved
-- **CI/CD**: GitHub Actions; Hangfire for background jobs; no production deployment documented
-- **OTA completeness gap**: 5 of 6 OTA adapters are stubs — real integration only for Airbnb
-- **AI pricing**: Infrastructure exists but no external AI/ML service wired in
-- **Observability**: Grafana stack planned (recent commit); not yet live
+**Frontend (casazen/frontend):**
+- TypeScript 5.9 + React 19.2 + Vite 8
+- Tailwind CSS v4 + Radix UI primitives
+- React Router v7 (all routes except `/login` and `/search` protected via `<ProtectedRoute>`)
+- TanStack Query v5 (server state); Zustand v5 (UI + user global state)
+- React Hook Form v7 + Zod v4 (form validation)
+- Axios v1 with JWT Bearer interceptor (`src/lib/axios.ts`)
+- Auth0 (`@auth0/auth0-react`); demo mode: `VITE_DEMO_MODE=true`
+- Vitest v4 (unit); Playwright v1.60 (E2E)
 
 ---
 
@@ -94,98 +69,95 @@ CasaZen is a backend-first (ASP.NET Core / .NET 10) SaaS platform designed for I
 
 | Service | Port | Schema | Key Components |
 |---|---|---|---|
-| Casazen.Web (API) | 5001 (HTTPS) | — | 12 controllers, Auth0 JWT middleware, Hangfire dashboard, Swagger |
-| SQL Server | 1433 | CasazenDb | 14 entity tables + migrations |
-| Hangfire | Embedded | CasazenDb | OTA sync jobs (hourly/15min), GDPR retention, pricing sync |
-| Stripe | External | — | Payment processing, webhook handler |
-| SendGrid | External | — | Transactional email templates |
-| Auth0 | External | — | JWT issuance and validation |
-| Alloggiati Web | External | — | Italian police reporting API |
-
----
-
-## tech-stack
-
-- **Language / Runtime**: C# 13 / .NET 10 — ASP.NET Core Web API
-- **ORM**: EF Core with SQL Server provider; code-first migrations
-- **Background jobs**: Hangfire (embedded, SQL-backed)
-- **Resilience**: Polly (retry with exponential backoff, circuit breaker, timeout, rate limiting — per OTA platform)
-- **Auth**: Auth0 + JWT Bearer token validation
-- **Payments**: Stripe SDK with webhook signature verification
-- **Email**: SendGrid (template IDs, no inline HTML)
-- **Testing**: xUnit, Mock\<IRepository\> pattern
-- **CI**: GitHub Actions
-- **Planned observability**: Grafana + structured logging (ILogger)
+| CasaZen API | 5001 (HTTPS) | SQL Server `casazen_db` | 12 controllers, 7 Hangfire jobs, 6 OTA adapters |
+| CasaZen Frontend SPA | 5173 (dev) | — | 22 routes, 9 API modules, 5 TanStack Query files |
+| SQL Server | 1433 | `casazen_db` | 14 EF Core entities |
+| Hangfire Dashboard | `/hangfire` | — | 7 recurring + on-demand jobs |
 
 ---
 
 ## bounded-context-pattern
 
+**Backend — layered architecture:**
 ```
-Casazen.Web (Presentation)
-├── Controllers/          # 12 controllers — Properties, Bookings, Guests, Payments, OTA, Pricing, Compliance, etc.
-├── Middleware/
-└── DTOs/
-
-Casazen.Core (Domain — no external dependencies)
-├── Entities/             # 14 entities (Property, Booking, Guest, Payment, TouristTaxRate, ...)
-├── Repositories/         # Interfaces only
-├── Services/             # Interfaces only
-└── Enums/
-
-Casazen.Infrastructure (Data + External)
-├── Data/                 # DbContext, EF migrations
-├── Repositories/         # IRepository implementations
-├── Services/             # IService implementations
-└── OTA/                  # 6 adapters (Airbnb real; others stub)
-    External/             # Stripe, SendGrid, AlloggiatiWeb, Hangfire jobs
-
-Casazen.Tests
-├── Unit/
-└── Integration/
+Casazen.Core/          # Domain: entities, interfaces, validators (no external deps)
+Casazen.Infrastructure/ # Data + external: EF Core, OTA adapters, Stripe, SendGrid, Alloggiati
+Casazen.Web/           # Presentation: controllers, DTOs, Hangfire jobs, middleware
+Casazen.Tests/         # Unit/ + Integration/
 ```
 
-**Patterns**: Repository pattern (all data access via interfaces), DI via Program.cs, Adapter pattern per OTA platform, Conventional Commits + GitHub Flow.
+**Frontend — feature-slice architecture:**
+```
+src/api/        # Per-domain API modules (one per backend controller group)
+src/features/   # Feature slices: pages + components + Zod schemas
+src/queries/    # TanStack Query hooks (use-*.ts)
+src/types/      # TypeScript interfaces, re-exported from index.ts
+src/store/      # Zustand: ui-store, user-store
+src/components/ # auth/, layout/, shared/, ui/ (Radix)
+src/config/     # env.config.ts, auth.config.ts, api.config.ts, demo.config.ts
+```
+
+**Key naming rules**: `PascalCase` classes; `I` prefix interfaces; `*Controller`, `*Service`, `*Repository` suffixes (backend). `camelCase` files; `use-` prefix hooks; `*.api.ts` pattern for API modules (frontend).
 
 ---
 
 ## cross-context-integration
 
-- **OTA → Bookings**: Hangfire pulls bookings from OTA adapters hourly, writes to Bookings table
-- **Bookings → AlloggiatiWeb**: On check-in, background job submits guest data to police API within 24h
-- **Bookings → Stripe**: On booking creation, payment intent created; on cancellation, refund triggered
-- **Pricing → OTA**: AI pricing sync pushes nightly rates to OTA platforms via adapter interfaces
-- **FE ↔ BE**: REST API; field naming conflicts exist (NightlyRate vs pricePerNight, PostalCode vs zipCode) — tracked in open issues #86, #90, #91
+- Frontend ↔ Backend: REST over HTTPS. Axios intercepts JWT on every request. `ApiClient.unwrap()` handles both bare `T` and `{ data: T }` envelope.
+- Backend ↔ Stripe: webhook at `/api/webhooks/stripe`. Signature verification via `StripeWebhookHandler`. Long ops offloaded to Hangfire.
+- Backend ↔ OTA: `IOtaAdapter` implementations in `Casazen.Infrastructure/OTA/`. Polly policies per platform. Circuit breaker opens after 5 failures, stays open 60s.
+- Backend ↔ Alloggiati Web: `AlloggiatiWebService` custom HTTP client. Must respond in <3s — always queue to Hangfire.
+- Backend ↔ Auth0: JWT Bearer middleware validates `sub` claim as user ID.
+
+---
+
+## docker-infrastructure
+
+- `Dockerfile`: multi-stage build (SDK image → runtime image)
+- `docker-compose.yml`: `api` + `sqlserver` services
+- CI/CD: `.github/workflows/ci-cd.yml` (build + test on push; deploy on release tag)
+- Automated PR review: `.github/workflows/claude-code-review.yml`
 
 ---
 
 ## testing-landscape
 
-- **Framework**: xUnit with AAA pattern
-- **Mocking**: `Mock<IRepository>` (Moq)
-- **Coverage targets**: Critical paths 100%, services 80%, controllers 70%
-- **Known gaps**: OTA resilience regression tests (#35), property detail epic regression tests (#158), AI pricing has minimal test coverage
-- **Integration tests**: Present for key flows; some integration test breakage fixed in recent commits
+**Backend:**
+- Framework: xUnit (unit + integration)
+- Location: `Casazen.Tests/Unit/` + `Casazen.Tests/Integration/`
+- Coverage targets: critical paths 100%, services 80%, controllers 70%
+- Pre-commit gate: `dotnet test` + `dotnet format --verify-no-changes`
+- In-memory SQL Server in CI (when no connection string available)
+
+**Frontend:**
+- Unit/component: Vitest v4 + Testing Library (`@testing-library/react`) with `jsdom`
+- E2E: Playwright v1.60
+- Test locations: `src/**/__tests__/` (unit); `e2e/` (E2E)
+- Pre-PR gate: `npm test` + `npm run lint`
+
+**Non-obvious gotchas:**
+- Never `.Result`/`.Wait()` in async .NET code — deadlock risk
+- `DbContext` is scoped per request — never singleton or static
+- OTA webhooks must respond in <3s — always queue long work
+- `DateTime.UtcNow` internally; convert to local only for display
+- Tourist tax rates from `TouristTaxRate` entity only — never hardcode
+- Frontend: `VITE_API_BASE_URL` defaults to port 3000, backend runs on 5001 — must set explicitly
 
 ---
 
-## current-backlog-snapshot
+## documents-index
 
-**Priority open issues** (as of 2026-05-26):
-- #158: Integration + regression tests for property detail epic (in-sprint)
-- #91: Contract audit FE/BE field misalignment (decision pending)
-- #86, #90: Field naming conflicts (NightlyRate/pricePerNight, PostalCode/zipCode)
-- #58: Email notifications for booking confirmations
-- #51: Automatic refunds on cancellation
-- #35: OTA resilience regression tests
-- #33: Webhook handlers for inbound OTA notifications
-- #32, #31: OTA availability/booking pull endpoints
-- #30–#26: Real API implementations for Agoda, TripAdvisor, VRBO, Expedia, Booking.com
-
-**Strategic gaps not yet in backlog**:
-- Direct booking engine (bypass OTA fees)
-- Long-term rental module
-- AI pricing external provider integration
-- Cedolare secca / SCIA compliance automation
-- PMC white-label / multi-tenant architecture
-- Mobile app / PWA for property owners
+| Document | Summary | Relevant to |
+|---|---|---|
+| `docs/BUSINESS.md` | Domain entities (14), business processes (booking flow, check-in, OTA sync, payment), Italian regulatory glossary | All agents needing domain context |
+| `docs/TECHNICAL.md` | Backend architecture diagram, API reference (all 12 controllers), EF Core ER diagram, design patterns, Hangfire job schedule | Architect, Security, DevOps agents |
+| `docs/PROJECT.md` | Backend AI context: conventions, where-to-find-things table, 12 gotchas | All backend-facing agents |
+| `docs/FRONTEND-TECHNICAL.md` | Frontend architecture, routing table (22 routes), API layer, TanStack Query hooks, Auth0 flow, test setup | Architect, DevOps agents |
+| `docs/FRONTEND-PROJECT.md` | Frontend AI context: conventions, where-to-find-things, 9 gotchas | All frontend-facing agents |
+| `.claude/rules/github-flow-mandatory.md` | GitHub Flow rules: branch → PR → review → merge (no direct push to main) | All agents |
+| `.claude/rules/code-style.md` | Async patterns, EF Core migration rules, test naming + coverage targets | Architect, QA agents |
+| `.claude/rules/security.md` | Security guardrails: no secrets, JWT required, parameterized SQL, HTTPS, Stripe sig verification | Security agents |
+| `.claude/rules/compliance.md` | Italian regulatory rules: CIN format, GDPR, Alloggiati Web, tourist tax | Compliance harness gates |
+| `.claude/rules/integrations.md` | Auth0, Stripe, SendGrid, OTA adapter rules | Architect, Security agents |
+| `.claude/rules/gotchas.md` | DateTime UtcNow, DbContext scope, OTA webhook timeout, tourist tax no-hardcode | All agents |
+| `.claude/context/regulations/` | Full Italian regulatory detail (lazy-load by topic: cin.md, gdpr.md, alloggiati.md, etc.) | Harness compliance gates |

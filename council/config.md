@@ -1,43 +1,46 @@
 ---
-pattern: hub-and-spoke
+pattern: builder-validator
 protocol: deliberative-voting
-topic: "Define the strategic next steps for CasaZen (backend + frontend) to disrupt the property management software market — both short-term rentals and long-term leases — by leveraging AI. The council will audit the current codebase, backlog, and one-year roadmap, then challenge existing assumptions and propose a bold market positioning and development pivot that maximizes competitive advantage."
+topic: |
+  Design and scaffold a 6-stage AI-SDLC for CasaZen (.NET 10 backend + React 19 frontend)
+  where each stage has a dedicated council of specialist agents and a quality harness loop.
+  Stages: Planning → Design → Development → Review → Release → Operations.
+  Italian regulatory compliance (CIN D.L.145/2023, GDPR, Alloggiati Web, tourist tax)
+  must be enforced at the correct stages with verifiable, executable quality gates — not
+  as a standalone agent, but embedded in harness checks and domain context.
 max_rounds: 4
 output_style: standard
 devils_advocate: true
-devils_advocate_mode: brief
-setup_date: 2026-05-26
+setup_date: 2026-06-02
 agents:
-  - slug: ai-native-market-strategist
-    role: AI-Native Market Strategist
-    skill_path: .claude/skills/council-ai-native-market-strategist/SKILL.md
-    archetype: market-analyst
-  - slug: tech-architect
-    role: Technical Architect
-    skill_path: .claude/skills/council-tech-architect/SKILL.md
+  - slug: sdlc-architect
+    role: SDLC Architect
+    skill_path: .claude/skills/council-sdlc-architect/SKILL.md
     archetype: architect
-  - slug: product-strategist
-    role: Product Strategist
-    skill_path: .claude/skills/council-product-strategist/SKILL.md
-    archetype: product-analyst
-  - slug: financial-controller
-    role: Financial Controller
-    skill_path: .claude/skills/council-financial-controller/SKILL.md
-    archetype: financial-controller
-  - slug: regulatory-moat-strategist
-    role: Regulatory Moat Strategist
-    skill_path: .claude/skills/council-regulatory-moat-strategist/SKILL.md
-    archetype: custom
+  - slug: process-quality-engineer
+    role: Process Quality Engineer
+    skill_path: .claude/skills/council-process-quality-engineer/SKILL.md
+    archetype: qa-strategist
+  - slug: security-engineer
+    role: Security Engineer
+    skill_path: .claude/skills/council-security-engineer/SKILL.md
+    archetype: security-engineer
+  - slug: platform-devops-validator
+    role: Platform DevOps Validator
+    skill_path: .claude/skills/council-platform-devops-validator/SKILL.md
+    archetype: devops-engineer
 ---
 
 ## Council Summary
 
-**Scenario**: CasaZen strategic disruption — property management SaaS, Italian market, AI-leveraged.
+**Scenario**: Design a 6-stage AI-SDLC for the CasaZen platform (backend: .NET 10 / ASP.NET Core; frontend: React 19 / TypeScript / Vite). The council's deliverable is the complete SDLC scaffold: six stage folders under `.claude/sdlc/`, each with a harness loop, a coordinator, and specialist agents tailored to that stage. Italian regulatory compliance (CIN, GDPR, Alloggiati Web, tourist tax) is embedded in domain context and harness quality gates — not modelled as a separate agent.
 
-The council must audit the current CasaZen codebase state and backlog, challenge the existing iterative roadmap, and produce a bold strategic direction with a concrete 12-month roadmap for capturing a defensible market segment using AI.
+**Pattern**: builder-validator — SDLC Architect (builder) produces the full stage design; three validators (Process Quality, Security, DevOps) validate each stage against their domain criteria before the design is approved.
 
-**Output template**: `decision` (hub-and-spoke → decision.md with user stories, acceptance criteria, architectural decisions, and deliberation trail)
+**Protocol**: deliberative-voting with votes `PROPOSE | OBJECT | APPROVE | ABSTAIN | REJECT`. Consensus = all non-abstaining APPROVE.
 
-**Session slug convention**: `casazen-market-disruption-strategy` (kebab-case, max 48 chars)
+**Output template**: `draft-and-review` → writes `Sessions/casazen-ai-sdlc-design/decision.md`.
 
-**Devils Advocate**: enabled — brief mode (max 5 challenges, no extended reasoning)
+**Session slug convention**: `casazen-ai-sdlc-design`
+
+**Devil's Advocate**: enabled — post-deliberation review challenges the final SDLC design before consolidation.
