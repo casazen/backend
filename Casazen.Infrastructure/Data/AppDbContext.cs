@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
 
@@ -20,6 +21,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+
+    // Long-term lease
+    public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
+    public DbSet<Party> Parties { get; set; } = null!;
+    public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
+    public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -125,5 +132,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(d => d.DocumentType)
             .HasConversion<string>()
             .HasMaxLength(100);
+
+        // LeaseContract → Property (restrict to preserve history)
+        modelBuilder.Entity<LeaseContract>()
+            .HasOne(l => l.Property)
+            .WithMany()
+            .HasForeignKey(l => l.PropertyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<LeaseContract>()
+            .Property(l => l.MonthlyRent)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
+        modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
+
+        // Party → LeaseContract (cascade)
+        modelBuilder.Entity<Party>()
+            .HasOne(p => p.LeaseContract)
+            .WithMany(l => l.Parties)
+            .HasForeignKey(p => p.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Party>()
+            .HasIndex(p => new { p.LeaseContractId, p.Role });
+
+        // LeaseRegistration → LeaseContract (1-to-1, cascade)
+        modelBuilder.Entity<LeaseRegistration>()
+            .HasOne(r => r.LeaseContract)
+            .WithOne(l => l.Registration)
+            .HasForeignKey<LeaseRegistration>(r => r.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LeaseRegistration>()
+            .HasIndex(r => r.LeaseContractId)
+            .IsUnique();
+
+        // LeaseEvent → LeaseContract (cascade)
+        modelBuilder.Entity<LeaseEvent>()
+            .HasOne(e => e.LeaseContract)
+            .WithMany(l => l.Events)
+            .HasForeignKey(e => e.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LeaseEvent>()
+            .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
     }
 }

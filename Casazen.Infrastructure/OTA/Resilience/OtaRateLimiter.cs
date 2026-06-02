@@ -143,7 +143,7 @@ public class OtaRateLimiter
             _platform = platform;
             _logger = logger;
         }
-        
+
 
         public void Dispose()
         {

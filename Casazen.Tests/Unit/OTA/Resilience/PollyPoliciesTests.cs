@@ -41,7 +41,7 @@ public class PollyPoliciesTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
- [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
+    [Fact(Skip = "Temporarily disabled - needs proper Polly configuration")]
     public async Task GetCircuitBreakerPolicy_ShouldOpenCircuitAfterFailures()
     {
         // Arrange

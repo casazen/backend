@@ -59,6 +59,10 @@ builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
 builder.Services.AddScoped<IPricingAdapterConfigRepository, PricingAdapterConfigRepository>();
 builder.Services.AddScoped<IPricingHistoryRepository, PricingHistoryRepository>();
+// Lease repositories
+builder.Services.AddScoped<ILeaseContractRepository, LeaseContractRepository>();
+builder.Services.AddScoped<ILeaseRegistrationRepository, LeaseRegistrationRepository>();
+builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 
 // External Services
 builder.Services.AddSendGrid(options =>
@@ -83,6 +87,12 @@ builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
+// Lease services
+builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
+builder.Services.AddScoped<ILeaseTemplateService, LeaseContractTemplateService>();
+builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
+builder.Services.AddScoped<ILeaseRegistrationService, OpenapiLeaseRegistrationProvider>();
+builder.Services.AddHttpClient("Openapi");
 
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
@@ -102,6 +112,10 @@ builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
+// Lease background jobs
+builder.Services.AddScoped<ESignWebhookJob>();
+builder.Services.AddScoped<LeaseSignStatusPollingJob>();
+builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
 
 // API
 builder.Services.AddControllers()
