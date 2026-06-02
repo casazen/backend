@@ -142,7 +142,7 @@ public class LeaseWorkflowServiceTests
         _templateService.Setup(s => s.GeneratePdfAsync(lease))
             .ReturnsAsync([0x25, 0x50, 0x44, 0x46]); // %PDF header
         _eSignService.Setup(s => s.InitiateSigningAsync(lease, It.IsAny<byte[]>()))
-            .ReturnsAsync([]);
+            .ReturnsAsync(new SigningSessionResult("session-abc", []));
 
         // Act
         var result = await _sut.InitiateSigningAsync(lease.Id, OwnerId);
@@ -171,6 +171,7 @@ public class LeaseWorkflowServiceTests
         _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
         _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
             .ReturnsAsync((LeaseContract l) => l);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
         _regRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistration>()))
             .ReturnsAsync((LeaseRegistration r) => r);
         _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
@@ -197,6 +198,126 @@ public class LeaseWorkflowServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _sut.TriggerRegistrationAsync(lease.Id, OwnerId));
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenAlreadySubmitted_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Signed);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id))
+            .ReturnsAsync(new LeaseRegistration { LeaseContractId = lease.Id, Status = RegistrationStatus.SentToProvider });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId));
+    }
+
+    [Fact]
+    public async Task InitiateSigningAsync_WhenAlreadyAwaitingSignature_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.AwaitingSignature);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.InitiateSigningAsync(lease.Id, OwnerId));
+    }
+
+    [Fact]
+    public async Task GetLeaseDetailAsync_WhenWrongOwner_ReturnsNull()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Draft); // Property.OwnerId = OwnerId
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+
+        // Act
+        var result = await _sut.GetLeaseDetailAsync(lease.Id, "auth0|different-owner");
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task HandleESignEventAsync_WhenNoMatchingSession_LogsAndReturns()
+    {
+        // Arrange
+        var esignEvent = new ESignEvent("unknown-session", "all_signed", null, true, null);
+        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
+        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("unknown-session"))
+            .ReturnsAsync((LeaseContract?)null);
+
+        // Act — should not throw
+        await _sut.HandleESignEventAsync("payload");
+
+        // Assert — no update calls made
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleESignEventAsync_WhenAllSigned_TransitionsLeaseToSigned()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.AwaitingSignature);
+        lease.ExternalSigningSessionId = "session-xyz";
+        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, "/path/signed.pdf");
+        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
+        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
+        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+
+        // Act
+        await _sut.HandleESignEventAsync("payload");
+
+        // Assert
+        Assert.Equal(LeaseStatus.Signed, lease.Status);
+        Assert.Equal("/path/signed.pdf", lease.SignedPdfStoragePath);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+
+        var request = new CreateLeaseRequest(
+            FiscalRegime: FiscalRegime.CedolareSecca,
+            StartDate: new DateTime(2030, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate: new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), // before StartDate
+            MonthlyRent: 1200.00m,
+            Parties:
+            [
+                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com"),
+                new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123X", "IT", "john@example.com")
+            ]);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenNoTenant_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+
+        var request = new CreateLeaseRequest(
+            FiscalRegime: FiscalRegime.CedolareSecca,
+            StartDate: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate: new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+            MonthlyRent: 1200.00m,
+            Parties: [new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com")]);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
     }
 
     // Helpers

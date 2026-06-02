@@ -34,6 +34,9 @@ public class LeaseContract
 
     public DateTime RegistrationDeadline { get; set; }
 
+    [MaxLength(500)]
+    public string? ExternalSigningSessionId { get; set; }
+
     [MaxLength(1000)]
     public string? SignedPdfStoragePath { get; set; }
 

@@ -19,13 +19,24 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
             .Include(l => l.Events.OrderBy(e => e.OccurredAt))
             .FirstOrDefaultAsync(l => l.Id == id);
 
-    public async Task<IEnumerable<LeaseContract>> GetByOwnerAsync(string ownerId)
+    public async Task<LeaseContract?> GetByExternalSigningSessionIdAsync(string externalSessionId)
         => await context.LeaseContracts
             .Include(l => l.Property)
             .Include(l => l.Parties)
-            .Where(l => l.Property.OwnerId == ownerId)
-            .OrderByDescending(l => l.CreatedAt)
-            .ToListAsync();
+            .FirstOrDefaultAsync(l => l.ExternalSigningSessionId == externalSessionId);
+
+    public async Task<IEnumerable<LeaseContract>> GetByOwnerAsync(string ownerId, Guid? propertyId = null)
+    {
+        var query = context.LeaseContracts
+            .Include(l => l.Property)
+            .Include(l => l.Parties)
+            .Where(l => l.Property.OwnerId == ownerId);
+
+        if (propertyId.HasValue)
+            query = query.Where(l => l.PropertyId == propertyId.Value);
+
+        return await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+    }
 
     public async Task<IEnumerable<LeaseContract>> GetByPropertyAsync(Guid propertyId)
         => await context.LeaseContracts

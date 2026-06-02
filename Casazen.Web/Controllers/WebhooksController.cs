@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
@@ -130,21 +131,37 @@ public class WebhooksController : ControllerBase
         try
         {
             var payload = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-            var signatureHeader = Request.Headers["X-ESign-Signature"].ToString();
+
             var webhookSecret = _configuration["ESign:WebhookSecret"];
-
-            if (!string.IsNullOrEmpty(webhookSecret) && !string.IsNullOrEmpty(signatureHeader))
+            if (string.IsNullOrEmpty(webhookSecret))
             {
-                var expectedSig = Convert.ToHexString(
-                    System.Security.Cryptography.HMACSHA256.HashData(
-                        System.Text.Encoding.UTF8.GetBytes(webhookSecret),
-                        System.Text.Encoding.UTF8.GetBytes(payload)));
+                _logger.LogError("ESign webhook secret not configured");
+                return StatusCode(500, "Webhook secret not configured");
+            }
 
-                if (!string.Equals(signatureHeader, expectedSig, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogWarning("Invalid e-sign webhook signature");
-                    return BadRequest("Invalid signature");
-                }
+            var signatureHeader = Request.Headers["X-ESign-Signature"].ToString();
+            if (string.IsNullOrEmpty(signatureHeader))
+            {
+                _logger.LogWarning("ESign webhook received without signature header");
+                return Unauthorized("Missing signature");
+            }
+
+            byte[] providedBytes;
+            try { providedBytes = Convert.FromHexString(signatureHeader); }
+            catch (FormatException)
+            {
+                _logger.LogWarning("ESign webhook signature header is not valid hex");
+                return Unauthorized("Invalid signature");
+            }
+
+            var expectedBytes = HMACSHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(webhookSecret),
+                System.Text.Encoding.UTF8.GetBytes(payload));
+
+            if (!CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes))
+            {
+                _logger.LogWarning("Invalid e-sign webhook signature");
+                return Unauthorized("Invalid signature");
             }
 
             _backgroundJobClient.Enqueue<ESignWebhookJob>(job =>

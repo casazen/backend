@@ -4,9 +4,11 @@ namespace Casazen.Core.Services;
 
 public interface ILeaseESignService
 {
-    Task<IEnumerable<SignerInfo>> InitiateSigningAsync(LeaseContract lease, byte[] pdfBytes);
+    Task<SigningSessionResult> InitiateSigningAsync(LeaseContract lease, byte[] pdfBytes);
     Task<ESignEvent> ParseWebhookEventAsync(string payload);
 }
+
+public record SigningSessionResult(string ExternalSessionId, IEnumerable<SignerInfo> Signers);
 
 public record ESignEvent(
     string ExternalSessionId,

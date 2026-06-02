@@ -15,6 +15,7 @@ public class LeaseRegistrationStatusPollingJob(
     ILogger<LeaseRegistrationStatusPollingJob> logger)
 {
     [AutomaticRetry(Attempts = 3)]
+    [DisableConcurrentExecution(timeoutInSeconds: 60)]
     public async Task ExecuteAsync()
     {
         var pending = await registrationRepository.GetByStatusAsync(RegistrationStatus.SentToProvider);

@@ -35,6 +35,15 @@ public class LeaseWorkflowService(
         if (!hasApe)
             throw new InvalidOperationException("APE document is required before creating a lease contract.");
 
+        if (request.EndDate <= request.StartDate)
+            throw new InvalidOperationException("Lease end date must be after start date.");
+
+        var parties = request.Parties.ToList();
+        if (!parties.Any(p => p.Role == PartyRole.Landlord))
+            throw new InvalidOperationException("At least one Landlord party is required.");
+        if (!parties.Any(p => p.Role == PartyRole.Tenant))
+            throw new InvalidOperationException("At least one Tenant party is required.");
+
         var lease = new LeaseContract
         {
             PropertyId = propertyId,
@@ -44,7 +53,7 @@ public class LeaseWorkflowService(
             MonthlyRent = request.MonthlyRent,
             RegistrationDeadline = request.StartDate.AddDays(30),
             DataRetentionUntil = request.StartDate.AddYears(10),
-            Parties = request.Parties.Select(p => new Party
+            Parties = parties.Select(p => new Party
             {
                 Role = p.Role,
                 FirstName = p.FirstName,
@@ -75,9 +84,10 @@ public class LeaseWorkflowService(
             throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
 
         var pdfBytes = await templateService.GeneratePdfAsync(lease);
-        var signers = (await eSignService.InitiateSigningAsync(lease, pdfBytes)).ToList();
+        var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
 
         lease.Status = LeaseStatus.AwaitingSignature;
+        lease.ExternalSigningSessionId = sessionResult.ExternalSessionId;
         await leaseRepository.UpdateAsync(lease);
         await eventRepository.AddAsync(new LeaseEvent
         {
@@ -85,19 +95,18 @@ public class LeaseWorkflowService(
             EventType = LeaseEventType.SigningInitiated
         });
 
-        logger.LogInformation("Signing initiated. LeaseId={LeaseId}", leaseId);
-        return new SigningInitiatedResult(lease.Id, lease.Status, signers);
+        logger.LogInformation("Signing initiated. LeaseId={LeaseId} SessionId={SessionId}", leaseId, sessionResult.ExternalSessionId);
+        return new SigningInitiatedResult(lease.Id, lease.Status, sessionResult.Signers);
     }
 
     public async Task HandleESignEventAsync(string providerPayload)
     {
         var esignEvent = await eSignService.ParseWebhookEventAsync(providerPayload);
-        var leases = await leaseRepository.GetByStatusAsync(LeaseStatus.AwaitingSignature);
-        var lease = leases.FirstOrDefault(); // provider must include lease ID in payload — simplified here
 
+        var lease = await leaseRepository.GetByExternalSigningSessionIdAsync(esignEvent.ExternalSessionId);
         if (lease is null)
         {
-            logger.LogWarning("ESign webhook received but no matching AwaitingSignature lease found.");
+            logger.LogWarning("ESign webhook received but no lease found for SessionId={SessionId}", esignEvent.ExternalSessionId);
             return;
         }
 
@@ -130,6 +139,10 @@ public class LeaseWorkflowService(
 
         if (lease.Status != LeaseStatus.Signed)
             throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
+
+        var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
+        if (existing is not null)
+            throw new InvalidOperationException("Registration has already been submitted for this lease.");
 
         var externalId = await registrationService.SubmitRegistrationAsync(lease);
 
@@ -174,15 +187,12 @@ public class LeaseWorkflowService(
     }
 
     public async Task<IEnumerable<LeaseContract>> GetOwnerLeasesAsync(string ownerId, Guid? propertyId = null)
-    {
-        var leases = await leaseRepository.GetByOwnerAsync(ownerId);
-        return propertyId.HasValue ? leases.Where(l => l.PropertyId == propertyId.Value) : leases;
-    }
+        => await leaseRepository.GetByOwnerAsync(ownerId, propertyId);
 
     public async Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId, string ownerId)
     {
         var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property.OwnerId != ownerId) return null;
+        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId) return null;
         return lease;
     }
 
@@ -191,7 +201,7 @@ public class LeaseWorkflowService(
         var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId)
             ?? throw new InvalidOperationException($"Lease {leaseId} not found.");
 
-        if (lease.Property.OwnerId != ownerId)
+        if (lease.Property is null || lease.Property.OwnerId != ownerId)
             throw new UnauthorizedAccessException("Lease does not belong to this owner.");
 
         return lease;
