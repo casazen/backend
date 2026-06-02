@@ -99,7 +99,7 @@ public class PropertyUniquenessTests : IDisposable
 
         var properties = await _context.Properties.ToListAsync();
         Assert.Equal(2, properties.Count);
-        Assert.Single(properties.Where(p => p.IsActive));
+        Assert.Single(properties, p => p.IsActive);
     }
 
     public void Dispose()

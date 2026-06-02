@@ -163,6 +163,7 @@ public class PropertiesController(
     // Image Management Endpoints
 
     [HttpPost("{id}/images")]
+    [Consumes("multipart/form-data")]
     public async Task<ActionResult<Property>> UploadImages(Guid id, [FromForm] List<IFormFile> images)
     {
         var userId = GetAuthenticatedUserId();
@@ -384,6 +385,7 @@ public class PropertiesController(
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPost("{id}/documents")]
+    [Consumes("multipart/form-data")]
     public async Task<ActionResult<PropertyDocumentDto>> UploadDocument(
         Guid id,
         IFormFile file,

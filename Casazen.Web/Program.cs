@@ -275,6 +275,24 @@ void ConfigureRecurringJobs()
         job => job.ExecuteAsync(),
         "0 2 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    RecurringJob.AddOrUpdate<GdprDataRetentionJob>(
+        "gdpr-data-retention",
+        job => job.ExecuteAsync(),
+        "0 3 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    RecurringJob.AddOrUpdate<LeaseSignStatusPollingJob>(
+        "lease-sign-status-poll",
+        job => job.ExecuteAsync(),
+        "*/10 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    RecurringJob.AddOrUpdate<LeaseRegistrationStatusPollingJob>(
+        "lease-registration-status-poll",
+        job => job.ExecuteAsync(),
+        "*/5 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 
 public partial class Program { }
