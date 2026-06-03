@@ -1,7 +1,6 @@
 ﻿// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
-using System.Text.Json;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -10,6 +9,7 @@ using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -84,19 +84,14 @@ public static class ServiceCollectionExtensions
                         // Map Auth0 custom roles claim to standard .NET role claims
                         if (context.Principal?.Identity is ClaimsIdentity identity)
                         {
-                            var rolesClaim = context.Principal.FindFirst("https://casazen.app/roles");
-                            if (rolesClaim != null)
+                            var roles = Auth0RolesClaimParser.Parse(
+                                context.Principal.FindAll("https://casazen.app/roles").Select(c => c.Value));
+
+                            foreach (var role in roles)
                             {
-                                var roles = JsonSerializer.Deserialize<string[]>(rolesClaim.Value);
-                                if (roles != null)
-                                {
-                                    foreach (var role in roles)
-                                    {
-                                        identity.AddClaim(new Claim(
-                                            "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
-                                            role));
-                                    }
-                                }
+                                identity.AddClaim(new Claim(
+                                    "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+                                    role));
                             }
                         }
                         return Task.CompletedTask;
