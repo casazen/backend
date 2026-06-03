@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
@@ -10,16 +9,13 @@ namespace Casazen.Infrastructure.External;
 /// Config: appsettings.json → Openapi:ApiKey, Openapi:BaseUrl
 /// Docs: https://openapi.it/prodotti/servizi-contratti-di-locazione
 /// </summary>
-public class OpenapiLeaseRegistrationProvider(
-    IHttpClientFactory httpClientFactory,
-    IConfiguration configuration,
-    ILogger<OpenapiLeaseRegistrationProvider> logger) : ILeaseRegistrationService
+public class OpenapiLeaseRegistrationProvider(ILogger<OpenapiLeaseRegistrationProvider> logger) : ILeaseRegistrationService
 {
     public async Task<string> SubmitRegistrationAsync(LeaseContract lease)
     {
         logger.LogInformation("Submitting RLI registration for LeaseId={LeaseId}", lease.Id);
 
-        // TODO: POST to Openapi.it Docuengine registration endpoint
+        // TODO: inject IConfiguration + IHttpClientFactory when implementing real Openapi.it calls
         // var apiKey = configuration["Openapi:ApiKey"];
         // var client = httpClientFactory.CreateClient("Openapi");
         // var response = await client.PostAsJsonAsync("/locazioni/registrazione", payload);

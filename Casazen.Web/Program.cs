@@ -219,7 +219,12 @@ if (!string.IsNullOrEmpty(connectionString))
         });
     }
 
-    ConfigureRecurringJobs();
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        using var scope = app.Services.CreateScope();
+        var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+        ConfigureRecurringJobs(recurringJobManager);
+    });
 }
 
 app.MapControllers();
@@ -256,39 +261,39 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 app.Run();
 
-void ConfigureRecurringJobs()
+void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
 {
-    RecurringJob.AddOrUpdate<OtaSyncJob>(
+    recurringJobManager.AddOrUpdate<OtaSyncJob>(
         "ota-sync-all",
         job => job.ExecuteAsync(Guid.Empty),
         Cron.Hourly,
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    RecurringJob.AddOrUpdate<BookingPullJob>(
+    recurringJobManager.AddOrUpdate<BookingPullJob>(
         "booking-pull-all",
         job => job.ExecuteAsync(Guid.Empty),
         "*/15 * * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    RecurringJob.AddOrUpdate<DynamicPricingJob>(
+    recurringJobManager.AddOrUpdate<DynamicPricingJob>(
         "dynamic-pricing-adaptation",
         job => job.ExecuteAsync(),
         "0 2 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    RecurringJob.AddOrUpdate<GdprDataRetentionJob>(
+    recurringJobManager.AddOrUpdate<GdprDataRetentionJob>(
         "gdpr-data-retention",
         job => job.ExecuteAsync(),
         "0 3 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    RecurringJob.AddOrUpdate<LeaseSignStatusPollingJob>(
+    recurringJobManager.AddOrUpdate<LeaseSignStatusPollingJob>(
         "lease-sign-status-poll",
         job => job.ExecuteAsync(),
         "*/10 * * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    RecurringJob.AddOrUpdate<LeaseRegistrationStatusPollingJob>(
+    recurringJobManager.AddOrUpdate<LeaseRegistrationStatusPollingJob>(
         "lease-registration-status-poll",
         job => job.ExecuteAsync(),
         "*/5 * * * *",
