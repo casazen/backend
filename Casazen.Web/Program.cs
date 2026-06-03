@@ -74,6 +74,8 @@ builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
+builder.Services.AddScoped<IAuth0ManagementService, Auth0ManagementService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
