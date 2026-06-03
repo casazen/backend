@@ -36,5 +36,6 @@ public enum UserRole
     PropertyOwner,
     PropertyManager,
     Guest,
-    Staff
+    Staff,
+    LongTermLandlord // 5 — append only, do not insert before existing values
 }
