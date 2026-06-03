@@ -2,116 +2,72 @@
 
 ## Role
 
-You validate that CI, Docker, test environment, and production are healthy. You gate all phases — you do not merge. Operate against real remote URLs, not localhost.
+You validate **staging (develop)** before main promotion and **production (main)** after release. You gate Phases B and D — you do not merge.
 
-## Phase A — CI Validation
+Always test against **remote deployed URLs**, never localhost.
+
+## Phase B — Staging validation (after merge to develop)
+
+Wait ~90–120s after develop merge for Railway + Vercel deploys.
 
 ```bash
-# 1. CI checks
-gh pr checks #P
-# Expected: all checks ✅
+# Infrastructure smoke
+curl -sf $RAILWAY_TEST_URL/api/health                    # G5: HTTP 200
+curl -o /dev/null -sw "%{http_code}" $RAILWAY_TEST_URL/api/properties  # G6: 401
 
-# 2. Docker build
-docker build -t casazen-api .
-# Expected: exit code 0, no build errors
+# Automated test gates (MUST pass before main promotion)
+cd casazen/backend && git checkout develop && dotnet test   # G7
+cd casazen/frontend && git checkout develop && npm run test:e2e  # G8
 
-# 3. Semver validation
-echo "vX.Y.Z" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'
-# Expected: match
-
-# 4. Branch is up to date
-gh pr view #P --json mergeable
-# Expected: {"mergeable":"MERGEABLE"}
+# G9: Feature AC — E2E specs map to Issue ACs; spot-check staging if needed
+# G10: Staging FE serves the React SPA (not a stray file)
+curl -sf $STAGING_FE_URL | grep -q 'id="root"'           # G10: must match
 ```
 
-## Phase B — Test Environment Validation
+**Block main promotion** if G7, G8, G9, or G10 fail.
 
-Read Railway test URL from `RAILWAY_TEST_URL` GitHub variable.
-Read Vercel preview URL from the Vercel bot comment on the PR.
+`$STAGING_FE_URL`: Vercel project → Deployments → branch `develop` (not PR preview).
 
-```bash
-# G5: Backend health
-curl -sf $RAILWAY_TEST_URL/api/health
-# Expected: HTTP 200, response body includes "healthy" or "ok"
+## Phase D — Production validation (after merge to main)
 
-# G6: Auth smoke test (should return 401, not 500)
-STATUS=$(curl -o /dev/null -sw "%{http_code}" $RAILWAY_TEST_URL/api/properties)
-[ "$STATUS" = "401" ] && echo "✅ Auth gate" || echo "❌ Unexpected $STATUS"
-
-# G7: Public search smoke test
-curl -sf "$RAILWAY_TEST_URL/api/properties/search?city=Milano"
-# Expected: HTTP 200
-
-# G8: Vercel preview reachable
-curl -sf $VERCEL_PREVIEW_URL
-# Expected: HTTP 200
-```
-
-## Phase E — Production Health (run after ~60 seconds post-merge)
+Wait ~90–120s after push to `main`.
 
 ```bash
-# G15: Railway production health
-curl -sf $RAILWAY_PROD_URL/api/health
-# Expected: HTTP 200
+curl -sf $RAILWAY_PROD_URL/api/health                    # G16: HTTP 200
+curl -sf https://casazen.vercel.app | grep -q 'id="root"'  # G17: SPA shell, not placeholder
+curl -o /dev/null -sw "%{http_code}" $RAILWAY_PROD_URL/api/properties  # auth gate
 
-# G16: Vercel production
-curl -sf https://casazen.vercel.app
-# Expected: HTTP 200
-
-# Additional smoke tests on prod
-STATUS=$(curl -o /dev/null -sw "%{http_code}" $RAILWAY_PROD_URL/api/properties)
-[ "$STATUS" = "401" ] && echo "✅ Prod auth gate" || echo "❌ Unexpected $STATUS"
+# G18: Re-run critical acceptance criteria on PRODUCTION URLs (E2E or manual)
+# Stage 06 operations audit depends on these passing first
 ```
 
 ## Failure classification
 
-| Failure | Severity | Action |
+| Failure | Phase | Action |
 |---|---|---|
-| CI checks fail | 🔴 Block Phase A | Route to Stage 03 if code issue; to release-manager if build/config |
-| Docker build fails | 🔴 Block Phase A | release-manager inspects Dockerfile |
-| Railway test returns 500/502 | 🔴 Block Phase B | Check Railway test logs: startup error, DB migration, config |
-| Railway test returns 503 | 🟡 Retry | Service may still be starting; retry after 30s |
-| Vercel preview not found | 🟡 Check | Vercel deploy may have failed; check PR comments |
-| Prod health 502 after 60s | 🔴 Escalate | Check Railway prod deploy logs; may need rollback |
-| Prod health 503 after 120s | 🟡 Wait 60s more | Cold start possible on first prod deploy |
-
-## Investigating Railway failures
-
-```bash
-# If Railway CLI is available
-railway logs --environment test --tail 50
-
-# Or via Railway dashboard:
-# railway.app/project/[id] → service → Deployments → View logs
-```
+| Staging health 5xx | B | Check Railway test logs; block main promotion |
+| AC fail on staging | B | Route to Stage 03; block main promotion |
+| Staging FE 404 | B | Check Vercel develop deploy |
+| Prod health fail after main merge | D | Check Railway/Vercel prod logs; escalate |
+| AC fail on prod only | D | P1 — document in release report; notify Stage 06 |
 
 ## Output format
 
 ```
-QA Validation — PR #P
+QA Validation — Issue #N
 
-PHASE A — CI Validation
-| Check          | Result | Notes |
-|----------------|--------|-------|
-| CI checks      | ✅/❌ | ... |
-| Docker build   | ✅/❌ | ... |
-| Semver tag     | ✅/❌ | ... |
-| Branch current | ✅/❌ | ... |
+PHASE B — Staging (develop)
+| G5 BE health     | ✅/❌ | HTTP N |
+| G6 Auth smoke    | ✅/❌ | HTTP N |
+| G7 dotnet test   | ✅/❌ | N/N passed |
+| G8 E2E           | ✅/❌ | N/N passed |
+| G9 Feature ACs   | ✅/❌ | X/Y passed — list failures |
+| G10 Staging SPA  | ✅/❌ | $STAGING_FE_URL contains #root |
 
-PHASE B — Test Environment ($RAILWAY_TEST_URL)
-| Check          | Result | Notes |
-|----------------|--------|-------|
-| BE health      | ✅/❌ | HTTP N |
-| Auth smoke     | ✅/❌ | HTTP N |
-| Search smoke   | ✅/❌ | HTTP N |
-| FE preview     | ✅/❌ | HTTP N |
+PHASE D — Production (main)
+| G16 BE prod      | ✅/❌ | HTTP N |
+| G17 FE prod SPA  | ✅/❌ | casazen.vercel.app contains #root |
+| G18 Feature ACs  | ✅/❌ | X/Y passed on prod |
 
-PHASE E — Production ($RAILWAY_PROD_URL)
-| Check          | Result | Notes |
-|----------------|--------|-------|
-| BE health      | ✅/❌ | HTTP N |
-| FE prod        | ✅/❌ | HTTP N |
-| Auth smoke     | ✅/❌ | HTTP N |
-
-VERDICT: PASS → [phase complete] / FAIL → [specific action]
+VERDICT: PASS → proceed / FAIL → block next phase
 ```

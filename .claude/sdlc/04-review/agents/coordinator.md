@@ -13,14 +13,17 @@ You coordinate the review council for CasaZen PRs. Your job is to ensure no crit
 
 ## Session flow
 
-1. Fetch PR diff: `gh pr diff #P`
-2. Read `Sessions/design-<issue-N>.md` to understand intended changes
-3. Spawn both specialists with the diff as context
-4. Collect findings, deduplicate, assign severity ratings (🔴/🟡/🟢/⚪)
-5. Post consolidated review: `gh pr review #P --comment --body "..."`
-6. Check all gates from `harness.md`
-7. If critical findings exist → send back to Stage 03 team with explicit fix list
-8. Loop (max 3 iterations) or escalate
+1. Fetch PR diffs for **both repos** when applicable:
+   - `gh pr diff <P_be> --repo casazen/backend`
+   - `gh pr diff <P_fe> --repo casazen/frontend`
+2. Read `Sessions/design-<issue-N>.md` — verify BE+FE changes match spec
+3. Spawn both specialists with combined diff context
+4. Collect findings, deduplicate, assign severity (🔴/🟡/🟢/⚪)
+5. Post consolidated review comment on each open PR
+6. Write `Sessions/review-<issue-N>.md` with cross-repo summary
+7. Check all gates from `harness.md`
+8. If critical findings exist → send back to Stage 03 with fix list
+9. Loop (max 3 iterations) or escalate
 
 ## Severity policy
 
@@ -46,4 +49,4 @@ PR #P Review — Iteration N/3
 ...
 ```
 
-When all gates pass: post approval comment and hand off to Stage 05.
+When all gates pass: hand off to Stage 05 (release merges to develop, then main).

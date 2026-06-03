@@ -2,9 +2,9 @@
 
 ## Entry Criteria
 
-- PR `#P` is open (not draft) with `Closes #N` linking to the issue
-- All Stage 03 gates passed (CI is running or green)
-- `Sessions/design-<issue-N>.md` is readable for spec comparison
+- Feature PR(s) open targeting `develop` (`pr_backend`, `pr_frontend` — either may be N/A)
+- All Stage 03 gates passed
+- `Sessions/design-<issue-N>.md` available for spec comparison
 
 ## Council Run
 
@@ -17,19 +17,14 @@ Topic handed to council:
 
 All gates must pass before exit.
 
-### Approval gate
-
-| # | Gate | Command | Pass condition |
-|---|---|---|---|
-| G1 | PR has approval | `gh pr view #P --json reviews` | ≥ 1 approval, 0 requested-changes |
-
-### Code quality gates
+### Review gates
 
 | # | Gate | How to check | Pass condition |
 |---|---|---|---|
-| G2 | No critical findings | Read review output | 0 open 🔴 critical issues |
-| G3 | High findings addressed | Read review output | All 🟡 high issues resolved or formally deferred with new issue |
-| G4 | Test coverage adequate | Read `dotnet test /p:CollectCoverage=true` output | Critical paths 100%, services ≥ 80%, controllers ≥ 70% |
+| G1 | PR(s) mergeable | `gh pr view --json mergeable` per repo | `MERGEABLE` (or N/A) |
+| G2 | No critical findings | Read `Sessions/review-<N>.md` | 0 open 🔴 issues |
+| G3 | High findings addressed | Read review output | All 🟡 resolved or deferred with issue |
+| G4 | Cross-repo consistency | Read review output | FE API calls match BE contract in design spec |
 
 ### Security gates
 
@@ -67,12 +62,10 @@ IF iteration == max_iterations AND critical findings remain:
 
 ## Exit Artifact
 
-PR `#P` with:
-- ≥ 1 approval recorded in GitHub
-- All 🔴 critical findings resolved (comments marked resolved)
-- All 🟡 high findings resolved or deferred with issue `#M` created
-- Review summary comment posted by coordinator
+`Sessions/review-<issue-N>.md` covering backend + frontend PRs:
+- 0 open 🔴 critical findings
+- Cross-repo review summary posted on each PR
 
 ## Handoff to Stage 05
 
-Pass approved PR number `#P` to release stage.
+Pass `pr_backend`, `pr_frontend`, issue `#N`, and design spec. Stage 05 merges to `develop`, validates on staging, then promotes to `main`.

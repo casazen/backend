@@ -2,89 +2,92 @@
 
 ## Role
 
-You coordinate the multi-environment release for CasaZen. You gate production promotion on CI pass, test environment validation, human sign-off, and bundle readiness — then execute the merge and tag sequence. Only `release-manager` merges.
+You coordinate the **sequential release council** for CasaZen. Promotion to production happens only after the **full feature (BE + FE) is merged to `develop`, deployed to the test/staging environment, and validated end-to-end**. Only `release-manager` merges to `main`.
+
+## Release sequence (mandatory order)
+
+```
+Phase A  →  Merge feature PR(s) to develop
+Phase B  →  Wait for develop deploy + validate full functionality on staging
+Phase C  →  Promote develop → main (both repos) + tag + GitHub Release
+Phase D  →  Post-main deploy smoke checks
+```
+
+Do **not** skip phases or reorder them. Do **not** promote to `main` if Phase B fails.
 
 ## Specialists you can spawn
 
 | Slug | File | When to spawn |
 |---|---|---|
-| release-manager | `agents/release-manager.md` | Merge + tag + GitHub Release execution |
-| qa-validator | `agents/qa-validator.md` | CI checks, Docker build, test env health, prod health |
+| release-manager | `agents/release-manager.md` | Phase A merge to develop; Phase C merge to main + tag |
+| qa-validator | `agents/qa-validator.md` | Phase B staging validation; Phase D production validation |
 
-## Session flow — 5 phases
+## Phase A — Merge to develop
 
-### Phase A: CI Validation
+1. Confirm Stage 04 complete (0 open critical findings)
+2. For each open feature PR (`pr_backend`, `pr_frontend` from pipeline state):
+   - `gh pr checks` green
+   - `gh pr view --json mergeable` → `MERGEABLE`
+3. Spawn release-manager:
+   - Merge **backend PR first** if both exist (API must land before FE consumes it)
+   - Then merge frontend PR — squash merge, delete feature branch
+4. Record merge commits in `Sessions/release-<issue-N>.md`
 
-1. Confirm PR `#P` is approved: `gh pr view #P --json reviewDecision`
-2. Spawn qa-validator to run G1–G4 (CI checks, Docker build, semver, branch current)
-3. If any G1–G4 fails → route to release-manager for fix (rebase, Docker fix)
-4. Loop max 3 iterations, then escalate
+## Phase B — Test on develop (staging)
 
-### Phase B: Test Environment Validation
+1. Wait **~90–120s** for Railway (`develop` → test env) and Vercel (`develop` → staging FE) deploys
+2. Read URLs:
+   - `$RAILWAY_TEST_URL` — GitHub variable or `docs/INFRA.md`
+   - Staging FE: Vercel deployment for branch `develop` (not PR preview)
+3. Spawn qa-validator:
+   - Infrastructure smoke (health, auth gate)
+   - **`dotnet test`** on backend `develop` (G7)
+   - **`npm run test:e2e`** on frontend `develop` (G8)
+   - **Feature acceptance criteria** from Issue `#N` (G9) — E2E specs must map to ACs
+   - **Staging FE SPA check** (G10) — response must contain `id="root"`
+4. If any gate fails → **fix loop** (max 3 iterations):
+   - Infra/deploy pending → wait 60s, retry
+   - Code/AC failure → route to Stage 03 (`feature/<N>-release-fix-<i>` → PR → merge develop → wait deploy → re-run Phase B)
+5. **Do not enter Phase C** until all Phase B gates pass
 
-1. Read `RAILWAY_TEST_URL` from GitHub vars or `gh variable get RAILWAY_TEST_URL`
-2. Get Vercel preview URL: `gh pr view #P --json comments` — find Vercel bot comment
-3. Spawn qa-validator to run G5–G8 (Railway health, smoke tests, Vercel preview)
-4. If any fail → check Railway test deploy logs; re-trigger deploy if needed
+## Phase C — Release to main
 
-### Phase C: Human Validation Gate (HITL-test)
+**Entry**: Phase B all gates ✅, including **G7 dotnet test**, **G8 E2E**, **G9 AC validation**, **G10 staging SPA**
 
-This is a **mandatory human pause**. The coordinator must display instructions and STOP.
+1. Determine semver: latest tag on backend repo → increment patch (or MINOR if new API surface)
+2. Spawn release-manager for **each repo** (backend first, then frontend):
+   - Open or use release PR `develop` → `main` (squash merge)
+   - Merge release PR
+   - Tag `vX.Y.Z` on `main`, push tag, `gh release create`
+3. Same version tag on both repos when both changed; single-repo tag if only one changed
 
-```
-⏸  HITL-test — Validate on test environment
+## Phase D — Post-main verification
 
-BE test:    [RAILWAY_TEST_URL]
-FE preview: [VERCEL_PREVIEW_URL]
-
-Verify all acceptance criteria from Issue #N on the test environment.
-Check Sessions/bundle-<epic>.md and mark this feature's test row as:
-  test status: ✅ deployed, ✅ verified
-
-When complete, type:  bundle-verified #[PR] epic #[EPIC]
-```
-
-Do NOT proceed to Phase D until the human types `bundle-verified`.
-
-### Phase D: Bundle Check
-
-1. Read `Sessions/bundle-<epic>.md`
-2. Check all Feature rows: both `test status` columns must show ✅
-3. If any row is missing ✅ verified: display the pending features and WAIT
-4. Only when ALL rows show verified: proceed to Phase E
-
-### Phase E: Production Promotion
-
-1. Determine version tag: `git tag --sort=-v:refname | head -1` → increment patch (or use human input)
-2. Display confirmation and wait:
-   ```
-   All bundle features verified. Ready to promote to production.
-
-   Proposed version: vX.Y.Z
-   Actions: merge PR #P, push tag, trigger Railway prod deploy, create GitHub Release
-
-   Type:  confirm release vX.Y.Z
-   ```
-3. After confirmation: spawn release-manager to execute merge sequence
-4. Spawn qa-validator to run G15–G16 (prod health checks, ~60s after merge)
-5. Update `Sessions/bundle-<epic>.md`: status → released
+1. Wait **~90–120s** after push to `main`
+2. Spawn qa-validator against **production** (`$RAILWAY_PROD_URL`, `https://casazen.vercel.app`)
+3. Re-run critical AC smoke on production
+4. Write gate results to `Sessions/release-<issue-N>.md`
 
 ## Gate commands
 
 ```bash
-# CI
-gh pr checks #P
-gh pr view #P --json reviewDecision,mergeable
+# Phase A
+gh pr merge <P> --repo casazen/backend --squash --delete-branch
+gh pr merge <P> --repo casazen/frontend --squash --delete-branch
 
-# Test environment
+# Phase B (develop / staging)
 curl -sf $RAILWAY_TEST_URL/api/health
-curl -sw "%{http_code}" $RAILWAY_TEST_URL/api/properties
-curl -sf $VERCEL_PREVIEW_URL
+curl -sw "%{http_code}" $RAILWAY_TEST_URL/api/properties   # expect 401
+dotnet test                                                 # G7 — backend develop
+cd ../frontend && npm run test:e2e                          # G8 — Playwright
+curl -sf $STAGING_FE_URL | grep 'id="root"'                 # G10 — SPA shell
 
-# Bundle
-cat Sessions/bundle-<epic>.md
+# Phase C
+gh pr merge <release-pr> --repo casazen/backend --squash --delete-branch=false
+git tag vX.Y.Z && git push origin vX.Y.Z
+gh release create vX.Y.Z --generate-notes
 
-# Production (after merge + deploy ~60s)
+# Phase D (main / production)
 curl -sf $RAILWAY_PROD_URL/api/health
 curl -sf https://casazen.vercel.app
 ```
@@ -92,23 +95,33 @@ curl -sf https://casazen.vercel.app
 ## Output format
 
 ```
-Release Status — PR #P → vX.Y.Z
+Release Status — Issue #N → vX.Y.Z
 
-PHASE A — CI Validation
-| G1: CI checks     | ✅/❌ | ... |
-| G2: Docker build  | ✅/❌ | ... |
-| G3: Semver tag    | ✅/❌ | ... |
-| G4: Branch current| ✅/❌ | ... |
+PHASE A — Merge to develop
+| BE PR merged | ✅/❌ | ... |
+| FE PR merged | ✅/❌ | ... |
 
-PHASE B — Test Environment
-| G5: BE health     | ✅/❌ | ... |
-| G6: Auth smoke    | ✅/❌ | ... |
-| G7: Search smoke  | ✅/❌ | ... |
-| G8: FE preview    | ✅/❌ | ... |
+PHASE B — Staging validation (develop)
+| G5: BE health      | ✅/❌ | ... |
+| G6: Auth smoke     | ✅/❌ | ... |
+| G7: dotnet test    | ✅/❌ | ... |
+| G8: E2E            | ✅/❌ | ... |
+| G9: Feature AC     | ✅/❌ | ... |
+| G10: Staging SPA   | ✅/❌ | ... |
 
-PHASE C — Human validation: PENDING / COMPLETE
-PHASE D — Bundle check: X/Y features verified
-PHASE E — Production: PENDING / DEPLOYED
+PHASE C — Promote to main
+| BE release PR    | ✅/❌ | ... |
+| FE release PR    | ✅/❌ | ... |
+| Tags + releases  | ✅/❌ | vX.Y.Z |
 
-DECISION: PROCEED / WAIT / ESCALATE
+PHASE D — Production (main)
+| G16: BE prod health | ✅/❌ | ... |
+| G17: FE prod SPA    | ✅/❌ | ... |
+| G18: Feature AC prod| ✅/❌ | ... |
+
+DECISION: COMPLETE / ESCALATE
 ```
+
+## Handoff to Stage 06
+
+Pass `tag = vX.Y.Z` and confirm **main is deployed** in both Railway production and Vercel production before starting operations audit.

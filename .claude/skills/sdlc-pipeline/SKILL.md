@@ -1,6 +1,6 @@
 ---
 name: sdlc-pipeline
-description: Orchestrates the full 6-stage CasaZen SDLC pipeline end-to-end. Start at Stage 01 with a feature description; the pipeline advances automatically through all stages with two mandatory HITL pauses (PR approval, merge confirmation). Supports resume after interruption via pipeline state file.
+description: Orchestrates the full 6-stage CasaZen SDLC pipeline end-to-end. Stage 03 implements backend + frontend together. Stage 05 merges to develop, validates on staging, then promotes to main. Stage 06 audits production only. Supports resume via pipeline state file.
 ---
 
 # SDLC Pipeline Orchestrator
@@ -35,10 +35,8 @@ Invoke this skill when the user says any of:
 
 1. Read `Sessions/pipeline-<slug>/state.md`
 2. Identify `current_stage` and `status`
-3. If `status = paused-hitl1`: proceed to HITL Gate 1 check
-4. If `status = paused-hitl2`: proceed to HITL Gate 2 check
-5. If `status = running`: re-run the current stage (it was interrupted)
-6. If `status = escalated` or `completed`: inform the user and stop
+3. If `status = running`: re-run the current stage (it was interrupted)
+4. If `status = escalated` or `completed`: inform the user and stop
 
 ---
 
@@ -47,8 +45,7 @@ Invoke this skill when the user says any of:
 Execute stages in this sequence, passing artifacts forward:
 
 ```
-01-planning  →  02-design  →  03-development  →  [HITL-1]
-→  04-review  →  [HITL-2]  →  05-release  →  06-operations
+01-planning  →  02-design  →  03-development  →  04-review  →  05-release  →  06-operations
 ```
 
 For each stage, follow this procedure:
@@ -81,15 +78,15 @@ After the agent completes, run the executable gate checks directly (do not rely 
 |---|---|
 | 01 | `gh issue view <N>` · `gh issue view <N> --json labels` |
 | 02 | Check `Sessions/design-<N>.md` exists and has all required sections |
-| 03 | `dotnet test` · `dotnet format --verify-no-changes` · `npm test` · `tsc -b --noEmit` · `npm run lint` · `npm run build` · `gh pr view --json number,url` |
-| 04 | `gh pr view <P> --json reviews` (check approval) · `gh pr view <P> --json reviewDecision` |
-| 05 | `gh pr checks <P>` · `git tag --list v*` · `gh release view` |
-| 06 | Check `Sessions/ops-report-<date>.md` exists and non-empty |
+| 03 | `dotnet test` · `dotnet format --verify-no-changes` · `npm test` · `npm run test:e2e` (AC-driven specs) · `tsc` · `lint` · `build` · `gh pr view` for BE + FE PRs targeting `develop` |
+| 04 | `Sessions/review-<N>.md` · `gh pr view` BE + FE PRs |
+| 05 | Phase A: merge to `develop` · Phase B: `dotnet test` + `npm run test:e2e` + staging AC + SPA check · Phase C: `develop`→`main` only if B passes · Phase D: prod health + SPA + AC |
+| 06 | `Sessions/ops-report-<date>.md` · prod health on `$RAILWAY_PROD_URL` + `casazen.vercel.app` |
 
 **Step 5 — Gate outcome**
 
 - If **all gates pass**: update state file (stage → `completed`), advance to next stage.
-- If **any gate fails** and `iteration < 3`: increment iteration, re-run Step 2–4 with the list of failing gates as additional context.
+- If **any gate fails** and `iteration < 3`: increment iteration, re-run Step 2–4 with failing gates as context. **Stage 05 Phase B/D**: route code failures to Stage 03 fix branch → merge develop → re-test (see `05-release/harness.md` fix loop).
 - If **iteration == 3** and gates still failing: write `Sessions/pipeline-<slug>/escalation-<stage>.md` (list failing gates + iteration history), update state to `escalated`, stop and inform user.
 
 **Step 6 — Update state file**
@@ -104,72 +101,10 @@ After each gate check (pass or fail), rewrite `Sessions/pipeline-<slug>/state.md
 |---|---|---|---|
 | 01-planning | Raw feature description from user | User input | GitHub Issue `#N` (URL from `gh issue create`) |
 | 02-design | Issue `#N` | State file `artifacts.issue` | `Sessions/design-<N>.md` |
-| 03-development | `Sessions/design-<N>.md` + branch `feature/<N>-<slug>` | State file `artifacts.design_spec` | PR `#P` (URL from `gh pr create`) |
-| 04-review | PR `#P` + `Sessions/design-<N>.md` | State file `artifacts.pr_number` | PR with ≥1 approval, all critical findings resolved |
-| 05-release | PR `#P` (approved) + semver tag from user | State file `artifacts.pr_number` + HITL-2 input | Merged PR, Git tag, GitHub Release URL |
-| 06-operations | Git tag `vX.Y.Z` | State file `artifacts.tag` | `Sessions/ops-report-<YYYY-MM-DD>.md` |
-
----
-
-## HITL Gate 1 — After Stage 03 (PR Approval)
-
-**Trigger**: Stage 03 completes (all G1–G12 gates pass, PR is open).
-
-**Action**:
-1. Update state: `status = paused-hitl1`
-2. Display to user:
-   ```
-   ⏸  HITL Gate 1 — PR Review Required
-
-   PR #<P> is open: <PR_URL>
-
-   Please:
-   1. Review the code on GitHub
-   2. Approve the PR (or request changes — pipeline will resume after approval)
-
-   When the PR has at least 1 approval, type:
-     resume pipeline <slug>
-   ```
-3. **Stop**. Do not advance to Stage 04 until the user resumes.
-
-**On resume**:
-- Verify approval: `gh pr view <P> --json reviews` — confirm `state: "APPROVED"` present
-- If not yet approved: inform user and stop again
-- If approved: update state to `running`, continue to Stage 04
-
----
-
-## HITL Gate 2 — Before Stage 05 Merge (Merge Confirmation)
-
-**Trigger**: Stage 04 completes (all review gates pass, PR is approved).
-
-**Action**:
-1. Update state: `status = paused-hitl2`
-2. Determine next semver version: `git tag --sort=-v:refname | head -1` → increment patch (or ask user for major/minor bump)
-3. Display to user:
-   ```
-   ⏸  HITL Gate 2 — Merge Confirmation Required
-
-   All review gates passed. Ready to:
-   - Merge PR #<P> to main (squash merge, branch deleted)
-   - Create Git tag vX.Y.Z
-   - Create GitHub Release
-
-   Proposed version: vX.Y.Z
-   This action is irreversible.
-
-   To proceed, type:
-     confirm release vX.Y.Z
-   To use a different version:
-     confirm release v<your-version>
-   ```
-4. **Stop**. Do not merge until explicit user confirmation.
-
-**On confirmation**:
-- Extract the confirmed semver tag from user input
-- Validate format: matches `v[0-9]+\.[0-9]+\.[0-9]+` — if not, ask again
-- Update state: `artifacts.tag = vX.Y.Z`, `status = running`
-- Continue to Stage 05 with `tag = vX.Y.Z` as confirmed input
+| 03-development | `Sessions/design-<N>.md` + branch `feature/<N>-<slug>` | State file `artifacts.design_spec` | Feature PR(s) → `develop` (`pr_backend`, `pr_frontend`) |
+| 04-review | PR(s) + `Sessions/design-<N>.md` | State file PR numbers | `Sessions/review-<N>.md`; 0 critical findings |
+| 05-release | Feature PR(s) + issue ACs | State file PR numbers | `Sessions/release-<N>.md`; develop merge → staging test → main + tag |
+| 06-operations | Tag on `main`, prod deploy live | State file `artifacts.tag` | `Sessions/ops-report-<YYYY-MM-DD>.md` (production audit) |
 
 ---
 
@@ -181,7 +116,7 @@ Path: `Sessions/pipeline-<slug>/state.md`
 # Pipeline: <feature-title>
 
 ## Status
-- status: running | paused-hitl1 | paused-hitl2 | completed | escalated
+- status: running | completed | escalated
 - current_stage: 01-planning
 - started: <ISO-8601>
 - last_updated: <ISO-8601>
@@ -193,10 +128,13 @@ Path: `Sessions/pipeline-<slug>/state.md`
 
 ## Artifacts
 - issue: (pending)
-- branch: (pending)
+- branch: (pending) — same name in backend + frontend when both change
 - design_spec: (pending)
-- pr_number: (pending)
-- pr_url: (pending)
+- pr_backend: (pending)
+- pr_backend_url: (pending)
+- pr_frontend: (pending)
+- pr_frontend_url: (pending)
+- release_report: (pending)
 - tag: (pending)
 - release_url: (pending)
 - ops_report: (pending)
@@ -272,14 +210,27 @@ When Stage 06 completes:
 
    Feature: <description>
    Issue:   #<N>  <issue-url>
-   PR:      #<P>  <pr-url> (merged)
+   PRs:     BE #<P>  FE #<P>  (merged develop → main)
    Release: <release-url>
-   Tag:     vX.Y.Z
-   Ops:     Sessions/ops-report-<date>.md
+   Tag:     vX.Y.Z (on main)
+   Ops:     Sessions/ops-report-<date>.md (production)
 
    Total stages: 6/6 completed
-   HITL pauses: 2 (PR approval, merge confirmation)
    ```
+
+---
+
+## Release Flow (Stage 05 — sequential, no skips)
+
+```
+Feature PR(s)  →  merge to develop  →  test on staging (develop deploy)
+                                        ↓ (if AC pass)
+                              develop → main  →  tag vX.Y.Z  →  prod smoke
+                                        ↓
+                              Stage 06 audit on main/production only
+```
+
+Stage 03 opens PRs; Stage 05 merges. Never merge feature branches directly to `main`.
 
 ---
 
@@ -287,8 +238,12 @@ When Stage 06 completes:
 
 These rules apply throughout the pipeline and cannot be bypassed:
 
-- **Never push directly to `main` or `develop`** — features via PR → `develop`; production via release PR `develop` → `main` (Stage 05)
-- **Never merge without HITL-2 confirmation** — the merge step is irreversible
+- **Stage 03 always runs backend-developer + frontend-developer** — both specialists spawn every time; document N/A if a layer has no changes
+- **Never push directly to `main` or `develop`** — feature PRs → `develop`; release PR `develop` → `main` (Stage 05 Phase C)
+- **Never promote to `main` before staging validation** — Stage 05 Phase B must pass on develop deploy, including **`dotnet test`**, **`npm run test:e2e`**, and staging FE serving the React SPA (`id="root"`)
+- **Tests from acceptance criteria in Stage 03** — test-engineer adds Vitest + Playwright E2E for each Issue AC before PR; Stage 05 re-runs BE + E2E before main promotion
+- **Stage 06 runs on production (`main`) only** — not against develop/staging URLs
+- **Stage 05 auto-increments patch semver** from latest tag on backend repo unless specified otherwise
 - **Never skip secrets check (G10)** — committed secrets cannot be undone
 - **Never hardcode tourist tax amounts** — `TouristTaxRate` entity only
 - **All `/api` endpoints require `[Authorize]`** unless explicitly justified as public

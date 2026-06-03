@@ -116,7 +116,10 @@ Auth0 Dashboard → **User Management** → **Roles** → **Create Role**:
 | Role Name | Description |
 |-----------|-------------|
 | `Admin` | Full system access |
-| `PropertyOwner` | Can manage own properties and bookings |
+| `PropertyOwner` | Can manage own properties and bookings (short-stay layer) |
+| `LongTermLandlord` | Can manage long-term leases (`/api/leases/*`, `/leases/*` UI) |
+
+Assign `LongTermLandlord` (alone or with `PropertyOwner`) in Auth0 for users who need the long-term UI layer. Without this role, the frontend hides lease navigation and redirects `/leases` to the short-stay home.
 
 ### Step 2: Create Auth0 Action for Custom Claims
 
