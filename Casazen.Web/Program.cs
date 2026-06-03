@@ -7,6 +7,7 @@ using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
@@ -21,7 +22,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Database
 builder.Services.AddCasazenDatabase(builder.Configuration);
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
+    builder.Configuration.GetConnectionString("DefaultConnection"));
 
 // Hangfire Configuration (skipped when no connection string, e.g. in CI/test)
 if (!string.IsNullOrEmpty(connectionString))

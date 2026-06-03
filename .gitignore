@@ -20,6 +20,12 @@ packages/
 .env.local
 .env.*.local
 secrets/supabase.local.env
+secrets/railway.test.variables.json
+secrets/railway.prod.variables.json
+secrets/vercel.preview.variables.json
+secrets/vercel.preview.env
+secrets/vercel.production.variables.json
+secrets/vercel.production.env
 
 ## Database
 *.mdf

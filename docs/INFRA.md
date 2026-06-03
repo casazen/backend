@@ -243,7 +243,7 @@ Dashboard → **Project Settings → Database**:
 | Database | `postgres` |
 | Schema | `casazen_test` or `casazen_prod` (via `SearchPath`, not a separate database) |
 
-**URI format** (for Railway `ConnectionStrings__DefaultConnection` or tools that accept URIs):
+**URI format** (Supabase dashboard — auto-converted at startup; include the full `options` query, not `?options` alone):
 
 ```
 # Test
@@ -253,7 +253,7 @@ postgresql://postgres:YOUR_PASSWORD@db.YOUR_REF.supabase.co:5432/postgres?option
 postgresql://postgres:YOUR_PASSWORD@db.YOUR_REF.supabase.co:5432/postgres?options=-csearch_path%3Dcasazen_prod
 ```
 
-**Npgsql format** (for `dotnet ef` on Windows/macOS/Linux):
+**Npgsql format** (recommended for Railway `ConnectionStrings__DefaultConnection` and for `dotnet ef`):
 
 ```
 Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
@@ -366,7 +366,7 @@ Set in Railway dashboard (Variables tab), per environment:
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://+:8080
 PORT=8080
-ConnectionStrings__DefaultConnection=[SUPABASE_URI_WITH_SCHEMA]
+ConnectionStrings__DefaultConnection=Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
 Auth0__Domain=[your-tenant.auth0.com]
 Auth0__Audience=[https://api.casazen.app]
 Stripe__SecretKey=[sk_live_... or sk_test_...]

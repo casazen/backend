@@ -21,7 +21,8 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenDatabase(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
+            configuration.GetConnectionString("DefaultConnection"));
         services.AddDbContext<AppDbContext>(options =>
         {
             if (!string.IsNullOrEmpty(connectionString))

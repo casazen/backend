@@ -42,7 +42,8 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
     {
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")))
         {
-            return Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+            return NpgsqlConnectionStringNormalizer.Normalize(
+                Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"));
         }
 
         var target = Environment.GetEnvironmentVariable("CASAZEN_MIGRATION_TARGET") ?? "test";
@@ -50,8 +51,9 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
             ? "SupabaseProd"
             : "SupabaseTest";
 
-        return configuration.GetConnectionString(named)
-            ?? configuration.GetConnectionString("DefaultConnection");
+        return NpgsqlConnectionStringNormalizer.Normalize(
+            configuration.GetConnectionString(named)
+            ?? configuration.GetConnectionString("DefaultConnection"));
     }
 
     private static string ResolveWebProjectPath()
