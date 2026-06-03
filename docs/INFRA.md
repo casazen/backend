@@ -33,10 +33,37 @@ Alternative for truly $0: **Render** free tier (same DX, but the service sleeps 
 │  BE: casazen-api-test.up.railway.app                     │
 │  DB: supabase.co (schema: casazen_test)                  │
 └──────────────────────────────────────────────────────────┘
-         ▲ Railway: push to `main` (test) · Vercel: PR preview (FE)
+         ▲ Railway: push to `develop` (test) · Vercel: `develop` + PR previews (FE)
 ```
 
 Two Supabase schemas (`casazen_test`, `casazen_prod`) in one free project — saves the free-tier limit.
+
+---
+
+## Git branch model
+
+| Branch | Purpose | Deploy target |
+|---|---|---|
+| `develop` | Integration / shared test | Railway `test` + Vercel Preview (staging FE) |
+| `main` | Production | Railway `production` + Vercel Production |
+| `feature/*`, `fix/*`, `hotfix/*` | Short-lived work | PR → `develop` only |
+
+- **Default branch** on GitHub: `develop` (feature PRs open against `develop`).
+- **Release**: Stage 05 opens a release PR `develop` → `main`; only `release-manager` merges it.
+- **Tags** `v*`: version label and GitHub Release only — not used as deploy triggers.
+
+### One-time migration (if `develop` predates this model)
+
+Align `develop` with current production code before switching Railway triggers:
+
+```bash
+# Backend and frontend (run in each repo)
+git checkout develop && git pull
+git merge origin/main   # resolve conflicts if any
+git push origin develop
+```
+
+GitHub default branch is already `develop` on `casazen/backend` and `casazen/frontend`.
 
 ---
 
@@ -54,9 +81,9 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `ci-cd.yml` | PR, push `main`, tag `v*` | `dotnet test`, format, build |
-| `ci-cd.yml` → `verify-test` | Push `main` | Wait for Railway native deploy, then `GET /api/health` |
-| `ci-cd.yml` → `verify-prod` | Tag `v*` | Wait for Railway prod deploy, health + smoke |
+| `ci-cd.yml` | PR, push `develop` / `main` | `dotnet test`, format, build |
+| `ci-cd.yml` → `verify-test` | Push `develop` | Wait for Railway native deploy, then `GET /api/health` |
+| `ci-cd.yml` → `verify-prod` | Push `main` | Wait for Railway prod deploy, health + smoke |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
 | `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping |
 
@@ -85,18 +112,26 @@ Do these once per project. Tick in order.
 - [ ] Apply EF migrations to **test** schema (local `dotnet ef database update` with test connection string)
 - [ ] (Optional) Enable **Supabase ↔ GitHub** integration — may add `SUPABASE_*` secrets to GitHub for keep-alive / CLI; **does not** configure Railway
 
-### 2. Railway (`casazen/backend`)
+### 2. Git branches (`casazen/backend` + `casazen/frontend`)
+
+- [ ] Long-lived branch **`develop`** exists on both repos (integration / test)
+- [ ] Long-lived branch **`main`** exists (production only)
+- [ ] GitHub **default branch** = `develop` (new PRs target `develop`)
+- [ ] Feature PRs: `feature/*` → `develop`
+- [ ] Release PR (Stage 05): `develop` → `main` (squash merge by release-manager)
+
+### 3. Railway (`casazen/backend`)
 
 - [ ] New project → **Deploy from GitHub** → repo `casazen/backend`
 - [ ] Environments: `test` + `production`
-- [ ] **test**: trigger deploy on push to branch `main`
-- [ ] **production**: trigger deploy on git tags matching `v*` (or your release policy)
+- [ ] **test**: trigger deploy on push to branch **`develop`**
+- [ ] **production**: trigger deploy on push to branch **`main`** (disable autodeploy from `develop`)
 - [ ] (Recommended) Enable **PR deployments** if you want a backend URL per PR; otherwise use shared test URL after merge
 - [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath`
 - [ ] Enable **Public networking**; copy each environment’s HTTPS URL
 - [ ] First deploy green in Railway dashboard
 
-### 3. GitHub repo `casazen/backend` (variables only)
+### 4. GitHub repo `casazen/backend` (variables only)
 
 - [ ] **Variable** `RAILWAY_TEST_URL` = Railway test public URL (no trailing slash)
 - [ ] **Variable** `RAILWAY_PROD_URL` = Railway production public URL
@@ -104,13 +139,15 @@ Do these once per project. Tick in order.
 
 You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_PROD`.
 
-### 4. Vercel (`casazen/frontend`)
+### 5. Vercel (`casazen/frontend`)
 
 - [ ] Import repo; preset Vite; build `npm run build`; output `dist`
+- [ ] **Production Branch** = `main` (Settings → Git)
+- [ ] Enable deployments for branch **`develop`** (Preview env vars → Railway test API)
 - [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section)
-- [ ] Confirm PR previews and production deploy work
+- [ ] Confirm: push `develop` → staging FE; push `main` → `casazen.vercel.app`
 
-### 5. Smoke test
+### 6. Smoke test
 
 - [ ] `GET {RAILWAY_TEST_URL}/api/health` → 200
 - [ ] `GET {RAILWAY_TEST_URL}/api/properties` without token → 401
@@ -314,10 +351,12 @@ Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure t
 ### Create two environments
 
 Railway → Project → **Environments** → Create:
-- `test` — **Settings → Source**: deploy on push to `main` (GitHub integration)
-- `production` — deploy on git tags `v*` (configure in Railway deployment triggers)
+- `test` — **Settings → Source**: deploy on push to **`develop`** (GitHub integration)
+- `production` — **Settings → Source**: deploy on push to **`main`** (GitHub integration)
 
-**PR previews (optional):** Railway → Service → Settings → enable PR deployments if you want a distinct backend URL per PR. Otherwise validate backend on shared test URL after merge to `main`.
+**PR previews (optional):** Railway → Service → Settings → enable PR deployments if you want a distinct backend URL per PR. Otherwise validate backend on shared test URL after merge to `develop`.
+
+**Wait for CI (test env):** enable on the `develop` service if you want Railway to wait for `ci-cd.yml` on push to `develop`.
 
 ### Environment variables per Railway environment
 
@@ -374,11 +413,24 @@ In Vercel dashboard → Settings → Environment Variables:
 | `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | `[prod client id]` |
 | `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | `https://api.casazen.app` |
 
-### Auto-deploy behaviour (built-in, no extra config)
+### Git branches and deploy mapping
+
+| Branch | Vercel | Railway |
+|---|---|---|
+| `develop` | Preview deployment (staging FE, Preview env vars) | `test` environment |
+| `main` | Production → `https://casazen.vercel.app` | `production` environment |
+| PR → `develop` | Per-PR preview URL | Optional PR deploy or shared test after merge |
+
+Configure in Vercel → **Settings → Git**:
+- **Production Branch**: `main`
+- Leave automatic Preview deployments enabled (covers PRs and `develop` pushes)
+
+### Auto-deploy behaviour
 
 | Event | Result |
 |---|---|
-| PR opened / updated | Preview URL created automatically → `https://preview-[hash].vercel.app` |
+| PR opened / updated (base `develop`) | Preview URL → `https://preview-[hash].vercel.app` |
+| Push to `develop` | Staging FE deploy (Preview env vars, points to test API) |
 | Push to `main` | Production deploy → `https://casazen.vercel.app` |
 
 Vercel posts a comment on every PR with the preview URL.
@@ -388,27 +440,33 @@ Vercel posts a comment on every PR with the preview URL.
 ## Multi-Environment Promotion Flow
 
 ```
-PR opened (BE or FE)
+PR opened → develop (BE or FE)
     │
-    ├─ GitHub Actions: build & test only (ci-cd.yml)
-    ├─ Railway: native PR deploy OR wait for merge → test (your Railway setting)
-    ├─ Vercel: auto preview URL on PR (frontend)
+    ├─ GitHub Actions: build & test (ci-cd.yml)
+    ├─ Railway: optional PR deploy OR shared test after merge
+    ├─ Vercel: per-PR preview URL
     ├─ deploy-preview.yml: PR comment with links
     │
     ▼
-Merge PR → main
+Merge feature PR → develop
     │
     ├─ Railway (native): deploy test environment
     ├─ ci-cd.yml verify-test: GET $RAILWAY_TEST_URL/api/health → 200
-    ├─ Vercel (native): production FE deploy
+    ├─ Vercel (native): staging FE from develop branch
+    └─ Human: bundle check + acceptance on test
     │
     ▼
-Stage 05 — Release
-    ├─ Create git tag vX.Y.Z
+Stage 05 — Release (release PR: develop → main)
+    ├─ release-manager squash-merges develop → main
     ├─ Railway (native): deploy production environment
     ├─ ci-cd.yml verify-prod: health on $RAILWAY_PROD_URL
-    └─ Human: bundle check + acceptance on test before tagging
+    ├─ Vercel (native): production FE from main
+    └─ git tag vX.Y.Z on main (changelog only — no deploy trigger)
 ```
+
+### Version tags
+
+Tags `vMAJOR.MINOR.PATCH` remain the release version label (GitHub Releases, bundle files). They are **not** wired to Railway or Vercel deploy triggers.
 
 ---
 
@@ -460,8 +518,8 @@ Before allowing production promotion, the coordinator checks:
 
 | Type | Name | Purpose |
 |---|---|---|
-| Variable | `RAILWAY_TEST_URL` | Health check after push to `main`; PR comment link |
-| Variable | `RAILWAY_PROD_URL` | Health check after tag `v*` |
+| Variable | `RAILWAY_TEST_URL` | Health check after push to `develop`; PR comment link |
+| Variable | `RAILWAY_PROD_URL` | Health check after push to `main` |
 
 ### Optional
 
@@ -503,4 +561,4 @@ Often auto-created by **Supabase ↔ GitHub** integration. Not used by Railway r
 
 ---
 
-**Last Updated**: 2026-06-03
+**Last Updated**: 2026-06-03 (branch model: `develop` → test, `main` → prod)

@@ -36,7 +36,7 @@ See [`harness.md`](./harness.md) for the full loop specification.
 
 ## Exit Artifact
 
-Feature branch `feature/<name>` with open PR (`gh pr create --base main`):
+Feature branch `feature/<name>` with open PR (`gh pr create --base develop`):
 - Conventional Commits title
 - PR body: summary + test plan + `Closes #N`
 - All CI checks initiated

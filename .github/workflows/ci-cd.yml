@@ -2,11 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
-    tags:
-      - 'v*'
+    branches: [develop, main]
   pull_request:
-    branches: [main]
+    branches: [develop, main]
 
 jobs:
   build:
@@ -35,13 +33,13 @@ jobs:
       - name: Check formatting
         run: dotnet format --verify-no-changes
 
-  # Railway deploys via GitHub integration (push to main → test environment).
+  # Railway deploys via GitHub integration (push to develop → test environment).
   # This job only verifies health after the native deploy finishes.
   verify-test:
     name: Verify Railway Test (native deploy)
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     environment:
       name: test
       url: ${{ vars.RAILWAY_TEST_URL }}
@@ -49,7 +47,7 @@ jobs:
     steps:
       - name: Wait for Railway native deployment
         run: |
-          echo "Waiting 90s for Railway GitHub integration to deploy main → test..."
+          echo "Waiting 90s for Railway GitHub integration to deploy develop → test..."
           sleep 90
 
       - name: Health check
@@ -78,12 +76,12 @@ jobs:
           fi
           echo "✅ Auth gate OK"
 
-  # Railway deploys production via GitHub integration (git tag v* → production environment).
+  # Railway deploys production via GitHub integration (push to main → production environment).
   verify-prod:
     name: Verify Railway Production (native deploy)
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
       url: ${{ vars.RAILWAY_PROD_URL }}
@@ -91,7 +89,7 @@ jobs:
     steps:
       - name: Wait for Railway native deployment
         run: |
-          echo "Waiting 120s for Railway GitHub integration to deploy tag → production..."
+          echo "Waiting 120s for Railway GitHub integration to deploy main → production..."
           sleep 120
 
       - name: Production health check

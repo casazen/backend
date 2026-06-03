@@ -67,7 +67,7 @@ IF iteration == max_iterations AND gates still failing:
 Branch `feature/<issue-N>-<slug>` with open PR:
 
 ```bash
-gh pr create --base main \
+gh pr create --base develop \
   --title "feat(<area>): <description> (#N)" \
   --body "## Summary\n...\n\n## Test Plan\n...\n\nCloses #N"
 ```

@@ -7,7 +7,7 @@ name: PR Environment Guide
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
               '',
               '| Service | How it deploys | URL |',
               '|---------|----------------|-----|',
-              '| **Backend** | Railway GitHub integration (PR deploy or shared test — see [INFRA.md](docs/INFRA.md)) | ' + (hasTestUrl ? `[${testUrl}](${testUrl})` : testUrl) + ' |',
+              '| **Backend** | Railway test env (merge to `develop` or PR deploy — see [INFRA.md](docs/INFRA.md)) | ' + (hasTestUrl ? `[${testUrl}](${testUrl})` : testUrl) + ' |',
               '| **Frontend** | Vercel GitHub integration (automatic) | See **Vercel** bot comment on this PR ↓ |',
               '',
               hasTestUrl

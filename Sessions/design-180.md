@@ -71,7 +71,7 @@ Vercel integration checklist (operator + FE repo; per `docs/INFRA.md`):
 | 4 | Set Auth0 vars per environment: `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE` (preview = dev tenant, prod = prod tenant) | Operator |
 | 5 | On PR open/update: confirm Vercel bot comment with `https://preview-<hash>.vercel.app` | Automatic |
 | 6 | Validate feature: open Vercel preview + Railway test BE URL from PR deploy comment | Human (Stage 04/05) |
-| 7 | After merge to `main`: Vercel production deploy → `https://casazen.vercel.app` | Automatic |
+| 7 | After merge to `develop`: Vercel staging; after release to `main`: production → `https://casazen.vercel.app` | Automatic |
 
 **CORS (backend change in Stage 03)**: `AddCasazenCors` currently allows localhost and `https://casazen.app` only. Extend allowed origins to include:
 
@@ -271,7 +271,7 @@ When regenerating `InitialCreate`, validate:
 
 | Workflow | File | Triggers | Jobs |
 |----------|------|----------|------|
-| CI/CD Pipeline | `.github/workflows/ci-cd.yml` | PR, push `main`, tag `v*` | `build` → `verify-test` (main) / `verify-prod` (`v*`) |
+| CI/CD Pipeline | `.github/workflows/ci-cd.yml` | PR, push `develop` / `main` | `build` → `verify-test` (`develop`) / `verify-prod` (`main`) |
 | PR Environment Guide | `.github/workflows/deploy-preview.yml` | PR to `main` | `environment-links` (comment only) |
 | Supabase Keep-Alive | `.github/workflows/supabase-keepalive.yml` | Weekly cron | Optional ping |
 
@@ -284,14 +284,14 @@ When regenerating `InitialCreate`, validate:
 
 #### `verify-test` (ci-cd.yml)
 
-- **When**: push to `main`.
+- **When**: push to `develop`.
 - **Deploy**: Railway GitHub integration (native).
 - **Steps**: wait 90s; `curl -f $RAILWAY_TEST_URL/api/health`; smoke 401 on `/api/properties`.
 - **GitHub**: variable `RAILWAY_TEST_URL` only (skips with warning if unset).
 
 #### `verify-prod` (ci-cd.yml)
 
-- **When**: tag `v*`.
+- **When**: push to `main` (release PR merge).
 - **Deploy**: Railway native to production environment.
 - **Steps**: wait 120s; health + smoke on `RAILWAY_PROD_URL`.
 
@@ -320,8 +320,8 @@ Runtime secrets on **Railway** only: `ConnectionStrings__DefaultConnection`, Aut
 
 ```
 PR → build (CI) + Vercel preview + deploy-preview comment
-merge main → Railway native test + verify-test
-tag v* → Railway native prod + verify-prod + Vercel prod
+merge to develop → Railway native test + verify-test + Vercel staging
+release PR develop → main → Railway prod + verify-prod + Vercel prod (tag v* = changelog only)
 ```
 
 ---
@@ -341,7 +341,7 @@ Operator manual steps before first green deploy. No secrets in repository.
 ### 2 — Railway
 
 - [ ] New project from GitHub `casazen/backend`
-- [ ] Environments: `test` (auto-deploy `main`) and `production` (tag `v*`)
+- [ ] Environments: `test` (auto-deploy `develop`) and `production` (auto-deploy `main`)
 - [ ] Service `casazen-api`; enable GitHub deploy + optional PR deployments
 - [ ] Per environment variables:
   - `ASPNETCORE_ENVIRONMENT=Production`
@@ -371,9 +371,9 @@ Operator manual steps before first green deploy. No secrets in repository.
 ### 5 — First deploy validation
 
 - [ ] Open PR → CI build green; PR comment with environment links
-- [ ] After merge to `main` → Railway test deploy + `verify-test` health → 200
+- [ ] After merge to `develop` → Railway test deploy + `verify-test` health → 200
 - [ ] `GET {RAILWAY_TEST_URL}/api/properties` → 401
-- [ ] Stage 05: tag `vX.Y.Z` → prod deploy + `GET {RAILWAY_PROD_URL}/api/health` → 200
+- [ ] Stage 05: merge `develop` → `main` → prod deploy + tag `vX.Y.Z` (changelog) + `GET {RAILWAY_PROD_URL}/api/health` → 200
 - [ ] Update `Sessions/bundle-<epic>.md` if cross-repo epic
 
 ### 6 — Post-deploy (Stage 06 / #16)

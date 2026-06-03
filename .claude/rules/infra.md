@@ -6,7 +6,7 @@
 |---|---|---|
 | Database | Supabase (PostgreSQL) | Single project, two schemas: `casazen_test` / `casazen_prod` |
 | Backend API | Railway (Docker, .NET 10) | Two Railway environments: `test` / `production` |
-| Frontend | Vercel (Vite SPA) | Preview URLs per PR (auto), `casazen.vercel.app` for production |
+| Frontend | Vercel (Vite SPA) | Preview URLs per PR; `develop` → staging; `main` → production |
 
 Full setup guide: `docs/INFRA.md`
 
@@ -39,15 +39,16 @@ HTTPS is NOT used inside the container — Railway handles it externally.
 ## Environment URLs
 
 - Test BE: `$RAILWAY_TEST_URL` (GitHub **variable** — public URL for CI only; runtime config on Railway)
-- Test FE: Vercel preview URL (per PR, from Vercel bot comment)
+- Test FE: Vercel deployment for branch `develop` (Preview env vars) + per-PR previews
 - Production BE: `$RAILWAY_PROD_URL` (GitHub variable)
 - Production FE: `https://casazen.vercel.app`
 
 ## Deployment rules
 
-- **Test deploy**: Railway native — push to `main` → test environment
-- **Production deploy**: Railway native — git tag `v*` → production environment (never manual prod deploy)
-- **PR backend**: Railway PR deploys (if enabled) OR validate on shared test after merge
+- **Test deploy**: Railway native — push to `develop` → test environment
+- **Production deploy**: Railway native — push to `main` → production environment (never manual prod deploy)
+- **PR backend**: Railway PR deploys (if enabled) OR validate on shared test after merge to `develop`
+- **Version tags** (`v*`): GitHub Release / changelog only — **do not** trigger Railway or Vercel deploys
 - **Never deploy to production** without Stage 05 bundle check (all features in the Epic verified on test)
 
 ## Secrets management
