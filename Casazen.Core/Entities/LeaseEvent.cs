@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Entities;
@@ -14,6 +15,7 @@ public class LeaseEvent
     public Guid LeaseContractId { get; set; }
 
     [ForeignKey(nameof(LeaseContractId))]
+    [JsonIgnore]
     public virtual LeaseContract LeaseContract { get; set; } = null!;
 
     [Required]
