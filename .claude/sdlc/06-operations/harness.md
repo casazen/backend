@@ -2,26 +2,43 @@
 
 ## Entry Criteria
 
-- New release `vX.Y.Z` deployed (post Stage 05), OR
-- Monthly compliance audit due (first Monday of each month)
+- Stage 05 Phase D complete — feature live on **`main`**
+- Tag `vX.Y.Z` deployed to Railway production + Vercel production
+- `$RAILWAY_PROD_URL/api/health` returns 200
+- `https://casazen.vercel.app` returns 200
+
+**Do not run Stage 06 against develop/staging.** All gates below target production.
 
 ## Council Run
 
 Coordinator spawns: `regulatory-monitor`, `incident-responder`
 
 Topic handed to council:
-> "Run post-deploy compliance and operations audit for [date/release]. Check Italian regulatory compliance, background job health, and system KPIs. Produce ops report at Sessions/ops-report-<YYYY-MM-DD>.md."
+> "Run post-release compliance and operations audit on **production (main @ vX.Y.Z)**. Verify regulatory compliance, background jobs, and KPIs against prod DB and prod logs. Produce ops report at Sessions/ops-report-<YYYY-MM-DD>.md."
+
+## Environment scope
+
+| Check | Target |
+|---|---|
+| API health / smoke | `$RAILWAY_PROD_URL` (main deploy) |
+| Frontend | `https://casazen.vercel.app` (main deploy) |
+| Database queries | Production Supabase / prod connection only |
+| Hangfire / logs | Production Railway service |
+| Feature regression | Critical ACs from Issue `#N` on prod URLs |
 
 ## Quality Gates
 
 | # | Gate | How to check | Pass condition |
 |---|---|---|---|
-| G1 | CIN format valid | Query: `SELECT COUNT(*) FROM Properties WHERE CIN NOT LIKE 'IT-_____-__________'` | 0 properties with invalid CIN |
-| G2 | GDPR retention clean | Query: `SELECT COUNT(*) FROM Guests WHERE DataRetentionUntil < GETUTCDATE() AND ErasureRequested = 0` | 0 overdue records |
-| G3 | Alloggiati Web jobs healthy | Check Hangfire dashboard or `SELECT * FROM HangfireJobs WHERE State='Failed' AND JobType LIKE '%Alloggiati%'` | No failed jobs older than 24 hours |
-| G4 | Tourist tax rates current | Query: `SELECT * FROM TouristTaxRates WHERE LastUpdated < DATEADD(MONTH, -6, GETUTCDATE())` | No rates older than 6 months without review |
-| G5 | Error rate acceptable | Check application logs for last 24h | Error rate < 1% of all requests |
-| G6 | OTA sync current | Query: `SELECT * FROM OtaIntegrations WHERE LastSyncAt < DATEADD(HOUR, -6, GETUTCDATE())` | All integrations synced within last 6 hours |
+| G1 | Prod API health | `curl -sf $RAILWAY_PROD_URL/api/health` | HTTP 200 |
+| G2 | Prod FE health | `curl -sf https://casazen.vercel.app` | HTTP 200 |
+| G3 | CIN format valid (prod DB) | Read-only query on Properties | 0 invalid CIN formats |
+| G4 | GDPR retention clean (prod DB) | Read-only query on Guests | 0 overdue records without erasure flag |
+| G5 | Alloggiati jobs healthy (prod) | Hangfire / failed job query | No failed Alloggiati jobs > 24h |
+| G6 | Tourist tax rates current (prod DB) | Read-only query | No rates stale > 6 months |
+| G7 | Error rate acceptable (prod logs) | Last 24h prod logs | Error rate < 1% |
+| G8 | OTA sync current (prod DB) | Read-only query | All integrations synced within 6h |
+| G9 | Released feature AC spot-check | Prod URLs + Issue `#N` ACs | Critical ACs pass on production |
 
 ## Harness Loop
 
@@ -29,48 +46,30 @@ Topic handed to council:
 iteration = 0
 max_iterations = 3
 
-WHILE (any gate in G1–G6 fails) AND (iteration < max_iterations):
-  1. Coordinator classifies failures: regulatory → regulatory-monitor, operational → incident-responder
-  2. G1 fails → regulatory-monitor identifies properties with invalid CIN, creates GitHub Issue for correction
-  3. G2 fails → regulatory-monitor triggers GDPR erasure workflow for overdue records
-  4. G3 fails → incident-responder investigates Alloggiati Web failures, retries or creates P1 incident
-  5. G4 fails → regulatory-monitor creates GitHub Issue to update TouristTaxRate entity
-  6. G5 fails → incident-responder investigates error spike, creates incident report
-  7. G6 fails → incident-responder triggers OTA sync retry, escalates if sync continues to fail
-  8. Re-check failed gates
-  9. iteration++
+WHILE (any gate in G1–G9 fails) AND (iteration < max_iterations):
+  1. Classify: regulatory (G3–G6) → regulatory-monitor; operational (G7–G8) → incident-responder
+  2. G9 fail → document prod regression; create P1 issue; may require hotfix via develop → main
+  3. Re-check failed gates
+  4. iteration++
 
-IF iteration == max_iterations AND regulatory gates (G1–G4) still failing:
-  ESCALATE: create P0 compliance incident, notify team immediately
-  Human decision required
+IF regulatory gates still failing after max_iterations:
+  ESCALATE P0 — production compliance risk
 ```
 
 ## Exit Artifact
 
-`Sessions/ops-report-<YYYY-MM-DD>.md` with:
+`Sessions/ops-report-<YYYY-MM-DD>.md` with header:
 
 ```markdown
-# Operations Report — YYYY-MM-DD (vX.Y.Z)
-
-## Compliance Status
-| Regulation | Status | Notes |
-|---|---|---|
-| CIN (D.L. 145/2023) | ✅/⚠️/❌ | ... |
-| GDPR (Article 17) | ✅/⚠️/❌ | ... |
-| Alloggiati Web | ✅/⚠️/❌ | ... |
-| Tourist Tax | ✅/⚠️/❌ | ... |
-
-## Incident Log
-- None / [incident description + resolution]
-
-## KPI Snapshot
-- Error rate: X%
-- OTA sync coverage: X/6 platforms
-- Active bookings: N
-
-## Action Items
-- [ ] [item] → Stage 01 issue: #M
+# Operations Report — YYYY-MM-DD
+**Environment**: production (main)
+**Release**: vX.Y.Z
+**Issue**: #N
+**Prod BE**: $RAILWAY_PROD_URL
+**Prod FE**: https://casazen.vercel.app
 ```
+
+Include compliance table, incident log, KPI snapshot, action items.
 
 ## Chain
 
