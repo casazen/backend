@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
@@ -13,23 +12,16 @@ using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Hangfire;
-using Hangfire.SqlServer;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Database
+builder.Services.AddCasazenDatabase(builder.Configuration);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    if (!string.IsNullOrEmpty(connectionString))
-        options.UseSqlServer(connectionString);
-    else
-        options.UseInMemoryDatabase("CasazenTest");
-});
 
 // Hangfire Configuration (skipped when no connection string, e.g. in CI/test)
 if (!string.IsNullOrEmpty(connectionString))
@@ -38,14 +30,12 @@ if (!string.IsNullOrEmpty(connectionString))
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
         .UseSimpleAssemblyNameTypeSerializer()
         .UseRecommendedSerializerSettings()
-        .UseSqlServerStorage(connectionString, new SqlServerStorageOptions
-        {
-            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-            QueuePollInterval = TimeSpan.Zero,
-            UseRecommendedIsolationLevel = true,
-            DisableGlobalLocks = true
-        }));
+        .UsePostgreSqlStorage(
+            options => options.UseNpgsqlConnection(connectionString),
+            new PostgreSqlStorageOptions
+            {
+                SchemaName = "hangfire",
+            }));
 
     builder.Services.AddHangfireServer();
 }
@@ -217,10 +207,17 @@ app.UseAuthorization();
 // Hangfire Dashboard and recurring jobs (only when Hangfire is configured)
 if (!string.IsNullOrEmpty(connectionString))
 {
-    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    var hangfireDashboardEnabled = builder.Configuration.GetValue(
+        "Hangfire:DashboardEnabled",
+        app.Environment.IsDevelopment());
+
+    if (hangfireDashboardEnabled)
     {
-        Authorization = new[] { new HangfireAuthorizationFilter(app.Environment.IsDevelopment()) }
-    });
+        app.UseHangfireDashboard("/hangfire", new DashboardOptions
+        {
+            Authorization = new[] { new HangfireAuthorizationFilter(app.Environment.IsDevelopment()) }
+        });
+    }
 
     ConfigureRecurringJobs();
 }
@@ -245,7 +242,10 @@ app.Lifetime.ApplicationStarted.Register(() =>
         logger.LogInformation("   → https://localhost:5001/swagger");
         logger.LogInformation("");
     }
-    if (!string.IsNullOrEmpty(connectionString))
+    var hangfireDashboardEnabled = app.Configuration.GetValue(
+        "Hangfire:DashboardEnabled",
+        app.Environment.IsDevelopment());
+    if (!string.IsNullOrEmpty(connectionString) && hangfireDashboardEnabled)
     {
         logger.LogInformation("📊 Hangfire Dashboard:");
         logger.LogInformation("   → http://localhost:5000/hangfire");

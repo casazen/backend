@@ -1,0 +1,115 @@
+name: Deploy Preview (Test Environment)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  deploy-backend-test:
+    name: Deploy BE to Railway Test
+    runs-on: ubuntu-latest
+    environment:
+      name: test
+      url: ${{ vars.RAILWAY_TEST_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and test
+        run: |
+          dotnet restore
+          dotnet build --configuration Release --no-restore
+          dotnet test --configuration Release --no-build \
+            --filter "FullyQualifiedName!~PropertiesControllerIntegrationTests&FullyQualifiedName!~ApiTests"
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway test environment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service "${{ vars.RAILWAY_SERVICE_TEST }}" \
+            --environment test \
+            --detach
+        # Railway auto-detects the Dockerfile at repo root
+
+      - name: Wait for Railway deployment
+        run: |
+          echo "Waiting 60s for Railway test deployment to start..."
+          sleep 60
+
+      - name: Health check on test environment
+        run: |
+          curl -f "${{ vars.RAILWAY_TEST_URL }}/api/health" \
+            --retry 6 --retry-delay 15 --retry-connrefused \
+            --max-time 30
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+
+      - name: Smoke test (auth gate — expect 401)
+        run: |
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${{ vars.RAILWAY_TEST_URL }}/api/properties")
+          echo "Auth gate status: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401, got $STATUS — possible startup error"
+            exit 1
+          fi
+          echo "✅ Auth gate OK"
+
+      - name: Comment test URLs on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testUrl = process.env.RAILWAY_TEST_URL;
+            const body = [
+              '## 🚀 Test Environment Deployment',
+              '',
+              '| Service | URL | Status |',
+              '|---------|-----|--------|',
+              `| Backend (test) | ${testUrl} | ✅ Deployed |`,
+              `| Frontend (preview) | See Vercel bot comment ↓ | Auto-deployed by Vercel |`,
+              '',
+              `Health check: [/api/health](${testUrl}/api/health)`,
+              '',
+              '**To validate this feature:**',
+              '1. Open the Vercel preview URL (FE) + the Railway test URL (BE)',
+              '2. Run through the acceptance criteria in the linked Issue',
+              `3. Update \`Sessions/bundle-<epic>.md\` row to \`✅ verified\``,
+              '4. Then type: `bundle-verified #' + context.payload.pull_request.number + ' epic #<N>`',
+            ].join('\n');
+
+            // Upsert comment (replace existing deploy comment if present)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Test Environment Deployment'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+            }
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}

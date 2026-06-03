@@ -21,12 +21,20 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenDatabase(this IServiceCollection services, IConfiguration configuration)
     {
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection"),
-                x => x.MigrationsAssembly("Casazen.Infrastructure")
-            )
-        );
+        {
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                options.UseNpgsql(
+                    connectionString,
+                    npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"));
+            }
+            else
+            {
+                options.UseInMemoryDatabase("CasazenTest");
+            }
+        });
         return services;
     }
 
@@ -116,12 +124,44 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenCors(this IServiceCollection services, IConfiguration configuration)
     {
+        var allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:5175",
+            "https://casazen.app",
+            "https://casazen.vercel.app",
+        };
+
+        var configOrigins = configuration["Cors:AllowedOrigins"];
+        if (!string.IsNullOrWhiteSpace(configOrigins))
+        {
+            foreach (var origin in configOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                allowedOrigins.Add(origin);
+            }
+        }
+
         services.AddCors(options =>
         {
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy
-                    .WithOrigins("http://localhost:3000", "http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "https://casazen.app")
+                    .SetIsOriginAllowed(origin =>
+                    {
+                        if (allowedOrigins.Contains(origin))
+                        {
+                            return true;
+                        }
+
+                        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                        {
+                            return false;
+                        }
+
+                        return uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
+                    })
                     .AllowAnyMethod()
                     .AllowAnyHeader()
                     .AllowCredentials();
