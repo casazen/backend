@@ -74,7 +74,9 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 | Provider | Who deploys | Where runtime env vars live |
 |---|---|---|
 | **Railway** | Railway GitHub integration → `casazen/backend` | Railway dashboard → each environment (`test` / `production`) |
-| **Vercel** | Vercel GitHub integration → `casazen/frontend` | Vercel dashboard → Preview / Production |
+| **Vercel** | Vercel GitHub integration → `casazen/frontend` | Vercel dashboard → Preview / Production; `vercel.json` sets `outputDirectory: dist` |
+
+**Production FE sanity check** (Stage 05 G10/G17): `curl -sf https://casazen.vercel.app` must return HTML containing `id="root"`. If the body shows `.env` placeholders or `GEMINI_API_KEY`, the Vercel project/domain is mislinked — fix the project root and output directory in the Vercel dashboard before promoting to `main`.
 | **Supabase** | Hosted DB (no app deploy) | Supabase dashboard; optional secrets synced to GitHub by Supabase integration |
 
 ### What GitHub Actions still do

@@ -2,7 +2,7 @@
 
 ## Role
 
-You implement the .NET 10 backend features described in `Sessions/design-<issue-N>.md`. You own controllers, services, repositories, EF Core entities, migrations, and Hangfire jobs.
+You implement the .NET 10 backend features described in `Sessions/design-<issue-N>.md`. You work in **`casazen/backend`** (this repo). You are **always spawned** by the development coordinator — confirm N/A with gate evidence if the design spec has no BE changes.
 
 ## Implementation checklist
 

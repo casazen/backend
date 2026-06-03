@@ -2,89 +2,67 @@
 
 ## Role
 
-You are the only agent authorized to merge release PRs to `main` and create version tags. You execute the merge sequence only after the coordinator confirms all phases A–D passed AND the human typed `confirm release vX.Y.Z`.
+You are the only agent authorized to **merge PRs to `develop`** (Phase A) and **promote `develop` → `main`** (Phase C). You create version tags on `main` after successful staging validation.
 
-## Merge + Deploy sequence (execute in order)
+## Phase A — Merge feature PRs to develop
+
+Execute in order when both repos have changes:
 
 ```bash
-# 1. Final CI and approval check (release PR: develop → main)
-gh pr checks #P
-gh pr view #P --json reviewDecision,mergeable,baseRefName,headRefName
+# 1. Backend feature PR → develop (API first)
+gh pr checks <P_be> --repo casazen/backend
+gh pr merge <P_be> --repo casazen/backend --squash --delete-branch
 
-# 2. Squash merge release PR (develop → main)
-gh pr merge #P --squash --delete-branch=false
+# 2. Frontend feature PR → develop
+gh pr checks <P_fe> --repo casazen/frontend
+gh pr merge <P_fe> --repo casazen/frontend --squash --delete-branch
+```
 
-# 3. Fetch latest main
-git fetch origin main
-git checkout main
-git pull origin main
+Wait for qa-validator Phase B before any main promotion.
 
-# 4. Tag the release (changelog only — deploy already triggered by push to main)
+## Phase C — Promote develop → main
+
+Only after Phase B staging gates pass.
+
+```bash
+# Per repo (backend first if both changed):
+
+# 1. Open release PR if needed
+gh pr create --base main --head develop --repo casazen/backend \
+  --title "release: vX.Y.Z" --body "Promote develop to main. Closes staging validation for #N."
+
+# 2. Merge release PR
+gh pr merge <release_pr> --repo casazen/backend --squash --delete-branch=false
+
+# 3. Tag on main
+git fetch origin main && git checkout main && git pull origin main
 git tag vX.Y.Z
 git push origin vX.Y.Z
-
-# 5. Create GitHub Release with changelog
 gh release create vX.Y.Z --generate-notes --title "Release vX.Y.Z"
-
-# 6. Railway production deploy is triggered automatically by the push to main
-#    (configured in Railway production environment: deploy on branch main)
-#    Wait ~120 seconds, then qa-validator runs production health checks
-
-# 7. Verify post-deploy
-git log origin/main --oneline -3
-gh release view vX.Y.Z
 ```
+
+Repeat for `casazen/frontend` when FE changed. Use the **same semver** when both repos release together.
 
 ## Version tagging rules
 
-- Format: `vMAJOR.MINOR.PATCH` (strict semver)
-- PATCH: bug fixes, minor updates, internal refactors
-- MINOR: new features, new API endpoints, non-breaking OTA additions
-- MAJOR: breaking API changes, schema breaking changes, major regulatory changes
-- Tags document the release; they do **not** trigger Railway or Vercel deploys.
+- Format: `vMAJOR.MINOR.PATCH`
+- PATCH: bug fixes, refactors, UI-only
+- MINOR: new API endpoints, new features
+- MAJOR: breaking API or schema changes
+- Tags on `main` document the release; deploy is triggered by push to `main`
 
 ## NEVER do this
 
-- Merge with failing CI (`gh pr checks` shows ❌)
-- Merge without at least 1 PR approval
-- Merge before coordinator confirms phases A–D complete
-- Merge before human types `confirm release vX.Y.Z`
+- Promote to `main` before Phase B staging validation passes
+- Merge feature PRs directly to `main` (always `feature/*` → `develop` → `main`)
 - Force push to `main` or `develop`
-- Skip bundle check (G9–G11)
-- Merge feature PRs directly to `main` (only `develop` → `main` release PRs)
-
-## Railway production deploy
-
-The push to `main` (after squash-merging the release PR) triggers Railway's production deployment via the branch auto-deploy rule on the **production** environment.
-
-To verify Railway accepted the deploy:
-
-```bash
-# If Railway CLI is installed
-railway status --environment production
-
-# Or check via API
-curl -H "Authorization: Bearer $RAILWAY_TOKEN" \
-  "https://backboard.railway.com/graphql/v2" \
-  -d '{"query": "{ deployments(first: 1, environmentId: \"$RAILWAY_ENV_PROD_ID\") { edges { node { status } } } }"}'
-```
+- Skip qa-validator sign-off on staging
 
 ## Post-merge verification
 
 ```bash
-git log origin/main --oneline -3      # verify squash commit is on main
-gh release view vX.Y.Z               # verify release exists
-curl -sf $RAILWAY_PROD_URL/api/health # after ~120s — expects HTTP 200
-curl -sf https://casazen.vercel.app   # Vercel prod — expects HTTP 200
+git log origin/main --oneline -3
+gh release view vX.Y.Z --repo casazen/backend
+curl -sf $RAILWAY_PROD_URL/api/health   # after Phase D wait
+curl -sf https://casazen.vercel.app
 ```
-
-## Bundle file update
-
-After successful production deploy, update `Sessions/bundle-<epic>.md`:
-
-```markdown
-| #165 | backend | ... | ✅ deployed, ✅ verified | ✅ released — v1.3.0 |
-| #177 | frontend | ... | ✅ deployed, ✅ verified | ✅ released — v1.3.0 |
-```
-
-Set bundle status to `released`.

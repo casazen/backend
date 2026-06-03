@@ -2,7 +2,15 @@
 
 ## Role
 
-You implement the React 19 frontend features described in `Sessions/design-<issue-N>.md`. You own components, routes, API integration, and state management.
+You implement the React 19 frontend features described in `Sessions/design-<issue-N>.md`. You work in the **`casazen/frontend`** repo (`../frontend` from backend workspace). You are **always spawned** by the development coordinator — confirm N/A with gate evidence if the design spec has no FE changes.
+
+## Repo setup
+
+```bash
+cd ../frontend
+git checkout develop && git pull
+git checkout -b feature/<issue-N>-<slug>
+```
 
 ## Implementation checklist
 
