@@ -33,16 +33,94 @@ Alternative for truly $0: **Render** free tier (same DX, but the service sleeps 
 │  BE: casazen-api-test.up.railway.app                     │
 │  DB: supabase.co (schema: casazen_test)                  │
 └──────────────────────────────────────────────────────────┘
-         ▲ deployed automatically on PR open/update
+         ▲ Railway: push to `main` (test) · Vercel: PR preview (FE)
 ```
 
 Two Supabase schemas (`casazen_test`, `casazen_prod`) in one free project — saves the free-tier limit.
 
 ---
 
-## Prerequisite: SQL Server → PostgreSQL Migration
+## Deploy model: native GitHub integrations
 
-CasaZen currently uses `Microsoft.EntityFrameworkCore.SqlServer`. Supabase and Railway both offer PostgreSQL. This is a **one-time** migration.
+CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Actions only **build, test, and verify** — they do **not** call `railway up` or push containers.
+
+| Provider | Who deploys | Where runtime env vars live |
+|---|---|---|
+| **Railway** | Railway GitHub integration → `casazen/backend` | Railway dashboard → each environment (`test` / `production`) |
+| **Vercel** | Vercel GitHub integration → `casazen/frontend` | Vercel dashboard → Preview / Production |
+| **Supabase** | Hosted DB (no app deploy) | Supabase dashboard; optional secrets synced to GitHub by Supabase integration |
+
+### What GitHub Actions still do
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `ci-cd.yml` | PR, push `main`, tag `v*` | `dotnet test`, format, build |
+| `ci-cd.yml` → `verify-test` | Push `main` | Wait for Railway native deploy, then `GET /api/health` |
+| `ci-cd.yml` → `verify-prod` | Tag `v*` | Wait for Railway prod deploy, health + smoke |
+| `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
+| `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping |
+
+### What is **not** synced automatically
+
+Integrations link repos and trigger deploys. They **do not** copy env vars across platforms:
+
+- Supabase connection string → must be set on **Railway** (`ConnectionStrings__DefaultConnection`)
+- Auth0 / Stripe / SendGrid → **Railway** only
+- `VITE_*` → **Vercel** only
+- Public API URLs → **GitHub Variables** (`RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`) for CI health checks and PR comments only
+
+You do **not** need `RAILWAY_TOKEN` or `RAILWAY_SERVICE_*` in GitHub unless you add custom scripts later.
+
+---
+
+## Manual setup checklist (one-time)
+
+Do these once per project. Tick in order.
+
+### 1. Supabase
+
+- [ ] Create project `casazen` (region `eu-central-1`)
+- [ ] Run SQL: create schemas `casazen_test`, `casazen_prod` (see below)
+- [ ] Copy database URI for each schema
+- [ ] Apply EF migrations to **test** schema (local `dotnet ef database update` with test connection string)
+- [ ] (Optional) Enable **Supabase ↔ GitHub** integration — may add `SUPABASE_*` secrets to GitHub for keep-alive / CLI; **does not** configure Railway
+
+### 2. Railway (`casazen/backend`)
+
+- [ ] New project → **Deploy from GitHub** → repo `casazen/backend`
+- [ ] Environments: `test` + `production`
+- [ ] **test**: trigger deploy on push to branch `main`
+- [ ] **production**: trigger deploy on git tags matching `v*` (or your release policy)
+- [ ] (Recommended) Enable **PR deployments** if you want a backend URL per PR; otherwise use shared test URL after merge
+- [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath`
+- [ ] Enable **Public networking**; copy each environment’s HTTPS URL
+- [ ] First deploy green in Railway dashboard
+
+### 3. GitHub repo `casazen/backend` (variables only)
+
+- [ ] **Variable** `RAILWAY_TEST_URL` = Railway test public URL (no trailing slash)
+- [ ] **Variable** `RAILWAY_PROD_URL` = Railway production public URL
+- [ ] (Optional) **Variables** `SUPABASE_PROJECT_URL`, `SUPABASE_DB_HOST` + **Secrets** `SUPABASE_ANON_KEY` for `supabase-keepalive.yml` — often already present if Supabase GitHub app is installed
+
+You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_PROD`.
+
+### 4. Vercel (`casazen/frontend`)
+
+- [ ] Import repo; preset Vite; build `npm run build`; output `dist`
+- [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section)
+- [ ] Confirm PR previews and production deploy work
+
+### 5. Smoke test
+
+- [ ] `GET {RAILWAY_TEST_URL}/api/health` → 200
+- [ ] `GET {RAILWAY_TEST_URL}/api/properties` without token → 401
+- [ ] Open a PR → Vercel bot comment + backend link comment from `deploy-preview.yml`
+
+---
+
+## PostgreSQL migration (completed in codebase)
+
+The backend uses **Npgsql** and PostgreSQL migrations. For a fresh database:
 
 ### 1 — Swap NuGet package
 
@@ -157,8 +235,10 @@ Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure t
 ### Create two environments
 
 Railway → Project → **Environments** → Create:
-- `test` (default branch: `main`, auto-deploy on push)
-- `production` (deploy only on tag `v*` via GitHub Actions webhook)
+- `test` — **Settings → Source**: deploy on push to `main` (GitHub integration)
+- `production` — deploy on git tags `v*` (configure in Railway deployment triggers)
+
+**PR previews (optional):** Railway → Service → Settings → enable PR deployments if you want a distinct backend URL per PR. Otherwise validate backend on shared test URL after merge to `main`.
 
 ### Environment variables per Railway environment
 
@@ -175,32 +255,23 @@ Stripe__SecretKey=[sk_live_... or sk_test_...]
 Stripe__WebhookSecret=[whsec_...]
 Email__SendGridApiKey=[SG....]
 Hangfire__DashboardEnabled=false
+Cors__AllowedOrigins=https://casazen.vercel.app,https://casazen.app
 ```
 
-### Get service URLs
+Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
 
-After first deploy:
-- Test: shown in Railway service → Settings → Networking → Public URL
-- Production: same, for the production environment service
+### Get service URLs → GitHub Variables
 
-### Get Railway tokens for CI/CD
+After first native deploy:
+1. Railway → each environment → Service → **Networking** → copy public HTTPS URL
+2. GitHub → `casazen/backend` → **Settings → Secrets and variables → Actions → Variables**:
 
-Railway → Account Settings → API Tokens → New token.
+| Variable | Example |
+|---|---|
+| `RAILWAY_TEST_URL` | `https://casazen-api-test.up.railway.app` |
+| `RAILWAY_PROD_URL` | `https://casazen-api.up.railway.app` |
 
-Add to GitHub repo **Secrets**:
-
-```
-RAILWAY_TOKEN           → Railway API token
-```
-
-Add to GitHub repo **Variables** (not secret):
-
-```
-RAILWAY_TEST_URL        → https://casazen-api-test.up.railway.app
-RAILWAY_PROD_URL        → https://casazen-api.up.railway.app
-RAILWAY_SERVICE_TEST    → service ID (from Railway URL: railway.app/project/.../service/ID)
-RAILWAY_SERVICE_PROD    → service ID for production service
-```
+Used only for CI health checks and PR link comments — **not** for Railway runtime (that uses Railway env vars above).
 
 ---
 
@@ -240,32 +311,24 @@ Vercel posts a comment on every PR with the preview URL.
 ```
 PR opened (BE or FE)
     │
-    ├─ GitHub Actions: deploy BE branch to Railway test env
-    ├─ Vercel: auto-creates FE preview URL
+    ├─ GitHub Actions: build & test only (ci-cd.yml)
+    ├─ Railway: native PR deploy OR wait for merge → test (your Railway setting)
+    ├─ Vercel: auto preview URL on PR (frontend)
+    ├─ deploy-preview.yml: PR comment with links
     │
     ▼
-Stage 04 — Code Review
+Merge PR → main
+    │
+    ├─ Railway (native): deploy test environment
+    ├─ ci-cd.yml verify-test: GET $RAILWAY_TEST_URL/api/health → 200
+    ├─ Vercel (native): production FE deploy
     │
     ▼
 Stage 05 — Release
-    ├─ Phase A: CI validation (dotnet test, build, format)
-    ├─ Phase B: Test environment smoke tests
-    │           GET $RAILWAY_TEST_URL/api/health → 200
-    │           GET $VERCEL_PREVIEW_URL → 200
-    │
-    ├─ Phase C: HITL — Human validates feature on test environment
-    │           (runs acceptance criteria from Stage 01 manually)
-    │
-    ├─ Phase D: Bundle check
-    │           Are all issues in the Epic deployed to test AND verified?
-    │           (check Sessions/bundle-<epic>.md)
-    │
-    └─ Phase E: Production promotion
-                Merge PR → main (squash)
-                Create git tag vX.Y.Z
-                Tag triggers Railway prod deploy
-                Vercel auto-deploys from main → prod
-                Health check prod URLs
+    ├─ Create git tag vX.Y.Z
+    ├─ Railway (native): deploy production environment
+    ├─ ci-cd.yml verify-prod: health on $RAILWAY_PROD_URL
+    └─ Human: bundle check + acceptance on test before tagging
 ```
 
 ---
@@ -312,17 +375,41 @@ Before allowing production promotion, the coordinator checks:
 
 ---
 
-## GitHub Secrets / Variables Checklist
+## GitHub Secrets / Variables (backend repo)
 
-| Type | Name | Value |
+### Required for CI (public URLs only)
+
+| Type | Name | Purpose |
 |---|---|---|
-| Secret | `RAILWAY_TOKEN` | Railway API token |
-| Secret | `SUPABASE_CONNECTION_STRING_TEST` | Supabase URI with `casazen_test` schema |
-| Secret | `SUPABASE_CONNECTION_STRING_PROD` | Supabase URI with `casazen_prod` schema |
-| Variable | `RAILWAY_TEST_URL` | `https://casazen-api-test.up.railway.app` |
-| Variable | `RAILWAY_PROD_URL` | `https://casazen-api.up.railway.app` |
-| Variable | `RAILWAY_SERVICE_TEST` | Railway service ID (test) |
-| Variable | `RAILWAY_SERVICE_PROD` | Railway service ID (production) |
+| Variable | `RAILWAY_TEST_URL` | Health check after push to `main`; PR comment link |
+| Variable | `RAILWAY_PROD_URL` | Health check after tag `v*` |
+
+### Optional
+
+| Type | Name | Purpose |
+|---|---|---|
+| Secret | `SUPABASE_ANON_KEY` | `supabase-keepalive.yml` REST ping |
+| Variable | `SUPABASE_PROJECT_URL` | Keep-alive (`https://[ref].supabase.co`) |
+| Variable | `SUPABASE_DB_HOST` | Keep-alive TCP (`db.[ref].supabase.co`) |
+
+Often auto-created by **Supabase ↔ GitHub** integration. Not used by Railway runtime.
+
+### Not required (native deploy model)
+
+| Name | Why omitted |
+|---|---|
+| `RAILWAY_TOKEN` | No `railway up` in Actions |
+| `RAILWAY_SERVICE_*` | Railway knows service from GitHub link |
+| `SUPABASE_CONNECTION_STRING_*` in GitHub | Connection string lives on **Railway** env vars only |
+
+### Where secrets actually live
+
+| Secret / config | Set on |
+|---|---|
+| Database password / connection string | **Railway** per environment |
+| Auth0, Stripe, SendGrid | **Railway** per environment |
+| `VITE_*` | **Vercel** Preview + Production |
+| Supabase service role (if needed for admin scripts) | **Supabase** dashboard or GitHub (optional) |
 
 ---
 
@@ -337,4 +424,4 @@ Before allowing production promotion, the coordinator checks:
 
 ---
 
-**Last Updated**: 2026-06-02
+**Last Updated**: 2026-06-03

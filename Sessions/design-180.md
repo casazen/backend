@@ -89,8 +89,8 @@ Without this, browser calls from Vercel previews to Railway test API will fail C
 | Secret / config | Storage | Never in repo |
 |-----------------|---------|---------------|
 | `ConnectionStrings__DefaultConnection` | Railway env (test + production) | Yes — Supabase URI with `SearchPath=casazen_test` or `casazen_prod` |
-| `RAILWAY_TOKEN` | GitHub Secret | Yes |
-| `SUPABASE_CONNECTION_STRING_TEST` / `_PROD` | GitHub Secrets (operator migrations / optional CI) | Yes — documented in INFRA; not required for `railway up` deploy |
+| `RAILWAY_TEST_URL` / `RAILWAY_PROD_URL` | GitHub Variables | Yes — CI health checks and PR comments only |
+| `SUPABASE_CONNECTION_STRING_*` | GitHub Secrets (optional) | Optional — keep-alive only; connection string on **Railway** |
 | Auth0 `Domain`, `Audience` | Railway env | Yes |
 | Stripe `SecretKey`, `WebhookSecret` | Railway env | Yes |
 | SendGrid `Email__SendGridApiKey` | Railway env | Yes |
@@ -258,74 +258,70 @@ When regenerating `InitialCreate`, validate:
 | 4 | CORS for `*.vercel.app`? | **Add configurable origins** in Railway env (`Cors__AllowedOrigins`) including prod + preview pattern | Resolved — implement in Stage 03 |
 | 5 | Use `SUPABASE_CONNECTION_STRING_*` in GitHub Actions? | **Optional** — add `migrate-test` job on `main` post-deploy if desired; **not required** for AC4 (migrations are operator/`dotnet ef` before first deploy) | Resolved |
 | 6 | Supabase keep-alive (AC7 optional)? | **Add** `.github/workflows/supabase-keepalive.yml` — weekly `cron` + simple TCP/HTTP ping or Supabase REST; document alternative in INFRA | Resolved — implement in Stage 03 |
-| 7 | First deploy with 404 on Railway URLs? | **Expected** until operator completes Railway project + GitHub vars + green `railway up`; see Deployment Checklist | Resolved (ops) |
+| 7 | First deploy with 404 on Railway URLs? | **Expected** until Railway native deploy + env vars + GitHub `RAILWAY_*_URL` vars; see Deployment Checklist | Resolved (ops) |
 | 8 | SQLite for CI instead of InMemory? | **Keep InMemory** for unit/integration model tests; no SQLite package required for AC1 | Resolved |
 
 ---
 
 ## CI/CD Design
 
+**Deploy model**: native GitHub integrations (Railway + Vercel). Actions do **not** run `railway up`. See `docs/INFRA.md` — Deploy model.
+
 ### Workflows (committed in repo)
 
 | Workflow | File | Triggers | Jobs |
 |----------|------|----------|------|
-| CI/CD Pipeline | `.github/workflows/ci-cd.yml` | `push` to `main`, `push` tags `v*`, `pull_request` to `main` | `build` → `deploy-test` (main push only) → `deploy-prod` (`v*` tag only) |
-| Deploy Preview | `.github/workflows/deploy-preview.yml` | PR `opened`, `synchronize`, `reopened` on `main` | `deploy-backend-test` |
-
-**Note**: `deploy-preview.yml` is present in workspace; must be **committed** on feature branch to satisfy AC4.
+| CI/CD Pipeline | `.github/workflows/ci-cd.yml` | PR, push `main`, tag `v*` | `build` → `verify-test` (main) / `verify-prod` (`v*`) |
+| PR Environment Guide | `.github/workflows/deploy-preview.yml` | PR to `main` | `environment-links` (comment only) |
+| Supabase Keep-Alive | `.github/workflows/supabase-keepalive.yml` | Weekly cron | Optional ping |
 
 ### Job details
 
 #### `build` (ci-cd.yml)
 
-- Checkout, .NET 10, restore, Release build, test with filter excluding LocalDB-dependent integration tests, `dotnet format --verify-no-changes`.
+- Checkout, .NET 10, restore, Release build, test (CI filter), `dotnet format --verify-no-changes`.
 - Runs on every PR and push.
 
-#### `deploy-test` (ci-cd.yml)
+#### `verify-test` (ci-cd.yml)
 
-- **When**: `github.ref == refs/heads/main' && push`.
-- **Environment**: GitHub Environment `test` → URL `vars.RAILWAY_TEST_URL`.
-- **Steps**: `railway up --service vars.RAILWAY_SERVICE_TEST --environment test --detach`; sleep 60; `curl -f $RAILWAY_TEST_URL/api/health`.
-- **Secrets**: `RAILWAY_TOKEN`.
-- **Variables**: `RAILWAY_TEST_URL`, `RAILWAY_SERVICE_TEST`.
+- **When**: push to `main`.
+- **Deploy**: Railway GitHub integration (native).
+- **Steps**: wait 90s; `curl -f $RAILWAY_TEST_URL/api/health`; smoke 401 on `/api/properties`.
+- **GitHub**: variable `RAILWAY_TEST_URL` only (skips with warning if unset).
 
-#### `deploy-prod` (ci-cd.yml)
+#### `verify-prod` (ci-cd.yml)
 
-- **When**: tag `refs/tags/v*`.
-- **Environment**: `production` (configure required reviewers in GitHub).
-- **Steps**: `railway up` prod service/environment; sleep 90; health `/api/health`; smoke 401 on `/api/properties`.
-- **Secrets/vars**: same pattern with `RAILWAY_PROD_URL`, `RAILWAY_SERVICE_PROD`.
+- **When**: tag `v*`.
+- **Deploy**: Railway native to production environment.
+- **Steps**: wait 120s; health + smoke on `RAILWAY_PROD_URL`.
 
-#### `deploy-backend-test` (deploy-preview.yml)
+#### `environment-links` (deploy-preview.yml)
 
-- **When**: PR events to `main`.
-- Build + test (same filter), Railway deploy to **test**, health + auth smoke, PR comment with BE URL and link to Vercel preview (manual step 1 in comment).
+- **When**: PR events.
+- Posts comment with shared test URL + pointer to Vercel bot (no deploy, no Railway CLI).
 
-### Secrets and variables mapping
+### GitHub configuration
 
-| GitHub | Used in workflow | Purpose |
-|--------|------------------|---------|
-| Secret `RAILWAY_TOKEN` | All deploy jobs | Railway CLI authentication |
-| Variable `RAILWAY_TEST_URL` | Health curl, PR comment, environment URL | Public test API base (no trailing slash) |
-| Variable `RAILWAY_PROD_URL` | Prod health curl | Public prod API base |
-| Variable `RAILWAY_SERVICE_TEST` | `railway up --service` | Test service ID |
-| Variable `RAILWAY_SERVICE_PROD` | `railway up --service` | Prod service ID |
-| Secret `SUPABASE_CONNECTION_STRING_TEST` | Not wired in current YAML | Operator / optional future `ef database update` job |
-| Secret `SUPABASE_CONNECTION_STRING_PROD` | Not wired in current YAML | Operator prod migrations only |
+| GitHub | Required? | Purpose |
+|--------|-----------|---------|
+| Variable `RAILWAY_TEST_URL` | Recommended | verify-test + PR comments |
+| Variable `RAILWAY_PROD_URL` | Recommended | verify-prod |
+| Secret `RAILWAY_TOKEN` | **No** | Removed — native deploy |
+| Variable `RAILWAY_SERVICE_*` | **No** | Removed |
 
-Railway runtime secrets (not GitHub): `ConnectionStrings__DefaultConnection`, Auth0, Stripe, SendGrid, `Hangfire__DashboardEnabled=false`, `ASPNETCORE_ENVIRONMENT`, `PORT=8080`.
+Runtime secrets on **Railway** only: `ConnectionStrings__DefaultConnection`, Auth0, Stripe, SendGrid, CORS, Hangfire.
 
 ### Docker / Railway build
 
-- Root `Dockerfile`: multi-stage build, `ASPNETCORE_URLS=http://+:8080`, `EXPOSE 8080` — satisfies AC3.
-- Railway auto-detects Dockerfile on `railway up`.
+- Root `Dockerfile`: `ASPNETCORE_URLS=http://+:8080`, `EXPOSE 8080`.
+- Railway builds from Dockerfile on native GitHub deploy.
 
 ### Promotion alignment (Stage 05)
 
 ```
-PR → deploy-preview.yml (BE test) + Vercel preview (FE)
-merge main → ci-cd deploy-test
-tag v* → ci-cd deploy-prod + Vercel prod from main
+PR → build (CI) + Vercel preview + deploy-preview comment
+merge main → Railway native test + verify-test
+tag v* → Railway native prod + verify-prod + Vercel prod
 ```
 
 ---
@@ -345,8 +341,8 @@ Operator manual steps before first green deploy. No secrets in repository.
 ### 2 — Railway
 
 - [ ] New project from GitHub `casazen/backend`
-- [ ] Environments: `test` (auto-deploy main) and `production` (tag `v*` / GitHub Actions)
-- [ ] Service `casazen-api`; note **service IDs** for GitHub variables
+- [ ] Environments: `test` (auto-deploy `main`) and `production` (tag `v*`)
+- [ ] Service `casazen-api`; enable GitHub deploy + optional PR deployments
 - [ ] Per environment variables:
   - `ASPNETCORE_ENVIRONMENT=Production`
   - `ASPNETCORE_URLS=http://+:8080`
@@ -355,13 +351,12 @@ Operator manual steps before first green deploy. No secrets in repository.
   - Auth0, Stripe, SendGrid keys
   - `Hangfire__DashboardEnabled=false`
   - `Cors__AllowedOrigins` = `https://casazen.vercel.app,https://casazen.app` (+ preview pattern if supported)
-- [ ] Public networking enabled; record URLs → GitHub vars `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`
-- [ ] API token → GitHub secret `RAILWAY_TOKEN`
+- [ ] Public networking enabled; copy URLs → GitHub variables `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`
 
 ### 3 — GitHub (backend repo)
 
-- [ ] Secrets: `RAILWAY_TOKEN`, `SUPABASE_CONNECTION_STRING_TEST`, `SUPABASE_CONNECTION_STRING_PROD`
-- [ ] Variables: `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_PROD`
+- [ ] Variables: `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` (public URLs for CI only)
+- [ ] (Optional) Supabase keep-alive secrets if not synced by Supabase GitHub app
 - [ ] Environment `test` and `production` with protection rules on production
 - [ ] Merge workflows `ci-cd.yml` + `deploy-preview.yml` via PR #180
 
@@ -375,9 +370,9 @@ Operator manual steps before first green deploy. No secrets in repository.
 
 ### 5 — First deploy validation
 
-- [ ] Open PR → `deploy-preview` green; `GET {RAILWAY_TEST_URL}/api/health` → 200
+- [ ] Open PR → CI build green; PR comment with environment links
+- [ ] After merge to `main` → Railway test deploy + `verify-test` health → 200
 - [ ] `GET {RAILWAY_TEST_URL}/api/properties` → 401
-- [ ] Merge to `main` → test deploy job green
 - [ ] Stage 05: tag `vX.Y.Z` → prod deploy + `GET {RAILWAY_PROD_URL}/api/health` → 200
 - [ ] Update `Sessions/bundle-<epic>.md` if cross-repo epic
 

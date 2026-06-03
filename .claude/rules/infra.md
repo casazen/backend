@@ -10,13 +10,20 @@
 
 Full setup guide: `docs/INFRA.md`
 
+## Deploy model (native integrations)
+
+- **Railway** deploys `casazen/backend` via GitHub integration — not via `railway up` in Actions
+- **Vercel** deploys `casazen/frontend` via GitHub integration
+- **GitHub Actions** (`ci-cd.yml`): build, test, format; `verify-test` / `verify-prod` curl health URLs only
+- **PR comments** (`deploy-preview.yml`): links to Railway test URL + Vercel preview — no deploy
+
 ## Database
 
 - **Provider**: PostgreSQL via Supabase (NOT SQL Server)
 - **EF Core provider**: `Npgsql.EntityFrameworkCore.PostgreSQL`
 - **Migrations**: `dotnet ef migrations add <Name> --project Casazen.Infrastructure`
 - **Connection string format**: `Host=db.[REF].supabase.co;Port=5432;Database=postgres;Username=postgres;Password=[PW];SearchPath=casazen_test;SSL Mode=Require`
-- **NEVER** hardcode connection strings — use Railway environment variables or GitHub Secrets
+- **NEVER** hardcode connection strings — use **Railway** environment variables
 
 ## Backend API port
 
@@ -31,33 +38,34 @@ HTTPS is NOT used inside the container — Railway handles it externally.
 
 ## Environment URLs
 
-- Test BE: `$RAILWAY_TEST_URL` (GitHub variable — set once in repo settings)
+- Test BE: `$RAILWAY_TEST_URL` (GitHub **variable** — public URL for CI only; runtime config on Railway)
 - Test FE: Vercel preview URL (per PR, from Vercel bot comment)
 - Production BE: `$RAILWAY_PROD_URL` (GitHub variable)
 - Production FE: `https://casazen.vercel.app`
 
 ## Deployment rules
 
-- **Test auto-deploy**: triggered on PR open/update (`deploy-preview.yml`) and on push to `main` (ci-cd.yml `deploy-test` job)
-- **Production deploy**: triggered ONLY by pushing a `v*` tag — never deploy prod manually
+- **Test deploy**: Railway native — push to `main` → test environment
+- **Production deploy**: Railway native — git tag `v*` → production environment (never manual prod deploy)
+- **PR backend**: Railway PR deploys (if enabled) OR validate on shared test after merge
 - **Never deploy to production** without Stage 05 bundle check (all features in the Epic verified on test)
 
 ## Secrets management
 
-All credentials live in GitHub Secrets or Railway environment variables — **never in code or appsettings.Development.json committed to the repo**.
+| Where | What |
+|---|---|
+| **Railway** (test + prod) | `ConnectionStrings__DefaultConnection`, Auth0, Stripe, SendGrid, CORS, Hangfire |
+| **Vercel** | All `VITE_*` |
+| **GitHub Variables** | `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` (public URLs for CI only) |
+| **GitHub Secrets (optional)** | `SUPABASE_ANON_KEY` for keep-alive workflow |
 
-Required GitHub Secrets:
-- `RAILWAY_TOKEN` — Railway API token
+**Not required on GitHub:** `RAILWAY_TOKEN`, `RAILWAY_SERVICE_*`
 
-Required GitHub Variables (not secret):
-- `RAILWAY_TEST_URL` — Railway test service public URL
-- `RAILWAY_PROD_URL` — Railway production service public URL
-- `RAILWAY_SERVICE_TEST` — Railway service ID for test environment
-- `RAILWAY_SERVICE_PROD` — Railway service ID for production environment
+Never commit secrets in code or committed `appsettings.*.json`.
 
 ## Supabase keep-alive
 
-Supabase free tier pauses after 7 days of inactivity. Set a GitHub Actions scheduled ping or configure the Supabase auto-pause setting (Dashboard → Settings → General → Pause).
+Supabase free tier pauses after 7 days of inactivity. Use `supabase-keepalive.yml` (optional GitHub vars) or Supabase dashboard auto-pause settings.
 
 ## Release bundles
 
