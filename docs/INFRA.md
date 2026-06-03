@@ -197,27 +197,106 @@ GRANT ALL ON SCHEMA casazen_prod TO postgres;
 
 ### Connection strings
 
-Dashboard → Settings → Database → URI:
+Dashboard → **Project Settings → Database**:
+
+| Value | Where |
+|---|---|
+| Host | `db.xxxxxxxxx.supabase.co` (copy from **Host** field — this is your `[REF]`) |
+| Password | Project database password (set at project creation) |
+| Database | `postgres` |
+| Schema | `casazen_test` or `casazen_prod` (via `SearchPath`, not a separate database) |
+
+**URI format** (for Railway `ConnectionStrings__DefaultConnection` or tools that accept URIs):
 
 ```
 # Test
-postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres?options=-csearch_path%3Dcasazen_test
+postgresql://postgres:YOUR_PASSWORD@db.YOUR_REF.supabase.co:5432/postgres?options=-csearch_path%3Dcasazen_test
 
 # Production
-postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres?options=-csearch_path%3Dcasazen_prod
+postgresql://postgres:YOUR_PASSWORD@db.YOUR_REF.supabase.co:5432/postgres?options=-csearch_path%3Dcasazen_prod
 ```
 
-### Apply migrations to both schemas
+**Npgsql format** (for `dotnet ef` on Windows/macOS/Linux):
+
+```
+Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
+```
+
+Replace `YOUR_REF` and `YOUR_PASSWORD` with real values — do not paste `[REF]` / `[PW]` literally.
+
+### Apply migrations (scripts — one-time setup)
+
+Credentials live in **`secrets/supabase.local.env`** (gitignored) and are copied once to **dotnet user-secrets** on your machine. You do not pass `--connection` manually after setup.
+
+#### One-time setup
+
+```powershell
+# From backend repo root (Windows)
+Copy-Item secrets\supabase.local.env.example secrets\supabase.local.env
+# Edit secrets\supabase.local.env → SUPABASE_HOST + SUPABASE_PASSWORD
+
+.\scripts\setup-supabase.ps1    # saves to user-secrets (outside repo)
+```
 
 ```bash
-# Test schema
-dotnet ef database update --project Casazen.Infrastructure \
-  --connection "Host=db.[REF].supabase.co;Port=5432;Database=postgres;Username=postgres;Password=[PW];SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true"
-
-# Production schema
-dotnet ef database update --project Casazen.Infrastructure \
-  --connection "Host=db.[REF].supabase.co;Port=5432;Database=postgres;Username=postgres;Password=[PW];SearchPath=casazen_prod;SSL Mode=Require;Trust Server Certificate=true"
+# macOS / Linux
+cp secrets/supabase.local.env.example secrets/supabase.local.env
+# edit host + password
+./scripts/setup-supabase.sh
 ```
+
+`secrets/supabase.local.env` example:
+
+```env
+SUPABASE_HOST=db.abcdefghijklmnop.supabase.co
+SUPABASE_PASSWORD=your-database-password
+```
+
+Host: use **Connect → Session pooler** host on Windows (IPv4), e.g. `aws-0-eu-west-1.pooler.supabase.com`, with `SUPABASE_USERNAME=postgres.YOUR_PROJECT_REF`. Direct `db.*.supabase.co` is IPv6-only and often fails locally.
+
+Copy the exact host and username from Supabase **Connect** (not the project URL `https://ref.supabase.co`).
+
+#### Run migrations (every time you add a migration)
+
+```powershell
+.\scripts\migrate.ps1              # default: casazen_test
+.\scripts\migrate.ps1 -Target prod   # casazen_prod (before production release)
+```
+
+```bash
+./scripts/migrate.sh test
+./scripts/migrate.sh prod
+```
+
+Install EF tools once if needed: `dotnet tool install --global dotnet-ef`
+
+#### What gets stored where
+
+| Store | Contents | Committed? |
+|---|---|---|
+| `secrets/supabase.local.env` | Host + password | No (gitignored) |
+| dotnet user-secrets (`casazen-backend-local`) | Full connection strings test/prod | No (local machine) |
+| Railway env vars | Same connection string for runtime | No (Railway dashboard) |
+
+`AppDbContextFactory` and `migrate.ps1` read from the env file or user-secrets — not from `localhost` in `appsettings.Development.json`.
+
+#### Expected result
+
+```
+Applying migrations to Supabase schema: casazen_test
+Build succeeded.
+Applying migration '..._InitialCreate'.
+Migrations applied successfully to casazen_test.
+```
+
+#### Troubleshooting
+
+| Error | Fix |
+|---|---|
+| `secrets/supabase.local.env not found` | Copy from `.example` and fill in |
+| `Failed to connect to 127.0.0.1:5432` | Run `.\scripts\migrate.ps1` — do not run bare `dotnet ef database update` |
+| `password authentication failed` | Check password in Supabase; reset if needed |
+| `schema "casazen_test" does not exist` | Run **Create schemas** SQL first |
 
 ### Supabase keep-alive (free tier pauses after 7 days)
 

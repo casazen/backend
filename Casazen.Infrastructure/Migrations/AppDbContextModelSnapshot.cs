@@ -863,7 +863,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("Address", "City", "PostalCode", "IsActive")
                         .IsUnique()
-                        .HasFilter("[IsActive] = 1");
+                        .HasFilter("\"IsActive\" = true");
 
                     b.ToTable("Properties");
                 });

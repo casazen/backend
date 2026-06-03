@@ -603,7 +603,7 @@ namespace Casazen.Infrastructure.Migrations
                 table: "Properties",
                 columns: new[] { "Address", "City", "PostalCode", "IsActive" },
                 unique: true,
-                filter: "[IsActive] = 1");
+                filter: "\"IsActive\" = true");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Properties_CancellationPolicyId",

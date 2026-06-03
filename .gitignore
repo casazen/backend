@@ -19,6 +19,7 @@ packages/
 .env
 .env.local
 .env.*.local
+secrets/supabase.local.env
 
 ## Database
 *.mdf
