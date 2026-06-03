@@ -171,7 +171,7 @@ Set `VITE_DEMO_MODE=true` (or run `npm run dev:demo`) to bypass Auth0. The app u
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `VITE_AUTH0_DOMAIN` | Yes (prod) | `dev-casazen.auth0.com` | Auth0 tenant domain |
+| `VITE_AUTH0_DOMAIN` | Yes (prod) | — | Auth0 tenant domain (from Auth0 dashboard, no placeholder) |
 | `VITE_AUTH0_CLIENT_ID` | Yes (prod) | — | Auth0 application client ID |
 | `VITE_AUTH0_AUDIENCE` | No | `https://casazen-api` | Auth0 API identifier (JWT audience) |
 | `VITE_API_BASE_URL` | No | `http://localhost:3000/api` | Backend API base URL |

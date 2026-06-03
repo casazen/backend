@@ -409,7 +409,7 @@ In Vercel dashboard → Settings → Environment Variables:
 | Variable | Preview | Production |
 |---|---|---|
 | `VITE_API_BASE_URL` | `https://casazen-api-test.up.railway.app/api` | `https://casazen-api.up.railway.app/api` |
-| `VITE_AUTH0_DOMAIN` | `dev-casazen.auth0.com` | `casazen.auth0.com` |
+| `VITE_AUTH0_DOMAIN` | `dev-mp6wadq7j6bophl5.us.auth0.com` (your Auth0 tenant) | prod tenant when ready |
 | `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | `[prod client id]` |
 | `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | `https://api.casazen.app` |
 
