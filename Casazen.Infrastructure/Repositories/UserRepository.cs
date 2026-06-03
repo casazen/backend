@@ -40,12 +40,54 @@ public class UserRepository(AppDbContext context) : IUserRepository
         await context.SaveChangesAsync();
     }
 
+    public async Task<User?> GetBySubAsync(string sub)
+    {
+        return await context.Users.FindAsync(sub);
+    }
+
+    public async Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(
+        string? search, string? role, bool? isActive, int page, int pageSize)
+    {
+        var query = context.Users.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = $"%{search}%";
+            query = query.Where(u =>
+                EF.Functions.ILike(u.Email, pattern) ||
+                EF.Functions.ILike(u.FirstName, pattern) ||
+                EF.Functions.ILike(u.LastName, pattern));
+        }
+
+        if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole))
+        {
+            query = query.Where(u => u.Role == parsedRole);
+        }
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(u => u.IsActive == isActive.Value);
+        }
+
+        var totalCount = await query.CountAsync();
+
+        var users = await query
+            .OrderBy(u => u.Email)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return (users, totalCount);
+    }
+
     public async Task DeleteAsync(string id)
     {
         var user = await GetByIdAsync(id);
         if (user != null)
         {
-            context.Users.Remove(user);
+            // Soft delete — preserve audit trail
+            user.IsActive = false;
+            user.UpdatedAt = DateTime.UtcNow;
             await context.SaveChangesAsync();
         }
     }
