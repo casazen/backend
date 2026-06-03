@@ -33,11 +33,10 @@ public class AdminService(
         var cinInvalid = allProperties.Count(p => !string.IsNullOrWhiteSpace(p.CinCode) && !Regex.IsMatch(p.CinCode, CinPattern));
         var cinTotal = totalProperties;
 
-        // Bookings
-        var allBookings = await dbContext.Bookings.ToListAsync();
-        var totalBookings = allBookings.Count;
-        var bookingsThisMonth = allBookings.Count(b => b.CreatedAt >= startOfMonth);
-        var upcomingCheckIns = allBookings.Count(b =>
+        // Bookings — server-side aggregates to avoid loading full table
+        var totalBookings = await dbContext.Bookings.CountAsync();
+        var bookingsThisMonth = await dbContext.Bookings.CountAsync(b => b.CreatedAt >= startOfMonth);
+        var upcomingCheckIns = await dbContext.Bookings.CountAsync(b =>
             b.Status == BookingStatus.Confirmed && b.CheckInDate >= now);
 
         // Revenue — sum of completed payments
@@ -45,11 +44,13 @@ public class AdminService(
             .Where(p => p.Status == PaymentStatus.Completed)
             .SumAsync(p => (decimal?)p.Amount) ?? 0m;
 
-        // OTA sync health — LastSyncAt is non-nullable; DateTime.MinValue means never synced
-        var allOta = await dbContext.OtaIntegrations.ToListAsync();
-        var otaSynced = allOta.Count(o => o.LastSyncAt != default && now - o.LastSyncAt <= OtaSyncThreshold);
-        var otaFailed = allOta.Count(o => o.LastSyncAt != default && now - o.LastSyncAt > OtaSyncThreshold);
-        var otaNever = allOta.Count(o => o.LastSyncAt == default);
+        // OTA sync health — server-side aggregates; DateTime.MinValue means never synced
+        var otaSyncCutoff = now - OtaSyncThreshold;
+        var otaNever = await dbContext.OtaIntegrations.CountAsync(o => o.LastSyncAt == default);
+        var otaSynced = await dbContext.OtaIntegrations.CountAsync(o =>
+            o.LastSyncAt != default && o.LastSyncAt >= otaSyncCutoff);
+        var otaFailed = await dbContext.OtaIntegrations.CountAsync(o =>
+            o.LastSyncAt != default && o.LastSyncAt < otaSyncCutoff);
 
         return new AdminStats(
             TotalProperties: totalProperties,

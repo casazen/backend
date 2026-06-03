@@ -52,11 +52,11 @@ public class UserRepository(AppDbContext context) : IUserRepository
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var lower = search.ToLowerInvariant();
+            var pattern = $"%{search}%";
             query = query.Where(u =>
-                u.Email.ToLower().Contains(lower) ||
-                u.FirstName.ToLower().Contains(lower) ||
-                u.LastName.ToLower().Contains(lower));
+                EF.Functions.ILike(u.Email, pattern) ||
+                EF.Functions.ILike(u.FirstName, pattern) ||
+                EF.Functions.ILike(u.LastName, pattern));
         }
 
         if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole))

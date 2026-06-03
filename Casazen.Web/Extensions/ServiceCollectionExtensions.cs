@@ -200,7 +200,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IImageStorageService, LocalImageStorageService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
-        services.AddScoped<IAdminService, AdminService>();
         return services;
     }
 
@@ -211,7 +210,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SendGridService>();
         services.AddScoped<StripeService>();
         services.AddSingleton<StripeWebhookHandler>();
-        services.AddScoped<IAuth0ManagementService, Auth0ManagementService>();
         return services;
     }
 
