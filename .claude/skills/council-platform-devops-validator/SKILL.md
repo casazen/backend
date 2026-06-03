@@ -26,7 +26,7 @@ description: DevOps and GitHub Flow gate validation for CasaZen AI-SDLC — CI/C
 Every stage that produces code MUST enforce:
 1. Branch: `feature/<name>` or `fix/<name>` — never work on `main`
 2. Commit: Conventional Commits format (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`)
-3. PR: opened via `gh pr create --base main` — STOP for review
+3. PR: opened via `gh pr create --base develop` — STOP for review
 4. No "Co-Authored-By: Claude" signature in commits
 5. No merge to main without PR approval + CI pass
 

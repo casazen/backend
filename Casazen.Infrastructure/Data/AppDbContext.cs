@@ -85,7 +85,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
             .IsUnique()
-            .HasFilter("[IsActive] = 1");
+            .HasFilter("\"IsActive\" = true");
 
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.GuestId);

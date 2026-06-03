@@ -97,7 +97,7 @@ Phase A loop:
 WHILE (G1–G4 fail) AND (iteration < max_iterations):
   G1 fails → qa-validator reads CI logs; route back to Stage 03 if code issue
   G2 fails → release-manager fixes Dockerfile, re-pushes to PR branch
-  G4 fails → release-manager rebases branch on main
+  G4 fails → release-manager rebases branch on develop
   iteration++
 
 Phase B loop:
@@ -120,14 +120,17 @@ IF any phase reaches max_iterations with gates still failing:
 
 ## Merge Sequence (only after all phases A–D pass)
 
+Release PR `#P` must be `develop` → `main`.
+
 ```bash
 # Only release-manager executes this block
-gh pr merge #P --squash --delete-branch
+gh pr merge #P --squash --delete-branch=false
 git fetch origin main
 git checkout main && git pull
 git tag vX.Y.Z
 git push origin vX.Y.Z
 gh release create vX.Y.Z --generate-notes --title "Release vX.Y.Z"
+# Push to main triggers Railway prod + Vercel prod; tag is changelog only
 ```
 
 ---
@@ -143,7 +146,7 @@ After Phase E completes, coordinator updates `Sessions/bundle-<epic>.md`:
 
 ## Exit Artifact
 
-- PR `#P` merged to `main` (squash, branch deleted)
+- Release PR `#P` merged to `main` (squash; `develop` branch retained)
 - Git tag `vX.Y.Z` pushed to origin
 - GitHub Release created with auto-generated changelog
 - `Sessions/bundle-<epic>.md` → status `released`

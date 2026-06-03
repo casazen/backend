@@ -287,7 +287,7 @@ When Stage 06 completes:
 
 These rules apply throughout the pipeline and cannot be bypassed:
 
-- **Never push directly to `main`** — all code via feature branch → PR → review → merge
+- **Never push directly to `main` or `develop`** — features via PR → `develop`; production via release PR `develop` → `main` (Stage 05)
 - **Never merge without HITL-2 confirmation** — the merge step is irreversible
 - **Never skip secrets check (G10)** — committed secrets cannot be undone
 - **Never hardcode tourist tax amounts** — `TouristTaxRate` entity only

@@ -62,7 +62,7 @@ Casazen.sln
 - **DateTime**: always `DateTime.UtcNow` internally; convert to local only for display.
 - **Validation**: data annotations on entities + `[ApiController]` automatic model-state validation at API boundary.
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`). No "Co-Authored-By: Claude" lines.
-- **Branches**: `feature/<name>` / `fix/<name>` / `hotfix/<name>` — never push directly to `main`.
+- **Branches**: `feature/<name>` / `fix/<name>` / `hotfix/<name>` → PR to `develop`; release PR `develop` → `main` (Stage 05 only). Never push directly to `main` or `develop`.
 - **Language**: all code, docs, commit messages in English; UI text for end-users in Italian.
 
 ## Where to find things

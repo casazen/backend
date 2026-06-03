@@ -43,6 +43,16 @@ frontend/
 └── playwright.config.ts
 ```
 
+## Deploy branches (Vercel + Railway test API)
+
+| Git branch | Vercel | Backend API |
+|---|---|---|
+| `develop` | Staging (Preview env vars) | Railway test (`RAILWAY_TEST_URL`) |
+| `main` | Production (`casazen.vercel.app`) | Railway prod |
+| PR → `develop` | Per-PR preview | Shared test or Railway PR deploy |
+
+Feature PRs target `develop`. Production promotion: release PR `develop` → `main` (Stage 05). See `docs/INFRA.md`.
+
 ## Key conventions
 - **Feature slices**: `src/features/<domain>/` contains the page, sub-components, and Zod schemas. Never import cross-feature components directly — use shared components.
 - **No direct Axios calls in components**: all HTTP calls go through `src/queries/` hooks → `src/api/` modules → `ApiClient`.

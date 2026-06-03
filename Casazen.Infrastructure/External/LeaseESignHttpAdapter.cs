@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
@@ -10,9 +9,7 @@ namespace Casazen.Infrastructure.External;
 /// Implement against chosen provider SDK when selected.
 /// Config: appsettings.json → ESign:ApiKey, ESign:WebhookSecret
 /// </summary>
-public class LeaseESignHttpAdapter(
-    IConfiguration configuration,
-    ILogger<LeaseESignHttpAdapter> logger) : ILeaseESignService
+public class LeaseESignHttpAdapter(ILogger<LeaseESignHttpAdapter> logger) : ILeaseESignService
 {
     public Task<SigningSessionResult> InitiateSigningAsync(LeaseContract lease, byte[] pdfBytes)
     {

@@ -1,0 +1,70 @@
+name: PR Environment Guide
+
+# Deploys are handled by native integrations:
+# - Railway: optional PR deploys or shared test URL (see docs/INFRA.md)
+# - Vercel: automatic preview per PR on casazen/frontend
+# This workflow posts validation links on the PR (no Railway CLI).
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  environment-links:
+    name: Post environment links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Comment test environment links
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testUrl = process.env.RAILWAY_TEST_URL || '(set GitHub variable RAILWAY_TEST_URL)';
+            const hasTestUrl = Boolean(process.env.RAILWAY_TEST_URL);
+            const body = [
+              '## Test environment (native deploys)',
+              '',
+              '| Service | How it deploys | URL |',
+              '|---------|----------------|-----|',
+              '| **Backend** | Railway test env (merge to `develop` or PR deploy — see [INFRA.md](docs/INFRA.md)) | ' + (hasTestUrl ? `[${testUrl}](${testUrl})` : testUrl) + ' |',
+              '| **Frontend** | Vercel GitHub integration (automatic) | See **Vercel** bot comment on this PR ↓ |',
+              '',
+              hasTestUrl
+                ? `Shared test health: [/api/health](${testUrl}/api/health)`
+                : '_Configure `RAILWAY_TEST_URL` in GitHub repo variables after Railway networking is enabled._',
+              '',
+              '**Validate this PR:**',
+              '1. Wait for Railway + Vercel deployment checks (green) on this PR',
+              '2. Open Vercel preview URL + backend URL (Railway PR URL or shared test)',
+              '3. Run acceptance criteria from the linked Issue',
+              '4. Update `Sessions/bundle-<epic>.md` if part of a release bundle',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Test environment (native deploys)'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+            }
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}

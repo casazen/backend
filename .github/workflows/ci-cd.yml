@@ -2,11 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
-    tags:
-      - 'v*'
+    branches: [develop, main]
   pull_request:
-    branches: [main]
+    branches: [develop, main]
 
 jobs:
   build:
@@ -35,79 +33,84 @@ jobs:
       - name: Check formatting
         run: dotnet format --verify-no-changes
 
-  deploy-test:
-    name: Deploy to Railway Test
+  # Railway deploys via GitHub integration (push to develop → test environment).
+  # This job only verifies health after the native deploy finishes.
+  verify-test:
+    name: Verify Railway Test (native deploy)
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     environment:
       name: test
       url: ${{ vars.RAILWAY_TEST_URL }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Wait for Railway native deployment
+        run: |
+          echo "Waiting 90s for Railway GitHub integration to deploy develop → test..."
+          sleep 90
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy to Railway test environment
+      - name: Health check
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
-          railway up \
-            --service "${{ vars.RAILWAY_SERVICE_TEST }}" \
-            --environment test \
-            --detach
+          if [ -z "$RAILWAY_TEST_URL" ]; then
+            echo "::warning::RAILWAY_TEST_URL not set — skipping health check."
+            echo "Set GitHub variable RAILWAY_TEST_URL to your Railway test public URL (see docs/INFRA.md)."
+            exit 0
+          fi
+          curl -f "${RAILWAY_TEST_URL}/api/health" \
+            --retry 8 --retry-delay 15 --retry-connrefused --max-time 30
+          echo "✅ Test environment healthy"
 
-      - name: Wait and health check
+      - name: Smoke test (auth gate — expect 401)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
-          echo "Waiting 60s for Railway test deployment..."
-          sleep 60
-          curl -f "${{ vars.RAILWAY_TEST_URL }}/api/health" \
-            --retry 6 --retry-delay 10 --retry-connrefused
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/properties")
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/properties, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Auth gate OK"
 
-  deploy-prod:
-    name: Deploy to Railway Production
+  # Railway deploys production via GitHub integration (push to main → production environment).
+  verify-prod:
+    name: Verify Railway Production (native deploy)
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
       url: ${{ vars.RAILWAY_PROD_URL }}
-    # GitHub environment protection rules: require manual approval before this job runs
-    # Configure in: Settings → Environments → production → Required reviewers
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy to Railway production
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      - name: Wait for Railway native deployment
         run: |
-          railway up \
-            --service "${{ vars.RAILWAY_SERVICE_PROD }}" \
-            --environment production \
-            --detach
-
-      - name: Wait for production deployment
-        run: |
-          echo "Waiting 90s for Railway production deployment..."
-          sleep 90
+          echo "Waiting 120s for Railway GitHub integration to deploy main → production..."
+          sleep 120
 
       - name: Production health check
+        env:
+          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
         run: |
-          curl -f "${{ vars.RAILWAY_PROD_URL }}/api/health" \
-            --retry 5 --retry-delay 15 --retry-connrefused
+          if [ -z "$RAILWAY_PROD_URL" ]; then
+            echo "::warning::RAILWAY_PROD_URL not set — skipping health check."
+            exit 0
+          fi
+          curl -f "${RAILWAY_PROD_URL}/api/health" \
+            --retry 8 --retry-delay 15 --retry-connrefused
           echo "✅ Production healthy"
 
       - name: Smoke test production (auth gate)
+        env:
+          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
         run: |
+          if [ -z "$RAILWAY_PROD_URL" ]; then exit 0; fi
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-            "${{ vars.RAILWAY_PROD_URL }}/api/properties")
-          echo "Auth gate: $STATUS"
+            "${RAILWAY_PROD_URL}/api/properties")
           if [ "$STATUS" != "401" ]; then
             echo "❌ Expected 401 on /api/properties, got $STATUS"
             exit 1

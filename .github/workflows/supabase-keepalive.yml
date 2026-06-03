@@ -1,0 +1,33 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Weekly — prevents Supabase free tier pause after 7 days of inactivity
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Supabase (test schema)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check via REST (optional)
+        if: vars.SUPABASE_PROJECT_URL != ''
+        run: |
+          curl -sf "${{ vars.SUPABASE_PROJECT_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            --max-time 30 \
+            || echo "Supabase REST ping skipped or failed (configure SUPABASE_PROJECT_URL + SUPABASE_ANON_KEY)"
+
+      - name: TCP reachability (fallback)
+        if: vars.SUPABASE_DB_HOST != ''
+        run: |
+          nc -zv "${{ vars.SUPABASE_DB_HOST }}" 5432 -w 10 \
+            || echo "TCP ping skipped (set SUPABASE_DB_HOST variable to db.[ref].supabase.co)"
+
+      - name: No-op when vars unset
+        if: vars.SUPABASE_PROJECT_URL == '' && vars.SUPABASE_DB_HOST == ''
+        run: |
+          echo "Configure GitHub variables SUPABASE_PROJECT_URL and/or SUPABASE_DB_HOST to enable keep-alive pings."
+          echo "See docs/INFRA.md — Supabase keep-alive section."
