@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: casazen-local
+
+scrape_configs:
+
+  # WebhookRunner .NET service running on the Windows host
+  - job_name: casazen_webhook_runner
+    static_configs:
+      - targets: ["host.docker.internal:5050"]
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 15s
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

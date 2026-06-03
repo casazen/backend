@@ -7,7 +7,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "PropertyOwner")]
 public class PaymentsController(IPaymentService paymentService, ILogger<PaymentsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -36,26 +36,39 @@ public class PaymentsController(IPaymentService paymentService, ILogger<Payments
     public async Task<IActionResult> Process(Guid id)
     {
         logger.LogInformation("Processing payment: {PaymentId}", id);
-        var success = await paymentService.ProcessPaymentAsync(id);
-        if (!success)
+        try
         {
-            logger.LogWarning("Payment processing failed: {PaymentId}", id);
-            return BadRequest("Payment processing failed");
+            var payment = await paymentService.ProcessPaymentAsync(id);
+            return Ok(payment);
         }
-
-        var payment = await paymentService.GetPaymentAsync(id);
-        return Ok(payment);
+        catch (KeyNotFoundException)
+        {
+            return NotFound($"Payment {id} not found");
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning("Payment processing failed: {PaymentId} - {Error}", id, ex.Message);
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpPost("{id}/refund")]
     public async Task<IActionResult> Refund(Guid id, [FromQuery] decimal? amount = null)
     {
-        var success = await paymentService.RefundPaymentAsync(id, amount);
-        if (!success)
-            return BadRequest("Refund processing failed");
-
-        var payment = await paymentService.GetPaymentAsync(id);
-        return Ok(payment);
+        try
+        {
+            var payment = await paymentService.RefundPaymentAsync(id, amount);
+            return Ok(payment);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound($"Payment {id} not found");
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning("Refund failed: {PaymentId} - {Error}", id, ex.Message);
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpGet("revenue")]

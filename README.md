@@ -3,7 +3,7 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- .NET 10 SDK
+- .NET 10 SDK 
 - SQL Server 2022+
 - Docker (optional)
 
@@ -133,15 +133,134 @@ Webhooks handled automatically
 ✅ TripAdvisor
 ✅ Agoda
 
-**Setup:**
+### Resilience Patterns
+
+All OTA integrations implement production-grade resilience patterns using **Polly**:
+
+**Retry Policy:**
+- Exponential backoff: 2s, 4s, 8s
+- Retries on transient HTTP errors (500-599, timeout)
+- Configurable retry count per platform
+
+**Circuit Breaker:**
+- Opens after 5 consecutive failures (default)
+- Stays open for 60 seconds (configurable)
+- Prevents cascading failures
+- Logs circuit state changes
+
+**Timeout Policy:**
+- Per-request timeout: 30 seconds (default)
+- Prevents long-running requests from blocking
+- Works with retry policy for total bounded time
+
+**Rate Limiting:**
+- Per-platform request limits
+- Sliding window algorithm
+- Concurrent request limits
+- Prevents API quota exhaustion
+
+**Configuration:**
+
+```json
+{
+  "OTA": {
+    "Resilience": {
+      "Airbnb": {
+        "RetryCount": 3,
+        "CircuitBreakerFailures": 5,
+        "CircuitBreakerDurationSeconds": 60,
+        "TimeoutSeconds": 30,
+        "MaxRequestsPerWindow": 100,
+        "WindowDurationSeconds": 60,
+        "MaxConcurrentRequests": 10
+      }
+    }
+  }
+}
+```
+
+**Observability:**
+- All resilience events logged (retry, circuit open/close, timeout)
+- Structured logging with platform context
+- Integrates with application logging infrastructure
+
+### Airbnb Integration Setup
+
+**Prerequisites:**
+1. Create an Airbnb partner account at [https://www.airbnb.com/partner](https://www.airbnb.com/partner)
+2. Register your application and obtain API credentials
+3. Generate an OAuth 2.0 access token
+
+**Configuration:**
+
+Add Airbnb credentials to `appsettings.Development.json`:
+
+```json
+{
+  "OTA": {
+    "Airbnb": {
+      "BaseUrl": "https://api.airbnb.com/v2",
+      "ApiKey": "YOUR_AIRBNB_OAUTH_TOKEN"
+    },
+    "Resilience": {
+      "Airbnb": {
+        "RetryCount": 3,
+        "CircuitBreakerFailures": 5,
+        "CircuitBreakerDurationSeconds": 60,
+        "TimeoutSeconds": 30
+      }
+    }
+  }
+}
+```
+
+**API Validation:**
 
 ```bash
 POST /api/ota/validate
 {
   "platform": "airbnb",
-  "apiKey": "YOUR_AIRBNB_API_KEY"
+  "apiKey": "YOUR_AIRBNB_OAUTH_TOKEN"
 }
 ```
+
+**Features:**
+- Sync bookings from Airbnb (GET /api/ota/bookings)
+- Update calendar availability (PUT /api/ota/availability)
+- Update nightly pricing (PUT /api/ota/pricing)
+- Automatic retry with exponential backoff
+- Circuit breaker pattern for fault tolerance
+- Rate limiting (respects Airbnb API limits)
+
+**API Endpoints:**
+- `GET /api/ota/bookings?platform=airbnb&propertyId={id}&startDate={date}&endDate={date}` - Fetch bookings
+- `PUT /api/ota/availability` - Update availability
+- `PUT /api/ota/pricing` - Update pricing
+
+**Testing:**
+
+Use test credentials for development:
+```bash
+# Validate credentials
+curl -X POST https://localhost:5001/api/ota/validate \
+  -H "Content-Type: application/json" \
+  -d '{"platform":"airbnb","apiKey":"test_token"}'
+
+# Fetch bookings
+curl -X GET "https://localhost:5001/api/ota/bookings?platform=airbnb&propertyId=123&startDate=2026-04-01&endDate=2026-04-30" \
+  -H "Authorization: Bearer {your_jwt_token}"
+```
+
+**Rate Limits:**
+- Airbnb API: 5 requests/second per listing
+- 200 requests/minute per account
+- Automatically handled by built-in rate limiter
+
+**Error Handling:**
+- Network errors: Automatic retry up to 3 times
+- 5xx errors: Circuit breaker activates after 5 failures
+- 4xx errors: Logged and returned without retry
+- Timeout: 30 seconds per request
 
 ## 📊 Database
 **SQL Server Schema:**

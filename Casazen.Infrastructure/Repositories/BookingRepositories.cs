@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -55,12 +55,17 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
     public async Task<bool> IsAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut)
     {
+        // Normalize to date-only to prevent time-component false conflicts (e.g. same-day turnover).
+        // A checkout on Apr 5 at 10:00 and a checkin on Apr 5 at 15:00 is a valid same-day turnover.
+        var checkInDate = checkIn.Date;
+        var checkOutDate = checkOut.Date;
+
         var conflicting = await context.Bookings
             .AnyAsync(b => b.PropertyId == propertyId &&
-                      b.CheckInDate < checkOut &&
-                      b.CheckOutDate > checkIn &&
+                      b.CheckInDate.Date < checkOutDate &&
+                      b.CheckOutDate.Date > checkInDate &&
                       b.Status != BookingStatus.Cancelled);
-        
+
         return !conflicting;
     }
 
@@ -86,5 +91,35 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             context.Bookings.Remove(booking);
             await context.SaveChangesAsync();
         }
+    }
+
+    public async Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source)
+    {
+        return await context.Bookings
+            .FirstOrDefaultAsync(b => b.PropertyId == propertyId
+                && b.ExternalId == externalId
+                && b.Source == source);
+    }
+
+    public async Task<Booking> UpsertOtaBookingAsync(Booking booking)
+    {
+        var existing = await GetByExternalIdAsync(booking.PropertyId, booking.ExternalId, booking.Source);
+        if (existing != null)
+        {
+            existing.Status = booking.Status;
+            existing.TotalPrice = booking.TotalPrice;
+            existing.CheckInDate = booking.CheckInDate;
+            existing.CheckOutDate = booking.CheckOutDate;
+            existing.GuestId = booking.GuestId;
+            existing.NumberOfGuests = booking.NumberOfGuests;
+            existing.UpdatedAt = DateTime.UtcNow;
+            context.Bookings.Update(existing);
+            await context.SaveChangesAsync();
+            return existing;
+        }
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+        return booking;
     }
 }

@@ -29,16 +29,16 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Property>> SearchAsync(string city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
         var query = context.Properties.AsQueryable();
-        
+
         if (!string.IsNullOrEmpty(city))
             query = query.Where(p => p.City.ToLower().Contains(city.ToLower()));
-        
+
         if (bedrooms.HasValue)
             query = query.Where(p => p.Bedrooms >= bedrooms.Value);
-        
+
         if (maxPrice.HasValue)
             query = query.Where(p => p.NightlyRate <= maxPrice.Value);
 
@@ -72,5 +72,14 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     public async Task<bool> ExistsAsync(Guid id)
     {
         return await context.Properties.AnyAsync(p => p.Id == id);
+    }
+
+    public async Task<Property?> GetPropertyDetailAsync(Guid id)
+    {
+        return await context.Properties
+            .Include(p => p.PropertyDocuments)
+            .Include(p => p.OtaIntegrations)
+            .Include(p => p.Bookings)
+            .FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
     }
 }

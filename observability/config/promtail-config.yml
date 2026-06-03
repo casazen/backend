@@ -1,0 +1,80 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/promtail-positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  # ── Agent session JSONL files ──────────────────────────────────────────────
+  # Each .jsonl file corresponds to one ClaudeJob.
+  # Lines are structured JSON events (session_created, status_update, result, etc.)
+  - job_name: casazen_agent_sessions
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: casazen_agent
+          __path__: /agent-sessions/*.jsonl
+
+    pipeline_stages:
+
+      # Parse every line as JSON
+      - json:
+          expressions:
+            msg_type:    type
+            job_id:      jobId
+            issue_num:   issueNumber
+            model:       model
+            status:      status
+            description: description
+            # result message fields
+            duration_ms:   durationMs
+            cost_usd:      totalCostUsd
+            num_turns:     numTurns
+            input_tokens:  inputTokens
+            output_tokens: outputTokens
+            stop_reason:   stopReason
+            subtype:       subtype
+            # trace correlation
+            trace_id:      traceId
+
+      # Promote extracted values to Loki labels
+      - labels:
+          msg_type:
+          job_id:
+          model:
+          status:
+          issue_num:
+
+      # Structured metadata fields (not labels — stored as indexed metadata)
+      - structured_metadata:
+          description:
+          trace_id:
+          subtype:
+
+      # Drop noisy lines with no recognized type
+      - drop:
+          expression: '^\s*$'
+
+      # Set log level from status / subtype for Grafana log level coloring
+      - template:
+          source: level
+          template: |
+            {{- if eq .status "failed" -}}error
+            {{- else if eq .subtype "error" -}}error
+            {{- else if eq .msg_type "stderr" -}}warn
+            {{- else -}}info
+            {{- end -}}
+
+      - labels:
+          level:
+
+      # Use the file modification time as the log timestamp
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+          action_on_failure: skip

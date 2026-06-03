@@ -1,0 +1,149 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "adesso-ai-hub": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Adesso AI Hub",
+      "options": {
+        "baseURL": "https://adesso-ai-hub.3asabc.de",
+        "apiKey": "sk-9Nbj6Dzg0AY5OqRMgbahKA"
+      },
+      "models": {
+        "qwen3-coder-480b": {
+          "name": "qwen3-coder-480b"
+        },
+        "gpt-4-1-nano": {
+          "name": "gpt-4.1-nano"
+        },
+        "us-gpt-5-3-codex": {
+          "name": "US-gpt-5.3-codex"
+        },
+        "gemini-3-1-pro-preview": {
+          "name": "gemini-3.1-pro-preview"
+        },
+        "claude-opus-4-6": {
+          "name": "claude-opus-4-6*"
+        },
+        "text-embedding-3-large": {
+          "name": "text-embedding-3-large"
+        },
+        "gemini-2-5-pro": {
+          "name": "gemini-2.5-pro"
+        },
+        "us-gemini-3-flash-preview": {
+          "name": "US-gemini-3-flash-preview"
+        },
+        "gemma-3-27b-it": {
+          "name": "gemma-3-27b-it"
+        },
+        "claude-sonnet-4-5": {
+          "name": "claude-sonnet-4-5*"
+        },
+        "qwen-3-5-122b-sovereign": {
+          "name": "qwen-3.5-122b-sovereign"
+        },
+        "intfloat-e5-mistral-7b-instruct": {
+          "name": "intfloat/e5-mistral-7b-instruct"
+        },
+        "gpt-5-1": {
+          "name": "gpt-5.1"
+        },
+        "gemini-2-5-flash": {
+          "name": "gemini-2.5-flash"
+        },
+        "o3-mini": {
+          "name": "o3-mini"
+        },
+        "qwen-3-6-35b-sovereign": {
+          "name": "qwen-3.6-35b-sovereign"
+        },
+        "devstral-2-123b": {
+          "name": "devstral-2-123b"
+        },
+        "claude-sonnet-4-6": {
+          "name": "claude-sonnet-4-6*"
+        },
+        "gpt-4-1-mini": {
+          "name": "gpt-4.1-mini"
+        },
+        "gpt-4o": {
+          "name": "gpt-4o"
+        },
+        "qwen-3-vl-embedding-2b-sovereign": {
+          "name": "qwen-3-vl-embedding-2b-sovereign"
+        },
+        "gpt-4-1": {
+          "name": "gpt-4.1"
+        },
+        "claude-haiku-4-5": {
+          "name": "claude-haiku-4-5*"
+        },
+        "us-gpt-5-4": {
+          "name": "US-gpt-5.4"
+        },
+        "gpt-5": {
+          "name": "gpt-5"
+        },
+        "claude-opus-4-5": {
+          "name": "claude-opus-4-5*"
+        },
+        "gpt-oss-120b-sovereign": {
+          "name": "gpt-oss-120b-sovereign"
+        },
+        "gpt-5-mini": {
+          "name": "gpt-5-mini"
+        },
+        "gpt-5-nano": {
+          "name": "gpt-5-nano"
+        },
+        "llama-3-3-70b": {
+          "name": "llama-3-3-70b"
+        },
+        "o4-mini": {
+          "name": "o4-mini"
+        },
+        "qwen3-235b": {
+          "name": "qwen3-235b"
+        }
+      }
+    }
+  },
+  "model": "adesso-ai-hub/claude-sonnet-4-6*",
+  "command": {
+    "feature-implementation": {
+      "description": "Implement the oldest open GitHub issue end-to-end: branch → code → PR → review → merge",
+      "template": "Run the feature-implementation workflow.\n\nLoad the skill: @.claude/skills/feature-implementation/SKILL.md\n\nThen execute every step as documented:\n1. Check open issues (exclude epics)\n2. If no issues → invoke compliance-feature workflow first\n3. Analyze + prioritize issues\n4. Plan implementation (BE-first)\n5. Implement on feature branch + open PR\n6. Run code-review-local skill\n7. Fix Critical/High findings (max 3 iterations)\n8. Merge via release-manager agent",
+      "agent": "build"
+    },
+    "compliance-feature": {
+      "description": "Run full compliance workflow: scan Italian regulations, gap analysis, competitor research, create GitHub issue backlog",
+      "template": "Run the compliance-feature workflow.\n\nLoad the skill: @.claude/skills/compliance-feature/SKILL.md\n\nThen execute every step as documented:\n1. Check if product roadmap + epics exist\n2. If missing → run Refinement Meeting (product-owner + architect + scrum-master-casazen, in-memory)\n3. regulatory-agent: scan 8 regulatory topics, update .claude/context/regulations/\n4. analyzer-agent: gap analysis vs codebase (MISSING/PARTIAL/OUTDATED/COMPLIANT)\n5. Competitive research: Lodgify, Guesty, Hostaway\n6. scrum-master-casazen: create GitHub issues (max 10, CRITICAL first, linked to epics)",
+      "agent": "build"
+    },
+    "contract-audit": {
+      "description": "Audit FE/BE API contract alignment and create GitHub issues for misalignments",
+      "template": "Run the contract-audit workflow.\n\nLoad the skill: @.claude/skills/contract-audit/SKILL.md\n\nThen execute every step as documented:\n1. Read backend controllers + DTOs in parallel with frontend types + API client\n2. Gap analysis across 4 categories: TypeScript Types, API Client, Query Hooks, Documentation\n3. Create 1 GitHub Issue per gap (github-agent)\n4. Create 1 summary issue on backend\n5. Report totals by category and severity\n\nAudit only — no code changes.",
+      "agent": "build"
+    },
+    "code-review": {
+      "description": "Review current PR changes following CasaZen quality standards",
+      "template": "Run a code review on the current changes.\n\nLoad the skill: @.claude/skills/code-review-local/SKILL.md\n\nReview the current git diff against:\n- REVIEW.md (review-specific rules)\n- .claude/rules/security.md (security guardrails)\n- .claude/rules/code-style.md (async + testing standards)\n- .claude/rules/compliance.md (Italian regulatory checks)\n\nOutput findings by severity (Critical/High/Medium/Low) with file:line references.",
+      "agent": "build"
+    },
+    "context": {
+      "description": "Show current project status: regulatory update date, roadmap status, open issue count",
+      "template": "!`bash .claude/hooks/scripts/session-context.sh 2>/dev/null || echo 'Tech: .NET 10 / EF Core / SQL Server — run /compliance-feature (plan) or /feature-implementation (implement)'`\n\nAlso summarize:\n- Which skills are available: feature-implementation, compliance-feature, contract-audit, code-review, codebase-overview, migration\n- Which agents are available: regulatory-agent, analyzer-agent, github-agent, scrum-master-casazen, feature-developer",
+      "agent": "build"
+    },
+    "codebase-overview": {
+      "description": "Show CasaZen backend architecture: layers, entities, patterns, key file locations",
+      "template": "Load and display the codebase overview.\n\n@.claude/skills/codebase-overview/SKILL.md",
+      "agent": "build"
+    },
+    "migration": {
+      "description": "Run EF Core migration workflow: create, review, dry-run, apply, verify",
+      "template": "Load and execute the migration workflow.\n\n@.claude/skills/migration-workflow/SKILL.md\n\nAsk for the migration name if not provided as $ARGUMENTS.",
+      "agent": "build"
+    }
+  }
+}

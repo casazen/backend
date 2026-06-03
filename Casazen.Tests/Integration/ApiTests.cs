@@ -1,10 +1,13 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.VisualStudio.TestPlatform.TestHost;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
+/// <summary>
+/// Basic API integration tests
+/// IMPORTANT: These tests are SKIPPED in CI/CD (Linux) because they require LocalDB (Windows-only)
+/// </summary>
 public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;

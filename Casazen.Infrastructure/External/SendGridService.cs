@@ -12,7 +12,7 @@ public interface ISendGridService
 
 public class SendGridService(IConfiguration configuration, ILogger<SendGridService> logger, ISendGridClient client) : ISendGridService
 {
-    private readonly string _fromEmail =  configuration["Email:FromAddress"] ?? "noreply@casazen.app";
+    private readonly string _fromEmail = configuration["Email:FromAddress"] ?? "noreply@casazen.app";
 
     public async Task<bool> SendEmailAsync(string to, string subject, string htmlContent)
     {

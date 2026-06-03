@@ -1,0 +1,127 @@
+{
+  "uid": "casazen-overview",
+  "title": "CasaZen Agent — Overview",
+  "tags": ["casazen", "agent"],
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "schemaVersion": 39,
+  "panels": [
+
+    {
+      "id": 1, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "title": "Jobs Today",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [{
+        "expr": "sum(increase(casazen_jobs_total[24h]))",
+        "legendFormat": "Total"
+      }]
+    },
+
+    {
+      "id": 2, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "title": "Jobs Running",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background", "graphMode": "none",
+        "fieldOptions": { "defaults": { "thresholds": { "steps": [
+          { "color": "green", "value": 0 },
+          { "color": "yellow", "value": 1 },
+          { "color": "red",   "value": 5 }
+        ] } } }
+      },
+      "targets": [{ "expr": "casazen_jobs_active", "legendFormat": "Active" }]
+    },
+
+    {
+      "id": 3, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "title": "Success Rate (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "steps": [
+            { "color": "red",   "value": 0 },
+            { "color": "yellow","value": 0.8 },
+            { "color": "green", "value": 0.95 }
+          ] }
+        } }
+      },
+      "targets": [{
+        "expr": "sum(increase(casazen_jobs_total{status='completed'}[24h])) / sum(increase(casazen_jobs_total[24h]))",
+        "legendFormat": "Success rate"
+      }]
+    },
+
+    {
+      "id": 4, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "title": "Queue Depth",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "targets": [{ "expr": "casazen_queue_depth", "legendFormat": "Waiting" }]
+    },
+
+    {
+      "id": 5, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "title": "Webhook Requests (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [{ "expr": "sum(increase(casazen_webhook_requests_total[24h]))", "legendFormat": "Requests" }]
+    },
+
+    {
+      "id": 6, "type": "stat", "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "title": "Match Rate (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "background",
+        "fieldOptions": { "defaults": { "unit": "percentunit" } }
+      },
+      "targets": [{
+        "expr": "sum(increase(casazen_webhook_requests_total{matched='true'}[24h])) / sum(increase(casazen_webhook_requests_total[24h]))",
+        "legendFormat": "Match rate"
+      }]
+    },
+
+    {
+      "id": 10, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "title": "Jobs per Hour — by Status",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [
+        { "matcher": { "id": "byName", "options": "completed" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+        { "matcher": { "id": "byName", "options": "failed"    }, "properties": [{ "id": "color", "value": { "fixedColor": "red",   "mode": "fixed" } }] }
+      ] },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "expr": "sum by (status) (increase(casazen_jobs_total[1h]))",
+        "legendFormat": "{{ status }}"
+      }]
+    },
+
+    {
+      "id": 11, "type": "timeseries", "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "title": "Jobs by Event Type (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "expr": "sum by (event_type) (increase(casazen_jobs_total[1h]))",
+        "legendFormat": "{{ event_type }}"
+      }]
+    },
+
+    {
+      "id": 20, "type": "table", "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "title": "Recent Sessions (Loki)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "expr": "{job=\"casazen_agent\", msg_type=\"session_created\"} | json | line_format \"{{.jobId}} | #{{.issueNumber}} | {{.model}} | {{.description}}\"",
+        "legendFormat": "",
+        "queryType": "range"
+      }]
+    }
+
+  ]
+}

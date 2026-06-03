@@ -2,21 +2,20 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
-    tags:
-      - 'v*'  # Trigger on version tags (v1.0.0, v1.2.3, etc.)
+    branches: [develop, main]
   pull_request:
-    branches: [ main, develop ]
+    branches: [develop, main]
 
 jobs:
   build:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
@@ -27,32 +26,93 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal
+        run: |
+          dotnet test --configuration Release --no-build --verbosity normal \
+            --filter "FullyQualifiedName!~PropertiesControllerIntegrationTests&FullyQualifiedName!~ApiTests"
 
-  deploy-dev:
+      - name: Check formatting
+        run: dotnet format --verify-no-changes
+
+  # Railway deploys via GitHub integration (push to develop → test environment).
+  # This job only verifies health after the native deploy finishes.
+  verify-test:
+    name: Verify Railway Test (native deploy)
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: test
+      url: ${{ vars.RAILWAY_TEST_URL }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Wait for Railway native deployment
+        run: |
+          echo "Waiting 90s for Railway GitHub integration to deploy develop → test..."
+          sleep 90
 
-      - name: Build Docker image
-        run: docker build -t casazen-api:dev .
+      - name: Health check
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then
+            echo "::warning::RAILWAY_TEST_URL not set — skipping health check."
+            echo "Set GitHub variable RAILWAY_TEST_URL to your Railway test public URL (see docs/INFRA.md)."
+            exit 0
+          fi
+          curl -f "${RAILWAY_TEST_URL}/api/health" \
+            --retry 8 --retry-delay 15 --retry-connrefused --max-time 30
+          echo "✅ Test environment healthy"
 
-      - name: Deploy to dev
-        run: echo "Deploy to development environment"
+      - name: Smoke test (auth gate — expect 401)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/properties")
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/properties, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Auth gate OK"
 
-  deploy-prod:
+  # Railway deploys production via GitHub integration (push to main → production environment).
+  verify-prod:
+    name: Verify Railway Production (native deploy)
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: ${{ vars.RAILWAY_PROD_URL }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Wait for Railway native deployment
+        run: |
+          echo "Waiting 120s for Railway GitHub integration to deploy main → production..."
+          sleep 120
 
-      - name: Build Docker image
-        run: docker build -t casazen-api:${{ github.ref_name }} .
+      - name: Production health check
+        env:
+          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
+        run: |
+          if [ -z "$RAILWAY_PROD_URL" ]; then
+            echo "::warning::RAILWAY_PROD_URL not set — skipping health check."
+            exit 0
+          fi
+          curl -f "${RAILWAY_PROD_URL}/api/health" \
+            --retry 8 --retry-delay 15 --retry-connrefused
+          echo "✅ Production healthy"
 
-      - name: Deploy to production
-        run: echo "Deploy to production environment"
+      - name: Smoke test production (auth gate)
+        env:
+          RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
+        run: |
+          if [ -z "$RAILWAY_PROD_URL" ]; then exit 0; fi
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_PROD_URL}/api/properties")
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/properties, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Production auth gate OK"

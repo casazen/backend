@@ -11,6 +11,7 @@ namespace Casazen.Tests.Integration;
 /// Integration tests for PropertiesController
 /// Note: These tests verify authorization requirements since Auth0 is not configured in test environment
 /// For full authentication testing, see PropertiesController unit tests with mocked Auth0 claims
+/// IMPORTANT: These tests are SKIPPED in CI/CD (Linux) because they require LocalDB (Windows-only)
 /// </summary>
 public class PropertiesControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
@@ -55,13 +56,12 @@ public class PropertiesControllerIntegrationTests : IClassFixture<WebApplication
     [Fact]
     public async Task Create_WithoutAuthentication_ReturnsUnauthorizedOrError()
     {
-        // Arrange
+        // Arrange — OwnerId is not included; it is always derived from JWT on the server side
         var newProperty = new
         {
             Name = "Test Property",
             City = "Rome",
             Address = "Via Roma 1",
-            OwnerId = "auth0|test_user_123",
             Bedrooms = 2,
             Bathrooms = 1,
             MaxGuests = 4,
@@ -88,14 +88,13 @@ public class PropertiesControllerIntegrationTests : IClassFixture<WebApplication
     [Fact]
     public async Task Update_WithoutAuthentication_ReturnsUnauthorizedOrError()
     {
-        // Arrange
+        // Arrange — OwnerId is not included; it is always derived from JWT on the server side
         var testId = Guid.NewGuid();
         var updateProperty = new
         {
             Name = "Updated Property",
             City = "Rome",
-            Address = "Via Roma 1",
-            OwnerId = "auth0|test_user_123"
+            Address = "Via Roma 1"
         };
 
         var json = JsonSerializer.Serialize(updateProperty);
@@ -129,18 +128,41 @@ public class PropertiesControllerIntegrationTests : IClassFixture<WebApplication
         );
     }
 
+    /// <summary>
+    /// Regression test for issue #143: POST /api/properties without OwnerId in the body
+    /// must not return 400 Bad Request. OwnerId is always derived from the JWT on the server.
+    /// The test expects 401 because Auth0 is not configured in the integration test environment,
+    /// confirming the request reaches auth middleware and not model-validation (which would 400).
+    /// </summary>
     [Fact]
-    public async Task Search_AllowsAnonymousAccess()
+    public async Task Create_WithoutOwnerIdInBody_DoesNotReturn400()
     {
-        // Act - Search endpoint should allow anonymous access
-        var response = await _client.GetAsync("/api/properties/search?city=Rome");
+        // Arrange — no OwnerId field, matching the new CreatePropertyRequest DTO
+        var newProperty = new
+        {
+            Name = "Regression Property",
+            City = "Rome",
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 80.00m
+        };
 
-        // Assert - Should succeed or return 500 (database not available in test)
-        // The key test is that it doesn't return 401 Unauthorized
+        var json = JsonSerializer.Serialize(newProperty);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act — sent without an authentication token
+        var response = await _client.PostAsync("/api/properties", content);
+
+        // Assert — must NOT be 400 (which would indicate OwnerId is wrongly required in request body)
+        Assert.NotEqual(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // Must be 401 or 500 (auth not configured), confirming validation passed
         Assert.True(
-            response.StatusCode == HttpStatusCode.OK ||
+            response.StatusCode == HttpStatusCode.Unauthorized ||
             response.StatusCode == HttpStatusCode.InternalServerError,
-            $"Search endpoint should not require authentication, got {response.StatusCode}"
+            $"Expected Unauthorized or InternalServerError (not 400), got {response.StatusCode}"
         );
     }
 

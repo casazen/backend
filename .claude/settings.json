@@ -7,25 +7,28 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash(dotnet test*)",
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/filter-test-output.sh",
-            "description": "Filter test output to show only failures"
-          },
+            "command": "bash .claude/hooks/scripts/filter-test-output.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(dotnet build*)",
+        "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/filter-build-output.sh",
-            "description": "Filter build output to show only errors/warnings"
+            "command": "bash .claude/hooks/scripts/filter-build-output.sh"
           }
         ]
       }
     ]
   },
   "statusLine": {
-    "format": "{context_percent} | {cost} | {model}",
-    "showContextUsage": true
+    "type": "command",
+    "command": ""
   },
   "defaultSubagentModel": "sonnet",
   "compactInstructions": "When compacting, focus on:\n- Code changes and diffs\n- Test results (especially failures)\n- Error messages and stack traces\n- API responses\nExclude verbose logs and repetitive output."

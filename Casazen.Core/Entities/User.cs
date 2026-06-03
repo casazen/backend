@@ -34,6 +34,7 @@ public enum UserRole
 {
     Admin,
     PropertyOwner,
+    PropertyManager,
     Guest,
     Staff
 }
