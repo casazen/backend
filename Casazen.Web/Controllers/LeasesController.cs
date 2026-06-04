@@ -10,6 +10,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "LongTermLandlord")]
+[Authorize(Policy = "RequireContext:long-rent:lease.read")]
 public class LeasesController(ILeaseWorkflowService leaseService) : ControllerBase
 {
     private string? GetOwnerId() =>
@@ -35,6 +36,7 @@ public class LeasesController(ILeaseWorkflowService leaseService) : ControllerBa
 
     /// <summary>Create a new lease contract draft.</summary>
     [HttpPost]
+    [Authorize(Policy = "RequireContext:long-rent:lease.create")]
     public async Task<IActionResult> Create([FromBody] CreateLeaseDto dto)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
@@ -63,6 +65,7 @@ public class LeasesController(ILeaseWorkflowService leaseService) : ControllerBa
 
     /// <summary>Generate PDF/A and initiate digital signing for a lease in Draft status.</summary>
     [HttpPost("{id:guid}/signing")]
+    [Authorize(Policy = "RequireContext:long-rent:lease.sign")]
     public async Task<IActionResult> InitiateSigning(Guid id)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
@@ -83,6 +86,7 @@ public class LeasesController(ILeaseWorkflowService leaseService) : ControllerBa
 
     /// <summary>Submit a Signed lease to Openapi.it Docuengine for RLI registration (async).</summary>
     [HttpPost("{id:guid}/registration")]
+    [Authorize(Policy = "RequireContext:long-rent:lease.register")]
     public async Task<IActionResult> TriggerRegistration(Guid id)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();

@@ -12,6 +12,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class BookingsController(
     IBookingService bookingService,
     ITaxCalculationService taxCalculationService,
@@ -40,6 +41,7 @@ public class BookingsController(
     }
 
     [HttpPost]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
     public async Task<ActionResult<Booking>> Create([FromBody] Booking booking)
     {
         logger.LogInformation("Creating booking for property: {PropertyId}", booking.PropertyId);
@@ -66,6 +68,7 @@ public class BookingsController(
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
     public async Task<IActionResult> Update(Guid id, [FromBody] Booking booking)
     {
         var existing = await bookingService.GetBookingAsync(id);
@@ -78,6 +81,7 @@ public class BookingsController(
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
     public async Task<IActionResult> Cancel(Guid id)
     {
         logger.LogInformation("Cancelling booking: {BookingId}", id);
@@ -140,6 +144,7 @@ public class BookingsController(
     }
 
     [HttpPost("{id}/check-in")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
     public async Task<IActionResult> CheckIn(Guid id)
     {
         var booking = await bookingService.GetBookingAsync(id);
@@ -178,6 +183,7 @@ public class BookingsController(
     }
 
     [HttpPost("{id}/check-out")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
     public async Task<IActionResult> CheckOut(Guid id)
     {
         var booking = await bookingService.GetBookingAsync(id);
