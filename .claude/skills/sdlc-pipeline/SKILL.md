@@ -80,13 +80,13 @@ After the agent completes, run the executable gate checks directly (do not rely 
 | 02 | Check `Sessions/design-<N>.md` exists and has all required sections |
 | 03 | `dotnet test` · `dotnet format --verify-no-changes` · `npm test` · `npm run test:e2e` (AC-driven specs) · `tsc` · `lint` · `build` · `gh pr view` for BE + FE PRs targeting `develop` |
 | 04 | `Sessions/review-<N>.md` · `gh pr view` BE + FE PRs |
-| 05 | Phase A: merge to `develop` · Phase B: `dotnet test` + `npm run test:e2e` + staging AC + SPA check · Phase C: `develop`→`main` only if B passes · Phase D: prod health + SPA + AC |
+| 05 | Phase A–C: `develop`→`main` for prod · Phase D: prod health + **G20 aligned** + **G21 build on both tips** · sync-back `main`→`develop` only if `main` builds; else fix `develop` then `develop`→`main` |
 | 06 | `Sessions/ops-report-<date>.md` · prod health on `$RAILWAY_PROD_URL` + `casazen.vercel.app` |
 
 **Step 5 — Gate outcome**
 
 - If **all gates pass**: update state file (stage → `completed`), advance to next stage.
-- If **any gate fails** and `iteration < 3`: increment iteration, re-run Step 2–4 with failing gates as context. **Stage 05 Phase B/D**: route code failures to Stage 03 fix branch → merge develop → re-test (see `05-release/harness.md` fix loop).
+- If **any gate fails** and `iteration < 3`: increment iteration, re-run Step 2–4 with failing gates as context. **Stage 05 Phase B/D**: route code failures to Stage 03 fix branch → merge develop → re-test (see `05-release/harness.md` fix loop). **After prod promotion, G20 requires `main` and `develop` tips aligned in both repos** — merge `main` back into `develop` if drift.
 - If **iteration == 3** and gates still failing: write `Sessions/pipeline-<slug>/escalation-<stage>.md` (list failing gates + iteration history), update state to `escalated`, stop and inform user.
 
 **Step 6 — Update state file**
@@ -244,6 +244,7 @@ These rules apply throughout the pipeline and cannot be bypassed:
 - **Tests from acceptance criteria in Stage 03** — test-engineer adds Vitest + Playwright E2E for each Issue AC before PR; Stage 05 re-runs BE + E2E before main promotion
 - **Stage 06 runs on production (`main`) only** — not against develop/staging URLs
 - **Stage 05 auto-increments patch semver** from latest tag on backend repo unless specified otherwise
+- **Stage 05 Phase D G20/G21** — `main` and `develop` same tip **and** both build; promote only `develop`→`main`; never merge broken `main` into `develop`
 - **Never skip secrets check (G10)** — committed secrets cannot be undone
 - **Never hardcode tourist tax amounts** — `TouristTaxRate` entity only
 - **All `/api` endpoints require `[Authorize]`** unless explicitly justified as public

@@ -66,7 +66,9 @@ Do **not** skip phases or reorder them. Do **not** promote to `main` if Phase B 
 1. Wait **~90–120s** after push to `main`
 2. Spawn qa-validator against **production** (`$RAILWAY_PROD_URL`, `https://casazen.vercel.app`)
 3. Re-run critical AC smoke on production
-4. Write gate results to `Sessions/release-<issue-N>.md`
+4. **G20 branch alignment** — both divergence counts `0` per repo. **Merge direction:** promote `develop` → `main`; sync-back `main` → `develop` only if `main` builds. If `main` is broken, fix on `develop` then promote `develop` → `main` (never poison `develop` with a broken `main`).
+5. **G21 build parity** — `npm run build` / `dotnet build` on both `origin/main` and `origin/develop` tips.
+6. Write gate results (G20 SHAs, G21 build) to `Sessions/release-<issue-N>.md`
 
 ## Gate commands
 
@@ -90,6 +92,12 @@ gh release create vX.Y.Z --generate-notes
 # Phase D (main / production)
 curl -sf $RAILWAY_PROD_URL/api/health
 curl -sf https://casazen.vercel.app
+
+# G20 — main ↔ develop aligned (run per repo; both must be 0)
+git fetch origin main develop
+git rev-list --count origin/develop..origin/main   # main ahead of develop → must be 0
+git rev-list --count origin/main..origin/develop   # develop ahead of main → must be 0
+# If drift: git checkout develop && git merge origin/main && git push origin develop
 ```
 
 ## Output format
