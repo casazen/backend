@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
+using AppContextEntity = Casazen.Core.Entities.AppContext;
 
 namespace Casazen.Infrastructure.Data;
 
@@ -27,6 +28,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
+    public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
+    public DbSet<Role> Roles { get; set; } = null!;
+    public DbSet<RolePermission> RolePermissions { get; set; } = null!;
+    public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -177,5 +182,81 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
+
+        modelBuilder.Entity<AppContextEntity>()
+            .HasKey(c => c.Key);
+
+        modelBuilder.Entity<Role>()
+            .HasIndex(r => new { r.ContextKey, r.RoleKey })
+            .IsUnique();
+
+        modelBuilder.Entity<Role>()
+            .HasOne(r => r.Context)
+            .WithMany(c => c.Roles)
+            .HasForeignKey(r => r.ContextKey)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RolePermission>()
+            .HasKey(rp => new { rp.RoleId, rp.PermissionKey });
+
+        modelBuilder.Entity<RolePermission>()
+            .HasOne(rp => rp.Role)
+            .WithMany(r => r.Permissions)
+            .HasForeignKey(rp => rp.RoleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserContextMembership>()
+            .HasIndex(m => new { m.UserId, m.ContextKey })
+            .IsUnique();
+
+        modelBuilder.Entity<UserContextMembership>()
+            .HasOne(m => m.User)
+            .WithMany(u => u.ContextMemberships)
+            .HasForeignKey(m => m.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserContextMembership>()
+            .HasOne(m => m.Context)
+            .WithMany(c => c.Memberships)
+            .HasForeignKey(m => m.ContextKey)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserContextMembership>()
+            .HasOne(m => m.Role)
+            .WithMany(r => r.Memberships)
+            .HasForeignKey(m => m.RoleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AppContextEntity>().HasData(
+            new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
+            new AppContextEntity { Key = "long-rent", DisplayName = "Affitti lungo termine" },
+            new AppContextEntity { Key = "admin", DisplayName = "Amministrazione" });
+
+        modelBuilder.Entity<Role>().HasData(
+            new Role { Id = 1, ContextKey = "short-rent", RoleKey = "property_owner" },
+            new Role { Id = 2, ContextKey = "long-rent", RoleKey = "long_term_landlord" },
+            new Role { Id = 3, ContextKey = "admin", RoleKey = "platform_admin" });
+
+        modelBuilder.Entity<RolePermission>().HasData(
+            new RolePermission { RoleId = 1, PermissionKey = "property.read" },
+            new RolePermission { RoleId = 1, PermissionKey = "property.write" },
+            new RolePermission { RoleId = 1, PermissionKey = "booking.read" },
+            new RolePermission { RoleId = 1, PermissionKey = "booking.write" },
+            new RolePermission { RoleId = 1, PermissionKey = "payment.read" },
+            new RolePermission { RoleId = 1, PermissionKey = "payment.write" },
+            new RolePermission { RoleId = 1, PermissionKey = "ota.read" },
+            new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
+            new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
+            new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
+            new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
+            new RolePermission { RoleId = 2, PermissionKey = "lease.create" },
+            new RolePermission { RoleId = 2, PermissionKey = "lease.sign" },
+            new RolePermission { RoleId = 2, PermissionKey = "lease.register" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.stats.read" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.users.read" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.users.manage" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.cin.read" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" });
     }
 }

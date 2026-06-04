@@ -12,6 +12,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:property.read")]
 public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
@@ -74,6 +75,7 @@ public class PropertiesController(
     /// <response code="201">Property created successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
     [HttpPost]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<ActionResult<Property>> Create([FromBody] CreatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -103,6 +105,7 @@ public class PropertiesController(
     /// <response code="403">The caller is not the owner of this property.</response>
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPut("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -126,6 +129,7 @@ public class PropertiesController(
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -164,6 +168,7 @@ public class PropertiesController(
 
     [HttpPost("{id}/images")]
     [Consumes("multipart/form-data")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<ActionResult<Property>> UploadImages(Guid id, [FromForm] List<IFormFile> images)
     {
         var userId = GetAuthenticatedUserId();
@@ -228,6 +233,7 @@ public class PropertiesController(
     }
 
     [HttpDelete("{id}/images/{imageIndex}")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<ActionResult<Property>> DeleteImage(Guid id, int imageIndex)
     {
         var userId = GetAuthenticatedUserId();
@@ -277,6 +283,7 @@ public class PropertiesController(
     }
 
     [HttpPut("{id}/images/order")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<ActionResult<Property>> ReorderImages(Guid id, [FromBody] List<string> orderedImageUrls)
     {
         var userId = GetAuthenticatedUserId();
@@ -386,6 +393,7 @@ public class PropertiesController(
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPost("{id}/documents")]
     [Consumes("multipart/form-data")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<ActionResult<PropertyDocumentDto>> UploadDocument(
         Guid id,
         IFormFile file,
@@ -420,6 +428,7 @@ public class PropertiesController(
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">Property or document not found.</response>
     [HttpDelete("{id}/documents/{docId}")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<IActionResult> DeleteDocument(Guid id, Guid docId)
     {
         var userId = GetAuthenticatedUserId();
