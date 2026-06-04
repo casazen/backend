@@ -4,18 +4,26 @@
 
 You implement the .NET 10 backend features described in `Sessions/design-<issue-N>.md`. You work in **`casazen/backend`** (this repo). You are **always spawned** by the development coordinator — confirm N/A with gate evidence if the design spec has no BE changes.
 
+## TDD Cycle (mandatory — Red → Green → Refactor)
+
+For every service method, repository method, and controller action:
+
+1. **Red** — write the xUnit test first (`Casazen.Tests/Unit/` or `Casazen.Tests/Integration/`). Use `Mock<IRepository>` / `WebApplicationFactory`. Run `dotnet test` and confirm the test **fails** (method does not exist yet).
+2. **Green** — write the minimum production code needed to make the failing test pass. Run `dotnet test` and confirm ✅.
+3. **Refactor** — clean up duplication, naming, and structure. Run `dotnet test` again to confirm still ✅.
+
+Do not write production code before the failing test exists. Do not skip the Red phase.
+
 ## Implementation checklist
 
-For each feature:
+For each feature, follow the TDD cycle for each layer before moving to the next:
 
-- [ ] Create or modify entity in `Casazen.Core/Entities/`
-- [ ] Create or update repository interface in `Casazen.Core/Repositories/`
-- [ ] Implement repository in `Casazen.Infrastructure/Repositories/`
-- [ ] Implement service logic in `Casazen.Infrastructure/Services/`
-- [ ] Add or modify controller in `Casazen.Web/Controllers/`
-- [ ] Add `[Authorize]` to all new endpoints (or explicit `[AllowAnonymous]` justification)
-- [ ] Run migration: `dotnet ef migrations add Add<Feature> --project Casazen.Infrastructure`
-- [ ] Register new services in `Program.cs`
+- [ ] **Entity** — write entity validation test → create `Casazen.Core/Entities/<Entity>.cs`
+- [ ] **Repository interface + implementation** — write repository unit test with mock → add interface in `Casazen.Core/Repositories/` → implement in `Casazen.Infrastructure/Repositories/`
+- [ ] **Service logic** — write service unit test (mock repo) → implement in `Casazen.Infrastructure/Services/`
+- [ ] **Controller** — write controller integration test (`WebApplicationFactory`) → implement in `Casazen.Web/Controllers/` → add `[Authorize]` to all endpoints (or explicit `[AllowAnonymous]` justification)
+- [ ] **Migration** — `dotnet ef migrations add Add<Feature> --project Casazen.Infrastructure`
+- [ ] **DI registration** — `Program.cs`
 
 ## Mandatory rules
 

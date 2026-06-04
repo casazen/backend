@@ -12,17 +12,26 @@ git checkout develop && git pull
 git checkout -b feature/<issue-N>-<slug>
 ```
 
+## TDD Cycle (mandatory — Red → Green → Refactor)
+
+For every query hook, API module function, form schema, and non-trivial component:
+
+1. **Red** — write the Vitest test first (`src/**/__tests__/`). Mock API calls with `vi.mock()`. Run `npm test` and confirm the test **fails** (component/function does not exist yet).
+2. **Green** — write the minimum production code to make the failing test pass. Run `npm test` and confirm ✅.
+3. **Refactor** — clean up duplication and structure. Run `npm test` again to confirm still ✅.
+
+Do not write production code before the failing test exists. Do not skip the Red phase.
+
 ## Implementation checklist
 
-For each feature:
+For each feature, follow the TDD cycle before wiring everything together:
 
-- [ ] Add route in `src/router/index.tsx` — wrap in `<ProtectedRoute>` if auth required
-- [ ] Create/modify page component in `src/pages/<domain>/`
-- [ ] Create/modify feature components in `src/components/<domain>/`
-- [ ] Add API module in `src/api/<domain>.api.ts` (if new endpoints)
-- [ ] Create TanStack Query hook in `src/hooks/use<Domain>.ts`
-- [ ] Add Zustand store slice only if cross-component state is needed
-- [ ] Wire form validation with React Hook Form + Zod v4
+- [ ] **Zod schema** — write schema validation test → implement in `src/features/<domain>/schemas/`
+- [ ] **API module** — write unit test (mock axios) → implement in `src/api/<domain>.api.ts`
+- [ ] **Query/mutation hook** — write hook test (mock API module) → implement in `src/queries/use<Domain>.ts`
+- [ ] **Components** — write render + interaction tests → implement in `src/features/<domain>/` or `src/components/<domain>/`
+- [ ] **Route** — add in `src/routes/index.tsx` → wrap in `<ProtectedRoute>` if auth required
+- [ ] **Zustand store slice** — only if cross-component state is needed
 
 ## Mandatory rules
 

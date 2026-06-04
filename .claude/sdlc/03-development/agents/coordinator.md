@@ -25,13 +25,25 @@ Do **not** skip `backend-developer` or `frontend-developer` even when the design
 
 ## Session flow
 
+**All implementation follows TDD: Red → Green → Refactor. No production code is written before a failing test exists.**
+
 1. Read `Sessions/design-<issue-N>.md` — identify BE scope, FE scope, and cross-repo dependencies (BE API before FE integration)
 2. Create branch `feature/<issue-N>-<slug>` from `develop` in **each repo** that needs changes
-3. Spawn **backend-developer first** when the feature adds or changes API contracts; then **frontend-developer**
-4. test-engineer adds/updates tests in both repos as needed
-5. Run all gates from `harness.md` in both repos — route failures to the responsible specialist
-6. Open PR(s) with `gh pr create --base develop` — link cross-repo PRs in both bodies
-7. Loop on failing gates (max 3 iterations) or escalate
+3. **Backend TDD loop** (when API changes exist) — spawn **backend-developer**:
+   - For each layer (entity → repository → service → controller): write failing test → implement → confirm green
+   - Run `dotnet test` after every Red→Green cycle
+4. **Frontend TDD loop** — spawn **frontend-developer**:
+   - For each unit (schema → API module → query hook → component): write failing test → implement → confirm green
+   - Run `npm test` after every Red→Green cycle
+5. **E2E Coverage Phase (mandatory)** — spawn **test-engineer**:
+   - Build AC→E2E Coverage Table (every AC from Issue listed)
+   - Implement all Playwright tests for UI-bearing ACs (navigate to route → assert renders without exception → assert critical element visible)
+   - Run `npm run test:e2e` — all must pass
+   - **Do not advance to gate check until coverage table is complete and G9 ✅**
+6. Run all gates G1–G14 from `harness.md` in both repos — route failures to the responsible specialist
+7. Verify the AC→E2E Coverage Table is complete — G9 fails if any UI-bearing AC is missing a row
+8. Open PR(s) with `gh pr create --base develop` — coverage table included in PR body, link cross-repo PRs
+9. Loop on failing gates (max 3 iterations) or escalate
 
 ## Gate routing
 
@@ -39,8 +51,9 @@ Do **not** skip `backend-developer` or `frontend-developer` even when the design
 |---|---|
 | G1–G4 (backend) | backend-developer |
 | G5–G8 (frontend) | frontend-developer |
-| G9 (E2E from ACs) | test-engineer |
-| G10–G13 (compliance) | test-engineer |
+| G9 (E2E coverage table incomplete) | test-engineer — E2E Coverage Phase |
+| G10 (E2E tests failing) | test-engineer |
+| G11–G14 (compliance) | test-engineer |
 
 ## NEVER do this
 
