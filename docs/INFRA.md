@@ -22,7 +22,7 @@ Alternative for truly $0: **Render** free tier (same DX, but the service sleeps 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  PRODUCTION                                              │
-│  FE: casazen.vercel.app                                  │
+│  FE: casazen-app.vercel.app  (⚠️ see issue #187)         │
 │  BE: casazen-api.up.railway.app                          │
 │  DB: supabase.co (schema: casazen_prod)                  │
 └──────────────────────────────────────────────────────────┘
@@ -147,7 +147,7 @@ You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_P
 - [ ] **Production Branch** = `main` (Settings → Git)
 - [ ] Enable deployments for branch **`develop`** (Preview env vars → Railway test API)
 - [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section)
-- [ ] Confirm: push `develop` → staging FE; push `main` → `casazen.vercel.app`
+- [ ] Confirm: push `develop` → staging FE; push `main` → production FE (see issue #187 for canonical URL confirmation)
 
 ### 6. Smoke test
 
@@ -420,7 +420,7 @@ In Vercel dashboard → Settings → Environment Variables:
 | Branch | Vercel | Railway |
 |---|---|---|
 | `develop` | Preview deployment (staging FE, Preview env vars) | `test` environment |
-| `main` | Production → `https://casazen.vercel.app` | `production` environment |
+| `main` | Production → `https://casazen-app.vercel.app` (⚠️ see issue #187) | `production` environment |
 | PR → `develop` | Per-PR preview URL | Optional PR deploy or shared test after merge |
 
 Configure in Vercel → **Settings → Git**:
@@ -433,7 +433,7 @@ Configure in Vercel → **Settings → Git**:
 |---|---|
 | PR opened / updated (base `develop`) | Preview URL → `https://preview-[hash].vercel.app` |
 | Push to `develop` | Staging FE deploy (Preview env vars, points to test API) |
-| Push to `main` | Production deploy → `https://casazen.vercel.app` |
+| Push to `main` | Production deploy → `https://casazen-app.vercel.app` (⚠️ confirm via issue #187) |
 
 Vercel posts a comment on every PR with the preview URL.
 

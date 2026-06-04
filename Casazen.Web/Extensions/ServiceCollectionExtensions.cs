@@ -128,6 +128,7 @@ public static class ServiceCollectionExtensions
             "http://localhost:5175",
             "https://casazen.app",
             "https://casazen.vercel.app",
+            "https://casazen-app.vercel.app",
         };
 
         var configOrigins = configuration["Cors:AllowedOrigins"];
