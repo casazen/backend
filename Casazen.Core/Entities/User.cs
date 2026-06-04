@@ -24,10 +24,15 @@ public class User
     [Required]
     public UserRole Role { get; set; } = UserRole.PropertyOwner;
 
+    [MaxLength(64)]
+    public string? LastUsedContextKey { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<UserContextMembership> ContextMemberships { get; set; } = new List<UserContextMembership>();
 }
 
 public enum UserRole

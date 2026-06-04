@@ -10,6 +10,10 @@ using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Infrastructure;
+<<<<<<< HEAD
+=======
+using Microsoft.AspNetCore.Authorization;
+>>>>>>> origin/develop
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -110,12 +114,52 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenAuthorization(this IServiceCollection services)
     {
-        services.AddAuthorizationBuilder()
+        services.AddHttpContextAccessor();
+        services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
+        services.AddScoped<IAuthorizationHandler, ContextAuthorizationHandler>();
+
+        var builder = services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
             .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
             .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"));
 
+        RegisterContextPolicies(builder);
+
         return services;
+    }
+
+    private static void RegisterContextPolicies(AuthorizationBuilder builder)
+    {
+        var contextPermissions = new Dictionary<string, string[]>
+        {
+            ["short-rent"] =
+            [
+                "property.read", "property.write",
+                "booking.read", "booking.write",
+                "payment.read", "payment.write",
+                "ota.read", "ota.write",
+                "guest.read", "guest.write",
+            ],
+            ["long-rent"] =
+            [
+                "lease.read", "lease.create", "lease.sign", "lease.register",
+            ],
+            ["admin"] =
+            [
+                "admin.stats.read", "admin.users.read", "admin.users.manage",
+                "admin.cin.read", "admin.jobs.read", "admin.tax.manage",
+            ],
+        };
+
+        foreach (var pair in contextPermissions)
+        {
+            foreach (var permission in pair.Value)
+            {
+                var policyName = $"RequireContext:{pair.Key}:{permission}";
+                builder.AddPolicy(policyName, policy =>
+                    policy.Requirements.Add(new ContextPermissionRequirement(pair.Key, permission)));
+            }
+        }
     }
 
     public static IServiceCollection AddCasazenCors(this IServiceCollection services, IConfiguration configuration)
