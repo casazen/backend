@@ -74,15 +74,17 @@ public class UserServiceTests
 
         _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
-        _auth0Mock.Setup(a => a.AssignRoleAsync(userId, UserRole.Admin)).Returns(Task.CompletedTask);
+        _auth0Mock.Setup(a => a.SetRolesAsync(userId, It.IsAny<IReadOnlyList<UserRole>>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         await _service.ChangeRoleAsync(userId, UserRole.Admin, adminSub);
 
         // Assert
         Assert.Equal(UserRole.Admin, user.Role);
+        Assert.Equal("Admin", user.AssignedRolesCsv);
         _repoMock.Verify(r => r.UpdateAsync(user), Times.Once);
-        _auth0Mock.Verify(a => a.AssignRoleAsync(userId, UserRole.Admin), Times.Once);
+        _auth0Mock.Verify(a => a.SetRolesAsync(userId, It.IsAny<IReadOnlyList<UserRole>>()), Times.Once);
     }
 
     [Fact]
@@ -105,7 +107,7 @@ public class UserServiceTests
         var user = new User { Id = sub, Email = "a@b.com", FirstName = "A", LastName = "B" };
         _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
-        _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
+        _auth0Mock.Setup(a => a.SetRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
             .Returns(Task.CompletedTask);
 
         var (result, roles) = await _service.CompleteOnboardingAsync(
@@ -115,9 +117,30 @@ public class UserServiceTests
         Assert.Equal(UserRole.PropertyOwner, result.Role);
         Assert.Single(roles);
         Assert.Equal("PropertyOwner", roles[0]);
-        _auth0Mock.Verify(a => a.AssignOnboardingRolesAsync(
+        _auth0Mock.Verify(a => a.SetRolesAsync(
             sub, It.Is<IReadOnlyList<UserRole>>(list => list.Count == 1 && list[0] == UserRole.PropertyOwner)),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ChangeRolesAsync_MultipleRoles_UpdatesCsvAndCallsAuth0()
+    {
+        var userId = "auth0|multi1";
+        var user = new User { Id = userId, Email = "multi@example.com", Role = UserRole.Guest };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _auth0Mock.Setup(a => a.SetRolesAsync(userId, It.IsAny<IReadOnlyList<UserRole>>()))
+            .Returns(Task.CompletedTask);
+
+        var assigned = await _service.ChangeRolesAsync(
+            userId,
+            [UserRole.PropertyOwner, UserRole.LongTermLandlord],
+            "auth0|admin");
+
+        Assert.Equal(2, assigned.Count);
+        Assert.Contains("PropertyOwner", assigned);
+        Assert.Contains("LongTermLandlord", assigned);
+        Assert.Equal(RentalType.Both, user.RentalType);
     }
 
     // ─── GetPagedAsync ──────────────────────────────────────────────────────

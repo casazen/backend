@@ -127,13 +127,48 @@ public class UsersController(
         try
         {
             await userService.ChangeRoleAsync(id, newRole, adminSub);
+            return Ok(new { id, role = dto.Role });
         }
         catch (KeyNotFoundException)
         {
             return NotFound();
         }
+    }
 
-        return Ok(new { id, role = dto.Role });
+    /// <summary>Replaces all roles for a user. Admin only.</summary>
+    [HttpPut("{id}/roles")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult> ChangeRoles(string id, [FromBody] ChangeRolesDto dto)
+    {
+        var parsed = UserRoleMapping.ParseRoles(dto.Roles);
+        if (parsed.Count == 0)
+            return BadRequest(new { error = "At least one valid role is required" });
+
+        if (parsed.Count != dto.Roles.Length)
+        {
+            var invalid = dto.Roles
+                .Where(r => !Enum.TryParse<UserRole>(r, ignoreCase: true, out _))
+                .ToArray();
+            return BadRequest(new { error = $"Unknown role(s): {string.Join(", ", invalid)}" });
+        }
+
+        var adminSub = GetSub();
+        if (adminSub == null)
+            return Unauthorized();
+
+        try
+        {
+            var assigned = await userService.ChangeRolesAsync(id, parsed, adminSub);
+            return Ok(new { id, rolesAssigned = assigned });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// <summary>Soft-deletes a user (sets IsActive = false). Admin only. Cannot self-delete.</summary>
@@ -191,29 +226,39 @@ public class UsersController(
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-    private static UserSummaryDto ToSummary(User u) => new()
+    private static UserSummaryDto ToSummary(User u)
     {
-        Id = u.Id,
-        Email = u.Email,
-        FirstName = u.FirstName,
-        LastName = u.LastName,
-        Role = u.Role.ToString(),
-        RentalType = u.RentalType?.ToString(),
-        IsActive = u.IsActive,
-        CreatedAt = u.CreatedAt
-    };
+        var roles = UserRoleMapping.GetAssignedRoleNames(u).ToArray();
+        return new UserSummaryDto
+        {
+            Id = u.Id,
+            Email = u.Email,
+            FirstName = u.FirstName,
+            LastName = u.LastName,
+            Role = u.Role.ToString(),
+            Roles = roles,
+            RentalType = u.RentalType?.ToString(),
+            IsActive = u.IsActive,
+            CreatedAt = u.CreatedAt
+        };
+    }
 
-    private static UserDetailDto ToDetail(User u) => new()
+    private static UserDetailDto ToDetail(User u)
     {
-        Id = u.Id,
-        Email = u.Email,
-        FirstName = u.FirstName,
-        LastName = u.LastName,
-        Role = u.Role.ToString(),
-        RentalType = u.RentalType?.ToString(),
-        IsActive = u.IsActive,
-        CreatedAt = u.CreatedAt,
-        PhoneNumber = u.PhoneNumber,
-        UpdatedAt = u.UpdatedAt
-    };
+        var summary = ToSummary(u);
+        return new UserDetailDto
+        {
+            Id = summary.Id,
+            Email = summary.Email,
+            FirstName = summary.FirstName,
+            LastName = summary.LastName,
+            Role = summary.Role,
+            Roles = summary.Roles,
+            RentalType = summary.RentalType,
+            IsActive = summary.IsActive,
+            CreatedAt = summary.CreatedAt,
+            PhoneNumber = u.PhoneNumber,
+            UpdatedAt = u.UpdatedAt
+        };
+    }
 }

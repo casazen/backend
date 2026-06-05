@@ -21,6 +21,9 @@ public interface IUserService
 
     Task ChangeRoleAsync(string id, UserRole newRole, string adminSub);
 
+    /// <summary>Replaces all roles for a user (Auth0 + DB).</summary>
+    Task<IReadOnlyList<string>> ChangeRolesAsync(string id, IReadOnlyList<UserRole> roles, string adminSub);
+
     /// <summary>
     /// Completes or updates onboarding: persists rental type, syncs Auth0 onboarding roles.
     /// </summary>

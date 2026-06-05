@@ -26,6 +26,10 @@ public class User
 
     public RentalType? RentalType { get; set; }
 
+    /// <summary>Comma-separated Auth0 role names (e.g. PropertyOwner,LongTermLandlord). When null, derived from Role/RentalType.</summary>
+    [MaxLength(256)]
+    public string? AssignedRolesCsv { get; set; }
+
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 

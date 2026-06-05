@@ -61,7 +61,10 @@ public class UserRepository(AppDbContext context) : IUserRepository
 
         if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole))
         {
-            query = query.Where(u => u.Role == parsedRole);
+            var roleName = parsedRole.ToString();
+            query = query.Where(u =>
+                u.Role == parsedRole ||
+                (u.AssignedRolesCsv != null && u.AssignedRolesCsv.Contains(roleName)));
         }
 
         if (isActive.HasValue)

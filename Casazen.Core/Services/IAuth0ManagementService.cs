@@ -10,4 +10,7 @@ public interface IAuth0ManagementService
     /// Replaces onboarding-related roles (PropertyOwner, LongTermLandlord) while preserving others (e.g. Admin).
     /// </summary>
     Task AssignOnboardingRolesAsync(string userId, IReadOnlyList<UserRole> roles);
+
+    /// <summary>Replaces all Auth0 roles with the given set.</summary>
+    Task SetRolesAsync(string userId, IReadOnlyList<UserRole> roles);
 }

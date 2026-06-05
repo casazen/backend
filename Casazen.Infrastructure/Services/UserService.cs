@@ -120,18 +120,33 @@ public class UserService(
     /// <inheritdoc />
     public async Task ChangeRoleAsync(string id, UserRole newRole, string adminSub)
     {
+        await ChangeRolesAsync(id, [newRole], adminSub);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> ChangeRolesAsync(
+        string id, IReadOnlyList<UserRole> roles, string adminSub)
+    {
+        if (roles.Count == 0)
+            throw new ArgumentException("At least one role is required", nameof(roles));
+
         var user = await repository.GetByIdAsync(id)
             ?? throw new KeyNotFoundException($"User {id} not found");
 
-        user.Role = newRole;
+        var distinct = roles.Distinct().ToList();
+        user.AssignedRolesCsv = UserRoleMapping.ToCsv(distinct);
+        user.Role = UserRoleMapping.PickPrimaryRole(distinct);
+        user.RentalType = UserRoleMapping.DeriveRentalType(distinct);
         await repository.UpdateAsync(user);
 
-        // Sync role on Auth0 (best-effort — service handles errors gracefully)
-        await auth0Management.AssignRoleAsync(id, newRole);
+        await auth0Management.SetRolesAsync(id, distinct);
 
+        var assigned = UserRoleMapping.GetAssignedRoleNames(user).ToArray();
         logger.LogInformation(
-            "Role changed: userId={UserId} newRole={Role} changedBy={AdminId}",
-            id, newRole, adminSub);
+            "Roles changed: userId={UserId} roles=[{Roles}] changedBy={AdminId}",
+            id, string.Join(", ", assigned), adminSub);
+
+        return assigned;
     }
 
     /// <inheritdoc />
@@ -142,11 +157,12 @@ public class UserService(
         var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
 
         user.RentalType = rentalType;
-        user.Role = roles[0];
+        user.Role = UserRoleMapping.PickPrimaryRole(roles);
+        user.AssignedRolesCsv = UserRoleMapping.ToCsv(roles);
         user.UpdatedAt = DateTime.UtcNow;
         await repository.UpdateAsync(user);
 
-        await auth0Management.AssignOnboardingRolesAsync(sub, roles);
+        await auth0Management.SetRolesAsync(sub, roles);
 
         var assigned = roles.Select(r => r.ToString()).ToArray();
         logger.LogInformation(

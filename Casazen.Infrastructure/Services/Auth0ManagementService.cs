@@ -173,4 +173,75 @@ public class Auth0ManagementService(
                 "Auth0ManagementService: Failed to sync onboarding roles for user {UserId}", userId);
         }
     }
+
+    /// <inheritdoc />
+    public Task SetRolesAsync(string userId, IReadOnlyList<UserRole> roles) =>
+        ReplaceAllRolesAsync(userId, roles);
+
+    private async Task ReplaceAllRolesAsync(string userId, IReadOnlyList<UserRole> roles)
+    {
+        var token = configuration["Auth0:ManagementApiToken"];
+        var domain = configuration["Auth0:ManagementApiDomain"]
+                     ?? configuration["Auth0:Domain"];
+
+        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(domain))
+        {
+            logger.LogWarning(
+                "Auth0ManagementService: ManagementApiToken or Domain not configured — " +
+                "skipping role sync for user {UserId}", userId);
+            return;
+        }
+
+        var targetRoleNames = roles
+            .Where(r => RoleNames.ContainsKey(r))
+            .Select(r => RoleNames[r])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (targetRoleNames.Count == 0)
+        {
+            logger.LogWarning("Auth0ManagementService: No valid Auth0 role mapping for user {UserId}", userId);
+            return;
+        }
+
+        try
+        {
+            var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
+            var existingRoles = await client.Users.GetRolesAsync(userId);
+
+            if (existingRoles != null && existingRoles.Count > 0)
+            {
+                await client.Users.RemoveRolesAsync(userId, new AssignRolesRequest
+                {
+                    Roles = existingRoles.Select(r => r.Id).ToArray()
+                });
+            }
+
+            var allRoles = await client.Roles.GetAllAsync(new GetRolesRequest());
+            var roleIdsToAssign = allRoles?
+                .Where(r => targetRoleNames.Contains(r.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+                .Select(r => r.Id)
+                .Distinct()
+                .ToArray() ?? [];
+
+            if (roleIdsToAssign.Length == 0)
+            {
+                logger.LogWarning(
+                    "Auth0ManagementService: Target roles not found in Auth0 for user {UserId}",
+                    userId);
+                return;
+            }
+
+            await client.Users.AssignRolesAsync(userId, new AssignRolesRequest { Roles = roleIdsToAssign });
+
+            logger.LogInformation(
+                "Auth0ManagementService: Set roles [{Roles}] for user {UserId}",
+                string.Join(", ", targetRoleNames), userId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Failed to set roles for user {UserId}", userId);
+        }
+    }
 }
