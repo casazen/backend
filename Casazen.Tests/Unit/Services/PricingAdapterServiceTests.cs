@@ -267,5 +267,71 @@ public class PricingAdapterServiceTests
         Assert.Equal("Synced", result.SyncStatus);
     }
 
+    [Fact]
+    public async Task DisableConfigAsync_WithExistingConfig_SetsIsEnabledFalse()
+    {
+        var propertyId = Guid.NewGuid();
+        var config = new PricingAdapterConfig { PropertyId = propertyId, IsEnabled = true };
+        _mockConfigRepository.Setup(x => x.GetByPropertyIdAsync(propertyId)).ReturnsAsync(config);
+
+        await _service.DisableConfigAsync(propertyId);
+
+        Assert.False(config.IsEnabled);
+        _mockConfigRepository.Verify(x => x.UpdateAsync(config), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetHistoryPagedAsync_ReturnsCorrectPageAndTotal()
+    {
+        var propertyId = Guid.NewGuid();
+        var histories = Enumerable.Range(1, 5).Select(i => new PricingHistory
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId,
+            AdaptationDate = DateTime.UtcNow.AddDays(-i),
+            PreviousPrice = 100m,
+            NewPrice = 110m,
+            ChangeReason = $"Change {i}",
+            AiConfidence = 0.8m,
+            SyncStatus = "Synced",
+        }).ToList();
+
+        _mockHistoryRepository
+            .Setup(x => x.GetByPropertyIdAndDateRangeAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(histories);
+
+        var (items, total) = await _service.GetHistoryPagedAsync(
+            propertyId, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, page: 2, pageSize: 2);
+
+        Assert.Equal(5, total);
+        Assert.Equal(2, items.Count());
+    }
+
+    [Fact]
+    public async Task PreviewPricesAsync_ReturnsNinetyItemsWithNonNegativePrices()
+    {
+        var propertyId = Guid.NewGuid();
+        var config = new PricingAdapterConfig
+        {
+            PropertyId = propertyId,
+            IsEnabled = true,
+            IncludeSeasonality = true,
+            IncludePublicHolidays = false,
+        };
+
+        _mockPublicHolidayService.Setup(x => x.IsPublicHolidayAsync(It.IsAny<DateTime>())).ReturnsAsync(false);
+
+        var preview = await _service.PreviewPricesAsync(propertyId, basePrice: 100m, config);
+        var items = preview.ToList();
+
+        Assert.Equal(90, items.Count);
+        Assert.All(items, item =>
+        {
+            Assert.True(item.SuggestedPrice >= 0);
+            Assert.True(item.BasePrice >= 0);
+            Assert.False(string.IsNullOrWhiteSpace(item.Reason));
+        });
+    }
+
     #endregion
 }
