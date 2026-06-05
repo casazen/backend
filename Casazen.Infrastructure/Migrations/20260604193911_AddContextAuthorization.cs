@@ -150,6 +150,12 @@ namespace Casazen.Infrastructure.Migrations
                     { "admin.users.read", 3 }
                 });
 
+            migrationBuilder.CreateIndex(
+                name: "IX_UserContextMemberships_UserId_ContextKey",
+                table: "UserContextMemberships",
+                columns: new[] { "UserId", "ContextKey" },
+                unique: true);
+
             migrationBuilder.Sql("""
                 INSERT INTO "UserContextMemberships" ("Id", "UserId", "ContextKey", "RoleId")
                 SELECT
@@ -197,12 +203,6 @@ namespace Casazen.Infrastructure.Migrations
                 name: "IX_UserContextMemberships_RoleId",
                 table: "UserContextMemberships",
                 column: "RoleId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserContextMemberships_UserId_ContextKey",
-                table: "UserContextMemberships",
-                columns: new[] { "UserId", "ContextKey" },
-                unique: true);
         }
 
         /// <inheritdoc />
