@@ -24,4 +24,14 @@ public interface IImageStorageService
     /// <param name="file">File to validate</param>
     /// <returns>True if valid, false otherwise</returns>
     bool ValidateImage(IFormFile file);
+
+    /// <summary>
+    /// Upload a compliance document and return the public URL
+    /// </summary>
+    Task<string> UploadDocumentAsync(IFormFile file, Guid propertyId);
+
+    /// <summary>
+    /// Validate if a file is an accepted compliance document (PDF, DOC, DOCX, JPG, PNG)
+    /// </summary>
+    bool ValidateDocument(IFormFile file);
 }

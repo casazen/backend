@@ -134,28 +134,22 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
             DamageDeposit = property.DamageDeposit,
             CinCode = property.CinCode,
             CinStatus = ResolveCinStatus(property.CinCode),
+            Timezone = property.Timezone,
+            Amenities = property.Amenities.Select(a => a.ToString()).ToList(),
+            PhotoUrls = property.PhotoUrls,
+            HouseRules = property.HouseRules,
             IsActive = property.IsActive,
             CreatedAt = property.CreatedAt,
             UpdatedAt = property.UpdatedAt,
-            Documents = property.PropertyDocuments.Select(d => new PropertyDocumentDto
-            {
-                Id = d.Id,
-                FileName = d.FileName,
-                StorageUrl = d.StorageUrl,
-                DocumentType = d.DocumentType,
-                UploadedBy = d.UploadedBy,
-                UploadedAt = d.UploadedAt
-            }).ToList(),
+            Documents = property.PropertyDocuments.Select(MapDocument).ToList(),
             OtaIntegrations = property.OtaIntegrations.Select(o => new OtaIntegrationSummaryDto
             {
                 Id = o.Id,
                 Platform = o.Platform,
-                ExternalPropertyId = o.ExternalPropertyId,
                 IsActive = o.IsActive,
                 SyncEnabled = o.SyncEnabled,
                 LastSyncAt = o.LastSyncAt,
-                SyncStatus = o.SyncStatus != null && Enum.TryParse<OtaSyncStatus>(o.SyncStatus, out var status) ? status : null,
-                LastSyncError = o.LastSyncError
+                SyncStatus = o.SyncStatus != null && Enum.TryParse<OtaSyncStatus>(o.SyncStatus, out var status) ? status : null
             }).ToList(),
             BookingsSummary = new BookingsSummaryDto
             {
@@ -170,8 +164,36 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
                 NextCheckOut = property.Bookings
                     .Where(b => b.CheckOutDate > now)
                     .MinBy(b => b.CheckOutDate)?.CheckOutDate
-            }
+            },
+            PricingAdapterSummary = property.PricingAdapterConfig == null
+                ? new PricingAdapterSummaryDto()
+                : new PricingAdapterSummaryDto
+                {
+                    IsEnabled = property.PricingAdapterConfig.IsEnabled,
+                    LastAdaptedAt = property.PricingAdapterConfig.LastAdaptedAt,
+                    NextScheduledRunAt = property.PricingAdapterConfig.NextScheduledRunAt
+                }
         };
+    }
+
+    public static PropertyDocumentDto MapDocument(PropertyDocument d) => new()
+    {
+        Id = d.Id,
+        FileName = d.FileName,
+        FileType = ResolveFileType(d),
+        UploadedAt = d.UploadedAt,
+        DownloadUrl = d.StorageUrl
+    };
+
+    private static string ResolveFileType(PropertyDocument document)
+    {
+        var extension = Path.GetExtension(document.FileName);
+        if (!string.IsNullOrWhiteSpace(extension))
+        {
+            return extension.TrimStart('.').ToLowerInvariant();
+        }
+
+        return document.DocumentType.ToString();
     }
 
     private static readonly Regex CinRegex = new(@"^IT-\d{5}-\d{10}$", RegexOptions.Compiled);
