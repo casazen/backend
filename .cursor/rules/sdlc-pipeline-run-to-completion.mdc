@@ -1,0 +1,19 @@
+---
+description: SDLC pipeline must run to completion without pausing for confirmation between stages
+alwaysApply: true
+---
+
+# SDLC Pipeline — Run to Completion
+
+When the user starts or resumes an SDLC pipeline (`/sdlc-pipeline`, `resume pipeline`, or equivalent):
+
+1. **Do not stop between stages** for routine handoffs (03→04→05→06). Execute the full flow through Stage 06 unless a gate fails after 3 harness iterations.
+2. **After Stage 04 review passes**, proceed automatically to Stage 05 (merge if needed, staging validation, `develop`→`main`, tag, Phase D).
+3. **After Stage 05 Phase D passes**, proceed automatically to Stage 06 (production ops audit + `Sessions/ops-report-<date>.md`).
+4. **Only pause and ask the user** when:
+   - A gate fails at max iterations (escalation)
+   - A destructive or irreversible action is required outside the standard release flow
+   - Credentials or secrets are missing and cannot be inferred from repo docs
+5. **Report once at the end** with the pipeline completion summary (issue, PRs, tag, release URL, ops report path).
+
+This rule applies in addition to `.claude/skills/sdlc-pipeline/SKILL.md`.

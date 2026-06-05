@@ -79,6 +79,16 @@ public class UsersController(
         return Ok(ToDetail(user));
     }
 
+    /// <summary>Completes first-time onboarding by assigning roles from rental type choice.</summary>
+    [HttpPost("onboarding")]
+    public Task<ActionResult<OnboardingResponseDto>> PostOnboarding([FromBody] OnboardingRequestDto dto) =>
+        CompleteOnboardingAsync(dto);
+
+    /// <summary>Updates rental type and Auth0 roles (idempotent re-onboarding).</summary>
+    [HttpPut("onboarding")]
+    public Task<ActionResult<OnboardingResponseDto>> PutOnboarding([FromBody] OnboardingRequestDto dto) =>
+        CompleteOnboardingAsync(dto);
+
     /// <summary>Updates the caller's own profile (first name, last name, phone).</summary>
     [HttpPut("me")]
     public async Task<ActionResult<UserDetailDto>> UpdateMe([FromBody] UpdateProfileDto dto)
@@ -145,6 +155,35 @@ public class UsersController(
         return NoContent();
     }
 
+    private async Task<ActionResult<OnboardingResponseDto>> CompleteOnboardingAsync(OnboardingRequestDto dto)
+    {
+        if (!Enum.TryParse<RentalType>(dto.RentalType, ignoreCase: true, out var rentalType))
+            return BadRequest(new { error = $"Unknown rentalType: {dto.RentalType}" });
+
+        var sub = GetSub();
+        if (sub == null)
+            return Unauthorized();
+
+        var email = User.FindFirst("email")?.Value
+                    ?? User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? string.Empty;
+        var firstName = User.FindFirst("given_name")?.Value
+                        ?? User.FindFirst("name")?.Value?.Split(' ').FirstOrDefault()
+                        ?? string.Empty;
+        var lastName = User.FindFirst("family_name")?.Value
+                       ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
+                       ?? string.Empty;
+
+        var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
+            sub, rentalType, email, firstName, lastName);
+
+        return Ok(new OnboardingResponseDto
+        {
+            RolesAssigned = rolesAssigned.ToArray(),
+            RentalType = user.RentalType?.ToString() ?? rentalType.ToString()
+        });
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────
 
     private string? GetSub() =>
@@ -159,6 +198,7 @@ public class UsersController(
         FirstName = u.FirstName,
         LastName = u.LastName,
         Role = u.Role.ToString(),
+        RentalType = u.RentalType?.ToString(),
         IsActive = u.IsActive,
         CreatedAt = u.CreatedAt
     };
@@ -170,6 +210,7 @@ public class UsersController(
         FirstName = u.FirstName,
         LastName = u.LastName,
         Role = u.Role.ToString(),
+        RentalType = u.RentalType?.ToString(),
         IsActive = u.IsActive,
         CreatedAt = u.CreatedAt,
         PhoneNumber = u.PhoneNumber,
