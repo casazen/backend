@@ -96,6 +96,30 @@ public class UserServiceTests
             () => _service.ChangeRoleAsync("nonexistent", UserRole.Admin, "admin"));
     }
 
+    // ─── CompleteOnboardingAsync ────────────────────────────────────────────
+
+    [Fact]
+    public async Task CompleteOnboardingAsync_ShortTerm_UpdatesUserAndCallsAuth0()
+    {
+        var sub = "auth0|onboard1";
+        var user = new User { Id = sub, Email = "a@b.com", FirstName = "A", LastName = "B" };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
+            .Returns(Task.CompletedTask);
+
+        var (result, roles) = await _service.CompleteOnboardingAsync(
+            sub, RentalType.ShortTerm, "a@b.com", "A", "B");
+
+        Assert.Equal(RentalType.ShortTerm, result.RentalType);
+        Assert.Equal(UserRole.PropertyOwner, result.Role);
+        Assert.Single(roles);
+        Assert.Equal("PropertyOwner", roles[0]);
+        _auth0Mock.Verify(a => a.AssignOnboardingRolesAsync(
+            sub, It.Is<IReadOnlyList<UserRole>>(list => list.Count == 1 && list[0] == UserRole.PropertyOwner)),
+            Times.Once);
+    }
+
     // ─── GetPagedAsync ──────────────────────────────────────────────────────
 
     [Fact]

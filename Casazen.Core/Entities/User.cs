@@ -24,6 +24,8 @@ public class User
     [Required]
     public UserRole Role { get; set; } = UserRole.PropertyOwner;
 
+    public RentalType? RentalType { get; set; }
+
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 
@@ -43,4 +45,11 @@ public enum UserRole
     Guest,
     Staff,
     LongTermLandlord // 5 — append only, do not insert before existing values
+}
+
+public enum RentalType
+{
+    ShortTerm,
+    LongTerm,
+    Both
 }

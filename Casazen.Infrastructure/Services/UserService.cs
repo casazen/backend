@@ -133,4 +133,35 @@ public class UserService(
             "Role changed: userId={UserId} newRole={Role} changedBy={AdminId}",
             id, newRole, adminSub);
     }
+
+    /// <inheritdoc />
+    public async Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
+        string sub, RentalType rentalType, string email, string firstName, string lastName)
+    {
+        var roles = MapRentalTypeToRoles(rentalType);
+        var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
+
+        user.RentalType = rentalType;
+        user.Role = roles[0];
+        user.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(user);
+
+        await auth0Management.AssignOnboardingRolesAsync(sub, roles);
+
+        var assigned = roles.Select(r => r.ToString()).ToArray();
+        logger.LogInformation(
+            "Onboarding completed: userId={UserId} rentalType={RentalType} roles=[{Roles}]",
+            sub, rentalType, string.Join(", ", assigned));
+
+        return (user, assigned);
+    }
+
+    private static IReadOnlyList<UserRole> MapRentalTypeToRoles(RentalType rentalType) =>
+        rentalType switch
+        {
+            RentalType.ShortTerm => [UserRole.PropertyOwner],
+            RentalType.LongTerm => [UserRole.LongTermLandlord],
+            RentalType.Both => [UserRole.PropertyOwner, UserRole.LongTermLandlord],
+            _ => throw new ArgumentOutOfRangeException(nameof(rentalType), rentalType, "Unknown rental type")
+        };
 }

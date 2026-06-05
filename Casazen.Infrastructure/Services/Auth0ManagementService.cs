@@ -28,6 +28,12 @@ public class Auth0ManagementService(
         { UserRole.LongTermLandlord, "LongTermLandlord" },
     };
 
+    private static readonly UserRole[] OnboardingRoles =
+    [
+        UserRole.PropertyOwner,
+        UserRole.LongTermLandlord
+    ];
+
     /// <summary>
     /// Assigns a role to an Auth0 user via the Management API.
     /// All existing roles are removed; the new one is assigned.
@@ -57,7 +63,6 @@ public class Auth0ManagementService(
         {
             var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
 
-            // Fetch existing roles for the user
             var existingRoles = await client.Users.GetRolesAsync(userId);
             if (existingRoles != null && existingRoles.Count > 0)
             {
@@ -67,7 +72,6 @@ public class Auth0ManagementService(
                 });
             }
 
-            // Find the target role ID by name
             var allRoles = await client.Roles.GetAllAsync(new GetRolesRequest { NameFilter = roleName });
             var targetRole = allRoles?.FirstOrDefault(r =>
                 string.Equals(r.Name, roleName, StringComparison.OrdinalIgnoreCase));
@@ -91,9 +95,82 @@ public class Auth0ManagementService(
         }
         catch (Exception ex)
         {
-            // Auth0 role sync is best-effort — log but do not propagate so DB update is committed.
             logger.LogError(ex,
                 "Auth0ManagementService: Failed to sync role {Role} for user {UserId}", role, userId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task AssignOnboardingRolesAsync(string userId, IReadOnlyList<UserRole> roles)
+    {
+        var token = configuration["Auth0:ManagementApiToken"];
+        var domain = configuration["Auth0:ManagementApiDomain"]
+                     ?? configuration["Auth0:Domain"];
+
+        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(domain))
+        {
+            logger.LogWarning(
+                "Auth0ManagementService: ManagementApiToken or Domain not configured — " +
+                "skipping role sync for user {UserId}", userId);
+            return;
+        }
+
+        var targetRoleNames = roles
+            .Where(r => RoleNames.ContainsKey(r))
+            .Select(r => RoleNames[r])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (targetRoleNames.Count == 0)
+        {
+            logger.LogWarning("Auth0ManagementService: No valid Auth0 role mapping for onboarding user {UserId}", userId);
+            return;
+        }
+
+        try
+        {
+            var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
+            var existingRoles = await client.Users.GetRolesAsync(userId);
+
+            var onboardingRoleNames = OnboardingRoles
+                .Select(r => RoleNames[r])
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var rolesToRemove = existingRoles
+                .Where(r => onboardingRoleNames.Contains(r.Name ?? string.Empty))
+                .Select(r => r.Id)
+                .ToArray();
+
+            if (rolesToRemove.Length > 0)
+            {
+                await client.Users.RemoveRolesAsync(userId, new AssignRolesRequest { Roles = rolesToRemove });
+            }
+
+            var allRoles = await client.Roles.GetAllAsync(new GetRolesRequest());
+            var roleIdsToAssign = allRoles?
+                .Where(r => targetRoleNames.Contains(r.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+                .Select(r => r.Id)
+                .Distinct()
+                .ToArray() ?? [];
+
+            if (roleIdsToAssign.Length == 0)
+            {
+                logger.LogWarning(
+                    "Auth0ManagementService: Target onboarding roles not found in Auth0 for user {UserId}",
+                    userId);
+                return;
+            }
+
+            await client.Users.AssignRolesAsync(userId, new AssignRolesRequest { Roles = roleIdsToAssign });
+
+            logger.LogInformation(
+                "Auth0ManagementService: Assigned onboarding roles [{Roles}] to user {UserId}",
+                string.Join(", ", targetRoleNames), userId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Failed to sync onboarding roles for user {UserId}", userId);
         }
     }
 }
