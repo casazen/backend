@@ -35,7 +35,10 @@ Run after develop deploy completes (~90–120s post-merge).
 | # | Gate | Command | Pass condition |
 |---|---|---|---|
 | G5 | Railway test health | `curl -sf $RAILWAY_TEST_URL/api/health` | HTTP 200 |
-| G6 | Auth smoke | `curl -sw "%{http_code}" $RAILWAY_TEST_URL/api/properties` | 401 (not 5xx) |
+| G6 | Auth smoke | `curl` on `/api/properties`, `/api/bookings`, `/api/users/me`, `/api/me/contexts` | 401 each (never 5xx) |
+| G6b | API regression E2E | `E2E_STAGING=1 npm run test:e2e -- api-regression-smoke` | Authenticated: no 500 |
+| G6c | Vercel deploy smoke | `E2E_DEPLOY_SMOKE=1 npm run test:e2e -- vercel-deploy-smoke` | `#root` + no API 500 on load |
+| G6d | EF migrations applied | `.\scripts\migrate.ps1 -Target test` (and `prod` before Phase D if new migration) | Exit 0 |
 | G7 | Backend tests (release candidate) | `dotnet test` (in `casazen/backend` on `develop`) | All tests pass, 0 failures (N/A if no BE changes in release) |
 | G8 | E2E tests (release candidate) | `npm run test:e2e` (in `casazen/frontend` on `develop`) | All Playwright tests pass, 0 failures (N/A if no FE changes in release) |
 | G9 | Feature AC validated | Automated E2E + spot-check vs Issue `#N` ACs on staging URLs | All ACs pass on staging BE+FE |

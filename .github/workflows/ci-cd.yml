@@ -88,7 +88,7 @@ jobs:
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
             "${RAILWAY_TEST_URL}/api/bookings")
           if [ "$STATUS" = "500" ]; then
-            echo "❌ /api/bookings returned 500 — likely pending EF migration (AddContextAuthorization)"
+            echo "❌ /api/bookings returned 500 — likely pending EF migration"
             exit 1
           fi
           if [ "$STATUS" != "401" ]; then
@@ -96,6 +96,25 @@ jobs:
             exit 1
           fi
           echo "✅ Bookings auth gate OK"
+
+      - name: Smoke test (users/me, contexts — never 500 without auth)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          for PATH_SUFFIX in users/me me/contexts users; do
+            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+              "${RAILWAY_TEST_URL}/api/${PATH_SUFFIX}")
+            if [ "$STATUS" = "500" ]; then
+              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target test"
+              exit 1
+            fi
+            if [ "$STATUS" != "401" ]; then
+              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
+              exit 1
+            fi
+            echo "✅ /api/${PATH_SUFFIX} auth gate OK"
+          done
 
       - name: Verify pricing adapter endpoint (auth gate — never 500)
         env:
@@ -149,10 +168,16 @@ jobs:
           RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
         run: |
           if [ -z "$RAILWAY_PROD_URL" ]; then exit 0; fi
-          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-            "${RAILWAY_PROD_URL}/api/properties")
-          if [ "$STATUS" != "401" ]; then
-            echo "❌ Expected 401 on /api/properties, got $STATUS"
-            exit 1
-          fi
-          echo "✅ Production auth gate OK"
+          for PATH_SUFFIX in properties bookings users/me me/contexts; do
+            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+              "${RAILWAY_PROD_URL}/api/${PATH_SUFFIX}")
+            if [ "$STATUS" = "500" ]; then
+              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target prod"
+              exit 1
+            fi
+            if [ "$STATUS" != "401" ]; then
+              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
+              exit 1
+            fi
+            echo "✅ Production /api/${PATH_SUFFIX} auth gate OK"
+          done

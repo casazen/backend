@@ -15,6 +15,7 @@ using Casazen.Web.Middleware;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
 
@@ -179,6 +180,14 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// Apply pending EF migrations on startup (Railway deploy). Skipped in Testing (in-memory DB).
+if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("Testing"))
+{
+    using var migrateScope = app.Services.CreateScope();
+    var db = migrateScope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 // Swagger (must be before Authentication to allow anonymous access to swagger.json)
 if (app.Environment.IsDevelopment())
