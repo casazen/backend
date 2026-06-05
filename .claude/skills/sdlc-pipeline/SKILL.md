@@ -238,6 +238,7 @@ Stage 03 opens PRs; Stage 05 merges. Never merge feature branches directly to `m
 
 These rules apply throughout the pipeline and cannot be bypassed:
 
+- **Run to completion** — once a pipeline is started or resumed, execute Stages 03→06 sequentially without pausing for user confirmation between stages. Only stop on escalation (3 failed gate iterations), missing secrets, or non-standard destructive actions. Deliver the final completion summary when Stage 06 finishes.
 - **Stage 03 always runs backend-developer + frontend-developer** — both specialists spawn every time; document N/A if a layer has no changes
 - **Never push directly to `main` or `develop`** — feature PRs → `develop`; release PR `develop` → `main` (Stage 05 Phase C)
 - **Never promote to `main` before staging validation** — Stage 05 Phase B must pass on develop deploy, including **`dotnet test`**, **`npm run test:e2e`**, and staging FE serving the React SPA (`id="root"`)
