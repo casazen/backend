@@ -19,6 +19,7 @@ public class PropertiesControllerTests
     private readonly Mock<IImageStorageService> _mockImageStorage;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IPropertyDocumentService> _mockDocumentService;
+    private readonly Mock<IAdminAccessAuditService> _mockAuditService;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -28,12 +29,14 @@ public class PropertiesControllerTests
         _mockImageStorage = new Mock<IImageStorageService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockDocumentService = new Mock<IPropertyDocumentService>();
+        _mockAuditService = new Mock<IAdminAccessAuditService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
         _controller = new PropertiesController(
             _mockService.Object,
             _mockImageStorage.Object,
             _mockAuthz.Object,
             _mockDocumentService.Object,
+            _mockAuditService.Object,
             _mockLogger.Object);
     }
 
@@ -1196,12 +1199,79 @@ public class PropertiesControllerTests
         Assert.IsType<NotFoundResult>(result);
     }
 
-    private void SetupUserClaims(string userId)
+    [Fact]
+    public async Task GetDetail_AsAdminCrossOwner_LogsPrivilegedAccess()
+    {
+        var adminId = "auth0|admin_user";
+        SetupUserClaims(adminId, ["Admin"]);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var ownerId = "auth0|owner";
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
+            .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = ownerId });
+
+        var result = await _controller.GetDetail(propertyId);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        _mockAuditService.Verify(
+            x => x.LogPrivilegedPropertyAccessAsync(adminId, propertyId, ownerId, "PropertyDetail.Read", default),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDetail_AsOwner_DoesNotLogPrivilegedAccess()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId, ["PropertyOwner"]);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
+            .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = userId });
+
+        await _controller.GetDetail(propertyId);
+
+        _mockAuditService.Verify(
+            x => x.LogPrivilegedPropertyAccessAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), default),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadDocument_InvalidFile_ReturnsBadRequest()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+
+        var mockFile = CreateMockFormFile("virus.exe", "application/octet-stream", 1024);
+        _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.Other, userId))
+            .ThrowsAsync(new InvalidOperationException("Invalid document file type or size"));
+
+        var result = await _controller.UploadDocument(propertyId, mockFile, "Other");
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    private void SetupUserClaims(string userId, IEnumerable<string>? roles = null)
     {
         var claims = new List<Claim>
         {
             new Claim("sub", userId)
         };
+
+        if (roles != null)
+        {
+            foreach (var role in roles)
+            {
+                claims.Add(new Claim("https://casazen.app/roles", role));
+            }
+        }
+
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
 

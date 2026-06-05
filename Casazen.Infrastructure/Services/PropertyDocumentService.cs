@@ -21,7 +21,12 @@ public class PropertyDocumentService(
             throw new InvalidOperationException($"Property {propertyId} not found");
         }
 
-        var storageUrl = await storageService.UploadImageAsync(file, propertyId);
+        if (!storageService.ValidateDocument(file))
+        {
+            throw new InvalidOperationException("Invalid document file type or size");
+        }
+
+        var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
 
         try
         {

@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,7 @@ public class PropertiesController(
     IImageStorageService imageStorageService,
     IPropertyAuthorizationService authorizationService,
     IPropertyDocumentService documentService,
+    IAdminAccessAuditService adminAccessAuditService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     [HttpGet("health")]
@@ -116,12 +118,15 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, existing.OwnerId, roles))
         {
             logger.LogWarning("User {UserId} attempted to update property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
             return Forbid();
         }
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Update");
 
         request.ApplyTo(existing);
         await propertyService.UpdatePropertyAsync(existing);
@@ -346,8 +351,11 @@ public class PropertiesController(
             return NotFound();
         }
 
-        if (!authorizationService.CanAccess(userId, detail.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, detail.OwnerId, roles))
             return Forbid();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, detail.OwnerId, roles, "PropertyDetail.Read");
 
         return Ok(detail);
     }
@@ -372,8 +380,11 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
             return Forbid();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.List");
 
         var documents = await documentService.GetByPropertyIdAsync(id);
         return Ok(documents.Select(ToDocumentDto));
@@ -407,14 +418,24 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
             return Forbid();
 
         if (!Enum.TryParse<DocumentType>(documentType, ignoreCase: true, out var docType))
             return BadRequest(new { error = $"Invalid document type: {documentType}" });
 
-        var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
-        return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.Upload");
+
+        try
+        {
+            var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
+            return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Invalid document", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// <summary>
@@ -439,32 +460,51 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
             return Forbid();
 
         var document = await documentService.GetDocumentAsync(docId);
         if (document == null || document.PropertyId != id)
             return NotFound();
 
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.Delete");
+
         await documentService.DeleteDocumentAsync(docId);
         return NoContent();
     }
 
-    private static PropertyDocumentDto ToDocumentDto(PropertyDocument d) => new()
-    {
-        Id = d.Id,
-        FileName = d.FileName,
-        StorageUrl = d.StorageUrl,
-        DocumentType = d.DocumentType,
-        UploadedBy = d.UploadedBy,
-        UploadedAt = d.UploadedAt
-    };
+    private static PropertyDocumentDto ToDocumentDto(PropertyDocument d) =>
+        Casazen.Infrastructure.Services.PropertyService.MapDocument(d);
 
     private string? GetAuthenticatedUserId() =>
         User.FindFirst("sub")?.Value
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-    private IEnumerable<string> GetUserRoles() =>
-        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
+    private IReadOnlyList<string> GetUserRoles()
+    {
+        var auth0Roles = Auth0RolesClaimParser.Parse(
+            User.FindAll("https://casazen.app/roles").Select(c => c.Value));
+        if (auth0Roles.Count > 0)
+            return auth0Roles;
+
+        return User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+    }
+
+    private async Task AuditPrivilegedAccessIfNeededAsync(
+        string userId,
+        Guid propertyId,
+        string ownerId,
+        IReadOnlyList<string> roles,
+        string action)
+    {
+        if (userId == ownerId)
+            return;
+
+        if (!roles.Any(r => r is "PropertyManager" or "Admin"))
+            return;
+
+        await adminAccessAuditService.LogPrivilegedPropertyAccessAsync(userId, propertyId, ownerId, action);
+    }
 }
