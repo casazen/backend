@@ -63,18 +63,39 @@ jobs:
             --retry 8 --retry-delay 15 --retry-connrefused --max-time 30
           echo "✅ Test environment healthy"
 
-      - name: Smoke test (auth gate — expect 401)
+      - name: Smoke test (auth gate — expect 401, never 500)
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
           if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
             "${RAILWAY_TEST_URL}/api/properties")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/properties returned 500 — likely pending EF migration (AddContextAuthorization)"
+            exit 1
+          fi
           if [ "$STATUS" != "401" ]; then
             echo "❌ Expected 401 on /api/properties, got $STATUS"
             exit 1
           fi
           echo "✅ Auth gate OK"
+
+      - name: Smoke test (bookings — never 500 without auth)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/bookings")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/bookings returned 500 — likely pending EF migration (AddContextAuthorization)"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/bookings, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Bookings auth gate OK"
 
   # Railway deploys production via GitHub integration (push to main → production environment).
   verify-prod:

@@ -48,7 +48,7 @@ public class ContextAuthorizationService(
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
-        if (user is null || !user.IsActive)
+        if (user is { IsActive: false })
         {
             return false;
         }
