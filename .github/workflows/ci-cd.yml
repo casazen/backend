@@ -97,6 +97,25 @@ jobs:
           fi
           echo "✅ Bookings auth gate OK"
 
+      - name: Verify pricing adapter endpoint (auth gate — never 500)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+          TEST_PROPERTY_ID: ${{ vars.TEST_PROPERTY_ID }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          PROPERTY_ID="${TEST_PROPERTY_ID:-00000000-0000-0000-0000-000000000001}"
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/pricing-adapter/config/${PROPERTY_ID}")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/pricing-adapter/config returned 500"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ] && [ "$STATUS" != "404" ] && [ "$STATUS" != "200" ]; then
+            echo "❌ Unexpected status on pricing-adapter config: $STATUS"
+            exit 1
+          fi
+          echo "✅ Pricing adapter auth gate OK (status $STATUS)"
+
   # Railway deploys production via GitHub integration (push to main → production environment).
   verify-prod:
     name: Verify Railway Production (native deploy)
