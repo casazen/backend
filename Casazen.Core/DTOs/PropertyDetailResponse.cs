@@ -19,6 +19,10 @@ public class PropertyDetailResponse
     public decimal DamageDeposit { get; set; }
     public string? CinCode { get; set; }
     public CinStatus CinStatus { get; set; }
+    public string Timezone { get; set; } = "Europe/Rome";
+    public IReadOnlyList<string> Amenities { get; set; } = [];
+    public IReadOnlyList<string> PhotoUrls { get; set; } = [];
+    public string HouseRules { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -26,28 +30,26 @@ public class PropertyDetailResponse
     public IReadOnlyList<PropertyDocumentDto> Documents { get; set; } = [];
     public IReadOnlyList<OtaIntegrationSummaryDto> OtaIntegrations { get; set; } = [];
     public BookingsSummaryDto BookingsSummary { get; set; } = new();
+    public PricingAdapterSummaryDto PricingAdapterSummary { get; set; } = new();
 }
 
 public class PropertyDocumentDto
 {
     public Guid Id { get; set; }
     public string FileName { get; set; } = string.Empty;
-    public string StorageUrl { get; set; } = string.Empty;
-    public DocumentType DocumentType { get; set; }
-    public string UploadedBy { get; set; } = string.Empty;
+    public string FileType { get; set; } = string.Empty;
     public DateTime UploadedAt { get; set; }
+    public string DownloadUrl { get; set; } = string.Empty;
 }
 
 public class OtaIntegrationSummaryDto
 {
     public Guid Id { get; set; }
     public string Platform { get; set; } = string.Empty;
-    public string ExternalPropertyId { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public bool SyncEnabled { get; set; }
     public DateTime LastSyncAt { get; set; }
     public OtaSyncStatus? SyncStatus { get; set; }
-    public string? LastSyncError { get; set; }
 }
 
 public class BookingsSummaryDto
@@ -57,4 +59,11 @@ public class BookingsSummaryDto
     public int ActiveBookings { get; set; }
     public DateTime? NextCheckIn { get; set; }
     public DateTime? NextCheckOut { get; set; }
+}
+
+public class PricingAdapterSummaryDto
+{
+    public bool IsEnabled { get; set; }
+    public DateTime? LastAdaptedAt { get; set; }
+    public DateTime? NextScheduledRunAt { get; set; }
 }

@@ -80,6 +80,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .Include(p => p.PropertyDocuments)
             .Include(p => p.OtaIntegrations)
             .Include(p => p.Bookings)
+            .Include(p => p.PricingAdapterConfig)
             .FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
     }
 }

@@ -77,6 +77,62 @@ Run **after** push to `main` deploys (~90–120s). Stage 06 must not start until
 | G17 | Vercel prod health | `curl -sf https://casazen.vercel.app` | HTTP 200 **and** body contains `id="root"` |
 | G18 | Feature AC on production | Re-run E2E against prod FE URL or critical AC spot-check | Pass on prod URLs |
 | G19 | Docker build (backend) | `docker build -t casazen-api .` | Exit 0 — validates prod artifact (N/A if no BE changes) |
+| G20 | **main ↔ develop aligned** (both repos) | See commands below | Zero divergence; correct merge direction (see table) |
+| G21 | **Build parity** on `main` + `develop` | `dotnet build` / `npm run build` on both tips | Exit 0 on both branches per repo released |
+
+### G20 — Branch alignment check (mandatory before Stage 06)
+
+Production deploys from **`main`**. If `main` and `develop` diverge, the next feature merged to `develop` will not match what is live in prod, and staging will lie about production state.
+
+#### Merge direction (do not invert)
+
+| Step | Direction | Purpose |
+|---|---|---|
+| Feature integration | `feature/*` → **`develop`** | Staging / test env |
+| **Promote to production** | **`develop` → `main`** | Release PR squash merge + tag on `main` |
+| Sync-back after promote | **`main` → `develop`** | Only when `main` is ahead with release commits **and** G21 build passes on `main` |
+| Hotfix / build break on `main` | Fix on **`develop`** first, then **`develop` → `main`** | Never copy a broken `main` into `develop` |
+
+**Wrong pattern (caused #189 TS6133 on Vercel):** merge `main` → `develop` while `main` contains a bad commit (e.g. unused `demoUser` in `use-auth.ts`) that never built on `develop`. Alignment without build parity poisons `develop`.
+
+Run in **each** repo that was released (`casazen/backend`, `casazen/frontend`):
+
+```bash
+git fetch origin main develop
+
+# Commits on main not in develop (must be 0 after release)
+git rev-list --count origin/develop..origin/main
+
+# Commits on develop not in main (must be 0 after release)
+git rev-list --count origin/main..origin/develop
+```
+
+**Pass**: both commands return `0` for both repos.
+
+**If G20 fails** (typical cause: `main` was updated via local merge or squash without syncing `develop`):
+
+1. **If `main` builds and is release-only ahead:** merge `main` → `develop`:
+   ```bash
+   git checkout develop && git pull origin develop
+   git merge origin/main -m "chore: sync develop with main after release vX.Y.Z (#N)"
+   git push origin develop
+   ```
+2. **If `main` does not build** (or has bad commits not on `develop`): fix on `develop`, run G21, then promote **`develop` → `main`** (release PR or fast-forward merge), not the reverse.
+3. Re-run G20 and G21 until both pass.
+4. Record sync SHAs in `Sessions/release-<N>.md` under **Branch sync**.
+
+**Do not mark Phase D / Stage 05 complete until G20 and G21 pass.**
+
+### G21 — Release branch build parity (both repos)
+
+After G20 alignment, verify **both** `main` and `develop` tips build (same code must not break prod or staging).
+
+| Repo | Command | Pass |
+|---|---|---|
+| Backend | `git checkout origin/develop && dotnet build /warnaserror` then `git checkout origin/main && dotnet build /warnaserror` | Exit 0 on both |
+| Frontend | `git checkout origin/develop && npm run build` then `git checkout origin/main && npm run build` | Exit 0 on both |
+
+Use detached checkouts or local branches tracking `origin/develop` and `origin/main`. **Fail G21 if either branch fails** — fix on `develop`, re-run G20 sync, then `develop` → `main`.
 
 ---
 
@@ -114,8 +170,10 @@ WHILE (G11–G15 fail) AND (release_iteration < max_iterations):
 
 # ── Phase D: production validation (main deploy) ──
 release_iteration = 0
-WHILE (G16–G19 fail) AND (release_iteration < max_iterations):
+WHILE (G16–G21 fail) AND (release_iteration < max_iterations):
   IF deploy pending → wait 60s, retry
+  IF G20 branch drift → sync per direction table; if main broken, fix develop then develop→main
+  IF G21 build fail → fix on develop, G20, develop→main, re-run G21
   IF prod regression → Stage 03 hotfix → develop → re-run Phase B → Phase C → Phase D
   release_iteration++
 IF still failing → ESCALATE + document rollback in Sessions/release-<N>.md
@@ -133,6 +191,7 @@ IF still failing → ESCALATE + document rollback in Sessions/release-<N>.md
 - Release tag `vX.Y.Z`
 - Main merge SHAs
 - Production validation results (Phase D)
+- **Branch sync** (G20): alignment proof for backend + frontend (`develop` SHA = `main` tip or documented merge-back)
 
 Plus:
 - Git tag(s) on `main`
@@ -141,7 +200,7 @@ Plus:
 
 ## Handoff to Stage 06
 
-**Precondition**: Phase D gates G16–G18 ✅ on **`main` / production**.
+**Precondition**: Phase D gates G16–G18, **G20**, and **G21** ✅ on **`main` / production**.
 
 Pass to operations:
 - Tag `vX.Y.Z`

@@ -10,10 +10,7 @@ using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Infrastructure;
-<<<<<<< HEAD
-=======
 using Microsoft.AspNetCore.Authorization;
->>>>>>> origin/develop
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -121,6 +118,7 @@ public static class ServiceCollectionExtensions
         var builder = services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
             .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
+            .AddPolicy("PropertyManagerOrAdmin", policy => policy.RequireRole("PropertyManager", "Admin"))
             .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"));
 
         RegisterContextPolicies(builder);
@@ -240,6 +238,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IImageStorageService, LocalImageStorageService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
+        services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
         return services;
     }
 
