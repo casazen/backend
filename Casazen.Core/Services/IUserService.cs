@@ -20,4 +20,10 @@ public interface IUserService
         string? search, string? role, bool? isActive, int page, int pageSize);
 
     Task ChangeRoleAsync(string id, UserRole newRole, string adminSub);
+
+    /// <summary>
+    /// Completes or updates onboarding: persists rental type, syncs Auth0 onboarding roles.
+    /// </summary>
+    Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
+        string sub, RentalType rentalType, string email, string firstName, string lastName);
 }
