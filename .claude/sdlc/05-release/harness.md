@@ -38,11 +38,11 @@ Run after develop deploy completes (~90–120s post-merge).
 | G6 | Auth smoke | `curl` on `/api/properties`, `/api/bookings`, `/api/users/me`, `/api/me/contexts` | 401 each (never 5xx) |
 | G6b | API regression E2E | `E2E_STAGING=1 npm run test:e2e -- api-regression-smoke` | Authenticated: no 500 |
 | G6c | Vercel deploy smoke | `E2E_DEPLOY_SMOKE=1 npm run test:e2e -- vercel-deploy-smoke` | `#root` + no API 500 on load |
-| G6d | EF migrations applied | `.\scripts\migrate.ps1 -Target test` (and `prod` before Phase D if new migration) | Exit 0 |
+| G6d | EF migrations applied | `.\scripts\migrate.ps1 -Target test` before Phase B; **`.\scripts\migrate.ps1 -Target prod` mandatory before Phase C** (do not rely on startup auto-migrate alone) | Exit 0 |
 | G7 | Backend tests (release candidate) | `dotnet test` (in `casazen/backend` on `develop`) | All tests pass, 0 failures (N/A if no BE changes in release) |
 | G8 | E2E tests (release candidate) | `npm run test:e2e` (in `casazen/frontend` on `develop`) | All Playwright tests pass, 0 failures (N/A if no FE changes in release) |
 | G9 | Feature AC validated | Automated E2E + spot-check vs Issue `#N` ACs on staging URLs | All ACs pass on staging BE+FE |
-| G10 | Staging FE serves SPA | `curl -sf $STAGING_FE_URL` | HTTP 200 **and** body contains `id="root"` (not a stray `.env` or placeholder file) |
+| G10 | Staging FE serves SPA | `curl -sf $STAGING_FE_URL` | HTTP 200 **and** body contains `id="root"` — use Vercel **develop** deployment URL, **not** `casazen-app.vercel.app` (that is Production) |
 
 `$RAILWAY_TEST_URL` from GitHub variable `RAILWAY_TEST_URL`.
 `$STAGING_FE_URL` = Vercel staging URL for branch `develop` (see `docs/INFRA.md`).
@@ -77,8 +77,9 @@ Run **after** push to `main` deploys (~90–120s). Stage 06 must not start until
 | # | Gate | Command | Pass condition |
 |---|---|---|---|
 | G16 | Railway prod health | `curl -sf $RAILWAY_PROD_URL/api/health` | HTTP 200 |
-| G17 | Vercel prod health | `curl -sf https://casazen.vercel.app` | HTTP 200 **and** body contains `id="root"` |
-| G18 | Feature AC on production | Re-run E2E against prod FE URL or critical AC spot-check | Pass on prod URLs |
+| G16b | Prod migration + smoke script | `.\scripts\release-smoke.ps1` (applies `migrate.ps1 -Target prod`, then health + auth gates + FE SPA) | Exit 0 |
+| G17 | Vercel prod health | `curl -sf https://casazen-app.vercel.app` | HTTP 200 **and** body contains `id="root"` (do **not** use `casazen.vercel.app` — mislinked, #187) |
+| G18 | Feature AC on production | `E2E_PROD_SMOKE=1 npm run test:e2e -- prod-deploy-smoke` in `casazen/frontend` (authenticated prod FE + prod API; fails on 401/500) | Pass on prod URLs |
 | G19 | Docker build (backend) | `docker build -t casazen-api .` | Exit 0 — validates prod artifact (N/A if no BE changes) |
 | G20 | **main ↔ develop aligned** (both repos) | See commands below | Zero divergence; correct merge direction (see table) |
 | G21 | **Build parity** on `main` + `develop` | `dotnet build` / `npm run build` on both tips | Exit 0 on both branches per repo released |
@@ -203,10 +204,10 @@ Plus:
 
 ## Handoff to Stage 06
 
-**Precondition**: Phase D gates G16–G18, **G20**, and **G21** ✅ on **`main` / production**.
+**Precondition**: Phase D gates G16–G18, **G16b**, **G20**, and **G21** ✅ on **`main` / production**.
 
 Pass to operations:
 - Tag `vX.Y.Z`
 - `$RAILWAY_PROD_URL`
-- `https://casazen.vercel.app`
+- `https://casazen-app.vercel.app`
 - Issue `#N` + acceptance criteria for regression spot-check
