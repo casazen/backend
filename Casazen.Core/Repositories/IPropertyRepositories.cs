@@ -8,7 +8,7 @@ public interface IPropertyRepository
     Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
-    IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice);
+    IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null);
     Task<Property> AddAsync(Property property);
     Task<Property> UpdateAsync(Property property);
     Task DeleteAsync(Guid id);

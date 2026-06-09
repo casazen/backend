@@ -34,9 +34,12 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await GetSearchQueryable(city, bedrooms, maxPrice).ToListAsync();
     }
 
-    public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice)
+    public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null)
     {
         var query = context.Properties.AsQueryable().Where(p => p.IsActive);
+
+        if (orgId.HasValue)
+            query = query.Where(p => p.OrgId == orgId.Value);
 
         if (!string.IsNullOrEmpty(city))
             query = query.Where(p => p.City.ToLower().Contains(city.ToLower()));
