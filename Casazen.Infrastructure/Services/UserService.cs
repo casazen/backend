@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
@@ -9,6 +10,7 @@ namespace Casazen.Infrastructure.Services;
 public class UserService(
     IUserRepository repository,
     IAuth0ManagementService auth0Management,
+    IOrgService orgService,
     ILogger<UserService> logger) : IUserService
 {
     public async Task<User?> GetUserAsync(string id)
@@ -136,7 +138,12 @@ public class UserService(
 
     /// <inheritdoc />
     public async Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
-        string sub, RentalType rentalType, string email, string firstName, string lastName)
+        string sub,
+        RentalType rentalType,
+        PlanTier planTier,
+        string email,
+        string firstName,
+        string lastName)
     {
         var roles = MapRentalTypeToRoles(rentalType);
         var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
@@ -146,12 +153,20 @@ public class UserService(
         user.UpdatedAt = DateTime.UtcNow;
         await repository.UpdateAsync(user);
 
+        var displayName = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
+            displayName = email;
+
+        await orgService.EnsureOrgForUserAsync(sub, email, displayName, planTier);
+
+        user = await repository.GetByIdAsync(sub) ?? user;
+
         await auth0Management.AssignOnboardingRolesAsync(sub, roles);
 
         var assigned = roles.Select(r => r.ToString()).ToArray();
         logger.LogInformation(
-            "Onboarding completed: userId={UserId} rentalType={RentalType} roles=[{Roles}]",
-            sub, rentalType, string.Join(", ", assigned));
+            "Onboarding completed: userId={UserId} rentalType={RentalType} planTier={PlanTier} roles=[{Roles}]",
+            sub, rentalType, planTier, string.Join(", ", assigned));
 
         return (user, assigned);
     }

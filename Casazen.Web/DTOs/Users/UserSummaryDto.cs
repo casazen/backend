@@ -10,4 +10,7 @@ public class UserSummaryDto
     public string? RentalType { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
+    public Guid? OrgId { get; set; }
+    public string? OrgName { get; set; }
+    public string? PlanTier { get; set; }
 }

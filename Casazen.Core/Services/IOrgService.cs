@@ -1,22 +1,38 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// Read access to <see cref="Org"/> tenants. US-004 is read-only for org;
-/// org management / plan switching is owned by <c>spec-saas-billing</c>.
+/// Org tenant access and plan management. US-004 adds read + MVP plan selection before
+/// <c>spec-saas-billing</c> Stripe checkout replaces self-serve tier changes.
 /// </summary>
 public interface IOrgService
 {
-    /// <summary>Returns the org by id, or <c>null</c> if not found.</summary>
     Task<Org?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>Returns the org the given user belongs to, or <c>null</c> if the user has none.</summary>
     Task<Org?> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Returns the org by slug for public (branded) surfaces. Referenced by later specs
-    /// (<c>spec-branded-booking-site</c>); not exposed via an endpoint in US-004.
-    /// </summary>
     Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ensures the user belongs to an org, creating one on first onboarding if needed.
+    /// Idempotent: existing orgs are returned unchanged (plan tier is not overwritten).
+    /// </summary>
+    Task<Org> EnsureOrgForUserAsync(
+        string userId,
+        string email,
+        string displayName,
+        PlanTier planTier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Updates the org plan tier (MVP internal change until Stripe billing ships).</summary>
+    Task<Org?> UpdatePlanTierAsync(
+        Guid orgId,
+        PlanTier planTier,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
+        IEnumerable<Guid> ids,
+        CancellationToken cancellationToken = default);
 }
