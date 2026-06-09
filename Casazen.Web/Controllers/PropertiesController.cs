@@ -199,13 +199,24 @@ public class PropertiesController(
 
     [HttpGet("search")]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<Property>>> Search(
+    public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> Search(
         [FromQuery] string? city,
         [FromQuery] int? bedrooms,
         [FromQuery] decimal? maxPrice)
     {
         var properties = await propertyService.SearchAsync(city, bedrooms, maxPrice);
         return Ok(properties);
+    }
+
+    [HttpGet("{id}/public")]
+    [AllowAnonymous]
+    public async Task<ActionResult<PublicPropertyDetailDto>> GetPublic(Guid id)
+    {
+        var property = await propertyService.GetPublicPropertyAsync(id);
+        if (property is null)
+            return NotFound();
+
+        return Ok(property);
     }
 
     // Image Management Endpoints
