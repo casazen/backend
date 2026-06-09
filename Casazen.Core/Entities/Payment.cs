@@ -15,6 +15,10 @@ public class Payment
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
 
+    /// <summary>Tenant key (AC2). Inherited from the payment's booking; never client-supplied.</summary>
+    public Guid OrgId { get; set; }
+    public virtual Org Org { get; set; } = null!;
+
     [Precision(18, 2)]
     public decimal Amount { get; set; }
 

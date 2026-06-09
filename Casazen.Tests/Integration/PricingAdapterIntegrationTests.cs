@@ -176,24 +176,28 @@ public class PricingAdapterIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
-    public async Task AC8_NonOwner_OnAllEndpoints_ReturnsForbidden()
+    public async Task AC8_CrossOrgUser_OnAllEndpoints_ReturnsNotFound()
     {
+        // After US-004 (#202) the EF global tenant filter scopes property reads to the caller's
+        // org. A user from another org (here: one with no org at all) cannot see the property,
+        // so every property-scoped endpoint returns 404 — never another org's row, and never 403
+        // (which would leak the property's existence). This is the tenant-isolation contract.
         var property = await _factory.SeedPropertyAsync(ownerId: TestAuthHandler.DefaultUserId);
         var otherClient = _factory.CreateAuthenticatedClient(userId: "auth0|other-user-456");
         var propertyId = property.Id;
 
         var save = await otherClient.PostAsJsonAsync($"/api/pricing-adapter/config/{propertyId}", ConfigRequest());
-        Assert.Equal(HttpStatusCode.Forbidden, save.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
 
         // Seed config as owner for remaining endpoints
         var ownerClient = _factory.CreateAuthenticatedClient();
         await ownerClient.PostAsJsonAsync($"/api/pricing-adapter/config/{propertyId}", ConfigRequest());
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await otherClient.GetAsync($"/api/pricing-adapter/config/{propertyId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await otherClient.DeleteAsync($"/api/pricing-adapter/config/{propertyId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await otherClient.GetAsync($"/api/pricing-adapter/preview/{propertyId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await otherClient.PostAsync($"/api/pricing-adapter/sync/{propertyId}", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await otherClient.GetAsync($"/api/pricing-adapter/history/{propertyId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/config/{propertyId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.DeleteAsync($"/api/pricing-adapter/config/{propertyId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/preview/{propertyId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.PostAsync($"/api/pricing-adapter/sync/{propertyId}", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/pricing-adapter/history/{propertyId}")).StatusCode);
     }
 
     [Fact]

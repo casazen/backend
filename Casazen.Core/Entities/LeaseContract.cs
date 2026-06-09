@@ -16,6 +16,10 @@ public class LeaseContract
     [ForeignKey(nameof(PropertyId))]
     public virtual Property Property { get; set; } = null!;
 
+    /// <summary>Tenant key (AC2). Inherited from the lease's property; never client-supplied.</summary>
+    public Guid OrgId { get; set; }
+    public virtual Org Org { get; set; } = null!;
+
     [Required]
     public LeaseStatus Status { get; set; } = LeaseStatus.Draft;
 
