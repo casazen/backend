@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
@@ -31,10 +32,13 @@ public class UsersController(
         pageSize = Math.Min(pageSize, 100);
         logger.LogInformation("Admin: listing users page={Page} pageSize={PageSize}", page, pageSize);
         var (users, total) = await userService.GetPagedAsync(search, role, isActive, page, pageSize);
+        var userList = users.ToList();
+        var orgIds = userList.Where(u => u.OrgId.HasValue).Select(u => u.OrgId!.Value);
+        var orgMap = await orgService.GetByIdsAsync(orgIds, HttpContext.RequestAborted);
 
         return Ok(new PagedResultDto<UserSummaryDto>
         {
-            Items = users.Select(ToSummary),
+            Items = userList.Select(u => ToSummary(u, u.OrgId is Guid id && orgMap.TryGetValue(id, out var org) ? org : null)),
             TotalCount = total,
             Page = page,
             PageSize = pageSize
@@ -161,6 +165,13 @@ public class UsersController(
         if (!Enum.TryParse<RentalType>(dto.RentalType, ignoreCase: true, out var rentalType))
             return BadRequest(new { error = $"Unknown rentalType: {dto.RentalType}" });
 
+        var planTier = PlanTier.Starter;
+        if (!string.IsNullOrWhiteSpace(dto.PlanTier))
+        {
+            if (!PlanCatalog.TryParseTier(dto.PlanTier, out planTier))
+                return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+        }
+
         var sub = GetSub();
         if (sub == null)
             return Unauthorized();
@@ -176,7 +187,7 @@ public class UsersController(
                        ?? string.Empty;
 
         var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
-            sub, rentalType, email, firstName, lastName);
+            sub, rentalType, planTier, email, firstName, lastName);
 
         return Ok(new OnboardingResponseDto
         {
@@ -192,7 +203,7 @@ public class UsersController(
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-    private static UserSummaryDto ToSummary(User u) => new()
+    private static UserSummaryDto ToSummary(User u, Org? org = null) => new()
     {
         Id = u.Id,
         Email = u.Email,
@@ -201,7 +212,10 @@ public class UsersController(
         Role = u.Role.ToString(),
         RentalType = u.RentalType?.ToString(),
         IsActive = u.IsActive,
-        CreatedAt = u.CreatedAt
+        CreatedAt = u.CreatedAt,
+        OrgId = u.OrgId,
+        OrgName = org?.Name,
+        PlanTier = org?.PlanTier.ToString(),
     };
 
     private async Task<Org?> ResolveOrgAsync(User user) =>

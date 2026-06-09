@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -12,6 +13,7 @@ public class UserServiceTests
 {
     private readonly Mock<IUserRepository> _repoMock;
     private readonly Mock<IAuth0ManagementService> _auth0Mock;
+    private readonly Mock<IOrgService> _orgMock;
     private readonly Mock<ILogger<UserService>> _loggerMock;
     private readonly UserService _service;
 
@@ -20,8 +22,9 @@ public class UserServiceTests
         _repoMock = new Mock<IUserRepository>();
         _loggerMock = new Mock<ILogger<UserService>>();
         _auth0Mock = new Mock<IAuth0ManagementService>();
+        _orgMock = new Mock<IOrgService>();
 
-        _service = new UserService(_repoMock.Object, _auth0Mock.Object, _loggerMock.Object);
+        _service = new UserService(_repoMock.Object, _auth0Mock.Object, _orgMock.Object, _loggerMock.Object);
     }
 
     // ─── GetCurrentUserAsync ────────────────────────────────────────────────
@@ -104,12 +107,16 @@ public class UserServiceTests
         var sub = "auth0|onboard1";
         var user = new User { Id = sub, Email = "a@b.com", FirstName = "A", LastName = "B" };
         _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(
+                sub, "a@b.com", "A B", PlanTier.Pro, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Org { Id = Guid.NewGuid(), PlanTier = PlanTier.Pro, Name = "A B" });
         _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
             .Returns(Task.CompletedTask);
 
         var (result, roles) = await _service.CompleteOnboardingAsync(
-            sub, RentalType.ShortTerm, "a@b.com", "A", "B");
+            sub, RentalType.ShortTerm, PlanTier.Pro, "a@b.com", "A", "B");
 
         Assert.Equal(RentalType.ShortTerm, result.RentalType);
         Assert.Equal(UserRole.PropertyOwner, result.Role);

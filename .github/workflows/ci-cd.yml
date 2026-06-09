@@ -168,7 +168,7 @@ jobs:
           RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
         run: |
           if [ -z "$RAILWAY_PROD_URL" ]; then exit 0; fi
-          for PATH_SUFFIX in properties bookings users/me me/contexts; do
+          for PATH_SUFFIX in properties bookings users/me me/contexts orgs/me/entitlement; do
             STATUS=$(curl -o /dev/null -sw "%{http_code}" \
               "${RAILWAY_PROD_URL}/api/${PATH_SUFFIX}")
             if [ "$STATUS" = "500" ]; then
@@ -181,3 +181,16 @@ jobs:
             fi
             echo "✅ Production /api/${PATH_SUFFIX} auth gate OK"
           done
+
+      - name: Production FE bundle sanity (must serve SPA, not placeholder)
+        run: |
+          BODY=$(curl -sf "https://casazen-app.vercel.app" || true)
+          if [ -z "$BODY" ]; then
+            echo "❌ Production FE unreachable at https://casazen-app.vercel.app"
+            exit 1
+          fi
+          if ! echo "$BODY" | grep -q 'id="root"'; then
+            echo "❌ Production FE missing React root — check Vercel Production deploy"
+            exit 1
+          fi
+          echo "✅ Production FE SPA shell OK (casazen-app.vercel.app)"

@@ -64,11 +64,14 @@ Do **not** skip phases or reorder them. Do **not** promote to `main` if Phase B 
 ## Phase D — Post-main verification
 
 1. Wait **~90–120s** after push to `main`
-2. Spawn qa-validator against **production** (`$RAILWAY_PROD_URL`, `https://casazen.vercel.app`)
-3. Re-run critical AC smoke on production
-4. **G20 branch alignment** — both divergence counts `0` per repo. **Merge direction:** promote `develop` → `main`; sync-back `main` → `develop` only if `main` builds. If `main` is broken, fix on `develop` then promote `develop` → `main` (never poison `develop` with a broken `main`).
-5. **G21 build parity** — `npm run build` / `dotnet build` on both `origin/main` and `origin/develop` tips.
-6. Write gate results (G20 SHAs, G21 build) to `Sessions/release-<issue-N>.md`
+2. Spawn qa-validator against **production** (`$RAILWAY_PROD_URL`, `https://casazen-app.vercel.app`)
+3. **Mandatory before Phase C** if backend migrations changed: `.\scripts\migrate.ps1 -Target prod`
+4. Re-run critical AC smoke on production:
+   - `.\scripts\release-smoke.ps1` (G16b)
+   - `E2E_PROD_SMOKE=1 npm run test:e2e -- prod-deploy-smoke` in frontend (G18)
+5. **G20 branch alignment** — both divergence counts `0` per repo. **Merge direction:** promote `develop` → `main`; sync-back `main` → `develop` only if `main` builds. If `main` is broken, fix on `develop` then promote `develop` → `main` (never poison `develop` with a broken `main`).
+6. **G21 build parity** — `npm run build` / `dotnet build` on both `origin/main` and `origin/develop` tips.
+7. Write gate results (G20 SHAs, G21 build) to `Sessions/release-<issue-N>.md`
 
 ## Gate commands
 
@@ -91,7 +94,9 @@ gh release create vX.Y.Z --generate-notes
 
 # Phase D (main / production)
 curl -sf $RAILWAY_PROD_URL/api/health
-curl -sf https://casazen.vercel.app
+.\scripts\release-smoke.ps1                                    # G16b — migrations + prod smoke
+cd ../frontend && E2E_PROD_SMOKE=1 npm run test:e2e -- prod-deploy-smoke  # G18
+curl -sf https://casazen-app.vercel.app | grep 'id="root"'       # G17 — canonical prod FE URL
 
 # G20 — main ↔ develop aligned (run per repo; both must be 0)
 git fetch origin main develop

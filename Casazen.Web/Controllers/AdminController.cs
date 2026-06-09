@@ -1,6 +1,7 @@
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Admin;
+using Casazen.Web.DTOs.Orgs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,6 +12,8 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = "AdminOnly")]
 public class AdminController(
     IAdminService adminService,
+    IOrgService orgService,
+    IEntitlementService entitlementService,
     ILogger<AdminController> logger) : ControllerBase
 {
     /// <summary>Returns platform KPI stats for the admin dashboard.</summary>
@@ -98,5 +101,32 @@ public class AdminController(
             LastStatus = j.LastStatus,
             NextRun = j.NextRun
         }));
+    }
+
+    /// <summary>Updates an org's plan tier. Admin only (MVP until Stripe billing).</summary>
+    [HttpPatch("orgs/{orgId:guid}/plan")]
+    public async Task<ActionResult<EntitlementDto>> UpdateOrgPlan(
+        Guid orgId,
+        [FromBody] UpdateOrgPlanDto dto,
+        CancellationToken cancellationToken)
+    {
+        if (!PlanCatalog.TryParseTier(dto.PlanTier, out var planTier))
+            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+
+        logger.LogInformation("Admin plan change requested for org {OrgId} -> {PlanTier}", orgId, planTier);
+
+        var updated = await orgService.UpdatePlanTierAsync(orgId, planTier, cancellationToken);
+        if (updated is null)
+            return NotFound(new { error = "Organization not found" });
+
+        var entitlement = await entitlementService.GetEntitlementAsync(orgId, cancellationToken);
+        return Ok(new EntitlementDto
+        {
+            OrgId = entitlement.OrgId,
+            PlanTier = entitlement.PlanTier,
+            Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
+            Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
+            CanAddProperty = entitlement.CanAddProperty
+        });
     }
 }
