@@ -29,81 +29,65 @@ BEGIN
 END $$;
 ");
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "OrgId",
-                table: "Properties",
-                type: "uuid",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
+            // Zero-downtime NOT-NULL + FK flip (AC10b / design Migration Plan, Deploy 3). The naive
+            // AlterColumn(nullable:false) emits a validating SET NOT NULL (full-table scan under
+            // ACCESS EXCLUSIVE) and AddForeignKey validates immediately (SHARE ROW EXCLUSIVE), both
+            // of which lock a populated Supabase table. Instead, for each of the four tenant tables:
+            //   1. ADD the FK ... NOT VALID (brief lock, no scan) then VALIDATE CONSTRAINT
+            //      (SHARE UPDATE EXCLUSIVE — concurrent reads/writes keep running during the scan).
+            //   2. ADD a CHECK ("OrgId" IS NOT NULL) NOT VALID -> VALIDATE CONSTRAINT, then
+            //      ALTER COLUMN ... SET NOT NULL (Postgres 12+ reuses the validated CHECK and skips
+            //      the table scan), then DROP the now-redundant CHECK.
+            // Static SQL only (no C# concatenation/interpolation); constraint names match EF
+            // conventions and the model snapshot, so the resulting schema is byte-for-byte identical
+            // to the generated migration — only the lock profile changes.
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "OrgId",
-                table: "Payments",
-                type: "uuid",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
+            migrationBuilder.Sql(@"
+ALTER TABLE ""Properties"" ADD CONSTRAINT ""FK_Properties_Orgs_OrgId""
+    FOREIGN KEY (""OrgId"") REFERENCES ""Orgs"" (""Id"") ON DELETE RESTRICT NOT VALID;
+ALTER TABLE ""Properties"" VALIDATE CONSTRAINT ""FK_Properties_Orgs_OrgId"";
+ALTER TABLE ""Properties"" ADD CONSTRAINT ""CK_Properties_OrgId_NotNull"" CHECK (""OrgId"" IS NOT NULL) NOT VALID;
+ALTER TABLE ""Properties"" VALIDATE CONSTRAINT ""CK_Properties_OrgId_NotNull"";
+ALTER TABLE ""Properties"" ALTER COLUMN ""OrgId"" SET NOT NULL;
+ALTER TABLE ""Properties"" DROP CONSTRAINT ""CK_Properties_OrgId_NotNull"";
+");
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "OrgId",
-                table: "LeaseContracts",
-                type: "uuid",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
+            migrationBuilder.Sql(@"
+ALTER TABLE ""Payments"" ADD CONSTRAINT ""FK_Payments_Orgs_OrgId""
+    FOREIGN KEY (""OrgId"") REFERENCES ""Orgs"" (""Id"") ON DELETE RESTRICT NOT VALID;
+ALTER TABLE ""Payments"" VALIDATE CONSTRAINT ""FK_Payments_Orgs_OrgId"";
+ALTER TABLE ""Payments"" ADD CONSTRAINT ""CK_Payments_OrgId_NotNull"" CHECK (""OrgId"" IS NOT NULL) NOT VALID;
+ALTER TABLE ""Payments"" VALIDATE CONSTRAINT ""CK_Payments_OrgId_NotNull"";
+ALTER TABLE ""Payments"" ALTER COLUMN ""OrgId"" SET NOT NULL;
+ALTER TABLE ""Payments"" DROP CONSTRAINT ""CK_Payments_OrgId_NotNull"";
+");
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "OrgId",
-                table: "Bookings",
-                type: "uuid",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
+            migrationBuilder.Sql(@"
+ALTER TABLE ""LeaseContracts"" ADD CONSTRAINT ""FK_LeaseContracts_Orgs_OrgId""
+    FOREIGN KEY (""OrgId"") REFERENCES ""Orgs"" (""Id"") ON DELETE RESTRICT NOT VALID;
+ALTER TABLE ""LeaseContracts"" VALIDATE CONSTRAINT ""FK_LeaseContracts_Orgs_OrgId"";
+ALTER TABLE ""LeaseContracts"" ADD CONSTRAINT ""CK_LeaseContracts_OrgId_NotNull"" CHECK (""OrgId"" IS NOT NULL) NOT VALID;
+ALTER TABLE ""LeaseContracts"" VALIDATE CONSTRAINT ""CK_LeaseContracts_OrgId_NotNull"";
+ALTER TABLE ""LeaseContracts"" ALTER COLUMN ""OrgId"" SET NOT NULL;
+ALTER TABLE ""LeaseContracts"" DROP CONSTRAINT ""CK_LeaseContracts_OrgId_NotNull"";
+");
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_Bookings_Orgs_OrgId",
-                table: "Bookings",
-                column: "OrgId",
-                principalTable: "Orgs",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
+            migrationBuilder.Sql(@"
+ALTER TABLE ""Bookings"" ADD CONSTRAINT ""FK_Bookings_Orgs_OrgId""
+    FOREIGN KEY (""OrgId"") REFERENCES ""Orgs"" (""Id"") ON DELETE RESTRICT NOT VALID;
+ALTER TABLE ""Bookings"" VALIDATE CONSTRAINT ""FK_Bookings_Orgs_OrgId"";
+ALTER TABLE ""Bookings"" ADD CONSTRAINT ""CK_Bookings_OrgId_NotNull"" CHECK (""OrgId"" IS NOT NULL) NOT VALID;
+ALTER TABLE ""Bookings"" VALIDATE CONSTRAINT ""CK_Bookings_OrgId_NotNull"";
+ALTER TABLE ""Bookings"" ALTER COLUMN ""OrgId"" SET NOT NULL;
+ALTER TABLE ""Bookings"" DROP CONSTRAINT ""CK_Bookings_OrgId_NotNull"";
+");
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_LeaseContracts_Orgs_OrgId",
-                table: "LeaseContracts",
-                column: "OrgId",
-                principalTable: "Orgs",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Payments_Orgs_OrgId",
-                table: "Payments",
-                column: "OrgId",
-                principalTable: "Orgs",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Properties_Orgs_OrgId",
-                table: "Properties",
-                column: "OrgId",
-                principalTable: "Orgs",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Users_Orgs_OrgId",
-                table: "Users",
-                column: "OrgId",
-                principalTable: "Orgs",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
+            // Users.OrgId stays nullable (AC9) — add only the FK, lock-light (NOT VALID -> VALIDATE).
+            migrationBuilder.Sql(@"
+ALTER TABLE ""Users"" ADD CONSTRAINT ""FK_Users_Orgs_OrgId""
+    FOREIGN KEY (""OrgId"") REFERENCES ""Orgs"" (""Id"") ON DELETE RESTRICT NOT VALID;
+ALTER TABLE ""Users"" VALIDATE CONSTRAINT ""FK_Users_Orgs_OrgId"";
+");
         }
 
         /// <inheritdoc />
