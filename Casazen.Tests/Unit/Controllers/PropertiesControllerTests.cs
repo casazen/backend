@@ -6,6 +6,7 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ public class PropertiesControllerTests
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IPropertyDocumentService> _mockDocumentService;
     private readonly Mock<IAdminAccessAuditService> _mockAuditService;
-    private readonly Mock<ITenantContext> _mockTenantContext;
+    private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IEntitlementService> _mockEntitlementService;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
@@ -33,7 +34,7 @@ public class PropertiesControllerTests
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockDocumentService = new Mock<IPropertyDocumentService>();
         _mockAuditService = new Mock<IAdminAccessAuditService>();
-        _mockTenantContext = new Mock<ITenantContext>();
+        _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockEntitlementService = new Mock<IEntitlementService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
         _controller = new PropertiesController(
@@ -42,13 +43,15 @@ public class PropertiesControllerTests
             _mockAuthz.Object,
             _mockDocumentService.Object,
             _mockAuditService.Object,
-            _mockTenantContext.Object,
+            _mockOrgContextResolver.Object,
             _mockEntitlementService.Object,
             _mockLogger.Object);
 
         // Defaults: caller has an org and is under the plan limit. Create-path tests that need
         // the opposite (no org / limit reached) override these per-test.
-        _mockTenantContext.SetupGet(x => x.OrgId).Returns(DefaultOrgId);
+        _mockOrgContextResolver
+            .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DefaultOrgId);
         _mockEntitlementService
             .Setup(x => x.CanAddPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);

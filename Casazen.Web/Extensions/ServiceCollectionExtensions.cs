@@ -243,6 +243,7 @@ public static class ServiceCollectionExtensions
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         services.AddScoped<ITenantContext, TenantContext>();
+        services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         return services;
