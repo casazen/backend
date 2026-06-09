@@ -76,7 +76,7 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 | **Railway** | Railway GitHub integration → `casazen/backend` | Railway dashboard → each environment (`test` / `production`) |
 | **Vercel** | Vercel GitHub integration → `casazen/frontend` | Vercel dashboard → Preview / Production; `vercel.json` sets `outputDirectory: dist` |
 
-**Production FE sanity check** (Stage 05 G10/G17): `curl -sf https://casazen.vercel.app` must return HTML containing `id="root"`. If the body shows `.env` placeholders or `GEMINI_API_KEY`, the Vercel project/domain is mislinked — fix the project root and output directory in the Vercel dashboard before promoting to `main`.
+**Production FE sanity check** (Stage 05 G10/G17): `curl -sf https://casazen-app.vercel.app` must return HTML containing `id="root"`. Do **not** use `https://casazen.vercel.app` (mislinked domain — issue #187). If the body shows `.env` placeholders or `GEMINI_API_KEY`, the Vercel project/domain is mislinked — fix the project root and output directory in the Vercel dashboard before promoting to `main`.
 | **Supabase** | Hosted DB (no app deploy) | Supabase dashboard; optional secrets synced to GitHub by Supabase integration |
 
 ### What GitHub Actions still do
@@ -370,7 +370,7 @@ ASPNETCORE_URLS=http://+:8080
 PORT=8080
 ConnectionStrings__DefaultConnection=Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
 Auth0__Domain=[your-tenant.auth0.com]
-Auth0__Audience=[https://api.casazen.app]
+Auth0__Audience=https://casazen-api
 Stripe__SecretKey=[sk_live_... or sk_test_...]
 Stripe__WebhookSecret=[whsec_...]
 Email__SendGridApiKey=[SG....]
@@ -408,12 +408,14 @@ Used only for CI health checks and PR link comments — **not** for Railway runt
 
 In Vercel dashboard → Settings → Environment Variables:
 
-| Variable | Preview | Production |
+| Variable | Preview (develop / PR) | Production (main) |
 |---|---|---|
 | `VITE_API_BASE_URL` | `https://casazen-api-test.up.railway.app/api` | `https://casazen-api.up.railway.app/api` |
-| `VITE_AUTH0_DOMAIN` | `dev-mp6wadq7j6bophl5.us.auth0.com` (your Auth0 tenant) | prod tenant when ready |
-| `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | `[prod client id]` |
-| `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | `https://api.casazen.app` |
+| `VITE_AUTH0_DOMAIN` | `dev-mp6wadq7j6bophl5.us.auth0.com` | same until prod Auth0 tenant is ready |
+| `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | same SPA client until prod tenant is ready |
+| `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api`** (must match Railway `Auth0__Audience` on **both** environments) |
+
+> **Critical:** Preview and Production must point to **different** `VITE_API_BASE_URL` hosts (test vs prod Railway). If Production accidentally uses the test API URL, staging will look fine while production users hit the wrong backend/schema. After every `main` deploy, CI runs `prod-deploy-smoke` to catch this.
 
 ### Git branches and deploy mapping
 
@@ -501,8 +503,17 @@ Created in Stage 05 when an Epic-linked feature is released:
 - Version: v1.3.0
 - Tag: (pending)
 - BE prod: https://casazen-api.up.railway.app
-- FE prod: https://casazen.vercel.app
+- FE prod: https://casazen-app.vercel.app
 - Released: (pending)
+
+### Stage 05 Phase D checklist (mandatory)
+
+After merge `develop` → `main`:
+
+1. `.\scripts\migrate.ps1 -Target prod` — apply EF migrations to `casazen_prod` **before** relying on prod traffic
+2. `.\scripts\release-smoke.ps1` — health + auth gates + FE SPA
+3. `E2E_PROD_SMOKE=1 npm run test:e2e -- prod-deploy-smoke` (frontend repo) — authenticated prod FE + prod API
+4. Confirm GitHub Actions `verify-prod` + frontend `e2e-deploy-smoke` on `main` are green
 ```
 
 ### Bundle gate in Stage 05
@@ -522,6 +533,7 @@ Before allowing production promotion, the coordinator checks:
 |---|---|---|
 | Variable | `RAILWAY_TEST_URL` | Health check after push to `develop`; PR comment link |
 | Variable | `RAILWAY_PROD_URL` | Health check after push to `main` |
+| Variable | `STAGING_FE_URL` | Vercel develop deployment URL for staging FE smoke (frontend repo) |
 
 ### Optional
 

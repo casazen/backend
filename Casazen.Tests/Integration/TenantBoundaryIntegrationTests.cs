@@ -125,4 +125,57 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
         var ids = doc.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetGuid());
         Assert.Contains(property.Id, ids);
     }
+
+    [Fact]
+    public async Task Onboarding_WithProPlan_ProvisionsOrgWithSelectedTier()
+    {
+        var owner = NewOwner();
+        var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
+
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", new
+        {
+            rentalType = "ShortTerm",
+            planTier = "Pro",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var me = await client.GetAsync("/api/users/me");
+        using var doc = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
+        Assert.Equal("Pro", doc.RootElement.GetProperty("org").GetProperty("planTier").GetString());
+    }
+
+    [Fact]
+    public async Task Owner_CanChangePlanTier()
+    {
+        var owner = NewOwner();
+        await _factory.SeedPropertyAsync(ownerId: owner);
+        var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
+
+        var response = await client.PutAsJsonAsync("/api/orgs/me/plan", new { planTier = "Scale" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Scale", doc.RootElement.GetProperty("planTier").GetString());
+        Assert.True(doc.RootElement.GetProperty("canAddProperty").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Admin_CanChangeOrgPlanTier()
+    {
+        var owner = NewOwner();
+        await _factory.SeedPropertyAsync(ownerId: owner);
+        var adminClient = _factory.CreateAuthenticatedClient(userId: "auth0|admin", roles: "Admin");
+
+        var me = await _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner")
+            .GetAsync("/api/users/me");
+        var orgId = JsonDocument.Parse(await me.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("orgId").GetGuid();
+
+        var response = await adminClient.PatchAsJsonAsync($"/api/admin/orgs/{orgId}/plan", new { planTier = "Pro" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Pro", doc.RootElement.GetProperty("planTier").GetString());
+    }
 }

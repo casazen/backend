@@ -26,20 +26,31 @@ curl -sf $STAGING_FE_URL | grep -q 'id="root"'           # G10: must match
 
 **Block main promotion** if G7, G8, G9, or G10 fail.
 
-`$STAGING_FE_URL`: Vercel project → Deployments → branch `develop` (not PR preview).
+`$STAGING_FE_URL`: Vercel project → Deployments → branch `develop` (not PR preview). Do **not** use `casazen-app.vercel.app` for staging — that URL is **Production** (branch `main`).
 
 ## Phase D — Production validation (after merge to main)
 
 Wait ~90–120s after push to `main`.
 
+**If the release includes EF migrations**, run prod migrations **before** opening the release PR or immediately after merge:
+
+```bash
+cd casazen/backend
+.\scripts\migrate.ps1 -Target prod                       # G6d — casazen_prod schema
+.\scripts\release-smoke.ps1                              # G16b — health + auth gates + FE SPA
+```
+
 ```bash
 curl -sf $RAILWAY_PROD_URL/api/health                    # G16: HTTP 200
-curl -sf https://casazen.vercel.app | grep -q 'id="root"'  # G17: SPA shell, not placeholder
-curl -o /dev/null -sw "%{http_code}" $RAILWAY_PROD_URL/api/properties  # auth gate
+curl -sf https://casazen-app.vercel.app | grep -q 'id="root"'  # G17: SPA shell (NOT casazen.vercel.app)
+curl -o /dev/null -sw "%{http_code}" $RAILWAY_PROD_URL/api/orgs/me/entitlement  # 401 without token
 
-# G18: Re-run critical acceptance criteria on PRODUCTION URLs (E2E or manual)
-# Stage 06 operations audit depends on these passing first
+# G18: Authenticated production full-stack smoke (MANDATORY)
+cd casazen/frontend
+E2E_PROD_SMOKE=1 npm run test:e2e -- prod-deploy-smoke
 ```
+
+**Why G18 matters:** staging CI historically tested `RAILWAY_TEST_URL` even on push to `main`. Authenticated calls can pass on test while prod fails (missing `casazen_prod` migration, wrong Vercel Production env vars, or prod-only 401).
 
 ## Failure classification
 
@@ -49,6 +60,7 @@ curl -o /dev/null -sw "%{http_code}" $RAILWAY_PROD_URL/api/properties  # auth ga
 | AC fail on staging | B | Route to Stage 03; block main promotion |
 | Staging FE 404 | B | Check Vercel develop deploy |
 | Prod health fail after main merge | D | Check Railway/Vercel prod logs; escalate |
+| Prod auth 401/500 (G18) | D | Check `Auth0__Audience` on Railway prod matches `VITE_AUTH0_AUDIENCE` on Vercel Production; run `migrate.ps1 -Target prod` |
 | AC fail on prod only | D | P1 — document in release report; notify Stage 06 |
 
 ## Output format
@@ -66,8 +78,9 @@ PHASE B — Staging (develop)
 
 PHASE D — Production (main)
 | G16 BE prod      | ✅/❌ | HTTP N |
-| G17 FE prod SPA  | ✅/❌ | casazen.vercel.app contains #root |
-| G18 Feature ACs  | ✅/❌ | X/Y passed on prod |
+| G16b release-smoke | ✅/❌ | migrate + gates |
+| G17 FE prod SPA  | ✅/❌ | casazen-app.vercel.app contains #root |
+| G18 Prod E2E     | ✅/❌ | prod-deploy-smoke pass |
 
 VERDICT: PASS → proceed / FAIL → block next phase
 ```
