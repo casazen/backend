@@ -538,7 +538,7 @@ public class PropertiesControllerTests
     public async Task Search_WithFilters_ReturnsFilteredProperties()
     {
         // Arrange
-        var properties = new List<Property>
+        var properties = new List<PublicPropertyDto>
         {
             new() { Id = Guid.NewGuid(), Name = "Property 1", City = "Rome", Bedrooms = 2, NightlyRate = 100m },
             new() { Id = Guid.NewGuid(), Name = "Property 2", City = "Rome", Bedrooms = 3, NightlyRate = 150m }
@@ -551,7 +551,7 @@ public class PropertiesControllerTests
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var returnedProperties = Assert.IsAssignableFrom<IEnumerable<Property>>(okResult.Value);
+        var returnedProperties = Assert.IsAssignableFrom<IEnumerable<PublicPropertyDto>>(okResult.Value);
         Assert.Equal(2, returnedProperties.Count());
         _mockService.Verify(x => x.SearchAsync("Rome", 2, 200m), Times.Once);
     }

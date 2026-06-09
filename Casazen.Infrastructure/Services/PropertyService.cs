@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -44,10 +45,66 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return true;
     }
 
-    public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
         logger.LogInformation("Searching properties: city={City}, bedrooms={Bedrooms}, maxPrice={MaxPrice}", city, bedrooms, maxPrice);
-        return await repository.SearchAsync(city, bedrooms, maxPrice);
+
+        var rows = await repository.GetSearchQueryable(city, bedrooms, maxPrice)
+            .OrderBy(p => p.City)
+            .ThenBy(p => p.NightlyRate)
+            .Take(50)
+            .Select(p => new PublicPropertyRow
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Description = p.Description,
+                City = p.City,
+                PostalCode = p.PostalCode,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                Bedrooms = p.Bedrooms,
+                Bathrooms = p.Bathrooms,
+                MaxGuests = p.MaxGuests,
+                NightlyRate = p.NightlyRate,
+                CleaningFee = p.CleaningFee,
+                Amenities = p.Amenities,
+                PhotoUrls = p.PhotoUrls,
+                CinCode = p.CinCode,
+                Timezone = p.Timezone,
+            })
+            .ToListAsync();
+
+        return rows.Select(MapPublicProperty).ToList();
+    }
+
+    public async Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id)
+    {
+        var row = await repository.GetSearchQueryable(null, null, null)
+            .Where(p => p.Id == id)
+            .Select(p => new PublicPropertyDetailRow
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Description = p.Description,
+                City = p.City,
+                PostalCode = p.PostalCode,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                Bedrooms = p.Bedrooms,
+                Bathrooms = p.Bathrooms,
+                MaxGuests = p.MaxGuests,
+                NightlyRate = p.NightlyRate,
+                CleaningFee = p.CleaningFee,
+                Amenities = p.Amenities,
+                PhotoUrls = p.PhotoUrls,
+                CinCode = p.CinCode,
+                Timezone = p.Timezone,
+                HouseRules = p.HouseRules,
+                CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+            })
+            .FirstOrDefaultAsync();
+
+        return row is null ? null : MapPublicPropertyDetail(row);
     }
 
     public async Task<Property> AddImageAsync(Guid propertyId, string imageUrl)
@@ -198,9 +255,81 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
 
     private static readonly Regex CinRegex = new(@"^IT-\d{5}-\d{10}$", RegexOptions.Compiled);
 
-    private static CinStatus ResolveCinStatus(string? cinCode)
+    internal static CinStatus ResolveCinStatus(string? cinCode)
     {
         if (string.IsNullOrWhiteSpace(cinCode)) return CinStatus.Missing;
         return CinRegex.IsMatch(cinCode) ? CinStatus.Valid : CinStatus.Invalid;
+    }
+
+    private static PublicPropertyDto MapPublicProperty(PublicPropertyRow row) => new()
+    {
+        Id = row.Id,
+        Name = row.Name,
+        Description = row.Description,
+        City = row.City,
+        PostalCode = row.PostalCode,
+        Latitude = row.Latitude,
+        Longitude = row.Longitude,
+        Bedrooms = row.Bedrooms,
+        Bathrooms = row.Bathrooms,
+        MaxGuests = row.MaxGuests,
+        NightlyRate = row.NightlyRate,
+        CleaningFee = row.CleaningFee,
+        Amenities = row.Amenities.Select(a => a.ToString()).ToList(),
+        PhotoUrls = row.PhotoUrls,
+        CinCode = row.CinCode,
+        CinStatus = ResolveCinStatus(row.CinCode),
+        Timezone = row.Timezone,
+    };
+
+    private static PublicPropertyDetailDto MapPublicPropertyDetail(PublicPropertyDetailRow row) => new()
+    {
+        Id = row.Id,
+        Name = row.Name,
+        Description = row.Description,
+        City = row.City,
+        PostalCode = row.PostalCode,
+        Latitude = row.Latitude,
+        Longitude = row.Longitude,
+        Bedrooms = row.Bedrooms,
+        Bathrooms = row.Bathrooms,
+        MaxGuests = row.MaxGuests,
+        NightlyRate = row.NightlyRate,
+        CleaningFee = row.CleaningFee,
+        Amenities = row.Amenities.Select(a => a.ToString()).ToList(),
+        PhotoUrls = row.PhotoUrls,
+        CinCode = row.CinCode,
+        CinStatus = ResolveCinStatus(row.CinCode),
+        Timezone = row.Timezone,
+        HouseRules = row.HouseRules,
+        CancellationPolicySummary = row.CancellationPolicySummary,
+        MinNights = null,
+        Currency = "EUR",
+    };
+
+    private class PublicPropertyRow
+    {
+        public Guid Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
+        public string City { get; init; } = string.Empty;
+        public string PostalCode { get; init; } = string.Empty;
+        public decimal Latitude { get; init; }
+        public decimal Longitude { get; init; }
+        public int Bedrooms { get; init; }
+        public int Bathrooms { get; init; }
+        public int MaxGuests { get; init; }
+        public decimal NightlyRate { get; init; }
+        public decimal CleaningFee { get; init; }
+        public List<PropertyAmenity> Amenities { get; init; } = [];
+        public List<string> PhotoUrls { get; init; } = [];
+        public string? CinCode { get; init; }
+        public string Timezone { get; init; } = "Europe/Rome";
+    }
+
+    private sealed class PublicPropertyDetailRow : PublicPropertyRow
+    {
+        public string HouseRules { get; init; } = string.Empty;
+        public string CancellationPolicySummary { get; init; } = string.Empty;
     }
 }
