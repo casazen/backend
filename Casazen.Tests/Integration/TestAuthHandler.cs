@@ -30,7 +30,12 @@ public class TestAuthHandler(
         if (!string.IsNullOrWhiteSpace(rolesHeader))
         {
             foreach (var role in rolesHeader.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
                 claims.Add(new Claim(ClaimTypes.Role, role));
+                // Mirror the Auth0 custom-roles claim so context-permission fallback resolves
+                // (ContextAuthorizationService reads "https://casazen.app/roles"), matching prod JWTs.
+                claims.Add(new Claim("https://casazen.app/roles", role));
+            }
         }
 
         var identity = new ClaimsIdentity(claims, SchemeName);

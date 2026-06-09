@@ -13,6 +13,7 @@ namespace Casazen.Web.Controllers;
 [Authorize]
 public class UsersController(
     IUserService userService,
+    IOrgService orgService,
     ILogger<UsersController> logger) : ControllerBase
 {
     // ─── Admin endpoints ────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ public class UsersController(
         if (user == null)
             return NotFound();
 
-        return Ok(ToDetail(user));
+        return Ok(ToDetail(user, await ResolveOrgAsync(user)));
     }
 
     // ─── Self-service endpoints ──────────────────────────────────────────────
@@ -76,7 +77,7 @@ public class UsersController(
                         ?? string.Empty;
 
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
-        return Ok(ToDetail(user));
+        return Ok(ToDetail(user, await ResolveOrgAsync(user)));
     }
 
     /// <summary>Completes first-time onboarding by assigning roles from rental type choice.</summary>
@@ -109,7 +110,7 @@ public class UsersController(
             existing.PhoneNumber = dto.PhoneNumber;
 
         var updated = await userService.UpdateUserAsync(existing);
-        return Ok(ToDetail(updated));
+        return Ok(ToDetail(updated, await ResolveOrgAsync(updated)));
     }
 
     /// <summary>Changes the role of a user. Admin only.</summary>
@@ -203,7 +204,10 @@ public class UsersController(
         CreatedAt = u.CreatedAt
     };
 
-    private static UserDetailDto ToDetail(User u) => new()
+    private async Task<Org?> ResolveOrgAsync(User user) =>
+        user.OrgId.HasValue ? await orgService.GetByIdAsync(user.OrgId.Value) : null;
+
+    private static UserDetailDto ToDetail(User u, Org? org = null) => new()
     {
         Id = u.Id,
         Email = u.Email,
@@ -214,6 +218,16 @@ public class UsersController(
         IsActive = u.IsActive,
         CreatedAt = u.CreatedAt,
         PhoneNumber = u.PhoneNumber,
-        UpdatedAt = u.UpdatedAt
+        UpdatedAt = u.UpdatedAt,
+        OrgId = u.OrgId,
+        Org = org is null
+            ? null
+            : new OrgSummaryDto
+            {
+                Id = org.Id,
+                Name = org.Name,
+                Slug = org.Slug,
+                PlanTier = org.PlanTier.ToString()
+            }
     };
 }

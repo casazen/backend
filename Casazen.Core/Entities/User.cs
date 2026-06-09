@@ -26,6 +26,10 @@ public class User
 
     public RentalType? RentalType { get; set; }
 
+    /// <summary>The org this user belongs to (AC9). Nullable: a brand-new user pre-backfill has none.</summary>
+    public Guid? OrgId { get; set; }
+    public virtual Org? Org { get; set; }
+
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 

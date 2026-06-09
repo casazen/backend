@@ -17,13 +17,32 @@ public class AdminService(
     private const string CinPattern = @"^IT-\d{5}-\d{10}$";
     private static readonly TimeSpan OtaSyncThreshold = TimeSpan.FromHours(6);
 
+    /// <summary>
+    /// Audits an AdminOnly read that deliberately bypasses the global tenant filter
+    /// (<c>IgnoreQueryFilters()</c>) to aggregate across every org (#202 F-H1, design §Security
+    /// Notes). Mirrors the structured-event style of <c>AdminAccessAuditService</c>.
+    /// </summary>
+    private void LogPrivilegedCrossOrgRead(string action) =>
+        logger.LogWarning(
+            "Privileged cross-org admin read: {Event} Action={Action} Scope={Scope} Timestamp={Timestamp}",
+            "PrivilegedCrossOrgRead",
+            action,
+            "platform-wide",
+            DateTime.UtcNow);
+
     public async Task<AdminStats> GetStatsAsync()
     {
         var now = DateTime.UtcNow;
         var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Properties
-        var allProperties = await dbContext.Properties.ToListAsync();
+        // Platform-wide admin read (AdminOnly). The EF global tenant filter scopes the four tenant
+        // tables to the caller's org; admins typically have no org, so the dashboard would silently
+        // go empty. Per design §Security Notes this AdminOnly path BYPASSES the filter with
+        // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
+        LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
+
+        // Properties (filter bypassed — platform-wide)
+        var allProperties = await dbContext.Properties.IgnoreQueryFilters().ToListAsync();
         var totalProperties = allProperties.Count;
         var activeProperties = allProperties.Count(p => p.IsActive);
 
@@ -33,14 +52,15 @@ public class AdminService(
         var cinInvalid = allProperties.Count(p => !string.IsNullOrWhiteSpace(p.CinCode) && !Regex.IsMatch(p.CinCode, CinPattern));
         var cinTotal = totalProperties;
 
-        // Bookings — server-side aggregates to avoid loading full table
-        var totalBookings = await dbContext.Bookings.CountAsync();
-        var bookingsThisMonth = await dbContext.Bookings.CountAsync(b => b.CreatedAt >= startOfMonth);
-        var upcomingCheckIns = await dbContext.Bookings.CountAsync(b =>
+        // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
+        var totalBookings = await dbContext.Bookings.IgnoreQueryFilters().CountAsync();
+        var bookingsThisMonth = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b => b.CreatedAt >= startOfMonth);
+        var upcomingCheckIns = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b =>
             b.Status == BookingStatus.Confirmed && b.CheckInDate >= now);
 
-        // Revenue — sum of completed payments
+        // Revenue — sum of completed payments (filter bypassed — platform-wide)
         var totalRevenue = await dbContext.Payments
+            .IgnoreQueryFilters()
             .Where(p => p.Status == PaymentStatus.Completed)
             .SumAsync(p => (decimal?)p.Amount) ?? 0m;
 
@@ -78,7 +98,11 @@ public class AdminService(
             throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
         }
 
-        var properties = await dbContext.Properties.ToListAsync();
+        // Platform-wide admin read (AdminOnly): the CIN-compliance (D.L. 145/2023) report covers
+        // every org, so it BYPASSES the global tenant filter with an audit line (#202 F-H1).
+        LogPrivilegedCrossOrgRead(nameof(GetCinComplianceAsync));
+
+        var properties = await dbContext.Properties.IgnoreQueryFilters().ToListAsync();
 
         // Resolve owner emails from user table (best-effort; user may not exist in DB yet)
         var ownerIds = properties.Select(p => p.OwnerId).Distinct().ToList();
