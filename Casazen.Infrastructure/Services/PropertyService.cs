@@ -77,9 +77,71 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return rows.Select(MapPublicProperty).ToList();
     }
 
+    public async Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId)
+    {
+        logger.LogInformation("Searching public properties for org {OrgId}", orgId);
+
+        var rows = await repository.GetSearchQueryable(null, null, null, orgId)
+            .OrderBy(p => p.City)
+            .ThenBy(p => p.NightlyRate)
+            .Take(50)
+            .Select(p => new PublicPropertyRow
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Description = p.Description,
+                City = p.City,
+                PostalCode = p.PostalCode,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                Bedrooms = p.Bedrooms,
+                Bathrooms = p.Bathrooms,
+                MaxGuests = p.MaxGuests,
+                NightlyRate = p.NightlyRate,
+                CleaningFee = p.CleaningFee,
+                Amenities = p.Amenities,
+                PhotoUrls = p.PhotoUrls,
+                CinCode = p.CinCode,
+                Timezone = p.Timezone,
+            })
+            .ToListAsync();
+
+        return rows.Select(MapPublicProperty).ToList();
+    }
+
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id)
     {
         var row = await repository.GetSearchQueryable(null, null, null)
+            .Where(p => p.Id == id)
+            .Select(p => new PublicPropertyDetailRow
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Description = p.Description,
+                City = p.City,
+                PostalCode = p.PostalCode,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                Bedrooms = p.Bedrooms,
+                Bathrooms = p.Bathrooms,
+                MaxGuests = p.MaxGuests,
+                NightlyRate = p.NightlyRate,
+                CleaningFee = p.CleaningFee,
+                Amenities = p.Amenities,
+                PhotoUrls = p.PhotoUrls,
+                CinCode = p.CinCode,
+                Timezone = p.Timezone,
+                HouseRules = p.HouseRules,
+                CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+            })
+            .FirstOrDefaultAsync();
+
+        return row is null ? null : MapPublicPropertyDetail(row);
+    }
+
+    public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(Guid id, Guid orgId)
+    {
+        var row = await repository.GetSearchQueryable(null, null, null, orgId)
             .Where(p => p.Id == id)
             .Select(p => new PublicPropertyDetailRow
             {
