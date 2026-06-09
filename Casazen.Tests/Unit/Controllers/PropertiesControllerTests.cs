@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
@@ -20,6 +21,8 @@ public class PropertiesControllerTests
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IPropertyDocumentService> _mockDocumentService;
     private readonly Mock<IAdminAccessAuditService> _mockAuditService;
+    private readonly Mock<ITenantContext> _mockTenantContext;
+    private readonly Mock<IEntitlementService> _mockEntitlementService;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -30,6 +33,8 @@ public class PropertiesControllerTests
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockDocumentService = new Mock<IPropertyDocumentService>();
         _mockAuditService = new Mock<IAdminAccessAuditService>();
+        _mockTenantContext = new Mock<ITenantContext>();
+        _mockEntitlementService = new Mock<IEntitlementService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
         _controller = new PropertiesController(
             _mockService.Object,
@@ -37,8 +42,19 @@ public class PropertiesControllerTests
             _mockAuthz.Object,
             _mockDocumentService.Object,
             _mockAuditService.Object,
+            _mockTenantContext.Object,
+            _mockEntitlementService.Object,
             _mockLogger.Object);
+
+        // Defaults: caller has an org and is under the plan limit. Create-path tests that need
+        // the opposite (no org / limit reached) override these per-test.
+        _mockTenantContext.SetupGet(x => x.OrgId).Returns(DefaultOrgId);
+        _mockEntitlementService
+            .Setup(x => x.CanAddPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
+
+    private static readonly Guid DefaultOrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
 
     private void AllowAuthorization() =>
         _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).Returns(true);

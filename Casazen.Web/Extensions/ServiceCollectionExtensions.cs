@@ -1,6 +1,7 @@
 ﻿// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -239,6 +240,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IImageStorageService, LocalImageStorageService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+
+        // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
+        services.AddScoped<ITenantContext, TenantContext>();
+        services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IEntitlementService, EntitlementService>();
         return services;
     }
 

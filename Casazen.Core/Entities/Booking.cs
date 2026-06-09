@@ -15,6 +15,10 @@ public class Booking
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
+    /// <summary>Tenant key (AC2). Inherited from the booking's property; never client-supplied.</summary>
+    public Guid OrgId { get; set; }
+    public virtual Org Org { get; set; } = null!;
+
     [ForeignKey("Guest")]
     public Guid GuestId { get; set; }
     public virtual Guest Guest { get; set; } = null!;

@@ -2,6 +2,7 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
@@ -20,6 +21,8 @@ public class PropertiesController(
     IPropertyAuthorizationService authorizationService,
     IPropertyDocumentService documentService,
     IAdminAccessAuditService adminAccessAuditService,
+    ITenantContext tenantContext,
+    IEntitlementService entitlementService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     [HttpGet("health")]
@@ -78,16 +81,52 @@ public class PropertiesController(
     /// <response code="401">The caller is not authenticated.</response>
     [HttpPost]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [ProducesResponseType(typeof(Property), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<Property>> Create([FromBody] CreatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
+        // Fail-closed (AC7): OrgId is required on a Property, so a caller with no org context
+        // (e.g. a brand-new user pre-backfill) cannot create tenant-scoped rows.
+        var orgId = tenantContext.OrgId;
+        if (orgId is null)
+        {
+            logger.LogWarning("Property creation blocked: user {UserId} has no org context", userId);
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "No organization context",
+                code = "no_org_context"
+            });
+        }
+
+        // AC8: enforce the org's plan limit server-side before insert. Client-side gating is
+        // advisory; this is the source of truth (a stale client cannot exceed the limit).
+        if (!await entitlementService.CanAddPropertyAsync(orgId.Value))
+        {
+            var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value);
+            logger.LogWarning(
+                "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
+                orgId, entitlement.PlanTier, entitlement.MaxProperties);
+
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "Plan limit reached",
+                code = "plan_limit_reached",
+                planTier = entitlement.PlanTier,
+                limit = entitlement.MaxProperties
+            });
+        }
+
         logger.LogInformation("Creating property for user: {UserId}", userId);
         var property = request.ToProperty(userId);
+        // AC7: tenant key is server-set from the caller's org, never client-supplied.
+        property.OrgId = orgId.Value;
         var created = await propertyService.CreatePropertyAsync(property);
-        logger.LogInformation("Property created: {PropertyId}", created.Id);
+        logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 

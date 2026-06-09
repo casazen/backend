@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Hangfire;
@@ -80,9 +81,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        var org = await EnsureOrgAsync(db, ownerId);
+
         var property = new Property
         {
             OwnerId = ownerId,
+            OrgId = org.Id,
             Name = "Pricing Integration Property",
             Description = "Integration test property",
             Address = $"Via Test {Guid.NewGuid():N}",
@@ -105,6 +109,59 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         db.Properties.Add(property);
         await db.SaveChangesAsync();
         return property;
+    }
+
+    /// <summary>
+    /// Finds or creates the default <see cref="Org"/> for an owner and ensures the owner's
+    /// <see cref="User"/> row carries its <c>OrgId</c>, so the tenant query filter makes seeded
+    /// rows visible to the authenticated owner (US-004). Returns the owner's org.
+    /// </summary>
+    public async Task<Org> SeedOrgForOwnerAsync(string ownerId = TestAuthHandler.DefaultUserId)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await EnsureOrgAsync(db, ownerId);
+        await db.SaveChangesAsync();
+        return org;
+    }
+
+    private static async Task<Org> EnsureOrgAsync(AppDbContext db, string ownerId)
+    {
+        var slug = $"test-org-{ownerId}";
+        var org = await db.Orgs.FirstOrDefaultAsync(o => o.Slug == slug);
+        if (org is null)
+        {
+            org = new Org
+            {
+                Name = $"Org {ownerId}",
+                Slug = slug,
+                DisplayName = $"Org {ownerId}",
+                ContactEmail = "owner@example.com",
+                PlanTier = PlanTier.Starter,
+                IsActive = true,
+            };
+            db.Orgs.Add(org);
+        }
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == ownerId);
+        if (user is null)
+        {
+            db.Users.Add(new User
+            {
+                Id = ownerId,
+                Email = $"{Guid.NewGuid():N}@example.com",
+                FirstName = "Test",
+                LastName = "Owner",
+                OrgId = org.Id,
+                IsActive = true,
+            });
+        }
+        else if (user.OrgId is null)
+        {
+            user.OrgId = org.Id;
+        }
+
+        return org;
     }
 
     public async Task SeedPricingHistoryAsync(Guid propertyId, int count = 3)
