@@ -31,7 +31,12 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
-        var query = context.Properties.AsQueryable();
+        return await GetSearchQueryable(city, bedrooms, maxPrice).ToListAsync();
+    }
+
+    public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice)
+    {
+        var query = context.Properties.AsQueryable().Where(p => p.IsActive);
 
         if (!string.IsNullOrEmpty(city))
             query = query.Where(p => p.City.ToLower().Contains(city.ToLower()));
@@ -42,7 +47,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         if (maxPrice.HasValue)
             query = query.Where(p => p.NightlyRate <= maxPrice.Value);
 
-        return await query.Where(p => p.IsActive).ToListAsync();
+        return query;
     }
 
     public async Task<Property> AddAsync(Property property)
