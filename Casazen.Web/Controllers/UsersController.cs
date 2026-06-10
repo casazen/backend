@@ -33,6 +33,7 @@ public class UsersController(
         logger.LogInformation("Admin: listing users page={Page} pageSize={PageSize}", page, pageSize);
         var (users, total) = await userService.GetPagedAsync(search, role, isActive, page, pageSize);
         var userList = users.ToList();
+        await userService.EnrichUsersFromAuth0Async(userList);
         var orgIds = userList.Where(u => u.OrgId.HasValue).Select(u => u.OrgId!.Value);
         var orgMap = await orgService.GetByIdsAsync(orgIds, HttpContext.RequestAborted);
 
