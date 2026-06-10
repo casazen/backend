@@ -74,7 +74,7 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
             {
                 Type = "https://casazen.app/errors/payment-processing-error",
                 Title = "Payment Processing Error",
-                Status = StatusCodes.Status422UnprocessableEntity,
+                Status = StatusCodes.Status503ServiceUnavailable,
                 Detail = paymentEx.Message,
             },
             UnauthorizedAccessException => new ProblemDetails
