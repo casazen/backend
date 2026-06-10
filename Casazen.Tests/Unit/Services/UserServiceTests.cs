@@ -46,6 +46,22 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task GetCurrentUserAsync_UserExistsWithEmptyEmail_BackfillsFromJwtClaims()
+    {
+        var sub = "auth0|legacy456";
+        var existing = new User { Id = sub, Email = "", FirstName = "", LastName = "" };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(existing);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+
+        var result = await _service.GetCurrentUserAsync(sub, "luca@example.com", "Luca", "Rossi");
+
+        Assert.Equal("luca@example.com", result.Email);
+        Assert.Equal("Luca", result.FirstName);
+        Assert.Equal("Rossi", result.LastName);
+        _repoMock.Verify(r => r.UpdateAsync(It.Is<User>(u => u.Email == "luca@example.com")), Times.Once);
+    }
+
+    [Fact]
     public async Task GetCurrentUserAsync_UserNotExists_CreatesAndReturnsNewUser()
     {
         // Arrange
