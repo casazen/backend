@@ -1,6 +1,6 @@
-using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Connect;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,7 +10,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/connect")]
 [Authorize(Policy = "RequireContext:short-rent:property.write")]
 public class ConnectController(
-    ITenantContext tenantContext,
+    IOrgContextResolver orgContextResolver,
     IConnectOnboardingService connectOnboardingService) : ControllerBase
 {
     [HttpPost("account")]
@@ -18,7 +18,7 @@ public class ConnectController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ConnectStatusDto>> CreateAccount(CancellationToken cancellationToken)
     {
-        var orgId = RequireOrgId();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound(new { error = "No organization assigned to the current user" });
 
@@ -37,7 +37,7 @@ public class ConnectController(
         if (string.IsNullOrWhiteSpace(dto.ReturnUrl) || string.IsNullOrWhiteSpace(dto.RefreshUrl))
             return BadRequest(new { error = "returnUrl and refreshUrl are required" });
 
-        var orgId = RequireOrgId();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound(new { error = "No organization assigned to the current user" });
 
@@ -57,15 +57,13 @@ public class ConnectController(
         [FromQuery] bool refresh = true,
         CancellationToken cancellationToken = default)
     {
-        var orgId = RequireOrgId();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound(new { error = "No organization assigned to the current user" });
 
         var status = await connectOnboardingService.GetStatusAsync(orgId.Value, refresh, cancellationToken);
         return Ok(Map(status));
     }
-
-    private Guid? RequireOrgId() => tenantContext.OrgId;
 
     private static ConnectStatusDto Map(ConnectStatus status) => new()
     {

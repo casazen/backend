@@ -21,7 +21,7 @@ public class PropertiesController(
     IPropertyAuthorizationService authorizationService,
     IPropertyDocumentService documentService,
     IAdminAccessAuditService adminAccessAuditService,
-    ITenantContext tenantContext,
+    IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
@@ -90,9 +90,8 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // Fail-closed (AC7): OrgId is required on a Property, so a caller with no org context
-        // (e.g. a brand-new user pre-backfill) cannot create tenant-scoped rows.
-        var orgId = tenantContext.OrgId;
+        // Resolve org; auto-provision Starter org for legacy users who have roles but no OrgId (#217).
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
         {
             logger.LogWarning("Property creation blocked: user {UserId} has no org context", userId);

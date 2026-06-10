@@ -93,7 +93,36 @@ public class UserService(
         // Upsert by sub (Auth0 sub == User.Id)
         var existing = await repository.GetBySubAsync(sub);
         if (existing != null)
+        {
+            var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.ToLowerInvariant();
+            var changed = false;
+
+            if (string.IsNullOrWhiteSpace(existing.Email) && normalizedEmail is not null)
+            {
+                existing.Email = normalizedEmail;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.FirstName) && !string.IsNullOrWhiteSpace(firstName))
+            {
+                existing.FirstName = firstName;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.LastName) && !string.IsNullOrWhiteSpace(lastName))
+            {
+                existing.LastName = lastName;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                existing.UpdatedAt = DateTime.UtcNow;
+                await repository.UpdateAsync(existing);
+            }
+
             return existing;
+        }
 
         var user = new User
         {
