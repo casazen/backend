@@ -1,8 +1,12 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
+using Hangfire;
+using Hangfire.Common;
+using Hangfire.States;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -19,6 +23,7 @@ public class BookingsControllerTests
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IGuestService> _mockGuestService;
+    private readonly Mock<IBackgroundJobClient> _mockBackgroundJobClient;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -34,6 +39,7 @@ public class BookingsControllerTests
         _mockPropertyService = new Mock<IPropertyService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockGuestService = new Mock<IGuestService>();
+        _mockBackgroundJobClient = new Mock<IBackgroundJobClient>();
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = new BookingsController(
@@ -43,6 +49,7 @@ public class BookingsControllerTests
             _mockPropertyService.Object,
             _mockAuthz.Object,
             _mockGuestService.Object,
+            _mockBackgroundJobClient.Object,
             _mockLogger.Object);
     }
 
@@ -168,5 +175,42 @@ public class BookingsControllerTests
         var result = await _controller.Create(request);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task CheckIn_ConfirmedBooking_EnqueuesAlloggiatiJob()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guestId,
+            Status = BookingStatus.Confirmed,
+            CheckInDate = DateTime.UtcNow.Date,
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(2),
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
+            .ReturnsAsync((Booking b) => b);
+        _mockBackgroundJobClient
+            .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
+            .Returns("job-test");
+
+        var result = await _controller.CheckIn(bookingId);
+
+        _mockBackgroundJobClient.Verify(
+            c => c.Create(
+                It.Is<Job>(j =>
+                    j.Type == typeof(AlloggiatiWebReportJob) &&
+                    j.Method.Name == nameof(AlloggiatiWebReportJob.ReportGuestAsync)),
+                It.IsAny<EnqueuedState>()),
+            Times.Once);
+        Assert.IsType<OkObjectResult>(result);
     }
 }

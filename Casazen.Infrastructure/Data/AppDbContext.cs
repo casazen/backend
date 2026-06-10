@@ -23,6 +23,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
+    public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
     public DbSet<TaxRate> TaxRates { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
@@ -78,6 +79,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             .WithMany(g => g.AlloggiatiWebReports)
             .HasForeignKey(r => r.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PropertyQuesturaCredentials>()
+            .HasOne(c => c.Property)
+            .WithMany()
+            .HasForeignKey(c => c.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PropertyQuesturaCredentials>()
+            .HasIndex(c => c.PropertyId)
+            .IsUnique();
+
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => b.CheckInToken)
+            .IsUnique()
+            .HasFilter("\"CheckInToken\" IS NOT NULL");
 
         // Precision for GPS coordinates
         modelBuilder.Entity<Property>()

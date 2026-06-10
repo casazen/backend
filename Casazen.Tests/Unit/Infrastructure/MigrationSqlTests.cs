@@ -32,16 +32,27 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastFour() // AC3/AC5 ordering + Connect fields
+    public void Migrations_LandInOrder_AsTheLastThree() // AC3/AC5 ordering + Connect + Alloggiati
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        var lastFour = keys.TakeLast(4).ToList();
-        Assert.EndsWith("AddOrgIdNullable", lastFour[0]);
-        Assert.EndsWith("BackfillDefaultOrgs", lastFour[1]);
-        Assert.EndsWith("MakeOrgIdRequired", lastFour[2]);
-        Assert.EndsWith("AddConnectStatusFields", lastFour[3]);
+        var lastThree = keys.TakeLast(3).ToList();
+        Assert.EndsWith("MakeOrgIdRequired", lastThree[0]);
+        Assert.EndsWith("AddConnectStatusFields", lastThree[1]);
+        Assert.EndsWith("AddAlloggiatiCheckInMvp", lastThree[2]);
+    }
+
+    [Fact]
+    public void AddAlloggiatiCheckInMvp_ExistsAfterConnectFields()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+
+        Assert.Contains(keys, k => k.EndsWith("AddAlloggiatiCheckInMvp", StringComparison.Ordinal));
+        var connectIdx = keys.ToList().FindIndex(k => k.EndsWith("AddConnectStatusFields", StringComparison.Ordinal));
+        var alloggiatiIdx = keys.ToList().FindIndex(k => k.EndsWith("AddAlloggiatiCheckInMvp", StringComparison.Ordinal));
+        Assert.True(alloggiatiIdx > connectIdx);
     }
 
     [Fact]

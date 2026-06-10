@@ -1,6 +1,6 @@
-using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Orgs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,7 +13,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/orgs")]
 public class OrgsController(
-    ITenantContext tenantContext,
+    IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
     IOrgService orgService) : ControllerBase
 {
@@ -41,7 +41,7 @@ public class OrgsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<EntitlementDto>> GetMyEntitlement(CancellationToken cancellationToken)
     {
-        var orgId = tenantContext.OrgId;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound(new { error = "No organization assigned to the current user" });
 
@@ -74,7 +74,7 @@ public class OrgsController(
         if (!PlanCatalog.TryParseTier(dto.PlanTier, out var planTier))
             return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
 
-        var orgId = tenantContext.OrgId;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
             return NotFound(new { error = "No organization assigned to the current user" });
 

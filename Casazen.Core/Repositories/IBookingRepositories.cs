@@ -5,6 +5,7 @@ namespace Casazen.Core.Repositories;
 public interface IBookingRepository
 {
     Task<Booking?> GetByIdAsync(Guid id);
+    Task<Booking?> GetByCheckInTokenAsync(Guid checkInToken);
     Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId);
     Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId);
     Task<IEnumerable<Booking>> GetAllAsync();

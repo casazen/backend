@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
+using Casazen.Web.DTOs.Alloggiati;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +22,7 @@ public class BookingsController(
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
     IGuestService guestService,
+    IBackgroundJobClient backgroundJobClient,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -232,7 +234,7 @@ public class BookingsController(
         await bookingService.UpdateBookingAsync(booking);
 
         // Mandatory guest registration with police database within 24h (D.L. 286/1998, Art. 7)
-        BackgroundJob.Enqueue<AlloggiatiWebReportJob>(
+        backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
             job => job.ReportGuestAsync(booking.GuestId, booking.Id));
 
         logger.LogInformation("Check-in completed for booking {BookingId}, queued Alloggiati Web report", id);
@@ -273,10 +275,25 @@ public class BookingsController(
     }
 
     [HttpGet("{id}/alloggiati-status")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.read")]
     public async Task<IActionResult> GetAlloggiatiStatus(Guid id)
     {
-        var report = await alloggiatiWebService.GetReportStatusAsync(id);
-        return report == null ? NotFound() : Ok(report);
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking == null)
+            return NotFound();
+
+        var status = await alloggiatiWebService.GetStatusAsync(id);
+        return Ok(new AlloggiatiStatusDto
+        {
+            BookingId = status.BookingId,
+            Status = status.Status,
+            ConfirmationNumber = status.ConfirmationNumber,
+            ErrorMessage = status.ErrorMessage,
+            ReportedAt = status.ReportedAt,
+            HoursUntilDeadline = status.HoursUntilDeadline,
+            IsOverdue = status.IsOverdue,
+            DataComplete = status.DataComplete,
+        });
     }
 
     private async Task<Guest> ResolveGuestAsync(CreateBookingGuestRequest guestInfo)
