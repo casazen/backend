@@ -70,8 +70,8 @@ public class BookingsController(
             });
         }
 
-        var checkIn = request.CheckInDate.Date;
-        var checkOut = request.CheckOutDate.Date;
+        var checkIn = DateTime.SpecifyKind(request.CheckInDate.Date, DateTimeKind.Utc);
+        var checkOut = DateTime.SpecifyKind(request.CheckOutDate.Date, DateTimeKind.Utc);
         if (checkOut <= checkIn)
             return BadRequest("Check-out date must be after check-in date");
 
