@@ -18,4 +18,6 @@ public interface IPropertyService
     Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex);
     Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls);
     Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId);
+    Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(string ownerId, string? cinStatus, int page, int pageSize);
+    Task UpdatePropertyCinAsync(Guid propertyId, string? cinCode);
 }

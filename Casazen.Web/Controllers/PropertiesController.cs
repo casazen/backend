@@ -170,6 +170,85 @@ public class PropertiesController(
         return NoContent();
     }
 
+    [HttpGet("cin-compliance")]
+    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    public async Task<ActionResult<CinComplianceResponse>> GetCinCompliance(
+        [FromQuery] string? cinStatus,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 200) pageSize = 50;
+
+        try
+        {
+            var result = await propertyService.GetOwnerCinComplianceAsync(userId, cinStatus, page, pageSize);
+            return Ok(new CinComplianceResponse
+            {
+                Items = result.Items.Select(i => new CinComplianceItemResponse
+                {
+                    PropertyId = i.PropertyId,
+                    PropertyName = i.PropertyName,
+                    CinCode = i.CinCode,
+                    CinStatus = i.CinStatus,
+                    City = i.City,
+                }).ToList(),
+                TotalCount = result.TotalCount,
+                Summary = new CinComplianceSummaryResponse
+                {
+                    Valid = result.Summary.Valid,
+                    Missing = result.Summary.Missing,
+                    Invalid = result.Summary.Invalid,
+                    DaysUntilDeadline = result.Summary.DaysUntilDeadline,
+                    Deadline = result.Summary.Deadline.ToString("yyyy-MM-dd"),
+                    HasNonCompliant = result.Summary.HasNonCompliant,
+                },
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("{id}/cin")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    public async Task<IActionResult> UpdateCin(Guid id, [FromBody] UpdatePropertyCinRequest request)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, existing.OwnerId, roles))
+            return Forbid();
+
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        try
+        {
+            await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
+            return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
     [HttpDelete("{id}")]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<IActionResult> Delete(Guid id)

@@ -130,6 +130,7 @@ builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
 builder.Services.AddScoped<AlloggiatiDeadlineAlertJob>();
+builder.Services.AddScoped<CinDeadlineAlertJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
 // Lease background jobs
 builder.Services.AddScoped<ESignWebhookJob>();
@@ -329,6 +330,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "alloggiati-deadline-alert",
         job => job.ExecuteAsync(),
         Cron.Hourly,
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
+        "cin-deadline-alert",
+        job => job.ExecuteAsync(),
+        "0 8 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
     recurringJobManager.AddOrUpdate<LeaseSignStatusPollingJob>(
