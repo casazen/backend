@@ -254,6 +254,8 @@ public static class ServiceCollectionExtensions
         // JWT authentication is handled directly by AddCasazenAuthentication()
         services.AddScoped<SendGridService>();
         services.AddScoped<StripeService>();
+        services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
+        services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
         services.AddSingleton<StripeWebhookHandler>();
         return services;
     }

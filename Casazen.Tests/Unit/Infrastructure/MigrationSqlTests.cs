@@ -32,15 +32,16 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastThree() // AC3/AC5 ordering
+    public void Migrations_LandInOrder_AsTheLastFour() // AC3/AC5 ordering + Connect fields
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("AddOrgIdNullable", lastThree[0]);
-        Assert.EndsWith("BackfillDefaultOrgs", lastThree[1]);
-        Assert.EndsWith("MakeOrgIdRequired", lastThree[2]);
+        var lastFour = keys.TakeLast(4).ToList();
+        Assert.EndsWith("AddOrgIdNullable", lastFour[0]);
+        Assert.EndsWith("BackfillDefaultOrgs", lastFour[1]);
+        Assert.EndsWith("MakeOrgIdRequired", lastFour[2]);
+        Assert.EndsWith("AddConnectStatusFields", lastFour[3]);
     }
 
     [Fact]
