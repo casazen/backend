@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using Casazen.Core.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Stripe;
 
 namespace Casazen.Web.Middleware;
 
@@ -60,6 +61,8 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
 
     private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        exception = Unwrap(exception);
+
         var problem = exception switch
         {
             ValidationException validationEx => BuildValidationProblem(validationEx),
@@ -76,6 +79,20 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
                 Title = "Payment Processing Error",
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Detail = paymentEx.Message,
+            },
+            StripeException stripeEx => new ProblemDetails
+            {
+                Type = "https://casazen.app/errors/stripe-integration-error",
+                Title = "Stripe Integration Error",
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Detail = stripeEx.StripeError?.Message ?? stripeEx.Message,
+            },
+            InvalidOperationException invalidOp => new ProblemDetails
+            {
+                Type = "https://casazen.app/errors/operation-failed",
+                Title = "Operation Failed",
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Detail = invalidOp.Message,
             },
             UnauthorizedAccessException => new ProblemDetails
             {
@@ -97,6 +114,14 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         problem.Extensions["traceId"] = context.TraceIdentifier;
 
         return WriteProblemAsync(context, problem);
+    }
+
+    private static Exception Unwrap(Exception exception)
+    {
+        while (exception.InnerException is not null)
+            exception = exception.InnerException;
+
+        return exception;
     }
 
     private static ValidationProblemDetails BuildValidationProblem(ValidationException ex)

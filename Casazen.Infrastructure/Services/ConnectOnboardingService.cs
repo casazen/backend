@@ -59,6 +59,13 @@ public class ConnectOnboardingService(
         }
 
         var connectEmail = await ResolveConnectEmailAsync(org, cancellationToken);
+        if (string.IsNullOrWhiteSpace(org.ContactEmail) && !string.IsNullOrWhiteSpace(connectEmail))
+        {
+            org.ContactEmail = connectEmail;
+            org.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         var accountId = await stripeConnectGateway.CreateExpressAccountAsync(connectEmail, cancellationToken);
         org.StripeConnectedAccountId = accountId;
         org.UpdatedAt = DateTime.UtcNow;

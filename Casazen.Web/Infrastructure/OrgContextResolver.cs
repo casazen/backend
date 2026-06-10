@@ -30,14 +30,15 @@ public sealed class OrgContextResolver(
         if (string.IsNullOrWhiteSpace(sub))
             return null;
 
-        var user = await userService.GetUserAsync(sub);
-        if (user?.OrgId is Guid linked)
-            return linked;
-
         var (email, firstName, lastName) = ResolveProfileClaims();
         var displayName = $"{firstName} {lastName}".Trim();
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = string.IsNullOrWhiteSpace(email) ? "La mia organizzazione" : email;
+
+        // Upsert user row first — EnsureOrgForUserAsync requires the User to exist (#217).
+        var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
+        if (user.OrgId is Guid linked)
+            return linked;
 
         logger.LogInformation("Auto-provisioning Starter org for user {UserId}", sub);
         var org = await orgService.EnsureOrgForUserAsync(
