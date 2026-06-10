@@ -32,6 +32,12 @@ public class NotificationService(ILogger<NotificationService> logger) : INotific
     public async Task SendRefundNotificationAsync(Guid paymentId)
     {
         logger.LogInformation("Sending refund notification for {PaymentId}", paymentId);
-        await Task.Delay(100); // Simulate email send
+        await Task.Delay(100);
+    }
+
+    public async Task SendAlloggiatiDeadlineAlertAsync(Guid bookingId)
+    {
+        logger.LogInformation("Sending Alloggiati deadline alert for booking {BookingId}", bookingId);
+        await Task.Delay(100);
     }
 }

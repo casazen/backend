@@ -76,6 +76,7 @@ builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
+builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
@@ -112,6 +113,12 @@ builder.Services.AddRateLimiter(options =>
         limiter.PermitLimit = builder.Configuration.GetValue("DirectBooking:RateLimitPermitLimit", 10);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("GuestCheckIn", limiter =>
+    {
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.PermitLimit = builder.Configuration.GetValue("CheckIn:RateLimitPermitLimit", 10);
+        limiter.QueueLimit = 0;
+    });
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
@@ -122,6 +129,7 @@ builder.Services.AddScoped<DynamicPricingJob>();
 builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
+builder.Services.AddScoped<AlloggiatiDeadlineAlertJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
 // Lease background jobs
 builder.Services.AddScoped<ESignWebhookJob>();
@@ -315,6 +323,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "gdpr-data-retention",
         job => job.ExecuteAsync(),
         "0 3 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<AlloggiatiDeadlineAlertJob>(
+        "alloggiati-deadline-alert",
+        job => job.ExecuteAsync(),
+        Cron.Hourly,
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
     recurringJobManager.AddOrUpdate<LeaseSignStatusPollingJob>(
