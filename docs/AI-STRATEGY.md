@@ -181,9 +181,118 @@ supplier can rank differently depending on the request's location, urgency, and 
 5. **Phase 4 — Payments & compliance**: Stripe Connect payouts, commission, fattura
    elettronica, supplier compliance gating.
 
+### 3.7 Additional AI advantages for the marketplace (to evaluate)
+
+Beyond the three core pillars, these AI ideas deepen the marketplace moat. Split into
+**growth** (acquire demand/supply) and **product/trust** (differentiate and retain).
+
+**Growth — acquisition for the marketplace itself**
+
+- **AI-generated supplier microsites for programmatic SEO.** Each supplier gets an
+  AI-built, localized page; thousands of pages rank for "idraulico Como", "fabbro Torino",
+  "tour in Vespa Napoli". The marketplace's own version of §4.1 — captures demand at the
+  exact search intent and funnels it through CasaZen.
+- **AI instant quote / price transparency.** An LLM gives an upfront estimate for a request
+  ("plumber for a leak ≈ €80–120") before the user contacts anyone. Beats opaque directories
+  and builds trust at first touch.
+- **Demand forecasting per area/category.** AI predicts where demand will outstrip supply,
+  directing the acquisition CRM (Pillar B) on *which* suppliers to recruit *where* — and can
+  be shown to suppliers ("high demand for locksmiths in Turin this week") as a recruiting hook.
+
+**Product & trust — differentiate and retain**
+
+- **AI concierge dispatcher / auto-negotiation.** Instead of returning a list, the AI
+  contacts the top suppliers, collects availability and quotes, and returns the single best
+  option — a concierge experience no Italian competitor offers.
+- **Proactive / predictive service suggestions.** Using PMS data (bookings, check-out gaps,
+  property age), AI pre-suggests services before the host asks ("cleaning needed before the
+  next guest in 2 days", "boiler service due"). Ties the PMS core to the marketplace and
+  drives recurring transactions.
+- **AI document verification for trust.** OCR + validation of P.IVA, insurance, and
+  certifications at onboarding — an automated trust layer that fits the compliance moat and
+  protects guests.
+- **AI fraud / quality monitoring.** Detect fake reviews, no-shows, off-platform leakage,
+  and suspicious suppliers — keeps marketplace quality high as it scales.
+- **AI supplier coaching (supply-side retention).** Conversational guidance that helps
+  suppliers improve their profile, response time, and conversion — sustains liquidity, the
+  hardest part of a two-sided marketplace.
+- **Multilingual voice/WhatsApp request intake for guests.** A foreign guest messages a
+  problem in their language; AI structures it and dispatches the right supplier — merges with
+  the guest concierge (§4.3 #5) and the WhatsApp agent (§4.3 #4).
+
 ---
 
-## 4. Cross-references
+## 4. AI as a growth engine (go-to-market, zero-base)
+
+> Context: CasaZen is launching from zero and needs **distribution**, not just features.
+> The selection filter here is **"which AI is itself an acquisition channel?"** — AI that
+> only improves internal efficiency is useful but does not get the product known. AI that
+> doubles as a free tool, as content that ranks on Google, or as a viral loop, does.
+> Ideas are grouped by growth function and ordered by leverage for a zero-budget launch.
+
+### 4.1 AI that *is* an acquisition channel (highest priority)
+
+**1. Programmatic SEO on compliance, per municipality — the unfair advantage.**
+Italy has ~8,000 *comuni*, each with different rules and tourist-tax rates. An AI agent
+generates and maintains a guide page per municipality/region ("Affitti brevi a Como: CIN,
+tassa di soggiorno, Alloggiati — guida 2026"), producing thousands of landing pages that
+rank for high-intent searches. No global PMS does this; it plugs directly into the
+`regulatory_agent` concept. Near-zero CAC that compounds over time.
+
+**2. Free AI tools as lead magnets (top of funnel).**
+- **Free Compliance Checker**: host enters a property, AI returns a plain-Italian report
+  ("missing CIN, your tourist tax is miscalculated, you risk a fine"). Captures the lead
+  exactly at the pain point where they decide to pay.
+- **Listing optimizer**: paste an Airbnb/Booking listing URL → AI scores and rewrites it.
+  Classic, highly shareable lead magnet.
+- **Revenue estimator by address**: "how much could this apartment earn" — shareable
+  output, good for word-of-mouth.
+- **Per-city tourist tax calculator**: free and SEO-rich (every comune is a landing page),
+  reinforces #1.
+
+These tools are free, viral, and capture the prospect's email before they even evaluate
+the product.
+
+### 4.2 AI that removes switching cost (critical vs. incumbents)
+
+**3. One-click AI onboarding / migration.**
+When starting from zero, the enemy is inertia, not competitors. An agent that — given an
+existing listing URL — **extracts photos, description, rules, prices and creates the
+property in CasaZen automatically** cuts entry from hours to minutes. Often decides
+adoption more than any feature.
+
+### 4.3 AI that creates word-of-mouth and network effects
+
+**4. WhatsApp host agent.** Italian hosts live on WhatsApp, not dashboards. A conversational
+assistant ("add a booking", "what's my occupancy?", "register the guest in Alloggiati")
+feels like magic and gets talked about. A natively-Italian channel global PMSs ignore.
+
+**5. Multilingual guest concierge that upsells the marketplace.** Ties the two products
+together: the AI answers guests and, when relevant ("where's a good pizzeria?", "the boiler
+is broken"), proposes marketplace suppliers (§3). Every stay feeds the marketplace and vice
+versa — a network effect.
+
+**6. Verified "Compliance badge".** A seal hosts display on their listing ("CasaZen-verified
+— CIN/Alloggiati compliant"). Exposed on Airbnb/Booking, it **markets CasaZen to prospective
+guests and other hosts** — the product becomes its own billboard.
+
+### 4.4 Retention-oriented AI (do after 4.1–4.3)
+
+Auto-reply to reviews, check-out damage/inspection photo AI, cancellation prediction,
+anomaly detection (overbooking, off-market price). Valuable for retaining existing users
+but they do not drive awareness — so they come after the growth-engine items.
+
+### 4.5 Recommendation for a zero-budget launch
+
+If only two things can be built first: **programmatic compliance SEO (#1)** and the **free
+Compliance Checker (#2)** — they exploit the moat you already own (Italian compliance), are
+acquisition engines rather than mere features, and no competitor holds that ground.
+**One-click migration (#3)** is third, because it converts the traffic you generate into
+real users.
+
+---
+
+## 5. Cross-references
 
 - Current pricing logic: `Casazen.Infrastructure/Services/PricingAdapterService.cs`
 - Stripe Connect (payout foundation): `Casazen.Infrastructure/Payments/`,
