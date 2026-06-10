@@ -17,10 +17,10 @@
 - issue_url: https://github.com/casazen/backend/issues/2
 - branch: feature/2-cin-management
 - design_spec: Sessions/design-2.md
-- pr_backend: (pending — see commit push)
-- pr_backend_url: (pending)
-- pr_frontend: (pending)
-- pr_frontend_url: (pending)
+- pr_backend: 239
+- pr_backend_url: https://github.com/casazen/backend/pull/239
+- pr_frontend: 124
+- pr_frontend_url: https://github.com/casazen/frontend/pull/124
 - release_report: (pending)
 - tag: (pending)
 - release_url: (pending)
