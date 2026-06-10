@@ -323,6 +323,74 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return CinRegex.IsMatch(cinCode) ? CinStatus.Valid : CinStatus.Invalid;
     }
 
+    public async Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(
+        string ownerId, string? cinStatus, int page, int pageSize)
+    {
+        if (!string.IsNullOrWhiteSpace(cinStatus) &&
+            cinStatus is not ("valid" or "missing" or "invalid"))
+        {
+            throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
+        }
+
+        var properties = await repository.GetByOwnerForComplianceAsync(ownerId);
+        var items = properties.Select(p => new OwnerCinComplianceItem(
+            PropertyId: p.Id,
+            PropertyName: p.Name,
+            CinCode: p.CinCode,
+            CinStatus: CinComplianceRules.ResolveStatus(p.CinCode),
+            City: p.City)).ToList();
+
+        var valid = items.Count(i => i.CinStatus == "valid");
+        var missing = items.Count(i => i.CinStatus == "missing");
+        var invalid = items.Count(i => i.CinStatus == "invalid");
+        var daysUntilDeadline = CinComplianceRules.DaysUntilDeadline();
+
+        var summary = new CinComplianceSummary(
+            Valid: valid,
+            Missing: missing,
+            Invalid: invalid,
+            DaysUntilDeadline: daysUntilDeadline,
+            Deadline: CinComplianceRules.RegulatoryDeadline,
+            HasNonCompliant: missing + invalid > 0);
+
+        IEnumerable<OwnerCinComplianceItem> filtered = items;
+        if (!string.IsNullOrWhiteSpace(cinStatus))
+            filtered = items.Where(i => i.CinStatus == cinStatus);
+
+        var list = filtered.ToList();
+        var paged = list
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new OwnerCinComplianceResult(paged, list.Count, summary);
+    }
+
+    public async Task UpdatePropertyCinAsync(Guid propertyId, string? cinCode)
+    {
+        var property = await repository.GetByIdAsync(propertyId)
+            ?? throw new KeyNotFoundException($"Property {propertyId} not found");
+
+        var normalized = string.IsNullOrWhiteSpace(cinCode) ? null : cinCode.Trim();
+
+        if (normalized != null)
+        {
+            if (!CinRegex.IsMatch(normalized))
+            {
+                throw new ArgumentException(
+                    "CIN code must match format IT-XXXXX-XXXXXXXXXX (e.g., IT-12345-0123456789).");
+            }
+
+            if (await repository.CinCodeExistsOnOtherPropertyAsync(normalized, propertyId))
+            {
+                throw new InvalidOperationException("CIN code is already assigned to another property.");
+            }
+        }
+
+        property.CinCode = normalized;
+        await repository.UpdateAsync(property);
+    }
+
     private static PublicPropertyDto MapPublicProperty(PublicPropertyRow row) => new()
     {
         Id = row.Id,

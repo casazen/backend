@@ -8,4 +8,5 @@ public interface INotificationService
     Task SendOtaSyncNotificationAsync(Guid propertyId, string platform);
     Task SendRefundNotificationAsync(Guid paymentId);
     Task SendAlloggiatiDeadlineAlertAsync(Guid bookingId);
+    Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline);
 }

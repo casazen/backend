@@ -91,4 +91,18 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .Include(p => p.PricingAdapterConfig)
             .FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
     }
+
+    public async Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId)
+    {
+        return await context.Properties
+            .Where(p => p.OwnerId == ownerId)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    public async Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId)
+    {
+        return await context.Properties.AnyAsync(p =>
+            p.CinCode == cinCode && p.Id != excludePropertyId);
+    }
 }
