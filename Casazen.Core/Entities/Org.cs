@@ -44,6 +44,18 @@ public class Org
     [MaxLength(255)]
     public string? StripeConnectedAccountId { get; set; }
 
+    /// <summary>Cached from Stripe <c>account.updated</c> — true when the connected account can accept charges.</summary>
+    public bool ConnectChargesEnabled { get; set; }
+
+    /// <summary>Cached from Stripe — payouts capability on the connected account.</summary>
+    public bool ConnectPayoutsEnabled { get; set; }
+
+    /// <summary>Cached from Stripe — KYC/details submitted on the connected account.</summary>
+    public bool ConnectDetailsSubmitted { get; set; }
+
+    /// <summary>JSON array of outstanding Stripe requirement field names (e.g. <c>["individual.verification.document"]</c>).</summary>
+    public string? ConnectRequirementsDueJson { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

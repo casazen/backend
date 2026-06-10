@@ -63,6 +63,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                     TestAuthHandler.SchemeName,
                     _ => { });
+
+            RemoveService<IStripeConnectGateway>(services);
+            services.AddSingleton<IStripeConnectGateway, FakeStripeConnectGateway>();
         });
     }
 
