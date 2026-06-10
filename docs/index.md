@@ -12,6 +12,7 @@
 | [TECHNICAL.md](TECHNICAL.md) | Architecture, API reference, data model, design patterns, infrastructure | Backend developers |
 | [PROJECT.md](PROJECT.md) | Compressed AI context — stack, layout, conventions, gotchas | AI agents, onboarding developers |
 | [INFRA.md](INFRA.md) | Hosting setup: Supabase + Railway + Vercel, multi-env release, release bundles | DevOps, backend developers |
+| [AI-STRATEGY.md](AI-STRATEGY.md) | AI positioning, AI roadmap for the PMS core, and the AI-powered supplier & services marketplace vision | Product Owner, founders, architects |
 
 ### Backend quick links
 
@@ -63,3 +64,4 @@
 | [FRONTEND-TECHNICAL.md](./FRONTEND-TECHNICAL.md) | React 19 + Vite 8 architecture: 22-route table, Axios API client with JWT interceptor, TanStack Query v5 hooks, Zustand v5 stores, Auth0 + demo mode, Vitest + Playwright test setup. | architecture, react, frontend, routing, api-client, tanstack-query, zustand, testing |
 | [FRONTEND-PROJECT.md](./FRONTEND-PROJECT.md) | Compressed AI context for the frontend: stack snapshot, annotated repo layout, key conventions (ApiClient.unwrap(), PascalCase BookingStatus, nightlyRate field names), 10 gotchas (VITE_API_BASE_URL port 3000, demo mode, duplicate pricing file). | ai-context, frontend, conventions, gotchas, navigation |
 | [AUTH0_SETUP.md](./AUTH0_SETUP.md) | Step-by-step Auth0 tenant configuration: application setup, API audience, RBAC roles, JWT validation in ASP.NET Core, M2M tokens. | auth0, setup, jwt, rbac, configuration |
+| [AI-STRATEGY.md](./AI-STRATEGY.md) | AI reality check (current pricing is rule-based, not AI), AI roadmap for the PMS core (predictive pricing, compliance assistant, guest comms), the net-new AI-powered supplier & services marketplace (matching, acquisition CRM, reputation ranking, plus marketplace-specific AI: supplier-SEO microsites, instant quotes, concierge dispatcher, document verification, fraud monitoring), AI as a go-to-market growth engine for a zero-base launch (programmatic compliance SEO, free lead-magnet tools, one-click migration, WhatsApp agent, compliance badge), and competitive differentiation vs. Lodgify, Smoobu, Guesty, Hostaway, Hospitable, Annette. | ai-strategy, vision, marketplace, suppliers, llm, roadmap, positioning, growth, go-to-market, seo, competitors |
