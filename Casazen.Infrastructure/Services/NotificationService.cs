@@ -40,4 +40,12 @@ public class NotificationService(ILogger<NotificationService> logger) : INotific
         logger.LogInformation("Sending Alloggiati deadline alert for booking {BookingId}", bookingId);
         await Task.Delay(100);
     }
+
+    public async Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline)
+    {
+        logger.LogInformation(
+            "Sending CIN deadline alert for owner {OwnerId}: {PropertyCount} properties, {Days} days remaining",
+            ownerId, propertyIds.Count, daysUntilDeadline);
+        await Task.Delay(100);
+    }
 }
