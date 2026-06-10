@@ -103,31 +103,6 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.BillingOssCounter", b =>
-                {
-                    b.Property<int>("CalendarYear")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("CalendarYear"));
-
-                    b.Property<decimal>("EuB2cRevenueEur")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime?>("OssActivatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("OssActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("CalendarYear");
-
-                    b.ToTable("BillingOssCounters");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.Booking", b =>
                 {
                     b.Property<Guid>("Id")
@@ -542,13 +517,6 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("BillingCountry")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)");
-
-                    b.Property<int>("BillingSeats")
-                        .HasColumnType("integer");
-
                     b.Property<bool>("ConnectChargesEnabled")
                         .HasColumnType("boolean");
 
@@ -602,19 +570,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<DateTime?>("SubscriptionCurrentPeriodEnd")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SubscriptionId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<DateTime?>("SubscriptionPastDueAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("SubscriptionStatus")
-                        .HasColumnType("integer");
-
                     b.Property<string>("ThemeColor")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
@@ -622,18 +577,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("VatId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Slug")
                         .IsUnique();
-
-                    b.HasIndex("StripeCustomerId");
-
-                    b.HasIndex("SubscriptionId");
 
                     b.ToTable("Orgs");
                 });
@@ -849,71 +796,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId");
 
                     b.ToTable("Payments");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.PlatformInvoice", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("AmountExclVat")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<string>("CustomerCountry")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)");
-
-                    b.Property<string>("CustomerVatId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("OssApplied")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("ReverseCharge")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("SdiExternalId")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int>("SdiStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("StripeInvoiceId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("VatAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("VatRatePercent")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
-
-                    b.HasIndex("StripeInvoiceId")
-                        .IsUnique();
-
-                    b.ToTable("PlatformInvoices");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PricingAdapterConfig", b =>
@@ -1364,27 +1246,6 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.StripeWebhookEvent", b =>
-                {
-                    b.Property<string>("EventId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("ProcessedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("EventId");
-
-                    b.HasIndex("ProcessedAt");
-
-                    b.ToTable("StripeWebhookEvents");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.TaxRate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1701,17 +1562,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Booking");
-
-                    b.Navigation("Org");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.PlatformInvoice", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Org", "Org")
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("Org");
                 });
