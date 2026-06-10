@@ -173,4 +173,33 @@ public class Auth0ManagementService(
                 "Auth0ManagementService: Failed to sync onboarding roles for user {UserId}", userId);
         }
     }
+
+    /// <inheritdoc />
+    public async Task<Auth0UserProfile?> GetUserProfileAsync(string userId)
+    {
+        var token = configuration["Auth0:ManagementApiToken"];
+        var domain = configuration["Auth0:ManagementApiDomain"]
+                     ?? configuration["Auth0:Domain"];
+
+        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(domain))
+            return null;
+
+        try
+        {
+            var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
+            var auth0User = await client.Users.GetAsync(userId);
+            if (auth0User is null)
+                return null;
+
+            return new Auth0UserProfile(
+                auth0User.Email ?? string.Empty,
+                auth0User.FirstName ?? string.Empty,
+                auth0User.LastName ?? string.Empty);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Auth0ManagementService: Failed to fetch profile for user {UserId}", userId);
+            return null;
+        }
+    }
 }
