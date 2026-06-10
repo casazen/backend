@@ -41,6 +41,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Stripe:PublishableKey"] = "pk_test_integration",
                 ["DirectBooking:ConsentVersion"] = "2026-06-direct-checkout-v1",
                 ["DirectBooking:PendingTtlMinutes"] = "15",
+                ["Billing:Prices:Starter"] = "price_test_starter",
+                ["Billing:Prices:Pro"] = "price_test_pro",
+                ["Billing:Prices:Scale"] = "price_test_scale",
             });
         });
 

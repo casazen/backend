@@ -14,4 +14,6 @@ public interface IPropertyRepository
     Task DeleteAsync(Guid id);
     Task<bool> ExistsAsync(Guid id);
     Task<Property?> GetPropertyDetailAsync(Guid id);
+    Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId);
+    Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);
 }
