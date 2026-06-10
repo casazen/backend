@@ -55,6 +55,9 @@ public class Guest
     [MaxLength(100)]
     public string DocumentIssuingCountry { get; set; } = string.Empty;
 
+    [MaxLength(500)]
+    public string? DocumentScanUrl { get; set; }
+
     // GDPR Compliance
     /// <summary>
     /// Timestamp when user gave consent for data processing

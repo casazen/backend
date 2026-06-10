@@ -16,6 +16,14 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .FirstOrDefaultAsync(b => b.Id == id);
     }
 
+    public async Task<Booking?> GetByCheckInTokenAsync(Guid checkInToken)
+    {
+        return await context.Bookings
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.CheckInToken == checkInToken);
+    }
+
     public async Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId)
     {
         return await context.Bookings
@@ -104,6 +112,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
     public async Task<Booking> AddAsync(Booking booking)
     {
+        EnsureCheckInToken(booking);
         context.Bookings.Add(booking);
         await context.SaveChangesAsync();
         return booking;
@@ -111,6 +120,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
     public async Task<Booking> UpdateAsync(Booking booking)
     {
+        EnsureCheckInToken(booking);
         context.Bookings.Update(booking);
         await context.SaveChangesAsync();
         return booking;
@@ -146,13 +156,21 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             existing.GuestId = booking.GuestId;
             existing.NumberOfGuests = booking.NumberOfGuests;
             existing.UpdatedAt = DateTime.UtcNow;
+            EnsureCheckInToken(existing);
             context.Bookings.Update(existing);
             await context.SaveChangesAsync();
             return existing;
         }
 
+        EnsureCheckInToken(booking);
         context.Bookings.Add(booking);
         await context.SaveChangesAsync();
         return booking;
+    }
+
+    private static void EnsureCheckInToken(Booking booking)
+    {
+        if (booking.Status == BookingStatus.Confirmed && !booking.CheckInToken.HasValue)
+            booking.CheckInToken = Guid.NewGuid();
     }
 }

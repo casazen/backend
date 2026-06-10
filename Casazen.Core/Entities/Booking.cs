@@ -68,6 +68,9 @@ public class Booking
     [MaxLength(1000)]
     public string SpecialRequests { get; set; } = string.Empty;
 
+    /// <summary>Secret token for guest self check-in link (generated when booking is confirmed).</summary>
+    public Guid? CheckInToken { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
