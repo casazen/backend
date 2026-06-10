@@ -1,12 +1,14 @@
 ﻿using Stripe;
 using Casazen.Core.Repositories;
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
 public class StripeWebhookHandler(
     IPaymentRepository paymentRepository,
+    IConnectOnboardingService connectOnboardingService,
     ILogger<StripeWebhookHandler> logger)
 {
     public async Task HandleEventAsync(Event stripeEvent)
@@ -24,6 +26,9 @@ public class StripeWebhookHandler(
                 case "charge.refunded":
                     await HandleRefundAsync(stripeEvent.Data.Object as Charge);
                     break;
+                case "account.updated":
+                    await HandleAccountUpdatedAsync(stripeEvent.Data.Object as Account);
+                    break;
                 default:
                     logger.LogInformation("Unhandled Stripe event: {EventType}", stripeEvent.Type);
                     break;
@@ -33,6 +38,16 @@ public class StripeWebhookHandler(
         {
             logger.LogError(ex, "Error handling Stripe webhook");
         }
+    }
+
+    private async Task HandleAccountUpdatedAsync(Account? account)
+    {
+        if (account is null)
+            return;
+
+        logger.LogInformation("Connect account updated: {AccountId}", account.Id);
+        var snapshot = StripeConnectGateway.MapAccount(account);
+        await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
     }
 
     private async Task HandlePaymentSucceededAsync(PaymentIntent? paymentIntent)
