@@ -16,6 +16,10 @@ public class Property
     [Required, MaxLength(255)]
     public string OwnerId { get; set; } = string.Empty;
 
+    /// <summary>Tenant key (AC2). Server-set from the caller's org; never client-supplied.</summary>
+    public Guid OrgId { get; set; }
+    public virtual Org Org { get; set; } = null!;
+
     [Required, MaxLength(100)]
     public string Name { get; set; } = string.Empty;
 

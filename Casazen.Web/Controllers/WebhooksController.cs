@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
@@ -68,7 +69,7 @@ public class WebhooksController : ControllerBase
             // Queue the event for background processing
             // This allows us to respond within 3 seconds while processing happens asynchronously
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
-                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json));
+                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Platform));
 
             _logger.LogInformation("Queued Stripe webhook event {EventId} for background processing", stripeEvent.Id);
 
@@ -78,6 +79,53 @@ public class WebhooksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Stripe webhook");
+            return StatusCode(500, "Internal server error");
+        }
+    }
+
+    /// <summary>
+    /// Connected-account Stripe webhooks (Connect onboarding, account.updated).
+    /// Verified with <c>Stripe:ConnectWebhookSecret</c> per RF2.
+    /// </summary>
+    [HttpPost("stripe/connect")]
+    public async Task<IActionResult> StripeConnectWebhook()
+    {
+        try
+        {
+            var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+            var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
+            var webhookSecret = _configuration["Stripe:ConnectWebhookSecret"];
+
+            if (string.IsNullOrEmpty(webhookSecret))
+            {
+                _logger.LogError("Stripe Connect webhook secret not configured");
+                return StatusCode(500, "Webhook secret not configured");
+            }
+
+            Event stripeEvent;
+            try
+            {
+                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret);
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogError(ex, "Invalid Stripe Connect webhook signature");
+                return BadRequest("Invalid signature");
+            }
+
+            _logger.LogInformation(
+                "Received Stripe Connect webhook: {EventType} ({EventId})",
+                stripeEvent.Type,
+                stripeEvent.Id);
+
+            _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
+                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Connected));
+
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing Stripe Connect webhook");
             return StatusCode(500, "Internal server error");
         }
     }

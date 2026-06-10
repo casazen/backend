@@ -93,7 +93,76 @@ public class PropertyServiceGetDetailTests
         Assert.Single(result.OtaIntegrations);
         Assert.Equal(1, result.BookingsSummary.TotalBookings);
         Assert.Equal(1, result.BookingsSummary.UpcomingBookings);
+        Assert.False(result.PricingAdapterSummary.IsEnabled);
         _mockRepository.Verify(x => x.GetPropertyDetailAsync(propertyId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPropertyDetailAsync_WithPricingAdapterConfig_ReturnsPricingAdapterSummary()
+    {
+        var propertyId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var property = new Property
+        {
+            Id = propertyId,
+            OwnerId = "auth0|owner123",
+            Name = "Test Property",
+            Address = "Via Test 1",
+            City = "Rome",
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            PricingAdapterConfig = new PricingAdapterConfig
+            {
+                PropertyId = propertyId,
+                IsEnabled = true,
+                LastAdaptedAt = now.AddHours(-2),
+                NextScheduledRunAt = now.AddHours(22)
+            }
+        };
+
+        _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
+
+        var result = await _service.GetPropertyDetailAsync(propertyId);
+
+        Assert.True(result.PricingAdapterSummary.IsEnabled);
+        Assert.Equal(now.AddHours(-2), result.PricingAdapterSummary.LastAdaptedAt);
+        Assert.Equal(now.AddHours(22), result.PricingAdapterSummary.NextScheduledRunAt);
+    }
+
+    [Fact]
+    public async Task GetPropertyDetailAsync_MapsDocumentsWithDownloadUrlAndFileType()
+    {
+        var propertyId = Guid.NewGuid();
+        var property = new Property
+        {
+            Id = propertyId,
+            OwnerId = "auth0|owner123",
+            Name = "Test Property",
+            Address = "Via Test 1",
+            City = "Rome",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        property.PropertyDocuments.Add(new PropertyDocument
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId,
+            FileName = "cin-cert.pdf",
+            StorageUrl = "/uploads/properties/cin-cert.pdf",
+            DocumentType = DocumentType.CinCertificate,
+            UploadedAt = DateTime.UtcNow
+        });
+
+        _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
+
+        var result = await _service.GetPropertyDetailAsync(propertyId);
+
+        var doc = Assert.Single(result.Documents);
+        Assert.Equal("pdf", doc.FileType);
+        Assert.Equal("/uploads/properties/cin-cert.pdf", doc.DownloadUrl);
     }
 
     [Fact]

@@ -24,6 +24,12 @@ public class User
     [Required]
     public UserRole Role { get; set; } = UserRole.PropertyOwner;
 
+    public RentalType? RentalType { get; set; }
+
+    /// <summary>The org this user belongs to (AC9). Nullable: a brand-new user pre-backfill has none.</summary>
+    public Guid? OrgId { get; set; }
+    public virtual Org? Org { get; set; }
+
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 
@@ -43,4 +49,11 @@ public enum UserRole
     Guest,
     Staff,
     LongTermLandlord // 5 — append only, do not insert before existing values
+}
+
+public enum RentalType
+{
+    ShortTerm,
+    LongTerm,
+    Both
 }

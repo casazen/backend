@@ -13,6 +13,15 @@ public class LocalImageStorageService : IImageStorageService
     private readonly long _maxFileSizeBytes = 10 * 1024 * 1024; // 10MB
     private readonly string[] _allowedExtensions = { ".jpg", ".jpeg", ".png", ".webp" };
     private readonly string[] _allowedMimeTypes = { "image/jpeg", "image/png", "image/webp" };
+    private readonly string[] _allowedDocumentExtensions = { ".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png" };
+    private readonly string[] _allowedDocumentMimeTypes =
+    {
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "image/jpeg",
+        "image/png"
+    };
 
     public LocalImageStorageService(
         IConfiguration configuration,
@@ -122,6 +131,70 @@ public class LocalImageStorageService : IImageStorageService
         if (!_allowedMimeTypes.Contains(file.ContentType.ToLowerInvariant()))
         {
             _logger.LogWarning("Image validation failed: invalid MIME type {MimeType}", file.ContentType);
+            return false;
+        }
+
+        return true;
+    }
+
+    public async Task<string> UploadDocumentAsync(IFormFile file, Guid propertyId)
+    {
+        if (!ValidateDocument(file))
+        {
+            throw new InvalidOperationException("Invalid document file");
+        }
+
+        var propertyDir = Path.Combine(_storagePath, propertyId.ToString(), "documents");
+        if (!Directory.Exists(propertyDir))
+        {
+            Directory.CreateDirectory(propertyDir);
+        }
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var fileName = $"{Guid.NewGuid()}{extension}";
+        var filePath = Path.Combine(propertyDir, fileName);
+
+        try
+        {
+            await using var stream = new FileStream(filePath, FileMode.Create);
+            await file.CopyToAsync(stream);
+            _logger.LogInformation("Document uploaded: {FileName} for property {PropertyId}", fileName, propertyId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload document for property {PropertyId}", propertyId);
+            throw;
+        }
+
+        return $"{_baseUrl}/{propertyId}/documents/{fileName}";
+    }
+
+    public bool ValidateDocument(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            _logger.LogWarning("Document validation failed: file is null or empty");
+            return false;
+        }
+
+        if (file.Length > _maxFileSizeBytes)
+        {
+            _logger.LogWarning("Document validation failed: file size {Size} exceeds limit {Limit}",
+                file.Length, _maxFileSizeBytes);
+            return false;
+        }
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!_allowedDocumentExtensions.Contains(extension))
+        {
+            _logger.LogWarning("Document validation failed: invalid extension {Extension}", extension);
+            return false;
+        }
+
+        var mimeType = file.ContentType.ToLowerInvariant();
+        if (!_allowedDocumentMimeTypes.Contains(mimeType))
+        {
+            _logger.LogWarning("Document validation failed: invalid MIME type {MimeType}", file.ContentType);
             return false;
         }
 

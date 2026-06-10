@@ -6,6 +6,11 @@ namespace Casazen.Infrastructure.External;
 public interface IStripeService
 {
     Task<PaymentIntent> CreatePaymentIntentAsync(long amount, string currency, Dictionary<string, string> metadata);
+    Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata);
     Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
     Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null);
 }
@@ -31,6 +36,42 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
         catch (Exception ex)
         {
             logger.LogError(ex, "Error creating payment intent");
+            throw;
+        }
+    }
+
+    public async Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata)
+    {
+        try
+        {
+            var options = new PaymentIntentCreateOptions
+            {
+                Amount = amountCents,
+                Currency = currency,
+                Metadata = metadata,
+                ApplicationFeeAmount = 0,
+                AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+                {
+                    Enabled = true,
+                },
+            };
+
+            var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
+            var service = new PaymentIntentService();
+            var paymentIntent = await service.CreateAsync(options, requestOptions);
+            logger.LogInformation(
+                "Connected-account payment intent created: {PaymentIntentId} on {AccountId}",
+                paymentIntent.Id,
+                connectedAccountId);
+            return paymentIntent;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error creating connected-account payment intent for {AccountId}", connectedAccountId);
             throw;
         }
     }

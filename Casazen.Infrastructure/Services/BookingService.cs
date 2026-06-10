@@ -2,11 +2,23 @@
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
+using Casazen.Infrastructure.External;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Stripe;
 
 namespace Casazen.Infrastructure.Services;
 
-public class BookingService(IBookingRepository repository, ILogger<BookingService> logger) : IBookingService
+public class BookingService(
+    IBookingRepository repository,
+    IPropertyRepository propertyRepository,
+    IOrgService orgService,
+    IGuestService guestService,
+    ITaxCalculationService taxCalculationService,
+    IStripeService stripeService,
+    IPaymentRepository paymentRepository,
+    IConfiguration configuration,
+    ILogger<BookingService> logger) : IBookingService
 {
     public async Task<Booking?> GetBookingAsync(Guid id)
     {
@@ -30,7 +42,6 @@ public class BookingService(IBookingRepository repository, ILogger<BookingServic
 
     public async Task<Booking> CreateBookingAsync(Booking booking)
     {
-        // Validate booking data
         var validationResult = BookingValidator.ValidateBooking(booking);
         if (!validationResult.IsValid)
         {
@@ -38,7 +49,6 @@ public class BookingService(IBookingRepository repository, ILogger<BookingServic
             throw new InvalidOperationException($"Booking validation failed: {validationResult.ErrorMessage}");
         }
 
-        // Check property availability
         var isAvailable = await repository.IsAvailableAsync(
             booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
 
@@ -54,14 +64,161 @@ public class BookingService(IBookingRepository repository, ILogger<BookingServic
         return await repository.AddAsync(booking);
     }
 
+    public async Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input)
+    {
+        var allowedConsentVersion = configuration["DirectBooking:ConsentVersion"] ?? "2026-06-direct-checkout-v1";
+        if (!string.Equals(input.ConsentVersion, allowedConsentVersion, StringComparison.Ordinal))
+        {
+            throw new DirectBookingException(
+                "Invalid consent version",
+                DirectBookingErrorCodes.InvalidConsentVersion);
+        }
+
+        var property = await propertyRepository.GetByIdAsync(input.PropertyId);
+        if (property is null || !property.IsActive)
+        {
+            throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
+        }
+
+        var org = await orgService.GetByIdAsync(property.OrgId);
+        if (org is null ||
+            string.IsNullOrWhiteSpace(org.StripeConnectedAccountId) ||
+            !org.ConnectChargesEnabled)
+        {
+            throw new DirectBookingException(
+                "Complete Stripe onboarding before accepting guest payments",
+                DirectBookingErrorCodes.PaymentNotReady);
+        }
+
+        var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
+        if (totalGuests > property.MaxGuests)
+        {
+            throw new DirectBookingException(
+                $"This property allows a maximum of {property.MaxGuests} guests.",
+                DirectBookingErrorCodes.TooManyGuests);
+        }
+
+        var checkIn = DateTime.SpecifyKind(input.CheckInDate.Date, DateTimeKind.Utc);
+        var checkOut = DateTime.SpecifyKind(input.CheckOutDate.Date, DateTimeKind.Utc);
+        if (checkOut <= checkIn)
+        {
+            throw new DirectBookingException(
+                "Check-out date must be after check-in date",
+                DirectBookingErrorCodes.InvalidDates);
+        }
+
+        var pendingTtlMinutes = configuration.GetValue("DirectBooking:PendingTtlMinutes", 15);
+        await repository.CancelExpiredPendingDirectBookingsAsync(input.PropertyId, pendingTtlMinutes);
+
+        var isAvailable = await repository.IsAvailableAsync(
+            input.PropertyId, checkIn, checkOut, pendingTtlMinutes);
+        if (!isAvailable)
+        {
+            throw new DirectBookingException(
+                "Property not available for selected dates",
+                DirectBookingErrorCodes.NotAvailable);
+        }
+
+        var guest = await UpsertGuestWithConsentAsync(input.Guest, input.ConsentVersion, input.ConsentIpAddress);
+
+        var nights = (checkOut - checkIn).Days;
+        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+        var touristTaxAmount = await taxCalculationService.CalculateTouristTaxAsync(
+            input.PropertyId, checkIn, checkOut, totalGuests);
+        var totalPrice = basePrice + touristTaxAmount;
+        var currency = "EUR";
+
+        var booking = new Booking
+        {
+            PropertyId = input.PropertyId,
+            OrgId = property.OrgId,
+            GuestId = guest.Id,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            NumberOfAdults = input.NumberOfAdults,
+            NumberOfChildren = input.NumberOfChildren,
+            NumberOfGuests = totalGuests,
+            SpecialRequests = input.SpecialRequests ?? string.Empty,
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            BasePrice = basePrice,
+            TouristTax = touristTaxAmount,
+            TouristTaxAmount = touristTaxAmount,
+            TotalPrice = totalPrice,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        var validationResult = BookingValidator.ValidateBooking(booking);
+        if (!validationResult.IsValid)
+        {
+            throw new DirectBookingException(
+                validationResult.ErrorMessage ?? "Booking validation failed",
+                DirectBookingErrorCodes.InvalidDates);
+        }
+
+        var createdBooking = await repository.AddAsync(booking);
+
+        var amountCents = (long)Math.Round(totalPrice * 100m, MidpointRounding.AwayFromZero);
+        var metadata = new Dictionary<string, string>
+        {
+            ["bookingId"] = createdBooking.Id.ToString(),
+            ["propertyId"] = input.PropertyId.ToString(),
+            ["orgId"] = property.OrgId.ToString(),
+            ["kind"] = "direct-booking",
+        };
+
+        PaymentIntent paymentIntent;
+        try
+        {
+            paymentIntent = await stripeService.CreateConnectedAccountPaymentIntentAsync(
+                org.StripeConnectedAccountId!,
+                amountCents,
+                currency.ToLowerInvariant(),
+                metadata);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Stripe PaymentIntent creation failed for booking {BookingId}", createdBooking.Id);
+            createdBooking.Status = BookingStatus.Cancelled;
+            createdBooking.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(createdBooking);
+            throw new DirectBookingException("Payment initialization failed", DirectBookingErrorCodes.StripeError);
+        }
+
+        var payment = new Payment
+        {
+            BookingId = createdBooking.Id,
+            OrgId = property.OrgId,
+            Amount = totalPrice,
+            Status = PaymentStatus.Pending,
+            Method = Core.Entities.PaymentMethod.CreditCard,
+            TransactionId = paymentIntent.Id,
+            StripePaymentIntentId = paymentIntent.Id,
+            Description = "Direct checkout",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        await paymentRepository.AddAsync(payment);
+
+        var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
+        return new DirectBookingCreateResult(
+            createdBooking.Id,
+            paymentIntent.ClientSecret ?? string.Empty,
+            publishableKey,
+            org.StripeConnectedAccountId!,
+            totalPrice,
+            currency,
+            touristTaxAmount,
+            basePrice);
+    }
+
     public async Task<Booking> UpdateBookingAsync(Booking booking)
     {
-        // Get existing booking for validation
         var existingBooking = await repository.GetByIdAsync(booking.Id);
         if (existingBooking == null)
             throw new KeyNotFoundException($"Booking {booking.Id} not found");
 
-        // Validate update
         var validationResult = BookingValidator.ValidateBookingUpdate(existingBooking, booking);
         if (!validationResult.IsValid)
         {
@@ -69,7 +226,6 @@ public class BookingService(IBookingRepository repository, ILogger<BookingServic
             throw new InvalidOperationException($"Booking update validation failed: {validationResult.ErrorMessage}");
         }
 
-        // Validate basic booking data
         var bookingValidation = BookingValidator.ValidateBooking(booking);
         if (!bookingValidation.IsValid)
         {
@@ -93,13 +249,93 @@ public class BookingService(IBookingRepository repository, ILogger<BookingServic
         return true;
     }
 
-    public async Task<bool> IsPropertyAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut)
+    public async Task<bool> IsPropertyAvailableAsync(
+        Guid propertyId,
+        DateTime checkIn,
+        DateTime checkOut,
+        int? pendingDirectTtlMinutes = null)
     {
-        return await repository.IsAvailableAsync(propertyId, checkIn, checkOut);
+        return await repository.IsAvailableAsync(propertyId, checkIn, checkOut, pendingDirectTtlMinutes);
+    }
+
+    public async Task<int> CancelExpiredPendingDirectBookingsAsync(Guid propertyId, int pendingDirectTtlMinutes)
+    {
+        return await repository.CancelExpiredPendingDirectBookingsAsync(propertyId, pendingDirectTtlMinutes);
     }
 
     public async Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate)
     {
         return await repository.GetByDateRangeAsync(propertyId, startDate, endDate);
+    }
+
+    private async Task<Guest> UpsertGuestWithConsentAsync(
+        DirectBookingGuestInput guestInput,
+        string consentVersion,
+        string consentIpAddress)
+    {
+        var now = DateTime.UtcNow;
+        var retentionUntil = now.AddYears(7);
+        var existing = await guestService.GetGuestByEmailAsync(guestInput.Email);
+
+        if (existing is not null)
+        {
+            existing.FirstName = guestInput.FirstName;
+            existing.LastName = guestInput.LastName;
+            existing.PhoneNumber = guestInput.Phone ?? string.Empty;
+            existing.Country = guestInput.Country;
+            existing.DataProcessingConsentDate = now;
+            existing.ConsentIpAddress = consentIpAddress.Length > 50
+                ? consentIpAddress[..50]
+                : consentIpAddress;
+            existing.ConsentVersion = consentVersion;
+            existing.ConsentDate = now;
+            existing.DataRetentionUntil = retentionUntil;
+            existing.DataProcessingPurpose = "Direct Booking Checkout";
+            existing.UpdatedAt = now;
+            return await guestService.UpdateGuestAsync(existing);
+        }
+
+        var guest = new Guest
+        {
+            FirstName = guestInput.FirstName,
+            LastName = guestInput.LastName,
+            Email = guestInput.Email,
+            PhoneNumber = guestInput.Phone ?? string.Empty,
+            Country = guestInput.Country,
+            DataProcessingConsentDate = now,
+            ConsentIpAddress = consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress,
+            ConsentVersion = consentVersion,
+            ConsentDate = now,
+            DataRetentionUntil = retentionUntil,
+            DataProcessingPurpose = "Direct Booking Checkout",
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        try
+        {
+            return await guestService.CreateGuestAsync(guest);
+        }
+        catch (InvalidOperationException)
+        {
+            var raced = await guestService.GetGuestByEmailAsync(guestInput.Email);
+            if (raced is null)
+                throw;
+
+            raced.FirstName = guestInput.FirstName;
+            raced.LastName = guestInput.LastName;
+            raced.PhoneNumber = guestInput.Phone ?? string.Empty;
+            raced.Country = guestInput.Country;
+            raced.DataProcessingConsentDate = now;
+            raced.ConsentIpAddress = consentIpAddress.Length > 50
+                ? consentIpAddress[..50]
+                : consentIpAddress;
+            raced.ConsentVersion = consentVersion;
+            raced.ConsentDate = now;
+            raced.DataRetentionUntil = retentionUntil;
+            raced.DataProcessingPurpose = "Direct Booking Checkout";
+            raced.UpdatedAt = now;
+            return await guestService.UpdateGuestAsync(raced);
+        }
     }
 }

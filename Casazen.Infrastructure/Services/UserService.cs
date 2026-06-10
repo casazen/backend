@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
@@ -9,6 +10,7 @@ namespace Casazen.Infrastructure.Services;
 public class UserService(
     IUserRepository repository,
     IAuth0ManagementService auth0Management,
+    IOrgService orgService,
     ILogger<UserService> logger) : IUserService
 {
     public async Task<User?> GetUserAsync(string id)
@@ -91,7 +93,36 @@ public class UserService(
         // Upsert by sub (Auth0 sub == User.Id)
         var existing = await repository.GetBySubAsync(sub);
         if (existing != null)
+        {
+            var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.ToLowerInvariant();
+            var changed = false;
+
+            if (string.IsNullOrWhiteSpace(existing.Email) && normalizedEmail is not null)
+            {
+                existing.Email = normalizedEmail;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.FirstName) && !string.IsNullOrWhiteSpace(firstName))
+            {
+                existing.FirstName = firstName;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.LastName) && !string.IsNullOrWhiteSpace(lastName))
+            {
+                existing.LastName = lastName;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                existing.UpdatedAt = DateTime.UtcNow;
+                await repository.UpdateAsync(existing);
+            }
+
             return existing;
+        }
 
         var user = new User
         {
@@ -133,4 +164,48 @@ public class UserService(
             "Role changed: userId={UserId} newRole={Role} changedBy={AdminId}",
             id, newRole, adminSub);
     }
+
+    /// <inheritdoc />
+    public async Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
+        string sub,
+        RentalType rentalType,
+        PlanTier planTier,
+        string email,
+        string firstName,
+        string lastName)
+    {
+        var roles = MapRentalTypeToRoles(rentalType);
+        var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
+
+        user.RentalType = rentalType;
+        user.Role = roles[0];
+        user.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(user);
+
+        var displayName = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
+            displayName = email;
+
+        await orgService.EnsureOrgForUserAsync(sub, email, displayName, planTier);
+
+        user = await repository.GetByIdAsync(sub) ?? user;
+
+        await auth0Management.AssignOnboardingRolesAsync(sub, roles);
+
+        var assigned = roles.Select(r => r.ToString()).ToArray();
+        logger.LogInformation(
+            "Onboarding completed: userId={UserId} rentalType={RentalType} planTier={PlanTier} roles=[{Roles}]",
+            sub, rentalType, planTier, string.Join(", ", assigned));
+
+        return (user, assigned);
+    }
+
+    private static IReadOnlyList<UserRole> MapRentalTypeToRoles(RentalType rentalType) =>
+        rentalType switch
+        {
+            RentalType.ShortTerm => [UserRole.PropertyOwner],
+            RentalType.LongTerm => [UserRole.LongTermLandlord],
+            RentalType.Both => [UserRole.PropertyOwner, UserRole.LongTermLandlord],
+            _ => throw new ArgumentOutOfRangeException(nameof(rentalType), rentalType, "Unknown rental type")
+        };
 }

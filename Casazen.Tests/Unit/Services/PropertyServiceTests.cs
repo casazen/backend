@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.DTOs;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -51,25 +52,7 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Once);
     }
 
-    [Fact]
-    public async Task SearchAsync_WithCityFilter_ReturnsFilteredProperties()
-    {
-        // Arrange
-        var properties = new List<Property>
-        {
-            new() { Id = Guid.NewGuid(), Name = "Property 1", City = "Rome" },
-            new() { Id = Guid.NewGuid(), Name = "Property 2", City = "Rome" }
-        };
-        _mockRepository.Setup(x => x.SearchAsync("Rome", null, null)).ReturnsAsync(properties);
-
-        // Act
-        var result = await _service.SearchAsync("Rome", null, null);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count());
-    }
-
+    // SearchAsync projection tests live in PropertyServicePublicReadModelTests (#212).
     [Fact]
     public async Task GetOwnerPropertiesAsync_WithValidOwnerId_ReturnsProperties()
     {

@@ -238,10 +238,17 @@ Stage 03 opens PRs; Stage 05 merges. Never merge feature branches directly to `m
 
 These rules apply throughout the pipeline and cannot be bypassed:
 
+- **Run to completion** — once a pipeline is started or resumed, execute Stages 03→06 sequentially without pausing for user confirmation between stages. Only stop on escalation (3 failed gate iterations), missing secrets, or non-standard destructive actions. Deliver the final completion summary when Stage 06 finishes.
 - **Stage 03 always runs backend-developer + frontend-developer** — both specialists spawn every time; document N/A if a layer has no changes
 - **Never push directly to `main` or `develop`** — feature PRs → `develop`; release PR `develop` → `main` (Stage 05 Phase C)
 - **Never promote to `main` before staging validation** — Stage 05 Phase B must pass on develop deploy, including **`dotnet test`**, **`npm run test:e2e`**, and staging FE serving the React SPA (`id="root"`)
 - **Tests from acceptance criteria in Stage 03** — test-engineer adds Vitest + Playwright E2E for each Issue AC before PR; Stage 05 re-runs BE + E2E before main promotion
+- **Mandatory deploy regression E2E (non-negotiable)** — every release must include:
+  1. **Demo E2E** for new feature ACs (`npm run test:e2e` in CI)
+  2. **Live API regression** (`E2E_STAGING=1 npm run test:e2e -- api-regression-smoke`) — authenticated calls to `/api/properties`, `/api/bookings`, `/api/users/me`, `/api/me/contexts` must **never** return 500
+  3. **Vercel deploy smoke** (`E2E_DEPLOY_SMOKE=1 npm run test:e2e -- vercel-deploy-smoke`) — prod/preview FE must serve `id="root"` with no API 500 storm on load
+  4. Run (3) and (4) on **Railway test** before `develop`→`main` and on **prod** after Phase D
+- **EF migrations before promote** — if Stage 03 adds a migration: run `.\scripts\migrate.ps1 -Target test` before Phase B staging validation and `.\scripts\migrate.ps1 -Target prod` before Phase D (startup auto-migrate is a safety net, not a substitute for the release checklist)
 - **Stage 06 runs on production (`main`) only** — not against develop/staging URLs
 - **Stage 05 auto-increments patch semver** from latest tag on backend repo unless specified otherwise
 - **Stage 05 Phase D G20/G21** — `main` and `develop` same tip **and** both build; promote only `develop`→`main`; never merge broken `main` into `develop`

@@ -31,7 +31,15 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
-        var query = context.Properties.AsQueryable();
+        return await GetSearchQueryable(city, bedrooms, maxPrice).ToListAsync();
+    }
+
+    public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null)
+    {
+        var query = context.Properties.AsQueryable().Where(p => p.IsActive);
+
+        if (orgId.HasValue)
+            query = query.Where(p => p.OrgId == orgId.Value);
 
         if (!string.IsNullOrEmpty(city))
             query = query.Where(p => p.City.ToLower().Contains(city.ToLower()));
@@ -42,7 +50,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         if (maxPrice.HasValue)
             query = query.Where(p => p.NightlyRate <= maxPrice.Value);
 
-        return await query.Where(p => p.IsActive).ToListAsync();
+        return query;
     }
 
     public async Task<Property> AddAsync(Property property)
@@ -80,6 +88,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .Include(p => p.PropertyDocuments)
             .Include(p => p.OtaIntegrations)
             .Include(p => p.Bookings)
+            .Include(p => p.PricingAdapterConfig)
             .FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
     }
 }

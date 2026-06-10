@@ -9,7 +9,8 @@ public interface IBookingRepository
     Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId);
     Task<IEnumerable<Booking>> GetAllAsync();
     Task<IEnumerable<Booking>> GetByDateRangeAsync(Guid propertyId, DateTime startDate, DateTime endDate);
-    Task<bool> IsAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut);
+    Task<bool> IsAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? directPendingTtlMinutes = null);
+    Task<int> CancelExpiredPendingDirectBookingsAsync(Guid propertyId, int ttlMinutes);
     Task<Booking> AddAsync(Booking booking);
     Task<Booking> UpdateAsync(Booking booking);
     Task DeleteAsync(Guid id);

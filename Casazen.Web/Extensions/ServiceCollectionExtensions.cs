@@ -1,6 +1,7 @@
 ﻿// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -118,6 +119,7 @@ public static class ServiceCollectionExtensions
         var builder = services.AddAuthorizationBuilder()
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
             .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
+            .AddPolicy("PropertyManagerOrAdmin", policy => policy.RequireRole("PropertyManager", "Admin"))
             .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"));
 
         RegisterContextPolicies(builder);
@@ -237,6 +239,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IImageStorageService, LocalImageStorageService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
+        services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+
+        // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
+        services.AddScoped<ITenantContext, TenantContext>();
+        services.AddScoped<IOrgContextResolver, OrgContextResolver>();
+        services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IEntitlementService, EntitlementService>();
         return services;
     }
 
@@ -246,6 +255,8 @@ public static class ServiceCollectionExtensions
         // JWT authentication is handled directly by AddCasazenAuthentication()
         services.AddScoped<SendGridService>();
         services.AddScoped<StripeService>();
+        services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
+        services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
         services.AddSingleton<StripeWebhookHandler>();
         return services;
     }

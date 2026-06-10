@@ -63,18 +63,77 @@ jobs:
             --retry 8 --retry-delay 15 --retry-connrefused --max-time 30
           echo "✅ Test environment healthy"
 
-      - name: Smoke test (auth gate — expect 401)
+      - name: Smoke test (auth gate — expect 401, never 500)
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
           if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
             "${RAILWAY_TEST_URL}/api/properties")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/properties returned 500 — likely pending EF migration (AddContextAuthorization)"
+            exit 1
+          fi
           if [ "$STATUS" != "401" ]; then
             echo "❌ Expected 401 on /api/properties, got $STATUS"
             exit 1
           fi
           echo "✅ Auth gate OK"
+
+      - name: Smoke test (bookings — never 500 without auth)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/bookings")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/bookings returned 500 — likely pending EF migration"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ]; then
+            echo "❌ Expected 401 on /api/bookings, got $STATUS"
+            exit 1
+          fi
+          echo "✅ Bookings auth gate OK"
+
+      - name: Smoke test (users/me, contexts — never 500 without auth)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          for PATH_SUFFIX in users/me me/contexts users; do
+            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+              "${RAILWAY_TEST_URL}/api/${PATH_SUFFIX}")
+            if [ "$STATUS" = "500" ]; then
+              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target test"
+              exit 1
+            fi
+            if [ "$STATUS" != "401" ]; then
+              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
+              exit 1
+            fi
+            echo "✅ /api/${PATH_SUFFIX} auth gate OK"
+          done
+
+      - name: Verify pricing adapter endpoint (auth gate — never 500)
+        env:
+          RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
+          TEST_PROPERTY_ID: ${{ vars.TEST_PROPERTY_ID }}
+        run: |
+          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
+          PROPERTY_ID="${TEST_PROPERTY_ID:-00000000-0000-0000-0000-000000000001}"
+          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+            "${RAILWAY_TEST_URL}/api/pricing-adapter/config/${PROPERTY_ID}")
+          if [ "$STATUS" = "500" ]; then
+            echo "❌ /api/pricing-adapter/config returned 500"
+            exit 1
+          fi
+          if [ "$STATUS" != "401" ] && [ "$STATUS" != "404" ] && [ "$STATUS" != "200" ]; then
+            echo "❌ Unexpected status on pricing-adapter config: $STATUS"
+            exit 1
+          fi
+          echo "✅ Pricing adapter auth gate OK (status $STATUS)"
 
   # Railway deploys production via GitHub integration (push to main → production environment).
   verify-prod:
@@ -109,10 +168,29 @@ jobs:
           RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
         run: |
           if [ -z "$RAILWAY_PROD_URL" ]; then exit 0; fi
-          STATUS=$(curl -o /dev/null -sw "%{http_code}" \
-            "${RAILWAY_PROD_URL}/api/properties")
-          if [ "$STATUS" != "401" ]; then
-            echo "❌ Expected 401 on /api/properties, got $STATUS"
+          for PATH_SUFFIX in properties bookings users/me me/contexts orgs/me/entitlement; do
+            STATUS=$(curl -o /dev/null -sw "%{http_code}" \
+              "${RAILWAY_PROD_URL}/api/${PATH_SUFFIX}")
+            if [ "$STATUS" = "500" ]; then
+              echo "❌ /api/${PATH_SUFFIX} returned 500 — run scripts/migrate.ps1 -Target prod"
+              exit 1
+            fi
+            if [ "$STATUS" != "401" ]; then
+              echo "❌ Expected 401 on /api/${PATH_SUFFIX}, got $STATUS"
+              exit 1
+            fi
+            echo "✅ Production /api/${PATH_SUFFIX} auth gate OK"
+          done
+
+      - name: Production FE bundle sanity (must serve SPA, not placeholder)
+        run: |
+          BODY=$(curl -sf "https://casazen-app.vercel.app" || true)
+          if [ -z "$BODY" ]; then
+            echo "❌ Production FE unreachable at https://casazen-app.vercel.app"
             exit 1
           fi
-          echo "✅ Production auth gate OK"
+          if ! echo "$BODY" | grep -q 'id="root"'; then
+            echo "❌ Production FE missing React root — check Vercel Production deploy"
+            exit 1
+          fi
+          echo "✅ Production FE SPA shell OK (casazen-app.vercel.app)"

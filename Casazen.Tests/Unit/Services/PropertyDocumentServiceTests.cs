@@ -48,7 +48,8 @@ public class PropertyDocumentServiceTests
         };
 
         _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
-        _mockStorageService.Setup(x => x.UploadImageAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
+        _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
+        _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(expectedDocument);
 
         // Act
@@ -74,7 +75,7 @@ public class PropertyDocumentServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.CinCertificate, "user@example.com"));
 
-        _mockStorageService.Verify(x => x.UploadImageAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);
+        _mockStorageService.Verify(x => x.UploadDocumentAsync(It.IsAny<IFormFile>(), It.IsAny<Guid>()), Times.Never);
         _mockDocumentRepository.Verify(x => x.AddAsync(It.IsAny<PropertyDocument>()), Times.Never);
     }
 
@@ -88,14 +89,15 @@ public class PropertyDocumentServiceTests
         var savedDocument = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId };
 
         _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
-        _mockStorageService.Setup(x => x.UploadImageAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
+        _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
+        _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(savedDocument);
 
         // Act
         await _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.FloorPlan, "owner@example.com");
 
         // Assert
-        _mockStorageService.Verify(x => x.UploadImageAsync(mockFile.Object, propertyId), Times.Once);
+        _mockStorageService.Verify(x => x.UploadDocumentAsync(mockFile.Object, propertyId), Times.Once);
     }
 
     [Fact]

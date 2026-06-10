@@ -336,6 +336,58 @@ public class DynamicPricingJobTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_OnePropertyThrows_ContinuesProcessingOthers()
+    {
+        var propertyId1 = Guid.NewGuid();
+        var propertyId2 = Guid.NewGuid();
+        var config1 = new PricingAdapterConfig
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId1,
+            IsEnabled = true,
+            IncludeSeasonality = true,
+            IncludePublicHolidays = false,
+            AdaptationFrequency = "daily",
+        };
+        var config2 = new PricingAdapterConfig
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId2,
+            IsEnabled = true,
+            IncludeSeasonality = false,
+            IncludePublicHolidays = false,
+            AdaptationFrequency = "daily",
+        };
+
+        _configRepositoryMock.Setup(r => r.GetEnabledConfigsAsync())
+            .ReturnsAsync(new[] { config1, config2 });
+
+        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
+                It.IsAny<DateTime>(),
+                true,
+                false))
+            .ThrowsAsync(new InvalidOperationException("Pricing computation failed"));
+
+        _pricingServiceMock.Setup(s => s.CalculatePricingMultiplierAsync(
+                It.IsAny<DateTime>(),
+                false,
+                false))
+            .ReturnsAsync(1.1m);
+
+        _historyRepositoryMock.Setup(r => r.AddAsync(It.IsAny<PricingHistory>()))
+            .ReturnsAsync((PricingHistory h) => h);
+
+        _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId2))
+            .ReturnsAsync(true);
+
+        await _job.ExecuteAsync();
+
+        _configRepositoryMock.Verify(r => r.UpdateAsync(config2), Times.Once);
+        _otaManagerMock.Verify(m => m.SyncAllAsync(propertyId2), Times.Once);
+        _configRepositoryMock.Verify(r => r.UpdateAsync(config1), Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_PricingHistorySyncStatusIsPending()
     {
         // Arrange

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -20,4 +21,15 @@ public interface IUserService
         string? search, string? role, bool? isActive, int page, int pageSize);
 
     Task ChangeRoleAsync(string id, UserRole newRole, string adminSub);
+
+    /// <summary>
+    /// Completes or updates onboarding: persists rental type, syncs Auth0 onboarding roles.
+    /// </summary>
+    Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
+        string sub,
+        RentalType rentalType,
+        PlanTier planTier,
+        string email,
+        string firstName,
+        string lastName);
 }

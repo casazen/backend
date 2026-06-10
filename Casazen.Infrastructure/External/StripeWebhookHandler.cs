@@ -1,31 +1,45 @@
 ﻿using Stripe;
 using Casazen.Core.Repositories;
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
 public class StripeWebhookHandler(
     IPaymentRepository paymentRepository,
+    IBookingRepository bookingRepository,
+    IConnectOnboardingService connectOnboardingService,
     ILogger<StripeWebhookHandler> logger)
 {
-    public async Task HandleEventAsync(Event stripeEvent)
+    private const string DirectBookingKind = "direct-booking";
+
+    public Task HandleEventAsync(Event stripeEvent) =>
+        HandleEventAsync(stripeEvent, WebhookSource.Platform);
+
+    public async Task HandleEventAsync(Event stripeEvent, WebhookSource source)
     {
         try
         {
             switch (stripeEvent.Type)
             {
                 case "payment_intent.succeeded":
-                    await HandlePaymentSucceededAsync(stripeEvent.Data.Object as PaymentIntent);
+                    await HandlePaymentSucceededAsync(stripeEvent.Data.Object as PaymentIntent, source);
                     break;
                 case "payment_intent.payment_failed":
-                    await HandlePaymentFailedAsync(stripeEvent.Data.Object as PaymentIntent);
+                case "payment_intent.canceled":
+                    await HandlePaymentFailedAsync(stripeEvent.Data.Object as PaymentIntent, source);
                     break;
                 case "charge.refunded":
-                    await HandleRefundAsync(stripeEvent.Data.Object as Charge);
+                    if (source == WebhookSource.Platform)
+                        await HandleRefundAsync(stripeEvent.Data.Object as Charge);
+                    break;
+                case "account.updated":
+                    if (source == WebhookSource.Connected)
+                        await HandleAccountUpdatedAsync(stripeEvent.Data.Object as Account);
                     break;
                 default:
-                    logger.LogInformation("Unhandled Stripe event: {EventType}", stripeEvent.Type);
+                    logger.LogInformation("Unhandled Stripe event: {EventType} (source={Source})", stripeEvent.Type, source);
                     break;
             }
         }
@@ -35,51 +49,121 @@ public class StripeWebhookHandler(
         }
     }
 
-    private async Task HandlePaymentSucceededAsync(PaymentIntent? paymentIntent)
+    private async Task HandleAccountUpdatedAsync(Account? account)
     {
-        if (paymentIntent == null)
+        if (account is null)
             return;
 
-        logger.LogInformation("Payment succeeded: {PaymentIntentId}", paymentIntent.Id);
-
-        var transactionId = paymentIntent.Id;
-        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
-        if (payment != null)
-        {
-            payment.Status = Core.Entities.PaymentStatus.Completed;
-            await paymentRepository.UpdateAsync(payment);
-        }
+        logger.LogInformation("Connect account updated: {AccountId}", account.Id);
+        var snapshot = StripeConnectGateway.MapAccount(account);
+        await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
     }
 
-    private async Task HandlePaymentFailedAsync(PaymentIntent? paymentIntent)
+    private async Task HandlePaymentSucceededAsync(PaymentIntent? paymentIntent, WebhookSource source)
     {
-        if (paymentIntent == null)
+        if (paymentIntent is null)
             return;
 
-        logger.LogInformation("Payment failed: {PaymentIntentId}", paymentIntent.Id);
-
-        var transactionId = paymentIntent.Id;
-        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
-        if (payment != null)
+        if (IsDirectBookingEvent(paymentIntent, source))
         {
-            payment.Status = Core.Entities.PaymentStatus.Failed;
-            await paymentRepository.UpdateAsync(payment);
+            await HandleDirectBookingPaymentSucceededAsync(paymentIntent);
+            return;
         }
+
+        if (source != WebhookSource.Platform)
+            return;
+
+        logger.LogInformation("Platform payment succeeded: {PaymentIntentId}", paymentIntent.Id);
+        await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Completed);
+    }
+
+    private async Task HandleDirectBookingPaymentSucceededAsync(PaymentIntent paymentIntent)
+    {
+        logger.LogInformation("Direct booking payment succeeded: {PaymentIntentId}", paymentIntent.Id);
+
+        var payment = await paymentRepository.GetByTransactionIdAsync(paymentIntent.Id);
+        if (payment is null)
+        {
+            logger.LogWarning("No payment row for direct booking PI {PaymentIntentId}", paymentIntent.Id);
+            return;
+        }
+
+        if (payment.Status == PaymentStatus.Completed)
+            return;
+
+        payment.Status = PaymentStatus.Completed;
+        payment.ProcessedAt = DateTime.UtcNow;
+        payment.UpdatedAt = DateTime.UtcNow;
+        await paymentRepository.UpdateAsync(payment);
+
+        var booking = await bookingRepository.GetByIdAsync(payment.BookingId);
+        if (booking is null)
+            return;
+
+        if (booking.Status == BookingStatus.Confirmed)
+            return;
+
+        booking.Status = BookingStatus.Confirmed;
+        booking.UpdatedAt = DateTime.UtcNow;
+        await bookingRepository.UpdateAsync(booking);
+    }
+
+    private async Task HandlePaymentFailedAsync(PaymentIntent? paymentIntent, WebhookSource source)
+    {
+        if (paymentIntent is null)
+            return;
+
+        if (IsDirectBookingEvent(paymentIntent, source))
+        {
+            logger.LogInformation("Direct booking payment failed/canceled: {PaymentIntentId}", paymentIntent.Id);
+            await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Failed);
+            return;
+        }
+
+        if (source != WebhookSource.Platform)
+            return;
+
+        logger.LogInformation("Platform payment failed: {PaymentIntentId}", paymentIntent.Id);
+        await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Failed);
     }
 
     private async Task HandleRefundAsync(Charge? charge)
     {
-        if (charge == null)
+        if (charge is null)
             return;
 
         logger.LogInformation("Charge refunded: {ChargeId}", charge.Id);
-
         var transactionId = charge.PaymentIntentId;
+        if (string.IsNullOrEmpty(transactionId))
+            return;
+
         var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
-        if (payment != null)
+        if (payment is not null)
         {
-            payment.Status = Core.Entities.PaymentStatus.Refunded;
+            payment.Status = PaymentStatus.Refunded;
             await paymentRepository.UpdateAsync(payment);
         }
+    }
+
+    private static bool IsDirectBookingEvent(PaymentIntent paymentIntent, WebhookSource source)
+    {
+        if (source != WebhookSource.Connected)
+            return false;
+
+        paymentIntent.Metadata.TryGetValue("kind", out var kind);
+        return string.Equals(kind, DirectBookingKind, StringComparison.Ordinal);
+    }
+
+    private async Task UpdatePaymentStatusAsync(string transactionId, PaymentStatus status)
+    {
+        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
+        if (payment is null)
+            return;
+
+        payment.Status = status;
+        if (status == PaymentStatus.Completed)
+            payment.ProcessedAt = DateTime.UtcNow;
+        payment.UpdatedAt = DateTime.UtcNow;
+        await paymentRepository.UpdateAsync(payment);
     }
 }

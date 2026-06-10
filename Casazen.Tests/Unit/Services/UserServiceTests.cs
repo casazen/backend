@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -12,6 +13,7 @@ public class UserServiceTests
 {
     private readonly Mock<IUserRepository> _repoMock;
     private readonly Mock<IAuth0ManagementService> _auth0Mock;
+    private readonly Mock<IOrgService> _orgMock;
     private readonly Mock<ILogger<UserService>> _loggerMock;
     private readonly UserService _service;
 
@@ -20,8 +22,9 @@ public class UserServiceTests
         _repoMock = new Mock<IUserRepository>();
         _loggerMock = new Mock<ILogger<UserService>>();
         _auth0Mock = new Mock<IAuth0ManagementService>();
+        _orgMock = new Mock<IOrgService>();
 
-        _service = new UserService(_repoMock.Object, _auth0Mock.Object, _loggerMock.Object);
+        _service = new UserService(_repoMock.Object, _auth0Mock.Object, _orgMock.Object, _loggerMock.Object);
     }
 
     // ─── GetCurrentUserAsync ────────────────────────────────────────────────
@@ -40,6 +43,22 @@ public class UserServiceTests
         // Assert
         Assert.Equal(existing, result);
         _repoMock.Verify(r => r.AddAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCurrentUserAsync_UserExistsWithEmptyEmail_BackfillsFromJwtClaims()
+    {
+        var sub = "auth0|legacy456";
+        var existing = new User { Id = sub, Email = "", FirstName = "", LastName = "" };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(existing);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+
+        var result = await _service.GetCurrentUserAsync(sub, "luca@example.com", "Luca", "Rossi");
+
+        Assert.Equal("luca@example.com", result.Email);
+        Assert.Equal("Luca", result.FirstName);
+        Assert.Equal("Rossi", result.LastName);
+        _repoMock.Verify(r => r.UpdateAsync(It.Is<User>(u => u.Email == "luca@example.com")), Times.Once);
     }
 
     [Fact]
@@ -94,6 +113,34 @@ public class UserServiceTests
         // Act + Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _service.ChangeRoleAsync("nonexistent", UserRole.Admin, "admin"));
+    }
+
+    // ─── CompleteOnboardingAsync ────────────────────────────────────────────
+
+    [Fact]
+    public async Task CompleteOnboardingAsync_ShortTerm_UpdatesUserAndCallsAuth0()
+    {
+        var sub = "auth0|onboard1";
+        var user = new User { Id = sub, Email = "a@b.com", FirstName = "A", LastName = "B" };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(
+                sub, "a@b.com", "A B", PlanTier.Pro, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Org { Id = Guid.NewGuid(), PlanTier = PlanTier.Pro, Name = "A B" });
+        _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
+            .Returns(Task.CompletedTask);
+
+        var (result, roles) = await _service.CompleteOnboardingAsync(
+            sub, RentalType.ShortTerm, PlanTier.Pro, "a@b.com", "A", "B");
+
+        Assert.Equal(RentalType.ShortTerm, result.RentalType);
+        Assert.Equal(UserRole.PropertyOwner, result.Role);
+        Assert.Single(roles);
+        Assert.Equal("PropertyOwner", roles[0]);
+        _auth0Mock.Verify(a => a.AssignOnboardingRolesAsync(
+            sub, It.Is<IReadOnlyList<UserRole>>(list => list.Count == 1 && list[0] == UserRole.PropertyOwner)),
+            Times.Once);
     }
 
     // ─── GetPagedAsync ──────────────────────────────────────────────────────

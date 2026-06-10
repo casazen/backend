@@ -1,14 +1,20 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
 
 namespace Casazen.Infrastructure.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenantContext = null) : DbContext(options)
 {
+    // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
+    // no-op (filter disabled) for design-time, background jobs, and unit tests.
+    private readonly ITenantContext _tenant = tenantContext ?? NullTenantContext.Instance;
+
     public DbSet<User> Users { get; set; } = null!;
+    public DbSet<Org> Orgs { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
@@ -182,6 +188,45 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
+
+        // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
+        // Org tenant key with a unique Slug (AC1).
+        modelBuilder.Entity<Org>()
+            .HasIndex(o => o.Slug)
+            .IsUnique();
+
+        // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
+        modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
+        modelBuilder.Entity<Booking>().HasIndex(b => b.OrgId);
+        modelBuilder.Entity<LeaseContract>().HasIndex(l => l.OrgId);
+        modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
+        modelBuilder.Entity<User>().HasIndex(u => u.OrgId);
+
+        // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
+        // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
+        modelBuilder.Entity<Property>()
+            .HasOne(p => p.Org).WithMany().HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Booking>()
+            .HasOne(b => b.Org).WithMany().HasForeignKey(b => b.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<LeaseContract>()
+            .HasOne(l => l.Org).WithMany().HasForeignKey(l => l.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Payment>()
+            .HasOne(p => p.Org).WithMany().HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<User>()
+            .HasOne(u => u.Org).WithMany().HasForeignKey(u => u.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Global tenant query filter (AC7): every read of a tenant-scoped table is scoped
+        // to the caller's OrgId. Fail-closed when the caller has no org; disabled for
+        // anonymous/system contexts (background jobs, design-time, unit tests).
+        modelBuilder.Entity<Property>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<Booking>().HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<LeaseContract>().HasQueryFilter(l => !_tenant.FilterEnabled || l.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<Payment>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>()
             .HasKey(c => c.Key);
