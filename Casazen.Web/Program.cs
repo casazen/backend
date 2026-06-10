@@ -14,7 +14,9 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Hangfire;
 using Hangfire.PostgreSql;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
@@ -74,6 +76,7 @@ builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddScoped<ISendGridService, SendGridService>();
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
+builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
@@ -100,6 +103,17 @@ builder.Services.AddCasazenAuthorization();
 
 // CORS
 builder.Services.AddCasazenCors(builder.Configuration);
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("PublicBookingCreate", limiter =>
+    {
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.PermitLimit = builder.Configuration.GetValue("DirectBooking:RateLimitPermitLimit", 10);
+        limiter.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 // Background Jobs
 builder.Services.AddScoped<OtaSyncJob>();
@@ -218,6 +232,7 @@ app.UseErrorHandling();
 // Authentication & Authorization (must be in this order)
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // Hangfire Dashboard and recurring jobs (only when Hangfire is configured)
 if (!string.IsNullOrEmpty(connectionString))

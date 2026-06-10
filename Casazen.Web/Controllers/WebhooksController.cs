@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
@@ -68,7 +69,7 @@ public class WebhooksController : ControllerBase
             // Queue the event for background processing
             // This allows us to respond within 3 seconds while processing happens asynchronously
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
-                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json));
+                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Platform));
 
             _logger.LogInformation("Queued Stripe webhook event {EventId} for background processing", stripeEvent.Id);
 
@@ -118,7 +119,7 @@ public class WebhooksController : ControllerBase
                 stripeEvent.Id);
 
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
-                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json));
+                job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Connected));
 
             return Ok();
         }

@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
@@ -37,6 +38,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["ConnectionStrings:DefaultConnection"] = string.Empty,
                 ["Auth0:Domain"] = "test.auth0.com",
                 ["Auth0:Audience"] = "https://test-api.casazen.app",
+                ["Stripe:PublishableKey"] = "pk_test_integration",
+                ["DirectBooking:ConsentVersion"] = "2026-06-direct-checkout-v1",
+                ["DirectBooking:PendingTtlMinutes"] = "15",
             });
         });
 
@@ -66,6 +70,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
             RemoveService<IStripeConnectGateway>(services);
             services.AddSingleton<IStripeConnectGateway, FakeStripeConnectGateway>();
+
+            RemoveService<IStripeService>(services);
+            services.AddSingleton<IStripeService, FakeStripeService>();
         });
     }
 
