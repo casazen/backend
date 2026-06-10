@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -18,6 +19,8 @@ public class BookingsController(
     ITaxCalculationService taxCalculationService,
     IAlloggiatiWebService alloggiatiWebService,
     IPropertyService propertyService,
+    IPropertyAuthorizationService authorizationService,
+    IGuestService guestService,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -42,29 +45,83 @@ public class BookingsController(
 
     [HttpPost]
     [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<ActionResult<Booking>> Create([FromBody] Booking booking)
+    public async Task<ActionResult<Booking>> Create([FromBody] CreateBookingRequest request)
     {
-        logger.LogInformation("Creating booking for property: {PropertyId}", booking.PropertyId);
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(request.PropertyId);
+        if (property == null)
+            return NotFound("Property not found");
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        if (request.NumberOfGuests > property.MaxGuests)
+        {
+            return BadRequest(new
+            {
+                error = "Too many guests",
+                message = $"This property allows a maximum of {property.MaxGuests} guests."
+            });
+        }
+
+        var checkIn = request.CheckInDate.Date;
+        var checkOut = request.CheckOutDate.Date;
+        if (checkOut <= checkIn)
+            return BadRequest("Check-out date must be after check-in date");
+
+        logger.LogInformation("Creating booking for property: {PropertyId}", request.PropertyId);
+
         var isAvailable = await bookingService.IsPropertyAvailableAsync(
-            booking.PropertyId,
-            booking.CheckInDate,
-            booking.CheckOutDate
-        );
+            request.PropertyId, checkIn, checkOut);
 
         if (!isAvailable)
         {
             logger.LogWarning("Property not available: {PropertyId} from {CheckIn} to {CheckOut}",
-                booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
+                request.PropertyId, checkIn, checkOut);
             return BadRequest("Property not available for these dates");
         }
+
+        var guest = await ResolveGuestAsync(request.Guest);
+        var nights = (checkOut - checkIn).Days;
+        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+
+        var booking = new Booking
+        {
+            PropertyId = request.PropertyId,
+            OrgId = property.OrgId,
+            GuestId = guest.Id,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            NumberOfGuests = request.NumberOfGuests,
+            SpecialRequests = request.SpecialRequests ?? string.Empty,
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            BasePrice = basePrice,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
 
         booking.TouristTax = await taxCalculationService.CalculateTouristTaxAsync(
             booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
         booking.TotalPrice = booking.BasePrice + booking.TouristTax;
 
-        var created = await bookingService.CreateBookingAsync(booking);
-        logger.LogInformation("Booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        try
+        {
+            var created = await bookingService.CreateBookingAsync(booking);
+            logger.LogInformation("Booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Booking creation failed for property {PropertyId}", request.PropertyId);
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpPut("{id}")]
@@ -221,4 +278,42 @@ public class BookingsController(
         var report = await alloggiatiWebService.GetReportStatusAsync(id);
         return report == null ? NotFound() : Ok(report);
     }
+
+    private async Task<Guest> ResolveGuestAsync(CreateBookingGuestRequest guestInfo)
+    {
+        var existing = await guestService.GetGuestByEmailAsync(guestInfo.Email);
+        if (existing != null)
+            return existing;
+
+        var guest = new Guest
+        {
+            FirstName = guestInfo.FirstName,
+            LastName = guestInfo.LastName,
+            Email = guestInfo.Email,
+            PhoneNumber = guestInfo.Phone,
+            Country = guestInfo.Country,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        try
+        {
+            return await guestService.CreateGuestAsync(guest);
+        }
+        catch (InvalidOperationException)
+        {
+            var raced = await guestService.GetGuestByEmailAsync(guestInfo.Email);
+            if (raced == null)
+                throw;
+            return raced;
+        }
+    }
+
+    private string? GetUserId() =>
+        User.FindFirst("sub")?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+    private IEnumerable<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
 }
