@@ -90,6 +90,42 @@ public class BookingsControllerTests
     };
 
     [Fact]
+    public async Task GetAll_ReturnsBookingResponseDtosWithoutCircularRefs()
+    {
+        SetUser(OwnerId);
+        var guest = new Guest { Id = Guid.NewGuid(), FirstName = "Mario", LastName = "Rossi", Email = "mario@test.com" };
+        var property = MakeProperty();
+        var booking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            Property = property,
+            CheckInDate = DateTime.UtcNow.AddDays(1),
+            CheckOutDate = DateTime.UtcNow.AddDays(3),
+            NumberOfGuests = 2,
+            BasePrice = 200m,
+            TouristTax = 10m,
+            TotalPrice = 210m,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        };
+
+        _mockBookingService.Setup(b => b.GetAllBookingsAsync()).ReturnsAsync([booking]);
+
+        var result = await _controller.GetAll(null);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value);
+        var dto = Assert.Single(items);
+        Assert.Equal(booking.Id, dto.Id);
+        Assert.Equal("Test Villa", dto.PropertyName);
+        Assert.Equal("mario@test.com", dto.Guest.Email);
+    }
+
+    [Fact]
     public async Task Create_WithValidRequest_ReturnsCreated()
     {
         SetUser(OwnerId);

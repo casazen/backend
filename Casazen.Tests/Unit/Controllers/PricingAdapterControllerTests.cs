@@ -102,7 +102,7 @@ public class PricingAdapterControllerTests
     }
 
     [Fact]
-    public async Task GetConfig_WhenConfigNotFound_ReturnsNotFound()
+    public async Task GetConfig_WhenConfigNotFound_ReturnsDefaultDisabledConfig()
     {
         // Arrange
         var propertyId = Guid.NewGuid();
@@ -115,7 +115,10 @@ public class PricingAdapterControllerTests
         var result = await _controller.GetConfig(propertyId);
 
         // Assert
-        Assert.IsType<NotFoundResult>(result.Result);
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PricingAdapterConfigResponse>(ok.Value);
+        Assert.Equal(propertyId, dto.PropertyId);
+        Assert.False(dto.IsEnabled);
     }
 
     [Fact]
@@ -473,7 +476,7 @@ public class PricingAdapterControllerTests
     }
 
     [Fact]
-    public async Task GetPreview_WhenConfigNotFound_ReturnsNotFound()
+    public async Task GetPreview_WhenConfigNotFound_ReturnsEmptyPreview()
     {
         // Arrange
         var propertyId = Guid.NewGuid();
@@ -486,7 +489,9 @@ public class PricingAdapterControllerTests
         var result = await _controller.GetPreview(propertyId);
 
         // Assert
-        Assert.IsType<NotFoundResult>(result.Result);
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var preview = Assert.IsType<PricingPreviewResponse>(ok.Value);
+        Assert.Empty(preview.Prices);
     }
 
     [Fact]

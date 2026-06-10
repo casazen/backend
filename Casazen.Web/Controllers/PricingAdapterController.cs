@@ -100,7 +100,8 @@ public class PricingAdapterController(
         }
 
         var config = await pricingService.GetConfigAsync(propertyId);
-        if (config == null) return NotFound();
+        if (config == null)
+            return Ok(ToDefaultResponse(propertyId));
 
         return Ok(ToResponse(config));
     }
@@ -274,7 +275,10 @@ public class PricingAdapterController(
         }
 
         var config = await pricingService.GetConfigAsync(propertyId);
-        if (config == null) return NotFound();
+        if (config == null || !config.IsEnabled)
+        {
+            return Ok(new PricingPreviewResponse { Prices = [] });
+        }
 
         var preview = await pricingService.PreviewPricesAsync(propertyId, property.NightlyRate, config);
 
@@ -299,6 +303,15 @@ public class PricingAdapterController(
 
     private IEnumerable<string> GetUserRoles() =>
         User.FindAll(ClaimTypes.Role).Select(c => c.Value);
+
+    private static PricingAdapterConfigResponse ToDefaultResponse(Guid propertyId) => new()
+    {
+        PropertyId = propertyId,
+        IsEnabled = false,
+        AdaptationFrequency = "daily",
+        IncludeSeasonality = true,
+        IncludePublicHolidays = true,
+    };
 
     private static PricingAdapterConfigResponse ToResponse(PricingAdapterConfig config) => new()
     {
