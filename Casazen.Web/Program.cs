@@ -136,6 +136,9 @@ builder.Services.AddScoped<GdprDataRetentionJob>();
 builder.Services.AddScoped<ESignWebhookJob>();
 builder.Services.AddScoped<LeaseSignStatusPollingJob>();
 builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
+builder.Services.AddScoped<SeoPageGenerationJob>();
+builder.Services.AddScoped<SeoContentRefreshJob>();
+builder.Services.AddScoped<IAiProvider, StubAiProvider>();
 
 // API
 builder.Services.AddControllers()
@@ -352,6 +355,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "lease-registration-status-poll",
         job => job.ExecuteAsync(),
         "*/5 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<SeoContentRefreshJob>(
+        "seo-content-refresh",
+        job => job.ExecuteAsync(),
+        "0 4 1 * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 

@@ -29,6 +29,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
+    public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
+    public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
@@ -122,6 +125,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
+
+        modelBuilder.Entity<SeoContentPage>()
+            .HasIndex(p => new { p.ComuneCode, p.PageType })
+            .IsUnique();
+
+        modelBuilder.Entity<SeoContentPage>()
+            .HasIndex(p => p.LegalReviewStatus);
+
+        modelBuilder.Entity<SeoContentRevision>()
+            .HasOne(r => r.Page)
+            .WithMany(p => p.Revisions)
+            .HasForeignKey(r => r.PageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
 
         // PricingAdapterConfig → Property (1-to-1)
@@ -318,6 +335,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             new RolePermission { RoleId = 3, PermissionKey = "admin.users.manage" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.cin.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" });
+            new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.seo.read" });
     }
 }

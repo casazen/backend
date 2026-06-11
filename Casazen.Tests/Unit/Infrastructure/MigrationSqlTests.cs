@@ -32,15 +32,15 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastThree() // AC3/AC5 ordering + Connect + Alloggiati
+    public void Migrations_LandInOrder_AsTheLastThree()
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("MakeOrgIdRequired", lastThree[0]);
-        Assert.EndsWith("AddConnectStatusFields", lastThree[1]);
-        Assert.EndsWith("AddAlloggiatiCheckInMvp", lastThree[2]);
+        Assert.EndsWith("AddConnectStatusFields", lastThree[0]);
+        Assert.EndsWith("AddAlloggiatiCheckInMvp", lastThree[1]);
+        Assert.EndsWith("AddComplianceSeoEntities", lastThree[2]);
     }
 
     [Fact]

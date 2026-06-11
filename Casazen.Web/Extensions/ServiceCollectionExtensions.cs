@@ -146,7 +146,7 @@ public static class ServiceCollectionExtensions
             ["admin"] =
             [
                 "admin.stats.read", "admin.users.read", "admin.users.manage",
-                "admin.cin.read", "admin.jobs.read", "admin.tax.manage",
+                "admin.cin.read", "admin.jobs.read", "admin.tax.manage", "admin.seo.read",
             ],
         };
 
@@ -217,6 +217,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
+        services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
         services.AddScoped<ITaxRateRepository, TaxRateRepository>();
@@ -246,6 +247,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
+        services.AddScoped<ISeoContentService, SeoContentService>();
         return services;
     }
 
@@ -255,6 +257,7 @@ public static class ServiceCollectionExtensions
         // JWT authentication is handled directly by AddCasazenAuthentication()
         services.AddScoped<SendGridService>();
         services.AddScoped<StripeService>();
+        services.AddScoped<IAiProvider, StubAiProvider>();
         services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
         services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
         services.AddSingleton<StripeWebhookHandler>();
