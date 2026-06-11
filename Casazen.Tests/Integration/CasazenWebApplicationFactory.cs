@@ -44,6 +44,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
+                ["Seo:BootstrapOnStartup"] = "false",
             });
         });
 

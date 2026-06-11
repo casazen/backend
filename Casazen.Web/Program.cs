@@ -94,6 +94,7 @@ builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
+builder.Services.AddScoped<IAiProvider, StubAiProvider>();
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 builder.Services.AddScoped<ILeaseTemplateService, LeaseContractTemplateService>();
