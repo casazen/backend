@@ -191,6 +191,38 @@ public class SeoContentService(
         return generated;
     }
 
+    public async Task<int> ApproveAllDraftPagesAsync(bool counselApproved, CancellationToken cancellationToken = default)
+    {
+        var (items, _) = await repository.ListPagesAsync(
+            LegalReviewStatus.Draft,
+            pageType: null,
+            comuneCode: null,
+            page: 1,
+            pageSize: 500,
+            cancellationToken);
+
+        var approved = 0;
+        foreach (var page in items)
+        {
+            try
+            {
+                var result = await UpdateReviewStatusAsync(
+                    page.Id,
+                    LegalReviewStatus.Reviewed,
+                    counselApproved,
+                    cancellationToken);
+                if (result is not null)
+                    approved++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not auto-approve SEO page {PageId}", page.Id);
+            }
+        }
+
+        return approved;
+    }
+
     public async Task<int> RefreshStalePagesAsync(CancellationToken cancellationToken = default)
     {
         var stalePages = await repository.GetPagesNeedingRefreshAsync(cancellationToken);

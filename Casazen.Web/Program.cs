@@ -9,7 +9,9 @@ using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Configuration;
 using Casazen.Web.Extensions;
+using Casazen.Web.HostedServices;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Hangfire;
@@ -92,6 +94,7 @@ builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
+builder.Services.AddScoped<IAiProvider, StubAiProvider>();
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 builder.Services.AddScoped<ILeaseTemplateService, LeaseContractTemplateService>();
@@ -148,7 +151,9 @@ builder.Services.AddScoped<LeaseSignStatusPollingJob>();
 builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
 builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
-builder.Services.AddScoped<IAiProvider, StubAiProvider>();
+builder.Services.Configure<SeoBootstrapOptions>(
+    builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
+builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API
 builder.Services.AddControllers()
