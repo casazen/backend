@@ -48,7 +48,7 @@ public class OrgServiceTests
         await using var db = CreateDb(nameof(EnsureOrgForUserAsync_IsIdempotent_DoesNotChangeExistingPlan));
         var userId = "auth0|existing";
         var orgId = Guid.NewGuid();
-        db.Orgs.Add(new Org
+        db.Orgs.Add(new OrgEntity
         {
             Id = orgId,
             Name = "Existing",
@@ -83,7 +83,7 @@ public class OrgServiceTests
     {
         await using var db = CreateDb(nameof(UpdatePlanTierAsync_ChangesTier));
         var orgId = Guid.NewGuid();
-        db.Orgs.Add(new Org
+        db.Orgs.Add(new OrgEntity
         {
             Id = orgId,
             Name = "Org",

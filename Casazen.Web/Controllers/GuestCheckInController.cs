@@ -20,11 +20,14 @@ public class GuestCheckInController(
     IConfiguration configuration,
     ILogger<GuestCheckInController> logger) : ControllerBase
 {
+    private static bool IsTokenExpired(Booking booking) =>
+        booking.CheckInTokenExpiresAt.HasValue && booking.CheckInTokenExpiresAt.Value < DateTime.UtcNow;
+
     [HttpGet("{token:guid}")]
     public async Task<ActionResult<CheckInContextDto>> GetContext(Guid token)
     {
         var booking = await bookingRepository.GetByCheckInTokenAsync(token);
-        if (booking is null || booking.Status == BookingStatus.Cancelled)
+        if (booking is null || booking.Status == BookingStatus.Cancelled || IsTokenExpired(booking))
             return NotFound();
 
         var dataComplete = await alloggiatiWebService.ValidateGuestDataAsync(booking.GuestId);
@@ -49,7 +52,7 @@ public class GuestCheckInController(
         }
 
         var booking = await bookingRepository.GetByCheckInTokenAsync(token);
-        if (booking is null || booking.Status == BookingStatus.Cancelled)
+        if (booking is null || booking.Status == BookingStatus.Cancelled || IsTokenExpired(booking))
             return NotFound();
 
         var guest = await guestRepository.GetByIdAsync(booking.GuestId);
@@ -99,7 +102,7 @@ public class GuestCheckInController(
         IFormFile file)
     {
         var booking = await bookingRepository.GetByCheckInTokenAsync(token);
-        if (booking is null || booking.Status == BookingStatus.Cancelled)
+        if (booking is null || booking.Status == BookingStatus.Cancelled || IsTokenExpired(booking))
             return NotFound();
 
         if (!documentStorage.ValidateDocument(file))

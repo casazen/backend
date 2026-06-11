@@ -171,7 +171,13 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
     private static void EnsureCheckInToken(Booking booking)
     {
-        if (booking.Status == BookingStatus.Confirmed && !booking.CheckInToken.HasValue)
+        if (booking.Status != BookingStatus.Confirmed)
+            return;
+
+        if (!booking.CheckInToken.HasValue)
             booking.CheckInToken = Guid.NewGuid();
+
+        if (!booking.CheckInTokenExpiresAt.HasValue)
+            booking.CheckInTokenExpiresAt = booking.CheckOutDate.AddDays(7);
     }
 }

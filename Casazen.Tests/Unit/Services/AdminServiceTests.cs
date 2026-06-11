@@ -108,8 +108,8 @@ public class AdminServiceTests
             callerOrgId: orgA);
 
         ctx.Orgs.AddRange(
-            new Org { Id = orgA, Name = "Org A", Slug = "org-a", DisplayName = "Org A", ContactEmail = "a@x.io", PlanTier = PlanTier.Starter },
-            new Org { Id = orgB, Name = "Org B", Slug = "org-b", DisplayName = "Org B", ContactEmail = "b@x.io", PlanTier = PlanTier.Pro });
+            new OrgEntity { Id = orgA, Name = "Org A", Slug = "org-a", DisplayName = "Org A", ContactEmail = "a@x.io", PlanTier = PlanTier.Starter },
+            new OrgEntity { Id = orgB, Name = "Org B", Slug = "org-b", DisplayName = "Org B", ContactEmail = "b@x.io", PlanTier = PlanTier.Pro });
 
         var propA = new Property { Id = Guid.NewGuid(), OrgId = orgA, OwnerId = "ownerA", Name = "A1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789", IsActive = true };
         var propB = new Property { Id = Guid.NewGuid(), OrgId = orgB, OwnerId = "ownerB", Name = "B1", Address = "b", City = "Milano", CinCode = "IT-54321-9876543210", IsActive = true };

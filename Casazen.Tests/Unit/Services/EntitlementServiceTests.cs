@@ -17,6 +17,8 @@ public class EntitlementServiceTests
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"entitlement-{Guid.NewGuid()}")
+            .ConfigureWarnings(w =>
+                w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options);
 
     private static IConfiguration Config(Dictionary<string, string?>? values = null) =>
@@ -26,7 +28,7 @@ public class EntitlementServiceTests
 
     private static async Task<Guid> SeedOrgWithPropertiesAsync(AppDbContext db, PlanTier tier, int properties)
     {
-        var org = new Org { Name = "Org", Slug = $"org-{Guid.NewGuid():N}", DisplayName = "Org", ContactEmail = "o@x.it", PlanTier = tier, IsActive = true };
+        var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}", DisplayName = "Org", ContactEmail = "o@x.it", PlanTier = tier, IsActive = true };
         db.Orgs.Add(org);
         for (var i = 0; i < properties; i++)
             db.Properties.Add(new Property { OwnerId = "auth0|owner", OrgId = org.Id, Name = $"P{i}", Address = "A", City = "Rome" });
@@ -86,6 +88,26 @@ public class EntitlementServiceTests
 
         Assert.Equal(1, result.MaxProperties);
         Assert.False(result.CanAddProperty); // 1 used, limit 1
+    }
+
+    [Fact]
+    public async Task ReservePropertySlotAsync_AtStarterLimit_ReturnsFalse()
+    {
+        await using var db = NewDb();
+        var orgId = await SeedOrgWithPropertiesAsync(db, PlanTier.Starter, properties: 3);
+        var service = new EntitlementService(db, Config());
+
+        Assert.False(await service.ReservePropertySlotAsync(orgId));
+    }
+
+    [Fact]
+    public async Task ReservePropertySlotAsync_BelowStarterLimit_ReturnsTrue()
+    {
+        await using var db = NewDb();
+        var orgId = await SeedOrgWithPropertiesAsync(db, PlanTier.Starter, properties: 2);
+        var service = new EntitlementService(db, Config());
+
+        Assert.True(await service.ReservePropertySlotAsync(orgId));
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611120000_AddCheckInTokenExpiresAt")]
+    partial class AddCheckInTokenExpiresAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -801,29 +804,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("Payments");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.PlatformAiBudget", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("LastResetAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("MonthlyTokenCap")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("TokensUsedThisMonth")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("PlatformAiBudgets");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.PricingAdapterConfig", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1269,108 +1249,7 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 3,
                             PermissionKey = "admin.tax.manage"
-                        },
-                        new
-                        {
-                            RoleId = 3,
-                            PermissionKey = "admin.seo.read"
                         });
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.SeoContentPage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ComuneCode")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<bool>("CounselRequired")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("LastRefreshedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("LegalReviewStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("MetaDescription")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int>("PageType")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("PublishedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RegionCode")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LegalReviewStatus");
-
-                    b.HasIndex("ComuneCode", "PageType")
-                        .IsUnique();
-
-                    b.ToTable("SeoContentPages");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.SeoContentRevision", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("AiModelTier")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("BodyHtml")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("GeneratedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("PageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("PromptTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("SourceDataVersion")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PageId");
-
-                    b.ToTable("SeoContentRevisions");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.TaxRate", b =>
@@ -1776,17 +1655,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Role");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SeoContentRevision", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.SeoContentPage", "Page")
-                        .WithMany("Revisions")
-                        .HasForeignKey("PageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Page");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.User", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
@@ -1875,11 +1743,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Memberships");
 
                     b.Navigation("Permissions");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.SeoContentPage", b =>
-                {
-                    b.Navigation("Revisions");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.User", b =>

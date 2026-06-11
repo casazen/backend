@@ -5,7 +5,7 @@
 - Stage 05 Phase D complete — feature live on **`main`**
 - Tag `vX.Y.Z` deployed to Railway production + Vercel production
 - `$RAILWAY_PROD_URL/api/health` returns 200
-- `https://casazen.vercel.app` returns 200
+- `https://casazen-app.vercel.app` returns 200
 
 **Do not run Stage 06 against develop/staging.** All gates below target production.
 
@@ -21,7 +21,7 @@ Topic handed to council:
 | Check | Target |
 |---|---|
 | API health / smoke | `$RAILWAY_PROD_URL` (main deploy) |
-| Frontend | `https://casazen.vercel.app` (main deploy) |
+| Frontend | `https://casazen-app.vercel.app` (main deploy) |
 | Database queries | Production Supabase / prod connection only |
 | Hangfire / logs | Production Railway service |
 | Feature regression | Critical ACs from Issue `#N` on prod URLs |
@@ -31,7 +31,7 @@ Topic handed to council:
 | # | Gate | How to check | Pass condition |
 |---|---|---|---|
 | G1 | Prod API health | `curl -sf $RAILWAY_PROD_URL/api/health` | HTTP 200 |
-| G2 | Prod FE health | `curl -sf https://casazen.vercel.app` | HTTP 200 |
+| G2 | Prod FE health | `curl -sf https://casazen-app.vercel.app` | HTTP 200 |
 | G3 | CIN format valid (prod DB) | Read-only query on Properties | 0 invalid CIN formats |
 | G4 | GDPR retention clean (prod DB) | Read-only query on Guests | 0 overdue records without erasure flag |
 | G5 | Alloggiati jobs healthy (prod) | Hangfire / failed job query | No failed Alloggiati jobs > 24h |
@@ -66,7 +66,7 @@ IF regulatory gates still failing after max_iterations:
 **Release**: vX.Y.Z
 **Issue**: #N
 **Prod BE**: $RAILWAY_PROD_URL
-**Prod FE**: https://casazen.vercel.app
+**Prod FE**: https://casazen-app.vercel.app
 ```
 
 Include compliance table, incident log, KPI snapshot, action items.

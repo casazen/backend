@@ -103,7 +103,7 @@ public class PropertiesController(
 
         // AC8: enforce the org's plan limit server-side before insert. Client-side gating is
         // advisory; this is the source of truth (a stale client cannot exceed the limit).
-        if (!await entitlementService.CanAddPropertyAsync(orgId.Value))
+        if (!await entitlementService.ReservePropertySlotAsync(orgId.Value))
         {
             var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value);
             logger.LogWarning(

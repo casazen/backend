@@ -32,6 +32,11 @@ public class SeoContentServiceTests
             .Setup(r => r.GetActiveByCityAsync(comune.Name, It.IsAny<DateTime>()))
             .ReturnsAsync(taxRate);
 
+        var touristTaxService = new Mock<ITouristTaxService>();
+        touristTaxService
+            .Setup(s => s.CalculateTouristTaxAsync(comune.Name, 2, 0, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(24m);
+
         var seoRepo = new Mock<ISeoContentRepository>();
         var aiProvider = new Mock<IAiProvider>();
         var config = new ConfigurationBuilder().Build();
@@ -40,6 +45,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             touristTaxRepo.Object,
+            touristTaxService.Object,
             aiProvider.Object,
             config,
             logger.Object);
@@ -83,6 +89,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             touristTaxRepo.Object,
+            Mock.Of<ITouristTaxService>(),
             aiProvider,
             config,
             logger.Object);
@@ -112,6 +119,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             Mock.Of<ITouristTaxRateRepository>(),
+            Mock.Of<ITouristTaxService>(),
             Mock.Of<IAiProvider>(),
             new ConfigurationBuilder().Build(),
             Mock.Of<ILogger<SeoContentService>>());

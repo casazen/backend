@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;

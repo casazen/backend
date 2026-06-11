@@ -16,6 +16,7 @@ packages/
 .nuget/
 
 ## Local environment
+Casazen.Web/appsettings.Development.json
 .env
 .env.local
 .env.*.local

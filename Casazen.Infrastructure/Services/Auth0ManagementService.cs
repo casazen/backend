@@ -191,10 +191,22 @@ public class Auth0ManagementService(
             if (auth0User is null)
                 return null;
 
-            return new Auth0UserProfile(
-                auth0User.Email ?? string.Empty,
-                auth0User.FirstName ?? string.Empty,
-                auth0User.LastName ?? string.Empty);
+            var email = auth0User.Email ?? string.Empty;
+            var firstName = auth0User.FirstName ?? string.Empty;
+            var lastName = auth0User.LastName ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(firstName) && !string.IsNullOrWhiteSpace(auth0User.FullName))
+            {
+                var parts = auth0User.FullName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                firstName = parts[0];
+                if (parts.Length > 1)
+                    lastName = parts[1];
+            }
+
+            if (string.IsNullOrWhiteSpace(firstName) && !string.IsNullOrWhiteSpace(auth0User.NickName))
+                firstName = auth0User.NickName;
+
+            return new Auth0UserProfile(email, firstName, lastName);
         }
         catch (Exception ex)
         {

@@ -14,6 +14,7 @@ namespace Casazen.Infrastructure.Services;
 public class SeoContentService(
     ISeoContentRepository repository,
     ITouristTaxRateRepository touristTaxRateRepository,
+    ITouristTaxService touristTaxService,
     IAiProvider aiProvider,
     IConfiguration configuration,
     ILogger<SeoContentService> logger) : ISeoContentService
@@ -63,11 +64,16 @@ public class SeoContentService(
         if (nights <= 0)
             return null;
 
+        var taxAmount = await touristTaxService.CalculateTouristTaxAsync(
+            comune.Name,
+            request.NumberOfAdults,
+            request.NumberOfChildren,
+            request.CheckInDate,
+            request.CheckOutDate);
+
         var maxNightsApplied = nights;
         if (taxRate.MaxNights.HasValue && nights > taxRate.MaxNights.Value)
             maxNightsApplied = taxRate.MaxNights.Value;
-
-        var taxAmount = request.NumberOfAdults * maxNightsApplied * taxRate.RatePerPersonPerNight;
 
         return new PublicTouristTaxCalculateResponse(
             request.ComuneSlug,
@@ -315,7 +321,7 @@ public class SeoContentService(
         await repository.AddRevisionAsync(new SeoContentRevision
         {
             PageId = page.Id,
-            BodyHtml = aiResult.Content,
+            BodyHtml = SeoHtmlSanitizer.Sanitize(aiResult.Content),
             AiModelTier = AiModelTier.Economy,
             PromptTokens = aiResult.FromCache ? 0 : aiResult.PromptTokens,
             GeneratedAt = DateTime.UtcNow,
@@ -331,7 +337,7 @@ public class SeoContentService(
             ?? throw new InvalidOperationException($"Unknown comune code {page.ComuneCode}");
 
         var revision = await repository.GetLatestRevisionAsync(page.Id, cancellationToken);
-        var bodyHtml = revision?.BodyHtml ?? string.Empty;
+        var bodyHtml = SeoHtmlSanitizer.Sanitize(revision?.BodyHtml);
         var refreshedAt = page.LastRefreshedAt ?? revision?.GeneratedAt;
         var taxRate = await touristTaxRateRepository.GetActiveByCityAsync(comune.Name, DateTime.UtcNow);
 

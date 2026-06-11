@@ -14,6 +14,7 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Polly;
 
@@ -36,6 +37,7 @@ public static class ServiceCollectionExtensions
             else
             {
                 options.UseInMemoryDatabase("CasazenTest");
+                options.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));
             }
         });
         return services;
@@ -170,7 +172,6 @@ public static class ServiceCollectionExtensions
             "http://localhost:5174",
             "http://localhost:5175",
             "https://casazen.app",
-            "https://casazen.vercel.app",
             "https://casazen-app.vercel.app",
         };
 
@@ -202,8 +203,13 @@ public static class ServiceCollectionExtensions
 
                         return uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
                     })
-                    .AllowAnyMethod()
-                    .AllowAnyHeader()
+                    .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                    .WithHeaders(
+                        "Authorization",
+                        "Content-Type",
+                        "Accept",
+                        "X-Requested-With",
+                        "X-Hangfire-ApiKey")
                     .AllowCredentials();
             });
         });
@@ -248,6 +254,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
+        services.AddScoped<IGuestAccessService, GuestAccessService>();
         return services;
     }
 

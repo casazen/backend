@@ -144,6 +144,26 @@ public class BookingRepositoryTests
     }
 
     [Fact]
+    public async Task AddAsync_ConfirmedBooking_SetsCheckInTokenAndExpiry()
+    {
+        var checkOut = new DateTime(2026, 5, 10);
+        var booking = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 5, 1),
+            CheckOutDate = checkOut,
+            Status = BookingStatus.Confirmed,
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+
+        Assert.NotNull(booking.CheckInToken);
+        Assert.NotNull(booking.CheckInTokenExpiresAt);
+        Assert.Equal(checkOut.AddDays(7), booking.CheckInTokenExpiresAt);
+    }
+
+    [Fact]
     public async Task IsAvailableAsync_DifferentProperty_ReturnsTrue()
     {
         // Conflict exists for a different property - must not affect target property
