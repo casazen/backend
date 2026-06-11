@@ -58,6 +58,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
                    b.CheckInDate <= endDate &&
                    b.CheckOutDate >= startDate &&
                    b.Status != BookingStatus.Cancelled)
+            .Include(b => b.Guest)
             .ToListAsync();
     }
 
