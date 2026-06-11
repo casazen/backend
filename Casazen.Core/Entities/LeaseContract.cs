@@ -51,6 +51,7 @@ public class LeaseContract
     public virtual ICollection<Party> Parties { get; set; } = [];
     public virtual LeaseRegistration? Registration { get; set; }
     public virtual ICollection<LeaseEvent> Events { get; set; } = [];
+    public virtual RentSchedule? RentSchedule { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

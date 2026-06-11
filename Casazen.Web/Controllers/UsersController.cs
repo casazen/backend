@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
+using Casazen.Web.Mapping;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,6 +17,7 @@ namespace Casazen.Web.Controllers;
 public class UsersController(
     IUserService userService,
     IOrgService orgService,
+    IOnboardingService onboardingService,
     ILogger<UsersController> logger) : ControllerBase
 {
     // ─── Admin endpoints ────────────────────────────────────────────────────
@@ -88,12 +91,12 @@ public class UsersController(
     /// <summary>Completes first-time onboarding by assigning roles from rental type choice.</summary>
     [HttpPost("onboarding")]
     public Task<ActionResult<OnboardingResponseDto>> PostOnboarding([FromBody] OnboardingRequestDto dto) =>
-        CompleteOnboardingAsync(dto);
+        CompleteOnboardingAsync(dto, requireConsents: true);
 
     /// <summary>Updates rental type and Auth0 roles (idempotent re-onboarding).</summary>
     [HttpPut("onboarding")]
     public Task<ActionResult<OnboardingResponseDto>> PutOnboarding([FromBody] OnboardingRequestDto dto) =>
-        CompleteOnboardingAsync(dto);
+        CompleteOnboardingAsync(dto, requireConsents: false);
 
     /// <summary>Updates the caller's own profile (first name, last name, phone).</summary>
     [HttpPut("me")]
@@ -161,7 +164,9 @@ public class UsersController(
         return NoContent();
     }
 
-    private async Task<ActionResult<OnboardingResponseDto>> CompleteOnboardingAsync(OnboardingRequestDto dto)
+    private async Task<ActionResult<OnboardingResponseDto>> CompleteOnboardingAsync(
+        OnboardingRequestDto dto,
+        bool requireConsents)
     {
         if (!Enum.TryParse<RentalType>(dto.RentalType, ignoreCase: true, out var rentalType))
             return BadRequest(new { error = $"Unknown rentalType: {dto.RentalType}" });
@@ -187,14 +192,54 @@ public class UsersController(
                        ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
                        ?? string.Empty;
 
+        var existingUser = await userService.GetUserAsync(sub);
+        var hadOrg = existingUser?.OrgId.HasValue == true;
+
         var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
             sub, rentalType, planTier, email, firstName, lastName);
+
+        if (user.OrgId is not Guid orgId)
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Org provisioning failed." });
+
+        var (success, error, consentsRecorded) = await onboardingService.ValidateAndRecordConsentsAsync(
+            sub,
+            orgId,
+            dto.Consents.ToInput(),
+            requireConsents,
+            GetClientIpAddress(),
+            HttpContext.RequestAborted);
+
+        if (!success)
+        {
+            return error?.Type switch
+            {
+                ConsentValidationErrorType.Incomplete => BadRequest(new { error = error.Message }),
+                ConsentValidationErrorType.StaleVersion => BadRequest(new
+                {
+                    error = error.Message,
+                    staleDocuments = error.StaleDocuments,
+                }),
+                _ => BadRequest(new { error = error?.Message ?? "Invalid consents." }),
+            };
+        }
 
         return Ok(new OnboardingResponseDto
         {
             RolesAssigned = rolesAssigned.ToArray(),
-            RentalType = user.RentalType?.ToString() ?? rentalType.ToString()
+            RentalType = user.RentalType?.ToString() ?? rentalType.ToString(),
+            OrgId = orgId,
+            OrgProvisioned = !hadOrg,
+            ConsentsRecorded = consentsRecorded,
         });
+    }
+
+    private string? GetClientIpAddress()
+    {
+        var forwarded = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+            return forwarded.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────

@@ -7,14 +7,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Enforces per-tier plan limits (AC8). Limits come from a tier→limits map in configuration
-/// (<c>Entitlement:Tiers:{tier}:MaxProperties</c>) with provisional defaults; <c>spec-saas-billing</c>
-/// owns the final commercial numbers, so reconciliation is config-only (no migration).
-/// </summary>
 public class EntitlementService(AppDbContext dbContext, IConfiguration configuration) : IEntitlementService
 {
-    // Provisional defaults (design Open Question #4): Starter = 3, Pro = 50, Scale = unlimited.
     private static readonly IReadOnlyDictionary<PlanTier, int> DefaultMaxProperties = new Dictionary<PlanTier, int>
     {
         [PlanTier.Starter] = 3,
@@ -24,24 +18,17 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
 
     public async Task<EntitlementResult> GetEntitlementAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        var planTier = await dbContext.Orgs.AsNoTracking()
+        var org = await dbContext.Orgs.AsNoTracking()
             .Where(o => o.Id == orgId)
-            .Select(o => (PlanTier?)o.PlanTier)
-            .FirstOrDefaultAsync(cancellationToken) ?? PlanTier.Starter;
+            .Select(o => new { o.PlanTier, o.SubscriptionStatus, o.PastDueSince })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        var maxProperties = ResolveMaxProperties(planTier);
+        var storedTier = org?.PlanTier ?? PlanTier.Starter;
+        var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
+        var maxProperties = ResolveMaxProperties(effectiveTier);
+        var propertyCount = await dbContext.Properties.CountAsync(p => p.OrgId == orgId, cancellationToken);
 
-        // Count is scoped to the explicit orgId. Under an authenticated request the tenant filter
-        // also constrains to the caller's org (which equals orgId), so the count is identical.
-        var propertyCount = await dbContext.Properties
-            .CountAsync(p => p.OrgId == orgId, cancellationToken);
-
-        return new EntitlementResult(
-            orgId,
-            planTier.ToString(),
-            maxProperties,
-            propertyCount,
-            propertyCount < maxProperties);
+        return new EntitlementResult(orgId, effectiveTier.ToString(), maxProperties, propertyCount, propertyCount < maxProperties);
     }
 
     public async Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default) =>
@@ -49,19 +36,18 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
 
     public async Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(
-            IsolationLevel.Serializable, cancellationToken);
-
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
-            var planTier = await dbContext.Orgs.AsNoTracking()
+            var org = await dbContext.Orgs.AsNoTracking()
                 .Where(o => o.Id == orgId)
-                .Select(o => (PlanTier?)o.PlanTier)
-                .FirstOrDefaultAsync(cancellationToken) ?? PlanTier.Starter;
+                .Select(o => new { o.PlanTier, o.SubscriptionStatus, o.PastDueSince })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            var maxProperties = ResolveMaxProperties(planTier);
-            var propertyCount = await dbContext.Properties
-                .CountAsync(p => p.OrgId == orgId, cancellationToken);
+            var storedTier = org?.PlanTier ?? PlanTier.Starter;
+            var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
+            var maxProperties = ResolveMaxProperties(effectiveTier);
+            var propertyCount = await dbContext.Properties.CountAsync(p => p.OrgId == orgId, cancellationToken);
 
             if (propertyCount >= maxProperties)
             {
@@ -77,6 +63,40 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    public async Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null || org.SubscriptionStatus == SubscriptionStatus.None)
+            return;
+
+        var effectiveTier = ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
+        if (effectiveTier != org.PlanTier)
+        {
+            org.PlanTier = effectiveTier;
+            org.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
+        status switch
+        {
+            SubscriptionStatus.None => storedTier,
+            SubscriptionStatus.Active or SubscriptionStatus.Trialing => storedTier,
+            SubscriptionStatus.PastDue when !IsPastDueGraceExpired(pastDueSince) => storedTier,
+            SubscriptionStatus.PastDue or SubscriptionStatus.Canceled => PlanTier.Starter,
+            _ => storedTier,
+        };
+
+    private bool IsPastDueGraceExpired(DateTime? pastDueSince)
+    {
+        if (pastDueSince is null)
+            return false;
+
+        var graceDays = configuration.GetValue("Billing:PastDueGraceDays", 7);
+        return DateTime.UtcNow > pastDueSince.Value.AddDays(graceDays);
     }
 
     private int ResolveMaxProperties(PlanTier tier)

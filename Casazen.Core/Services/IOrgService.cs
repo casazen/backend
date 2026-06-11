@@ -32,6 +32,15 @@ public interface IOrgService
         PlanTier planTier,
         CancellationToken cancellationToken = default);
 
+    Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default);
+
+    Task<Org?> UpdateBillingProfileAsync(
+        Guid orgId,
+        string billingCountry,
+        string? vatId,
+        DateTime? vatValidatedAt,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default);

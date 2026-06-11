@@ -136,6 +136,17 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
         {
             rentalType = "ShortTerm",
             planTier = "Pro",
+            consents = new
+            {
+                tosAccepted = true,
+                tosVersion = "2026-06-v1",
+                privacyAccepted = true,
+                privacyVersion = "2026-06-v1",
+                dpaAccepted = true,
+                dpaVersion = "2026-06-v1",
+                subprocessorsAcknowledged = true,
+                subprocessorsVersion = "2026-06-v1",
+            },
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

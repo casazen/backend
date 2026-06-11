@@ -1,3 +1,4 @@
+using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.External;
 using Stripe;
 

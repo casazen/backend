@@ -82,6 +82,29 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         return org;
     }
 
+    public Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default) =>
+        dbContext.Orgs.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.StripeCustomerId == stripeCustomerId, cancellationToken);
+
+    public async Task<Org?> UpdateBillingProfileAsync(
+        Guid orgId,
+        string billingCountry,
+        string? vatId,
+        DateTime? vatValidatedAt,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return null;
+
+        org.BillingCountry = billingCountry.Trim().ToUpperInvariant();
+        org.VatId = string.IsNullOrWhiteSpace(vatId) ? null : vatId.Replace(" ", string.Empty).Trim();
+        org.VatIdValidatedAt = vatValidatedAt;
+        org.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return org;
+    }
+
     public async Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default)

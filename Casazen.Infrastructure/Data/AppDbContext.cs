@@ -37,13 +37,19 @@ public class AppDbContext(
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
+    public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
+    public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
+    public DbSet<PlatformBillingMetrics> PlatformBillingMetrics { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
+    public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
+    public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
+    public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
@@ -243,11 +249,112 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
 
+        modelBuilder.Entity<RentSchedule>()
+            .HasOne(s => s.LeaseContract)
+            .WithOne(l => l.RentSchedule)
+            .HasForeignKey<RentSchedule>(s => s.LeaseContractId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentSchedule>()
+            .HasOne(s => s.Org)
+            .WithMany()
+            .HasForeignKey(s => s.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentSchedule>()
+            .HasIndex(s => s.LeaseContractId)
+            .IsUnique();
+
+        modelBuilder.Entity<RentSchedule>()
+            .Property(s => s.Amount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<RentSchedule>()
+            .HasIndex(s => s.OrgId);
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasOne(e => e.LeaseContract)
+            .WithMany()
+            .HasForeignKey(e => e.LeaseContractId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasOne(e => e.RentSchedule)
+            .WithMany(s => s.LedgerEntries)
+            .HasForeignKey(e => e.RentScheduleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasOne(e => e.Org)
+            .WithMany()
+            .HasForeignKey(e => e.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => new { e.LeaseContractId, e.PeriodStart })
+            .IsUnique();
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .Property(e => e.AmountDue)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .Property(e => e.StampDutyAmount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<RentLedgerEntry>()
+            .HasIndex(e => e.OrgId);
+
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.Slug)
             .IsUnique();
+
+        modelBuilder.Entity<Org>()
+            .HasIndex(o => o.StripeCustomerId);
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .HasOne(i => i.Org)
+            .WithMany()
+            .HasForeignKey(i => i.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .HasIndex(i => i.StripeInvoiceId)
+            .IsUnique();
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .HasIndex(i => i.OrgId);
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .HasIndex(i => i.SdiStatus);
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .Property(i => i.AmountExVat)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .Property(i => i.VatAmount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<PlatformInvoice>()
+            .Property(i => i.TotalAmount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<PlatformBillingMetrics>()
+            .Property(m => m.EuB2cCrossBorderRevenue)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<PlatformBillingMetrics>().HasData(
+            new PlatformBillingMetrics
+            {
+                Id = 1,
+                CalendarYear = DateTime.UtcNow.Year,
+                EuB2cCrossBorderRevenue = 0m,
+                OssThresholdReached = false,
+                UpdatedAt = DateTime.UtcNow,
+            });
 
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
@@ -281,6 +388,8 @@ public class AppDbContext(
         modelBuilder.Entity<Booking>().HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
         modelBuilder.Entity<LeaseContract>().HasQueryFilter(l => !_tenant.FilterEnabled || l.OrgId == _tenant.OrgId);
         modelBuilder.Entity<Payment>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<RentSchedule>().HasQueryFilter(s => !_tenant.FilterEnabled || s.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<RentLedgerEntry>().HasQueryFilter(e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>()
             .HasKey(c => c.Key);
@@ -326,6 +435,9 @@ public class AppDbContext(
             .HasForeignKey(m => m.RoleId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<ConsentRecord>()
+            .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
+
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
             new AppContextEntity { Key = "long-rent", DisplayName = "Affitti lungo termine" },
@@ -351,6 +463,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 2, PermissionKey = "lease.create" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.sign" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.register" },
+            new RolePermission { RoleId = 2, PermissionKey = "rent.read" },
+            new RolePermission { RoleId = 2, PermissionKey = "rent.manage" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.stats.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.users.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.users.manage" },

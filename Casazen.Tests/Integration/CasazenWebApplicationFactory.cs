@@ -19,7 +19,7 @@ using Moq;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// WebApplicationFactory for integration tests — in-memory EF, test auth, mocked Hangfire.
+/// WebApplicationFactory for integration tests â€” in-memory EF, test auth, mocked Hangfire.
 /// </summary>
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -44,7 +44,28 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
+                ["Vies:StubMode"] = "true",
                 ["Seo:BootstrapOnStartup"] = "false",
+                ["Billing:Sdi:Enabled"] = "false",
+                ["Billing:PlatformVatNumber"] = "IT12345678901",
+                ["Vies:Enabled"] = "false",
+                ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
+                ["Legal:Documents:Tos:Version"] = "2026-06-v1",
+                ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
+                ["Legal:Documents:Dpa:Version"] = "2026-06-v1",
+                ["Legal:Documents:Subprocessors:Version"] = "2026-06-v1",
+                ["Legal:Documents:Subprocessors:Items:0:Name"] = "Supabase",
+                ["Legal:Documents:Subprocessors:Items:0:Purpose"] = "Database",
+                ["Legal:Documents:Subprocessors:Items:0:Region"] = "EU",
+                ["Legal:Documents:Subprocessors:Items:1:Name"] = "Auth0",
+                ["Legal:Documents:Subprocessors:Items:1:Purpose"] = "Auth",
+                ["Legal:Documents:Subprocessors:Items:1:Region"] = "EU",
+                ["Legal:Documents:Subprocessors:Items:2:Name"] = "Stripe",
+                ["Legal:Documents:Subprocessors:Items:2:Purpose"] = "Payments",
+                ["Legal:Documents:Subprocessors:Items:2:Region"] = "EU",
+                ["Legal:Documents:Subprocessors:Items:3:Name"] = "SendGrid",
+                ["Legal:Documents:Subprocessors:Items:3:Purpose"] = "Email",
+                ["Legal:Documents:Subprocessors:Items:3:Region"] = "EU",
             });
         });
 
@@ -77,6 +98,17 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
             RemoveService<IStripeService>(services);
             services.AddSingleton<IStripeService, FakeStripeService>();
+
+            RemoveService<IStripeBillingService>(services);
+            services.AddSingleton<IStripeBillingService, FakeStripeBillingService>();
+
+            RemoveService<IBillingEntryGate>(services);
+            services.AddSingleton<IBillingEntryGate>(sp =>
+            {
+                var gate = new Mock<IBillingEntryGate>();
+                gate.Setup(g => g.AssertCanChargeAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+                return gate.Object;
+            });
         });
     }
 
