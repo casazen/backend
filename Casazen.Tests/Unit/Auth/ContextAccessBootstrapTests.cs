@@ -21,6 +21,14 @@ public class ContextAccessBootstrapTests
     }
 
     [Fact]
+    public void BuildFallbackAccess_AdminIncludesSeoPermission()
+    {
+        var contexts = ContextAccessBootstrap.BuildFallbackAccess(["Admin"]);
+        var admin = Assert.Single(contexts);
+        Assert.Contains("admin.seo.read", admin.Permissions);
+    }
+
+    [Fact]
     public void DeriveContextsFromJwtRoles_IgnoresUnknownRoles()
     {
         var contexts = ContextAccessBootstrap.DeriveContextsFromJwtRoles([
