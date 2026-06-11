@@ -149,6 +149,50 @@ public class UserService(
     }
 
     /// <inheritdoc />
+    public async Task EnrichUsersFromAuth0Async(IList<User> users)
+    {
+        foreach (var user in users)
+        {
+            if (!string.IsNullOrWhiteSpace(user.Email) &&
+                !string.IsNullOrWhiteSpace(user.FirstName) &&
+                !string.IsNullOrWhiteSpace(user.LastName))
+            {
+                continue;
+            }
+
+            var profile = await auth0Management.GetUserProfileAsync(user.Id);
+            if (profile is null)
+                continue;
+
+            var changed = false;
+
+            if (string.IsNullOrWhiteSpace(user.Email) && !string.IsNullOrWhiteSpace(profile.Email))
+            {
+                user.Email = profile.Email.ToLowerInvariant();
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(user.FirstName) && !string.IsNullOrWhiteSpace(profile.FirstName))
+            {
+                user.FirstName = profile.FirstName;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(user.LastName) && !string.IsNullOrWhiteSpace(profile.LastName))
+            {
+                user.LastName = profile.LastName;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+                await repository.UpdateAsync(user);
+            }
+        }
+    }
+
+    /// <inheritdoc />
     public async Task ChangeRoleAsync(string id, UserRole newRole, string adminSub)
     {
         var user = await repository.GetByIdAsync(id)

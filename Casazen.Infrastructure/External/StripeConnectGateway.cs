@@ -1,3 +1,4 @@
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -12,10 +13,12 @@ public class StripeConnectGateway(IConfiguration configuration, ILogger<StripeCo
     {
         EnsureApiKey();
 
+        var country = configuration["Stripe:ConnectDefaultCountry"] ?? "IT";
+
         var options = new AccountCreateOptions
         {
             Type = "express",
-            Email = email,
+            Country = country,
             Capabilities = new AccountCapabilitiesOptions
             {
                 CardPayments = new AccountCapabilitiesCardPaymentsOptions { Requested = true },
@@ -23,10 +26,23 @@ public class StripeConnectGateway(IConfiguration configuration, ILogger<StripeCo
             },
         };
 
-        var service = new AccountService();
-        var account = await service.CreateAsync(options, cancellationToken: cancellationToken);
-        logger.LogInformation("Stripe Express account created: {AccountId}", account.Id);
-        return account.Id;
+        if (!string.IsNullOrWhiteSpace(email))
+            options.Email = email.Trim();
+
+        try
+        {
+            var service = new AccountService();
+            var account = await service.CreateAsync(options, cancellationToken: cancellationToken);
+            logger.LogInformation("Stripe Express account created: {AccountId}", account.Id);
+            return account.Id;
+        }
+        catch (StripeException ex)
+        {
+            logger.LogError(ex, "Stripe Connect account creation failed");
+            throw new PaymentProcessingException(
+                ex.StripeError?.Message ?? "Stripe Connect account creation failed. Verify platform API keys and Connect settings.",
+                ex);
+        }
     }
 
     public async Task<ConnectAccountSnapshot> GetAccountAsync(
@@ -35,9 +51,19 @@ public class StripeConnectGateway(IConfiguration configuration, ILogger<StripeCo
     {
         EnsureApiKey();
 
-        var service = new AccountService();
-        var account = await service.GetAsync(connectedAccountId, cancellationToken: cancellationToken);
-        return MapAccount(account);
+        try
+        {
+            var service = new AccountService();
+            var account = await service.GetAsync(connectedAccountId, cancellationToken: cancellationToken);
+            return MapAccount(account);
+        }
+        catch (StripeException ex)
+        {
+            logger.LogError(ex, "Stripe Connect account lookup failed for {AccountId}", connectedAccountId);
+            throw new PaymentProcessingException(
+                ex.StripeError?.Message ?? "Unable to load Stripe Connect account status.",
+                ex);
+        }
     }
 
     public async Task<string> CreateAccountOnboardingLinkAsync(
@@ -56,16 +82,36 @@ public class StripeConnectGateway(IConfiguration configuration, ILogger<StripeCo
             Type = "account_onboarding",
         };
 
-        var service = new AccountLinkService();
-        var link = await service.CreateAsync(options, cancellationToken: cancellationToken);
-        return link.Url;
+        try
+        {
+            var service = new AccountLinkService();
+            var link = await service.CreateAsync(options, cancellationToken: cancellationToken);
+            return link.Url;
+        }
+        catch (StripeException ex)
+        {
+            logger.LogError(ex, "Stripe Connect onboarding link creation failed for {AccountId}", connectedAccountId);
+            throw new PaymentProcessingException(
+                ex.StripeError?.Message ?? "Unable to create Stripe onboarding link.",
+                ex);
+        }
     }
 
     private void EnsureApiKey()
     {
         var secretKey = configuration["Stripe:SecretKey"];
         if (string.IsNullOrWhiteSpace(secretKey))
-            throw new InvalidOperationException("Stripe:SecretKey is not configured");
+        {
+            throw new PaymentProcessingException(
+                "Stripe is not configured on the API server. Set Stripe__SecretKey in Railway.");
+        }
+
+        if (secretKey.Contains("...", StringComparison.Ordinal) ||
+            secretKey is "sk_test_" or "sk_live_")
+        {
+            throw new PaymentProcessingException(
+                "Stripe API key is a placeholder. Configure a valid sk_test_ or sk_live_ key on the API server.");
+        }
 
         StripeConfiguration.ApiKey = secretKey;
     }

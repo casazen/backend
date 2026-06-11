@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -35,15 +36,52 @@ public class ConnectOnboardingService(
             ?? throw new InvalidOperationException($"Org {orgId} not found");
 
         if (!string.IsNullOrWhiteSpace(org.StripeConnectedAccountId))
-            return await GetStatusAsync(orgId, refreshFromStripe: true, cancellationToken);
+        {
+            try
+            {
+                return await GetStatusAsync(orgId, refreshFromStripe: true, cancellationToken);
+            }
+            catch (PaymentProcessingException ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Stale Stripe connected account {AccountId} for org {OrgId}; recreating",
+                    org.StripeConnectedAccountId,
+                    orgId);
+                org.StripeConnectedAccountId = null;
+                org.ConnectChargesEnabled = false;
+                org.ConnectPayoutsEnabled = false;
+                org.ConnectDetailsSubmitted = false;
+                org.ConnectRequirementsDueJson = null;
+                org.UpdatedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
 
-        var accountId = await stripeConnectGateway.CreateExpressAccountAsync(org.ContactEmail, cancellationToken);
+        var connectEmail = await ResolveConnectEmailAsync(org, cancellationToken);
+        if (string.IsNullOrWhiteSpace(org.ContactEmail) && !string.IsNullOrWhiteSpace(connectEmail))
+        {
+            org.ContactEmail = connectEmail;
+            org.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var accountId = await stripeConnectGateway.CreateExpressAccountAsync(connectEmail, cancellationToken);
         org.StripeConnectedAccountId = accountId;
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation("Created Stripe Connect account {AccountId} for org {OrgId}", accountId, orgId);
-        return await GetStatusAsync(orgId, refreshFromStripe: true, cancellationToken);
+
+        try
+        {
+            return await GetStatusAsync(orgId, refreshFromStripe: true, cancellationToken);
+        }
+        catch (PaymentProcessingException ex)
+        {
+            logger.LogWarning(ex, "Stripe account {AccountId} created but refresh failed for org {OrgId}", accountId, orgId);
+            return MapStatus(org);
+        }
     }
 
     public async Task<string> CreateOnboardingLinkAsync(
@@ -76,6 +114,19 @@ public class ConnectOnboardingService(
         }
 
         await PersistSnapshotAsync(org, snapshot, cancellationToken);
+    }
+
+    private async Task<string> ResolveConnectEmailAsync(Org org, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(org.ContactEmail))
+            return org.ContactEmail.Trim();
+
+        var userEmail = await dbContext.Users.AsNoTracking()
+            .Where(u => u.OrgId == org.Id && u.Email != null && u.Email != string.Empty)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return userEmail?.Trim() ?? string.Empty;
     }
 
     private async Task PersistSnapshotAsync(Org org, ConnectAccountSnapshot snapshot, CancellationToken cancellationToken)

@@ -105,16 +105,30 @@ public class BookingsControllerTests
             .ReturnsAsync(12m);
         _mockBookingService.Setup(b => b.CreateBookingAsync(It.IsAny<Booking>()))
             .ReturnsAsync((Booking b) => { b.Id = Guid.NewGuid(); return b; });
+        _mockBookingService.Setup(b => b.GetBookingAsync(It.IsAny<Guid>()))
+            .ReturnsAsync((Guid id) => new Booking
+            {
+                Id = id,
+                PropertyId = PropertyId,
+                OrgId = OrgId,
+                GuestId = guest.Id,
+                Guest = guest,
+                Property = MakeProperty(),
+                NumberOfGuests = 2,
+                BasePrice = 450m,
+                TouristTax = 12m,
+                TotalPrice = 462m,
+                Status = BookingStatus.Pending,
+                Source = BookingSource.Direct,
+            });
 
         var result = await _controller.Create(MakeRequest());
 
         var created = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var booking = Assert.IsType<Booking>(created.Value);
+        var booking = Assert.IsType<BookingResponseDto>(created.Value);
         Assert.Equal(PropertyId, booking.PropertyId);
-        Assert.Equal(OrgId, booking.OrgId);
-        Assert.Equal(guest.Id, booking.GuestId);
-        Assert.Equal(450m, booking.BasePrice); // 4 nights * 100 + 50 cleaning
         Assert.Equal(462m, booking.TotalPrice);
+        Assert.Equal("mario.rossi@example.com", booking.Guest.Email);
     }
 
     [Fact]

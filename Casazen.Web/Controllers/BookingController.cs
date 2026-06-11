@@ -5,6 +5,7 @@ using Casazen.Core.Utilities;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
+using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +27,7 @@ public class BookingsController(
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Booking>>> GetAll([FromQuery] Guid? propertyId)
+    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId)
     {
         IEnumerable<Booking> bookings;
 
@@ -35,19 +36,19 @@ public class BookingsController(
         else
             bookings = await bookingService.GetAllBookingsAsync();
 
-        return Ok(bookings);
+        return Ok(bookings.Select(BookingMapper.ToResponse));
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Booking>> GetById(Guid id)
+    public async Task<ActionResult<BookingResponseDto>> GetById(Guid id)
     {
         var booking = await bookingService.GetBookingAsync(id);
-        return booking == null ? NotFound() : Ok(booking);
+        return booking == null ? NotFound() : Ok(BookingMapper.ToResponse(booking));
     }
 
     [HttpPost]
     [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<ActionResult<Booking>> Create([FromBody] CreateBookingRequest request)
+    public async Task<ActionResult<BookingResponseDto>> Create([FromBody] CreateBookingRequest request)
     {
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
@@ -116,8 +117,10 @@ public class BookingsController(
         try
         {
             var created = await bookingService.CreateBookingAsync(booking);
+            var loaded = await bookingService.GetBookingAsync(created.Id);
+            var response = loaded is null ? BookingMapper.ToResponse(created) : BookingMapper.ToResponse(loaded);
             logger.LogInformation("Booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, response);
         }
         catch (InvalidOperationException ex)
         {
@@ -238,7 +241,8 @@ public class BookingsController(
             job => job.ReportGuestAsync(booking.GuestId, booking.Id));
 
         logger.LogInformation("Check-in completed for booking {BookingId}, queued Alloggiati Web report", id);
-        return Ok(booking);
+        var updated = await bookingService.GetBookingAsync(id);
+        return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
     }
 
     [HttpPost("{id}/check-out")]
@@ -271,7 +275,8 @@ public class BookingsController(
 
         booking.Status = BookingStatus.CheckedOut;
         await bookingService.UpdateBookingAsync(booking);
-        return Ok(booking);
+        var updated = await bookingService.GetBookingAsync(id);
+        return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
     }
 
     [HttpGet("{id}/alloggiati-status")]

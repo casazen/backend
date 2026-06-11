@@ -20,6 +20,11 @@ public interface IUserService
     Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(
         string? search, string? role, bool? isActive, int page, int pageSize);
 
+    /// <summary>
+    /// Backfills missing email/name from Auth0 Management API for admin user listings.
+    /// </summary>
+    Task EnrichUsersFromAuth0Async(IList<User> users);
+
     Task ChangeRoleAsync(string id, UserRole newRole, string adminSub);
 
     /// <summary>
