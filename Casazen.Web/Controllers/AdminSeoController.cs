@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
@@ -44,13 +45,36 @@ public class AdminSeoController(
         });
     }
 
+    [HttpGet("comuni")]
+    [ProducesResponseType(typeof(IReadOnlyList<SeoComuneRegistryDto>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<SeoComuneRegistryDto>> ListComuni()
+    {
+        var items = ItalianComuneRegistry.All
+            .Select(c => new SeoComuneRegistryDto(c.Code, c.Name, c.RegionSlug, c.ComuneSlug))
+            .ToList();
+        return Ok(items);
+    }
+
+    [HttpPost("approve-all-drafts")]
+    [ProducesResponseType(typeof(SeoBulkApproveResultDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<SeoBulkApproveResultDto>> ApproveAllDrafts(
+        [FromBody] SeoBulkApproveRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var approved = await seoContentService.ApproveAllDraftPagesAsync(
+            request.CounselApproved,
+            cancellationToken);
+        return Ok(new SeoBulkApproveResultDto(approved));
+    }
+
     [HttpPost("generate")]
     [ProducesResponseType(typeof(SeoGenerateAcceptedDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public ActionResult<SeoGenerateAcceptedDto> Generate([FromBody] SeoGenerateRequestDto request)
     {
-        if (request.ComuneCodes.Count == 0)
-            return BadRequest(new { error = "comuneCodes is required." });
+        var comuneCodes = request.ComuneCodes.Count > 0
+            ? request.ComuneCodes
+            : ItalianComuneRegistry.AllCodes;
 
         var pageTypes = request.PageTypes?.Count > 0
             ? request.PageTypes
@@ -63,15 +87,15 @@ public class AdminSeoController(
 
         var filteredTypes = pageTypes.Where(t => t != SeoPageType.SupplierMicrosite).ToList();
         var jobId = backgroundJobClient.Enqueue<SeoPageGenerationJob>(job =>
-            job.ExecuteAsync(request.ComuneCodes, filteredTypes, request.ForceRegenerate));
+            job.ExecuteAsync(comuneCodes, filteredTypes, request.ForceRegenerate, request.AutoApproveCounsel));
 
-        logger.LogInformation("Enqueued SEO generation job {JobId} for {ComuneCount} comuni", jobId, request.ComuneCodes.Count);
+        logger.LogInformation("Enqueued SEO generation job {JobId} for {ComuneCount} comuni", jobId, comuneCodes.Count);
 
         return Accepted(new SeoGenerateAcceptedDto(
             jobId,
             DateTime.UtcNow,
-            request.ComuneCodes.Count,
-            request.ComuneCodes.Count * filteredTypes.Count));
+            comuneCodes.Count,
+            comuneCodes.Count * filteredTypes.Count));
     }
 
     [HttpPatch("pages/{id:guid}/review-status")]

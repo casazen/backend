@@ -28,7 +28,11 @@ public record SeoPageAdminDto(
     SeoPageType PageType, string Title, LegalReviewStatus LegalReviewStatus,
     DateTime? PublishedAt, DateTime? LastRefreshedAt, SeoRevisionAdminDto? LatestRevision);
 
-public record SeoGenerateRequestDto(IReadOnlyList<string> ComuneCodes, IReadOnlyList<SeoPageType>? PageTypes, bool ForceRegenerate);
+public record SeoGenerateRequestDto(
+    IReadOnlyList<string> ComuneCodes,
+    IReadOnlyList<SeoPageType>? PageTypes,
+    bool ForceRegenerate,
+    bool AutoApproveCounsel = false);
 public record SeoGenerateAcceptedDto(string JobId, DateTime EnqueuedAt, int ComuneCount, int EstimatedPages);
 public record PlatformAiBudgetDto(long MonthlyTokenCap, long TokensUsedThisMonth, DateTime LastResetAt);
 
@@ -41,6 +45,7 @@ public interface ISeoContentService
     Task<SeoPageAdminDto?> UpdateReviewStatusAsync(Guid pageId, LegalReviewStatus status, bool counselApproved, CancellationToken cancellationToken = default);
     Task<PlatformAiBudgetDto> GetPlatformAiBudgetAsync(CancellationToken cancellationToken = default);
     Task<int> GeneratePagesForComuneBatchAsync(IReadOnlyList<string> comuneCodes, IReadOnlyList<SeoPageType> pageTypes, bool forceRegenerate, CancellationToken cancellationToken = default);
+    Task<int> ApproveAllDraftPagesAsync(bool counselApproved, CancellationToken cancellationToken = default);
     Task<int> RefreshStalePagesAsync(CancellationToken cancellationToken = default);
     Task<string> BuildComplianceSitemapXmlAsync(CancellationToken cancellationToken = default);
 }
