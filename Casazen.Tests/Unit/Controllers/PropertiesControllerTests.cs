@@ -52,7 +52,7 @@ public class PropertiesControllerTests
             .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(DefaultOrgId);
         _mockEntitlementService
-            .Setup(x => x.CanAddPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.ReservePropertySlotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 

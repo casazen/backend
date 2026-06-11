@@ -215,6 +215,14 @@ public class LocalImageStorageServiceTests : IDisposable
         return mockFile.Object;
     }
 
+    [Fact]
+    public async Task DeleteImageAsync_WithTraversalPath_Throws()
+    {
+        var traversalUrl = "/uploads/properties/../../outside.jpg";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.DeleteImageAsync(traversalUrl));
+    }
+
     public void Dispose()
     {
         // Cleanup test storage directory

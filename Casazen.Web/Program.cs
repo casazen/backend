@@ -15,6 +15,7 @@ using Casazen.Web.Middleware;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,9 @@ using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDataProtection()
+    .SetApplicationName("Casazen");
 
 // Database
 builder.Services.AddCasazenDatabase(builder.Configuration);
@@ -236,6 +240,9 @@ if (app.Environment.IsDevelopment())
 // Static files (for serving uploaded images)
 app.UseStaticFiles();
 
+// Security headers — early in pipeline
+app.UseSecurityHeaders();
+
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
 
@@ -258,7 +265,7 @@ if (!string.IsNullOrEmpty(connectionString))
     {
         app.UseHangfireDashboard("/hangfire", new DashboardOptions
         {
-            Authorization = new[] { new HangfireAuthorizationFilter(app.Environment.IsDevelopment()) }
+            Authorization = new[] { new HangfireAuthorizationFilter(app.Configuration) }
         });
     }
 

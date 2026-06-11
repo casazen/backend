@@ -26,4 +26,10 @@ public interface IEntitlementService
     /// create another property; <c>false</c> when the limit is reached.
     /// </summary>
     Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically reserves a property slot under a Serializable transaction.
+    /// Returns <c>false</c> when the plan limit is already reached.
+    /// </summary>
+    Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default);
 }

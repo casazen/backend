@@ -48,7 +48,7 @@ frontend/
 | Git branch | Vercel | Backend API |
 |---|---|---|
 | `develop` | Staging (Preview env vars) | Railway test (`RAILWAY_TEST_URL`) |
-| `main` | Production (`casazen.vercel.app`) | Railway prod |
+| `main` | Production (`casazen-app.vercel.app`) | Railway prod |
 | PR → `develop` | Per-PR preview | Shared test or Railway PR deploy |
 
 Feature PRs target `develop`. Production promotion: release PR `develop` → `main` (Stage 05). See `docs/INFRA.md`.

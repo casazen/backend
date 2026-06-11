@@ -195,9 +195,9 @@ public class PropertyServicePublicReadModelTests
         Assert.Equal(expected, dto.CinStatus);
     }
 
-    private static async Task<Org> SeedOrgAsync(AppDbContext context)
+    private static async Task<OrgEntity> SeedOrgAsync(AppDbContext context)
     {
-        var org = new Org
+        var org = new OrgEntity
         {
             Name = "Test Org",
             Slug = $"test-{Guid.NewGuid():N}",

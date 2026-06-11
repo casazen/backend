@@ -24,7 +24,7 @@ public class AlloggiatiDeadlineAlertJobTests
         var guestId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
 
-        context.Orgs.Add(new Org
+        context.Orgs.Add(new OrgEntity
         {
             Id = orgId,
             Name = "Test Org",

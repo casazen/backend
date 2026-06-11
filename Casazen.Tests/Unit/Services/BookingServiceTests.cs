@@ -1,4 +1,4 @@
-﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;

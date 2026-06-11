@@ -32,15 +32,41 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastThree() // AC3/AC5 ordering + Connect + Alloggiati
+    public void Migrations_LandInOrder_AsTheLastThree()
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("MakeOrgIdRequired", lastThree[0]);
-        Assert.EndsWith("AddConnectStatusFields", lastThree[1]);
-        Assert.EndsWith("AddAlloggiatiCheckInMvp", lastThree[2]);
+        Assert.EndsWith("AddConnectStatusFields", lastThree[0]);
+        Assert.EndsWith("AddAlloggiatiCheckInMvp", lastThree[1]);
+        Assert.EndsWith("AddCheckInTokenExpiresAt", lastThree[2]);
+    }
+
+    [Fact]
+    public void AddCheckInTokenExpiresAt_ExistsAfterAlloggiatiCheckInMvp()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+
+        Assert.Contains(keys, k => k.EndsWith("AddCheckInTokenExpiresAt", StringComparison.Ordinal));
+        var alloggiatiIdx = keys.FindIndex(k => k.EndsWith("AddAlloggiatiCheckInMvp", StringComparison.Ordinal));
+        var checkInExpiryIdx = keys.FindIndex(k => k.EndsWith("AddCheckInTokenExpiresAt", StringComparison.Ordinal));
+        Assert.True(checkInExpiryIdx > alloggiatiIdx);
+    }
+
+    [Fact]
+    public void AddCheckInTokenExpiresAt_AddsNullableColumnOnBookings()
+    {
+        using var db = NewNpgsqlContext();
+        var migrator = db.GetService<IMigrator>();
+        var script = migrator.GenerateScript(
+            fromMigration: "20260610171014_AddAlloggiatiCheckInMvp",
+            toMigration: "20260611120000_AddCheckInTokenExpiresAt");
+
+        Assert.Contains("ADD \"CheckInTokenExpiresAt\"", script);
+        Assert.Contains("timestamp with time zone", script);
+        Assert.DoesNotContain("SET NOT NULL", script);
     }
 
     [Fact]
