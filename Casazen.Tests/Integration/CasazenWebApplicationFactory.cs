@@ -129,7 +129,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     /// <see cref="User"/> row carries its <c>OrgId</c>, so the tenant query filter makes seeded
     /// rows visible to the authenticated owner (US-004). Returns the owner's org.
     /// </summary>
-    public async Task<Org> SeedOrgForOwnerAsync(string ownerId = TestAuthHandler.DefaultUserId)
+    public async Task<OrgEntity> SeedOrgForOwnerAsync(string ownerId = TestAuthHandler.DefaultUserId)
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -138,13 +138,13 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         return org;
     }
 
-    private static async Task<Org> EnsureOrgAsync(AppDbContext db, string ownerId)
+    private static async Task<OrgEntity> EnsureOrgAsync(AppDbContext db, string ownerId)
     {
         var slug = $"test-org-{ownerId}";
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Slug == slug);
         if (org is null)
         {
-            org = new Org
+            org = new OrgEntity
             {
                 Name = $"Org {ownerId}",
                 Slug = slug,

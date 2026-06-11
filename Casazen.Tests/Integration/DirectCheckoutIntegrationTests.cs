@@ -173,7 +173,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var org = new Org
+        var org = new OrgEntity
         {
             Name = "Direct Checkout Org",
             Slug = $"direct-{Guid.NewGuid():N}",
@@ -218,7 +218,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var org = new Org
+        var org = new OrgEntity
         {
             Name = "No Connect Org",
             Slug = $"no-connect-{Guid.NewGuid():N}",

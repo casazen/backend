@@ -41,7 +41,7 @@ HTTPS is NOT used inside the container — Railway handles it externally.
 - Test BE: `$RAILWAY_TEST_URL` (GitHub **variable** — public URL for CI only; runtime config on Railway)
 - Test FE: Vercel deployment for branch `develop` (Preview env vars) + per-PR previews
 - Production BE: `$RAILWAY_PROD_URL` (GitHub variable)
-- Production FE: `https://casazen.vercel.app`
+- Production FE: `https://casazen-app.vercel.app`
 
 ## Deployment rules
 

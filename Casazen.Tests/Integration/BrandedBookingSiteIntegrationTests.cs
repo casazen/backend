@@ -105,12 +105,12 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             Assert.DoesNotContain(key.ToLowerInvariant(), lower);
     }
 
-    private async Task<Org> SeedOrgAsync(string slug, bool isActive = true)
+    private async Task<OrgEntity> SeedOrgAsync(string slug, bool isActive = true)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var org = new Org
+        var org = new OrgEntity
         {
             Name = "Branded Test Org",
             Slug = slug,
@@ -126,7 +126,7 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
         return org;
     }
 
-    private async Task<Property> SeedPropertyForOrgAsync(Org org, string name, string houseRules = "")
+    private async Task<Property> SeedPropertyForOrgAsync(OrgEntity org, string name, string houseRules = "")
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

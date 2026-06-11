@@ -127,7 +127,7 @@ public class UserServiceTests
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
                 sub, "a@b.com", "A B", PlanTier.Pro, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Org { Id = Guid.NewGuid(), PlanTier = PlanTier.Pro, Name = "A B" });
+            .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Pro, Name = "A B" });
         _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
             .Returns(Task.CompletedTask);
 

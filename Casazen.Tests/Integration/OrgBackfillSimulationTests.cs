@@ -57,7 +57,7 @@ public class OrgBackfillSimulationTests
             var slug = $"org-{owner}";
             if (!await db.Orgs.AnyAsync(o => o.Slug == slug))
             {
-                db.Orgs.Add(new Org { Name = owner, Slug = slug, DisplayName = owner, ContactEmail = "", PlanTier = PlanTier.Starter, IsActive = true });
+                db.Orgs.Add(new OrgEntity { Name = owner, Slug = slug, DisplayName = owner, ContactEmail = "", PlanTier = PlanTier.Starter, IsActive = true });
             }
         }
         await db.SaveChangesAsync();
@@ -89,7 +89,7 @@ public class OrgBackfillSimulationTests
 
         // 4) Fallback Org (quarantine target).
         if (!await db.Orgs.AnyAsync(o => o.Slug == "casazen-unassigned"))
-            db.Orgs.Add(new Org { Name = "CasaZen Unassigned", Slug = "casazen-unassigned", DisplayName = "CasaZen Unassigned", ContactEmail = "", PlanTier = PlanTier.Starter, IsActive = false });
+            db.Orgs.Add(new OrgEntity { Name = "CasaZen Unassigned", Slug = "casazen-unassigned", DisplayName = "CasaZen Unassigned", ContactEmail = "", PlanTier = PlanTier.Starter, IsActive = false });
 
         await db.SaveChangesAsync();
     }

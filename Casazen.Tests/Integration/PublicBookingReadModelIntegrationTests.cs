@@ -161,7 +161,7 @@ public class PublicBookingReadModelIntegrationTests : IClassFixture<CasazenWebAp
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var ownerId = $"auth0|public-{Guid.NewGuid():N}";
-        var org = new Org
+        var org = new OrgEntity
         {
             Name = $"Org {ownerId}",
             Slug = $"org-{Guid.NewGuid():N}",
