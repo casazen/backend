@@ -1,5 +1,7 @@
-﻿using Casazen.Core.Entities;
+﻿using System.Security.Claims;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,7 +10,10 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
-public class PaymentsController(IPaymentService paymentService, ILogger<PaymentsController> logger) : ControllerBase
+public class PaymentsController(
+    IPaymentService paymentService,
+    IPropertyAuthorizationService authorizationService,
+    ILogger<PaymentsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Payment>>> GetAll()
@@ -77,7 +82,29 @@ public class PaymentsController(IPaymentService paymentService, ILogger<Payments
         [FromQuery] DateTime startDate,
         [FromQuery] DateTime endDate)
     {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId, GetUserRoles()))
+            return NotFound();
+
         var revenue = await paymentService.GetTotalRevenueAsync(propertyId, startDate, endDate);
         return Ok(new { propertyId, startDate, endDate, revenue });
+    }
+
+    private string? GetAuthenticatedUserId() =>
+        User.FindFirst("sub")?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+    private IReadOnlyList<string> GetUserRoles()
+    {
+        var auth0Roles = Auth0RolesClaimParser.Parse(
+            User.FindAll("https://casazen.app/roles").Select(c => c.Value));
+        if (auth0Roles.Count > 0)
+            return auth0Roles;
+
+        return User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
     }
 }

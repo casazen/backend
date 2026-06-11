@@ -71,6 +71,9 @@ public class Booking
     /// <summary>Secret token for guest self check-in link (generated when booking is confirmed).</summary>
     public Guid? CheckInToken { get; set; }
 
+    /// <summary>UTC expiry for the check-in token (checkout + 7 days when issued).</summary>
+    public DateTime? CheckInTokenExpiresAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

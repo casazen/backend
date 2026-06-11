@@ -15,7 +15,7 @@ public class GuestService(IGuestRepository repository, ILogger<GuestService> log
 
     public async Task<Guest?> GetGuestByEmailAsync(string email)
     {
-        logger.LogInformation("Retrieving guest by email: {Email}", email);
+        logger.LogInformation("Retrieving guest by email lookup");
         return await repository.GetByEmailAsync(email);
     }
 
@@ -27,17 +27,17 @@ public class GuestService(IGuestRepository repository, ILogger<GuestService> log
 
     public async Task<IEnumerable<Guest>> SearchGuestsAsync(string? searchTerm)
     {
-        logger.LogInformation("Searching guests with term: {SearchTerm}", searchTerm ?? "none");
+        logger.LogInformation("Searching guests with term: {HasSearch}", !string.IsNullOrWhiteSpace(searchTerm));
         return await repository.SearchAsync(searchTerm);
     }
 
     public async Task<Guest> CreateGuestAsync(Guest guest)
     {
-        logger.LogInformation("Creating guest: {Email}", guest.Email);
+        logger.LogInformation("Creating guest");
 
         if (await repository.ExistsByEmailAsync(guest.Email))
         {
-            logger.LogWarning("Guest with email {Email} already exists", guest.Email);
+            logger.LogWarning("Guest with duplicate email already exists");
             throw new InvalidOperationException($"Guest with email {guest.Email} already exists");
         }
 

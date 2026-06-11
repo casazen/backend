@@ -15,6 +15,7 @@ using Casazen.Web.Middleware;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,9 @@ using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDataProtection()
+    .SetApplicationName("Casazen");
 
 // Database
 builder.Services.AddCasazenDatabase(builder.Configuration);
@@ -119,6 +123,12 @@ builder.Services.AddRateLimiter(options =>
         limiter.PermitLimit = builder.Configuration.GetValue("CheckIn:RateLimitPermitLimit", 10);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("PublicTouristTaxCalc", limiter =>
+    {
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.PermitLimit = builder.Configuration.GetValue("SeoTouristTax:RateLimitPermitLimit", 30);
+        limiter.QueueLimit = 0;
+    });
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
@@ -136,6 +146,9 @@ builder.Services.AddScoped<GdprDataRetentionJob>();
 builder.Services.AddScoped<ESignWebhookJob>();
 builder.Services.AddScoped<LeaseSignStatusPollingJob>();
 builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
+builder.Services.AddScoped<SeoPageGenerationJob>();
+builder.Services.AddScoped<SeoContentRefreshJob>();
+builder.Services.AddScoped<IAiProvider, StubAiProvider>();
 
 // API
 builder.Services.AddControllers()
@@ -236,6 +249,9 @@ if (app.Environment.IsDevelopment())
 // Static files (for serving uploaded images)
 app.UseStaticFiles();
 
+// Security headers — early in pipeline
+app.UseSecurityHeaders();
+
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
 
@@ -258,7 +274,7 @@ if (!string.IsNullOrEmpty(connectionString))
     {
         app.UseHangfireDashboard("/hangfire", new DashboardOptions
         {
-            Authorization = new[] { new HangfireAuthorizationFilter(app.Environment.IsDevelopment()) }
+            Authorization = new[] { new HangfireAuthorizationFilter(app.Configuration) }
         });
     }
 
@@ -352,6 +368,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "lease-registration-status-poll",
         job => job.ExecuteAsync(),
         "*/5 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<SeoContentRefreshJob>(
+        "seo-content-refresh",
+        job => job.ExecuteAsync(),
+        "0 4 1 * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 

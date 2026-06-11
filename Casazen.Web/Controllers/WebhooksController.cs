@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
@@ -19,17 +21,20 @@ public class WebhooksController : ControllerBase
     private readonly ILogger<WebhooksController> _logger;
 
     private readonly ILeaseWorkflowService _leaseWorkflowService;
+    private readonly IPropertyRepository _propertyRepository;
 
     public WebhooksController(
         IBackgroundJobClient backgroundJobClient,
         IConfiguration configuration,
         ILogger<WebhooksController> logger,
-        ILeaseWorkflowService leaseWorkflowService)
+        ILeaseWorkflowService leaseWorkflowService,
+        IPropertyRepository propertyRepository)
     {
         _backgroundJobClient = backgroundJobClient;
         _configuration = configuration;
         _logger = logger;
         _leaseWorkflowService = leaseWorkflowService;
+        _propertyRepository = propertyRepository;
     }
 
     /// <summary>
@@ -137,15 +142,45 @@ public class WebhooksController : ControllerBase
     /// <param name="platform">OTA platform name (airbnb, booking, expedia, etc.)</param>
     /// <returns>200 OK to acknowledge receipt</returns>
     [HttpPost("ota/{platform}")]
-    public IActionResult OtaWebhook(string platform)
+    public async Task<IActionResult> OtaWebhook(string platform)
     {
         try
         {
+            var payload = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+            var webhookSecret = _configuration["OTA:WebhookSecret"];
+            if (string.IsNullOrEmpty(webhookSecret))
+            {
+                _logger.LogError("OTA webhook secret not configured");
+                return StatusCode(500, "Webhook secret not configured");
+            }
+
+            var signatureHeader = Request.Headers["X-OTA-Signature"].ToString();
+            if (string.IsNullOrEmpty(signatureHeader))
+            {
+                _logger.LogWarning("{Platform} webhook received without signature header", platform);
+                return Unauthorized("Missing signature");
+            }
+
+            byte[] providedBytes;
+            try { providedBytes = Convert.FromHexString(signatureHeader); }
+            catch (FormatException)
+            {
+                _logger.LogWarning("{Platform} webhook signature header is not valid hex", platform);
+                return Unauthorized("Invalid signature");
+            }
+
+            var expectedBytes = HMACSHA256.HashData(
+                Encoding.UTF8.GetBytes(webhookSecret),
+                Encoding.UTF8.GetBytes(payload));
+
+            if (!CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes))
+            {
+                _logger.LogWarning("Invalid {Platform} webhook signature", platform);
+                return Unauthorized("Invalid signature");
+            }
+
             _logger.LogInformation("Received {Platform} webhook", platform);
 
-            // Extract data from request (platform-specific)
-            // For now, we'll use a simple property ID from query string
-            // In production, parse platform-specific webhook payload
             var propertyId = Request.Query["propertyId"].ToString();
             if (string.IsNullOrEmpty(propertyId) || !Guid.TryParse(propertyId, out var propertyGuid))
             {
@@ -153,13 +188,17 @@ public class WebhooksController : ControllerBase
                 return BadRequest("Invalid or missing propertyId");
             }
 
-            // Queue sync job for background processing
+            var property = await _propertyRepository.GetByIdAsync(propertyGuid);
+            if (property is null)
+            {
+                _logger.LogWarning("{Platform} webhook references unknown property {PropertyId}", platform, propertyId);
+                return NotFound("Property not found");
+            }
+
             _backgroundJobClient.Enqueue<OtaSyncJob>(job =>
                 job.ExecuteAsync(propertyGuid));
 
             _logger.LogInformation("Queued {Platform} sync for property {PropertyId}", platform, propertyId);
-
-            // Return 200 immediately to acknowledge receipt
             return Ok();
         }
         catch (Exception ex)

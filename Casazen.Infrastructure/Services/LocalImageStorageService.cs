@@ -81,7 +81,7 @@ public class LocalImageStorageService : IImageStorageService
         {
             // Extract file path from URL
             var relativePath = imageUrl.Replace(_baseUrl, "").TrimStart('/');
-            var filePath = Path.Combine(_storagePath, relativePath);
+            var filePath = ResolveSafePath(relativePath);
 
             if (File.Exists(filePath))
             {
@@ -199,5 +199,22 @@ public class LocalImageStorageService : IImageStorageService
         }
 
         return true;
+    }
+
+    private string ResolveSafePath(string relativePath)
+    {
+        var combined = Path.Combine(_storagePath, relativePath);
+        var fullPath = Path.GetFullPath(combined);
+        var rootFullPath = Path.GetFullPath(_storagePath);
+
+        var isUnderRoot = fullPath.StartsWith(
+            rootFullPath + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase)
+            || fullPath.Equals(rootFullPath, StringComparison.OrdinalIgnoreCase);
+
+        if (!isUnderRoot)
+            throw new InvalidOperationException("Path traversal detected");
+
+        return fullPath;
     }
 }

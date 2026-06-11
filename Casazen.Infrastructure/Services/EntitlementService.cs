@@ -1,3 +1,4 @@
+using System.Data;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -45,6 +46,38 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
 
     public async Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         (await GetEntitlementAsync(orgId, cancellationToken)).CanAddProperty;
+
+    public async Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+
+        try
+        {
+            var planTier = await dbContext.Orgs.AsNoTracking()
+                .Where(o => o.Id == orgId)
+                .Select(o => (PlanTier?)o.PlanTier)
+                .FirstOrDefaultAsync(cancellationToken) ?? PlanTier.Starter;
+
+            var maxProperties = ResolveMaxProperties(planTier);
+            var propertyCount = await dbContext.Properties
+                .CountAsync(p => p.OrgId == orgId, cancellationToken);
+
+            if (propertyCount >= maxProperties)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
 
     private int ResolveMaxProperties(PlanTier tier)
     {

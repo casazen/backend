@@ -1,13 +1,18 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Infrastructure.Data.Encryption;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
 
 namespace Casazen.Infrastructure.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenantContext = null) : DbContext(options)
+public class AppDbContext(
+    DbContextOptions<AppDbContext> options,
+    ITenantContext? tenantContext = null,
+    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options)
 {
     // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
     // no-op (filter disabled) for design-time, background jobs, and unit tests.
@@ -29,6 +34,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
+    public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
+    public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
@@ -120,8 +128,38 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
         modelBuilder.Entity<Booking>().HasIndex(b => b.Status);
         modelBuilder.Entity<Payment>().HasIndex(p => p.BookingId);
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
+
+        if (dataProtectionProvider is not null)
+        {
+            var encryptedConverter = new EncryptedStringConverter(
+                dataProtectionProvider,
+                "Casazen.OtaIntegration.Secrets");
+
+            modelBuilder.Entity<OtaIntegration>()
+                .Property(o => o.ApiKey)
+                .HasConversion(encryptedConverter);
+
+            modelBuilder.Entity<OtaIntegration>()
+                .Property(o => o.ApiSecret)
+                .HasConversion(encryptedConverter);
+        }
+
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
+
+        modelBuilder.Entity<SeoContentPage>()
+            .HasIndex(p => new { p.ComuneCode, p.PageType })
+            .IsUnique();
+
+        modelBuilder.Entity<SeoContentPage>()
+            .HasIndex(p => p.LegalReviewStatus);
+
+        modelBuilder.Entity<SeoContentRevision>()
+            .HasOne(r => r.Page)
+            .WithMany(p => p.Revisions)
+            .HasForeignKey(r => r.PageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
 
         // PricingAdapterConfig → Property (1-to-1)
@@ -318,6 +356,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             new RolePermission { RoleId = 3, PermissionKey = "admin.users.manage" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.cin.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" });
+            new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" },
+            new RolePermission { RoleId = 3, PermissionKey = "admin.seo.read" });
     }
 }

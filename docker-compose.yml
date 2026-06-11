@@ -6,7 +6,7 @@ services:
     container_name: casazen-db
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Casazen2026!"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-YOUR_SA_PASSWORD}"
       MSSQL_PID: "Express"
     ports:
       - "1433:1433"
@@ -21,7 +21,7 @@ services:
     depends_on:
       - db
     environment:
-      ConnectionStrings__DefaultConnection: "Server=db;Database=CasazenDb;User Id=sa;Password=Casazen2026!;TrustServerCertificate=true"
+      ConnectionStrings__DefaultConnection: "Server=db;Database=CasazenDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YOUR_SA_PASSWORD};TrustServerCertificate=true"
       Auth0__Domain: "your-domain.auth0.com"
       Stripe__SecretKey: "sk_test_YOUR_KEY"
       Email__SendGridApiKey: "SG.YOUR_KEY"

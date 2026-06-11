@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,24 +10,42 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
-public class GuestsController(IGuestService guestService, ILogger<GuestsController> logger) : ControllerBase
+public class GuestsController(
+    IGuestService guestService,
+    IOrgContextResolver orgContextResolver,
+    IGuestAccessService guestAccessService,
+    ILogger<GuestsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Guest>>> GetAll([FromQuery] string? search)
     {
-        logger.LogInformation("Retrieving guests with search term: {SearchTerm}", search ?? "none");
+        logger.LogInformation("Retrieving guests with search term: {HasSearch}", !string.IsNullOrWhiteSpace(search));
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Forbid();
 
         var guests = string.IsNullOrWhiteSpace(search)
             ? await guestService.GetAllGuestsAsync()
             : await guestService.SearchGuestsAsync(search);
 
-        return Ok(guests);
+        var accessible = new List<Guest>();
+        foreach (var guest in guests)
+        {
+            if (await guestAccessService.IsGuestAccessibleAsync(guest.Id, orgId.Value, HttpContext.RequestAborted))
+                accessible.Add(guest);
+        }
+
+        return Ok(accessible);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<Guest>> GetById(Guid id)
     {
         logger.LogInformation("Retrieving guest: {GuestId}", id);
+
+        if (!await EnsureGuestAccessibleAsync(id))
+            return NotFound(new { message = $"Guest with ID {id} not found" });
 
         var guest = await guestService.GetGuestAsync(id);
         if (guest == null)
@@ -41,14 +60,17 @@ public class GuestsController(IGuestService guestService, ILogger<GuestsControll
     [HttpGet("email/{email}")]
     public async Task<ActionResult<Guest>> GetByEmail(string email)
     {
-        logger.LogInformation("Retrieving guest by email: {Email}", email);
+        logger.LogInformation("Retrieving guest by email lookup");
 
         var guest = await guestService.GetGuestByEmailAsync(email);
         if (guest == null)
         {
-            logger.LogWarning("Guest not found with email: {Email}", email);
-            return NotFound(new { message = $"Guest with email {email} not found" });
+            logger.LogWarning("Guest not found for email lookup");
+            return NotFound(new { message = "Guest not found" });
         }
+
+        if (!await EnsureGuestAccessibleAsync(guest.Id))
+            return NotFound(new { message = "Guest not found" });
 
         return Ok(guest);
     }
@@ -59,7 +81,7 @@ public class GuestsController(IGuestService guestService, ILogger<GuestsControll
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        logger.LogInformation("Creating guest with email: {Email}", request.Email);
+        logger.LogInformation("Creating guest");
 
         var guest = new Guest
         {
@@ -97,6 +119,9 @@ public class GuestsController(IGuestService guestService, ILogger<GuestsControll
 
         logger.LogInformation("Updating guest: {GuestId}", id);
 
+        if (!await EnsureGuestAccessibleAsync(id))
+            return NotFound(new { message = $"Guest with ID {id} not found" });
+
         var existing = await guestService.GetGuestAsync(id);
         if (existing == null)
         {
@@ -132,6 +157,9 @@ public class GuestsController(IGuestService guestService, ILogger<GuestsControll
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
 
+        if (!await EnsureGuestAccessibleAsync(id))
+            return NotFound(new { message = $"Guest with ID {id} not found" });
+
         var result = await guestService.DeleteGuestAsync(id);
         if (!result)
         {
@@ -141,5 +169,14 @@ public class GuestsController(IGuestService guestService, ILogger<GuestsControll
 
         logger.LogInformation("Guest deleted: {GuestId}", id);
         return NoContent();
+    }
+
+    private async Task<bool> EnsureGuestAccessibleAsync(Guid guestId)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return false;
+
+        return await guestAccessService.IsGuestAccessibleAsync(guestId, orgId.Value, HttpContext.RequestAborted);
     }
 }

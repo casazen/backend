@@ -375,7 +375,7 @@ Stripe__SecretKey=[sk_live_... or sk_test_...]
 Stripe__WebhookSecret=[whsec_...]
 Email__SendGridApiKey=[SG....]
 Hangfire__DashboardEnabled=false
-Cors__AllowedOrigins=https://casazen.vercel.app,https://casazen.app
+Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
 ```
 
 Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).

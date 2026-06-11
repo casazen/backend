@@ -22,9 +22,9 @@ public class MultiTenancyModelTests
     public void Org_HasUniqueIndexOnSlug() // AC1
     {
         using var db = NewDb();
-        var org = db.Model.FindEntityType(typeof(Org))!;
+        var org = db.Model.FindEntityType(typeof(OrgEntity))!;
 
-        var slugIndex = org.GetIndexes().SingleOrDefault(i => i.Properties.Any(p => p.Name == nameof(Org.Slug)));
+        var slugIndex = org.GetIndexes().SingleOrDefault(i => i.Properties.Any(p => p.Name == nameof(OrgEntity.Slug)));
 
         Assert.NotNull(slugIndex);
         Assert.True(slugIndex!.IsUnique);
@@ -40,7 +40,7 @@ public class MultiTenancyModelTests
         using var db = NewDb();
         var entity = db.Model.FindEntityType(clrType)!;
 
-        var fk = entity.GetForeignKeys().Single(f => f.PrincipalEntityType.ClrType == typeof(Org));
+        var fk = entity.GetForeignKeys().Single(f => f.PrincipalEntityType.ClrType == typeof(OrgEntity));
         Assert.Equal("OrgId", fk.Properties.Single().Name);
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
         Assert.False(fk.Properties.Single().IsNullable); // OrgId is required on tenant tables
@@ -54,7 +54,7 @@ public class MultiTenancyModelTests
         using var db = NewDb();
         var user = db.Model.FindEntityType(typeof(User))!;
 
-        var fk = user.GetForeignKeys().Single(f => f.PrincipalEntityType.ClrType == typeof(Org));
+        var fk = user.GetForeignKeys().Single(f => f.PrincipalEntityType.ClrType == typeof(OrgEntity));
         Assert.Equal("OrgId", fk.Properties.Single().Name);
         Assert.True(fk.Properties.Single().IsNullable); // brand-new user pre-backfill has none
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
@@ -64,6 +64,6 @@ public class MultiTenancyModelTests
     public void Org_IsRegisteredAsDbSet() // AC1
     {
         using var db = NewDb();
-        Assert.NotNull(db.Model.FindEntityType(typeof(Org)));
+        Assert.NotNull(db.Model.FindEntityType(typeof(OrgEntity)));
     }
 }
