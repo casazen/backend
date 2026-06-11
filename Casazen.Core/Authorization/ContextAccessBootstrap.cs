@@ -51,6 +51,7 @@ public static class ContextAccessBootstrap
                 "admin.users.manage",
                 "admin.cin.read",
                 "admin.jobs.read",
+                "admin.seo.read",
                 "admin.tax.manage",
             ]),
     ];
