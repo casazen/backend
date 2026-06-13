@@ -30,7 +30,9 @@ public class StripeWebhookHandler(
 
     public async Task HandleEventAsync(Event stripeEvent, WebhookSource source)
     {
-        if (source == WebhookSource.Platform && await IsDuplicateEventAsync(stripeEvent.Id))
+        // Claim the event slot FIRST — unique PK on EventId prevents concurrent workers
+        // from processing the same event twice. If the insert fails (duplicate), skip.
+        if (!await TryClaimEventAsync(stripeEvent, source))
         {
             logger.LogInformation("Skipping duplicate Stripe event {EventId}", stripeEvent.Id);
             return;
@@ -73,9 +75,6 @@ public class StripeWebhookHandler(
                     logger.LogInformation("Unhandled Stripe event: {EventType} (source={Source})", stripeEvent.Type, source);
                     break;
             }
-
-            if (source == WebhookSource.Platform)
-                await RecordProcessedEventAsync(stripeEvent);
         }
         catch (Exception ex)
         {
@@ -84,22 +83,34 @@ public class StripeWebhookHandler(
         }
     }
 
-    private async Task<bool> IsDuplicateEventAsync(string eventId) =>
-        await dbContext.ProcessedStripeEvents.AsNoTracking().AnyAsync(e => e.EventId == eventId);
-
-    private async Task RecordProcessedEventAsync(Event stripeEvent)
+    // Returns false if the event was already processed (duplicate); true if claimed successfully.
+    // Inserts the idempotency record before business logic so concurrent Hangfire workers cannot
+    // both pass the guard. The unique PK on EventId is the enforcement mechanism.
+    // Events with no Id (e.g. synthetic test events) are always processed.
+    private async Task<bool> TryClaimEventAsync(Event stripeEvent, WebhookSource source)
     {
-        if (await dbContext.ProcessedStripeEvents.AnyAsync(e => e.EventId == stripeEvent.Id))
-            return;
+        if (string.IsNullOrEmpty(stripeEvent.Id))
+            return true;
 
         dbContext.ProcessedStripeEvents.Add(new ProcessedStripeEvent
         {
             EventId = stripeEvent.Id,
             EventType = stripeEvent.Type,
-            Source = WebhookSource.Platform,
+            Source = source,
             ProcessedAt = DateTime.UtcNow,
         });
-        await dbContext.SaveChangesAsync();
+
+        try
+        {
+            await dbContext.SaveChangesAsync();
+            return true;
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
+                                           || ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            dbContext.ChangeTracker.Clear();
+            return false;
+        }
     }
 
     private async Task HandleSubscriptionChangedAsync(Subscription? subscription, string eventType)

@@ -184,6 +184,5 @@ public class BillingController(
         CurrentPeriodEnd = org.CurrentPeriodEnd,
         BillingCountry = org.BillingCountry,
         VatId = org.VatId,
-        StripeCustomerId = org.StripeCustomerId,
     };
 }

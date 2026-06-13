@@ -20,7 +20,12 @@ public class BillingEntryGate(
         if (!string.IsNullOrWhiteSpace(secretKey) &&
             secretKey.StartsWith("sk_test", StringComparison.OrdinalIgnoreCase))
         {
-            logger.LogWarning("Billing entry gate bypassed for Stripe test secret key");
+            // Fail-closed in production: a test key in a non-dev environment means
+            // SDI/VAT prerequisites cannot have been met with a real Stripe account.
+            if (environment.IsProduction())
+                throw new BillingGateClosedException();
+
+            logger.LogWarning("Billing entry gate bypassed for Stripe test secret key (non-production)");
             return Task.CompletedTask;
         }
 

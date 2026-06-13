@@ -38,7 +38,6 @@ public class SubscriptionDto
     public int Seats { get; set; } = 1;
     public string? BillingCountry { get; set; }
     public string? VatId { get; set; }
-    public string? StripeCustomerId { get; set; }
 }
 
 public class UpdateBillingProfileRequest
