@@ -38,9 +38,9 @@ public class MigrationSqlTests
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("AddCheckInTokenExpiresAt", lastThree[0]);
-        Assert.EndsWith("AddComplianceSeoEntities", lastThree[1]);
-        Assert.EndsWith("AddConsentRecords", lastThree[2]);
+        Assert.EndsWith("AddComplianceSeoEntities", lastThree[0]);
+        Assert.EndsWith("AddConsentRecords", lastThree[1]);
+        Assert.EndsWith("FixPlatformBillingMetricsSeed", lastThree[2]);
     }
 
     [Fact]

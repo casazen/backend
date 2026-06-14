@@ -350,10 +350,10 @@ public class AppDbContext(
             new PlatformBillingMetrics
             {
                 Id = 1,
-                CalendarYear = DateTime.UtcNow.Year,
+                CalendarYear = 2026,
                 EuB2cCrossBorderRevenue = 0m,
                 OssThresholdReached = false,
-                UpdatedAt = DateTime.UtcNow,
+                UpdatedAt = new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc),
             });
 
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
