@@ -1,4 +1,4 @@
-﻿// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
+// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
 using Casazen.Core.Multitenancy;
@@ -122,7 +122,11 @@ public static class ServiceCollectionExtensions
             .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
             .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
             .AddPolicy("PropertyManagerOrAdmin", policy => policy.RequireRole("PropertyManager", "Admin"))
-            .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"));
+            .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"))
+            .AddPolicy("RequireOrgBillingAdmin", policy =>
+                policy.Requirements.Add(new OrgBillingAdminRequirement()));
+
+        services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
 
         RegisterContextPolicies(builder);
 
@@ -144,6 +148,7 @@ public static class ServiceCollectionExtensions
             ["long-rent"] =
             [
                 "lease.read", "lease.create", "lease.sign", "lease.register",
+                "rent.read", "rent.manage",
             ],
             ["admin"] =
             [
@@ -253,8 +258,17 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
+        services.AddScoped<IStripeBillingService, StripeBillingService>();
+        services.AddScoped<IVatCalculationService, VatCalculationService>();
+        services.AddScoped<IViesService, ViesService>();
+        services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();
+        services.AddScoped<IBillingEntryGate, BillingEntryGate>();
+        services.AddScoped<IOssRevenueTracker, OssRevenueTracker>();
+        services.AddScoped<IRentBillingService, NullRentBillingService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
+        services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
+        services.AddScoped<IOnboardingService, OnboardingService>();
         return services;
     }
 
@@ -267,7 +281,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAiProvider, StubAiProvider>();
         services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
         services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
-        services.AddSingleton<StripeWebhookHandler>();
+        services.AddScoped<StripeWebhookHandler>();
         return services;
     }
 
