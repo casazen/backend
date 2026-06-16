@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;

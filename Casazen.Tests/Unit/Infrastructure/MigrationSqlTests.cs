@@ -38,9 +38,9 @@ public class MigrationSqlTests
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("AddAlloggiatiCheckInMvp", lastThree[0]);
-        Assert.EndsWith("AddCheckInTokenExpiresAt", lastThree[1]);
-        Assert.EndsWith("AddComplianceSeoEntities", lastThree[2]);
+        Assert.EndsWith("AddConsentRecords", lastThree[0]);
+        Assert.EndsWith("FixPlatformBillingMetricsSeed", lastThree[1]);
+        Assert.EndsWith("AddOnboardingCompletedAtToUsers", lastThree[2]);
     }
 
     [Fact]

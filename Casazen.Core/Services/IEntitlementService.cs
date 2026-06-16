@@ -1,9 +1,8 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Resolved plan entitlement for an org: tier, per-tier limits, current usage,
-/// and whether another property may be created (AC8).
-/// </summary>
 public sealed record EntitlementResult(
     Guid OrgId,
     string PlanTier,
@@ -32,4 +31,7 @@ public interface IEntitlementService
     /// Returns <c>false</c> when the plan limit is already reached.
     /// </summary>
     Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>Downgrades stored plan tier when subscription is canceled or past due beyond grace.</summary>
+    Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default);
 }

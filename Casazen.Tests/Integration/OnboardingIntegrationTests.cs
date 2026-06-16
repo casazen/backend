@@ -7,6 +7,7 @@ namespace Casazen.Tests.Integration;
 
 public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
+    private const string ConsentVersion = "2026-06-v1";
     private readonly CasazenWebApplicationFactory _factory;
 
     public OnboardingIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
@@ -15,7 +16,7 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
     public async Task PostOnboarding_WithoutAuth_Returns401()
     {
         var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/users/onboarding", new { rentalType = "ShortTerm" });
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload("ShortTerm"));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -23,7 +24,7 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
     public async Task PostOnboarding_InvalidRentalType_Returns400()
     {
         using var client = _factory.CreateAuthenticatedClient(roles: string.Empty);
-        var response = await client.PostAsJsonAsync("/api/users/onboarding", new { rentalType = "Invalid" });
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload("Invalid"));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -50,7 +51,7 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
         var userId = $"auth0|onboarding-{Guid.NewGuid():N}";
         using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
 
-        var response = await client.PostAsJsonAsync("/api/users/onboarding", new { rentalType });
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload(rentalType));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -70,7 +71,7 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
         var userId = $"auth0|onboarding-put-{Guid.NewGuid():N}";
         using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
 
-        var post = await client.PostAsJsonAsync("/api/users/onboarding", new { rentalType = "ShortTerm" });
+        var post = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload("ShortTerm"));
         Assert.Equal(HttpStatusCode.OK, post.StatusCode);
 
         var put = await client.PutAsJsonAsync("/api/users/onboarding", new { rentalType = "LongTerm" });
@@ -81,4 +82,22 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
         Assert.Single(assigned);
         Assert.Equal("LongTermLandlord", assigned[0]);
     }
+
+    private static object ValidOnboardingPayload(string rentalType) => new
+    {
+        rentalType,
+        consents = ValidConsents(),
+    };
+
+    private static object ValidConsents() => new
+    {
+        tosAccepted = true,
+        tosVersion = ConsentVersion,
+        privacyAccepted = true,
+        privacyVersion = ConsentVersion,
+        dpaAccepted = true,
+        dpaVersion = ConsentVersion,
+        subprocessorsAcknowledged = true,
+        subprocessorsVersion = ConsentVersion,
+    };
 }

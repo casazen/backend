@@ -9,7 +9,7 @@ using Xunit;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// AC8 — plan entitlement. Verifies the tier→limit map, the boundary at which another
+/// AC8 â€” plan entitlement. Verifies the tierâ†’limit map, the boundary at which another
 /// property may/may not be created, configuration overrides, and the Starter fallback.
 /// </summary>
 public class EntitlementServiceTests
@@ -121,5 +121,93 @@ public class EntitlementServiceTests
         Assert.Equal(PlanTier.Starter.ToString(), result.PlanTier);
         Assert.Equal(3, result.MaxProperties);
         Assert.Equal(0, result.PropertyCount);
+    }
+
+    [Fact]
+    public async Task GetEntitlementAsync_PastDueWithinGrace_KeepsPaidTierLimits()
+    {
+        await using var db = NewDb();
+        var org = new OrgEntity
+        {
+            Name = "Org",
+            Slug = $"org-{Guid.NewGuid():N}",
+            DisplayName = "Org",
+            ContactEmail = "o@x.it",
+            PlanTier = PlanTier.Pro,
+            SubscriptionStatus = SubscriptionStatus.PastDue,
+            PastDueSince = DateTime.UtcNow.AddDays(-2),
+            IsActive = true,
+        };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+
+        var service = new EntitlementService(db, Config(new()
+        {
+            ["Billing:PastDueGraceDays"] = "7",
+        }));
+
+        var result = await service.GetEntitlementAsync(org.Id);
+
+        Assert.Equal(PlanTier.Pro.ToString(), result.PlanTier);
+        Assert.Equal(50, result.MaxProperties);
+    }
+
+    [Fact]
+    public async Task GetEntitlementAsync_PastDueBeyondGrace_DowngradesToStarter()
+    {
+        await using var db = NewDb();
+        var org = new OrgEntity
+        {
+            Name = "Org",
+            Slug = $"org-{Guid.NewGuid():N}",
+            DisplayName = "Org",
+            ContactEmail = "o@x.it",
+            PlanTier = PlanTier.Pro,
+            SubscriptionStatus = SubscriptionStatus.PastDue,
+            PastDueSince = DateTime.UtcNow.AddDays(-10),
+            IsActive = true,
+        };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+
+        var service = new EntitlementService(db, Config(new()
+        {
+            ["Billing:PastDueGraceDays"] = "7",
+        }));
+
+        var result = await service.GetEntitlementAsync(org.Id);
+
+        Assert.Equal(PlanTier.Starter.ToString(), result.PlanTier);
+        Assert.Equal(3, result.MaxProperties);
+    }
+
+    [Fact]
+    public async Task SyncFromSubscriptionAsync_PastDueBeyondGrace_PersistsStarterTier()
+    {
+        await using var db = NewDb();
+        var org = new OrgEntity
+        {
+            Name = "Org",
+            Slug = $"org-{Guid.NewGuid():N}",
+            DisplayName = "Org",
+            ContactEmail = "o@x.it",
+            PlanTier = PlanTier.Pro,
+            SubscriptionStatus = SubscriptionStatus.PastDue,
+            PastDueSince = DateTime.UtcNow.AddDays(-10),
+            IsActive = true,
+        };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+
+        var service = new EntitlementService(db, Config(new()
+        {
+            ["Billing:PastDueGraceDays"] = "7",
+        }));
+
+        await service.SyncFromSubscriptionAsync(org.Id);
+
+        var updated = await db.Orgs.FindAsync(org.Id);
+        Assert.NotNull(updated);
+        Assert.Equal(PlanTier.Starter, updated!.PlanTier);
     }
 }

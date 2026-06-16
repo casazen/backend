@@ -40,17 +40,35 @@ public class Org
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
 
+    /// <summary>Stripe subscription id (<c>sub_xxx</c>) synced from platform webhooks.</summary>
+    [MaxLength(255)]
+    public string? SubscriptionId { get; set; }
+
+    public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.None;
+
+    public DateTime? CurrentPeriodEnd { get; set; }
+
+    [MaxLength(2)]
+    public string? BillingCountry { get; set; }
+
+    [MaxLength(32)]
+    public string? VatId { get; set; }
+
+    public DateTime? VatIdValidatedAt { get; set; }
+
+    public DateTime? PastDueSince { get; set; }
+
     /// <summary>Non-secret Stripe Connect account reference (payouts). Used by <c>spec-direct-checkout</c>.</summary>
     [MaxLength(255)]
     public string? StripeConnectedAccountId { get; set; }
 
-    /// <summary>Cached from Stripe <c>account.updated</c> — true when the connected account can accept charges.</summary>
+    /// <summary>Cached from Stripe <c>account.updated</c> â€” true when the connected account can accept charges.</summary>
     public bool ConnectChargesEnabled { get; set; }
 
-    /// <summary>Cached from Stripe — payouts capability on the connected account.</summary>
+    /// <summary>Cached from Stripe â€” payouts capability on the connected account.</summary>
     public bool ConnectPayoutsEnabled { get; set; }
 
-    /// <summary>Cached from Stripe — KYC/details submitted on the connected account.</summary>
+    /// <summary>Cached from Stripe â€” KYC/details submitted on the connected account.</summary>
     public bool ConnectDetailsSubmitted { get; set; }
 
     /// <summary>JSON array of outstanding Stripe requirement field names (e.g. <c>["individual.verification.document"]</c>).</summary>

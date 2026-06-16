@@ -78,6 +78,16 @@ public class OrgsController(
         if (orgId is null)
             return NotFound(new { error = "No organization assigned to the current user" });
 
+        var org = await orgService.GetByIdAsync(orgId.Value, cancellationToken);
+        if (org is not null && !string.IsNullOrEmpty(org.SubscriptionId))
+        {
+            return Conflict(new
+            {
+                error = "Il piano Ã¨ gestito da Stripe. Usa il portale di fatturazione.",
+                code = "managed_by_stripe",
+            });
+        }
+
         var updated = await orgService.UpdatePlanTierAsync(orgId.Value, planTier, cancellationToken);
         if (updated is null)
             return NotFound(new { error = "Organization not found" });
