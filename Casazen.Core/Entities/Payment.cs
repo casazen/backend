@@ -65,5 +65,6 @@ public enum PaymentMethod
     BankTransfer,
     PayPal,
     ApplePay,
-    GooglePay
+    GooglePay,
+    CashOnArrival
 }

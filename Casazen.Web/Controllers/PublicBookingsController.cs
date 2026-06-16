@@ -49,6 +49,45 @@ public class PublicBookingsController(
         }
     }
 
+    [HttpGet("{bookingId}/status")]
+    public async Task<ActionResult<BookingStatusResponse>> GetBookingStatus(Guid bookingId)
+    {
+        var booking = await bookingService.GetBookingAsync(bookingId);
+        if (booking is null)
+            return NotFound();
+
+        return Ok(new BookingStatusResponse(
+            booking.Id,
+            booking.Status,
+            booking.PaymentOption));
+    }
+
+    [HttpPost("lookup")]
+    [EnableRateLimiting("PublicBookingCreate")]
+    public async Task<ActionResult<GuestBookingLookupResponse>> LookupGuestBookings(
+        [FromBody] GuestBookingLookupRequest request)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        var bookings = await bookingService.GetBookingsByEmailAsync(request.Email);
+
+        var bookingItems = bookings
+            .Where(b => b.Status != BookingStatus.Cancelled)
+            .Select(b => new GuestBookingItem(
+                b.Id,
+                b.Property.Name,
+                b.Property.City,
+                b.CheckInDate,
+                b.CheckOutDate,
+                b.Status,
+                b.PaymentOption,
+                b.FreeRefundDeadline ?? b.CheckInDate.AddDays(-7)))
+            .ToList();
+
+        return Ok(new GuestBookingLookupResponse(bookingItems));
+    }
+
     [HttpPost]
     [EnableRateLimiting("PublicBookingCreate")]
     public async Task<ActionResult<DirectBookingResponse>> CreateDirectBooking(
@@ -85,12 +124,14 @@ public class PublicBookingsController(
                     guest.Country),
                 request.Consent.ConsentVersion,
                 consentIp,
-                request.SpecialRequests));
+                request.SpecialRequests,
+                request.PaymentOption));
 
             return Ok(new DirectBookingResponse
             {
                 BookingId = result.BookingId,
-                ClientSecret = result.ClientSecret,
+                ClientSecret = result.PaymentOption == PaymentOption.Immediate ? result.ClientSecret : string.Empty,
+                SetupIntentClientSecret = result.SetupIntentClientSecret,
                 ConnectedAccountPublishableContext = new ConnectedAccountPublishableContext
                 {
                     PublishableKey = result.PublishableKey,
@@ -100,6 +141,8 @@ public class PublicBookingsController(
                 Currency = result.Currency,
                 TouristTaxAmount = result.TouristTaxAmount,
                 BasePrice = result.BasePrice,
+                FreeRefundDeadline = result.FreeRefundDeadline ?? DateTime.UtcNow,
+                PaymentOption = result.PaymentOption,
             });
         }
         catch (DirectBookingException ex)

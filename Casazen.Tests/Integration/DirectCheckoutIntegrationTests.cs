@@ -305,4 +305,35 @@ internal sealed class FakeStripeService : IStripeService
 
     public Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null) =>
         Task.FromResult(new Refund { Id = "re_test", PaymentIntentId = paymentIntentId });
+
+    public Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
+        string connectedAccountId,
+        Dictionary<string, string> metadata)
+    {
+        return Task.FromResult(new SetupIntent
+        {
+            Id = $"seti_test_{Guid.NewGuid():N}",
+            ClientSecret = "seti_test_secret",
+            PaymentMethodId = $"pm_test_{Guid.NewGuid():N}",
+            Metadata = metadata,
+        });
+    }
+
+    public Task<PaymentIntent> ChargePaymentMethodAsync(
+        string connectedAccountId,
+        string customerId,
+        string paymentMethodId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata)
+    {
+        LastPaymentIntentId = $"pi_test_{Guid.NewGuid():N}";
+        return Task.FromResult(new PaymentIntent
+        {
+            Id = LastPaymentIntentId,
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+        });
+    }
 }

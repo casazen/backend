@@ -35,6 +35,15 @@ public class BookingService(
         return await repository.GetByGuestAsync(guestId);
     }
 
+    public async Task<IEnumerable<Booking>> GetBookingsByEmailAsync(string email)
+    {
+        var guest = await guestService.GetGuestByEmailAsync(email);
+        if (guest is null)
+            return Enumerable.Empty<Booking>();
+
+        return await repository.GetByGuestAsync(guest.Id);
+    }
+
     public async Task<IEnumerable<Booking>> GetAllBookingsAsync()
     {
         return await repository.GetAllAsync();
@@ -127,6 +136,7 @@ public class BookingService(
             input.PropertyId, checkIn, checkOut, totalGuests);
         var totalPrice = basePrice + touristTaxAmount;
         var currency = "EUR";
+        var freeRefundDeadline = checkIn.AddDays(-7);
 
         var booking = new Booking
         {
@@ -145,6 +155,8 @@ public class BookingService(
             TouristTax = touristTaxAmount,
             TouristTaxAmount = touristTaxAmount,
             TotalPrice = totalPrice,
+            PaymentOption = input.PaymentOption,
+            FreeRefundDeadline = freeRefundDeadline,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -158,7 +170,6 @@ public class BookingService(
         }
 
         var createdBooking = await repository.AddAsync(booking);
-
         var amountCents = (long)Math.Round(totalPrice * 100m, MidpointRounding.AwayFromZero);
         var metadata = new Dictionary<string, string>
         {
@@ -168,49 +179,152 @@ public class BookingService(
             ["kind"] = "direct-booking",
         };
 
+        string? clientSecret = null;
+        string? setupIntentClientSecret = null;
+
+        switch (input.PaymentOption)
+        {
+            case PaymentOption.Immediate:
+                clientSecret = await HandleImmediatePaymentAsync(
+                    createdBooking, org.StripeConnectedAccountId!, amountCents, currency, metadata);
+                break;
+
+            case PaymentOption.OnCancellationDeadline:
+                setupIntentClientSecret = await HandleDeferredPaymentAsync(
+                    createdBooking, org.StripeConnectedAccountId!, guest.Id, amountCents, currency, metadata);
+                break;
+
+            case PaymentOption.OnSite:
+                await HandleOnSitePaymentAsync(createdBooking);
+                break;
+        }
+
+        var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
+        return new DirectBookingCreateResult(
+            createdBooking.Id,
+            clientSecret ?? string.Empty,
+            publishableKey,
+            org.StripeConnectedAccountId!,
+            totalPrice,
+            currency,
+            touristTaxAmount,
+            basePrice,
+            setupIntentClientSecret,
+            freeRefundDeadline,
+            input.PaymentOption);
+    }
+
+    private async Task<string> HandleImmediatePaymentAsync(
+        Booking booking,
+        string stripeConnectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata)
+    {
         PaymentIntent paymentIntent;
         try
         {
             paymentIntent = await stripeService.CreateConnectedAccountPaymentIntentAsync(
-                org.StripeConnectedAccountId!,
+                stripeConnectedAccountId,
                 amountCents,
                 currency.ToLowerInvariant(),
                 metadata);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Stripe PaymentIntent creation failed for booking {BookingId}", createdBooking.Id);
-            createdBooking.Status = BookingStatus.Cancelled;
-            createdBooking.UpdatedAt = DateTime.UtcNow;
-            await repository.UpdateAsync(createdBooking);
+            logger.LogError(ex, "Stripe PaymentIntent creation failed for booking {BookingId}", booking.Id);
+            booking.Status = BookingStatus.Cancelled;
+            booking.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(booking);
             throw new DirectBookingException("Payment initialization failed", DirectBookingErrorCodes.StripeError);
         }
 
         var payment = new Payment
         {
-            BookingId = createdBooking.Id,
-            OrgId = property.OrgId,
-            Amount = totalPrice,
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = booking.TotalPrice,
             Status = PaymentStatus.Pending,
             Method = Core.Entities.PaymentMethod.CreditCard,
             TransactionId = paymentIntent.Id,
             StripePaymentIntentId = paymentIntent.Id,
-            Description = "Direct checkout",
+            Description = "Direct checkout - immediate payment",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
         await paymentRepository.AddAsync(payment);
 
-        var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
-        return new DirectBookingCreateResult(
-            createdBooking.Id,
-            paymentIntent.ClientSecret ?? string.Empty,
-            publishableKey,
-            org.StripeConnectedAccountId!,
-            totalPrice,
-            currency,
-            touristTaxAmount,
-            basePrice);
+        return paymentIntent.ClientSecret ?? string.Empty;
+    }
+
+    private async Task<string> HandleDeferredPaymentAsync(
+        Booking booking,
+        string stripeConnectedAccountId,
+        Guid guestId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata)
+    {
+        var setupMetadata = new Dictionary<string, string>(metadata)
+        {
+            ["kind"] = "direct-booking-setup",
+        };
+
+        SetupIntent setupIntent;
+        try
+        {
+            setupIntent = await stripeService.CreateConnectedAccountSetupIntentAsync(
+                stripeConnectedAccountId,
+                setupMetadata);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Stripe SetupIntent creation failed for booking {BookingId}", booking.Id);
+            booking.Status = BookingStatus.Cancelled;
+            booking.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(booking);
+            throw new DirectBookingException("Payment initialization failed", DirectBookingErrorCodes.StripeError);
+        }
+
+        booking.StripeSetupIntentId = setupIntent.Id;
+        booking.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(booking);
+
+        var payment = new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = booking.TotalPrice,
+            Status = PaymentStatus.Pending,
+            Method = Core.Entities.PaymentMethod.CreditCard,
+            TransactionId = setupIntent.Id,
+            Description = "Direct checkout - deferred payment (charged at deadline)",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        await paymentRepository.AddAsync(payment);
+
+        return setupIntent.ClientSecret ?? string.Empty;
+    }
+
+    private async Task HandleOnSitePaymentAsync(Booking booking)
+    {
+        booking.Status = BookingStatus.Confirmed;
+        booking.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(booking);
+
+        var payment = new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = booking.TotalPrice,
+            Status = PaymentStatus.Pending,
+            Method = Core.Entities.PaymentMethod.CashOnArrival,
+            Description = "Direct checkout - payment on site",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        await paymentRepository.AddAsync(payment);
     }
 
     public async Task<Booking> UpdateBookingAsync(Booking booking)

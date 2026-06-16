@@ -388,6 +388,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         job => job.ExecuteAsync(),
         "0 4 1 * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<DirectBookingChargeJob>(
+        "direct-booking-charge",
+        job => job.ExecuteAsync(),
+        "0 6 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 
 public partial class Program { }
