@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using SendGrid.Extensions.DependencyInjection;
+using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,6 +73,13 @@ builder.Services.AddSendGrid(options =>
 });
 builder.Services.AddHttpClient<PublicHolidayService>();
 builder.Services.AddMemoryCache();
+
+// Stripe configuration — set API key globally for all Stripe services
+var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
+if (!string.IsNullOrEmpty(stripeSecretKey))
+{
+    StripeConfiguration.ApiKey = stripeSecretKey;
+}
 
 // Services
 builder.Services.AddCasazenServices();
