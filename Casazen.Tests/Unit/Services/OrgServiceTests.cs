@@ -109,7 +109,7 @@ public class OrgServiceTests
     {
         await using var db = CreateDb(nameof(GetPublicBySlugAsync_ReturnsActiveOrg_ForKnownSlug));
         var slug = "branded-org";
-        db.Orgs.Add(new Org
+        db.Orgs.Add(new OrgEntity
         {
             Name = "Branded",
             Slug = slug,
@@ -145,7 +145,7 @@ public class OrgServiceTests
     {
         // Inactive orgs must not be surfaced on the public booking site.
         await using var db = CreateDb(nameof(GetPublicBySlugAsync_ReturnsNull_WhenOrgIsInactive));
-        db.Orgs.Add(new Org
+        db.Orgs.Add(new OrgEntity
         {
             Name = "Inactive Org",
             Slug = "inactive-org",
@@ -167,7 +167,7 @@ public class OrgServiceTests
     {
         // Slug matching must be exact (lowercase by convention); uppercase variant returns null.
         await using var db = CreateDb(nameof(GetPublicBySlugAsync_IsSlugCaseSensitive));
-        db.Orgs.Add(new Org
+        db.Orgs.Add(new OrgEntity
         {
             Name = "Case Org",
             Slug = "my-org",

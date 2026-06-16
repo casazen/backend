@@ -53,7 +53,7 @@ public class PublicOrgControllerTests
     {
         // Arrange
         _orgService.Setup(s => s.GetPublicBySlugAsync("unknown-slug", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Org?)null);
+            .ReturnsAsync((OrgEntity?)null);
 
         // Act
         var result = await _controller.GetOrg("unknown-slug", CancellationToken.None);
@@ -117,7 +117,7 @@ public class PublicOrgControllerTests
     {
         // Arrange
         _orgService.Setup(s => s.GetPublicBySlugAsync("ghost-org", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Org?)null);
+            .ReturnsAsync((OrgEntity?)null);
 
         // Act
         var result = await _controller.GetProperties("ghost-org", CancellationToken.None);
@@ -200,7 +200,7 @@ public class PublicOrgControllerTests
     {
         // Arrange
         _orgService.Setup(s => s.GetPublicBySlugAsync("no-org", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Org?)null);
+            .ReturnsAsync((OrgEntity?)null);
 
         // Act
         var result = await _controller.GetProperty("no-org", Guid.NewGuid(), CancellationToken.None);
@@ -212,7 +212,7 @@ public class PublicOrgControllerTests
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
-    private static Org BuildOrg(string slug) => new()
+    private static OrgEntity BuildOrg(string slug) => new()
     {
         Id = Guid.NewGuid(),
         Slug = slug,
