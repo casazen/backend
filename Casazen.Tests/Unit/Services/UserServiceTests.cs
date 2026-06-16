@@ -143,6 +143,61 @@ public class UserServiceTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task CompleteOnboardingAsync_SetsOnboardingCompletedAtTimestamp()
+    {
+        // Arrange
+        var sub = "auth0|onboard2";
+        var user = new User { Id = sub, Email = "c@d.com", FirstName = "C", LastName = "D", OnboardingCompletedAt = null };
+        var beforeCall = DateTime.UtcNow;
+
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>()))
+            .Callback<User>(u => { /* capture updated user */ })
+            .Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(
+                sub, "c@d.com", "C D", PlanTier.Starter, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "C D" });
+        _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var (result, _) = await _service.CompleteOnboardingAsync(
+            sub, RentalType.ShortTerm, PlanTier.Starter, "c@d.com", "C", "D");
+
+        var afterCall = DateTime.UtcNow;
+
+        // Assert
+        Assert.NotNull(result.OnboardingCompletedAt);
+        Assert.True(result.OnboardingCompletedAt >= beforeCall && result.OnboardingCompletedAt <= afterCall);
+    }
+
+    [Fact]
+    public async Task CompleteOnboardingAsync_DoesNotOverwriteExistingTimestamp()
+    {
+        // Arrange
+        var sub = "auth0|onboard3";
+        var existingTimestamp = DateTime.UtcNow.AddDays(-1);
+        var user = new User { Id = sub, Email = "e@f.com", FirstName = "E", LastName = "F", OnboardingCompletedAt = existingTimestamp };
+
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(
+                sub, "e@f.com", "E F", PlanTier.Starter, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "E F" });
+        _auth0Mock.Setup(a => a.AssignOnboardingRolesAsync(sub, It.IsAny<IReadOnlyList<UserRole>>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var (result, _) = await _service.CompleteOnboardingAsync(
+            sub, RentalType.ShortTerm, PlanTier.Starter, "e@f.com", "E", "F");
+
+        // Assert
+        Assert.Equal(existingTimestamp, result.OnboardingCompletedAt);
+    }
+
     // ─── GetPagedAsync ──────────────────────────────────────────────────────
 
     [Fact]
