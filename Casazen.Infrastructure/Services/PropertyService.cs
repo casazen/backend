@@ -77,7 +77,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return rows.Select(MapPublicProperty).ToList();
     }
 
-    public async Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId)
+    public async Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Searching public properties for org {OrgId}", orgId);
 
@@ -104,7 +104,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
                 CinCode = p.CinCode,
                 Timezone = p.Timezone,
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return rows.Select(MapPublicProperty).ToList();
     }

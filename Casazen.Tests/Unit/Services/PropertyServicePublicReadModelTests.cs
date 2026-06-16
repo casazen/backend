@@ -195,6 +195,171 @@ public class PropertyServicePublicReadModelTests
         Assert.Equal(expected, dto.CinStatus);
     }
 
+    // ── SearchByOrgAsync ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SearchByOrgAsync_ReturnsOnlyPropertiesForGivenOrg()
+    {
+        await using var context = CreateContext();
+        var orgA = await SeedOrgAsync(context);
+        var orgB = await SeedOrgAsync(context);
+
+        context.Properties.AddRange(
+            new Property { OwnerId = "auth0|a", OrgId = orgA.Id, Name = "Org A Villa", Address = "A", City = "Milan", IsActive = true, NightlyRate = 100m, Bedrooms = 2, Bathrooms = 1, MaxGuests = 4 },
+            new Property { OwnerId = "auth0|b", OrgId = orgB.Id, Name = "Org B Villa", Address = "B", City = "Rome", IsActive = true, NightlyRate = 80m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
+        await context.SaveChangesAsync();
+
+        var result = (await CreateService(context).SearchByOrgAsync(orgA.Id)).ToList();
+
+        Assert.Single(result);
+        Assert.Equal("Org A Villa", result[0].Name);
+    }
+
+    [Fact]
+    public async Task SearchByOrgAsync_ExcludesInactiveProperties()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+
+        context.Properties.AddRange(
+            new Property { OwnerId = "auth0|a1", OrgId = org.Id, Name = "Active", Address = "A", City = "Venice", IsActive = true, NightlyRate = 90m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 },
+            new Property { OwnerId = "auth0|a2", OrgId = org.Id, Name = "Draft", Address = "B", City = "Venice", IsActive = false, NightlyRate = 90m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
+        await context.SaveChangesAsync();
+
+        var result = (await CreateService(context).SearchByOrgAsync(org.Id)).ToList();
+
+        Assert.Single(result);
+        Assert.Equal("Active", result[0].Name);
+    }
+
+    [Fact]
+    public async Task SearchByOrgAsync_CapsAt50Results()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+
+        for (var i = 0; i < 60; i++)
+        {
+            context.Properties.Add(new Property
+            {
+                OwnerId = $"auth0|{i}",
+                OrgId = org.Id,
+                Name = $"Prop {i}",
+                Address = $"Addr {i}",
+                City = "CapOrg",
+                IsActive = true,
+                NightlyRate = i,
+                Bedrooms = 1,
+                Bathrooms = 1,
+                MaxGuests = 2,
+            });
+        }
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).SearchByOrgAsync(org.Id);
+
+        Assert.Equal(50, result.Count());
+    }
+
+    [Fact]
+    public async Task SearchByOrgAsync_ReturnsEmpty_ForOrgWithNoListings()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+
+        var result = await CreateService(context).SearchByOrgAsync(org.Id);
+
+        Assert.Empty(result);
+    }
+
+    // ── GetPublicPropertyForOrgAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPublicPropertyForOrgAsync_ReturnsDetail_WhenPropertyBelongsToOrg()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var policy = new CancellationPolicy { Name = "Flex", Description = "Full refund 24h" };
+        context.CancellationPolicies.Add(policy);
+        var property = new Property
+        {
+            OwnerId = "auth0|owner",
+            OrgId = org.Id,
+            Name = "Org Property",
+            Address = "Via Org 1",
+            City = "Naples",
+            HouseRules = "No smoking",
+            CancellationPolicyId = policy.Id,
+            IsActive = true,
+            NightlyRate = 110m,
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+        };
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyForOrgAsync(property.Id, org.Id);
+
+        Assert.NotNull(dto);
+        Assert.Equal("No smoking", dto!.HouseRules);
+        Assert.Equal("Full refund 24h", dto.CancellationPolicySummary);
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyForOrgAsync_ReturnsNull_WhenPropertyBelongsToOtherOrg()
+    {
+        // AC3: cross-org property lookup must return null so controller returns 404.
+        await using var context = CreateContext();
+        var orgA = await SeedOrgAsync(context);
+        var orgB = await SeedOrgAsync(context);
+        var property = new Property
+        {
+            OwnerId = "auth0|owner-b",
+            OrgId = orgB.Id,
+            Name = "Org B Property",
+            Address = "Via B 1",
+            City = "Turin",
+            IsActive = true,
+            NightlyRate = 75m,
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+        };
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyForOrgAsync(property.Id, orgA.Id);
+
+        Assert.Null(dto);
+    }
+
+    [Fact]
+    public async Task GetPublicPropertyForOrgAsync_ReturnsNull_WhenPropertyIsInactive()
+    {
+        await using var context = CreateContext();
+        var org = await SeedOrgAsync(context);
+        var property = new Property
+        {
+            OwnerId = "auth0|owner",
+            OrgId = org.Id,
+            Name = "Inactive Prop",
+            Address = "Via X",
+            City = "Bari",
+            IsActive = false,
+            NightlyRate = 60m,
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+        };
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var dto = await CreateService(context).GetPublicPropertyForOrgAsync(property.Id, org.Id);
+
+        Assert.Null(dto);
+    }
+
     private static async Task<OrgEntity> SeedOrgAsync(AppDbContext context)
     {
         var org = new OrgEntity

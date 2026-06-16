@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.DTOs;
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +14,9 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<PublicOrgDto>> GetOrg(string slug, CancellationToken cancellationToken)
+    public async Task<ActionResult<PublicOrgDto>> GetOrg(
+        [StringLength(100)] string slug,
+        CancellationToken cancellationToken)
     {
         var org = await orgService.GetPublicBySlugAsync(slug, cancellationToken);
         if (org is null)
@@ -33,14 +36,14 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
     [ProducesResponseType(typeof(IEnumerable<PublicPropertyDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> GetProperties(
-        string slug,
+        [StringLength(100)] string slug,
         CancellationToken cancellationToken)
     {
         var org = await orgService.GetPublicBySlugAsync(slug, cancellationToken);
         if (org is null)
             return NotFound();
 
-        var properties = await propertyService.SearchByOrgAsync(org.Id);
+        var properties = await propertyService.SearchByOrgAsync(org.Id, cancellationToken);
         return Ok(properties);
     }
 
@@ -48,7 +51,7 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
     [ProducesResponseType(typeof(PublicPropertyDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PublicPropertyDetailDto>> GetProperty(
-        string slug,
+        [StringLength(100)] string slug,
         Guid propertyId,
         CancellationToken cancellationToken)
     {

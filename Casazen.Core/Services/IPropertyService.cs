@@ -11,7 +11,7 @@ public interface IPropertyService
     Task<Property> UpdatePropertyAsync(Property property);
     Task<bool> DeletePropertyAsync(Guid id);
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
-    Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId);
+    Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
     Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id);
     Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(Guid id, Guid orgId);
     Task<Property> AddImageAsync(Guid propertyId, string imageUrl);
