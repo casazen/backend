@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,41 @@ public class PublicBookingsController(
     IBookingService bookingService,
     ILogger<PublicBookingsController> logger) : ControllerBase
 {
+    [HttpGet("property/{propertyId}/availability")]
+    public async Task<ActionResult<PropertyAvailabilityResponse>> GetPropertyAvailability(
+        Guid propertyId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        var start = startDate ?? DateTime.UtcNow.Date;
+        var end = endDate ?? DateTime.UtcNow.Date.AddDays(365);
+
+        var bookings = await bookingService.GetCalendarAsync(propertyId, start, end);
+
+        var bookedDates = bookings
+            .Where(b => b.Status != BookingStatus.Cancelled)
+            .SelectMany(b => GetDateRange(b.CheckInDate, b.CheckOutDate))
+            .ToHashSet();
+
+        return Ok(new PropertyAvailabilityResponse
+        {
+            PropertyId = propertyId,
+            StartDate = start,
+            EndDate = end,
+            BookedDates = bookedDates.OrderBy(d => d).ToList(),
+        });
+    }
+
+    private static IEnumerable<string> GetDateRange(DateTime checkIn, DateTime checkOut)
+    {
+        var current = checkIn.Date;
+        while (current < checkOut.Date)
+        {
+            yield return current.ToString("yyyy-MM-dd");
+            current = current.AddDays(1);
+        }
+    }
+
     [HttpPost]
     [EnableRateLimiting("PublicBookingCreate")]
     public async Task<ActionResult<DirectBookingResponse>> CreateDirectBooking(
