@@ -224,6 +224,13 @@ public class UserService(
         user.RentalType = rentalType;
         user.Role = roles[0];
         user.UpdatedAt = DateTime.UtcNow;
+
+        // Set the onboarding completion timestamp (immutable once set)
+        if (user.OnboardingCompletedAt == null)
+        {
+            user.OnboardingCompletedAt = DateTime.UtcNow;
+        }
+
         await repository.UpdateAsync(user);
 
         var displayName = $"{firstName} {lastName}".Trim();

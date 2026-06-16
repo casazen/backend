@@ -38,6 +38,9 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>UTC timestamp when user completed onboarding. Used as source of truth for needsOnboarding() check. Immutable once set.</summary>
+    public DateTime? OnboardingCompletedAt { get; set; }
+
     public ICollection<UserContextMembership> ContextMemberships { get; set; } = new List<UserContextMembership>();
 }
 

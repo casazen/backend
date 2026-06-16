@@ -279,6 +279,7 @@ public class UsersController(
         CreatedAt = u.CreatedAt,
         PhoneNumber = u.PhoneNumber,
         UpdatedAt = u.UpdatedAt,
+        OnboardingCompletedAt = u.OnboardingCompletedAt,
         OrgId = u.OrgId,
         Org = org is null
             ? null
