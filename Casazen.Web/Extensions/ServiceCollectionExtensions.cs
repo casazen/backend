@@ -257,6 +257,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IPublicHostResolver, PublicHostResolver>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IVatCalculationService, VatCalculationService>();
