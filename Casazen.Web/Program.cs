@@ -161,6 +161,8 @@ builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API
