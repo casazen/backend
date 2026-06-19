@@ -23,7 +23,10 @@
 - design_283: Sessions/design-283.md
 - design_284: Sessions/design-284.md
 - design_285: Sessions/design-285.md
-- pr_frontend: (pending)
+- pr_frontend: "#152"
+- pr_frontend_url: "https://github.com/casazen/frontend/pull/152"
+- pr_backend: "#305"
+- pr_backend_url: "https://github.com/casazen/backend/pull/305"
 
 ## Summary
 - completed: 0 (awaiting PR merge)
