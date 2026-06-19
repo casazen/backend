@@ -1,5 +1,8 @@
 # CasaZen — Implementation Roadmap (current state → sellable production)
 
+> **Superseded for day-to-day planning** — use [`../PLANNING.md`](../PLANNING.md) + [`../specs/README.md`](../specs/README.md).  
+> This file remains the historical council consensus (Round 3, 2026-06-05).
+
 > **Council**: Platform Launch · **Status**: consensus (Round 3) · **Date**: 2026-06-05
 > **Source**: `draft-v3.md` §B · **Feeds**: the AI-SDLC pipeline (`Stage 01 Planning → 02 Design → 03 Development`)
 > Each macro-spec lives at `Sessions/specs/spec-{slug}.md` in the `spec-property-detail.md` shape. Infra tiers use the **$0 → ~€5/mo** trigger from `decision-hosting-zero-budget.md`, **keyed to first real guest check-in**.

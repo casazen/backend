@@ -13,6 +13,16 @@ public interface IStripeService
         Dictionary<string, string> metadata);
     Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
     Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null);
+    Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
+        string connectedAccountId,
+        Dictionary<string, string> metadata);
+    Task<PaymentIntent> ChargePaymentMethodAsync(
+        string connectedAccountId,
+        string customerId,
+        string paymentMethodId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata);
 }
 
 public class StripeService(ILogger<StripeService> logger) : IStripeService
@@ -110,6 +120,75 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
         catch (Exception ex)
         {
             logger.LogError(ex, "Error refunding payment");
+            throw;
+        }
+    }
+
+    public async Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
+        string connectedAccountId,
+        Dictionary<string, string> metadata)
+    {
+        try
+        {
+            var options = new SetupIntentCreateOptions
+            {
+                Metadata = metadata,
+                AutomaticPaymentMethods = new SetupIntentAutomaticPaymentMethodsOptions
+                {
+                    Enabled = true,
+                },
+            };
+
+            var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
+            var service = new SetupIntentService();
+            var setupIntent = await service.CreateAsync(options, requestOptions);
+            logger.LogInformation(
+                "Connected-account setup intent created: {SetupIntentId} on {AccountId}",
+                setupIntent.Id,
+                connectedAccountId);
+            return setupIntent;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error creating connected-account setup intent for {AccountId}", connectedAccountId);
+            throw;
+        }
+    }
+
+    public async Task<PaymentIntent> ChargePaymentMethodAsync(
+        string connectedAccountId,
+        string customerId,
+        string paymentMethodId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata)
+    {
+        try
+        {
+            var options = new PaymentIntentCreateOptions
+            {
+                Amount = amountCents,
+                Currency = currency,
+                Customer = customerId,
+                PaymentMethod = paymentMethodId,
+                ConfirmationMethod = "automatic",
+                Confirm = true,
+                Metadata = metadata,
+                ApplicationFeeAmount = 0,
+            };
+
+            var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
+            var service = new PaymentIntentService();
+            var paymentIntent = await service.CreateAsync(options, requestOptions);
+            logger.LogInformation(
+                "Off-session payment intent created: {PaymentIntentId} on {AccountId}",
+                paymentIntent.Id,
+                connectedAccountId);
+            return paymentIntent;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error creating off-session payment for {AccountId}", connectedAccountId);
             throw;
         }
     }

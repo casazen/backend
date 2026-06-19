@@ -8,6 +8,7 @@ public interface IBookingService
     Task<Booking?> GetBookingAsync(Guid id);
     Task<IEnumerable<Booking>> GetPropertyBookingsAsync(Guid propertyId);
     Task<IEnumerable<Booking>> GetGuestBookingsAsync(Guid guestId);
+    Task<IEnumerable<Booking>> GetBookingsByEmailAsync(string email);
     Task<Booking> CreateBookingAsync(Booking booking);
     Task<Booking> UpdateBookingAsync(Booking booking);
     Task<bool> CancelBookingAsync(Guid bookingId);

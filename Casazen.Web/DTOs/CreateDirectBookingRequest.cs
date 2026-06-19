@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Casazen.Core.Entities;
 
 namespace Casazen.Web.DTOs;
 
@@ -60,4 +61,8 @@ public class CreateDirectBookingRequest
 
     [MaxLength(1000)]
     public string? SpecialRequests { get; set; }
+
+    /// <summary>Payment option: Immediate, OnCancellationDeadline, or OnSite.</summary>
+    [Required]
+    public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
 }

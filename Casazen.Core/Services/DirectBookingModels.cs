@@ -1,5 +1,7 @@
 namespace Casazen.Core.Services;
 
+using Casazen.Core.Entities;
+
 public record DirectBookingGuestInput(
     string FirstName,
     string LastName,
@@ -16,7 +18,8 @@ public record DirectBookingCreateInput(
     DirectBookingGuestInput Guest,
     string ConsentVersion,
     string ConsentIpAddress,
-    string? SpecialRequests);
+    string? SpecialRequests,
+    PaymentOption PaymentOption = PaymentOption.Immediate);
 
 public record DirectBookingCreateResult(
     Guid BookingId,
@@ -26,7 +29,10 @@ public record DirectBookingCreateResult(
     decimal Amount,
     string Currency,
     decimal TouristTaxAmount,
-    decimal BasePrice);
+    decimal BasePrice,
+    string? SetupIntentClientSecret = null,
+    DateTime? FreeRefundDeadline = null,
+    PaymentOption PaymentOption = PaymentOption.Immediate);
 
 public class DirectBookingException(string message, string ErrorCode) : Exception(message)
 {

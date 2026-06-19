@@ -49,6 +49,10 @@ public class StripeWebhookHandler(
                 case "payment_intent.canceled":
                     await HandlePaymentFailedAsync(stripeEvent.Data.Object as PaymentIntent, source, stripeEvent.Type);
                     break;
+                case "setup_intent.succeeded":
+                    if (source == WebhookSource.Connected)
+                        await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent);
+                    break;
                 case "charge.refunded":
                     if (source == WebhookSource.Platform)
                         await HandleRefundAsync(stripeEvent.Data.Object as Charge);
@@ -334,6 +338,44 @@ public class StripeWebhookHandler(
         await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Completed);
     }
 
+    private async Task HandleSetupIntentSucceededAsync(SetupIntent? setupIntent)
+    {
+        if (setupIntent is null)
+            return;
+
+        logger.LogInformation("Direct booking setup intent succeeded: {SetupIntentId}", setupIntent.Id);
+
+        if (!TryGetMetadataKind(setupIntent, out var kind) || !string.Equals(kind, "direct-booking-setup", StringComparison.Ordinal))
+            return;
+
+        if (!setupIntent.Metadata.TryGetValue("bookingId", out var bookingIdRaw) || !Guid.TryParse(bookingIdRaw, out var bookingId))
+        {
+            logger.LogWarning("Setup intent has no bookingId metadata: {SetupIntentId}", setupIntent.Id);
+            return;
+        }
+
+        var booking = await bookingRepository.GetByIdAsync(bookingId);
+        if (booking is null)
+        {
+            logger.LogWarning("No booking found for setup intent: {BookingId}", bookingId);
+            return;
+        }
+
+        var paymentMethodId = setupIntent.PaymentMethodId;
+        if (string.IsNullOrWhiteSpace(paymentMethodId))
+        {
+            logger.LogWarning("Setup intent has no payment method: {SetupIntentId}", setupIntent.Id);
+            return;
+        }
+
+        booking.StripePaymentMethodId = paymentMethodId;
+        booking.Status = BookingStatus.Confirmed;
+        booking.UpdatedAt = DateTime.UtcNow;
+        await bookingRepository.UpdateAsync(booking);
+
+        logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
+    }
+
     private async Task HandleDirectBookingPaymentSucceededAsync(PaymentIntent paymentIntent)
     {
         logger.LogInformation("Direct booking payment succeeded: {PaymentIntentId}", paymentIntent.Id);
@@ -412,6 +454,9 @@ public class StripeWebhookHandler(
 
     private static bool TryGetMetadataKind(PaymentIntent paymentIntent, out string? kind) =>
         paymentIntent.Metadata.TryGetValue("kind", out kind) && !string.IsNullOrWhiteSpace(kind);
+
+    private static bool TryGetMetadataKind(SetupIntent setupIntent, out string? kind) =>
+        setupIntent.Metadata.TryGetValue("kind", out kind) && !string.IsNullOrWhiteSpace(kind);
 
     private async Task UpdatePaymentStatusAsync(string transactionId, PaymentStatus status)
     {

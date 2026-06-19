@@ -74,6 +74,25 @@ public class Booking
     /// <summary>UTC expiry for the check-in token (checkout + 7 days when issued).</summary>
     public DateTime? CheckInTokenExpiresAt { get; set; }
 
+    /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
+    [Required]
+    public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
+
+    /// <summary>Deadline for free refund (check-in - 7 days). After this date, cancellation is charged.</summary>
+    public DateTime? FreeRefundDeadline { get; set; }
+
+    /// <summary>Stripe SetupIntent ID for OnCancellationDeadline payments (to save payment method for future charge).</summary>
+    [MaxLength(255)]
+    public string? StripeSetupIntentId { get; set; }
+
+    /// <summary>Stripe Payment Method ID (saved card/payment method for off-session charging on deadline).</summary>
+    [MaxLength(255)]
+    public string? StripePaymentMethodId { get; set; }
+
+    /// <summary>Stripe Customer ID for off-session charges on deadline.</summary>
+    [MaxLength(255)]
+    public string? StripeCustomerId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -100,4 +119,16 @@ public enum BookingSource
     TripAdvisor,
     Agoda,
     Local
+}
+
+public enum PaymentOption
+{
+    /// <summary>Pay immediately via Stripe (default, current flow).</summary>
+    Immediate,
+
+    /// <summary>Pay on the free cancellation deadline (7 days before check-in) via Stripe SetupIntent + deferred charge.</summary>
+    OnCancellationDeadline,
+
+    /// <summary>Pay on-site with no online payment (booking confirmed immediately).</summary>
+    OnSite
 }
