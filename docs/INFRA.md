@@ -374,9 +374,13 @@ Auth0__Audience=https://casazen-api
 Stripe__SecretKey=[sk_live_... or sk_test_...]
 Stripe__WebhookSecret=[whsec_...]
 Email__SendGridApiKey=[SG....]
+Email__FromAddress=noreply@casazen.app
+App__PublicSiteBaseUrl=https://casazen-app.vercel.app
 Hangfire__DashboardEnabled=false
 Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
 ```
+
+`App__PublicSiteBaseUrl` is required for **supplier invite emails** (`POST /api/admin/suppliers/invite`): the signup link is built as `{PublicSiteBaseUrl}/login?inviteToken=…&email=…&comune=…`. Use the Vercel URL for the matching environment (test → preview/staging FE, production → `https://casazen.app` or production Vercel URL).
 
 Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
 

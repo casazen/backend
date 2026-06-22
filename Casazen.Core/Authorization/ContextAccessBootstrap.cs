@@ -54,6 +54,19 @@ public static class ContextAccessBootstrap
                 "admin.seo.read",
                 "admin.tax.manage",
             ]),
+        new(
+            JwtRole: "Supplier",
+            ContextKey: "supplier",
+            DisplayName: "Fornitore",
+            RoleKey: "supplier",
+            DefaultRoute: "/supplier/inbox",
+            Permissions:
+            [
+                "supplier.profile.read",
+                "supplier.profile.write",
+                "supplier.inbox.read",
+                "supplier.availability.write",
+            ]),
     ];
 
     public static IReadOnlyList<BootstrapContextMembership> DeriveContextsFromJwtRoles(IEnumerable<string> jwtRoles)

@@ -22,18 +22,29 @@ public class ContextAuthorizationService(
             .OrderBy(m => m.ContextKey)
             .ToListAsync(cancellationToken);
 
+        var jwtRoles = ParseRoles(httpContextAccessor.HttpContext?.User.FindAll("https://casazen.app/roles").Select(c => c.Value) ?? []);
+
         if (memberships.Count > 0)
         {
-            return memberships.Select(m => new ContextAccess(
+            var fromDb = memberships.Select(m => new ContextAccess(
                     m.ContextKey,
                     m.Context.DisplayName,
                     m.Role.RoleKey,
                     m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
                     GetDefaultRoute(m.ContextKey)))
                 .ToList();
-        }
 
-        var jwtRoles = ParseRoles(httpContextAccessor.HttpContext?.User.FindAll("https://casazen.app/roles").Select(c => c.Value) ?? []);
+            var existingKeys = fromDb.Select(c => c.ContextKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var jwtContext in ContextAccessBootstrap.BuildFallbackAccess(jwtRoles))
+            {
+                if (!existingKeys.Contains(jwtContext.ContextKey))
+                {
+                    fromDb.Add(jwtContext);
+                }
+            }
+
+            return fromDb.OrderBy(c => c.ContextKey, StringComparer.OrdinalIgnoreCase).ToList();
+        }
 
         return ContextAccessBootstrap.BuildFallbackAccess(jwtRoles);
     }
@@ -74,6 +85,7 @@ public class ContextAuthorizationService(
             "short-rent" => "/app/short-rent",
             "long-rent" => "/app/long-rent/leases",
             "admin" => "/app/admin",
+            "supplier" => "/supplier/inbox",
             _ => "/app/choose-context",
         };
 

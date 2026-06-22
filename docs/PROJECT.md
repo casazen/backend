@@ -14,7 +14,7 @@ Web reporting, tourist tax, GDPR).
 - **Auth**: Auth0 — JWT Bearer validated on every `/api` endpoint
 - **Background jobs**: Hangfire (OTA sync hourly, booking pull every 15 min, GDPR retention, pricing)
 - **Payments**: Stripe (webhook signature verification required)
-- **Email**: SendGrid (template IDs only — no inline HTML)
+- **Email**: SendGrid (transactional; supplier invite uses `SupplierInviteEmailBuilder` HTML)
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
 - **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`, `step-transitions.yml`)

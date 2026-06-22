@@ -3,12 +3,20 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-public class SupplierService(AppDbContext db, ILogger<SupplierService> logger) : ISupplierService
+public class SupplierService(
+    AppDbContext db,
+    ISendGridService sendGridService,
+    IConfiguration configuration,
+    IHostEnvironment hostEnvironment,
+    ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
@@ -229,7 +237,52 @@ public class SupplierService(AppDbContext db, ILogger<SupplierService> logger) :
         db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
 
+        await SendInviteEmailAsync(invite, cancellationToken);
+
         logger.LogInformation("Admin invite created for {Email}, expires {ExpiresAt}", email, invite.ExpiresAt);
         return new SupplierInvite(invite.Id, invite.ExpiresAt);
+    }
+
+    private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
+    {
+        if (ShouldSkipInviteEmail())
+        {
+            logger.LogWarning(
+                "SendGrid not configured — supplier invite email skipped for {Email} (env={Environment})",
+                invite.Email,
+                hostEnvironment.EnvironmentName);
+            return;
+        }
+
+        var baseUrl = configuration["App:PublicSiteBaseUrl"];
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new InvalidOperationException("App:PublicSiteBaseUrl non configurato: impossibile inviare l'invito.");
+        }
+
+        var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(baseUrl, invite);
+        var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
+
+        var sent = await sendGridService.SendEmailAsync(invite.Email, subject, html);
+        if (sent)
+        {
+            logger.LogInformation("Supplier invite email sent to {Email}", invite.Email);
+            return;
+        }
+
+        db.SupplierInviteRecords.Remove(invite);
+        await db.SaveChangesAsync(cancellationToken);
+        throw new InvalidOperationException("Impossibile inviare l'email di invito. Riprovare.");
+    }
+
+    private bool ShouldSkipInviteEmail()
+    {
+        var apiKey = configuration["Email:SendGridApiKey"];
+        if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
     }
 }

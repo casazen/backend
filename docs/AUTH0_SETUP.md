@@ -118,8 +118,11 @@ Auth0 Dashboard → **User Management** → **Roles** → **Create Role**:
 | `Admin` | Full system access |
 | `PropertyOwner` | Can manage own properties and bookings (short-stay layer) |
 | `LongTermLandlord` | Can manage long-term leases (`/api/leases/*`, `/leases/*` UI) |
+| `Supplier` | Supplier console (`/supplier/*`): inbox, profile, availability, activation wizard |
 
 Assign `LongTermLandlord` (alone or with `PropertyOwner`) in Auth0 for users who need the long-term UI layer. Without this role, the frontend hides lease navigation and redirects `/leases` to the short-stay home.
+
+Assign `Supplier` for users who operate the **supplier console**. Users with both host and supplier roles see a workspace tab (wrench icon) to switch between host/admin and `/supplier/inbox`. After self-serve or invite-based registration, the supplier must have the `Supplier` role in Auth0 before protected `/api/supplier/*` endpoints return 200.
 
 ### Step 2: Create Auth0 Action for Custom Claims
 

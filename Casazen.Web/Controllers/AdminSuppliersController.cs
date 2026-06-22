@@ -20,6 +20,7 @@ public class AdminSuppliersController(
     [ProducesResponseType(typeof(AdminInviteResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<AdminInviteResponse>> InviteSupplier(
         [FromBody] AdminInviteSupplierRequest request,
         CancellationToken cancellationToken)
@@ -43,9 +44,14 @@ public class AdminSuppliersController(
                 ExpiresAt = invite.ExpiresAt,
             });
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Pending invite", StringComparison.Ordinal))
         {
             return Conflict(new { error = ex.Message, code = "duplicate_invite" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "Supplier invite email delivery failed for {Email}", request.Email);
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message, code = "invite_email_failed" });
         }
     }
 }

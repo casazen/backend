@@ -91,6 +91,21 @@ All routes except `/login` and `/search` are wrapped in `<ProtectedRoute>`, whic
 | `/ota/create` | `OtaSetupPage` | Yes |
 | `/search` | `SearchPage` | No (public) |
 | `/profile` | `ProfilePage` | Yes |
+| `/supplier/*` | `SupplierShell` + nested pages | Yes (`Supplier` role) |
+| `/app/admin/suppliers/invite` | `AdminSupplierInvitePage` | Yes (`Admin`) |
+
+### Workspace contexts
+
+Multi-role users switch operating context via `WorkspaceSwitcher` (sidebar / mobile drawer). Context keys map to JWT roles via `deriveContextsFromRoles` and `GET /api/me/contexts`:
+
+| Context key | JWT role | Default route |
+|---|---|---|
+| `short-rent` | `PropertyOwner` | `/app/short-rent` |
+| `long-rent` | `LongTermLandlord` | `/app/long-rent/leases` |
+| `admin` | `Admin` | `/app/admin` |
+| `supplier` | `Supplier` | `/supplier/inbox` |
+
+The supplier console (`/supplier/*`) uses its own `SupplierShell` but shares `WorkspaceProvider` so users with host + supplier roles can switch back without typing the URL. Supplier-only users are redirected to `/supplier/inbox` from onboarding/home helpers.
 
 ---
 
