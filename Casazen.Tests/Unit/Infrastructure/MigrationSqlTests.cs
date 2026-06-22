@@ -38,9 +38,9 @@ public class MigrationSqlTests
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("FixPlatformBillingMetricsSeed", lastThree[0]);
-        Assert.EndsWith("AddOnboardingCompletedAtToUsers", lastThree[1]);
-        Assert.EndsWith("AddPaymentOptionToBooking", lastThree[2]);
+        Assert.EndsWith("AddOnboardingCompletedAtToUsers", lastThree[0]);
+        Assert.EndsWith("AddPaymentOptionToBooking", lastThree[1]);
+        Assert.EndsWith("AddSupplierOrgAndProfile", lastThree[2]);
     }
 
     [Fact]

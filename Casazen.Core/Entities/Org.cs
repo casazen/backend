@@ -22,6 +22,9 @@ public class Org
     public string Slug { get; set; } = string.Empty;
 
     [Required]
+    public OrgType OrgType { get; set; } = OrgType.Host;
+
+    [Required]
     public PlanTier PlanTier { get; set; } = PlanTier.Starter;
 
     [Required, MaxLength(200)]

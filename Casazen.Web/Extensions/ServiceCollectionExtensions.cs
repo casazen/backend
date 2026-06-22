@@ -123,6 +123,7 @@ public static class ServiceCollectionExtensions
             .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
             .AddPolicy("PropertyManagerOrAdmin", policy => policy.RequireRole("PropertyManager", "Admin"))
             .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"))
+            .AddPolicy("RequireSupplier", policy => policy.RequireRole("Supplier"))
             .AddPolicy("RequireOrgBillingAdmin", policy =>
                 policy.Requirements.Add(new OrgBillingAdminRequirement()));
 
@@ -270,6 +271,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
+        services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         return services;
     }
 
