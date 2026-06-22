@@ -41,6 +41,11 @@ public class AppDbContext(
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
     public DbSet<PlatformBillingMetrics> PlatformBillingMetrics { get; set; } = null!;
 
+    // Supplier console (US-022 / #292)
+    public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
+    public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
+    public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
@@ -437,6 +442,32 @@ public class AppDbContext(
 
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
+
+        // ─── Supplier console (US-022 / #292) ────────────────────────────────────
+        modelBuilder.Entity<SupplierProfile>()
+            .HasOne(sp => sp.Org)
+            .WithOne()
+            .HasForeignKey<SupplierProfile>(sp => sp.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.Status);
+
+        modelBuilder.Entity<SupplierAvailability>()
+            .HasOne(sa => sa.SupplierProfile)
+            .WithMany()
+            .HasForeignKey(sa => sa.OrgId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SupplierAvailability>()
+            .HasIndex(sa => new { sa.OrgId, sa.Date })
+            .IsUnique();
+
+        modelBuilder.Entity<SupplierInviteRecord>()
+            .HasIndex(i => i.Email);
+
+        modelBuilder.Entity<SupplierInviteRecord>()
+            .HasIndex(i => new { i.Email, i.IsUsed });
 
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
