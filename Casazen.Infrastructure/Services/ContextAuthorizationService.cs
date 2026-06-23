@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -11,9 +12,29 @@ namespace Casazen.Infrastructure.Services;
 
 public class ContextAuthorizationService(
     AppDbContext dbContext,
-    IHttpContextAccessor httpContextAccessor) : IContextAuthorizationService
+    IHttpContextAccessor httpContextAccessor,
+    ILogger<ContextAuthorizationService> logger) : IContextAuthorizationService
 {
     public async Task<IReadOnlyList<ContextAccess>> GetUserContextsAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await GetUserContextsInternalAsync(userId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error in GetUserContextsAsync for user {UserId}", userId);
+            // Fallback to JWT-only contexts on any DB error
+            var jwtRoles = ResolveJwtRoles();
+            if (jwtRoles.Count == 0)
+            {
+                jwtRoles = await FallbackToDbUserRolesAsync(userId, cancellationToken);
+            }
+            return ContextAccessBootstrap.BuildFallbackAccess(jwtRoles);
+        }
+    }
+
+    private async Task<IReadOnlyList<ContextAccess>> GetUserContextsInternalAsync(string userId, CancellationToken cancellationToken)
     {
         var memberships = await dbContext.UserContextMemberships
             .AsNoTracking()
@@ -69,28 +90,70 @@ public class ContextAuthorizationService(
         string permissionKey,
         CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-
-        if (user is { IsActive: false })
+        try
         {
+            var user = await dbContext.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+            if (user is { IsActive: false })
+            {
+                return false;
+            }
+
+            var contexts = await GetUserContextsAsync(userId, cancellationToken);
+            var context = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase));
+            if (context is null)
+            {
+                logger.LogDebug(
+                    "Permission denied: user {UserId} has no context {ContextKey}",
+                    userId, contextKey);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(permissionKey))
+            {
+                return true;
+            }
+
+            var hasPermission = context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
+            if (!hasPermission)
+            {
+                logger.LogDebug(
+                    "Permission denied: user {UserId} lacks {PermissionKey} in {ContextKey}",
+                    userId, permissionKey, contextKey);
+            }
+
+            return hasPermission;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Unexpected error in HasPermissionAsync for user {UserId}, context {ContextKey}, permission {PermissionKey}",
+                userId, contextKey, permissionKey);
             return false;
         }
+    }
 
-        var contexts = await GetUserContextsAsync(userId, cancellationToken);
-        var context = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase));
-        if (context is null)
+    private async Task<IReadOnlyList<string>> FallbackToDbUserRolesAsync(string userId, CancellationToken cancellationToken)
+    {
+        try
         {
-            return false;
+            var dbUser = await dbContext.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+            if (dbUser is not null)
+            {
+                return MapDbUserRoleToJwtRoles(dbUser.Role);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fallback to DB user roles for {UserId}", userId);
         }
 
-        if (string.IsNullOrWhiteSpace(permissionKey))
-        {
-            return true;
-        }
-
-        return context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
+        return [];
     }
 
     private IReadOnlyList<string> ResolveJwtRoles()

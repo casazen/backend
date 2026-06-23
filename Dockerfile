@@ -18,6 +18,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=publish /app/publish .
 
+# Required by System.Net.Mail.SmtpClient on Linux for SMTP authentication.
+# Without this lib, SmtpClient hangs/timeouts when connecting to Gmail/any SMTP.
+RUN apt-get update && apt-get install -y libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
+
 # Railway (and most cloud providers) terminate TLS at the edge.
 # The container listens on plain HTTP on PORT (default 8080).
 ENV ASPNETCORE_URLS=http://+:8080

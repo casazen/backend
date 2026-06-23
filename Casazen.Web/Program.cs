@@ -18,11 +18,13 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 using Microsoft.OpenApi.Models;
-using SendGrid.Extensions.DependencyInjection;
+
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,10 +69,6 @@ builder.Services.AddScoped<ILeaseRegistrationRepository, LeaseRegistrationReposi
 builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 
 // External Services
-builder.Services.AddSendGrid(options =>
-{
-    options.ApiKey = builder.Configuration["Email:SendGridApiKey"] ?? string.Empty;
-});
 builder.Services.AddHttpClient<PublicHolidayService>();
 builder.Services.AddMemoryCache();
 
@@ -88,7 +86,7 @@ builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
-builder.Services.AddScoped<ISendGridService, SendGridService>();
+builder.Services.AddScoped<IEmailService, ResendEmailService>();
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
@@ -113,7 +111,19 @@ builder.Services.AddHttpClient("Openapi");
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
-// Authentication & Authorization
+	// Localization — Italian (default) and English
+	builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
+	builder.Services.AddRequestLocalization(options =>
+	{
+	    var supportedCultures = new[] { "it-IT", "en-US" };
+	    options.SetDefaultCulture(supportedCultures[0])
+	           .AddSupportedCultures(supportedCultures)
+	           .AddSupportedUICultures(supportedCultures);
+	    options.ApplyCurrentCultureToResponseHeaders = true;
+	});
+
+	// Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddCasazenAuthorization();
 
@@ -269,6 +279,9 @@ app.UseSecurityHeaders();
 
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
+
+// Localization middleware — reads Accept-Language header, sets culture for downstream components
+app.UseRequestLocalization();
 
 // Global error handling — must be early in pipeline to catch all exceptions
 app.UseErrorHandling();

@@ -137,6 +137,41 @@ public class SupplierProfileController(
 
     // ─── Availability ─────────────────────────────────────────────────────────
 
+    /// <summary>Returns the supplier's saved availability for a date range (defaults: today → +13 days, max 90 days).</summary>
+    [HttpGet("availability")]
+    [ProducesResponseType(typeof(SupplierAvailabilityResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierAvailabilityResponse>> GetAvailability(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var rangeFrom = from ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var rangeTo = to ?? rangeFrom.AddDays(13);
+
+        if (rangeTo < rangeFrom)
+            return BadRequest(new { error = "to deve essere maggiore o uguale a from" });
+
+        const int maxRangeDays = 90;
+        if (rangeTo.DayNumber - rangeFrom.DayNumber > maxRangeDays)
+            return BadRequest(new { error = $"L'intervallo massimo è di {maxRangeDays} giorni" });
+
+        var entries = await supplierService.GetAvailabilityAsync(orgId.Value, rangeFrom, rangeTo, cancellationToken);
+
+        return Ok(new SupplierAvailabilityResponse
+        {
+            Dates = entries.Select(e => new AvailabilityEntryDto
+            {
+                Date = e.Date,
+                Available = e.Available,
+            }),
+        });
+    }
+
     /// <summary>Updates the supplier's availability for a list of dates.</summary>
     [HttpPut("availability")]
     [ProducesResponseType(typeof(UpdateAvailabilityResponse), StatusCodes.Status200OK)]

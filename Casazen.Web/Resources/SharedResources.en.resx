@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Unauthorized" xml:space="preserve">
+    <value>Unauthorized</value>
+  </data>
+  <data name="UnauthorizedDetail" xml:space="preserve">
+    <value>Authentication is required. Provide a valid Bearer token in the Authorization header.</value>
+  </data>
+  <data name="Forbidden" xml:space="preserve">
+    <value>Forbidden</value>
+  </data>
+  <data name="ForbiddenDetail" xml:space="preserve">
+    <value>You do not have permission to access this resource.</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Not Found</value>
+  </data>
+  <data name="InternalServerError" xml:space="preserve">
+    <value>Internal Server Error</value>
+  </data>
+  <data name="InternalServerErrorDetail" xml:space="preserve">
+    <value>An unexpected error occurred. Please try again later.</value>
+  </data>
+  <data name="ValidationError" xml:space="preserve">
+    <value>One or more validation errors occurred.</value>
+  </data>
+  <data name="PaymentProcessingError" xml:space="preserve">
+    <value>Payment Processing Error</value>
+  </data>
+  <data name="StripeIntegrationError" xml:space="preserve">
+    <value>Stripe Integration Error</value>
+  </data>
+  <data name="OperationFailed" xml:space="preserve">
+    <value>Operation Failed</value>
+  </data>
+  <data name="OrganizationNotFound" xml:space="preserve">
+    <value>Organization not found</value>
+  </data>
+  <data name="NoOrganizationAssigned" xml:space="preserve">
+    <value>No organization assigned to the current user</value>
+  </data>
+  <data name="PropertyNotFound" xml:space="preserve">
+    <value>Property not found</value>
+  </data>
+  <data name="BookingNotFound" xml:space="preserve">
+    <value>Booking not found</value>
+  </data>
+  <data name="PaymentNotFound" xml:space="preserve">
+    <value>Payment not found</value>
+  </data>
+  <data name="GuestNotFound" xml:space="preserve">
+    <value>Guest not found</value>
+  </data>
+  <data name="SupplierProfileNotFound" xml:space="preserve">
+    <value>Supplier profile not found</value>
+  </data>
+  <data name="InvalidEmail" xml:space="preserve">
+    <value>Invalid email address</value>
+  </data>
+  <data name="InvalidPhone" xml:space="preserve">
+    <value>Invalid phone number</value>
+  </data>
+  <data name="ManagedByStripe" xml:space="preserve">
+    <value>Plan managed by Stripe. Use the billing portal.</value>
+  </data>
+  <data name="BillingNotAvailable" xml:space="preserve">
+    <value>Billing not yet available</value>
+  </data>
+  <data name="PlanLimitReached" xml:space="preserve">
+    <value>You have reached your plan limit</value>
+  </data>
+  <data name="ActivationConsentError" xml:space="preserve">
+    <value>All mandatory consents must be accepted.</value>
+  </data>
+  <data name="ActivationDocsUpdated" xml:space="preserve">
+    <value>Some legal documents have been updated. Please accept the current versions.</value>
+  </data>
+  <data name="ActivationIncomplete" xml:space="preserve">
+    <value>Activation not completed: {0}</value>
+  </data>
+  <data name="InviteEmailFailed" xml:space="preserve">
+    <value>Email sending failed. The invite was not created.</value>
+  </data>
+  <data name="SupplierActivationSteps_Identity" xml:space="preserve">
+    <value>Identity and contacts</value>
+  </data>
+  <data name="SupplierActivationSteps_Categories" xml:space="preserve">
+    <value>Service categories</value>
+  </data>
+  <data name="SupplierActivationSteps_Comuni" xml:space="preserve">
+    <value>Operating municipalities</value>
+  </data>
+  <data name="SupplierActivationSteps_Profile" xml:space="preserve">
+    <value>Professional profile</value>
+  </data>
+  <data name="SupplierActivationSteps_Terms" xml:space="preserve">
+    <value>Terms of service</value>
+  </data>
+  <data name="SupplierActivationBlocker_Categories" xml:space="preserve">
+    <value>Choose at least one category</value>
+  </data>
+  <data name="SupplierActivationBlocker_Comuni" xml:space="preserve">
+    <value>Select at least one municipality</value>
+  </data>
+  <data name="SupplierActivationBlocker_Profile" xml:space="preserve">
+    <value>Add a professional description</value>
+  </data>
+  <data name="SupplierActivationBlocker_Terms" xml:space="preserve">
+    <value>Accept the terms of service</value>
+  </data>
+  <data name="SupplierActivationBlocker_TermsRequired" xml:space="preserve">
+    <value>You must accept the terms of service</value>
+  </data>
+  <data name="PlanDescription_Starter" xml:space="preserve">
+    <value>Up to 3 properties — ideal to get started.</value>
+  </data>
+  <data name="PlanDescription_Pro" xml:space="preserve">
+    <value>Up to 50 properties — for growing operators.</value>
+  </data>
+  <data name="PlanDescription_Scale" xml:space="preserve">
+    <value>Unlimited properties — for agencies and PMs.</value>
+  </data>
+</root>

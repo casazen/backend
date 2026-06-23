@@ -54,5 +54,5 @@ public static class SupplierInviteEmailBuilder
     }
 
     public static string BuildSignupUrl(string publicSiteBaseUrl, SupplierInviteRecord invite) =>
-        $"{publicSiteBaseUrl.TrimEnd('/')}/login?inviteToken={invite.Id}&email={Uri.EscapeDataString(invite.Email)}&comune={Uri.EscapeDataString(invite.ComuneCode)}";
+        $"{publicSiteBaseUrl.TrimEnd('/')}/register?inviteToken={invite.Id}&email={Uri.EscapeDataString(invite.Email)}&comune={Uri.EscapeDataString(invite.ComuneCode)}";
 }

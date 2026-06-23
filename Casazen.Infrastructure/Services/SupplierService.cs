@@ -13,7 +13,7 @@ namespace Casazen.Infrastructure.Services;
 
 public class SupplierService(
     AppDbContext db,
-    ISendGridService sendGridService,
+    IEmailService emailService,
     IConfiguration configuration,
     IHostEnvironment hostEnvironment,
     ILogger<SupplierService> logger) : ISupplierService
@@ -152,6 +152,21 @@ public class SupplierService(
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Supplier {OrgId} activated", orgId);
         return profile;
+    }
+
+    public async Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(
+        Guid orgId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await db.SupplierAvailability
+            .AsNoTracking()
+            .Where(sa => sa.OrgId == orgId && sa.Date >= from && sa.Date <= to)
+            .OrderBy(sa => sa.Date)
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(sa => (sa.Date, sa.Available)).ToList();
     }
 
     public async Task<int> UpdateAvailabilityAsync(
@@ -318,13 +333,21 @@ public class SupplierService(
 
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
     {
-        if (ShouldSkipInviteEmail())
+        if (!IsEmailConfigured())
         {
-            logger.LogWarning(
-                "SendGrid not configured — supplier invite email skipped for {Email} (env={Environment})",
-                invite.Email,
-                hostEnvironment.EnvironmentName);
-            return;
+            if (ShouldSkipInviteEmail())
+            {
+                logger.LogWarning(
+                    "Email not configured — supplier invite email skipped for {Email} (env={Environment})",
+                    invite.Email,
+                    hostEnvironment.EnvironmentName);
+                return;
+            }
+
+            db.SupplierInviteRecords.Remove(invite);
+            await db.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException(
+                "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
         }
 
         var baseUrl = configuration["App:PublicSiteBaseUrl"];
@@ -336,8 +359,8 @@ public class SupplierService(
         var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(baseUrl, invite);
         var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
 
-        var sent = await sendGridService.SendEmailAsync(invite.Email, subject, html);
-        if (sent)
+        var result = await emailService.SendEmailAsync(invite.Email, subject, html);
+        if (result.Success)
         {
             logger.LogInformation("Supplier invite email sent to {Email}", invite.Email);
             return;
@@ -345,17 +368,32 @@ public class SupplierService(
 
         db.SupplierInviteRecords.Remove(invite);
         await db.SaveChangesAsync(cancellationToken);
-        throw new InvalidOperationException("Impossibile inviare l'email di invito. Riprovare.");
+        var reason = string.IsNullOrWhiteSpace(result.ErrorDetail)
+            ? "Impossibile inviare l'email di invito. Riprovare."
+            : "Impossibile inviare l'email di invito. Controllare la configurazione email del server.";
+        throw new InvalidOperationException(reason);
+    }
+
+    private bool IsEmailConfigured()
+    {
+        // Resend HTTP API (primary — works on all Railway plans)
+        var resendKey = configuration["Email:ResendApiKey"];
+        if (!string.IsNullOrWhiteSpace(resendKey) && resendKey.StartsWith("re_"))
+            return true;
+
+        // SMTP (local dev only — blocked on Railway Hobby)
+        if (!string.IsNullOrWhiteSpace(configuration["Email:SmtpHost"]))
+            return true;
+
+        // SendGrid SMTP relay (legacy fallback)
+        var sgKey = configuration["Email:SendGridApiKey"];
+        return !string.IsNullOrWhiteSpace(sgKey)
+            && !sgKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool ShouldSkipInviteEmail()
     {
-        var apiKey = configuration["Email:SendGridApiKey"];
-        if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
+        // Only called when !IsEmailConfigured() — skip in dev/test, throw in production.
         return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
     }
 }

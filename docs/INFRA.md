@@ -94,7 +94,7 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 Integrations link repos and trigger deploys. They **do not** copy env vars across platforms:
 
 - Supabase connection string → must be set on **Railway** (`ConnectionStrings__DefaultConnection`)
-- Auth0 / Stripe / SendGrid → **Railway** only
+- Auth0 / Stripe / Email (SMTP) → **Railway** only
 - `VITE_*` → **Vercel** only
 - Public API URLs → **GitHub Variables** (`RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`) for CI health checks and PR comments only
 
@@ -373,7 +373,14 @@ Auth0__Domain=[your-tenant.auth0.com]
 Auth0__Audience=https://casazen-api
 Stripe__SecretKey=[sk_live_... or sk_test_...]
 Stripe__WebhookSecret=[whsec_...]
-Email__SendGridApiKey=[SG....]
+# Email — SMTP (MailKit). Use Gmail free tier or any SMTP provider.
+# Option A: Direct SMTP (recommended)
+Email__SmtpHost=smtp.gmail.com
+Email__SmtpPort=587
+Email__SmtpUsername=casazen@gmail.com
+Email__SmtpPassword=[16-char-app-password]
+# Option B: SendGrid SMTP relay (legacy, 100 emails/day free)
+# Email__SendGridApiKey=SG....
 Email__FromAddress=noreply@casazen.app
 App__PublicSiteBaseUrl=https://casazen-app.vercel.app
 Hangfire__DashboardEnabled=false
@@ -562,7 +569,7 @@ Often auto-created by **Supabase ↔ GitHub** integration. Not used by Railway r
 | Secret / config | Set on |
 |---|---|
 | Database password / connection string | **Railway** per environment |
-| Auth0, Stripe, SendGrid | **Railway** per environment |
+| Auth0, Stripe, Email (SMTP) | **Railway** per environment |
 | `VITE_*` | **Vercel** Preview + Production |
 | Supabase service role (if needed for admin scripts) | **Supabase** dashboard or GitHub (optional) |
 

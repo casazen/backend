@@ -1,6 +1,7 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Casazen.Core.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 using Stripe;
 
 namespace Casazen.Web.Middleware;
@@ -8,7 +9,7 @@ namespace Casazen.Web.Middleware;
 /// <summary>
 /// Global exception handler that converts exceptions to RFC 7807 Problem Details responses.
 /// </summary>
-public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandlingMiddleware> logger)
+public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandlingMiddleware> logger, IStringLocalizer<ErrorHandlingMiddleware> localizer)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -35,7 +36,7 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         }
     }
 
-    private static Task HandleStatusCodeAsync(HttpContext context)
+    private Task HandleStatusCodeAsync(HttpContext context)
     {
         return context.Response.StatusCode switch
         {
@@ -43,17 +44,17 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
                 WriteProblemAsync(context, new ProblemDetails
                 {
                     Type = "https://tools.ietf.org/html/rfc7235#section-3.1",
-                    Title = "Unauthorized",
+                    Title = localizer["Unauthorized"],
                     Status = StatusCodes.Status401Unauthorized,
-                    Detail = "Authentication is required. Provide a valid Bearer token in the Authorization header.",
+                    Detail = localizer["UnauthorizedDetail"],
                 }),
             StatusCodes.Status403Forbidden when !context.Response.ContentLength.HasValue =>
                 WriteProblemAsync(context, new ProblemDetails
                 {
                     Type = "https://tools.ietf.org/html/rfc7231#section-6.5.3",
-                    Title = "Forbidden",
+                    Title = localizer["Forbidden"],
                     Status = StatusCodes.Status403Forbidden,
-                    Detail = "You do not have permission to access this resource.",
+                    Detail = localizer["ForbiddenDetail"],
                 }),
             _ => Task.CompletedTask,
         };
@@ -69,44 +70,44 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
             NotFoundException notFoundEx => new ProblemDetails
             {
                 Type = "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-                Title = "Not Found",
+                Title = localizer["NotFound"],
                 Status = StatusCodes.Status404NotFound,
                 Detail = notFoundEx.Message,
             },
             PaymentProcessingException paymentEx => new ProblemDetails
             {
                 Type = "https://casazen.app/errors/payment-processing-error",
-                Title = "Payment Processing Error",
+                Title = localizer["PaymentProcessingError"],
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Detail = paymentEx.Message,
             },
             StripeException stripeEx => new ProblemDetails
             {
                 Type = "https://casazen.app/errors/stripe-integration-error",
-                Title = "Stripe Integration Error",
+                Title = localizer["StripeIntegrationError"],
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Detail = stripeEx.StripeError?.Message ?? stripeEx.Message,
             },
             InvalidOperationException invalidOp => new ProblemDetails
             {
                 Type = "https://casazen.app/errors/operation-failed",
-                Title = "Operation Failed",
+                Title = localizer["OperationFailed"],
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Detail = invalidOp.Message,
             },
             UnauthorizedAccessException => new ProblemDetails
             {
                 Type = "https://tools.ietf.org/html/rfc7235#section-3.1",
-                Title = "Unauthorized",
+                Title = localizer["Unauthorized"],
                 Status = StatusCodes.Status401Unauthorized,
-                Detail = "Authentication is required to access this resource.",
+                Detail = localizer["UnauthorizedDetail"],
             },
             _ => new ProblemDetails
             {
                 Type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-                Title = "Internal Server Error",
+                Title = localizer["InternalServerError"],
                 Status = StatusCodes.Status500InternalServerError,
-                Detail = "An unexpected error occurred. Please try again later.",
+                Detail = localizer["InternalServerErrorDetail"],
             },
         };
 
@@ -124,12 +125,12 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         return exception;
     }
 
-    private static ValidationProblemDetails BuildValidationProblem(ValidationException ex)
+    private ValidationProblemDetails BuildValidationProblem(ValidationException ex)
     {
         var problem = new ValidationProblemDetails(ex.Errors)
         {
             Type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-            Title = "One or more validation errors occurred.",
+            Title = localizer["ValidationError"],
             Status = StatusCodes.Status422UnprocessableEntity,
             Detail = ex.Message,
         };

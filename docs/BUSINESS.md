@@ -188,5 +188,5 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 | Agoda | Sync bookings and availability; push pricing | Same as Airbnb |
 | Stripe | Payment processing and refunds | Charge amounts, refund amounts, webhook payment events |
 | Alloggiati Web | Mandatory police guest registration | Guest identity data (name, DOB, document details, nationality) |
-| SendGrid | Transactional email notifications | Booking confirmations, receipts, reminders |
+| MailKit SMTP | Transactional email notifications (supplier invites, booking confirmations, receipts) | Email via any SMTP server (Gmail free tier recommended) or SendGrid SMTP relay |
 | Auth0 | User identity and authentication | JWT tokens validated on every API request |
