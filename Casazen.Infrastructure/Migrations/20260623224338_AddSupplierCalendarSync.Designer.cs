@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623224338_AddSupplierCalendarSync")]
+    partial class AddSupplierCalendarSync
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1778,66 +1781,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SupplierInviteRecords");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SupplierJob", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CheckInLocation")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("CheckInToken")
-                        .HasMaxLength(36)
-                        .HasColumnType("character varying(36)");
-
-                    b.Property<DateTime?>("CheckInTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("CheckedInAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("CheckedOutAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("PropertyAddress")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime>("ScheduledEndUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("ScheduledStartUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("SupplierOrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupplierOrgId");
-
-                    b.ToTable("SupplierJobs");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.SupplierProfile", b =>
                 {
                     b.Property<Guid>("OrgId")
@@ -1894,10 +1837,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("PhotoUrlsJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
-
-                    b.Property<string>("ShowcaseSlug")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -2398,17 +2337,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithMany()
                         .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SupplierProfile");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.SupplierJob", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
-                        .WithMany()
-                        .HasForeignKey("SupplierOrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

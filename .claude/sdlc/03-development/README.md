@@ -27,6 +27,7 @@ See [`harness.md`](./harness.md) for the full loop specification.
 - `tsc -b --noEmit`
 - `npm run lint`
 - `npm run build`
+- `npm run test:e2e:local` (requires local backend running via `.\scripts\start-backend-local.ps1`)
 - `dotnet ef migrations script` (if schema changed)
 
 **Compliance gates** (checked manually):
@@ -39,7 +40,7 @@ See [`harness.md`](./harness.md) for the full loop specification.
 Feature branch `feature/<name>` with open PR (`gh pr create --base develop`):
 - Conventional Commits title
 - PR body: summary + test plan + `Closes #N`
-- All CI checks initiated
+- All quality gates passed locally (E2E runs locally, NOT in CI — CI runs build + unit tests + format only)
 
 ## Chain
 

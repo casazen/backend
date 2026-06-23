@@ -273,6 +273,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        services.AddScoped<CalendarSyncService>();
+        services.AddSingleton<QrCodeService>();
+        services.AddScoped<NotificationRouter>();
+        services.AddScoped<INotificationChannel, EmailNotificationChannel>();
+        services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
+        services.AddHttpClient("IcalSync", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-IcalSync/1.0");
+        });
         return services;
     }
 
