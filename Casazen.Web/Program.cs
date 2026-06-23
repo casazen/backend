@@ -111,19 +111,19 @@ builder.Services.AddHttpClient("Openapi");
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
-	// Localization — Italian (default) and English
-	builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+// Localization — Italian (default) and English
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
-	builder.Services.AddRequestLocalization(options =>
-	{
-	    var supportedCultures = new[] { "it-IT", "en-US" };
-	    options.SetDefaultCulture(supportedCultures[0])
-	           .AddSupportedCultures(supportedCultures)
-	           .AddSupportedUICultures(supportedCultures);
-	    options.ApplyCurrentCultureToResponseHeaders = true;
-	});
+builder.Services.AddRequestLocalization(options =>
+{
+    var supportedCultures = new[] { "it-IT", "en-US" };
+    options.SetDefaultCulture(supportedCultures[0])
+           .AddSupportedCultures(supportedCultures)
+           .AddSupportedUICultures(supportedCultures);
+    options.ApplyCurrentCultureToResponseHeaders = true;
+});
 
-	// Authentication & Authorization
+// Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddCasazenAuthorization();
 
