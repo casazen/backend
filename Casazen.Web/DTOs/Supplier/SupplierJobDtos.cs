@@ -44,7 +44,7 @@ public class SupplierJobDto
     public decimal Price { get; set; }
     public DateTime? CheckedInAt { get; set; }
     public DateTime? CheckedOutAt { get; set; }
-    public string CheckInUrl { get; set; } = string.Empty;
+    public string? CheckInUrl { get; set; }
 }
 
 public class CheckInStatusDto

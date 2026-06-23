@@ -39,5 +39,5 @@ public class SupplierJob
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     [ForeignKey(nameof(SupplierOrgId))]
-    public SupplierProfile SupplierProfile { get; set; } = null!;
+    public Org Org { get; set; } = null!;
 }

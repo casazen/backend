@@ -22,7 +22,20 @@ public class NotificationRouter
         var channel = _channels.FirstOrDefault(c => c.ChannelType == message.Channel);
         if (channel is null)
         {
-            _logger.LogWarning("No channel found for {ChannelType}", message.Channel);
+            _logger.LogWarning("No channel found for {ChannelType}, attempting fallback", message.Channel);
+
+            if (fallback.HasValue)
+            {
+                var fbChannel = _channels.FirstOrDefault(c => c.ChannelType == fallback.Value);
+                if (fbChannel is not null)
+                {
+                    var fbMsg = message with { Channel = fallback.Value };
+                    var fbResult = await fbChannel.SendAsync(fbMsg, ct);
+                    _logger.LogInformation(
+                        fbResult.Success ? "Fallback notification sent via {Channel}" : "Fallback also failed: {Error}",
+                        fallback.Value, fbResult.Error);
+                }
+            }
             return;
         }
 

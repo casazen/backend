@@ -5,6 +5,7 @@
 - `Sessions/design-<issue-N>.md` exists and all Stage 02 gates passed
 - Branch `feature/<issue-N>-<slug>` created from **`develop`** in each affected repo
 - No uncommitted changes from previous work on this branch
+- **Local backend ready for E2E**: `.\scripts\start-backend-local.ps1` running on `http://localhost:5000` (starts backend with InMemory DB — zero remote dependencies)
 
 ## Council Run
 
@@ -34,7 +35,7 @@ All applicable gates must pass before exiting. Mark N/A only when the design spe
 | G6 | TypeScript clean | `tsc -b --noEmit` | Exit code 0 |
 | G7 | Lint clean | `npm run lint` | Exit code 0, 0 errors |
 | G8 | Build succeeds | `npm run build` | Exit code 0 |
-| G9 | E2E tests pass (AC-driven) | `npm run test:e2e` (in `../frontend`) | All Playwright tests pass; **must include specs mapped to Issue ACs** from design spec |
+| G9 | E2E tests pass (local backend, AC-driven) | `npm run test:e2e:local` (in `../frontend`) | All Playwright tests pass against local .NET backend (InMemory DB); **must include specs mapped to Issue ACs** from design spec. Backend must be running via `.\scripts\start-backend-local.ps1` before executing this gate. |
 
 ### Compliance gates (both repos)
 
@@ -83,10 +84,10 @@ PR body must include:
 - `## Test Plan` — how to verify full-stack behaviour on develop after merge
 - `## Acceptance criteria coverage` — table mapping each Issue AC → unit/integration/E2E test file
 - Cross-repo PR link
-- Gate status table (all ✅, including G9 E2E when FE touched)
+- Gate status table (all ✅, including G9 E2E when FE touched — runs locally, NOT in CI)
 - `Closes #N`
 
-**test-engineer rule**: for every acceptance criterion in the Issue/design spec, add or extend at least one automated test (Vitest or Playwright E2E) before Stage 03 exits. E2E specs live in `e2e/` and run in demo mode (`npm run test:e2e`).
+**test-engineer rule**: for every acceptance criterion in the Issue/design spec, add or extend at least one automated test (Vitest or Playwright E2E) before Stage 03 exits. E2E specs live in `e2e/` and run against the local backend (`npm run test:e2e:local`) with the backend started via `.\scripts\start-backend-local.ps1`. This gives real frontend↔backend integration without remote dependencies.
 
 ## Handoff to Stage 04
 

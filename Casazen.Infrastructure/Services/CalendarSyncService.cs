@@ -42,6 +42,8 @@ public class CalendarSyncService
             if (!ICalImportSpike.IsValidExportFeed(icsContent))
             {
                 profile.CalendarSyncError = "iCal feed is not valid or contains no events";
+                profile.CalendarLastSyncAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
                 _logger.LogWarning("Invalid iCal feed for supplier {OrgId}", orgId);
                 return;
             }
@@ -87,6 +89,8 @@ public class CalendarSyncService
         catch (Exception ex)
         {
             profile.CalendarSyncError = $"Sync failed: {ex.Message}";
+            profile.CalendarLastSyncAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
             _logger.LogError(ex, "iCal sync failed for supplier {OrgId}", orgId);
         }
     }
@@ -107,11 +111,14 @@ public class CalendarSyncService
         _logger.LogInformation("Batch iCal sync completed for {Count} suppliers", profiles.Count);
     }
 
+    private const int MaxDatesPerSync = 366; // 1 year max per supplier per sync
+
     private static IEnumerable<DateOnly> EnumerateDates(DateTime start, DateTime end)
     {
         var d = DateOnly.FromDateTime(start.Date);
         var last = DateOnly.FromDateTime(end.Date);
-        while (d <= last)
+        var count = 0;
+        while (d <= last && count++ < MaxDatesPerSync)
         {
             yield return d;
             d = d.AddDays(1);

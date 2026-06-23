@@ -4,8 +4,9 @@ using Microsoft.Extensions.Configuration;
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Generates QR code URLs for supplier job check-in/out.
+/// Generates QR code URLs and tokens for supplier job check-in/out.
 /// The QR code points to a public check-in page with a time-limited token.
+/// The token is generated ONCE when a job is accepted and persisted to SupplierJob.CheckInToken.
 /// </summary>
 public class QrCodeService
 {
@@ -16,14 +17,14 @@ public class QrCodeService
         _baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen.app";
     }
 
-    public string GenerateCheckInUrl(Guid jobId, string propertyAddress)
-    {
-        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        return $"{_baseUrl}/check-in/{jobId}?token={token}&loc={Uri.EscapeDataString(propertyAddress)}";
-    }
+    /// <summary>Generates a fresh cryptographically-random token.</summary>
+    public static string GenerateToken() =>
+        Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
-    public string GenerateCheckInToken()
+    /// <summary>Builds the full check-in URL for a job that already has a persisted token.</summary>
+    public string BuildCheckInUrl(Guid jobId, string token, string? propertyAddress)
     {
-        return Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var loc = string.IsNullOrWhiteSpace(propertyAddress) ? "Property" : propertyAddress;
+        return $"{_baseUrl}/check-in/{jobId}?token={token}&loc={Uri.EscapeDataString(loc)}";
     }
 }
