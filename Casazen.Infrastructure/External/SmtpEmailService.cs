@@ -8,7 +8,7 @@ namespace Casazen.Infrastructure.External;
 /// <summary>
 /// SMTP email sender via <see cref="System.Net.Mail.SmtpClient"/> — zero external dependencies.
 ///
-/// <para><b>Option A — Direct SMTP:</b></para>
+/// <para><b>Option A — Direct SMTP (recommended):</b></para>
 /// <list type="bullet">
 ///   <item><c>Email__SmtpHost</c>      = smtp.gmail.com</item>
 ///   <item><c>Email__SmtpPort</c>      = 587</item>
@@ -17,7 +17,7 @@ namespace Casazen.Infrastructure.External;
 /// </list>
 ///
 /// <para><b>Option B — SendGrid SMTP relay:</b></para>
-/// <para>Set only <c>Email__SendGridApiKey</c> — connects to smtp.sendgrid.net:587.</para>
+/// <para>Set only <c>Email__SendGridApiKey</c> — connects to smtp.sendgrid.net:587 with "apikey" username.</para>
 /// </summary>
 public sealed class SmtpEmailService : IEmailService
 {
@@ -59,7 +59,7 @@ public sealed class SmtpEmailService : IEmailService
             {
                 EnableSsl = true,
                 Credentials = new NetworkCredential(username, password),
-                Timeout = 15_000,
+                Timeout = 15_000, // 15 seconds — fail fast if SMTP is unreachable
             };
 
             await client.SendMailAsync(mail);
@@ -76,11 +76,17 @@ public sealed class SmtpEmailService : IEmailService
 
     private (string Host, int Port, string Username, string Password) ResolveCredentials()
     {
+        // Direct SMTP config
         if (!string.IsNullOrWhiteSpace(_smtpHost))
         {
-            return (_smtpHost, _smtpPort, _smtpUsername ?? string.Empty, _smtpPassword ?? string.Empty);
+            return (
+                _smtpHost,
+                _smtpPort,
+                _smtpUsername ?? string.Empty,
+                _smtpPassword ?? string.Empty);
         }
 
+        // SendGrid SMTP relay fallback
         if (!string.IsNullOrWhiteSpace(_sendGridApiKey)
             && !_sendGridApiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase))
         {
@@ -88,7 +94,8 @@ public sealed class SmtpEmailService : IEmailService
         }
 
         throw new InvalidOperationException(
-            "No email configuration found. Set Email__SmtpHost or Email__SendGridApiKey.");
+            "No email configuration found. Set Email__SmtpHost (and credentials) for direct SMTP, " +
+            "or Email__SendGridApiKey for SendGrid SMTP relay.");
     }
 
     private static string SanitizeError(string raw)
