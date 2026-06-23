@@ -50,6 +50,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
                 ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
+                ["App:ApiBaseUrl"] = "https://casazen-api-test.up.railway.app",
                 ["Legal:Documents:Tos:Version"] = "2026-06-v1",
                 ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
                 ["Legal:Documents:Dpa:Version"] = "2026-06-v1",

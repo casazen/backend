@@ -148,7 +148,7 @@ public class SupplierServiceInviteEmailTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
+                ["App:ApiBaseUrl"] = "https://casazen-api.up.railway.app",
                 ["Email:SendGridApiKey"] = emailServiceApiKey ?? (isProduction ? "SG.live_test_key" : string.Empty),
             })
             .Build();

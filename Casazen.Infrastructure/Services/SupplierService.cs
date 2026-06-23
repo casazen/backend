@@ -342,13 +342,13 @@ public class SupplierService(
                 "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
         }
 
-        var baseUrl = configuration["App:PublicSiteBaseUrl"];
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        var apiBaseUrl = configuration["App:ApiBaseUrl"];
+        if (string.IsNullOrWhiteSpace(apiBaseUrl))
         {
-            throw new InvalidOperationException("App:PublicSiteBaseUrl non configurato: impossibile inviare l'invito.");
+            throw new InvalidOperationException("App:ApiBaseUrl non configurato: impossibile inviare l'invito.");
         }
 
-        var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(baseUrl, invite);
+        var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(apiBaseUrl, invite);
         var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
 
         var result = await emailService.SendEmailAsync(invite.Email, subject, html);
