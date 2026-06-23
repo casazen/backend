@@ -23,9 +23,8 @@ public class SupplierRegisterPageController : Controller
         var emailAttr = string.IsNullOrEmpty(email) ? "" : $"value=\"{WebUtility.HtmlEncode(email)}\"";
         var comuneAttr = string.IsNullOrEmpty(comune) ? "" : $"value=\"{WebUtility.HtmlEncode(comune)}\"";
 
-        var auth0Domain = _config["Auth0:Domain"] ?? "";
-        var auth0ClientId = _config["Auth0:ClientId"] ?? "";
         var publicSiteBaseUrl = (_config["App:PublicSiteBaseUrl"] ?? "").TrimEnd('/');
+        var loginUrl = $"{publicSiteBaseUrl}/login";
 
         var html = $@"<!DOCTYPE html>
 <html lang=""it"">
@@ -91,9 +90,9 @@ public class SupplierRegisterPageController : Controller
 <div class=""card"" id=""success-card"" style=""display:none;text-align:center"">
   <div class=""success-icon"">&#10003;</div>
   <h1>Registrazione completata</h1>
-  <p class=""desc"">Il tuo profilo fornitore &egrave; stato creato. Ora crea il tuo account Auth0 per accedere alla console.</p>
-  <button class=""btn"" id=""auth0-btn"">Crea account</button>
-  <p class=""footer"" style=""margin-top:.75rem"">Dopo aver creato l'account, completa l'attivazione dalla console fornitore.</p>
+  <p class=""desc"">Il tuo profilo fornitore &egrave; stato creato. Ora accedi con la stessa email per entrare nella console.</p>
+  <a href=""{WebUtility.HtmlEncode(loginUrl)}"" class=""btn"" style=""display:inline-block;text-decoration:none"">Accedi a CasaZen</a>
+  <p class=""footer"" style=""margin-top:1rem"">Dopo l'accesso, completa l'attivazione del profilo dalla console fornitore.</p>
 </div>
 
 <script>
@@ -102,7 +101,6 @@ var error = document.getElementById('error');
 var btn = document.getElementById('submit-btn');
 var formCard = document.getElementById('form-card');
 var successCard = document.getElementById('success-card');
-var auth0Btn = document.getElementById('auth0-btn');
 
 form.addEventListener('submit', async function(e) {{
   e.preventDefault();
@@ -140,16 +138,6 @@ form.addEventListener('submit', async function(e) {{
   }}
 }});
 
-auth0Btn.addEventListener('click', function() {{
-  var authUrl = 'https://{WebUtility.HtmlEncode(auth0Domain)}/authorize?' +
-    'response_type=code&' +
-    'client_id={WebUtility.UrlEncode(auth0ClientId)}&' +
-    'redirect_uri={WebUtility.UrlEncode(publicSiteBaseUrl + "/callback")}&' +
-    'scope=openid+profile+email&' +
-    'screen_hint=signup&' +
-    'login_hint=' + encodeURIComponent(document.getElementById('email').value);
-  window.location.href = authUrl;
-}});
 </script>
 </body>
 </html>";
