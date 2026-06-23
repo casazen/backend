@@ -135,6 +135,24 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 | `PUT` | `/api/ota/availability` | Push availability update to OTAs |
 | `POST` | `/api/ota/validate` | Validate OTA API credentials |
 
+#### Supplier console (US-022)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/admin/suppliers/invite` | Admin | Creates invite record and sends signup email via SendGrid. Returns `inviteId`, `expiresAt`. 409 if pending invite exists; 502 if email delivery fails (invite rolled back). |
+| `POST` | `/api/suppliers/register` | Anonymous | Self-serve or invite-token registration. Body: `email`, `legalName`, `phone`, `comuneCode`, optional `inviteToken` (invite UUID). |
+| `GET` | `/api/suppliers?comune=&category=` | PropertyOwner+ | Lists **Active** suppliers for host picker. |
+| `GET` | `/api/supplier/profile` | Supplier | Supplier profile for current org. |
+| `PUT` | `/api/supplier/profile` | Supplier | Update profile fields. |
+| `GET` | `/api/supplier/profile/activation` | Supplier | Activation wizard step statuses. |
+| `POST` | `/api/supplier/profile/activation/complete` | Supplier | Complete activation (ToS + blockers). |
+| `GET` | `/api/supplier/inbox` | Supplier | Service-request inbox (empty until marketplace v0). |
+| `PUT` | `/api/supplier/availability` | Supplier | Upsert availability by date. |
+
+**Invite email:** `SupplierService.CreateInviteAsync` persists `SupplierInviteRecords`, then calls SendGrid with HTML from `SupplierInviteEmailBuilder`. Signup URL: `{App:PublicSiteBaseUrl}/login?inviteToken={id}&email={email}&comune={comuneCode}`. Skipped in Testing/Development when `Email:SendGridApiKey` is unset.
+
+**Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier`. JWT bootstrap contexts are merged with DB `UserContextMemberships` so host users who gain `Supplier` still see the supplier tab. Default route: `/supplier/inbox`.
+
 #### Other
 
 | Method | Path | Description |

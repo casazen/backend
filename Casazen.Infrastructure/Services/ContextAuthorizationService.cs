@@ -1,8 +1,10 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace Casazen.Infrastructure.Services;
@@ -22,18 +24,41 @@ public class ContextAuthorizationService(
             .OrderBy(m => m.ContextKey)
             .ToListAsync(cancellationToken);
 
+        var jwtRoles = ResolveJwtRoles();
+
+        if (jwtRoles.Count == 0 && memberships.Count == 0)
+        {
+            var dbUser = await dbContext.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+            if (dbUser is not null)
+            {
+                jwtRoles = MapDbUserRoleToJwtRoles(dbUser.Role);
+            }
+        }
+
         if (memberships.Count > 0)
         {
-            return memberships.Select(m => new ContextAccess(
+            var fromDb = memberships.Select(m => new ContextAccess(
                     m.ContextKey,
                     m.Context.DisplayName,
                     m.Role.RoleKey,
                     m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
                     GetDefaultRoute(m.ContextKey)))
                 .ToList();
-        }
 
-        var jwtRoles = ParseRoles(httpContextAccessor.HttpContext?.User.FindAll("https://casazen.app/roles").Select(c => c.Value) ?? []);
+            var existingKeys = fromDb.Select(c => c.ContextKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var jwtContext in ContextAccessBootstrap.BuildFallbackAccess(jwtRoles))
+            {
+                if (!existingKeys.Contains(jwtContext.ContextKey))
+                {
+                    fromDb.Add(jwtContext);
+                }
+            }
+
+            return fromDb.OrderBy(c => c.ContextKey, StringComparer.OrdinalIgnoreCase).ToList();
+        }
 
         return ContextAccessBootstrap.BuildFallbackAccess(jwtRoles);
     }
@@ -68,12 +93,38 @@ public class ContextAuthorizationService(
         return context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
     }
 
+    private IReadOnlyList<string> ResolveJwtRoles()
+    {
+        var principal = httpContextAccessor.HttpContext?.User;
+        if (principal is null)
+        {
+            return [];
+        }
+
+        var claimValues = principal.FindAll("https://casazen.app/roles").Select(c => c.Value)
+            .Concat(principal.FindAll(ClaimTypes.Role).Select(c => c.Value))
+            .Concat(principal.FindAll("roles").Select(c => c.Value));
+
+        return ParseRoles(claimValues);
+    }
+
+    private static IReadOnlyList<string> MapDbUserRoleToJwtRoles(UserRole role) =>
+        role switch
+        {
+            UserRole.Admin => ["Admin"],
+            UserRole.PropertyOwner => ["PropertyOwner"],
+            UserRole.PropertyManager => ["PropertyOwner"],
+            UserRole.LongTermLandlord => ["LongTermLandlord"],
+            _ => [],
+        };
+
     private static string GetDefaultRoute(string contextKey) =>
         contextKey switch
         {
             "short-rent" => "/app/short-rent",
             "long-rent" => "/app/long-rent/leases",
             "admin" => "/app/admin",
+            "supplier" => "/supplier/inbox",
             _ => "/app/choose-context",
         };
 

@@ -118,8 +118,11 @@ Auth0 Dashboard → **User Management** → **Roles** → **Create Role**:
 | `Admin` | Full system access |
 | `PropertyOwner` | Can manage own properties and bookings (short-stay layer) |
 | `LongTermLandlord` | Can manage long-term leases (`/api/leases/*`, `/leases/*` UI) |
+| `Supplier` | Supplier console (`/supplier/*`): inbox, profile, availability, activation wizard |
 
 Assign `LongTermLandlord` (alone or with `PropertyOwner`) in Auth0 for users who need the long-term UI layer. Without this role, the frontend hides lease navigation and redirects `/leases` to the short-stay home.
+
+Assign `Supplier` for users who operate the **supplier console**. Users with both host and supplier roles see a workspace tab (wrench icon) to switch between host/admin and `/supplier/inbox`. After self-serve or invite-based registration, the supplier must have the `Supplier` role in Auth0 before protected `/api/supplier/*` endpoints return 200.
 
 ### Step 2: Create Auth0 Action for Custom Claims
 
@@ -135,8 +138,9 @@ exports.onExecutePostLogin = async (event, api) => {
   const namespace = 'https://casazen.app';
   const roles = event.authorization?.roles ?? [];
 
-  // Add roles as custom claim (required by backend)
+  // Add roles to access token (required by backend) and ID token (required by frontend profile/guards)
   api.accessToken.setCustomClaim(`${namespace}/roles`, roles);
+  api.idToken.setCustomClaim(`${namespace}/roles`, roles);
 
   // Add user metadata if needed
   if (event.user.user_metadata?.property_owner_id) {

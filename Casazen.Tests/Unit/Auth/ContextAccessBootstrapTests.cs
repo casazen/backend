@@ -21,6 +21,17 @@ public class ContextAccessBootstrapTests
     }
 
     [Fact]
+    public void BuildFallbackAccess_SupplierMapsToSupplierContext()
+    {
+        var contexts = ContextAccessBootstrap.BuildFallbackAccess(["Supplier"]);
+        var supplier = Assert.Single(contexts);
+        Assert.Equal("supplier", supplier.ContextKey);
+        Assert.Equal("supplier", supplier.RoleKey);
+        Assert.Equal("/supplier/inbox", supplier.DefaultRoute);
+        Assert.Contains("supplier.inbox.read", supplier.Permissions);
+    }
+
+    [Fact]
     public void BuildFallbackAccess_AdminIncludesSeoPermission()
     {
         var contexts = ContextAccessBootstrap.BuildFallbackAccess(["Admin"]);
