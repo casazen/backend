@@ -25,7 +25,10 @@ public sealed class ResendEmailService : IEmailService
 
     public ResendEmailService(IConfiguration configuration, ILogger<ResendEmailService> logger)
     {
-        _fromEmail = configuration["Email:FromAddress"] ?? "onboarding@resend.dev";
+        var from = configuration["Email:FromAddress"];
+        _fromEmail = string.IsNullOrWhiteSpace(from) || from.Contains("casazen.app", StringComparison.OrdinalIgnoreCase)
+            ? "onboarding@resend.dev"
+            : from;
         var apiKey = configuration["Email:ResendApiKey"] ?? string.Empty;
         _resend = ResendClient.Create(apiKey);
         _logger = logger;
