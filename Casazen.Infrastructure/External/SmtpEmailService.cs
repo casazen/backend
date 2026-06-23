@@ -1,24 +1,23 @@
-using MailKit.Net.Smtp;
-using MailKit.Security;
+using System.Net;
+using System.Net.Mail;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using MimeKit;
-using MimeKit.Text;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// MailKit SMTP email sender — drop-in alternative to SendGrid.
-/// Configure via Email__Smtp* keys or the standard Email__SendGridApiKey (SendGrid SMTP relay).
+/// SMTP email sender via <see cref="System.Net.Mail.SmtpClient"/> — zero external dependencies.
 ///
-/// SMTP mode (Email__SmtpHost set):
-///   Email__SmtpHost     = smtp.gmail.com
-///   Email__SmtpPort     = 587
-///   Email__SmtpUsername  = user@gmail.com
-///   Email__SmtpPassword  = app-password
+/// <para><b>Option A — Direct SMTP (recommended):</b></para>
+/// <list type="bullet">
+///   <item><c>Email__SmtpHost</c>      = smtp.gmail.com</item>
+///   <item><c>Email__SmtpPort</c>      = 587</item>
+///   <item><c>Email__SmtpUsername</c>   = user@gmail.com</item>
+///   <item><c>Email__SmtpPassword</c>   = 16-char app password</item>
+/// </list>
 ///
-/// SendGrid SMTP relay (only Email__SendGridApiKey set, no SmtpHost):
-///   Uses "apikey" as username + SendGrid API key as password via smtp.sendgrid.net:587.
+/// <para><b>Option B — SendGrid SMTP relay:</b></para>
+/// <para>Set only <c>Email__SendGridApiKey</c> — connects to smtp.sendgrid.net:587 with "apikey" username.</para>
 /// </summary>
 public sealed class SmtpEmailService : IEmailService
 {
@@ -27,7 +26,7 @@ public sealed class SmtpEmailService : IEmailService
     private readonly int _smtpPort;
     private readonly string? _smtpUsername;
     private readonly string? _smtpPassword;
-    private readonly string? _sendGridApiKey; // fallback for SendGrid SMTP relay
+    private readonly string? _sendGridApiKey;
     private readonly ILogger<SmtpEmailService> _logger;
 
     public SmtpEmailService(IConfiguration configuration, ILogger<SmtpEmailService> logger)
@@ -45,20 +44,24 @@ public sealed class SmtpEmailService : IEmailService
     {
         try
         {
-            using var mime = new MimeMessage();
-            mime.From.Add(MailboxAddress.Parse(_fromEmail));
-            mime.To.Add(MailboxAddress.Parse(to));
-            mime.Subject = subject;
-            mime.Body = new TextPart(TextFormat.Html) { Text = htmlContent };
-
-            using var client = new SmtpClient();
+            using var mail = new MailMessage
+            {
+                From = new MailAddress(_fromEmail, "CASAZEN"),
+                Subject = subject,
+                Body = htmlContent,
+                IsBodyHtml = true,
+            };
+            mail.To.Add(to);
 
             var (host, port, username, password) = ResolveCredentials();
 
-            await client.ConnectAsync(host, port, SecureSocketOptions.StartTls);
-            await client.AuthenticateAsync(username, password);
-            await client.SendAsync(mime);
-            await client.DisconnectAsync(true);
+            using var client = new SmtpClient(host, port)
+            {
+                EnableSsl = true,
+                Credentials = new NetworkCredential(username, password),
+            };
+
+            await client.SendMailAsync(mail);
 
             _logger.LogInformation("Email sent to {To} via SMTP ({Host}:{Port})", to, host, port);
             return new EmailSendResult(true);
@@ -72,7 +75,7 @@ public sealed class SmtpEmailService : IEmailService
 
     private (string Host, int Port, string Username, string Password) ResolveCredentials()
     {
-        // Explicit SMTP config
+        // Direct SMTP config
         if (!string.IsNullOrWhiteSpace(_smtpHost))
         {
             return (
@@ -94,10 +97,8 @@ public sealed class SmtpEmailService : IEmailService
             "or Email__SendGridApiKey for SendGrid SMTP relay.");
     }
 
-    /// <summary>Strips potentially sensitive SendGrid/SMTP error details.</summary>
     private static string SanitizeError(string raw)
     {
-        // Keep the first meaningful line, drop connection strings / stack traces
         var firstLine = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .FirstOrDefault() ?? "Unknown error";
         return firstLine.Length > 300 ? firstLine[..300] : firstLine;
