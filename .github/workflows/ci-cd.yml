@@ -27,8 +27,7 @@ jobs:
 
       - name: Test
         run: |
-          dotnet test --configuration Release --no-build --verbosity normal \
-            --filter "FullyQualifiedName!~PropertiesControllerIntegrationTests&FullyQualifiedName!~ApiTests&FullyQualifiedName!~UsersControllerIntegrationTests"
+          dotnet test --configuration Release --no-build --verbosity normal --maxcpucount
 
       - name: Check formatting
         run: dotnet format --verify-no-changes
