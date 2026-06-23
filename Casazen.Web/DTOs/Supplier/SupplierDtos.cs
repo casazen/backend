@@ -151,3 +151,19 @@ public class SupplierPickerDto
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
 }
+
+// ─── Calendar Sync ─────────────────────────────────────────────────────────────
+
+public class SetIcalFeedRequest
+{
+    [Required, MaxLength(2048)]
+    public string IcalFeedUrl { get; set; } = string.Empty;
+}
+
+public class CalendarSyncStatusDto
+{
+    public string CalendarSyncType { get; set; } = "None";
+    public string? IcalFeedUrl { get; set; }
+    public DateTime? CalendarLastSyncAt { get; set; }
+    public string? CalendarSyncError { get; set; }
+}

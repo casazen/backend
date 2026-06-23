@@ -47,6 +47,20 @@ public class SupplierProfile
 
     public DateTime? TosAcceptedAt { get; set; }
 
+    // Calendar sync
+    public CalendarSyncType CalendarSyncType { get; set; } = CalendarSyncType.None;
+
+    [MaxLength(2048)]
+    public string? IcalFeedUrl { get; set; }
+
+    [MaxLength(512)]
+    public string? GoogleCalendarRefreshToken { get; set; }
+
+    public DateTime? CalendarLastSyncAt { get; set; }
+
+    [MaxLength(500)]
+    public string? CalendarSyncError { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

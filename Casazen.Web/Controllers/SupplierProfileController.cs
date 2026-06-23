@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -8,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Supplier-facing endpoints: activation wizard, profile, inbox shell, and availability (US-022 / #292).
+/// Supplier-facing endpoints: activation wizard, profile, inbox shell, availability, and calendar sync (US-022 / #292).
 /// All routes are scoped to the caller's supplier org via <c>ISupplierOrgContextResolver</c>.
 /// </summary>
 [ApiController]
@@ -17,6 +19,7 @@ namespace Casazen.Web.Controllers;
 public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
+    CalendarSyncService calendarSyncService,
     ILogger<SupplierProfileController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -187,6 +190,63 @@ public class SupplierProfileController(
         var updated = await supplierService.UpdateAvailabilityAsync(orgId.Value, entries, cancellationToken);
 
         return Ok(new UpdateAvailabilityResponse { Updated = updated });
+    }
+
+    // ─── Calendar Sync ───────────────────────────────────────────────────────
+
+    /// <summary>Returns the supplier's calendar sync status.</summary>
+    [HttpGet("calendar/status")]
+    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CalendarSyncStatusDto>> GetCalendarStatus(CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
+        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+
+        return Ok(new CalendarSyncStatusDto
+        {
+            CalendarSyncType = profile.CalendarSyncType.ToString(),
+            IcalFeedUrl = profile.IcalFeedUrl,
+            CalendarLastSyncAt = profile.CalendarLastSyncAt,
+            CalendarSyncError = profile.CalendarSyncError,
+        });
+    }
+
+    /// <summary>Sets or updates the supplier's iCal feed URL and triggers an initial sync.</summary>
+    [HttpPut("calendar/ical")]
+    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CalendarSyncStatusDto>> SetIcalFeed(
+        [FromBody] SetIcalFeedRequest request,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
+        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+
+        profile.IcalFeedUrl = request.IcalFeedUrl;
+        profile.CalendarSyncType = CalendarSyncType.ICalFeed;
+        profile.CalendarSyncError = null;
+        await supplierService.UpdateProfileAsync(orgId.Value,
+            legalName: null, vatNumber: null, phone: null,
+            categories: null, comuni: null, bio: null, photoUrls: null,
+            cancellationToken);
+
+        // Trigger initial sync
+        _ = Task.Run(() => calendarSyncService.SyncIcalFeedAsync(orgId.Value, CancellationToken.None));
+
+        return Ok(new CalendarSyncStatusDto
+        {
+            CalendarSyncType = profile.CalendarSyncType.ToString(),
+            IcalFeedUrl = profile.IcalFeedUrl,
+            CalendarLastSyncAt = profile.CalendarLastSyncAt,
+        });
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
