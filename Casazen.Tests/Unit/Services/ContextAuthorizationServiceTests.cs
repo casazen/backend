@@ -4,6 +4,8 @@ using Casazen.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Claims;
 using Xunit;
 
@@ -119,7 +121,7 @@ public class ContextAuthorizationServiceTests
     private static ContextAuthorizationService CreateService(AppDbContext db, HttpContext httpContext)
     {
         var accessor = new HttpContextAccessor { HttpContext = httpContext };
-        return new ContextAuthorizationService(db, accessor);
+        return new ContextAuthorizationService(db, accessor, NullLogger<ContextAuthorizationService>.Instance);
     }
 
     private static HttpContext BuildHttpContext(string userId, string[] roles)
