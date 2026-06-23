@@ -376,11 +376,11 @@ public class SupplierService(
 
     private bool IsSendGridConfigured()
     {
-        // SMTP mode (SmtpEmailService)
+        // SMTP mode (SmtpEmailService) — primary
         if (!string.IsNullOrWhiteSpace(configuration["Email:SmtpHost"]))
             return true;
 
-        // SendGrid API key (used by SmtpEmailService as SMTP relay fallback)
+        // SendGrid API key (SmtpEmailService SMTP relay fallback)
         var apiKey = configuration["Email:SendGridApiKey"];
         return !string.IsNullOrWhiteSpace(apiKey)
             && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
