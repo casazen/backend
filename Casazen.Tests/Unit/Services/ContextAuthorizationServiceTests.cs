@@ -75,6 +75,29 @@ public class ContextAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task GetUserContextsAsync_WhenNoMembershipAndNoJwt_FallsBackToUserRoleEnum()
+    {
+        await using var db = CreateDbContext();
+        db.Users.Add(new Core.Entities.User
+        {
+            Id = "auth0|db-role",
+            Email = "owner@test.com",
+            FirstName = "Owner",
+            LastName = "User",
+            Role = Core.Entities.UserRole.PropertyOwner,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var httpContext = BuildHttpContext("auth0|db-role", []);
+        var service = CreateService(db, httpContext);
+
+        var contexts = await service.GetUserContextsAsync("auth0|db-role");
+
+        Assert.Contains(contexts, c => c.ContextKey == "short-rent");
+    }
+
+    [Fact]
     public void BuildFallbackAccess_PropertyOwner_HasShortRentPermissions()
     {
         var contexts = ContextAccessBootstrap.BuildFallbackAccess(["PropertyOwner"]);

@@ -138,8 +138,9 @@ exports.onExecutePostLogin = async (event, api) => {
   const namespace = 'https://casazen.app';
   const roles = event.authorization?.roles ?? [];
 
-  // Add roles as custom claim (required by backend)
+  // Add roles to access token (required by backend) and ID token (required by frontend profile/guards)
   api.accessToken.setCustomClaim(`${namespace}/roles`, roles);
+  api.idToken.setCustomClaim(`${namespace}/roles`, roles);
 
   // Add user metadata if needed
   if (event.user.user_metadata?.property_owner_id) {
