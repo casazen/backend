@@ -133,17 +133,9 @@ public class SupplierService(
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
             ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
 
-        var steps = await GetActivationStepsAsync(orgId, cancellationToken);
-        var blockers = steps.Where(s => s.Status != "completed" && s.Id != "tos").ToList();
-
+        // Only ToS gates activation. Categories, comuni, and bio can be completed later.
         if (!tosAccepted)
-            blockers.Add(new ActivationStep("tos", "Termini di servizio", "pending", "Devi accettare i termini di servizio"));
-
-        if (blockers.Count > 0)
-        {
-            var msgs = string.Join("; ", blockers.Select(b => b.Blocker));
-            throw new InvalidOperationException($"Attivazione non completata: {msgs}");
-        }
+            throw new InvalidOperationException("Devi accettare i termini di servizio");
 
         profile.TosAcceptedAt = DateTime.UtcNow;
         profile.Status = SupplierStatus.Active;
