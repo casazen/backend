@@ -275,6 +275,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         services.AddScoped<CalendarSyncService>();
         services.AddSingleton<QrCodeService>();
+        services.AddScoped<NotificationRouter>();
+        services.AddScoped<INotificationChannel, EmailNotificationChannel>();
+        services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
         services.AddHttpClient("IcalSync", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
