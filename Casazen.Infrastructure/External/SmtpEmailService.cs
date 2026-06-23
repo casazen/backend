@@ -59,6 +59,7 @@ public sealed class SmtpEmailService : IEmailService
             {
                 EnableSsl = true,
                 Credentials = new NetworkCredential(username, password),
+                Timeout = 15_000, // 15 seconds — fail fast if SMTP is unreachable
             };
 
             await client.SendMailAsync(mail);
