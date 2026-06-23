@@ -83,7 +83,7 @@ public class OrgsController(
         {
             return Conflict(new
             {
-                error = "Il piano Ã¨ gestito da Stripe. Usa il portale di fatturazione.",
+                error = "Il piano è gestito da Stripe. Usa il portale di fatturazione.",
                 code = "managed_by_stripe",
             });
         }
