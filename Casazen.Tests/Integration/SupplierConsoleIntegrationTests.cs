@@ -232,6 +232,34 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     // ─── AC8: Availability ───────────────────────────────────────────────────
 
     [Fact]
+    public async Task GetAvailability_AsSupplier_Returns200SavedDates()
+    {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var putResponse = await client.PutAsJsonAsync("/api/supplier/availability", new
+        {
+            dates = new[]
+            {
+                new { date = today.ToString("yyyy-MM-dd"), available = false },
+                new { date = today.AddDays(1).ToString("yyyy-MM-dd"), available = true },
+            },
+        });
+        Assert.Equal(HttpStatusCode.OK, putResponse.StatusCode);
+
+        var getResponse = await client.GetAsync(
+            $"/api/supplier/availability?from={today:yyyy-MM-dd}&to={today.AddDays(1):yyyy-MM-dd}");
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+
+        var body = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var dates = body.GetProperty("dates").EnumerateArray().ToList();
+        Assert.Equal(2, dates.Count);
+        Assert.False(dates[0].GetProperty("available").GetBoolean());
+        Assert.True(dates[1].GetProperty("available").GetBoolean());
+    }
+
+    [Fact]
     public async Task UpdateAvailability_AsSupplier_Returns200Updated()
     {
         var (supplierId, _) = await SeedSupplierAsync();

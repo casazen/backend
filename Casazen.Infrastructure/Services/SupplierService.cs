@@ -154,6 +154,21 @@ public class SupplierService(
         return profile;
     }
 
+    public async Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(
+        Guid orgId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await db.SupplierAvailability
+            .AsNoTracking()
+            .Where(sa => sa.OrgId == orgId && sa.Date >= from && sa.Date <= to)
+            .OrderBy(sa => sa.Date)
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(sa => (sa.Date, sa.Available)).ToList();
+    }
+
     public async Task<int> UpdateAvailabilityAsync(
         Guid orgId,
         IEnumerable<(DateOnly Date, bool Available)> entries,
@@ -318,13 +333,21 @@ public class SupplierService(
 
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
     {
-        if (ShouldSkipInviteEmail())
+        if (!IsSendGridConfigured())
         {
-            logger.LogWarning(
-                "SendGrid not configured — supplier invite email skipped for {Email} (env={Environment})",
-                invite.Email,
-                hostEnvironment.EnvironmentName);
-            return;
+            if (ShouldSkipInviteEmail())
+            {
+                logger.LogWarning(
+                    "SendGrid not configured — supplier invite email skipped for {Email} (env={Environment})",
+                    invite.Email,
+                    hostEnvironment.EnvironmentName);
+                return;
+            }
+
+            db.SupplierInviteRecords.Remove(invite);
+            await db.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException(
+                "Email:SendGridApiKey non configurato. Impostare Email__SendGridApiKey su Railway.");
         }
 
         var baseUrl = configuration["App:PublicSiteBaseUrl"];
@@ -336,8 +359,8 @@ public class SupplierService(
         var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(baseUrl, invite);
         var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
 
-        var sent = await sendGridService.SendEmailAsync(invite.Email, subject, html);
-        if (sent)
+        var result = await sendGridService.SendEmailAsync(invite.Email, subject, html);
+        if (result.Success)
         {
             logger.LogInformation("Supplier invite email sent to {Email}", invite.Email);
             return;
@@ -345,16 +368,23 @@ public class SupplierService(
 
         db.SupplierInviteRecords.Remove(invite);
         await db.SaveChangesAsync(cancellationToken);
-        throw new InvalidOperationException("Impossibile inviare l'email di invito. Riprovare.");
+        var reason = string.IsNullOrWhiteSpace(result.ErrorDetail)
+            ? "Impossibile inviare l'email di invito. Riprovare."
+            : $"Impossibile inviare l'email di invito: {result.ErrorDetail}";
+        throw new InvalidOperationException(reason);
+    }
+
+    private bool IsSendGridConfigured()
+    {
+        var apiKey = configuration["Email:SendGridApiKey"];
+        return !string.IsNullOrWhiteSpace(apiKey)
+            && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool ShouldSkipInviteEmail()
     {
-        var apiKey = configuration["Email:SendGridApiKey"];
-        if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase))
-        {
+        if (IsSendGridConfigured())
             return false;
-        }
 
         return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
     }

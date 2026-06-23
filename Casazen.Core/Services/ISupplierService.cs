@@ -44,6 +44,15 @@ public interface ISupplierService
     Task<SupplierProfile> CompleteActivationAsync(Guid orgId, bool tosAccepted, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns availability entries for the supplier within an inclusive date range.
+    /// </summary>
+    Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(
+        Guid orgId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates availability entries for the supplier (AC8).
     /// Returns the number of rows written.
     /// </summary>

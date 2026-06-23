@@ -29,16 +29,16 @@ public class EmailQueueProcessor
         {
             _logger.LogInformation("Processing email to {To} with subject '{Subject}'", to, subject);
 
-            var success = await _sendGridService.SendEmailAsync(to, subject, htmlContent);
+            var result = await _sendGridService.SendEmailAsync(to, subject, htmlContent);
 
-            if (success)
+            if (result.Success)
             {
                 _logger.LogInformation("Email sent successfully to {To}", to);
             }
             else
             {
-                _logger.LogWarning("Email send failed for {To}", to);
-                throw new Exception($"Failed to send email to {to}");
+                _logger.LogWarning("Email send failed for {To}: {Detail}", to, result.ErrorDetail);
+                throw new Exception($"Failed to send email to {to}: {result.ErrorDetail}");
             }
         }
         catch (Exception ex)

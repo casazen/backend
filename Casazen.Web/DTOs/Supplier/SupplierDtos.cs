@@ -129,6 +129,11 @@ public class UpdateAvailabilityResponse
     public int Updated { get; set; }
 }
 
+public class SupplierAvailabilityResponse
+{
+    public IEnumerable<AvailabilityEntryDto> Dates { get; set; } = [];
+}
+
 public class AdminInviteResponse
 {
     public Guid InviteId { get; set; }

@@ -19,7 +19,7 @@ public class SupplierServiceInviteEmailTests
         var sendGrid = new Mock<ISendGridService>();
         sendGrid
             .Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(false);
+            .ReturnsAsync(new EmailSendResult(false, "SendGrid 403 Forbidden"));
 
         var service = CreateService(db, sendGrid.Object, isProduction: true);
 
@@ -40,7 +40,7 @@ public class SupplierServiceInviteEmailTests
         var sendGrid = new Mock<ISendGridService>();
         sendGrid
             .Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(new EmailSendResult(true));
 
         var service = CreateService(db, sendGrid.Object, isProduction: true);
 
@@ -72,17 +72,40 @@ public class SupplierServiceInviteEmailTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task CreateInviteAsync_OnProductionWithoutSendGridKey_ThrowsBeforeCallingSendGrid()
+    {
+        await using var db = CreateDbContext();
+        var sendGrid = new Mock<ISendGridService>();
+        var service = CreateService(
+            db,
+            sendGrid.Object,
+            isProduction: false,
+            environmentName: "Production",
+            sendGridApiKey: "SG.YOUR_KEY");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateInviteAsync("supplier@test.com", "H501", null, null));
+
+        Assert.Contains("SendGridApiKey", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(db.SupplierInviteRecords);
+        sendGrid.Verify(
+            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+    }
+
     private static SupplierService CreateService(
         AppDbContext db,
         ISendGridService sendGrid,
         bool isProduction,
-        string environmentName = "Production")
+        string environmentName = "Production",
+        string? sendGridApiKey = null)
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
-                ["Email:SendGridApiKey"] = isProduction ? "SG.live_test_key" : string.Empty,
+                ["Email:SendGridApiKey"] = sendGridApiKey ?? (isProduction ? "SG.live_test_key" : string.Empty),
             })
             .Build();
 

@@ -5,16 +5,18 @@ using SendGrid.Helpers.Mail;
 
 namespace Casazen.Infrastructure.External;
 
+public record EmailSendResult(bool Success, string? ErrorDetail = null);
+
 public interface ISendGridService
 {
-    Task<bool> SendEmailAsync(string to, string subject, string htmlContent);
+    Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent);
 }
 
 public class SendGridService(IConfiguration configuration, ILogger<SendGridService> logger, ISendGridClient client) : ISendGridService
 {
     private readonly string _fromEmail = configuration["Email:FromAddress"] ?? "noreply@casazen.app";
 
-    public async Task<bool> SendEmailAsync(string to, string subject, string htmlContent)
+    public async Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent)
     {
         try
         {
@@ -29,13 +31,21 @@ public class SendGridService(IConfiguration configuration, ILogger<SendGridServi
             msg.AddTo(toEmail);
 
             var response = await client.SendEmailAsync(msg);
-            logger.LogInformation("Email sent to {To}: {StatusCode}", to, response.StatusCode);
-            return response.IsSuccessStatusCode;
+            if (response.IsSuccessStatusCode)
+            {
+                logger.LogInformation("Email sent to {To}: {StatusCode}", to, response.StatusCode);
+                return new EmailSendResult(true);
+            }
+
+            var body = await response.Body.ReadAsStringAsync();
+            var detail = $"SendGrid {(int)response.StatusCode} {response.StatusCode}: {body}";
+            logger.LogError("Email to {To} failed — {Detail}", to, detail);
+            return new EmailSendResult(false, detail);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error sending email to {To}", to);
-            return false;
+            return new EmailSendResult(false, ex.Message);
         }
     }
 }
