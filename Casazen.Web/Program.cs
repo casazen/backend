@@ -84,13 +84,7 @@ builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
-builder.Services.AddHttpClient("SendGrid", client =>
-{
-    client.BaseAddress = new Uri("https://api.sendgrid.com/v3/");
-    client.DefaultRequestHeaders.Add("User-Agent", "CasaZen/1.0");
-    client.Timeout = TimeSpan.FromSeconds(15);
-});
-builder.Services.AddScoped<IEmailService, HttpEmailService>();
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
