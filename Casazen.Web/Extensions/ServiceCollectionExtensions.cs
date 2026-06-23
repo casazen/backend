@@ -274,6 +274,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         services.AddScoped<CalendarSyncService>();
+        services.AddSingleton<QrCodeService>();
         services.AddHttpClient("IcalSync", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
