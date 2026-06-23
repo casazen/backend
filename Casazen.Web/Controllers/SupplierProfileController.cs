@@ -9,14 +9,14 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Supplier-facing endpoints: activation wizard, profile, inbox shell, and availability (US-022 / #292).
-/// All routes are scoped to the caller's supplier org via <c>IOrgContextResolver</c>.
+/// All routes are scoped to the caller's supplier org via <c>ISupplierOrgContextResolver</c>.
 /// </summary>
 [ApiController]
 [Route("api/supplier")]
 [Authorize(Policy = "RequireSupplier")]
 public class SupplierProfileController(
     ISupplierService supplierService,
-    IOrgContextResolver orgContextResolver,
+    ISupplierOrgContextResolver supplierOrgContextResolver,
     ILogger<SupplierProfileController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -30,7 +30,7 @@ public class SupplierProfileController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ActivationStatusDto>> GetActivationStatus(CancellationToken cancellationToken)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
@@ -61,7 +61,7 @@ public class SupplierProfileController(
         [FromBody] CompleteActivationRequest request,
         CancellationToken cancellationToken)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         try
@@ -87,7 +87,7 @@ public class SupplierProfileController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SupplierProfileDto>> GetProfile(CancellationToken cancellationToken)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
@@ -104,7 +104,7 @@ public class SupplierProfileController(
         [FromBody] UpdateSupplierProfileRequest request,
         CancellationToken cancellationToken)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var profile = await supplierService.UpdateProfileAsync(
@@ -145,7 +145,7 @@ public class SupplierProfileController(
         [FromBody] UpdateAvailabilityRequest request,
         CancellationToken cancellationToken)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var entries = request.Dates.Select(d => (d.Date, d.Available));

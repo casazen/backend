@@ -243,6 +243,79 @@ public class SupplierService(
         return new SupplierInvite(invite.Id, invite.ExpiresAt);
     }
 
+    public async Task<Guid?> GetOrProvisionSupplierOrgIdAsync(
+        string userId,
+        string email,
+        string firstName,
+        string lastName,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+            return null;
+
+        var resolvedEmail = string.IsNullOrWhiteSpace(email) ? user.Email : email;
+        var normalizedEmail = resolvedEmail.Trim().ToLowerInvariant();
+
+        if (user.OrgId is Guid linkedOrgId)
+        {
+            var linkedOrg = await db.Orgs.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == linkedOrgId, cancellationToken);
+            if (linkedOrg?.OrgType == OrgType.Supplier)
+            {
+                var linkedProfile = await db.SupplierProfiles
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(sp => sp.OrgId == linkedOrgId, cancellationToken);
+                if (linkedProfile is not null)
+                    return linkedOrgId;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            var profileByEmail = await db.SupplierProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(sp => sp.Email.ToLower() == normalizedEmail, cancellationToken);
+            if (profileByEmail is not null)
+                return profileByEmail.OrgId;
+        }
+
+        var displayName = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
+            displayName = string.IsNullOrWhiteSpace(resolvedEmail) ? "Fornitore" : resolvedEmail;
+
+        var slug = $"supplier-{Guid.NewGuid():N}"[..30];
+        var org = new Org
+        {
+            Name = displayName,
+            Slug = slug,
+            DisplayName = displayName,
+            ContactEmail = resolvedEmail,
+            OrgType = OrgType.Supplier,
+            PlanTier = PlanTier.Starter,
+        };
+        db.Orgs.Add(org);
+
+        var profile = new SupplierProfile
+        {
+            OrgId = org.Id,
+            Email = resolvedEmail,
+            LegalName = displayName,
+            Phone = string.Empty,
+        };
+        db.SupplierProfiles.Add(profile);
+
+        if (user.OrgId is null)
+        {
+            user.OrgId = org.Id;
+            user.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Auto-provisioned supplier org {OrgId} for user {UserId}", org.Id, userId);
+        return org.Id;
+    }
+
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
     {
         if (ShouldSkipInviteEmail())

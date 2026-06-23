@@ -64,6 +64,17 @@ public interface ISupplierService
         IEnumerable<string>? categories,
         string? message,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves the caller's supplier org, provisioning org + profile when a Supplier user has none yet.
+    /// Supports dual-role users whose <c>User.OrgId</c> points at a host org.
+    /// </summary>
+    Task<Guid?> GetOrProvisionSupplierOrgIdAsync(
+        string userId,
+        string email,
+        string firstName,
+        string lastName,
+        CancellationToken cancellationToken = default);
 }
 
 public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);

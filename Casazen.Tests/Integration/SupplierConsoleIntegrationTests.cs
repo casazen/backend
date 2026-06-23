@@ -82,6 +82,80 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     }
 
     [Fact]
+    public async Task GetActivation_AsSupplier_AutoProvisionsWhenNoProfile()
+    {
+        var userId = $"auth0|supplier-new-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, "Supplier");
+
+        var response = await client.GetAsync("/api/supplier/profile/activation");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Pending", body.GetProperty("status").GetString());
+        Assert.Equal(5, body.GetProperty("steps").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetActivation_AsDualRoleHost_FindsSupplierProfileByEmail()
+    {
+        var userId = $"auth0|dual-{Guid.NewGuid():N}";
+        var email = $"dual-{Guid.NewGuid():N}@test.com";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var hostOrg = new OrgEntity
+            {
+                Name = "Host Org",
+                Slug = $"host-{Guid.NewGuid():N}"[..20],
+                DisplayName = "Host Org",
+                ContactEmail = email,
+                OrgType = OrgType.Host,
+                PlanTier = PlanTier.Starter,
+            };
+            db.Orgs.Add(hostOrg);
+
+            var supplierOrg = new OrgEntity
+            {
+                Name = "Supplier Org",
+                Slug = $"sup-{Guid.NewGuid():N}"[..20],
+                DisplayName = "Supplier Org",
+                ContactEmail = email,
+                OrgType = OrgType.Supplier,
+                PlanTier = PlanTier.Starter,
+            };
+            db.Orgs.Add(supplierOrg);
+
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Email = email,
+                FirstName = "Dual",
+                LastName = "Role",
+                OrgId = hostOrg.Id,
+                IsActive = true,
+            });
+
+            db.SupplierProfiles.Add(new SupplierProfile
+            {
+                OrgId = supplierOrg.Id,
+                Email = email,
+                LegalName = "Supplier Org",
+                Phone = "+39 06 111111",
+                ComuniJson = "[\"H501\"]",
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(userId, "PropertyOwner,Supplier");
+        var response = await client.GetAsync("/api/supplier/profile/activation");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task CompleteActivation_WithBlockers_Returns409()
     {
         var (supplierId, _) = await SeedSupplierAsync();
