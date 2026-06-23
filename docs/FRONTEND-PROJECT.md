@@ -62,6 +62,7 @@ Feature PRs target `develop`. Production promotion: release PR `develop` → `ma
 - **Mutations**: always invalidate the relevant query key on success.
 - **Auth**: `VITE_DEMO_MODE=true` / `npm run dev:demo` bypasses Auth0 — useful for testing without credentials.
 - **Naming**: camelCase files (`booking-form.tsx`); PascalCase component exports; `use-` prefix for hooks.
+- **i18n**: EVERY user-visible string MUST use `t()` from `useTranslation()`. Add keys to BOTH `it.json` and `en.json` — never hardcode Italian or English text in JSX. No `defaultValue` fallback. Key convention: `<feature>.<section>.<element>`. See `src/i18n/config.ts` and `src/i18n/locales/`.
 - **Tests**: unit tests colocated in `__tests__/` subdirectories; E2E in `e2e/`.
 
 ## Where to find things

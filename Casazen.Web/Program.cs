@@ -18,9 +18,11 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 using Microsoft.OpenApi.Models;
 
 using Stripe;
@@ -109,7 +111,19 @@ builder.Services.AddHttpClient("Openapi");
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
-// Authentication & Authorization
+	// Localization — Italian (default) and English
+	builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
+	builder.Services.AddRequestLocalization(options =>
+	{
+	    var supportedCultures = new[] { "it-IT", "en-US" };
+	    options.SetDefaultCulture(supportedCultures[0])
+	           .AddSupportedCultures(supportedCultures)
+	           .AddSupportedUICultures(supportedCultures);
+	    options.ApplyCurrentCultureToResponseHeaders = true;
+	});
+
+	// Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddCasazenAuthorization();
 
@@ -265,6 +279,9 @@ app.UseSecurityHeaders();
 
 // CORS (must be before Authentication)
 app.UseCors("AllowFrontend");
+
+// Localization middleware — reads Accept-Language header, sets culture for downstream components
+app.UseRequestLocalization();
 
 // Global error handling — must be early in pipeline to catch all exceptions
 app.UseErrorHandling();

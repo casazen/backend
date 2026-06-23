@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Unauthorized" xml:space="preserve">
+    <value>Autorizzazione richiesta</value>
+  </data>
+  <data name="UnauthorizedDetail" xml:space="preserve">
+    <value>È richiesta l'autenticazione. Fornire un token Bearer valido nell'header Authorization.</value>
+  </data>
+  <data name="Forbidden" xml:space="preserve">
+    <value>Accesso negato</value>
+  </data>
+  <data name="ForbiddenDetail" xml:space="preserve">
+    <value>Non si dispone dei permessi per accedere a questa risorsa.</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Non trovato</value>
+  </data>
+  <data name="InternalServerError" xml:space="preserve">
+    <value>Errore interno del server</value>
+  </data>
+  <data name="InternalServerErrorDetail" xml:space="preserve">
+    <value>Si è verificato un errore imprevisto. Riprova più tardi.</value>
+  </data>
+  <data name="ValidationError" xml:space="preserve">
+    <value>Uno o più errori di validazione.</value>
+  </data>
+  <data name="PaymentProcessingError" xml:space="preserve">
+    <value>Errore elaborazione pagamento</value>
+  </data>
+  <data name="StripeIntegrationError" xml:space="preserve">
+    <value>Errore integrazione Stripe</value>
+  </data>
+  <data name="OperationFailed" xml:space="preserve">
+    <value>Operazione fallita</value>
+  </data>
+  <data name="OrganizationNotFound" xml:space="preserve">
+    <value>Organizzazione non trovata</value>
+  </data>
+  <data name="NoOrganizationAssigned" xml:space="preserve">
+    <value>Nessuna organizzazione assegnata all'utente corrente</value>
+  </data>
+  <data name="PropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato</value>
+  </data>
+  <data name="BookingNotFound" xml:space="preserve">
+    <value>Prenotazione non trovata</value>
+  </data>
+  <data name="PaymentNotFound" xml:space="preserve">
+    <value>Pagamento non trovato</value>
+  </data>
+  <data name="GuestNotFound" xml:space="preserve">
+    <value>Ospite non trovato</value>
+  </data>
+  <data name="SupplierProfileNotFound" xml:space="preserve">
+    <value>Profilo fornitore non trovato</value>
+  </data>
+  <data name="InvalidEmail" xml:space="preserve">
+    <value>Indirizzo email non valido</value>
+  </data>
+  <data name="InvalidPhone" xml:space="preserve">
+    <value>Numero di telefono non valido</value>
+  </data>
+  <data name="ManagedByStripe" xml:space="preserve">
+    <value>Il piano è gestito da Stripe. Usa il portale di fatturazione.</value>
+  </data>
+  <data name="BillingNotAvailable" xml:space="preserve">
+    <value>Fatturazione non ancora disponibile</value>
+  </data>
+  <data name="PlanLimitReached" xml:space="preserve">
+    <value>Hai raggiunto il limite del tuo piano</value>
+  </data>
+  <data name="ActivationConsentError" xml:space="preserve">
+    <value>Tutti i consensi obbligatori devono essere accettati.</value>
+  </data>
+  <data name="ActivationDocsUpdated" xml:space="preserve">
+    <value>Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.</value>
+  </data>
+  <data name="ActivationIncomplete" xml:space="preserve">
+    <value>Attivazione non completata: {0}</value>
+  </data>
+  <data name="InviteEmailFailed" xml:space="preserve">
+    <value>Invio email fallito. L'invito non è stato creato.</value>
+  </data>
+  <data name="SupplierActivationSteps_Identity" xml:space="preserve">
+    <value>Identità e contatti</value>
+  </data>
+  <data name="SupplierActivationSteps_Categories" xml:space="preserve">
+    <value>Categorie di servizio</value>
+  </data>
+  <data name="SupplierActivationSteps_Comuni" xml:space="preserve">
+    <value>Comuni di operatività</value>
+  </data>
+  <data name="SupplierActivationSteps_Profile" xml:space="preserve">
+    <value>Profilo professionale</value>
+  </data>
+  <data name="SupplierActivationSteps_Terms" xml:space="preserve">
+    <value>Termini di servizio</value>
+  </data>
+  <data name="SupplierActivationBlocker_Categories" xml:space="preserve">
+    <value>Scegli almeno una categoria</value>
+  </data>
+  <data name="SupplierActivationBlocker_Comuni" xml:space="preserve">
+    <value>Seleziona almeno un comune</value>
+  </data>
+  <data name="SupplierActivationBlocker_Profile" xml:space="preserve">
+    <value>Aggiungi una descrizione professionale</value>
+  </data>
+  <data name="SupplierActivationBlocker_Terms" xml:space="preserve">
+    <value>Accetta i termini di servizio</value>
+  </data>
+  <data name="SupplierActivationBlocker_TermsRequired" xml:space="preserve">
+    <value>Devi accettare i termini di servizio</value>
+  </data>
+  <data name="PlanDescription_Starter" xml:space="preserve">
+    <value>Fino a 3 proprietà — ideale per iniziare.</value>
+  </data>
+  <data name="PlanDescription_Pro" xml:space="preserve">
+    <value>Fino a 50 proprietà — per operatori in crescita.</value>
+  </data>
+  <data name="PlanDescription_Scale" xml:space="preserve">
+    <value>Proprietà illimitate — per agenzie e PM.</value>
+  </data>
+</root>
