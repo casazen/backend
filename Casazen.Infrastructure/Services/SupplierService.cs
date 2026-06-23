@@ -13,7 +13,7 @@ namespace Casazen.Infrastructure.Services;
 
 public class SupplierService(
     AppDbContext db,
-    ISendGridService sendGridService,
+    IEmailService emailService,
     IConfiguration configuration,
     IHostEnvironment hostEnvironment,
     ILogger<SupplierService> logger) : ISupplierService
@@ -347,7 +347,7 @@ public class SupplierService(
             db.SupplierInviteRecords.Remove(invite);
             await db.SaveChangesAsync(cancellationToken);
             throw new InvalidOperationException(
-                "Email:SendGridApiKey non configurato. Impostare Email__SendGridApiKey su Railway.");
+                "Email non configurata. Impostare Email__SmtpHost (SMTP diretto) o Email__SendGridApiKey su Railway.");
         }
 
         var baseUrl = configuration["App:PublicSiteBaseUrl"];
@@ -359,7 +359,7 @@ public class SupplierService(
         var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(baseUrl, invite);
         var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
 
-        var result = await sendGridService.SendEmailAsync(invite.Email, subject, html);
+        var result = await emailService.SendEmailAsync(invite.Email, subject, html);
         if (result.Success)
         {
             logger.LogInformation("Supplier invite email sent to {Email}", invite.Email);
@@ -370,12 +370,17 @@ public class SupplierService(
         await db.SaveChangesAsync(cancellationToken);
         var reason = string.IsNullOrWhiteSpace(result.ErrorDetail)
             ? "Impossibile inviare l'email di invito. Riprovare."
-            : $"Impossibile inviare l'email di invito: {result.ErrorDetail}";
+            : "Impossibile inviare l'email di invito. Controllare la configurazione email del server.";
         throw new InvalidOperationException(reason);
     }
 
     private bool IsSendGridConfigured()
     {
+        // SMTP mode (SmtpEmailService)
+        if (!string.IsNullOrWhiteSpace(configuration["Email:SmtpHost"]))
+            return true;
+
+        // SendGrid API key (used by SmtpEmailService as SMTP relay fallback)
         var apiKey = configuration["Email:SendGridApiKey"];
         return !string.IsNullOrWhiteSpace(apiKey)
             && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
@@ -383,9 +388,7 @@ public class SupplierService(
 
     private bool ShouldSkipInviteEmail()
     {
-        if (IsSendGridConfigured())
-            return false;
-
+        // Only called when !IsSendGridConfigured() — skip in dev/test, throw in production.
         return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
     }
 }

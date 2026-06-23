@@ -14,7 +14,7 @@ Web reporting, tourist tax, GDPR).
 - **Auth**: Auth0 — JWT Bearer validated on every `/api` endpoint
 - **Background jobs**: Hangfire (OTA sync hourly, booking pull every 15 min, GDPR retention, pricing)
 - **Payments**: Stripe (webhook signature verification required)
-- **Email**: SendGrid (transactional; supplier invite uses `SupplierInviteEmailBuilder` HTML)
+- **Email**: MailKit SMTP (transactional; supplier invite uses `SupplierInviteEmailBuilder` HTML; supports any SMTP server or SendGrid relay)
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
 - **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`, `step-transitions.yml`)
@@ -34,7 +34,7 @@ Casazen.sln
 │   ├── Migrations/            # EF Core migration files
 │   ├── Repositories/          # Concrete repository implementations
 │   ├── Services/              # Concrete service implementations
-│   ├── External/              # AlloggiatiWebService, SendGridService, StripeService, StripeWebhookHandler
+│   ├── External/              # AlloggiatiWebService, SmtpEmailService, StripeService, StripeWebhookHandler
 │   ├── OTA/                   # Channel adapters: Airbnb, BookingCom, Expedia, VRBO, TripAdvisor, Agoda
 │   │   └── Resilience/        # Polly policy factories per platform
 │   └── Payments/              # Stripe payment processing
@@ -82,7 +82,7 @@ Casazen.sln
 | Background jobs | `Casazen.Web/BackgroundJobs/` (7 Hangfire jobs) |
 | OTA adapters | `Casazen.Infrastructure/OTA/*Adapter.cs` |
 | OTA channel factory | `Casazen.Infrastructure/OTA/ChannelFactory.cs` |
-| External integrations | `Casazen.Infrastructure/External/` (Alloggiati, SendGrid, Stripe) |
+| External integrations | `Casazen.Infrastructure/External/` (Alloggiati, email, Stripe) |
 | Stripe webhook handler | `Casazen.Infrastructure/External/StripeWebhookHandler.cs` |
 | CIN validation | `Casazen.Core/Validation/CinCodeAttribute.cs` |
 | Italian tax rates | `Casazen.Core/Entities/TouristTaxRate.cs` |
@@ -111,7 +111,7 @@ Casazen.sln
 |---|---|---|
 | Auth0 | JWT authentication for all API endpoints | `appsettings.json → Auth0` |
 | Stripe | Payment processing + webhook events | `appsettings.json → Stripe`; handler in `Casazen.Infrastructure/External/StripeWebhookHandler.cs` |
-| SendGrid | Transactional email (booking confirmations, notifications) | `appsettings.json → Email`; template IDs managed in SendGrid dashboard |
+| MailKit SMTP | Transactional email (booking confirmations, notifications, supplier invites) | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for SendGrid SMTP relay) |
 | Alloggiati Web | Italian police guest reporting (mandatory by law) | `Casazen.Infrastructure/External/AlloggiatiWebService.cs` |
 | Airbnb | OTA booking sync + pricing/availability push | `appsettings.json → OTA.Airbnb` |
 | Booking.com | OTA booking sync + pricing/availability push | `appsettings.json → OTA.BookingCom` |
