@@ -333,12 +333,12 @@ public class SupplierService(
 
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
     {
-        if (!IsSendGridConfigured())
+        if (!IsEmailConfigured())
         {
             if (ShouldSkipInviteEmail())
             {
                 logger.LogWarning(
-                    "SendGrid not configured — supplier invite email skipped for {Email} (env={Environment})",
+                    "Email not configured — supplier invite email skipped for {Email} (env={Environment})",
                     invite.Email,
                     hostEnvironment.EnvironmentName);
                 return;
@@ -347,7 +347,7 @@ public class SupplierService(
             db.SupplierInviteRecords.Remove(invite);
             await db.SaveChangesAsync(cancellationToken);
             throw new InvalidOperationException(
-                "Email non configurata. Impostare Email__SmtpHost (SMTP diretto) o Email__SendGridApiKey su Railway.");
+                "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
         }
 
         var baseUrl = configuration["App:PublicSiteBaseUrl"];
@@ -374,21 +374,26 @@ public class SupplierService(
         throw new InvalidOperationException(reason);
     }
 
-    private bool IsSendGridConfigured()
+    private bool IsEmailConfigured()
     {
-        // SMTP mode (SmtpEmailService) — primary
+        // Resend HTTP API (primary — works on all Railway plans)
+        var resendKey = configuration["Email:ResendApiKey"];
+        if (!string.IsNullOrWhiteSpace(resendKey) && resendKey.StartsWith("re_"))
+            return true;
+
+        // SMTP (local dev only — blocked on Railway Hobby)
         if (!string.IsNullOrWhiteSpace(configuration["Email:SmtpHost"]))
             return true;
 
-        // SendGrid API key (SmtpEmailService SMTP relay fallback)
-        var apiKey = configuration["Email:SendGridApiKey"];
-        return !string.IsNullOrWhiteSpace(apiKey)
-            && !apiKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
+        // SendGrid SMTP relay (legacy fallback)
+        var sgKey = configuration["Email:SendGridApiKey"];
+        return !string.IsNullOrWhiteSpace(sgKey)
+            && !sgKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool ShouldSkipInviteEmail()
     {
-        // Only called when !IsSendGridConfigured() — skip in dev/test, throw in production.
+        // Only called when !IsEmailConfigured() — skip in dev/test, throw in production.
         return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
     }
 }
