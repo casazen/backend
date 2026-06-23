@@ -110,6 +110,13 @@ public class SupplierProfileController(
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
+        logger.LogInformation(
+            "UpdateProfile: OrgId={OrgId}, Categories={CatCount}, Comuni={ComCount}, Bio={BioLen}",
+            orgId.Value,
+            request.Categories?.Count() ?? 0,
+            request.Comuni?.Count() ?? 0,
+            request.Bio?.Length ?? 0);
+
         var profile = await supplierService.UpdateProfileAsync(
             orgId.Value,
             request.LegalName, request.VatNumber, request.Phone,
@@ -118,7 +125,14 @@ public class SupplierProfileController(
 
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
-        return Ok(MapProfile(profile));
+        var dto = MapProfile(profile);
+        logger.LogInformation(
+            "UpdateProfile result: Categories={CatCount}, Comuni={ComCount}, Bio={BioLen}",
+            dto.Categories.Count(),
+            dto.Comuni.Count(),
+            dto.Bio?.Length ?? 0);
+
+        return Ok(dto);
     }
 
     // ─── Inbox ───────────────────────────────────────────────────────────────
