@@ -22,7 +22,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-using SendGrid.Extensions.DependencyInjection;
+
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,10 +67,6 @@ builder.Services.AddScoped<ILeaseRegistrationRepository, LeaseRegistrationReposi
 builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 
 // External Services
-builder.Services.AddSendGrid(options =>
-{
-    options.ApiKey = builder.Configuration["Email:SendGridApiKey"] ?? string.Empty;
-});
 builder.Services.AddHttpClient<PublicHolidayService>();
 builder.Services.AddMemoryCache();
 
@@ -88,7 +84,7 @@ builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
-builder.Services.AddScoped<ISendGridService, SendGridService>();
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
 builder.Services.AddScoped<IStripeService, StripeService>();

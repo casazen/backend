@@ -24,7 +24,7 @@ graph TD
 |---|---|---|
 | Presentation | `Casazen.Web/` | HTTP controllers, DTOs, middleware, Swagger config, auth wiring, background job registration |
 | Business Logic | `Casazen.Core/` | Domain entities, service interfaces, repository interfaces, enums, validators, utilities |
-| Data Access | `Casazen.Infrastructure/` | EF Core DbContext, repository implementations, service implementations, OTA adapters, Stripe/SendGrid clients |
+| Data Access | `Casazen.Infrastructure/` | EF Core DbContext, repository implementations, service implementations, OTA adapters, Stripe/email clients |
 | Tests | `Casazen.Tests/` | Unit and integration tests |
 
 ### Dependency rule
@@ -43,7 +43,7 @@ graph TD
 | Authentication | Auth0 + JWT Bearer | — | `sub` claim used as user ID |
 | Background jobs | Hangfire | 1.8.x | SQL Server storage; dashboard at `/hangfire` |
 | Payment processing | Stripe .NET SDK | — | Webhook signature verification required |
-| Email | SendGrid SDK | — | Template-based, no inline HTML |
+| Email | MailKit (SMTP) | — | Any SMTP server; Gmail free tier recommended for dev |
 | OTA resilience | Polly | — | Retry, circuit breaker, timeout, rate limiting per platform |
 | Test framework | xUnit | — | `Casazen.Tests/` |
 | API docs | Swashbuckle / Swagger | — | Swagger UI at `/swagger` (dev only) |
@@ -139,7 +139,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/admin/suppliers/invite` | Admin | Creates invite record and sends signup email via SendGrid. Returns `inviteId`, `expiresAt`. 409 if pending invite exists; 502 if email delivery fails (invite rolled back). |
+| `POST` | `/api/admin/suppliers/invite` | Admin | Creates invite record and sends signup email via SMTP. Returns `inviteId`, `expiresAt`. 409 if pending invite exists; 502 if email delivery fails (invite rolled back). |
 | `POST` | `/api/suppliers/register` | Anonymous | Self-serve or invite-token registration. Body: `email`, `legalName`, `phone`, `comuneCode`, optional `inviteToken` (invite UUID). |
 | `GET` | `/api/suppliers?comune=&category=` | PropertyOwner+ | Lists **Active** suppliers for host picker. |
 | `GET` | `/api/supplier/profile` | Supplier | Supplier profile for current org. |
@@ -149,7 +149,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 | `GET` | `/api/supplier/inbox` | Supplier | Service-request inbox (empty until marketplace v0). |
 | `PUT` | `/api/supplier/availability` | Supplier | Upsert availability by date. |
 
-**Invite email:** `SupplierService.CreateInviteAsync` persists `SupplierInviteRecords`, then calls SendGrid with HTML from `SupplierInviteEmailBuilder`. Signup URL: `{App:PublicSiteBaseUrl}/login?inviteToken={id}&email={email}&comune={comuneCode}`. Skipped in Testing/Development when `Email:SendGridApiKey` is unset.
+**Invite email:** `SupplierService.CreateInviteAsync` persists `SupplierInviteRecords`, then sends via `IEmailService` (MailKit SMTP) with HTML from `SupplierInviteEmailBuilder`. Signup URL: `{App:PublicSiteBaseUrl}/login?inviteToken={id}&email={email}&comune={comuneCode}`. Skipped in Testing/Development when no email config is present.
 
 **Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier`. JWT bootstrap contexts are merged with DB `UserContextMemberships` so host users who gain `Supplier` still see the supplier tab. Default route: `/supplier/inbox`.
 
@@ -320,7 +320,7 @@ erDiagram
 ### Configuration
 
 - **Config files**: `Casazen.Web/appsettings.json` (committed defaults), `appsettings.Development.json` (local secrets — **never commit**)
-- **Key sections**: `Auth0`, `Stripe`, `Email` (SendGrid), `OTA` (per-platform credentials and resilience settings)
+- **Key sections**: `Auth0`, `Stripe`, `Email` (SMTP), `OTA` (per-platform credentials and resilience settings)
 
 ### Background jobs
 
@@ -331,7 +331,7 @@ erDiagram
 | `DynamicPricingJob` | Daily at 02:00 UTC | AI-driven nightly rate adaptation |
 | `AlloggiatiWebReportJob` | On check-in (enqueued) | Submit guest identity to Italian police system |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
-| `EmailQueueProcessor` | Continuous | Process queued email notifications via SendGrid |
+| `EmailQueueProcessor` | Continuous | Process queued email notifications via SMTP |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment
@@ -345,7 +345,7 @@ erDiagram
 |---|---|---|---|
 | Auth0 | Microsoft JWT Bearer middleware | `appsettings.json → Auth0` | JWT validation on all `/api` endpoints |
 | Stripe | Stripe .NET SDK | `appsettings.json → Stripe` | Payment processing and refunds |
-| SendGrid | SendGrid SDK | `appsettings.json → Email:SendGridApiKey` | Transactional emails |
+| MailKit (SMTP) | MailKit + SMTP client | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for relay) | Transactional emails |
 | Alloggiati Web | Custom HTTP client | `AlloggiatiWebService.cs` | Italian police guest registration |
 | OTA platforms (6) | `IOtaAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
 | Public holidays API | `PublicHolidayService` | Configured in service | Feeds AI pricing seasonality |

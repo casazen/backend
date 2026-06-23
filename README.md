@@ -107,21 +107,63 @@ JWT tokens automatically validated on /api endpoints
 
 Webhooks handled automatically
 
-## 📮 Email (SendGrid)
-**Email Notifications:**
+## 📮 Email (SMTP via MailKit)
 
-1. Register SendGrid
-2. Get API key
-3. Configure in `appsettings.json`:
+CasaZen uses **MailKit** to send transactional emails via any SMTP server.  
+Two configuration modes are supported:
+
+### Mode 1 — Direct SMTP (recommended for zero-cost start)
+
+Use any free SMTP provider. **Gmail SMTP** is the simplest free option:
+
+| Config key | Example value |
+|---|---|
+| `Email__SmtpHost` | `smtp.gmail.com` |
+| `Email__SmtpPort` | `587` |
+| `Email__SmtpUsername` | `casazen@gmail.com` |
+| `Email__SmtpPassword` | 16-char app password (see below) |
+| `Email__FromAddress` | `noreply@casazen.app` |
+
+**Gmail setup (free, 500 emails/day):**
+1. Create a Gmail account (or use an existing one)
+2. Enable 2-Step Verification at https://myaccount.google.com/security
+3. Generate an **App Password** at https://myaccount.google.com/apppasswords
+4. Use the 16-character app password as `Email__SmtpPassword`
+
+### Mode 2 — SendGrid SMTP relay (100 emails/day free)
+
+If you already have a SendGrid account, the SMTP relay still works:
+
+| Config key | Example value |
+|---|---|
+| `Email__SendGridApiKey` | `SG.xxxxxxxxxxxxxx` |
+
+When only `Email__SendGridApiKey` is set (no `Email__SmtpHost`), the service auto‑connects to `smtp.sendgrid.net:587` using `"apikey"` as the username.
+
+### Other free SMTP providers
+
+| Provider | Free tier | SMTP host |
+|---|---|---|
+| **Brevo** (ex Sendinblue) | 300 emails/day | `smtp-relay.brevo.com` |
+| **Mailgun** | 100 emails/day (requires card) | `smtp.mailgun.org` |
+| **Ethereal** | Fake SMTP for dev/testing only | `smtp.ethereal.email` |
+
+### Configuration in `appsettings.json`
 
 ```json
 {
   "Email": {
-    "SendGridApiKey": "SG.xxx",
+    "SmtpHost": "smtp.gmail.com",
+    "SmtpPort": "587",
+    "SmtpUsername": "casazen@gmail.com",
+    "SmtpPassword": "",
+    "SendGridApiKey": "",
     "FromAddress": "noreply@casazen.app"
   }
 }
 ```
+
+> ⚠️ **Never commit** real credentials. Set them via **Railway environment variables** (`Email__SmtpHost`, etc.) or `appsettings.Development.json` (gitignored).
 
 ## 🌐 OTA Integrations
 **Supported Platforms:**

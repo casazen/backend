@@ -8,12 +8,12 @@ namespace Casazen.Web.BackgroundJobs;
 /// </summary>
 public class EmailQueueProcessor
 {
-    private readonly ISendGridService _sendGridService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<EmailQueueProcessor> _logger;
 
-    public EmailQueueProcessor(ISendGridService sendGridService, ILogger<EmailQueueProcessor> logger)
+    public EmailQueueProcessor(IEmailService emailService, ILogger<EmailQueueProcessor> logger)
     {
-        _sendGridService = sendGridService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -29,7 +29,7 @@ public class EmailQueueProcessor
         {
             _logger.LogInformation("Processing email to {To} with subject '{Subject}'", to, subject);
 
-            var result = await _sendGridService.SendEmailAsync(to, subject, htmlContent);
+            var result = await _emailService.SendEmailAsync(to, subject, htmlContent);
 
             if (result.Success)
             {
@@ -37,8 +37,9 @@ public class EmailQueueProcessor
             }
             else
             {
-                _logger.LogWarning("Email send failed for {To}: {Detail}", to, result.ErrorDetail);
-                throw new Exception($"Failed to send email to {to}: {result.ErrorDetail}");
+                var detail = result.ErrorDetail ?? "unknown error";
+                _logger.LogWarning("Email send failed for {To}: {Detail}", to, detail);
+                throw new Exception($"Failed to send email to {to}: {detail}");
             }
         }
         catch (Exception ex)

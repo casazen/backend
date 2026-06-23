@@ -280,7 +280,7 @@ public static class ServiceCollectionExtensions
     {
         // Note: Auth0Service was removed as dead code (never used)
         // JWT authentication is handled directly by AddCasazenAuthentication()
-        services.AddScoped<SendGridService>();
+        services.AddScoped<SmtpEmailService>();
         services.AddScoped<StripeService>();
         services.AddScoped<IAiProvider, StubAiProvider>();
         services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
