@@ -21,7 +21,7 @@ public class SupplierInviteEmailBuilderTests
         Assert.Contains("inviteToken=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", url);
         Assert.Contains("email=fornitore%40example.com", url);
         Assert.Contains("comune=H501", url);
-        Assert.StartsWith("https://casazen-app.vercel.app/login?", url);
+        Assert.StartsWith("https://casazen-app.vercel.app/register?", url);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class SupplierInviteEmailBuilderTests
             Message = "Benvenuto nel pilota Roma",
         };
 
-        var signupUrl = "https://casazen-app.vercel.app/login?inviteToken=abc";
+        var signupUrl = "https://casazen-app.vercel.app/register?inviteToken=abc";
         var (subject, html) = SupplierInviteEmailBuilder.Build(
             invite,
             signupUrl,
