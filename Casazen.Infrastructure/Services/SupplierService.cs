@@ -312,6 +312,23 @@ public class SupplierService(
         };
         db.SupplierProfiles.Add(profile);
 
+        // Consume any pending invite for this email during auto-provisioning
+        var pendingInvite = await db.SupplierInviteRecords
+            .FirstOrDefaultAsync(i =>
+                i.Email.ToLower() == normalizedEmail &&
+                !i.IsUsed &&
+                i.ExpiresAt > DateTime.UtcNow,
+                cancellationToken);
+
+        if (pendingInvite is not null)
+        {
+            pendingInvite.IsUsed = true;
+            if (!string.IsNullOrWhiteSpace(pendingInvite.ComuneCode))
+                profile.ComuniJson = JsonSerializer.Serialize(new[] { pendingInvite.ComuneCode });
+            if (!string.IsNullOrWhiteSpace(pendingInvite.CategoriesJson))
+                profile.CategoriesJson = pendingInvite.CategoriesJson;
+        }
+
         if (user.OrgId is null)
         {
             user.OrgId = org.Id;
@@ -342,13 +359,17 @@ public class SupplierService(
                 "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
         }
 
-        var apiBaseUrl = configuration["App:ApiBaseUrl"];
-        if (string.IsNullOrWhiteSpace(apiBaseUrl))
+        var auth0Domain = configuration["Auth0:Domain"];
+        var auth0ClientId = configuration["Auth0:ClientId"];
+        var frontendBaseUrl = configuration["App:PublicSiteBaseUrl"];
+
+        if (string.IsNullOrWhiteSpace(auth0Domain) || string.IsNullOrWhiteSpace(auth0ClientId) || string.IsNullOrWhiteSpace(frontendBaseUrl))
         {
-            throw new InvalidOperationException("App:ApiBaseUrl non configurato: impossibile inviare l'invito.");
+            throw new InvalidOperationException(
+                "Auth0:Domain, Auth0:ClientId o App:PublicSiteBaseUrl non configurati: impossibile inviare l'invito.");
         }
 
-        var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(apiBaseUrl, invite);
+        var signupUrl = SupplierInviteEmailBuilder.BuildAuth0SignupUrl(auth0Domain, auth0ClientId, frontendBaseUrl, invite);
         var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
 
         var result = await emailService.SendEmailAsync(invite.Email, subject, html);

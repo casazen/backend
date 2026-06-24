@@ -53,6 +53,15 @@ public static class SupplierInviteEmailBuilder
         return (subject, html);
     }
 
-    public static string BuildSignupUrl(string publicSiteBaseUrl, SupplierInviteRecord invite) =>
-        $"{publicSiteBaseUrl.TrimEnd('/')}/register?inviteToken={invite.Id}&email={Uri.EscapeDataString(invite.Email)}&comune={Uri.EscapeDataString(invite.ComuneCode)}";
+    public static string BuildAuth0SignupUrl(string auth0Domain, string auth0ClientId, string frontendBaseUrl, SupplierInviteRecord invite)
+    {
+        var redirectUri = $"{frontendBaseUrl.TrimEnd('/')}/callback";
+        return $"https://{auth0Domain}/authorize" +
+               $"?response_type=code" +
+               $"&client_id={Uri.EscapeDataString(auth0ClientId)}" +
+               $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
+               $"&scope=openid+profile+email" +
+               $"&screen_hint=signup" +
+               $"&login_hint={Uri.EscapeDataString(invite.Email)}";
+    }
 }
