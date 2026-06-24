@@ -52,7 +52,7 @@ public class SupplierServiceInviteEmailTests
             s => s.SendEmailAsync(
                 "supplier@test.com",
                 "Invito CasaZen — Console fornitore",
-                It.Is<string>(html => html.Contains("screen_hint=signup"))),
+                It.Is<string>(html => html.Contains("/login"))),
             Times.Once);
     }
 
@@ -148,8 +148,6 @@ public class SupplierServiceInviteEmailTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Auth0:Domain"] = "dev-xxx.us.auth0.com",
-                ["Auth0:ClientId"] = "test_client_id",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
                 ["Email:SendGridApiKey"] = emailServiceApiKey ?? (isProduction ? "SG.live_test_key" : string.Empty),
             })
