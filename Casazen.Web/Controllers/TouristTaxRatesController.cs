@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/tourist-tax-rates")]
 [Authorize]
 public class TouristTaxRatesController(
     ITouristTaxService touristTaxService,
