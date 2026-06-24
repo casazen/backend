@@ -29,6 +29,15 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Payment>> GetByPropertyAsync(Guid propertyId)
+    {
+        return await context.Payments
+            .Include(p => p.Booking)
+            .Where(p => p.Booking!.PropertyId == propertyId)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<Payment>> GetAllAsync()
     {
         return await context.Payments

@@ -27,11 +27,13 @@ public class BookingsController(
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId)
+    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId = null, [FromQuery] Guid? guestId = null)
     {
         IEnumerable<Booking> bookings;
 
-        if (propertyId.HasValue)
+        if (guestId.HasValue)
+            bookings = await bookingService.GetGuestBookingsAsync(guestId.Value);
+        else if (propertyId.HasValue)
             bookings = await bookingService.GetPropertyBookingsAsync(propertyId.Value);
         else
             bookings = await bookingService.GetAllBookingsAsync();
