@@ -19,6 +19,11 @@ public class PaymentService(
         return await repository.GetByBookingAsync(bookingId);
     }
 
+    public async Task<IEnumerable<Payment>> GetPropertyPaymentsAsync(Guid propertyId)
+    {
+        return await repository.GetByPropertyAsync(propertyId);
+    }
+
     public async Task<IEnumerable<Payment>> GetAllPaymentsAsync()
     {
         return await repository.GetAllAsync();

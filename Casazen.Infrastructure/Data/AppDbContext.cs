@@ -45,6 +45,7 @@ public class AppDbContext(
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+    public DbSet<SupplierJob> SupplierJobs { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;

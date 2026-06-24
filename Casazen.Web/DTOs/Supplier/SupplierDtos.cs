@@ -151,3 +151,50 @@ public class SupplierPickerDto
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
 }
+
+// ─── Calendar Sync ─────────────────────────────────────────────────────────────
+
+public class SetIcalFeedRequest
+{
+    [Required, MaxLength(2048)]
+    public string IcalFeedUrl { get; set; } = string.Empty;
+}
+
+public class CalendarSyncStatusDto
+{
+    public string CalendarSyncType { get; set; } = "None";
+    public string? IcalFeedUrl { get; set; }
+    public DateTime? CalendarLastSyncAt { get; set; }
+    public string? CalendarSyncError { get; set; }
+}
+
+public class FixOrphanedSupplierOrgsResponse
+{
+    public int ProfilesScanned { get; set; }
+    public int UsersLinked { get; set; }
+    public int DuplicatesMerged { get; set; }
+    public int EmptyOrgsDeleted { get; set; }
+    public int OrphansSkipped { get; set; }
+    public IReadOnlyList<string> Details { get; set; } = [];
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+public class SupplierDashboardDto
+{
+    public int ProfileCompletionPercent { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public int TotalJobs { get; set; }
+    public int CompletedJobs { get; set; }
+    public int UpcomingJobs { get; set; }
+    public double AvailabilityRate { get; set; }
+    public CalendarSyncStatusDto CalendarSyncStatus { get; set; } = new();
+    public DateTime LastUpdated { get; set; }
+}
+
+// ─── Photo Upload ────────────────────────────────────────────────────────────
+
+public class SupplierPhotoUploadResponse
+{
+    public IEnumerable<string> Urls { get; set; } = [];
+}

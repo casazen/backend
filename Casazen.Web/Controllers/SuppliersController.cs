@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using System.Text.Json;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
@@ -14,6 +16,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/suppliers")]
 public class SuppliersController(
     ISupplierService supplierService,
+    IAuth0ManagementService auth0Management,
     ILogger<SuppliersController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -31,15 +34,32 @@ public class SuppliersController(
     {
         try
         {
+            // Resolve the authenticated user's sub claim if present (the endpoint is
+            // [AllowAnonymous] but the JWT may be valid if the user logged in via Auth0
+            // before submitting the registration form). Linking User.OrgId at registration
+            // time prevents duplicate auto-provisioning on first supplier endpoint access.
+            var userId = User.FindFirstValue("sub")
+                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+
             var (org, _) = await supplierService.RegisterAsync(
                 request.Email,
                 request.LegalName,
                 request.Phone,
                 request.ComuneCode,
                 request.InviteToken,
+                userId,
                 cancellationToken);
 
             logger.LogInformation("Supplier registered: {OrgId} for {Email}", org.Id, request.Email);
+
+            // Fire-and-forget: assign the Supplier role in Auth0 so the user can access
+            // supplier endpoints after completing Auth0 signup. Silently skips if the
+            // Management API token is not configured.
+            if (userId is not null)
+            {
+                _ = auth0Management.AssignRoleAsync(userId, UserRole.Supplier);
+            }
 
             return CreatedAtAction(nameof(Register), new SupplierRegisterResponse
             {

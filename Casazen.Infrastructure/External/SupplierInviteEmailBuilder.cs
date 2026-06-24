@@ -30,6 +30,9 @@ public static class SupplierInviteEmailBuilder
                 CasaZen ti invita a registrarti come <strong>fornitore</strong>
                 per il comune <strong>{WebUtility.HtmlEncode(invite.ComuneCode)}</strong>.
               </p>
+              <p style="font-size:13px;color:#71717a;">
+                Usa l'email <strong>{WebUtility.HtmlEncode(invite.Email)}</strong> per registrarti: il tuo profilo fornitore verr&agrave; attivato automaticamente.
+              </p>
               {customMessage}
               <p>
                 <a href="{WebUtility.HtmlEncode(signupUrl)}"
@@ -43,7 +46,6 @@ public static class SupplierInviteEmailBuilder
               </p>
               <p style="font-size:13px;color:#71717a;">
                 L'invito scade il <strong>{expiresLabel}</strong>.
-                Dopo la registrazione su Auth0 completa l'attivazione dalla console fornitore.
               </p>
               <p style="font-size:12px;color:#a1a1aa;">CasaZen — gestione affitti brevi</p>
             </body>
@@ -53,6 +55,6 @@ public static class SupplierInviteEmailBuilder
         return (subject, html);
     }
 
-    public static string BuildSignupUrl(string publicSiteBaseUrl, SupplierInviteRecord invite) =>
-        $"{publicSiteBaseUrl.TrimEnd('/')}/register?inviteToken={invite.Id}&email={Uri.EscapeDataString(invite.Email)}&comune={Uri.EscapeDataString(invite.ComuneCode)}";
+    public static string BuildSignupUrl(string baseUrl, SupplierInviteRecord invite) =>
+        $"{baseUrl.TrimEnd('/')}/register?inviteToken={invite.Id}&email={Uri.EscapeDataString(invite.Email)}&comune={Uri.EscapeDataString(invite.ComuneCode)}";
 }

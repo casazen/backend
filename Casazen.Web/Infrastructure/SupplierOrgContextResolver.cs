@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.Infrastructure;
@@ -15,7 +16,8 @@ public interface ISupplierOrgContextResolver
 public sealed class SupplierOrgContextResolver(
     IHttpContextAccessor httpContextAccessor,
     IUserService userService,
-    ISupplierService supplierService) : ISupplierOrgContextResolver
+    ISupplierService supplierService,
+    IAuth0ManagementService auth0Management) : ISupplierOrgContextResolver
 {
     public async Task<Guid?> GetOrProvisionSupplierOrgIdAsync(CancellationToken cancellationToken = default)
     {
@@ -23,10 +25,48 @@ public sealed class SupplierOrgContextResolver(
         if (string.IsNullOrWhiteSpace(sub))
             return null;
 
-        var (email, firstName, lastName) = ResolveProfileClaims();
-        await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
-        return await supplierService.GetOrProvisionSupplierOrgIdAsync(
+        var (jwtEmail, firstName, lastName) = ResolveProfileClaims();
+        var user = await userService.GetCurrentUserAsync(sub, jwtEmail, firstName, lastName);
+
+        // Resolve email: JWT claim → DB record → Auth0 Management API
+        var email = ResolveEmail(jwtEmail, user);
+        if (string.IsNullOrWhiteSpace(email) && user is not null)
+        {
+            // Last resort: fetch from Auth0 Management API. This call is cached
+            // by the underlying service and only happens once per user whose JWT
+            // lacks the email claim.
+            var profile = await auth0Management.GetUserProfileAsync(sub);
+            if (profile is not null && !string.IsNullOrWhiteSpace(profile.Email))
+            {
+                email = profile.Email;
+                // Backfill the DB so future requests don't need the API call
+                user.Email = email;
+                await userService.UpdateUserAsync(user);
+            }
+        }
+
+        var orgId = await supplierService.GetOrProvisionSupplierOrgIdAsync(
             sub, email, firstName, lastName, cancellationToken);
+
+        // Fire-and-forget: ensure the user has the Supplier role in Auth0.
+        // The user may have signed up via Auth0 before the Supplier role was
+        // assigned during registration (or registration was done anonymously).
+        // Silently skips if the Management API token is not configured.
+        if (orgId is not null)
+        {
+            _ = auth0Management.AssignRoleAsync(sub, UserRole.Supplier);
+        }
+
+        return orgId;
+    }
+
+    private static string ResolveEmail(string jwtEmail, Core.Entities.User? user)
+    {
+        if (!string.IsNullOrWhiteSpace(jwtEmail))
+            return jwtEmail;
+        if (user is not null && !string.IsNullOrWhiteSpace(user.Email))
+            return user.Email;
+        return string.Empty;
     }
 
     private string? ResolveSub()

@@ -19,7 +19,7 @@ using Moq;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// WebApplicationFactory for integration tests â€” in-memory EF, test auth, mocked Hangfire.
+/// WebApplicationFactory for integration tests — in-memory EF, test auth, mocked Hangfire.
 /// </summary>
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -50,6 +50,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
                 ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
+                ["App:ApiBaseUrl"] = "https://casazen-api-test.up.railway.app",
                 ["Legal:Documents:Tos:Version"] = "2026-06-v1",
                 ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
                 ["Legal:Documents:Dpa:Version"] = "2026-06-v1",
@@ -124,10 +125,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
     public async Task<Property> SeedPropertyAsync(string ownerId = TestAuthHandler.DefaultUserId, decimal nightlyRate = 100m)
     {
+        var org = await SeedOrgForOwnerAsync(ownerId);
+
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        var org = await EnsureOrgAsync(db, ownerId);
 
         var property = new Property
         {
@@ -167,7 +168,21 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await EnsureOrgAsync(db, ownerId);
-        await db.SaveChangesAsync();
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
+        {
+            // Parallel test already seeded the same user/org — re-query for committed values
+            db.ChangeTracker.Clear();
+            var slug = $"test-org-{ownerId}";
+            org = await db.Orgs.FirstOrDefaultAsync(o => o.Slug == slug);
+            if (org is null)
+                throw;
+        }
+
         return org;
     }
 

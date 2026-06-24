@@ -26,6 +26,7 @@ public class SupplierService(
         string phone,
         string comuneCode,
         string? inviteToken,
+        string? userId = null,
         CancellationToken cancellationToken = default)
     {
         if (inviteToken is not null)
@@ -64,6 +65,22 @@ public class SupplierService(
         };
         db.SupplierProfiles.Add(profile);
 
+        // Link the authenticated user to the new org so subsequent supplier endpoint
+        // calls resolve the org via User.SupplierOrgId instead of falling back to
+        // email lookup or auto-provisioning a duplicate.
+        if (userId is not null)
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            if (user is not null)
+            {
+                user.SupplierOrgId = org.Id;
+                if (user.OrgId is null)
+                    user.OrgId = org.Id;
+                user.UpdatedAt = DateTime.UtcNow;
+                logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
+            }
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation("Supplier org {OrgId} registered for {Email}", org.Id, email);
@@ -89,11 +106,11 @@ public class SupplierService(
             return null;
 
         if (legalName is not null) profile.LegalName = legalName;
-        if (vatNumber is not null) profile.VatNumber = vatNumber;
+        if (vatNumber is not null) profile.VatNumber = vatNumber.Length == 0 ? null : vatNumber;
         if (phone is not null) profile.Phone = phone;
         if (categories is not null) profile.CategoriesJson = JsonSerializer.Serialize(categories, JsonOpts);
         if (comuni is not null) profile.ComuniJson = JsonSerializer.Serialize(comuni, JsonOpts);
-        if (bio is not null) profile.Bio = bio;
+        if (bio is not null) profile.Bio = bio.Length == 0 ? null : bio;
         if (photoUrls is not null) profile.PhotoUrlsJson = JsonSerializer.Serialize(photoUrls, JsonOpts);
         profile.UpdatedAt = DateTime.UtcNow;
 
@@ -133,17 +150,9 @@ public class SupplierService(
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
             ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
 
-        var steps = await GetActivationStepsAsync(orgId, cancellationToken);
-        var blockers = steps.Where(s => s.Status != "completed" && s.Id != "tos").ToList();
-
+        // Only ToS gates activation. Categories, comuni, and bio can be completed later.
         if (!tosAccepted)
-            blockers.Add(new ActivationStep("tos", "Termini di servizio", "pending", "Devi accettare i termini di servizio"));
-
-        if (blockers.Count > 0)
-        {
-            var msgs = string.Join("; ", blockers.Select(b => b.Blocker));
-            throw new InvalidOperationException($"Attivazione non completata: {msgs}");
-        }
+            throw new InvalidOperationException("Devi accettare i termini di servizio");
 
         profile.TosAcceptedAt = DateTime.UtcNow;
         profile.Status = SupplierStatus.Active;
@@ -270,30 +279,64 @@ public class SupplierService(
             return null;
 
         var resolvedEmail = string.IsNullOrWhiteSpace(email) ? user.Email : email;
-        var normalizedEmail = resolvedEmail.Trim().ToLowerInvariant();
+        var normalizedEmail = string.IsNullOrWhiteSpace(resolvedEmail) ? string.Empty : resolvedEmail.Trim().ToLowerInvariant();
 
+        // Step 1a: User.SupplierOrgId — set explicitly during registration or
+        // auto-provisioning, survives even when User.OrgId points to a host org.
+        if (user.SupplierOrgId is Guid supplierOrgId)
+        {
+            var supplierOrg = await db.Orgs.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == supplierOrgId, cancellationToken);
+            if (supplierOrg?.OrgType == OrgType.Supplier)
+            {
+                var supplierProfile = await db.SupplierProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(sp => sp.OrgId == supplierOrgId, cancellationToken);
+                if (supplierProfile is not null)
+                    return supplierOrgId;
+            }
+        }
+
+        // Step 1b: User.OrgId — covers the case where the user is ONLY a supplier
+        // (not dual-role) and their OrgId points to a supplier org.
         if (user.OrgId is Guid linkedOrgId)
         {
             var linkedOrg = await db.Orgs.AsNoTracking()
                 .FirstOrDefaultAsync(o => o.Id == linkedOrgId, cancellationToken);
             if (linkedOrg?.OrgType == OrgType.Supplier)
             {
-                var linkedProfile = await db.SupplierProfiles
-                    .AsNoTracking()
+                var linkedProfile = await db.SupplierProfiles.AsNoTracking()
                     .FirstOrDefaultAsync(sp => sp.OrgId == linkedOrgId, cancellationToken);
                 if (linkedProfile is not null)
+                {
+                    // Backfill SupplierOrgId for consistency
+                    if (user.SupplierOrgId != linkedOrgId)
+                    {
+                        user.SupplierOrgId = linkedOrgId;
+                        await db.SaveChangesAsync(cancellationToken);
+                    }
                     return linkedOrgId;
+                }
             }
         }
 
+        // Step 2: Email-based lookup
         if (!string.IsNullOrWhiteSpace(normalizedEmail))
         {
-            var profileByEmail = await db.SupplierProfiles
-                .AsNoTracking()
+            var profileByEmail = await db.SupplierProfiles.AsNoTracking()
                 .FirstOrDefaultAsync(sp => sp.Email.ToLower() == normalizedEmail, cancellationToken);
             if (profileByEmail is not null)
+            {
+                user.SupplierOrgId = profileByEmail.OrgId;
+                user.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(cancellationToken);
                 return profileByEmail.OrgId;
+            }
         }
+
+        // Step 3: Auto-provisioning — last resort
+        logger.LogWarning(
+            "Auto-provisioning supplier org for user {UserId} (email={Email}, name={FirstName} {LastName})",
+            userId, resolvedEmail, firstName, lastName);
 
         var displayName = $"{firstName} {lastName}".Trim();
         if (string.IsNullOrWhiteSpace(displayName))
@@ -320,15 +363,243 @@ public class SupplierService(
         };
         db.SupplierProfiles.Add(profile);
 
-        if (user.OrgId is null)
+        // Consume any pending invite for this email during auto-provisioning
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
         {
-            user.OrgId = org.Id;
-            user.UpdatedAt = DateTime.UtcNow;
+            var pendingInvite = await db.SupplierInviteRecords
+                .FirstOrDefaultAsync(i =>
+                    i.Email.ToLower() == normalizedEmail &&
+                    !i.IsUsed &&
+                    i.ExpiresAt > DateTime.UtcNow,
+                    cancellationToken);
+
+            if (pendingInvite is not null)
+            {
+                pendingInvite.IsUsed = true;
+                if (!string.IsNullOrWhiteSpace(pendingInvite.ComuneCode))
+                    profile.ComuniJson = JsonSerializer.Serialize(new[] { pendingInvite.ComuneCode });
+                if (!string.IsNullOrWhiteSpace(pendingInvite.CategoriesJson))
+                    profile.CategoriesJson = pendingInvite.CategoriesJson;
+            }
         }
+
+        // Set SupplierOrgId — always, even when User.OrgId is already set (dual-role).
+        user.SupplierOrgId = org.Id;
+        user.UpdatedAt = DateTime.UtcNow;
+
+        // If the user doesn't have an OrgId at all, set it too (single-role supplier).
+        if (user.OrgId is null)
+            user.OrgId = org.Id;
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Auto-provisioned supplier org {OrgId} for user {UserId}", org.Id, userId);
         return org.Id;
+    }
+
+    public async Task<SupplierDashboard> GetDashboardStatsAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+
+        if (profile is null)
+            return new SupplierDashboard(0, "Unknown", 0, 0, 0, 0, "None", null, null, null, DateTime.UtcNow);
+
+        var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
+
+        // Profile completion: 5 dimensions — identity(=1) + categories + comuni + bio + tos
+        var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
+        var comuni = JsonSerializer.Deserialize<string[]>(profile.ComuniJson, JsonOpts) ?? [];
+        var hasBio = !string.IsNullOrWhiteSpace(profile.Bio);
+        var hasTos = profile.TosAcceptedAt.HasValue;
+        int completionSteps = 1 + (categories.Length > 0 ? 1 : 0) + (comuni.Length > 0 ? 1 : 0) + (hasBio ? 1 : 0) + (hasTos ? 1 : 0);
+        int profileCompletionPercent = (int)Math.Round(completionSteps / 5.0 * 100);
+
+        // Jobs aggregation
+        var jobs = await db.SupplierJobs.AsNoTracking()
+            .Where(j => j.SupplierOrgId == orgId)
+            .ToListAsync(cancellationToken);
+
+        int totalJobs = jobs.Count;
+        int completedJobs = jobs.Count(j => j.Status == SupplierJobStatus.Completed);
+        int upcomingJobs = jobs.Count(j =>
+            j.Status is SupplierJobStatus.Accepted or SupplierJobStatus.Offered &&
+            j.ScheduledStartUtc > now);
+
+        // Availability rate over the next 30 days
+        var thirtyDaysFromNow = today.AddDays(29);
+        var availRows = await db.SupplierAvailability.AsNoTracking()
+            .Where(sa => sa.OrgId == orgId && sa.Date >= today && sa.Date <= thirtyDaysFromNow)
+            .ToListAsync(cancellationToken);
+
+        double availabilityRate = 0;
+        if (availRows.Count > 0)
+        {
+            int availableDays = availRows.Count(sa => sa.Available);
+            availabilityRate = Math.Round((double)availableDays / availRows.Count, 2);
+        }
+
+        return new SupplierDashboard(
+            profileCompletionPercent,
+            profile.Status.ToString(),
+            totalJobs,
+            completedJobs,
+            upcomingJobs,
+            availabilityRate,
+            profile.CalendarSyncType.ToString(),
+            profile.IcalFeedUrl,
+            profile.CalendarLastSyncAt,
+            profile.CalendarSyncError,
+            profile.UpdatedAt);
+    }
+
+    public async Task<SupplierProfile?> UpdateCalendarSyncAsync(
+        Guid orgId,
+        CalendarSyncType syncType,
+        string? icalFeedUrl,
+        string? calendarSyncError,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+        if (profile is null)
+            return null;
+
+        profile.CalendarSyncType = syncType;
+        profile.IcalFeedUrl = icalFeedUrl;
+        profile.CalendarSyncError = calendarSyncError;
+        profile.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return profile;
+    }
+
+    public async Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default)
+    {
+        var details = new List<string>();
+        int usersLinked = 0, duplicatesMerged = 0, emptyOrgsDeleted = 0, orphansSkipped = 0;
+
+        var allProfiles = await db.SupplierProfiles
+            .Include(sp => sp.Org)
+            .OrderBy(sp => sp.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        // Group by normalized email to detect duplicates.
+        // Empty-email profiles all land in the "" bucket and are deduplicated together.
+        var profilesByEmail = allProfiles
+            .GroupBy(sp => (sp.Email ?? string.Empty).Trim().ToLowerInvariant())
+            .ToList();
+
+        foreach (var group in profilesByEmail)
+        {
+            var email = group.Key;
+            var profiles = group.ToList();
+
+            // Case C: Duplicate profiles — keep the richest one
+            if (profiles.Count > 1)
+            {
+                static int Score(SupplierProfile p)
+                {
+                    int s = 0;
+                    if (!string.IsNullOrWhiteSpace(p.LegalName) && p.LegalName != "Fornitore") s += 3;
+                    if (p.CategoriesJson is not null && p.CategoriesJson != "[]") s += 1;
+                    if (p.ComuniJson is not null && p.ComuniJson != "[]") s += 1;
+                    if (!string.IsNullOrWhiteSpace(p.Bio)) s += 1;
+                    if (p.Status == SupplierStatus.Active) s += 1;
+                    return s;
+                }
+
+                var ordered = profiles.OrderByDescending(Score).ThenBy(p => p.CreatedAt).ToList();
+                var keeper = ordered[0];
+                var victims = ordered.Skip(1).ToList();
+
+                foreach (var victim in victims)
+                {
+                    var victimOrg = victim.Org;
+                    db.SupplierProfiles.Remove(victim);
+                    if (victimOrg is not null)
+                        db.Orgs.Remove(victimOrg);
+                    duplicatesMerged++;
+                    details.Add($"Duplicate merged: kept {keeper.OrgId} (score={Score(keeper)}), deleted {victim.OrgId} (score={Score(victim)}) — email='{email}'");
+                    logger.LogWarning("FixOrphaned: deleted duplicate {VictimOrgId}, kept {KeeperOrgId}", victim.OrgId, keeper.OrgId);
+                }
+
+                profiles = [keeper];
+            }
+
+            // Link the surviving profile to its user
+            foreach (var profile in profiles)
+            {
+                // Find the user: by email first, then by OrgId/SupplierOrgId linkage
+                User? user = null;
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    user = await db.Users
+                        .FirstOrDefaultAsync(u => u.Email.ToLower() == email, cancellationToken);
+                }
+
+                // Fallback: find user linked via OrgId or SupplierOrgId
+                if (user is null)
+                {
+                    user = await db.Users
+                        .FirstOrDefaultAsync(u =>
+                            u.SupplierOrgId == profile.OrgId ||
+                            (u.OrgId == profile.OrgId && u.SupplierOrgId == null),
+                            cancellationToken);
+                }
+
+                if (user is null)
+                {
+                    orphansSkipped++;
+                    details.Add($"Orphan: profile {profile.OrgId} (email='{email}') has no matching user");
+                    logger.LogWarning("FixOrphaned: no user for profile {OrgId}", profile.OrgId);
+                    continue;
+                }
+
+                // Set SupplierOrgId on the user (always) and OrgId only if empty
+                if (user.SupplierOrgId != profile.OrgId)
+                {
+                    user.SupplierOrgId = profile.OrgId;
+                    usersLinked++;
+                    details.Add($"Linked: user {user.Id} SupplierOrgId → {profile.OrgId}");
+                }
+
+                // Only set OrgId if the user doesn't already have a host org
+                if (user.OrgId is Guid existingOrgId && existingOrgId != profile.OrgId)
+                {
+                    var existingOrg = await db.Orgs.AsNoTracking()
+                        .FirstOrDefaultAsync(o => o.Id == existingOrgId, cancellationToken);
+                    if (existingOrg?.OrgType == OrgType.Host)
+                    {
+                        details.Add($"Dual-role: user {user.Id} keeps host OrgId={existingOrgId}, SupplierOrgId={profile.OrgId}");
+                        continue;
+                    }
+                }
+
+                if (user.OrgId is null)
+                {
+                    user.OrgId = profile.OrgId;
+                    details.Add($"Set OrgId: user {user.Id} OrgId → {profile.OrgId}");
+                }
+
+                user.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var report = new FixOrphanedSupplierOrgsReport(
+            ProfilesScanned: allProfiles.Count,
+            UsersLinked: usersLinked,
+            DuplicatesMerged: duplicatesMerged,
+            EmptyOrgsDeleted: emptyOrgsDeleted,
+            OrphansSkipped: orphansSkipped,
+            Details: details);
+
+        logger.LogInformation(
+            "FixOrphaned completed: scanned={Scanned}, linked={Linked}, merged={Merged}, deletedOrgs={Deleted}, orphans={Orphans}",
+            report.ProfilesScanned, report.UsersLinked, report.DuplicatesMerged, report.EmptyOrgsDeleted, report.OrphansSkipped);
+
+        return report;
     }
 
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
@@ -350,13 +621,25 @@ public class SupplierService(
                 "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
         }
 
-        var baseUrl = configuration["App:PublicSiteBaseUrl"];
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        var signupUrl = configuration["App:SupplierLoginUrl"];
+        if (string.IsNullOrWhiteSpace(signupUrl))
         {
-            throw new InvalidOperationException("App:PublicSiteBaseUrl non configurato: impossibile inviare l'invito.");
+            var apiBaseUrl = configuration["App:ApiBaseUrl"];
+            if (!string.IsNullOrWhiteSpace(apiBaseUrl))
+            {
+                signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(apiBaseUrl, invite);
+            }
+            else
+            {
+                var frontendBaseUrl = configuration["App:PublicSiteBaseUrl"];
+                if (string.IsNullOrWhiteSpace(frontendBaseUrl))
+                {
+                    throw new InvalidOperationException(
+                        "App:ApiBaseUrl o App:PublicSiteBaseUrl non configurato: impossibile inviare l'invito.");
+                }
+                signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(frontendBaseUrl, invite);
+            }
         }
-
-        var signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(baseUrl, invite);
         var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
 
         var result = await emailService.SendEmailAsync(invite.Email, subject, html);

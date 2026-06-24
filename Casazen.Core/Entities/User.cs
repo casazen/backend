@@ -30,6 +30,13 @@ public class User
     public Guid? OrgId { get; set; }
     public virtual Org? Org { get; set; }
 
+    /// <summary>
+    /// For dual-role users (host + supplier): the supplier org when different from <see cref="OrgId"/>.
+    /// Set during auto-provisioning or registration so the supplier context resolver can find
+    /// the supplier org without relying on email lookup.
+    /// </summary>
+    public Guid? SupplierOrgId { get; set; }
+
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 
@@ -51,7 +58,8 @@ public enum UserRole
     PropertyManager,
     Guest,
     Staff,
-    LongTermLandlord // 5 — append only, do not insert before existing values
+    LongTermLandlord, // 5 — append only, do not insert before existing values
+    Supplier // 6
 }
 
 public enum RentalType

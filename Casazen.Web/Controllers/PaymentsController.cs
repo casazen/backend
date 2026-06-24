@@ -16,10 +16,16 @@ public class PaymentsController(
     ILogger<PaymentsController> logger) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Payment>>> GetAll()
+    public async Task<ActionResult<IEnumerable<Payment>>> GetAll([FromQuery] Guid? propertyId)
     {
         logger.LogInformation("Getting all payments");
-        var payments = await paymentService.GetAllPaymentsAsync();
+        IEnumerable<Payment> payments;
+
+        if (propertyId.HasValue)
+            payments = await paymentService.GetPropertyPaymentsAsync(propertyId.Value);
+        else
+            payments = await paymentService.GetAllPaymentsAsync();
+
         return Ok(payments);
     }
 

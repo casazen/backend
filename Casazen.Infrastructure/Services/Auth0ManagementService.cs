@@ -26,6 +26,7 @@ public class Auth0ManagementService(
         { UserRole.Guest,            "Guest" },
         { UserRole.Staff,            "Staff" },
         { UserRole.LongTermLandlord, "LongTermLandlord" },
+        { UserRole.Supplier,         "Supplier" },
     };
 
     private static readonly UserRole[] OnboardingRoles =

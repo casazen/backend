@@ -156,15 +156,30 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     }
 
     [Fact]
-    public async Task CompleteActivation_WithBlockers_Returns409()
+    public async Task CompleteActivation_WithoutTos_Returns409()
     {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
+            new { tosAccepted = false });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_MinimalProfileWithTos_Returns200Active()
+    {
+        // Only ToS should gate activation. Categories, bio, comuni can be added later.
         var (supplierId, _) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
         var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
             new { tosAccepted = true });
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Active", body.GetProperty("status").GetString());
     }
 
     [Fact]

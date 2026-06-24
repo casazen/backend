@@ -111,19 +111,19 @@ builder.Services.AddHttpClient("Openapi");
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
-	// Localization — Italian (default) and English
-	builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+// Localization — Italian (default) and English
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
-	builder.Services.AddRequestLocalization(options =>
-	{
-	    var supportedCultures = new[] { "it-IT", "en-US" };
-	    options.SetDefaultCulture(supportedCultures[0])
-	           .AddSupportedCultures(supportedCultures)
-	           .AddSupportedUICultures(supportedCultures);
-	    options.ApplyCurrentCultureToResponseHeaders = true;
-	});
+builder.Services.AddRequestLocalization(options =>
+{
+    var supportedCultures = new[] { "it-IT", "en-US" };
+    options.SetDefaultCulture(supportedCultures[0])
+           .AddSupportedCultures(supportedCultures)
+           .AddSupportedUICultures(supportedCultures);
+    options.ApplyCurrentCultureToResponseHeaders = true;
+});
 
-	// Authentication & Authorization
+// Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddCasazenAuthorization();
 
@@ -408,6 +408,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "direct-booking-charge",
         job => job.ExecuteAsync(),
         "0 6 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<IcalSupplierSyncJob>(
+        "ical-supplier-sync",
+        job => job.ExecuteAsync(),
+        "*/15 * * * *",  // Every 15 minutes
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 
