@@ -277,8 +277,9 @@ public class SupplierService(
             return null;
 
         var resolvedEmail = string.IsNullOrWhiteSpace(email) ? user.Email : email;
-        var normalizedEmail = resolvedEmail.Trim().ToLowerInvariant();
+        var normalizedEmail = string.IsNullOrWhiteSpace(resolvedEmail) ? string.Empty : resolvedEmail.Trim().ToLowerInvariant();
 
+        // Fast path: user already linked to a supplier org
         if (user.OrgId is Guid linkedOrgId)
         {
             var linkedOrg = await db.Orgs.AsNoTracking()
@@ -293,6 +294,46 @@ public class SupplierService(
             }
         }
 
+        // Email-based lookup (only when we have a non-empty email)
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            var profileByEmail = await db.SupplierProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(sp => sp.Email.ToLower() == normalizedEmail, cancellationToken);
+            if (profileByEmail is not null)
+                return profileByEmail.OrgId;
+        }
+
+        // Acquire a user-level advisory lock to prevent concurrent auto-provisioning
+        // when the frontend fires multiple parallel requests (e.g. activation page
+        // loading GET activation + GET profile simultaneously).
+        // Only on PostgreSQL — skipped for in-memory DBs (tests) where the race
+        // doesn't occur anyway.
+        if (db.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            var lockId = Math.Abs(HashCode.Combine(userId, "supplier-org-provision"));
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockId})", cancellationToken);
+        }
+
+        // Re-read the user inside the lock — another request may have provisioned
+        // while we were waiting.
+        await db.Entry(user).ReloadAsync(cancellationToken);
+        if (user.OrgId is Guid relinkedOrgId)
+        {
+            var relinkedOrg = await db.Orgs.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == relinkedOrgId, cancellationToken);
+            if (relinkedOrg?.OrgType == OrgType.Supplier)
+            {
+                var relinkedProfile = await db.SupplierProfiles
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(sp => sp.OrgId == relinkedOrgId, cancellationToken);
+                if (relinkedProfile is not null)
+                    return relinkedOrgId;
+            }
+        }
+
+        // Double-check email lookup after acquiring the lock
         if (!string.IsNullOrWhiteSpace(normalizedEmail))
         {
             var profileByEmail = await db.SupplierProfiles

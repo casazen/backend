@@ -23,8 +23,16 @@ public sealed class SupplierOrgContextResolver(
         if (string.IsNullOrWhiteSpace(sub))
             return null;
 
-        var (email, firstName, lastName) = ResolveProfileClaims();
-        await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
+        var (jwtEmail, firstName, lastName) = ResolveProfileClaims();
+        var user = await userService.GetCurrentUserAsync(sub, jwtEmail, firstName, lastName);
+
+        // Use the DB-backed email when the JWT email claim is missing.
+        // Without a valid email, GetOrProvisionSupplierOrgIdAsync cannot match
+        // existing profiles and will auto-provision a duplicate on every request.
+        var email = !string.IsNullOrWhiteSpace(jwtEmail)
+            ? jwtEmail
+            : (!string.IsNullOrWhiteSpace(user?.Email) ? user.Email : jwtEmail);
+
         return await supplierService.GetOrProvisionSupplierOrgIdAsync(
             sub, email, firstName, lastName, cancellationToken);
     }
