@@ -38,9 +38,9 @@ public class MigrationSqlTests
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("AddSupplierJobs", lastThree[0]);
-        Assert.EndsWith("AddSupplierShowcaseSlug", lastThree[1]);
-        Assert.EndsWith("FixSupplierJobFkToOrg", lastThree[2]);
+        Assert.EndsWith("AddSupplierShowcaseSlug", lastThree[0]);
+        Assert.EndsWith("FixSupplierJobFkToOrg", lastThree[1]);
+        Assert.EndsWith("AddSupplierOrgIdToUser", lastThree[2]);
     }
 
     [Fact]

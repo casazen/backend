@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
@@ -15,6 +16,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/suppliers")]
 public class SuppliersController(
     ISupplierService supplierService,
+    IAuth0ManagementService auth0Management,
     ILogger<SuppliersController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -50,6 +52,14 @@ public class SuppliersController(
                 cancellationToken);
 
             logger.LogInformation("Supplier registered: {OrgId} for {Email}", org.Id, request.Email);
+
+            // Fire-and-forget: assign the Supplier role in Auth0 so the user can access
+            // supplier endpoints after completing Auth0 signup. Silently skips if the
+            // Management API token is not configured.
+            if (userId is not null)
+            {
+                _ = auth0Management.AssignRoleAsync(userId, UserRole.Supplier);
+            }
 
             return CreatedAtAction(nameof(Register), new SupplierRegisterResponse
             {

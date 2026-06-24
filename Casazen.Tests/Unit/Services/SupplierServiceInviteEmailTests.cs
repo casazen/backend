@@ -52,7 +52,7 @@ public class SupplierServiceInviteEmailTests
             s => s.SendEmailAsync(
                 "supplier@test.com",
                 "Invito CasaZen — Console fornitore",
-                It.Is<string>(html => html.Contains("/login"))),
+                It.Is<string>(html => html.Contains("/register?inviteToken="))),
             Times.Once);
     }
 

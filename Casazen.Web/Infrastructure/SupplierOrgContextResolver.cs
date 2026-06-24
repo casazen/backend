@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.Infrastructure;
@@ -44,8 +45,19 @@ public sealed class SupplierOrgContextResolver(
             }
         }
 
-        return await supplierService.GetOrProvisionSupplierOrgIdAsync(
+        var orgId = await supplierService.GetOrProvisionSupplierOrgIdAsync(
             sub, email, firstName, lastName, cancellationToken);
+
+        // Fire-and-forget: ensure the user has the Supplier role in Auth0.
+        // The user may have signed up via Auth0 before the Supplier role was
+        // assigned during registration (or registration was done anonymously).
+        // Silently skips if the Management API token is not configured.
+        if (orgId is not null)
+        {
+            _ = auth0Management.AssignRoleAsync(sub, UserRole.Supplier);
+        }
+
+        return orgId;
     }
 
     private static string ResolveEmail(string jwtEmail, Core.Entities.User? user)
