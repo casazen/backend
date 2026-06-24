@@ -241,16 +241,14 @@ public class SupplierProfileController(
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
-        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
-        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
-
-        profile.IcalFeedUrl = request.IcalFeedUrl;
-        profile.CalendarSyncType = CalendarSyncType.ICalFeed;
-        profile.CalendarSyncError = null;
-        await supplierService.UpdateProfileAsync(orgId.Value,
-            legalName: null, vatNumber: null, phone: null,
-            categories: null, comuni: null, bio: null, photoUrls: null,
+        var profile = await supplierService.UpdateCalendarSyncAsync(
+            orgId.Value,
+            CalendarSyncType.ICalFeed,
+            request.IcalFeedUrl,
+            calendarSyncError: null,
             cancellationToken);
+
+        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
         // Trigger initial sync
         _ = Task.Run(() => calendarSyncService.SyncIcalFeedAsync(orgId.Value, CancellationToken.None));

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
@@ -31,12 +32,21 @@ public class SuppliersController(
     {
         try
         {
+            // Resolve the authenticated user's sub claim if present (the endpoint is
+            // [AllowAnonymous] but the JWT may be valid if the user logged in via Auth0
+            // before submitting the registration form). Linking User.OrgId at registration
+            // time prevents duplicate auto-provisioning on first supplier endpoint access.
+            var userId = User.FindFirstValue("sub")
+                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+
             var (org, _) = await supplierService.RegisterAsync(
                 request.Email,
                 request.LegalName,
                 request.Phone,
                 request.ComuneCode,
                 request.InviteToken,
+                userId,
                 cancellationToken);
 
             logger.LogInformation("Supplier registered: {OrgId} for {Email}", org.Id, request.Email);

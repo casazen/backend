@@ -167,3 +167,13 @@ public class CalendarSyncStatusDto
     public DateTime? CalendarLastSyncAt { get; set; }
     public string? CalendarSyncError { get; set; }
 }
+
+public class FixOrphanedSupplierOrgsResponse
+{
+    public int ProfilesScanned { get; set; }
+    public int UsersLinked { get; set; }
+    public int DuplicatesMerged { get; set; }
+    public int EmptyOrgsDeleted { get; set; }
+    public int OrphansSkipped { get; set; }
+    public IReadOnlyList<string> Details { get; set; } = [];
+}

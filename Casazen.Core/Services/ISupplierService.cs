@@ -8,6 +8,7 @@ public interface ISupplierService
     /// <summary>
     /// Registers a new supplier org. If <paramref name="inviteToken"/> is provided it is validated
     /// against an outstanding admin invite; otherwise self-serve registration is assumed.
+    /// When <paramref name="userId"/> is provided the caller's User record is linked to the new org.
     /// </summary>
     Task<(Org Org, SupplierProfile Profile)> RegisterAsync(
         string email,
@@ -15,6 +16,7 @@ public interface ISupplierService
         string phone,
         string comuneCode,
         string? inviteToken,
+        string? userId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Returns the <see cref="SupplierProfile"/> for the given supplier org.</summary>
@@ -84,8 +86,34 @@ public interface ISupplierService
         string firstName,
         string lastName,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retroactive fix: detects and repairs orphaned/duplicate supplier profiles.
+    /// Links users to their supplier orgs, merges duplicates, and cleans up auto-provisioned
+    /// empty profiles. Returns a report of actions taken. Idempotent.
+    /// </summary>
+    Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates calendar sync settings for a supplier profile. Self-contained save — does not
+    /// depend on <see cref="UpdateProfileAsync"/> side-effects.
+    /// </summary>
+    Task<SupplierProfile?> UpdateCalendarSyncAsync(
+        Guid orgId,
+        CalendarSyncType syncType,
+        string? icalFeedUrl,
+        string? calendarSyncError,
+        CancellationToken cancellationToken = default);
 }
 
 public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
+
+public record FixOrphanedSupplierOrgsReport(
+    int ProfilesScanned,
+    int UsersLinked,
+    int DuplicatesMerged,
+    int EmptyOrgsDeleted,
+    int OrphansSkipped,
+    IReadOnlyList<string> Details);

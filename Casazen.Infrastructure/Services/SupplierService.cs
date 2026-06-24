@@ -26,6 +26,7 @@ public class SupplierService(
         string phone,
         string comuneCode,
         string? inviteToken,
+        string? userId = null,
         CancellationToken cancellationToken = default)
     {
         if (inviteToken is not null)
@@ -64,6 +65,20 @@ public class SupplierService(
         };
         db.SupplierProfiles.Add(profile);
 
+        // Link the authenticated user to the new org so subsequent supplier endpoint
+        // calls resolve the org via User.OrgId instead of falling back to email lookup
+        // or auto-provisioning a duplicate.
+        if (userId is not null)
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            if (user is not null)
+            {
+                user.OrgId = org.Id;
+                user.UpdatedAt = DateTime.UtcNow;
+                logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
+            }
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation("Supplier org {OrgId} registered for {Email}", org.Id, email);
@@ -89,11 +104,11 @@ public class SupplierService(
             return null;
 
         if (legalName is not null) profile.LegalName = legalName;
-        if (vatNumber is not null) profile.VatNumber = vatNumber;
+        if (vatNumber is not null) profile.VatNumber = vatNumber.Length == 0 ? null : vatNumber;
         if (phone is not null) profile.Phone = phone;
         if (categories is not null) profile.CategoriesJson = JsonSerializer.Serialize(categories, JsonOpts);
         if (comuni is not null) profile.ComuniJson = JsonSerializer.Serialize(comuni, JsonOpts);
-        if (bio is not null) profile.Bio = bio;
+        if (bio is not null) profile.Bio = bio.Length == 0 ? null : bio;
         if (photoUrls is not null) profile.PhotoUrlsJson = JsonSerializer.Serialize(photoUrls, JsonOpts);
         profile.UpdatedAt = DateTime.UtcNow;
 
@@ -312,6 +327,11 @@ public class SupplierService(
         };
         db.SupplierProfiles.Add(profile);
 
+        logger.LogWarning(
+            "Auto-provisioning supplier org {OrgId} for user {UserId} (email={Email}, name={DisplayName}) — "
+            + "this should only happen on first access; if it repeats, the user may have duplicate profiles",
+            org.Id, userId, resolvedEmail, displayName);
+
         // Consume any pending invite for this email during auto-provisioning
         var pendingInvite = await db.SupplierInviteRecords
             .FirstOrDefaultAsync(i =>
@@ -338,6 +358,139 @@ public class SupplierService(
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Auto-provisioned supplier org {OrgId} for user {UserId}", org.Id, userId);
         return org.Id;
+    }
+
+    public async Task<SupplierProfile?> UpdateCalendarSyncAsync(
+        Guid orgId,
+        CalendarSyncType syncType,
+        string? icalFeedUrl,
+        string? calendarSyncError,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+        if (profile is null)
+            return null;
+
+        profile.CalendarSyncType = syncType;
+        profile.IcalFeedUrl = icalFeedUrl;
+        profile.CalendarSyncError = calendarSyncError;
+        profile.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return profile;
+    }
+
+    public async Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default)
+    {
+        var details = new List<string>();
+        int usersLinked = 0, duplicatesMerged = 0, emptyOrgsDeleted = 0, orphansSkipped = 0;
+
+        var allProfiles = await db.SupplierProfiles
+            .Include(sp => sp.Org)
+            .OrderBy(sp => sp.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        // Group by normalized email to detect duplicates
+        var profilesByEmail = allProfiles
+            .GroupBy(sp => sp.Email.Trim().ToLowerInvariant())
+            .ToList();
+
+        foreach (var group in profilesByEmail)
+        {
+            var email = group.Key;
+            var profiles = group.ToList();
+
+            // Case C: Duplicate profiles for the same email — keep the richest one
+            if (profiles.Count > 1)
+            {
+                // Score: richer = has LegalName that differs from email prefix, has categories, has bio
+                static int Score(SupplierProfile p)
+                {
+                    int s = 0;
+                    if (!string.IsNullOrWhiteSpace(p.LegalName)) s += 2;
+                    if (p.CategoriesJson is not null && p.CategoriesJson != "[]") s += 1;
+                    if (p.ComuniJson is not null && p.ComuniJson != "[]") s += 1;
+                    if (!string.IsNullOrWhiteSpace(p.Bio)) s += 1;
+                    if (p.Status == SupplierStatus.Active) s += 1;
+                    return s;
+                }
+
+                var ordered = profiles.OrderByDescending(Score).ThenBy(p => p.CreatedAt).ToList();
+                var keeper = ordered[0];
+                var victims = ordered.Skip(1).ToList();
+
+                foreach (var victim in victims)
+                {
+                    var victimOrg = victim.Org;
+                    db.SupplierProfiles.Remove(victim);
+                    if (victimOrg is not null)
+                        db.Orgs.Remove(victimOrg);
+                    duplicatesMerged++;
+                    details.Add($"Duplicate merged: kept profile {keeper.OrgId} (score={Score(keeper)}), deleted {victim.OrgId} (score={Score(victim)}) — email={email}");
+                    logger.LogWarning("FixOrphaned: deleted duplicate profile {VictimOrgId} for {Email}, kept {KeeperOrgId}", victim.OrgId, email, keeper.OrgId);
+                }
+
+                // Ensure the remaining profiles list has only the keeper
+                profiles = [keeper];
+            }
+
+            // Cases A, B, D for the remaining (non-duplicate) profile
+            foreach (var profile in profiles)
+            {
+                var user = await db.Users
+                    .FirstOrDefaultAsync(u => u.Email.ToLower() == email, cancellationToken);
+
+                if (user is null)
+                {
+                    // Case D: No user found
+                    orphansSkipped++;
+                    details.Add($"Orphan: profile {profile.OrgId} has no matching user for email={email}");
+                    logger.LogWarning("FixOrphaned: no user found for supplier profile {OrgId} email={Email}", profile.OrgId, email);
+                    continue;
+                }
+
+                if (user.OrgId is Guid existingOrgId && existingOrgId != profile.OrgId)
+                {
+                    var existingOrg = await db.Orgs.AsNoTracking()
+                        .FirstOrDefaultAsync(o => o.Id == existingOrgId, cancellationToken);
+                    if (existingOrg?.OrgType == OrgType.Host)
+                    {
+                        // Case B: User is a host — don't overwrite their host OrgId
+                        details.Add($"Dual-role: user {user.Id} is host (org={existingOrgId}) and supplier (org={profile.OrgId}) — OrgId kept as host org");
+                        continue;
+                    }
+
+                    // Existing OrgId points to a different supplier org (possibly deleted or wrong type)
+                    details.Add($"Re-link: user {user.Id} OrgId changed from {existingOrgId} to supplier org {profile.OrgId}");
+                }
+
+                // Case A: Set user.OrgId to the supplier org
+                if (user.OrgId != profile.OrgId)
+                {
+                    user.OrgId = profile.OrgId;
+                    user.UpdatedAt = DateTime.UtcNow;
+                    usersLinked++;
+                    details.Add($"Linked: user {user.Id} ({email}) → supplier org {profile.OrgId}");
+                    logger.LogInformation("FixOrphaned: linked user {UserId} to supplier org {OrgId}", user.Id, profile.OrgId);
+                }
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var report = new FixOrphanedSupplierOrgsReport(
+            ProfilesScanned: allProfiles.Count,
+            UsersLinked: usersLinked,
+            DuplicatesMerged: duplicatesMerged,
+            EmptyOrgsDeleted: emptyOrgsDeleted,
+            OrphansSkipped: orphansSkipped,
+            Details: details);
+
+        logger.LogInformation(
+            "FixOrphaned completed: scanned={Scanned}, linked={Linked}, merged={Merged}, deletedOrgs={Deleted}, orphans={Orphans}",
+            report.ProfilesScanned, report.UsersLinked, report.DuplicatesMerged, report.EmptyOrgsDeleted, report.OrphansSkipped);
+
+        return report;
     }
 
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
