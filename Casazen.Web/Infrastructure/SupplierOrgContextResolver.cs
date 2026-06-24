@@ -15,7 +15,8 @@ public interface ISupplierOrgContextResolver
 public sealed class SupplierOrgContextResolver(
     IHttpContextAccessor httpContextAccessor,
     IUserService userService,
-    ISupplierService supplierService) : ISupplierOrgContextResolver
+    ISupplierService supplierService,
+    IAuth0ManagementService auth0Management) : ISupplierOrgContextResolver
 {
     public async Task<Guid?> GetOrProvisionSupplierOrgIdAsync(CancellationToken cancellationToken = default)
     {
@@ -26,15 +27,34 @@ public sealed class SupplierOrgContextResolver(
         var (jwtEmail, firstName, lastName) = ResolveProfileClaims();
         var user = await userService.GetCurrentUserAsync(sub, jwtEmail, firstName, lastName);
 
-        // Use the DB-backed email when the JWT email claim is missing.
-        // Without a valid email, GetOrProvisionSupplierOrgIdAsync cannot match
-        // existing profiles and will auto-provision a duplicate on every request.
-        var email = !string.IsNullOrWhiteSpace(jwtEmail)
-            ? jwtEmail
-            : (!string.IsNullOrWhiteSpace(user?.Email) ? user.Email : jwtEmail);
+        // Resolve email: JWT claim → DB record → Auth0 Management API
+        var email = ResolveEmail(jwtEmail, user);
+        if (string.IsNullOrWhiteSpace(email) && user is not null)
+        {
+            // Last resort: fetch from Auth0 Management API. This call is cached
+            // by the underlying service and only happens once per user whose JWT
+            // lacks the email claim.
+            var profile = await auth0Management.GetUserProfileAsync(sub);
+            if (profile is not null && !string.IsNullOrWhiteSpace(profile.Email))
+            {
+                email = profile.Email;
+                // Backfill the DB so future requests don't need the API call
+                user.Email = email;
+                await userService.UpdateUserAsync(user);
+            }
+        }
 
         return await supplierService.GetOrProvisionSupplierOrgIdAsync(
             sub, email, firstName, lastName, cancellationToken);
+    }
+
+    private static string ResolveEmail(string jwtEmail, Core.Entities.User? user)
+    {
+        if (!string.IsNullOrWhiteSpace(jwtEmail))
+            return jwtEmail;
+        if (user is not null && !string.IsNullOrWhiteSpace(user.Email))
+            return user.Email;
+        return string.Empty;
     }
 
     private string? ResolveSub()
