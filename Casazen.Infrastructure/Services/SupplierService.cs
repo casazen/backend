@@ -396,6 +396,63 @@ public class SupplierService(
         return org.Id;
     }
 
+    public async Task<SupplierDashboard> GetDashboardStatsAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+
+        if (profile is null)
+            return new SupplierDashboard(0, "Unknown", 0, 0, 0, 0, "None", null, null, null, DateTime.UtcNow);
+
+        var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
+
+        // Profile completion: 5 dimensions — identity(=1) + categories + comuni + bio + tos
+        var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
+        var comuni = JsonSerializer.Deserialize<string[]>(profile.ComuniJson, JsonOpts) ?? [];
+        var hasBio = !string.IsNullOrWhiteSpace(profile.Bio);
+        var hasTos = profile.TosAcceptedAt.HasValue;
+        int completionSteps = 1 + (categories.Length > 0 ? 1 : 0) + (comuni.Length > 0 ? 1 : 0) + (hasBio ? 1 : 0) + (hasTos ? 1 : 0);
+        int profileCompletionPercent = (int)Math.Round(completionSteps / 5.0 * 100);
+
+        // Jobs aggregation
+        var jobs = await db.SupplierJobs.AsNoTracking()
+            .Where(j => j.SupplierOrgId == orgId)
+            .ToListAsync(cancellationToken);
+
+        int totalJobs = jobs.Count;
+        int completedJobs = jobs.Count(j => j.Status == SupplierJobStatus.Completed);
+        int upcomingJobs = jobs.Count(j =>
+            j.Status is SupplierJobStatus.Accepted or SupplierJobStatus.Offered &&
+            j.ScheduledStartUtc > now);
+
+        // Availability rate over the next 30 days
+        var thirtyDaysFromNow = today.AddDays(29);
+        var availRows = await db.SupplierAvailability.AsNoTracking()
+            .Where(sa => sa.OrgId == orgId && sa.Date >= today && sa.Date <= thirtyDaysFromNow)
+            .ToListAsync(cancellationToken);
+
+        double availabilityRate = 0;
+        if (availRows.Count > 0)
+        {
+            int availableDays = availRows.Count(sa => sa.Available);
+            availabilityRate = Math.Round((double)availableDays / availRows.Count, 2);
+        }
+
+        return new SupplierDashboard(
+            profileCompletionPercent,
+            profile.Status.ToString(),
+            totalJobs,
+            completedJobs,
+            upcomingJobs,
+            availabilityRate,
+            profile.CalendarSyncType.ToString(),
+            profile.IcalFeedUrl,
+            profile.CalendarLastSyncAt,
+            profile.CalendarSyncError,
+            profile.UpdatedAt);
+    }
+
     public async Task<SupplierProfile?> UpdateCalendarSyncAsync(
         Guid orgId,
         CalendarSyncType syncType,

@@ -177,3 +177,24 @@ public class FixOrphanedSupplierOrgsResponse
     public int OrphansSkipped { get; set; }
     public IReadOnlyList<string> Details { get; set; } = [];
 }
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+public class SupplierDashboardDto
+{
+    public int ProfileCompletionPercent { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public int TotalJobs { get; set; }
+    public int CompletedJobs { get; set; }
+    public int UpcomingJobs { get; set; }
+    public double AvailabilityRate { get; set; }
+    public CalendarSyncStatusDto CalendarSyncStatus { get; set; } = new();
+    public DateTime LastUpdated { get; set; }
+}
+
+// ─── Photo Upload ────────────────────────────────────────────────────────────
+
+public class SupplierPhotoUploadResponse
+{
+    public IEnumerable<string> Urls { get; set; } = [];
+}

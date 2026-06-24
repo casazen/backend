@@ -95,6 +95,11 @@ public interface ISupplierService
     Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns aggregated dashboard statistics for a supplier org.
+    /// </summary>
+    Task<SupplierDashboard> GetDashboardStatsAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates calendar sync settings for a supplier profile. Self-contained save — does not
     /// depend on <see cref="UpdateProfileAsync"/> side-effects.
     /// </summary>
@@ -109,6 +114,19 @@ public interface ISupplierService
 public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
+
+public record SupplierDashboard(
+    int ProfileCompletionPercent,
+    string Status,
+    int TotalJobs,
+    int CompletedJobs,
+    int UpcomingJobs,
+    double AvailabilityRate,
+    string CalendarSyncType,
+    string? IcalFeedUrl,
+    DateTime? CalendarLastSyncAt,
+    string? CalendarSyncError,
+    DateTime LastUpdated);
 
 public record FixOrphanedSupplierOrgsReport(
     int ProfilesScanned,

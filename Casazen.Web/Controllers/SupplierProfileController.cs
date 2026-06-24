@@ -5,6 +5,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
@@ -20,6 +21,7 @@ public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
     CalendarSyncService calendarSyncService,
+    IImageStorageService imageStorageService,
     ILogger<SupplierProfileController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -204,6 +206,93 @@ public class SupplierProfileController(
         var updated = await supplierService.UpdateAvailabilityAsync(orgId.Value, entries, cancellationToken);
 
         return Ok(new UpdateAvailabilityResponse { Updated = updated });
+    }
+
+    // ─── Dashboard ────────────────────────────────────────────────────────────
+
+    /// <summary>Returns aggregated KPIs for the supplier dashboard.</summary>
+    [HttpGet("dashboard")]
+    [ProducesResponseType(typeof(SupplierDashboardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierDashboardDto>> GetDashboard(CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var stats = await supplierService.GetDashboardStatsAsync(orgId.Value, cancellationToken);
+        if (stats is null) return NotFound(new { error = "Supplier profile not found" });
+
+        return Ok(new SupplierDashboardDto
+        {
+            ProfileCompletionPercent = stats.ProfileCompletionPercent,
+            Status = stats.Status,
+            TotalJobs = stats.TotalJobs,
+            CompletedJobs = stats.CompletedJobs,
+            UpcomingJobs = stats.UpcomingJobs,
+            AvailabilityRate = stats.AvailabilityRate,
+            CalendarSyncStatus = new CalendarSyncStatusDto
+            {
+                CalendarSyncType = stats.CalendarSyncType,
+                IcalFeedUrl = stats.IcalFeedUrl,
+                CalendarLastSyncAt = stats.CalendarLastSyncAt,
+                CalendarSyncError = stats.CalendarSyncError,
+            },
+            LastUpdated = stats.LastUpdated,
+        });
+    }
+
+    // ─── Photo Upload ─────────────────────────────────────────────────────────
+
+    /// <summary>Uploads supplier photos. Accepts up to 10 JPEG/PNG/WebP files (max 5 MB each).</summary>
+    [HttpPost("profile/photos")]
+    [ProducesResponseType(typeof(SupplierPhotoUploadResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierPhotoUploadResponse>> UploadPhotos(
+        [FromForm] List<IFormFile> photos,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
+        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+
+        const int maxPhotos = 10;
+        var existingUrls = JsonSerializer.Deserialize<List<string>>(profile.PhotoUrlsJson, JsonOpts) ?? [];
+        if (existingUrls.Count + photos.Count > maxPhotos)
+            return BadRequest(new { error = $"Massimo {maxPhotos} foto consentite. Attuali: {existingUrls.Count}, in upload: {photos.Count}" });
+
+        var uploadedUrls = new List<string>();
+        foreach (var photo in photos)
+        {
+            if (!imageStorageService.ValidateImage(photo))
+            {
+                logger.LogWarning("Invalid supplier photo rejected: {FileName}", photo.FileName);
+                return BadRequest(new { error = $"File non valido: {photo.FileName}. Formati accettati: JPEG, PNG, WebP. Dimensione max: 10 MB" });
+            }
+
+            try
+            {
+                var url = await imageStorageService.UploadImageAsync(photo, orgId.Value);
+                uploadedUrls.Add(url);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to upload supplier photo for org {OrgId}", orgId.Value);
+                return StatusCode(500, new { error = "Upload foto fallito" });
+            }
+        }
+
+        var allUrls = existingUrls.Concat(uploadedUrls).ToList();
+        await supplierService.UpdateProfileAsync(
+            orgId.Value,
+            legalName: null, vatNumber: null, phone: null,
+            categories: null, comuni: null, bio: null,
+            photoUrls: allUrls,
+            cancellationToken: cancellationToken);
+
+        return Ok(new SupplierPhotoUploadResponse { Urls = allUrls });
     }
 
     // ─── Calendar Sync ───────────────────────────────────────────────────────
