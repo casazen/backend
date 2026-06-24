@@ -83,7 +83,7 @@ public static class ServiceCollectionExtensions
                             context.Error, context.ErrorDescription);
                         return Task.CompletedTask;
                     },
-                    OnTokenValidated = context =>
+                    OnTokenValidated = async context =>
                     {
                         // Map Auth0 custom roles claim to standard .NET role claims
                         if (context.Principal?.Identity is ClaimsIdentity identity)
@@ -97,8 +97,49 @@ public static class ServiceCollectionExtensions
                                     "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
                                     role));
                             }
+
+                            // Backfill Supplier role from DB. Users who registered via the
+                            // backend-served page have SupplierOrgId set but no Supplier role
+                            // in their Auth0 JWT yet. Adding the claim here lets the
+                            // [Authorize(Policy="RequireSupplier")] filter pass on the first
+                            // request after Auth0 signup.
+                            var sub = context.Principal.FindFirstValue("sub")
+                                ?? context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                            if (!string.IsNullOrWhiteSpace(sub))
+                            {
+                                var hasSupplierRole = identity.Claims.Any(c =>
+                                    c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
+                                    && c.Value == "Supplier");
+
+                                if (!hasSupplierRole)
+                                {
+                                    try
+                                    {
+                                        var db = context.HttpContext.RequestServices
+                                            .GetRequiredService<AppDbContext>();
+                                        var supplierOrgId = await db.Users
+                                            .Where(u => u.Id == sub)
+                                            .Select(u => u.SupplierOrgId)
+                                            .FirstOrDefaultAsync();
+
+                                        if (supplierOrgId is not null)
+                                        {
+                                            identity.AddClaim(new Claim(
+                                                "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+                                                "Supplier"));
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        var logger = context.HttpContext.RequestServices
+                                            .GetRequiredService<ILogger<JwtBearerHandler>>();
+                                        logger.LogWarning(ex,
+                                            "Failed to backfill Supplier role for user {Sub}", sub);
+                                    }
+                                }
+                            }
                         }
-                        return Task.CompletedTask;
                     }
                 };
 
