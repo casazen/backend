@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -8,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -29,6 +31,24 @@ public class SupplierService(
         string? userId = null,
         CancellationToken cancellationToken = default)
     {
+        User? user = null;
+        if (userId is not null)
+        {
+            user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            if (user is not null)
+            {
+                var existing = await TryGetExistingSupplierRegistrationAsync(user, cancellationToken);
+                if (existing is not null)
+                {
+                    logger.LogInformation(
+                        "User {UserId} is already linked to supplier org {OrgId}; returning existing registration",
+                        userId,
+                        existing.Value.Org.Id);
+                    return existing.Value;
+                }
+            }
+        }
+
         if (inviteToken is not null)
         {
             var invite = await db.SupplierInviteRecords
@@ -68,17 +88,13 @@ public class SupplierService(
         // Link the authenticated user to the new org so subsequent supplier endpoint
         // calls resolve the org via User.SupplierOrgId instead of falling back to
         // email lookup or auto-provisioning a duplicate.
-        if (userId is not null)
+        if (user is not null)
         {
-            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-            if (user is not null)
-            {
-                user.SupplierOrgId = org.Id;
-                if (user.OrgId is null)
-                    user.OrgId = org.Id;
-                user.UpdatedAt = DateTime.UtcNow;
-                logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
-            }
+            user.SupplierOrgId = org.Id;
+            if (user.OrgId is null)
+                user.OrgId = org.Id;
+            user.UpdatedAt = DateTime.UtcNow;
+            logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -274,6 +290,39 @@ public class SupplierService(
         string lastName,
         CancellationToken cancellationToken = default)
     {
+        if (db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            return await GetOrProvisionSupplierOrgIdCoreAsync(userId, email, firstName, lastName, cancellationToken);
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            try
+            {
+                var orgId = await GetOrProvisionSupplierOrgIdCoreAsync(userId, email, firstName, lastName, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return orgId;
+            }
+            catch (Exception ex) when (attempt == 1 && IsProvisioningSerializationRace(ex))
+            {
+                logger.LogWarning(
+                    ex,
+                    "Retrying supplier org provisioning after serialization conflict for user {UserId}",
+                    userId);
+                await transaction.RollbackAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<Guid?> GetOrProvisionSupplierOrgIdCoreAsync(
+        string userId,
+        string email,
+        string firstName,
+        string lastName,
+        CancellationToken cancellationToken)
+    {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
             return null;
@@ -395,6 +444,45 @@ public class SupplierService(
         logger.LogInformation("Auto-provisioned supplier org {OrgId} for user {UserId}", org.Id, userId);
         return org.Id;
     }
+
+    private async Task<(Org Org, SupplierProfile Profile)?> TryGetExistingSupplierRegistrationAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var candidateOrgIds = new[] { user.SupplierOrgId, user.OrgId }
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToArray();
+
+        foreach (var orgId in candidateOrgIds)
+        {
+            var org = await db.Orgs.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == orgId && o.OrgType == OrgType.Supplier, cancellationToken);
+            if (org is null)
+                continue;
+
+            var profile = await db.SupplierProfiles.AsNoTracking()
+                .FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+            if (profile is null)
+                continue;
+
+            if (user.SupplierOrgId != orgId)
+            {
+                user.SupplierOrgId = orgId;
+                user.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            return (org, profile);
+        }
+
+        return null;
+    }
+
+    private static bool IsProvisioningSerializationRace(Exception ex) =>
+        ex is PostgresException { SqlState: "40001" or "40P01" } ||
+        ex.InnerException is not null && IsProvisioningSerializationRace(ex.InnerException);
 
     public async Task<SupplierDashboard> GetDashboardStatsAsync(Guid orgId, CancellationToken cancellationToken = default)
     {

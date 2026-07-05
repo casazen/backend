@@ -25,8 +25,15 @@ public class TestAuthHandler(
 
         var userId = Request.Headers["X-Test-User"].FirstOrDefault() ?? DefaultUserId;
         var rolesHeader = Request.Headers["X-Test-Roles"].FirstOrDefault();
+        var email = Request.Headers["X-Test-Email"].FirstOrDefault();
 
         var claims = new List<Claim> { new("sub", userId) };
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            claims.Add(new Claim("email", email));
+            claims.Add(new Claim(ClaimTypes.Email, email));
+        }
+
         if (!string.IsNullOrWhiteSpace(rolesHeader))
         {
             foreach (var role in rolesHeader.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
