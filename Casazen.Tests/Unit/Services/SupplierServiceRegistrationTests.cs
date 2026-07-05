@@ -21,7 +21,7 @@ public class SupplierServiceRegistrationTests
         var service = CreateService(db);
 
         var userId = $"auth0|existing-supplier-{Guid.NewGuid():N}";
-        var org = new Org
+        var org = new OrgEntity
         {
             Name = "Existing Supplier Srl",
             Slug = $"existing-supplier-{Guid.NewGuid():N}"[..30],
