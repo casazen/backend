@@ -347,6 +347,8 @@ public class BookingsControllerTests
         };
 
         _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
         _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
             .ReturnsAsync((Booking b) => b);
         _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
