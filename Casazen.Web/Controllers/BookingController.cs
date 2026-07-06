@@ -38,14 +38,29 @@ public class BookingsController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId = null, [FromQuery] Guid? guestId = null)
     {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
         IEnumerable<Booking> bookings;
 
-        if (guestId.HasValue)
-            bookings = await bookingService.GetGuestBookingsAsync(guestId.Value);
-        else if (propertyId.HasValue)
+        if (propertyId.HasValue)
+        {
+            if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId.Value, GetUserRoles()))
+                return NotFound();
+
             bookings = await bookingService.GetPropertyBookingsAsync(propertyId.Value);
+        }
+        else if (guestId.HasValue)
+        {
+            bookings = await bookingService.GetGuestBookingsAsync(guestId.Value);
+            bookings = await FilterAccessibleBookingsAsync(bookings, userId);
+        }
         else
+        {
             bookings = await bookingService.GetAllBookingsAsync();
+            bookings = await FilterAccessibleBookingsAsync(bookings, userId);
+        }
 
         return Ok(bookings.Select(BookingMapper.ToResponse));
     }
@@ -54,7 +69,17 @@ public class BookingsController(
     public async Task<ActionResult<BookingResponseDto>> GetById(Guid id)
     {
         var booking = await bookingService.GetBookingAsync(id);
-        return booking == null ? NotFound() : Ok(BookingMapper.ToResponse(booking));
+        if (booking == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
+            return NotFound();
+
+        return Ok(BookingMapper.ToResponse(booking));
     }
 
     [HttpPost]
@@ -148,7 +173,16 @@ public class BookingsController(
         if (existing == null)
             return NotFound();
 
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
+            return NotFound();
+
         booking.Id = id;
+        booking.PropertyId = existing.PropertyId;
+        booking.OrgId = existing.OrgId;
         await bookingService.UpdateBookingAsync(booking);
         return NoContent();
     }
@@ -160,6 +194,13 @@ public class BookingsController(
         logger.LogInformation("Cancelling booking: {BookingId}", id);
         var existing = await bookingService.GetBookingAsync(id);
         if (existing == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
             return NotFound();
 
         await bookingService.CancelBookingAsync(id);
@@ -177,6 +218,13 @@ public class BookingsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null)
             return NotFound("Property not found");
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId, GetUserRoles()))
+            return NotFound();
 
         var targetTimezone = timezone ?? property.Timezone;
 
@@ -255,6 +303,13 @@ public class BookingsController(
     {
         var booking = await bookingService.GetBookingAsync(id);
         if (booking == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
         var property = await propertyService.GetPropertyAsync(booking.PropertyId);
@@ -385,6 +440,13 @@ public class BookingsController(
         if (booking == null)
             return NotFound();
 
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
+            return NotFound();
+
         // Validate status transition
         if (booking.Status != BookingStatus.CheckedIn)
         {
@@ -417,6 +479,13 @@ public class BookingsController(
     {
         var booking = await bookingService.GetBookingAsync(id);
         if (booking == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
         var status = await alloggiatiWebService.GetStatusAsync(id);
@@ -509,6 +578,20 @@ public class BookingsController(
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-    private IEnumerable<string> GetUserRoles() =>
-        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
+    private IReadOnlyList<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+
+    private async Task<IReadOnlyList<Booking>> FilterAccessibleBookingsAsync(IEnumerable<Booking> bookings, string userId)
+    {
+        var roles = GetUserRoles();
+        var visible = new List<Booking>();
+
+        foreach (var booking in bookings)
+        {
+            if (await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, roles))
+                visible.Add(booking);
+        }
+
+        return visible;
+    }
 }
