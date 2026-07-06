@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
@@ -9,6 +11,8 @@ using Hangfire.Common;
 using Hangfire.States;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -48,9 +52,27 @@ public class BookingsControllerTests
             _mockAlloggiatiService.Object,
             _mockPropertyService.Object,
             _mockAuthz.Object,
+            CreatePropertyICalSyncService(),
             _mockGuestService.Object,
             _mockBackgroundJobClient.Object,
             _mockLogger.Object);
+    }
+
+    private static PropertyICalSyncService CreatePropertyICalSyncService()
+    {
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["App:ApiBaseUrl"] = "https://api.test" })
+            .Build();
+        return new PropertyICalSyncService(
+            db,
+            Mock.Of<IHttpClientFactory>(),
+            new ICalImportService(),
+            new ICalExportService(),
+            configuration,
+            Mock.Of<ILogger<PropertyICalSyncService>>());
     }
 
     private void SetUser(string userId)

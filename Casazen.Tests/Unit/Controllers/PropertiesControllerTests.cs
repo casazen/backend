@@ -3,11 +3,15 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -44,6 +48,7 @@ public class PropertiesControllerTests
             _mockAuditService.Object,
             _mockOrgContextResolver.Object,
             _mockEntitlementService.Object,
+            CreatePropertyICalSyncService(),
             _mockLogger.Object);
 
         // Defaults: caller has an org and is under the plan limit. Create-path tests that need
@@ -54,6 +59,23 @@ public class PropertiesControllerTests
         _mockEntitlementService
             .Setup(x => x.ReservePropertySlotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+    }
+
+    private static PropertyICalSyncService CreatePropertyICalSyncService()
+    {
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["App:ApiBaseUrl"] = "https://api.test" })
+            .Build();
+        return new PropertyICalSyncService(
+            db,
+            Mock.Of<IHttpClientFactory>(),
+            new ICalImportService(),
+            new ICalExportService(),
+            configuration,
+            Mock.Of<ILogger<PropertyICalSyncService>>());
     }
 
     private static readonly Guid DefaultOrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
