@@ -1,0 +1,293 @@
+using System.Security.Claims;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
+using Casazen.Web.DTOs.ServiceRequests;
+using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Casazen.Web.Controllers;
+
+[ApiController]
+[Route("api/service-requests")]
+[Authorize]
+public class ServiceRequestsController(
+    IServiceRequestService serviceRequestService,
+    IOrgContextResolver orgContextResolver,
+    ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
+{
+    [HttpPost]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ServiceRequestDto>> Create(
+        [FromBody] CreateServiceRequestRequest request,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null) return Unauthorized();
+
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+
+        try
+        {
+            var created = await serviceRequestService.CreateAsync(
+                new CreateServiceRequestCommand(
+                    orgId.Value,
+                    userId,
+                    request.PropertyId,
+                    request.BookingId,
+                    request.SupplierOrgId,
+                    request.Category,
+                    request.Urgency,
+                    request.Notes,
+                    request.ChargeToGuest),
+                cancellationToken);
+
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
+        }
+        catch (ServiceRequestStateException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(ServiceRequestListResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ServiceRequestListResponse>> List(
+        [FromQuery] string? status,
+        [FromQuery] Guid? propertyId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? view = null,
+        CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        ServiceRequestStatus? statusFilter = null;
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ServiceRequestStatus>(status, true, out var parsed))
+            statusFilter = parsed;
+
+        if (string.Equals(view, "supplier", StringComparison.OrdinalIgnoreCase) && User.IsInRole("Supplier"))
+        {
+            var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+            if (supplierOrgId is null) return NotFound();
+
+            var openOnly = string.Equals(status, "open", StringComparison.OrdinalIgnoreCase);
+            var (items, total) = await serviceRequestService.ListForSupplierAsync(
+                supplierOrgId.Value, openOnly, page, pageSize, cancellationToken);
+
+            return Ok(new ServiceRequestListResponse
+            {
+                Items = items.Select(MapDto),
+                Total = total,
+                Page = page,
+                PageSize = pageSize,
+            });
+        }
+
+        var hostOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (hostOrgId is null) return Unauthorized();
+
+        var (hostItems, hostTotal) = await serviceRequestService.ListForHostAsync(
+            hostOrgId.Value, statusFilter, propertyId, page, pageSize, cancellationToken);
+
+        return Ok(new ServiceRequestListResponse
+        {
+            Items = hostItems.Select(MapDto),
+            Total = hostTotal,
+            Page = page,
+            PageSize = pageSize,
+        });
+    }
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ServiceRequestDto>> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is not null)
+        {
+            var supplierRequest = await serviceRequestService.GetByIdForSupplierAsync(id, supplierOrgId.Value, cancellationToken);
+            if (supplierRequest is not null)
+                return Ok(MapDto(supplierRequest));
+        }
+
+        var hostOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (hostOrgId is null) return Unauthorized();
+
+        var hostRequest = await serviceRequestService.GetByIdForHostAsync(id, hostOrgId.Value, cancellationToken);
+        if (hostRequest is null) return NotFound();
+
+        return Ok(MapDto(hostRequest));
+    }
+
+    [HttpPost("{id:guid}/take")]
+    [Authorize(Policy = "RequireSupplier")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ServiceRequestDto>> Take(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        var userId = GetUserId();
+        if (supplierOrgId is null || userId is null) return NotFound();
+
+        try
+        {
+            var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, cancellationToken);
+            return Ok(MapDto(updated));
+        }
+        catch (ServiceRequestStateException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    [HttpPost("{id:guid}/complete")]
+    [Authorize(Policy = "RequireSupplier")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ServiceRequestDto>> Complete(
+        Guid id,
+        [FromBody] CompleteServiceRequestRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is null) return NotFound();
+
+        try
+        {
+            var updated = await serviceRequestService.CompleteAsync(
+                id, supplierOrgId.Value, request?.Notes, cancellationToken);
+            return Ok(MapDto(updated));
+        }
+        catch (ServiceRequestStateException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    [HttpPost("{id:guid}/reject")]
+    [Authorize(Policy = "RequireSupplier")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ServiceRequestDto>> Reject(
+        Guid id,
+        [FromBody] RejectServiceRequestRequest request,
+        CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is null) return NotFound();
+
+        try
+        {
+            var updated = await serviceRequestService.RejectAsync(
+                id, supplierOrgId.Value, request.Reason, cancellationToken);
+            return Ok(MapDto(updated));
+        }
+        catch (ServiceRequestStateException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    [HttpPost("{id:guid}/mark-paid")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ServiceRequestDto>> MarkPaid(Guid id, CancellationToken cancellationToken)
+    {
+        var hostOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var userId = GetUserId();
+        if (hostOrgId is null || userId is null) return Unauthorized();
+
+        try
+        {
+            var updated = await serviceRequestService.MarkPaidAsync(id, hostOrgId.Value, userId, cancellationToken);
+            return Ok(MapDto(updated));
+        }
+        catch (ServiceRequestStateException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    private string? GetUserId() =>
+        User.FindFirstValue("sub")
+        ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+
+    internal static ServiceRequestDto MapDto(ServiceRequest r) => new()
+    {
+        Id = r.Id,
+        OrgId = r.OrgId,
+        BookingId = r.BookingId,
+        PropertyId = r.PropertyId,
+        PropertyName = r.Property?.Name,
+        SupplierOrgId = r.SupplierOrgId,
+        SupplierName = r.SupplierOrg?.DisplayName ?? r.SupplierOrg?.Name,
+        Category = r.Category,
+        Urgency = r.Urgency.ToString(),
+        Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
+        Status = r.Status.ToString(),
+        TakenAt = r.TakenAt,
+        TakenByUserId = r.TakenByUserId,
+        CompletedAt = r.CompletedAt,
+        PaidAt = r.PaidAt,
+        ChargeToGuest = r.ChargeToGuest,
+        RejectionReason = r.RejectionReason,
+        CreatedAt = r.CreatedAt,
+        UpdatedAt = r.UpdatedAt,
+    };
+
+    internal static ServiceRequestSummaryDto MapSummary(ServiceRequest r) => new()
+    {
+        Id = r.Id,
+        PropertyId = r.PropertyId,
+        PropertyName = r.Property?.Name ?? string.Empty,
+        Category = r.Category,
+        Urgency = r.Urgency.ToString(),
+        Status = r.Status.ToString(),
+        Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
+        CreatedAt = r.CreatedAt,
+    };
+}
