@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
@@ -22,6 +23,7 @@ public class BookingsController(
     IAlloggiatiWebService alloggiatiWebService,
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
+    PropertyICalSyncService propertyICalSyncService,
     IGuestService guestService,
     IBackgroundJobClient backgroundJobClient,
     ILogger<BookingsController> logger) : ControllerBase
@@ -178,6 +180,7 @@ public class BookingsController(
         var endDateUtc = TimezoneHelper.ConvertLocalToUtc(endDate, targetTimezone);
 
         var bookings = await bookingService.GetCalendarAsync(propertyId, startDateUtc, endDateUtc);
+        var icalBlocks = await propertyICalSyncService.GetBlocksInRangeAsync(propertyId, startDateUtc, endDateUtc);
 
         var utcOffsetMinutes = TimezoneHelper.GetUtcOffsetMinutes(targetTimezone, DateTime.UtcNow);
 
@@ -197,11 +200,43 @@ public class BookingsController(
             GuestName = b.Guest != null ? $"{b.Guest.FirstName} {b.Guest.LastName}".Trim() : ""
         }).ToList();
 
+        var items = calendarBookings.Select(b => new CalendarItemDto
+        {
+            Type = "booking",
+            Id = b.Id,
+            PropertyId = b.PropertyId,
+            StartDate = b.CheckInDate,
+            EndDate = b.CheckOutDate,
+            StartDateUtc = b.CheckInDateUtc,
+            EndDateUtc = b.CheckOutDateUtc,
+            Status = b.Status,
+            Source = b.Source,
+            NumberOfGuests = b.NumberOfGuests,
+            TotalPrice = b.TotalPrice,
+            GuestName = b.GuestName,
+        }).ToList();
+
+        foreach (var block in icalBlocks)
+        {
+            items.Add(new CalendarItemDto
+            {
+                Type = "ical-block",
+                Id = block.Id,
+                PropertyId = block.PropertyId,
+                StartDate = TimezoneHelper.ConvertUtcToLocal(block.StartUtc, targetTimezone),
+                EndDate = TimezoneHelper.ConvertUtcToLocal(block.EndUtc, targetTimezone),
+                StartDateUtc = block.StartUtc,
+                EndDateUtc = block.EndUtc,
+                Summary = block.Summary,
+            });
+        }
+
         var response = new CalendarResponseDto
         {
             Timezone = targetTimezone,
             UtcOffsetMinutes = utcOffsetMinutes,
-            Bookings = calendarBookings
+            Bookings = calendarBookings,
+            Items = items,
         };
 
         return Ok(response);

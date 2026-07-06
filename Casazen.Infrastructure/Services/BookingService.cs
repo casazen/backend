@@ -17,6 +17,7 @@ public class BookingService(
     ITaxCalculationService taxCalculationService,
     IStripeService stripeService,
     IPaymentRepository paymentRepository,
+    PropertyICalSyncService propertyICalSyncService,
     IConfiguration configuration,
     ILogger<BookingService> logger) : IBookingService
 {
@@ -58,10 +59,7 @@ public class BookingService(
             throw new InvalidOperationException($"Booking validation failed: {validationResult.ErrorMessage}");
         }
 
-        var isAvailable = await repository.IsAvailableAsync(
-            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
-
-        if (!isAvailable)
+        if (!await IsPropertyAvailableAsync(booking.PropertyId, booking.CheckInDate, booking.CheckOutDate))
         {
             logger.LogWarning(
                 "Property {PropertyId} not available from {CheckIn} to {CheckOut}",
@@ -119,9 +117,7 @@ public class BookingService(
         var pendingTtlMinutes = configuration.GetValue("DirectBooking:PendingTtlMinutes", 15);
         await repository.CancelExpiredPendingDirectBookingsAsync(input.PropertyId, pendingTtlMinutes);
 
-        var isAvailable = await repository.IsAvailableAsync(
-            input.PropertyId, checkIn, checkOut, pendingTtlMinutes);
-        if (!isAvailable)
+        if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, pendingTtlMinutes))
         {
             throw new DirectBookingException(
                 "Property not available for selected dates",
@@ -369,7 +365,10 @@ public class BookingService(
         DateTime checkOut,
         int? pendingDirectTtlMinutes = null)
     {
-        return await repository.IsAvailableAsync(propertyId, checkIn, checkOut, pendingDirectTtlMinutes);
+        if (!await repository.IsAvailableAsync(propertyId, checkIn, checkOut, pendingDirectTtlMinutes))
+            return false;
+
+        return !await propertyICalSyncService.HasOverlappingBlockAsync(propertyId, checkIn, checkOut);
     }
 
     public async Task<int> CancelExpiredPendingDirectBookingsAsync(Guid propertyId, int pendingDirectTtlMinutes)
