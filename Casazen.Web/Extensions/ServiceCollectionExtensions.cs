@@ -314,6 +314,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
+        services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<CalendarSyncService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();

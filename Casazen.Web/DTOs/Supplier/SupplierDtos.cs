@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Casazen.Web.DTOs.ServiceRequests;
 
 namespace Casazen.Web.DTOs.Supplier;
 
@@ -120,7 +121,7 @@ public class CompleteActivationResponse
 
 public class SupplierInboxResponse
 {
-    public IEnumerable<object> Items { get; set; } = [];
+    public IEnumerable<ServiceRequestSummaryDto> Items { get; set; } = [];
     public int Total { get; set; }
 }
 

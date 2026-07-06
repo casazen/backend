@@ -46,6 +46,7 @@ public class AppDbContext(
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierJob> SupplierJobs { get; set; } = null!;
+    public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
@@ -469,6 +470,37 @@ public class AppDbContext(
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => new { i.Email, i.IsUsed });
+
+        // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
+        modelBuilder.Entity<ServiceRequest>()
+            .HasOne(sr => sr.Org)
+            .WithMany()
+            .HasForeignKey(sr => sr.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasOne(sr => sr.Property)
+            .WithMany()
+            .HasForeignKey(sr => sr.PropertyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasOne(sr => sr.SupplierOrg)
+            .WithMany()
+            .HasForeignKey(sr => sr.SupplierOrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasOne(sr => sr.Booking)
+            .WithMany()
+            .HasForeignKey(sr => sr.BookingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasIndex(sr => new { sr.OrgId, sr.Status });
+
+        modelBuilder.Entity<ServiceRequest>()
+            .HasIndex(sr => new { sr.SupplierOrgId, sr.Status });
 
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },

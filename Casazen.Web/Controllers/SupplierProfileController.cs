@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
@@ -20,6 +21,7 @@ namespace Casazen.Web.Controllers;
 public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
+    IServiceRequestService serviceRequestService,
     CalendarSyncService calendarSyncService,
     IImageStorageService imageStorageService,
     ILogger<SupplierProfileController> logger) : ControllerBase
@@ -145,13 +147,29 @@ public class SupplierProfileController(
     /// </summary>
     [HttpGet("inbox")]
     [ProducesResponseType(typeof(SupplierInboxResponse), StatusCodes.Status200OK)]
-    public ActionResult<SupplierInboxResponse> GetInbox(
+    public async Task<ActionResult<SupplierInboxResponse>> GetInbox(
         [FromQuery] string? status = "open",
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Supplier inbox requested — status={Status}, page={Page}", status, page);
-        return Ok(new SupplierInboxResponse { Items = [], Total = 0 });
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var openOnly = string.Equals(status, "open", StringComparison.OrdinalIgnoreCase);
+
+        var (items, total) = await serviceRequestService.ListForSupplierAsync(
+            orgId.Value, openOnly, page, pageSize, cancellationToken);
+
+        logger.LogDebug("Supplier inbox — status={Status}, page={Page}, total={Total}", status, page, total);
+
+        return Ok(new SupplierInboxResponse
+        {
+            Items = items.Select(ServiceRequestsController.MapSummary),
+            Total = total,
+        });
     }
 
     // ─── Availability ─────────────────────────────────────────────────────────
