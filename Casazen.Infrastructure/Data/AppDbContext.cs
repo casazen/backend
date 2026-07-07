@@ -52,6 +52,9 @@ public class AppDbContext(
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
 
+    // Guest self-service check-in portal (US-020 / #296)
+    public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
+
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
@@ -138,6 +141,12 @@ public class AppDbContext(
             .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
             .IsUnique()
             .HasFilter("\"IsActive\" = true");
+
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => new { p.OrgId, p.Slug })
+            .IsUnique()
+            .HasFilter("\"Slug\" IS NOT NULL")
+            .HasDatabaseName("UIX_Properties_OrgId_Slug");
 
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.GuestId);
@@ -583,5 +592,24 @@ public class AppDbContext(
             new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" },
             new RolePermission { RoleId = 3, PermissionKey = "admin.seo.read" });
+
+        // Guest check-in session (US-020 / #296)
+        modelBuilder.Entity<GuestCheckInSession>(entity =>
+        {
+            entity.HasOne(s => s.Booking)
+                .WithMany()
+                .HasForeignKey(s => s.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(s => s.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UIX_GuestCheckInSessions_TokenHash");
+
+            // Only one active session per booking at a time (statuses 0-3 are active)
+            entity.HasIndex(s => new { s.BookingId, s.Status })
+                .IsUnique()
+                .HasFilter("\"Status\" IN (0, 1, 2, 3)")
+                .HasDatabaseName("UIX_GuestCheckInSessions_BookingId_ActiveStatus");
+        });
     }
 }

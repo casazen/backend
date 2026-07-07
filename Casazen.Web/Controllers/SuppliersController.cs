@@ -2,10 +2,13 @@ using System.Security.Claims;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
@@ -17,6 +20,9 @@ namespace Casazen.Web.Controllers;
 public class SuppliersController(
     ISupplierService supplierService,
     IAuth0ManagementService auth0Management,
+    AppDbContext db,
+    IOrgContextResolver orgContextResolver,
+    IPropertyAuthorizationService propertyAuthorization,
     ILogger<SuppliersController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -74,18 +80,48 @@ public class SuppliersController(
     }
 
     /// <summary>
-    /// Returns <c>Active</c> suppliers for a comune. Available to hosts (PropertyOwner role).
+    /// Returns <c>Active</c> suppliers for a comune or property. Available to hosts (PropertyOwner role).
     /// </summary>
     [HttpGet]
     [Authorize]
     [ProducesResponseType(typeof(PagedResultDto<SupplierPickerDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
-        [FromQuery] string comune,
+        [FromQuery] string? comune,
+        [FromQuery] Guid? propertyId,
         [FromQuery] string? category,
         CancellationToken cancellationToken)
     {
-        var suppliers = await supplierService.GetActiveByComune(comune, category, cancellationToken);
+        var resolvedComune = comune?.Trim();
+
+        if (propertyId is Guid pid)
+        {
+            var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+            var userId = GetUserId();
+            if (orgId is null || userId is null)
+                return Unauthorized();
+
+            var property = await db.Properties
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == pid && p.OrgId == orgId.Value, cancellationToken);
+
+            if (property is null)
+                return NotFound(new { error = "Proprietà non trovata." });
+
+            if (!await propertyAuthorization.CanAccessPropertyAsync(
+                    userId, pid, ["PropertyOwner", "Admin", "PropertyManager"]))
+                return Forbid();
+
+            resolvedComune = property.City;
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedComune))
+            return BadRequest(new { error = "Specificare comune o propertyId." });
+
+        var suppliers = await supplierService.GetActiveByComune(resolvedComune, category, cancellationToken);
 
         var items = suppliers.Select(sp => new SupplierPickerDto
         {
@@ -107,4 +143,9 @@ public class SuppliersController(
             PageSize = suppliers.Count,
         });
     }
+
+    private string? GetUserId() =>
+        User.FindFirstValue("sub")
+        ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
 }

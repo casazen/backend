@@ -95,6 +95,10 @@ public class CreatePropertyRequest
     /// <summary>Whether the property is visible and bookable. Defaults to <c>true</c>.</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
+    [MaxLength(100)]
+    public string? Slug { get; set; }
+
     /// <summary>
     /// Maps the DTO to a new <see cref="Property"/> entity.
     /// <paramref name="ownerId"/> is taken from the caller's JWT claim and
@@ -124,6 +128,7 @@ public class CreatePropertyRequest
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,
         IsActive = IsActive,
+        Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant(),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,
     };

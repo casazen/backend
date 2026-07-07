@@ -60,7 +60,7 @@ public class SupplierMatchServiceTests
         var service = new SupplierMatchService(
             db,
             supplierService,
-            Mock.Of<IGooglePlacesDiscoveryService>(),
+            Mock.Of<IAiSupplierDiscoveryService>(),
             Mock.Of<IAiProvider>(),
             auth.Object,
             Mock.Of<ILogger<SupplierMatchService>>());

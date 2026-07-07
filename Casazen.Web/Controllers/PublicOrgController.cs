@@ -40,19 +40,19 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
         return Ok(properties);
     }
 
-    [HttpGet("{slug}/properties/{propertyId:guid}")]
+    [HttpGet("{slug}/properties/{propertySlugOrId}")]
     [ProducesResponseType(typeof(PublicPropertyDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PublicPropertyDetailDto>> GetProperty(
         [StringLength(100)] string slug,
-        Guid propertyId,
+        [StringLength(100)] string propertySlugOrId,
         CancellationToken cancellationToken)
     {
         var org = await orgService.GetPublicBySlugAsync(slug, cancellationToken);
         if (org is null)
             return NotFound();
 
-        var property = await propertyService.GetPublicPropertyForOrgAsync(propertyId, org.Id);
+        var property = await propertyService.GetPublicPropertyForOrgAsync(propertySlugOrId, org.Id);
         if (property is null)
             return NotFound();
 

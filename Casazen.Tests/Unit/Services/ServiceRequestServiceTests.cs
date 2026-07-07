@@ -19,6 +19,32 @@ namespace Casazen.Tests.Unit.Services;
 public class ServiceRequestServiceTests
 {
     [Fact]
+    public async Task CreateAsync_WithBookingId_Throws()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, Guid.NewGuid(), supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false)));
+    }
+
+    [Fact]
+    public async Task CreateAsync_ChargeToGuest_Throws()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, true)));
+    }
+
+    [Fact]
     public async Task CreateAsync_ValidRequest_CreatesRichiesto()
     {
         await using var db = CreateDb();

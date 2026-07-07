@@ -1,6 +1,6 @@
 namespace Casazen.Core.Services;
 
-public interface IGooglePlacesDiscoveryService
+public interface IAiSupplierDiscoveryService
 {
     Task<IReadOnlyList<ExternalSupplierSuggestion>> SearchNearbyAsync(
         string city,
