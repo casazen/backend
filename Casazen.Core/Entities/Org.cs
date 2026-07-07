@@ -36,6 +36,15 @@ public class Org
     [MaxLength(20)]
     public string? ThemeColor { get; set; }
 
+    [MaxLength(50)]
+    public string? PublicThemeId { get; set; }
+
+    [MaxLength(2048)]
+    public string? HeroImageUrl { get; set; }
+
+    [MaxLength(500)]
+    public string? Tagline { get; set; }
+
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 

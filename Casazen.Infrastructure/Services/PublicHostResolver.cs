@@ -30,14 +30,7 @@ public class PublicHostResolver(IOrgService orgService, IOptions<PublicHostOptio
             OrgId = org.Id,
             Slug = org.Slug,
             PublicHostMode = PublicHostMode.CasazenSubdomain,
-            Branding = new PublicOrgDto
-            {
-                Slug = org.Slug,
-                DisplayName = org.DisplayName,
-                LogoUrl = org.LogoUrl,
-                ThemeColor = org.ThemeColor,
-                ContactEmail = org.ContactEmail,
-            },
+            Branding = PublicOrgDto.FromOrg(org),
         };
     }
 
