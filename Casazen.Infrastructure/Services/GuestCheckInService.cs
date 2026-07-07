@@ -60,6 +60,9 @@ public class GuestCheckInService(
         if (session.ExpiresAt < DateTime.UtcNow || session.Status == GuestCheckInSessionStatus.Scaduto)
             return null;
 
+        if (!IsBookingEligibleForPublicCheckIn(session.Booking.Status))
+            return null;
+
         // Advance Inviato→InCompilazione on first open
         if (session.Status == GuestCheckInSessionStatus.Inviato)
         {
@@ -163,6 +166,9 @@ public class GuestCheckInService(
         await db.SaveChangesAsync();
         return await CreateSessionAsync(bookingId, orgId);
     }
+
+    private static bool IsBookingEligibleForPublicCheckIn(BookingStatus status) =>
+        status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
     private static string GenerateToken()
     {
