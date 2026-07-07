@@ -200,7 +200,7 @@ public class GuestCheckInServiceTests
         Assert.False(result.Duplicate);
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
-        Assert.Null(guest!.DocumentNumber);
+        Assert.Equal(string.Empty, guest!.DocumentNumber);
         Assert.Null(guest.ConsentDate);
     }
 

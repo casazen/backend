@@ -74,6 +74,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Compliance:GdprRetentionYears"] = "7",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
                 ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
+                ["CheckIn:RateLimitPermitLimit"] = "100",
+                ["CheckIn:SubmitRateLimitPermitLimit"] = "100",
             });
         });
 

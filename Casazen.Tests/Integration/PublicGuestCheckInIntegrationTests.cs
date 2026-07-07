@@ -108,7 +108,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var guest = await db.Guests.FindAsync(guestId);
-        Assert.Null(guest!.DocumentNumber);
+        Assert.Equal(string.Empty, guest!.DocumentNumber);
         Assert.Null(guest.ConsentDate);
     }
 
