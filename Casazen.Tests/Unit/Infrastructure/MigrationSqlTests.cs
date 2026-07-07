@@ -32,15 +32,17 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastThree()
+    public void Migrations_LandInOrder_AsTheLastFive()
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        var lastThree = keys.TakeLast(3).ToList();
-        Assert.EndsWith("AddSupplierOrgIdToUser", lastThree[0]);
-        Assert.EndsWith("AddServiceRequest", lastThree[1]);
-        Assert.EndsWith("AddCalendarBlocksAndICalFeeds", lastThree[2]);
+        var lastFive = keys.TakeLast(5).ToList();
+        Assert.EndsWith("AddSupplierOrgIdToUser", lastFive[0]);
+        Assert.EndsWith("AddServiceRequest", lastFive[1]);
+        Assert.EndsWith("AddCalendarBlocksAndICalFeeds", lastFive[2]);
+        Assert.EndsWith("AddPropertyComplianceStatus", lastFive[3]);
+        Assert.EndsWith("AddGuestCheckInSession", lastFive[4]);
     }
 
     [Fact]

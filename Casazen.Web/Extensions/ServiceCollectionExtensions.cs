@@ -316,6 +316,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
+        services.AddScoped<IGuestCheckInService, GuestCheckInService>();
         services.AddScoped<CalendarSyncService>();
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();

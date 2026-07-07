@@ -49,6 +49,7 @@ public class PropertyServicePublicReadModelTests
             CleaningFee = 30m,
             CinCode = "IT-12345-0123456789",
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
         });
         await context.SaveChangesAsync();
 
@@ -68,7 +69,7 @@ public class PropertyServicePublicReadModelTests
         await using var context = CreateContext();
         var org = await SeedOrgAsync(context);
         context.Properties.AddRange(
-            new Property { OwnerId = "auth0|a", OrgId = org.Id, Name = "Active", Address = "A", City = "Rome", IsActive = true, NightlyRate = 50m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 },
+            new Property { OwnerId = "auth0|a", OrgId = org.Id, Name = "Active", Address = "A", City = "Rome", IsActive = true, ComplianceStatus = PropertyComplianceStatus.Active, NightlyRate = 50m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 },
             new Property { OwnerId = "auth0|b", OrgId = org.Id, Name = "Inactive", Address = "B", City = "Rome", IsActive = false, NightlyRate = 50m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
         await context.SaveChangesAsync();
 
@@ -93,6 +94,7 @@ public class PropertyServicePublicReadModelTests
                 Address = $"Addr {i}",
                 City = "CapCity",
                 IsActive = true,
+                ComplianceStatus = PropertyComplianceStatus.Active,
                 NightlyRate = i,
                 Bedrooms = 1,
                 Bathrooms = 1,
@@ -123,6 +125,7 @@ public class PropertyServicePublicReadModelTests
             HouseRules = "Quiet hours after 22:00",
             CancellationPolicyId = policy.Id,
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             NightlyRate = 100m,
             Bedrooms = 2,
             Bathrooms = 1,
@@ -183,6 +186,7 @@ public class PropertyServicePublicReadModelTests
             City = "Turin",
             CinCode = cinCode,
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             NightlyRate = 70m,
             Bedrooms = 1,
             Bathrooms = 1,
@@ -205,8 +209,8 @@ public class PropertyServicePublicReadModelTests
         var orgB = await SeedOrgAsync(context);
 
         context.Properties.AddRange(
-            new Property { OwnerId = "auth0|a", OrgId = orgA.Id, Name = "Org A Villa", Address = "A", City = "Milan", IsActive = true, NightlyRate = 100m, Bedrooms = 2, Bathrooms = 1, MaxGuests = 4 },
-            new Property { OwnerId = "auth0|b", OrgId = orgB.Id, Name = "Org B Villa", Address = "B", City = "Rome", IsActive = true, NightlyRate = 80m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
+            new Property { OwnerId = "auth0|a", OrgId = orgA.Id, Name = "Org A Villa", Address = "A", City = "Milan", IsActive = true, ComplianceStatus = PropertyComplianceStatus.Active, NightlyRate = 100m, Bedrooms = 2, Bathrooms = 1, MaxGuests = 4 },
+            new Property { OwnerId = "auth0|b", OrgId = orgB.Id, Name = "Org B Villa", Address = "B", City = "Rome", IsActive = true, ComplianceStatus = PropertyComplianceStatus.Active, NightlyRate = 80m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
         await context.SaveChangesAsync();
 
         var result = (await CreateService(context).SearchByOrgAsync(orgA.Id)).ToList();
@@ -222,7 +226,7 @@ public class PropertyServicePublicReadModelTests
         var org = await SeedOrgAsync(context);
 
         context.Properties.AddRange(
-            new Property { OwnerId = "auth0|a1", OrgId = org.Id, Name = "Active", Address = "A", City = "Venice", IsActive = true, NightlyRate = 90m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 },
+            new Property { OwnerId = "auth0|a1", OrgId = org.Id, Name = "Active", Address = "A", City = "Venice", IsActive = true, ComplianceStatus = PropertyComplianceStatus.Active, NightlyRate = 90m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 },
             new Property { OwnerId = "auth0|a2", OrgId = org.Id, Name = "Draft", Address = "B", City = "Venice", IsActive = false, NightlyRate = 90m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
         await context.SaveChangesAsync();
 
@@ -248,6 +252,7 @@ public class PropertyServicePublicReadModelTests
                 Address = $"Addr {i}",
                 City = "CapOrg",
                 IsActive = true,
+                ComplianceStatus = PropertyComplianceStatus.Active,
                 NightlyRate = i,
                 Bedrooms = 1,
                 Bathrooms = 1,
@@ -291,6 +296,7 @@ public class PropertyServicePublicReadModelTests
             HouseRules = "No smoking",
             CancellationPolicyId = policy.Id,
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             NightlyRate = 110m,
             Bedrooms = 2,
             Bathrooms = 1,
@@ -321,6 +327,7 @@ public class PropertyServicePublicReadModelTests
             Address = "Via B 1",
             City = "Turin",
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             NightlyRate = 75m,
             Bedrooms = 1,
             Bathrooms = 1,

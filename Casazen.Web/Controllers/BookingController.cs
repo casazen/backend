@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.DTOs.Compliance;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -26,6 +27,9 @@ public class BookingsController(
     PropertyICalSyncService propertyICalSyncService,
     IGuestService guestService,
     IBackgroundJobClient backgroundJobClient,
+    IComplianceWizardService complianceWizardService,
+    IGuestCheckInService checkInService,
+    IOrgContextResolver orgContextResolver,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -282,6 +286,59 @@ public class BookingsController(
         return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
     }
 
+    [HttpPost("{id}/checkout-wizard/start")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    public async Task<ActionResult<CheckoutWizardDto>> StartCheckoutWizard(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking is null) return NotFound();
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property is null) return NotFound();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
+        try
+        {
+            return Ok(await complianceWizardService.StartCheckoutWizardAsync(id, userId, s =>
+            {
+                var delay = s.FireAtUtc - DateTime.UtcNow;
+                if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
+                return backgroundJobClient.Schedule<CheckoutReminderJob>(j => j.ExecuteAsync(s.BookingId), delay);
+            }, cancellationToken));
+        }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (ComplianceWizardException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("{id}/checkout-wizard/complete")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    public async Task<ActionResult<CheckoutWizardCompleteDto>> CompleteCheckoutWizard(Guid id, [FromBody] CheckoutWizardCompleteRequest request, CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null) return Forbid();
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking is null) return NotFound();
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property is null) return NotFound();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
+        try
+        {
+            return Ok(await complianceWizardService.CompleteCheckoutWizardAsync(
+                id,
+                request,
+                userId,
+                orgId.Value,
+                jobId => _ = backgroundJobClient.Delete(jobId),
+                cancellationToken));
+        }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (ComplianceWizardException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ServiceRequestStateException ex) { return Conflict(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("{id}/check-out")]
     [Authorize(Policy = "RequireContext:short-rent:booking.write")]
     public async Task<IActionResult> CheckOut(Guid id)
@@ -366,6 +423,47 @@ public class BookingsController(
                 throw;
             return raced;
         }
+    }
+
+    /// <summary>Regenerates the guest check-in token and resends the email (AC7, US-020).</summary>
+    [HttpPost("{id}/checkin/resend-link")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    public async Task<ActionResult<DTOs.CheckIn.ResendCheckInLinkResponse>> ResendCheckInLink(Guid id)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking is null) return NotFound();
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property is null) return NotFound();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
+
+        await checkInService.RegenerateTokenAsync(booking.Id, booking.OrgId);
+
+        return Ok(new DTOs.CheckIn.ResendCheckInLinkResponse { Success = true, Message = "Link rigenerato e inviato." });
+    }
+
+    /// <summary>Returns the current active guest check-in session for a booking (host view).</summary>
+    [HttpGet("{id}/checkin-session")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.read")]
+    public async Task<ActionResult<DTOs.CheckIn.CheckInSessionStatusResponse>> GetCheckInSession(Guid id)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking is null) return NotFound();
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property is null) return NotFound();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
+
+        var session = await checkInService.GetSessionForBookingAsync(booking.Id);
+        return Ok(new DTOs.CheckIn.CheckInSessionStatusResponse
+        {
+            SessionId = session?.Id,
+            Status = session?.Status.ToString(),
+            SentAt = session?.SentAt,
+            CompletedAt = session?.CompletedAt,
+        });
     }
 
     private string? GetUserId() =>
