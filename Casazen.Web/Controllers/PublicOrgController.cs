@@ -22,14 +22,7 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
         if (org is null)
             return NotFound();
 
-        return Ok(new PublicOrgDto
-        {
-            Slug = org.Slug,
-            DisplayName = org.DisplayName,
-            LogoUrl = org.LogoUrl,
-            ThemeColor = org.ThemeColor,
-            ContactEmail = org.ContactEmail,
-        });
+        return Ok(PublicOrgDto.FromOrg(org));
     }
 
     [HttpGet("{slug}/properties")]

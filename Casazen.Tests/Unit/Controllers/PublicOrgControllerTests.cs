@@ -46,6 +46,28 @@ public class PublicOrgControllerTests
         Assert.Equal("https://cdn.example.com/logo.png", dto.LogoUrl);
         Assert.Equal("#2563eb", dto.ThemeColor);
         Assert.Equal("contact@casazen-milan.it", dto.ContactEmail);
+        Assert.False(dto.ShowPoweredBy);
+    }
+
+    [Fact]
+    public async Task GetOrg_WhenStarterPlan_ShowPoweredByTrue()
+    {
+        var org = BuildOrg("starter-org");
+        org.PlanTier = PlanTier.Starter;
+        org.HeroImageUrl = "https://cdn.example.com/hero.webp";
+        org.Tagline = "Il tuo rifugio";
+        org.PublicThemeId = "mare";
+        _orgService.Setup(s => s.GetPublicBySlugAsync("starter-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("starter-org", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PublicOrgDto>(ok.Value);
+        Assert.True(dto.ShowPoweredBy);
+        Assert.Equal("https://cdn.example.com/hero.webp", dto.HeroImageUrl);
+        Assert.Equal("Il tuo rifugio", dto.Tagline);
+        Assert.Equal("mare", dto.PublicThemeId);
     }
 
     [Fact]
