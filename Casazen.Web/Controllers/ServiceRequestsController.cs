@@ -14,9 +14,46 @@ namespace Casazen.Web.Controllers;
 [Authorize]
 public class ServiceRequestsController(
     IServiceRequestService serviceRequestService,
+    ISupplierMatchService supplierMatchService,
     IOrgContextResolver orgContextResolver,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
+    [HttpPost("match-supplier")]
+    [ProducesResponseType(typeof(SupplierMatchResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<SupplierMatchResponse>> MatchSupplier(
+        [FromBody] MatchSupplierRequest request,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var userId = GetUserId();
+        if (orgId is null || userId is null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request.Category))
+            return BadRequest(new { error = "Categoria obbligatoria." });
+
+        try
+        {
+            var result = await supplierMatchService.MatchAsync(
+                orgId.Value,
+                userId,
+                request.PropertyId,
+                request.Category.Trim(),
+                request.Urgency,
+                request.Notes,
+                cancellationToken);
+            return Ok(MapMatchResult(result));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -289,5 +326,36 @@ public class ServiceRequestsController(
         Status = r.Status.ToString(),
         Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
         CreatedAt = r.CreatedAt,
+    };
+
+    private static SupplierMatchResponse MapMatchResult(SupplierMatchResult result) => new()
+    {
+        Recommended = result.Recommended is null ? null : MapCandidate(result.Recommended),
+        Alternatives = result.Alternatives.Select(MapCandidate),
+        ExternalSuggestions = result.ExternalSuggestions.Select(e => new ExternalSupplierSuggestionDto
+        {
+            Name = e.Name,
+            Address = e.Address,
+            Phone = e.Phone,
+            Email = e.Email,
+            Rating = e.Rating,
+            ReviewCount = e.ReviewCount,
+            GoogleMapsUrl = e.GoogleMapsUrl,
+            WebsiteUrl = e.WebsiteUrl,
+            Source = e.Source,
+        }),
+        UsedExternalFallback = result.UsedExternalFallback,
+    };
+
+    private static SupplierMatchCandidateDto MapCandidate(SupplierMatchCandidate c) => new()
+    {
+        OrgId = c.OrgId,
+        LegalName = c.LegalName,
+        Phone = c.Phone,
+        Email = c.Email,
+        Bio = c.Bio,
+        MatchScore = c.MatchScore,
+        MatchReason = c.MatchReason,
+        Source = c.Source,
     };
 }
