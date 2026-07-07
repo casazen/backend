@@ -26,6 +26,7 @@ public class BookingsController(
     PropertyICalSyncService propertyICalSyncService,
     IGuestService guestService,
     IBackgroundJobClient backgroundJobClient,
+    IGuestCheckInService checkInService,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -366,6 +367,47 @@ public class BookingsController(
                 throw;
             return raced;
         }
+    }
+
+    /// <summary>Regenerates the guest check-in token and resends the email (AC9, US-020).</summary>
+    [HttpPost("{id}/checkin/resend-link")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    public async Task<ActionResult<DTOs.CheckIn.ResendCheckInLinkResponse>> ResendCheckInLink(Guid id)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking is null) return NotFound();
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property is null) return NotFound();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
+
+        await checkInService.RegenerateTokenAsync(booking.Id, booking.OrgId);
+
+        return Ok(new DTOs.CheckIn.ResendCheckInLinkResponse { Success = true, Message = "Link rigenerato e inviato." });
+    }
+
+    /// <summary>Returns the current active guest check-in session for a booking (host view).</summary>
+    [HttpGet("{id}/checkin-session")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.read")]
+    public async Task<ActionResult<DTOs.CheckIn.CheckInSessionStatusResponse>> GetCheckInSession(Guid id)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var booking = await bookingService.GetBookingAsync(id);
+        if (booking is null) return NotFound();
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property is null) return NotFound();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
+
+        var session = await checkInService.GetSessionForBookingAsync(booking.Id);
+        return Ok(new DTOs.CheckIn.CheckInSessionStatusResponse
+        {
+            SessionId = session?.Id,
+            Status = session?.Status.ToString(),
+            SentAt = session?.SentAt,
+            CompletedAt = session?.CompletedAt,
+        });
     }
 
     private string? GetUserId() =>

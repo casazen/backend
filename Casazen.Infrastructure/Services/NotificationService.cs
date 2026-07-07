@@ -41,6 +41,12 @@ public class NotificationService(ILogger<NotificationService> logger) : INotific
         await Task.Delay(100);
     }
 
+    public async Task SendCheckoutReminderAsync(Guid bookingId)
+    {
+        logger.LogInformation("Sending checkout reminder for booking {BookingId}", bookingId);
+        await Task.Delay(100);
+    }
+
     public async Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline)
     {
         logger.LogInformation(

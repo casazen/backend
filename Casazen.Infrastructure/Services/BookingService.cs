@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
@@ -83,6 +84,11 @@ public class BookingService(
 
         var property = await propertyRepository.GetByIdAsync(input.PropertyId);
         if (property is null || !property.IsActive)
+        {
+            throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
+        }
+
+        if (property.ComplianceStatus != PropertyComplianceStatus.Active)
         {
             throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
         }

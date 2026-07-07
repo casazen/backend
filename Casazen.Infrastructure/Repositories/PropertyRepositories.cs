@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +37,8 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null)
     {
-        var query = context.Properties.AsQueryable().Where(p => p.IsActive);
+        var query = context.Properties.AsQueryable()
+            .Where(p => p.IsActive && p.ComplianceStatus == PropertyComplianceStatus.Active);
 
         if (orgId.HasValue)
             query = query.Where(p => p.OrgId == orgId.Value);
@@ -104,5 +106,13 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     {
         return await context.Properties.AnyAsync(p =>
             p.CinCode == cinCode && p.Id != excludePropertyId);
+    }
+
+    public async Task<bool> SlugExistsInOrgAsync(Guid orgId, string slug, Guid? excludePropertyId = null)
+    {
+        var query = context.Properties.Where(p => p.OrgId == orgId && p.Slug == slug);
+        if (excludePropertyId.HasValue)
+            query = query.Where(p => p.Id != excludePropertyId.Value);
+        return await query.AnyAsync();
     }
 }

@@ -186,11 +186,11 @@ public class PublicOrgControllerTests
         };
         _orgService.Setup(s => s.GetPublicBySlugAsync("host-org", It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
-        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(propertyId, org.Id))
+        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(propertyId.ToString(), org.Id))
             .ReturnsAsync(detail);
 
         // Act
-        var result = await _controller.GetProperty("host-org", propertyId, CancellationToken.None);
+        var result = await _controller.GetProperty("host-org", propertyId.ToString(), CancellationToken.None);
 
         // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
@@ -207,11 +207,11 @@ public class PublicOrgControllerTests
         var propertyId = Guid.NewGuid();
         _orgService.Setup(s => s.GetPublicBySlugAsync("org-a", It.IsAny<CancellationToken>()))
             .ReturnsAsync(orgA);
-        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(propertyId, orgA.Id))
+        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(propertyId.ToString(), orgA.Id))
             .ReturnsAsync((PublicPropertyDetailDto?)null);
 
         // Act
-        var result = await _controller.GetProperty("org-a", propertyId, CancellationToken.None);
+        var result = await _controller.GetProperty("org-a", propertyId.ToString(), CancellationToken.None);
 
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
@@ -225,14 +225,38 @@ public class PublicOrgControllerTests
             .ReturnsAsync((OrgEntity?)null);
 
         // Act
-        var result = await _controller.GetProperty("no-org", Guid.NewGuid(), CancellationToken.None);
+        var result = await _controller.GetProperty("no-org", Guid.NewGuid().ToString(), CancellationToken.None);
 
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
-        _propertyService.Verify(s => s.GetPublicPropertyForOrgAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        _propertyService.Verify(s => s.GetPublicPropertyForOrgAsync(It.IsAny<string>(), It.IsAny<Guid>()), Times.Never);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetProperty_WhenResolvedBySlug_Returns200()
+    {
+        var org = BuildOrg("host-org");
+        var detail = new PublicPropertyDetailDto
+        {
+            Id = Guid.NewGuid(),
+            Slug = "villa-parco",
+            Name = "Villa Parco",
+            City = "Florence",
+            Currency = "EUR",
+        };
+        _orgService.Setup(s => s.GetPublicBySlugAsync("host-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync("villa-parco", org.Id))
+            .ReturnsAsync(detail);
+
+        var result = await _controller.GetProperty("host-org", "villa-parco", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PublicPropertyDetailDto>(ok.Value);
+        Assert.Equal("villa-parco", dto.Slug);
+    }
 
     private static OrgEntity BuildOrg(string slug) => new()
     {

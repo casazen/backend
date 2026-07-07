@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -29,12 +30,20 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     public async Task<Property> CreatePropertyAsync(Property property)
     {
         logger.LogInformation("Creating property: {Name}", property.Name);
+        property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         return await repository.AddAsync(property);
     }
 
     public async Task<Property> UpdatePropertyAsync(Property property)
     {
         logger.LogInformation("Updating property: {Id}", property.Id);
+        if (!string.IsNullOrWhiteSpace(property.Slug))
+        {
+            property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
+            if (await repository.SlugExistsInOrgAsync(property.OrgId, property.Slug, property.Id))
+                throw new InvalidOperationException("Slug already in use within this organization.");
+        }
+
         return await repository.UpdateAsync(property);
     }
 
@@ -56,6 +65,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
             .Select(p => new PublicPropertyRow
             {
                 Id = p.Id,
+                Slug = p.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -88,6 +98,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
             .Select(p => new PublicPropertyRow
             {
                 Id = p.Id,
+                Slug = p.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -116,6 +127,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
             .Select(p => new PublicPropertyDetailRow
             {
                 Id = p.Id,
+                Slug = p.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -139,13 +151,19 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return row is null ? null : MapPublicPropertyDetail(row);
     }
 
-    public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(Guid id, Guid orgId)
+    public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
     {
-        var row = await repository.GetSearchQueryable(null, null, null, orgId)
-            .Where(p => p.Id == id)
+        var query = repository.GetSearchQueryable(null, null, null, orgId);
+        if (Guid.TryParse(slugOrId, out var id))
+            query = query.Where(p => p.Id == id);
+        else
+            query = query.Where(p => p.Slug == slugOrId);
+
+        var row = await query
             .Select(p => new PublicPropertyDetailRow
             {
                 Id = p.Id,
+                Slug = p.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -391,9 +409,40 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         await repository.UpdateAsync(property);
     }
 
+    private async Task<string> ResolveSlugForCreateAsync(Guid orgId, string name, string? requestedSlug)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedSlug))
+        {
+            var normalized = PropertySlugHelper.NormalizeOptional(requestedSlug);
+            if (await repository.SlugExistsInOrgAsync(orgId, normalized, null))
+                throw new InvalidOperationException("Slug already in use within this organization.");
+            return normalized;
+        }
+
+        return await AllocateUniqueSlugAsync(orgId, name, null);
+    }
+
+    private async Task<string> AllocateUniqueSlugAsync(Guid orgId, string name, Guid? excludePropertyId)
+    {
+        var baseSlug = PropertySlugHelper.Sanitize(name);
+        if (baseSlug.Length > 90)
+            baseSlug = baseSlug[..90].TrimEnd('-');
+
+        var candidate = baseSlug;
+        var suffix = 0;
+        while (await repository.SlugExistsInOrgAsync(orgId, candidate, excludePropertyId))
+        {
+            suffix++;
+            candidate = $"{baseSlug}-{suffix}";
+        }
+
+        return candidate;
+    }
+
     private static PublicPropertyDto MapPublicProperty(PublicPropertyRow row) => new()
     {
         Id = row.Id,
+        Slug = row.Slug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -415,6 +464,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     private static PublicPropertyDetailDto MapPublicPropertyDetail(PublicPropertyDetailRow row) => new()
     {
         Id = row.Id,
+        Slug = row.Slug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -440,6 +490,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     private class PublicPropertyRow
     {
         public Guid Id { get; init; }
+        public string? Slug { get; init; }
         public string Name { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public string City { get; init; } = string.Empty;

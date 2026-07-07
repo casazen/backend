@@ -37,6 +37,40 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
+    public async Task Create_WithBookingId_Returns400()
+    {
+        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+
+        var response = await client.PostAsJsonAsync("/api/service-requests", new
+        {
+            propertyId,
+            bookingId = Guid.NewGuid(),
+            supplierOrgId,
+            category = "cleaning",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_WithChargeToGuest_Returns400()
+    {
+        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+
+        var response = await client.PostAsJsonAsync("/api/service-requests", new
+        {
+            propertyId,
+            supplierOrgId,
+            category = "cleaning",
+            chargeToGuest = true,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetInbox_AsSupplier_ReturnsCreatedRequest()
     {
         var (hostId, _, propertyId, supplierOrgId, supplierUserId) = await SeedScenarioAsync();

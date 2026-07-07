@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260707092901_AddPropertyComplianceStatus")]
+    partial class AddPropertyComplianceStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1337,10 +1340,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("SafetyChecklistJson")
                         .HasColumnType("text");
 
-                    b.Property<string>("Slug")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1356,11 +1355,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId");
 
                     b.HasIndex("OwnerId");
-
-                    b.HasIndex("OrgId", "Slug")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_Properties_OrgId_Slug")
-                        .HasFilter("\"Slug\" IS NOT NULL");
 
                     b.HasIndex("Address", "City", "PostalCode", "IsActive")
                         .IsUnique()

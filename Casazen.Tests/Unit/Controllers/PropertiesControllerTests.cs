@@ -27,6 +27,7 @@ public class PropertiesControllerTests
     private readonly Mock<IAdminAccessAuditService> _mockAuditService;
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IEntitlementService> _mockEntitlementService;
+    private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -39,6 +40,7 @@ public class PropertiesControllerTests
         _mockAuditService = new Mock<IAdminAccessAuditService>();
         _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockEntitlementService = new Mock<IEntitlementService>();
+        _mockComplianceWizardService = new Mock<IComplianceWizardService>();
         _mockLogger = new Mock<ILogger<PropertiesController>>();
         _controller = new PropertiesController(
             _mockService.Object,
@@ -49,6 +51,7 @@ public class PropertiesControllerTests
             _mockOrgContextResolver.Object,
             _mockEntitlementService.Object,
             CreatePropertyICalSyncService(),
+            _mockComplianceWizardService.Object,
             _mockLogger.Object);
 
         // Defaults: caller has an org and is under the plan limit. Create-path tests that need

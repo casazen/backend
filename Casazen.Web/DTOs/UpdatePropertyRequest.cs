@@ -96,6 +96,10 @@ public class UpdatePropertyRequest
     /// <summary>Whether the property is visible and bookable.</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
+    [MaxLength(100)]
+    public string? Slug { get; set; }
+
     /// <summary>
     /// Applies all client-supplied values to an existing <see cref="Property"/> entity in place.
     /// <c>OwnerId</c>, <c>Id</c>, <c>CreatedAt</c> are never touched; only <c>UpdatedAt</c>
@@ -124,6 +128,8 @@ public class UpdatePropertyRequest
         property.Timezone = Timezone;
         property.CancellationPolicyId = CancellationPolicyId;
         property.IsActive = IsActive;
+        if (Slug is not null)
+            property.Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant();
         property.UpdatedAt = DateTime.UtcNow;
     }
 }
