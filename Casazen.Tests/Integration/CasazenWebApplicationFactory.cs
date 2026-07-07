@@ -157,7 +157,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             DamageDeposit = 200m,
             CinCode = "IT-ABC123-DEF456",
             IsActive = true,
-            ComplianceStatus = PropertyComplianceStatus.Active,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

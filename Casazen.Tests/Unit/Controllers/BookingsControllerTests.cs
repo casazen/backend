@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Casazen.Core.DTOs.Compliance;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -31,9 +30,7 @@ public class BookingsControllerTests
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IGuestService> _mockGuestService;
     private readonly Mock<IBackgroundJobClient> _mockBackgroundJobClient;
-    private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
-    private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -50,9 +47,7 @@ public class BookingsControllerTests
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockGuestService = new Mock<IGuestService>();
         _mockBackgroundJobClient = new Mock<IBackgroundJobClient>();
-        _mockComplianceWizardService = new Mock<IComplianceWizardService>();
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
-        _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = new BookingsController(
@@ -64,9 +59,7 @@ public class BookingsControllerTests
             CreatePropertyICalSyncService(),
             _mockGuestService.Object,
             _mockBackgroundJobClient.Object,
-            _mockComplianceWizardService.Object,
             _mockGuestCheckInService.Object,
-            _mockOrgContextResolver.Object,
             _mockLogger.Object);
     }
 

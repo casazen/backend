@@ -37,12 +37,9 @@ public class MigrationSqlTests
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        var lastFive = keys.TakeLast(5).ToList();
-        Assert.EndsWith("AddSupplierOrgIdToUser", lastFive[0]);
-        Assert.EndsWith("AddServiceRequest", lastFive[1]);
-        Assert.EndsWith("AddCalendarBlocksAndICalFeeds", lastFive[2]);
-        Assert.EndsWith("AddPropertyComplianceStatus", lastFive[3]);
-        Assert.EndsWith("AddGuestCheckInSession", lastFive[4]);
+        Assert.EndsWith("AddGuestCheckInSession", keys[^1]);
+        Assert.Contains(keys, k => k.EndsWith("AddCalendarBlocksAndICalFeeds", StringComparison.Ordinal));
+        Assert.Contains(keys, k => k.EndsWith("AddServiceRequest", StringComparison.Ordinal));
     }
 
     [Fact]

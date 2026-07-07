@@ -48,7 +48,6 @@ public class GuestCheckInServiceTests
             PostalCode = "00100",
             NightlyRate = 100m,
             IsActive = true,
-            ComplianceStatus = PropertyComplianceStatus.Active,
         });
 
         db.Bookings.Add(new Booking

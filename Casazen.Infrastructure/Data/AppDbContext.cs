@@ -372,8 +372,6 @@ public class AppDbContext(
 
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
-        modelBuilder.Entity<Property>().Property(p => p.SafetyChecklistJson).HasColumnType("jsonb");
-        modelBuilder.Entity<Property>().HasIndex(p => new { p.OrgId, p.ComplianceStatus });
         modelBuilder.Entity<Booking>().HasIndex(b => b.OrgId);
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.OrgId);
         modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
