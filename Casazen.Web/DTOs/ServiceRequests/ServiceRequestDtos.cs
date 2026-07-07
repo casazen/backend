@@ -23,6 +23,47 @@ public class CompleteServiceRequestRequest
     public string? Notes { get; set; }
 }
 
+public class MatchSupplierRequest
+{
+    public Guid PropertyId { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public ServiceRequestUrgency Urgency { get; set; } = ServiceRequestUrgency.Normal;
+    public string? Notes { get; set; }
+}
+
+public class SupplierMatchCandidateDto
+{
+    public Guid OrgId { get; set; }
+    public string LegalName { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? Bio { get; set; }
+    public int MatchScore { get; set; }
+    public string MatchReason { get; set; } = string.Empty;
+    public string Source { get; set; } = "platform";
+}
+
+public class ExternalSupplierSuggestionDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public double? Rating { get; set; }
+    public int? ReviewCount { get; set; }
+    public string? GoogleMapsUrl { get; set; }
+    public string? WebsiteUrl { get; set; }
+    public string Source { get; set; } = "google_places";
+}
+
+public class SupplierMatchResponse
+{
+    public SupplierMatchCandidateDto? Recommended { get; set; }
+    public IEnumerable<SupplierMatchCandidateDto> Alternatives { get; set; } = [];
+    public IEnumerable<ExternalSupplierSuggestionDto> ExternalSuggestions { get; set; } = [];
+    public bool UsedExternalFallback { get; set; }
+}
+
 public class ServiceRequestDto
 {
     public Guid Id { get; set; }

@@ -316,6 +316,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        services.AddScoped<ISupplierMatchService, SupplierMatchService>();
+        services.AddScoped<IGooglePlacesDiscoveryService, GooglePlacesDiscoveryService>();
+        services.AddHttpClient("GooglePlaces", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.AddScoped<CalendarSyncService>();
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
