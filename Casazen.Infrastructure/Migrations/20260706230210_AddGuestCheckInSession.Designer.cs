@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260706230210_AddGuestCheckInSession")]
+    partial class AddGuestCheckInSession
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -704,10 +707,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<string>("HeroImageUrl")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -729,10 +728,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("PlanTier")
                         .HasColumnType("integer");
 
-                    b.Property<string>("PublicThemeId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -752,10 +747,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("SubscriptionStatus")
                         .HasColumnType("integer");
-
-                    b.Property<string>("Tagline")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("ThemeColor")
                         .HasMaxLength(20)
@@ -1335,11 +1326,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(10)");
 
                     b.Property<string>("SafetyChecklistJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Slug")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Timezone")
                         .IsRequired()
@@ -1357,10 +1345,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OwnerId");
 
-                    b.HasIndex("OrgId", "Slug")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_Properties_OrgId_Slug")
-                        .HasFilter("\"Slug\" IS NOT NULL");
+                    b.HasIndex("OrgId", "ComplianceStatus");
 
                     b.HasIndex("Address", "City", "PostalCode", "IsActive")
                         .IsUnique()

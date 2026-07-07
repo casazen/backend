@@ -13,7 +13,7 @@ public interface IPropertyService
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
     Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id);
-    Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(Guid id, Guid orgId);
+    Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId);
     Task<Property> AddImageAsync(Guid propertyId, string imageUrl);
     Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex);
     Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls);

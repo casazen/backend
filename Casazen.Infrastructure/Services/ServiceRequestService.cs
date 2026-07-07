@@ -27,6 +27,12 @@ public class ServiceRequestService(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
+        if (command.BookingId is not null)
+            throw new InvalidOperationException("Le richieste di servizio devono essere collegate alla proprietà, non alla prenotazione.");
+
+        if (command.ChargeToGuest)
+            throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
+
         var property = await db.Properties
             .IgnoreQueryFilters()
             .Include(p => p.Org)
@@ -39,14 +45,6 @@ public class ServiceRequestService(
         if (!await propertyAuthorization.CanAccessPropertyAsync(
                 command.UserId, command.PropertyId, ["PropertyOwner", "Admin", "PropertyManager"]))
             throw new UnauthorizedAccessException("Accesso negato alla proprietà.");
-
-        if (command.BookingId is Guid bookingId)
-        {
-            var booking = await db.Bookings.FirstOrDefaultAsync(
-                b => b.Id == bookingId && b.PropertyId == command.PropertyId, cancellationToken);
-            if (booking is null)
-                throw new InvalidOperationException("Prenotazione non valida per questa proprietà.");
-        }
 
         var supplier = await db.SupplierProfiles
             .Include(sp => sp.Org)

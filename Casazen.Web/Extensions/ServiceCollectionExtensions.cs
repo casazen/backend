@@ -311,6 +311,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRentBillingService, NullRentBillingService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
+        services.AddScoped<IGuestCheckInService, GuestCheckInService>();
+        services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();

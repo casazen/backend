@@ -67,6 +67,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Legal:Documents:Subprocessors:Items:3:Name"] = "SendGrid",
                 ["Legal:Documents:Subprocessors:Items:3:Purpose"] = "Email",
                 ["Legal:Documents:Subprocessors:Items:3:Region"] = "EU",
+                ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
+                ["Compliance:CheckoutReminderHourLocal"] = "20",
+                ["Compliance:GdprRetentionYears"] = "7",
+                ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
+                ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
             });
         });
 

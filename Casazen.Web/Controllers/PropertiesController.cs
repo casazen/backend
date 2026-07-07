@@ -5,6 +5,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs;
+using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,7 @@ public class PropertiesController(
     IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
     PropertyICalSyncService propertyICalSyncService,
+    IComplianceWizardService complianceWizardService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     [HttpGet("health")]
@@ -727,5 +729,105 @@ public class PropertiesController(
             LastError = feed?.LastError,
             BlockCount = await propertyICalSyncService.GetBlockCountAsync(propertyId, cancellationToken),
         };
+    }
+
+    // ─── Compliance activation wizard (#295) ───────────────────────────────────
+
+    [HttpGet("{id:guid}/compliance/activation")]
+    [ProducesResponseType(typeof(PropertyActivationWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyActivationWizardDto>> GetComplianceActivation(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property is null)
+            return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        try
+        {
+            var (loaded, steps) = await complianceWizardService.GetActivationWizardAsync(id, cancellationToken);
+            return Ok(new PropertyActivationWizardDto
+            {
+                ComplianceStatus = loaded.ComplianceStatus.ToString(),
+                Steps = steps.Select(s => new ComplianceActivationStepDto
+                {
+                    Id = s.Id,
+                    Label = s.Label,
+                    Status = s.Status,
+                    Blocker = s.Blocker,
+                    Message = s.Message,
+                }),
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpPost("{id:guid}/compliance/activation/complete")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [ProducesResponseType(typeof(CompletePropertyActivationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CompletePropertyActivationResponse>> CompleteComplianceActivation(
+        Guid id,
+        [FromBody] CompletePropertyActivationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property is null)
+            return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+            return Forbid();
+
+        try
+        {
+            PropertySafetyChecklistInput? safety = request.SafetyChecklist is null
+                ? null
+                : new PropertySafetyChecklistInput(
+                    request.SafetyChecklist.SmokeDetector,
+                    request.SafetyChecklist.FireExtinguisher,
+                    request.SafetyChecklist.GasCompliance,
+                    userId);
+
+            var (updated, blockers) = await complianceWizardService.CompleteActivationAsync(
+                id, userId, safety, request.TosAccepted, cancellationToken);
+
+            if (blockers.Count > 0)
+            {
+                return Conflict(new CompletePropertyActivationResponse
+                {
+                    ComplianceStatus = updated.ComplianceStatus.ToString(),
+                    IncompleteBlockers = blockers,
+                });
+            }
+
+            return Ok(new CompletePropertyActivationResponse
+            {
+                ComplianceStatus = updated.ComplianceStatus.ToString(),
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
     }
 }

@@ -16,4 +16,5 @@ public interface IPropertyRepository
     Task<Property?> GetPropertyDetailAsync(Guid id);
     Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId);
     Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);
+    Task<bool> SlugExistsInOrgAsync(Guid orgId, string slug, Guid? excludePropertyId = null);
 }

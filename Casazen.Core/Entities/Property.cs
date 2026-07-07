@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,10 @@ public class Property
 
     [Required, MaxLength(100)]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>URL-friendly identifier unique within the org for direct booking links.</summary>
+    [MaxLength(100)]
+    public string? Slug { get; set; }
 
     [MaxLength(2000)]
     public string Description { get; set; } = string.Empty;
@@ -79,6 +84,14 @@ public class Property
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Compliance activation gate for public listing (US-019 / #295).</summary>
+    public PropertyComplianceStatus ComplianceStatus { get; set; } = PropertyComplianceStatus.Pending;
+
+    public DateTime? ComplianceCompletedAt { get; set; }
+
+    /// <summary>JSON safety checklist: smokeDetector, fireExtinguisher, gasCompliance, acknowledgedAt, acknowledgedBy.</summary>
+    public string? SafetyChecklistJson { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
