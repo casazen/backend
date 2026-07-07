@@ -28,6 +28,7 @@ public class BookingsControllerTests
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
     private readonly Mock<IGuestService> _mockGuestService;
     private readonly Mock<IBackgroundJobClient> _mockBackgroundJobClient;
+    private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -44,6 +45,7 @@ public class BookingsControllerTests
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
         _mockGuestService = new Mock<IGuestService>();
         _mockBackgroundJobClient = new Mock<IBackgroundJobClient>();
+        _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = new BookingsController(
@@ -55,6 +57,7 @@ public class BookingsControllerTests
             CreatePropertyICalSyncService(),
             _mockGuestService.Object,
             _mockBackgroundJobClient.Object,
+            _mockGuestCheckInService.Object,
             _mockLogger.Object);
     }
 

@@ -385,6 +385,12 @@ Email__FromAddress=noreply@casazen.app
 App__PublicSiteBaseUrl=https://casazen-app.vercel.app
 Hangfire__DashboardEnabled=false
 Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
+# AI supplier discovery (DeepSeek) — replaces Google Places
+Ai__Provider=DeepSeek
+Ai__ApiKey=sk-...
+Ai__Model=deepseek-v4-flash
+Ai__AnthropicBaseUrl=https://api.deepseek.com/anthropic
+Ai__OpenAiBaseUrl=https://api.deepseek.com
 ```
 
 `App__PublicSiteBaseUrl` is required for **supplier invite emails** (`POST /api/admin/suppliers/invite`): the signup link is built as `{PublicSiteBaseUrl}/login?inviteToken=…&email=…&comune=…`. Use the Vercel URL for the matching environment (test → preview/staging FE, production → `https://casazen.app` or production Vercel URL).

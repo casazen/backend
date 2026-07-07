@@ -100,7 +100,7 @@ builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
-builder.Services.AddScoped<IAiProvider, StubAiProvider>();
+builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 builder.Services.AddScoped<ILeaseTemplateService, LeaseContractTemplateService>();
@@ -144,6 +144,12 @@ builder.Services.AddRateLimiter(options =>
         limiter.PermitLimit = builder.Configuration.GetValue("CheckIn:RateLimitPermitLimit", 10);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("GuestCheckInSubmit", limiter =>
+    {
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.PermitLimit = builder.Configuration.GetValue("CheckIn:SubmitRateLimitPermitLimit", 3);
+        limiter.QueueLimit = 0;
+    });
     options.AddFixedWindowLimiter("PublicTouristTaxCalc", limiter =>
     {
         limiter.Window = TimeSpan.FromMinutes(1);
@@ -169,6 +175,8 @@ builder.Services.AddScoped<LeaseSignStatusPollingJob>();
 builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
 builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
+builder.Services.AddScoped<GuestCheckInSendJob>();
+builder.Services.AddScoped<GuestCheckInReminderJob>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
@@ -420,6 +428,18 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "property-ical-sync",
         job => job.ExecuteAsync(),
         "*/15 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<GuestCheckInSendJob>(
+        "guest-checkin-send",
+        job => job.ExecuteAsync(),
+        "0 8 * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<GuestCheckInReminderJob>(
+        "guest-checkin-reminder",
+        job => job.ExecuteAsync(),
+        "0 10 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 

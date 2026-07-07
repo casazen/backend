@@ -317,11 +317,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
-        services.AddScoped<IGooglePlacesDiscoveryService, GooglePlacesDiscoveryService>();
-        services.AddHttpClient("GooglePlaces", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(15);
-        });
         services.AddScoped<CalendarSyncService>();
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
@@ -340,13 +335,13 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddCasazenExternalServices(this IServiceCollection services)
+    public static IServiceCollection AddCasazenExternalServices(this IServiceCollection services, IConfiguration configuration)
     {
         // Note: Auth0Service was removed as dead code (never used)
         // JWT authentication is handled directly by AddCasazenAuthentication()
         services.AddScoped<ResendEmailService>();
         services.AddScoped<StripeService>();
-        services.AddScoped<IAiProvider, StubAiProvider>();
+        services.AddCasazenAiProvider(configuration);
         services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
         services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
         services.AddScoped<StripeWebhookHandler>();

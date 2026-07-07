@@ -9,7 +9,7 @@ namespace Casazen.Infrastructure.Services;
 public class SupplierMatchService(
     AppDbContext db,
     ISupplierService supplierService,
-    IGooglePlacesDiscoveryService googlePlaces,
+    IAiSupplierDiscoveryService aiDiscovery,
     IAiProvider aiProvider,
     IPropertyAuthorizationService propertyAuthorization,
     ILogger<SupplierMatchService> logger) : ISupplierMatchService
@@ -45,7 +45,7 @@ public class SupplierMatchService(
         var suppliers = await supplierService.GetActiveByComune(property.City, category, cancellationToken);
         if (suppliers.Count == 0)
         {
-            var external = await googlePlaces.SearchNearbyAsync(property.City, category, cancellationToken);
+            var external = await aiDiscovery.SearchNearbyAsync(property.City, category, cancellationToken);
             return new SupplierMatchResult(null, [], external, external.Count > 0);
         }
 
