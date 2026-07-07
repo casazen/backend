@@ -1,8 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -35,8 +37,23 @@ public class BookingServiceTests
             new Mock<ITaxCalculationService>().Object,
             new Mock<IStripeService>().Object,
             new Mock<IPaymentRepository>().Object,
+            CreatePropertyICalSyncService(configuration),
             configuration,
             new Mock<ILogger<BookingService>>().Object);
+    }
+
+    private static PropertyICalSyncService CreatePropertyICalSyncService(IConfiguration configuration)
+    {
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+        return new PropertyICalSyncService(
+            db,
+            Mock.Of<IHttpClientFactory>(),
+            new ICalImportService(),
+            new ICalExportService(),
+            configuration,
+            Mock.Of<ILogger<PropertyICalSyncService>>());
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -22,6 +23,7 @@ public class PropertiesController(
     IAdminAccessAuditService adminAccessAuditService,
     IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
+    PropertyICalSyncService propertyICalSyncService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     [HttpGet("health")]
@@ -633,5 +635,97 @@ public class PropertiesController(
             return;
 
         await adminAccessAuditService.LogPrivilegedPropertyAccessAsync(userId, propertyId, ownerId, action);
+    }
+
+    [HttpPost("{id:guid}/ical/import-url")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    public async Task<ActionResult<PropertyIcalStatusDto>> SetIcalImportUrl(
+        Guid id,
+        [FromBody] PropertyIcalImportUrlRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property is null)
+            return NotFound();
+
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+            return Forbid();
+
+        try
+        {
+            await propertyICalSyncService.SetImportUrlAndSyncAsync(id, property.OrgId, request.ImportUrl, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        return Ok(await BuildIcalStatusAsync(id, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/ical/status")]
+    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property is null)
+            return NotFound();
+
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+            return Forbid();
+
+        return Ok(await BuildIcalStatusAsync(id, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/ical/export-url")]
+    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    public async Task<ActionResult<PropertyIcalExportUrlDto>> GetIcalExportUrl(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property is null)
+            return NotFound();
+
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+            return Forbid();
+
+        var feed = await propertyICalSyncService.GetOrCreateFeedAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalExportUrlDto
+        {
+            ExportUrl = propertyICalSyncService.BuildExportUrl(feed.ExportToken),
+        });
+    }
+
+    private async Task<PropertyIcalStatusDto> BuildIcalStatusAsync(Guid propertyId, CancellationToken cancellationToken)
+    {
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        var feed = property is null
+            ? null
+            : await propertyICalSyncService.GetFeedAsync(propertyId, cancellationToken)
+              ?? await propertyICalSyncService.GetOrCreateFeedAsync(propertyId, property.OrgId, cancellationToken);
+
+        return new PropertyIcalStatusDto
+        {
+            ImportUrl = feed?.ImportUrl,
+            ExportUrl = feed is null ? string.Empty : propertyICalSyncService.BuildExportUrl(feed.ExportToken),
+            LastImportAt = feed?.LastImportAt,
+            LastImportStatus = feed?.LastImportStatus?.ToString(),
+            LastError = feed?.LastError,
+            BlockCount = await propertyICalSyncService.GetBlockCountAsync(propertyId, cancellationToken),
+        };
     }
 }

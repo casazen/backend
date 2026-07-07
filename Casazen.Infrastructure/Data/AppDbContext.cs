@@ -48,6 +48,10 @@ public class AppDbContext(
     public DbSet<SupplierJob> SupplierJobs { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
+    // Property iCal OTA sync (US-018 / #294)
+    public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
+    public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
+
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
@@ -501,6 +505,49 @@ public class AppDbContext(
 
         modelBuilder.Entity<ServiceRequest>()
             .HasIndex(sr => new { sr.SupplierOrgId, sr.Status });
+
+        // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
+        modelBuilder.Entity<CalendarBlock>()
+            .HasOne(b => b.Property)
+            .WithMany()
+            .HasForeignKey(b => b.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasOne(b => b.Org)
+            .WithMany()
+            .HasForeignKey(b => b.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
+            .IsUnique();
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
+
+        modelBuilder.Entity<PropertyICalFeed>()
+            .HasOne(f => f.Property)
+            .WithMany()
+            .HasForeignKey(f => f.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PropertyICalFeed>()
+            .HasOne(f => f.Org)
+            .WithMany()
+            .HasForeignKey(f => f.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PropertyICalFeed>()
+            .HasIndex(f => f.PropertyId)
+            .IsUnique();
+
+        modelBuilder.Entity<PropertyICalFeed>()
+            .HasIndex(f => f.ExportToken)
+            .IsUnique();
+
+        modelBuilder.Entity<PropertyICalFeed>()
+            .HasQueryFilter(f => !_tenant.FilterEnabled || f.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },

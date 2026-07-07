@@ -316,7 +316,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        services.AddScoped<ISupplierMatchService, SupplierMatchService>();
+        services.AddScoped<IGooglePlacesDiscoveryService, GooglePlacesDiscoveryService>();
+        services.AddHttpClient("GooglePlaces", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.AddScoped<CalendarSyncService>();
+        services.AddScoped<ICalImportService>();
+        services.AddScoped<ICalExportService>();
+        services.AddScoped<PropertyICalSyncService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
@@ -325,7 +334,9 @@ public static class ServiceCollectionExtensions
         {
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-IcalSync/1.0");
-        });
+        })
+        .AddPolicyHandler((sp, _) =>
+            PollyPolicies.GetRetryPolicy(2, sp.GetRequiredService<ILoggerFactory>().CreateLogger("IcalSync")));
         return services;
     }
 

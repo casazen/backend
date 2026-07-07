@@ -415,6 +415,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         job => job.ExecuteAsync(),
         "*/15 * * * *",  // Every 15 minutes
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<PropertyICalSyncJob>(
+        "property-ical-sync",
+        job => job.ExecuteAsync(),
+        "*/15 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 }
 
 public partial class Program { }

@@ -36,6 +36,23 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal("Branded Test Org", root.GetProperty("displayName").GetString());
         Assert.Equal("#2563eb", root.GetProperty("themeColor").GetString());
         Assert.False(root.TryGetProperty("planTier", out _));
+        Assert.True(root.GetProperty("showPoweredBy").GetBoolean());
+        Assert.Equal("mare", root.GetProperty("publicThemeId").GetString());
+        Assert.Equal("https://cdn.example.com/hero.webp", root.GetProperty("heroImageUrl").GetString());
+        Assert.Equal("Il tuo rifugio sul mare", root.GetProperty("tagline").GetString());
+    }
+
+    [Fact]
+    public async Task AC1_GetPublicOrg_ShowPoweredByFalse_ForProPlan()
+    {
+        var org = await SeedOrgAsync($"pro-org-{Guid.NewGuid():N}", planTier: PlanTier.Pro);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/public/orgs/{org.Slug}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.False(doc.RootElement.GetProperty("showPoweredBy").GetBoolean());
     }
 
     [Fact]
@@ -105,7 +122,7 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             Assert.DoesNotContain(key.ToLowerInvariant(), lower);
     }
 
-    private async Task<OrgEntity> SeedOrgAsync(string slug, bool isActive = true)
+    private async Task<OrgEntity> SeedOrgAsync(string slug, bool isActive = true, PlanTier planTier = PlanTier.Starter)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -118,7 +135,10 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             LogoUrl = "https://cdn.example.com/logo.png",
             ThemeColor = "#2563eb",
             ContactEmail = "contact@branded.example",
-            PlanTier = PlanTier.Starter,
+            PlanTier = planTier,
+            PublicThemeId = "mare",
+            HeroImageUrl = "https://cdn.example.com/hero.webp",
+            Tagline = "Il tuo rifugio sul mare",
             IsActive = isActive,
         };
         db.Orgs.Add(org);
