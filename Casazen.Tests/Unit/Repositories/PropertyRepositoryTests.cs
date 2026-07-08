@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -52,7 +53,9 @@ public class PropertyRepositoryTests
             Name = "Rome Property",
             City = "Rome",
             Address = "Via Roma",
-            OwnerId = "auth0|test_user_123"
+            OwnerId = "auth0|test_user_123",
+            IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
         });
 
         await _repository.AddAsync(new Property

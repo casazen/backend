@@ -205,6 +205,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             DamageDeposit = 200m,
             CinCode = "IT-12345-0123456789",
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -248,6 +249,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             DamageDeposit = 200m,
             CinCode = "IT-12345-0123456789",
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

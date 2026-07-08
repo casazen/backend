@@ -27,8 +27,13 @@ public class ServiceRequestService(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
-        if (command.BookingId is not null)
-            throw new InvalidOperationException("Le richieste di servizio devono essere collegate alla proprietà, non alla prenotazione.");
+        if (command.BookingId is { } bookingId)
+        {
+            var booking = await db.Bookings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == bookingId && b.PropertyId == command.PropertyId, cancellationToken)
+                ?? throw new InvalidOperationException("Prenotazione non valida per la proprietà indicata.");
+        }
 
         if (command.ChargeToGuest)
             throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
