@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -62,7 +63,7 @@ public class ServiceRequestService(
             throw new ServiceRequestStateException("Il fornitore non è attivo.");
 
         var comuni = JsonSerializer.Deserialize<string[]>(supplier.ComuniJson, JsonOpts) ?? [];
-        if (!comuni.Contains(property.City, StringComparer.OrdinalIgnoreCase))
+        if (!comuni.Any(c => ItalianComuneRegistry.Matches(property.City, c)))
             throw new ServiceRequestStateException("Il fornitore non opera nel comune della proprietà.");
 
         var request = new ServiceRequest

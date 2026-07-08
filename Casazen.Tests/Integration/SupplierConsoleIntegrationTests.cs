@@ -346,6 +346,102 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.True(items.Count >= 1);
     }
 
+    [Fact]
+    public async Task GetSuppliers_WithoutComuneOrPropertyId_Returns400WithItalianMessage()
+    {
+        using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
+
+        var response = await client.GetAsync("/api/suppliers");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Specificare comune o propertyId", body);
+        Assert.DoesNotContain("The comune field is required", body);
+    }
+
+    [Fact]
+    public async Task GetSuppliers_ByPropertyId_ReturnsActiveSuppliersForPropertyComune()
+    {
+        const string comune = "H501";
+        await SeedFullSupplierAsync(comuneCode: comune, autoActivate: true);
+
+        var hostId = $"auth0|host-{Guid.NewGuid():N}";
+        var hostOrg = await _factory.SeedOrgForOwnerAsync(hostId);
+
+        Guid propertyId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = new Property
+            {
+                OwnerId = hostId,
+                OrgId = hostOrg.Id,
+                Name = "Supplier Picker Property",
+                Address = $"Via Picker {Guid.NewGuid():N}",
+                City = comune,
+                PostalCode = "00100",
+                Bedrooms = 2,
+                Bathrooms = 1,
+                MaxGuests = 4,
+                NightlyRate = 100m,
+                CinCode = "IT-ABC123-DEF456",
+                IsActive = true,
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            propertyId = property.Id;
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var response = await client.GetAsync($"/api/suppliers?propertyId={propertyId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        Assert.True(items.Count >= 1);
+    }
+
+    [Fact]
+    public async Task GetSuppliers_ByPropertyId_MatchesSupplierWithLegacyComuneCode()
+    {
+        await SeedFullSupplierAsync(comuneCode: "H501", autoActivate: true);
+
+        var hostId = $"auth0|host-{Guid.NewGuid():N}";
+        var hostOrg = await _factory.SeedOrgForOwnerAsync(hostId);
+
+        Guid propertyId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = new Property
+            {
+                OwnerId = hostId,
+                OrgId = hostOrg.Id,
+                Name = "Roma Property",
+                Address = $"Via Roma {Guid.NewGuid():N}",
+                City = "Roma",
+                PostalCode = "00100",
+                Bedrooms = 2,
+                Bathrooms = 1,
+                MaxGuests = 4,
+                NightlyRate = 100m,
+                CinCode = "IT-ABC123-DEF456",
+                IsActive = true,
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            propertyId = property.Id;
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var response = await client.GetAsync($"/api/suppliers?propertyId={propertyId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        Assert.True(items.Count >= 1);
+    }
+
     // ─── Auth guards ─────────────────────────────────────────────────────────
 
     [Fact]

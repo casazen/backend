@@ -90,14 +90,12 @@ public class SuppliersController(
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
-        [FromQuery] string? comune,
-        [FromQuery] Guid? propertyId,
-        [FromQuery] string? category,
+        [FromQuery] GetSuppliersQuery query,
         CancellationToken cancellationToken)
     {
-        var resolvedComune = comune?.Trim();
+        var resolvedComune = query.Comune?.Trim();
 
-        if (propertyId is Guid pid)
+        if (query.PropertyId is Guid pid)
         {
             var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
             var userId = GetUserId();
@@ -121,7 +119,7 @@ public class SuppliersController(
         if (string.IsNullOrWhiteSpace(resolvedComune))
             return BadRequest(new { error = "Specificare comune o propertyId." });
 
-        var suppliers = await supplierService.GetActiveByComune(resolvedComune, category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComune(resolvedComune, query.Category, cancellationToken);
 
         var items = suppliers.Select(sp => new SupplierPickerDto
         {

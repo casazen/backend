@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
@@ -223,7 +224,7 @@ public class SupplierService(
         return all.Where(sp =>
         {
             var comuni = JsonSerializer.Deserialize<string[]>(sp.ComuniJson, JsonOpts) ?? [];
-            if (!comuni.Contains(comuneCode, StringComparer.OrdinalIgnoreCase))
+            if (!comuni.Any(c => ItalianComuneRegistry.Matches(comuneCode, c)))
                 return false;
 
             if (category is not null)

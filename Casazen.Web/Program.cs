@@ -183,6 +183,8 @@ builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
@@ -11,6 +12,7 @@ using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -30,6 +32,7 @@ public class BookingsController(
     IGuestCheckInService checkInService,
     IComplianceWizardService complianceWizardService,
     ICheckoutReminderScheduler checkoutReminderScheduler,
+    IOptions<ComplianceOptions> complianceOptions,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -254,6 +257,10 @@ public class BookingsController(
         if (booking == null)
             return NotFound();
 
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property == null)
+            return NotFound();
+
         // Validate status transition
         if (booking.Status != BookingStatus.Confirmed)
         {
@@ -281,7 +288,10 @@ public class BookingsController(
         backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
             job => job.ReportGuestAsync(booking.GuestId, booking.Id));
 
-        var reminderAt = booking.CheckOutDate.Date.AddHours(20);
+        var localCheckoutDate = TimezoneHelper.ConvertUtcToLocal(booking.CheckOutDate, property.Timezone);
+        var reminderAtLocal = localCheckoutDate.Date
+            .AddHours(complianceOptions.Value.CheckoutReminderHourLocal);
+        var reminderAt = TimezoneHelper.ConvertLocalToUtc(reminderAtLocal, property.Timezone);
         if (reminderAt <= DateTime.UtcNow)
             reminderAt = DateTime.UtcNow.AddMinutes(5);
 

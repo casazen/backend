@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -67,6 +69,7 @@ public class BookingsControllerTests
             _mockGuestCheckInService.Object,
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
+            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
             _mockLogger.Object);
     }
 
@@ -282,6 +285,8 @@ public class BookingsControllerTests
         _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
         _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
             .ReturnsAsync((Booking b) => b);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
+            .ReturnsAsync(MakeProperty());
         _mockBackgroundJobClient
             .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
             .Returns("job-test");
