@@ -148,6 +148,47 @@ public class PropertyICalSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncPropertyFeedAsync_WhenFeedHasNoUsableEvents_PreservesExistingBlocksAndSetsFailure()
+    {
+        const string ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:invalid-block
+            DTSTART:20260712T100000Z
+            DTEND:20260710T100000Z
+            SUMMARY:Invalid reserved block
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        db.CalendarBlocks.Add(new CalendarBlock
+        {
+            PropertyId = propertyId,
+            OrgId = orgId,
+            Source = CalendarBlockSource.ICalImport,
+            ExternalUid = "existing-block",
+            StartUtc = new DateTime(2026, 7, 10, 0, 0, 0, DateTimeKind.Utc),
+            EndUtc = new DateTime(2026, 7, 12, 0, 0, 0, DateTimeKind.Utc),
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db, ics);
+        await service.SyncPropertyFeedAsync(propertyId);
+
+        var feed = await db.PropertyICalFeeds.FirstAsync();
+        var blocks = await db.CalendarBlocks.Where(b => b.PropertyId == propertyId).ToListAsync();
+        Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
+        Assert.False(string.IsNullOrWhiteSpace(feed.LastError));
+        Assert.Single(blocks);
+        Assert.Equal("existing-block", blocks[0].ExternalUid);
+    }
+
+    [Fact]
     public async Task HasOverlappingBlockAsync_ReturnsTrueWhenBlockOverlaps()
     {
         await using var db = CreateDb();
