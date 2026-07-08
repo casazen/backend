@@ -193,6 +193,9 @@ public class PublicBookingReadModelIntegrationTests : IClassFixture<CasazenWebAp
             HouseRules = houseRules,
             CancellationPolicyId = cancellationPolicyId,
             IsActive = isActive,
+            ComplianceStatus = isActive
+                ? PropertyComplianceStatus.Active
+                : PropertyComplianceStatus.Pending,
             PhotoUrls = ["https://cdn.example.com/photo.jpg"],
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,

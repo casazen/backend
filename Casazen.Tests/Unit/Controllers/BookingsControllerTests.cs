@@ -29,6 +29,8 @@ public class BookingsControllerTests
     private readonly Mock<IGuestService> _mockGuestService;
     private readonly Mock<IBackgroundJobClient> _mockBackgroundJobClient;
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
+    private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
+    private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -46,6 +48,11 @@ public class BookingsControllerTests
         _mockGuestService = new Mock<IGuestService>();
         _mockBackgroundJobClient = new Mock<IBackgroundJobClient>();
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
+        _mockComplianceWizardService = new Mock<IComplianceWizardService>();
+        _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
+        _mockCheckoutReminderScheduler
+            .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
+            .Returns("job-test");
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = new BookingsController(
@@ -58,6 +65,8 @@ public class BookingsControllerTests
             _mockGuestService.Object,
             _mockBackgroundJobClient.Object,
             _mockGuestCheckInService.Object,
+            _mockComplianceWizardService.Object,
+            _mockCheckoutReminderScheduler.Object,
             _mockLogger.Object);
     }
 

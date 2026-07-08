@@ -19,7 +19,7 @@ namespace Casazen.Tests.Unit.Services;
 public class ServiceRequestServiceTests
 {
     [Fact]
-    public async Task CreateAsync_WithBookingId_Throws()
+    public async Task CreateAsync_WithInvalidBookingId_Throws()
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);

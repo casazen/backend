@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
+using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
@@ -27,6 +28,8 @@ public class BookingsController(
     IGuestService guestService,
     IBackgroundJobClient backgroundJobClient,
     IGuestCheckInService checkInService,
+    IComplianceWizardService complianceWizardService,
+    ICheckoutReminderScheduler checkoutReminderScheduler,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -278,9 +281,90 @@ public class BookingsController(
         backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
             job => job.ReportGuestAsync(booking.GuestId, booking.Id));
 
+        var reminderAt = booking.CheckOutDate.Date.AddHours(20);
+        if (reminderAt <= DateTime.UtcNow)
+            reminderAt = DateTime.UtcNow.AddMinutes(5);
+
+        booking.CheckoutReminderJobId = checkoutReminderScheduler.ScheduleReminder(booking.Id, reminderAt);
+        await bookingService.UpdateBookingAsync(booking);
+
         logger.LogInformation("Check-in completed for booking {BookingId}, queued Alloggiati Web report", id);
         var updated = await bookingService.GetBookingAsync(id);
         return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
+    }
+
+    [HttpPost("{id}/checkout-wizard/start")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CheckoutWizardDto>> StartCheckoutWizard(Guid id)
+    {
+        try
+        {
+            var (_, steps) = await complianceWizardService.StartCheckoutWizardAsync(id);
+            return Ok(new CheckoutWizardDto
+            {
+                Steps = steps.Select(s => new ComplianceActivationStepDto
+                {
+                    Id = s.Id,
+                    Label = s.Label,
+                    Status = s.Status,
+                    Blocker = s.Blocker,
+                    Message = s.Message,
+                }),
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { Error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id}/checkout-wizard/complete")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    [ProducesResponseType(typeof(CompleteCheckoutWizardResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CompleteCheckoutWizardResponse>> CompleteCheckoutWizard(
+        Guid id,
+        [FromBody] CompleteCheckoutWizardRequest request)
+    {
+        var userId = GetUserId();
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            var (booking, propertyReady) = await complianceWizardService.CompleteCheckoutWizardAsync(
+                id,
+                userId,
+                new CompleteCheckoutWizardInput(
+                    request.ConfirmDeparture,
+                    request.SupplierOrgId,
+                    request.ServiceNotes,
+                    request.ServiceCategory));
+
+            checkoutReminderScheduler.CancelReminder(booking.CheckoutReminderJobId);
+
+            return Ok(new CompleteCheckoutWizardResponse
+            {
+                PropertyReady = propertyReady,
+                BookingStatus = booking.Status.ToString(),
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { Error = ex.Message });
+        }
     }
 
     [HttpPost("{id}/check-out")]
