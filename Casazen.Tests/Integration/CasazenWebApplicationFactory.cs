@@ -120,13 +120,18 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         });
     }
 
-    public HttpClient CreateAuthenticatedClient(string userId = TestAuthHandler.DefaultUserId, string? roles = null)
+    public HttpClient CreateAuthenticatedClient(
+        string userId = TestAuthHandler.DefaultUserId,
+        string? roles = null,
+        string? email = null)
     {
         var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthHandler.SchemeName, "test");
         client.DefaultRequestHeaders.Add("X-Test-User", userId);
         if (!string.IsNullOrWhiteSpace(roles))
             client.DefaultRequestHeaders.Add("X-Test-Roles", roles);
+        if (!string.IsNullOrWhiteSpace(email))
+            client.DefaultRequestHeaders.Add("X-Test-Email", email);
         return client;
     }
 

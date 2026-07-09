@@ -48,6 +48,20 @@ public class SuppliersController(
                 ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
 
+            if (userId is not null)
+            {
+                var authenticatedEmail = User.FindFirstValue("email")
+                    ?? User.FindFirstValue(ClaimTypes.Email);
+
+                if (!EmailsMatch(authenticatedEmail, request.Email))
+                {
+                    return BadRequest(new
+                    {
+                        error = "Authenticated email must match the supplier registration email.",
+                    });
+                }
+            }
+
             var (org, _) = await supplierService.RegisterAsync(
                 request.Email,
                 request.LegalName,
@@ -78,6 +92,13 @@ public class SuppliersController(
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    private static bool EmailsMatch(string? authenticatedEmail, string requestEmail) =>
+        !string.IsNullOrWhiteSpace(authenticatedEmail) &&
+        string.Equals(
+            authenticatedEmail.Trim(),
+            requestEmail.Trim(),
+            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns <c>Active</c> suppliers for a comune or property. Available to hosts (PropertyOwner role).

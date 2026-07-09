@@ -64,6 +64,91 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Register_AuthenticatedEmailMismatch_Returns400WithoutCreatingSupplierOrg()
+    {
+        var attackerId = $"auth0|attacker-{Guid.NewGuid():N}";
+        var attackerEmail = $"attacker-{Guid.NewGuid():N}@test.com";
+        var victimEmail = $"victim-{Guid.NewGuid():N}@test.com";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Users.Add(new User
+            {
+                Id = attackerId,
+                Email = attackerEmail,
+                FirstName = "Bad",
+                LastName = "Actor",
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(
+            attackerId,
+            roles: "Supplier",
+            email: attackerEmail);
+
+        var response = await client.PostAsJsonAsync("/api/suppliers/register", new
+        {
+            email = victimEmail,
+            legalName = "Victim Supplier Srl",
+            phone = "+39 06 123456",
+            comuneCode = "H501",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(verifyDb.SupplierProfiles.Any(sp => sp.Email == victimEmail));
+        Assert.Null(verifyDb.Users.Single(u => u.Id == attackerId).SupplierOrgId);
+    }
+
+    [Fact]
+    public async Task Register_AuthenticatedEmailMatch_LinksUserToCreatedSupplierOrg()
+    {
+        var userId = $"auth0|supplier-register-{Guid.NewGuid():N}";
+        var email = $"supplier-register-{Guid.NewGuid():N}@test.com";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Email = email,
+                FirstName = "Good",
+                LastName = "Supplier",
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(
+            userId,
+            roles: "Supplier",
+            email: email);
+
+        var response = await client.PostAsJsonAsync("/api/suppliers/register", new
+        {
+            email,
+            legalName = "Good Supplier Srl",
+            phone = "+39 06 123456",
+            comuneCode = "H501",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var orgId = body.GetProperty("orgId").GetGuid();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(orgId, verifyDb.Users.Single(u => u.Id == userId).SupplierOrgId);
+        Assert.True(verifyDb.SupplierProfiles.Any(sp => sp.OrgId == orgId && sp.Email == email));
+    }
+
     // ─── AC5: GET/POST activation ─────────────────────────────────────────────
 
     [Fact]
