@@ -7,6 +7,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
+using Casazen.Web.DTOs.Compliance;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
@@ -367,5 +368,66 @@ public class BookingsControllerTests
                 It.IsAny<EnqueuedState>()),
             Times.Once);
         Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task StartCheckoutWizard_WhenUnauthorizedForProperty_ReturnsNotFoundWithoutStartingWizard()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            Status = BookingStatus.CheckedIn,
+            CheckOutDate = DateTime.UtcNow.Date,
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(false);
+
+        var result = await _controller.StartCheckoutWizard(bookingId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockComplianceWizardService.Verify(
+            s => s.StartCheckoutWizardAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CompleteCheckoutWizard_WhenUnauthorizedForProperty_ReturnsNotFoundWithoutCompletingWizard()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            Status = BookingStatus.CheckedIn,
+            CheckOutDate = DateTime.UtcNow.Date,
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(false);
+
+        var result = await _controller.CompleteCheckoutWizard(
+            bookingId,
+            new CompleteCheckoutWizardRequest { ConfirmDeparture = true });
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockComplianceWizardService.Verify(
+            s => s.CompleteCheckoutWizardAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<CompleteCheckoutWizardInput>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        _mockCheckoutReminderScheduler.Verify(s => s.CancelReminder(It.IsAny<string?>()), Times.Never);
     }
 }

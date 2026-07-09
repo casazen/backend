@@ -67,6 +67,31 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
     }
 
     [Fact]
+    public async Task CheckoutWizard_WhenPropertyUnauthorized_ReturnsNotFoundAndDoesNotMutateBooking()
+    {
+        var (hostId, org, propertyId) = await SeedPropertyScenarioAsync(PropertyComplianceStatus.Active);
+        var bookingId = await SeedCheckedInBookingAsync(hostId, org.Id, propertyId);
+        var attackerHostId = $"auth0|attacker-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(attackerHostId);
+
+        using var client = _factory.CreateAuthenticatedClient(attackerHostId, "PropertyOwner");
+        var start = await client.PostAsync($"/api/bookings/{bookingId}/checkout-wizard/start", null);
+        var complete = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/checkout-wizard/complete", new
+        {
+            confirmDeparture = true,
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, start.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, complete.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var booking = await db.Bookings.IgnoreQueryFilters().SingleAsync(b => b.Id == bookingId);
+        Assert.Equal(BookingStatus.CheckedIn, booking.Status);
+        Assert.Null(booking.CheckoutWizardStartedAt);
+    }
+
+    [Fact]
     public async Task CheckoutWizard_WithSupplier_CreatesServiceRequest()
     {
         var (hostId, org, propertyId) = await SeedPropertyScenarioAsync(PropertyComplianceStatus.Active);
