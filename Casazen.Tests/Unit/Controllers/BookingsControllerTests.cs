@@ -151,6 +151,8 @@ public class BookingsControllerTests
         };
 
         _mockBookingService.Setup(b => b.GetAllBookingsAsync()).ReturnsAsync([booking]);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
 
         var result = await _controller.GetAll(null);
 
@@ -160,6 +162,68 @@ public class BookingsControllerTests
         Assert.Equal(booking.Id, dto.Id);
         Assert.Equal("Test Villa", dto.PropertyName);
         Assert.Equal("mario@test.com", dto.Guest.Email);
+    }
+
+    [Fact]
+    public async Task GetAll_WithPropertyId_WhenUnauthorized_ReturnsNotFound()
+    {
+        SetUser(OwnerId);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(false);
+
+        var result = await _controller.GetAll(PropertyId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockBookingService.Verify(b => b.GetPropertyBookingsAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAll_WithGuestId_FiltersOutBookingsFromUnauthorizedProperties()
+    {
+        SetUser(OwnerId);
+        var guestId = Guid.NewGuid();
+        var accessibleBooking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guestId,
+            Guest = new Guest { Id = guestId, Email = "guest@example.com" },
+            Property = MakeProperty(),
+            CheckInDate = DateTime.UtcNow.AddDays(1),
+            CheckOutDate = DateTime.UtcNow.AddDays(2),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        };
+        var otherPropertyId = Guid.NewGuid();
+        var leakedBooking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = otherPropertyId,
+            OrgId = Guid.NewGuid(),
+            GuestId = guestId,
+            Guest = new Guest { Id = guestId, Email = "guest@example.com" },
+            CheckInDate = DateTime.UtcNow.AddDays(3),
+            CheckOutDate = DateTime.UtcNow.AddDays(4),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        };
+
+        _mockBookingService.Setup(b => b.GetGuestBookingsAsync(guestId))
+            .ReturnsAsync([accessibleBooking, leakedBooking]);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, otherPropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(false);
+
+        var result = await _controller.GetAll(null, guestId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsAssignableFrom<IEnumerable<BookingResponseDto>>(ok.Value);
+        var dto = Assert.Single(items);
+        Assert.Equal(accessibleBooking.Id, dto.Id);
     }
 
     [Fact]
@@ -283,6 +347,8 @@ public class BookingsControllerTests
         };
 
         _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
         _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
             .ReturnsAsync((Booking b) => b);
         _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
