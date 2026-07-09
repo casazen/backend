@@ -111,6 +111,24 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
+    public async Task GetSessionByToken_CancelledBooking_ReturnsNull()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var booking = await seed.Db.Bookings.FindAsync(seed.BookingId);
+        booking!.Status = BookingStatus.Cancelled;
+        await seed.Db.SaveChangesAsync();
+
+        var result = await svc.GetSessionByTokenAsync(token);
+
+        Assert.Null(result);
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
+    }
+
+    [Fact]
     public async Task GetSessionByToken_InvalidToken_ReturnsNull()
     {
         await using var seed = await SeedAsync();
@@ -152,6 +170,38 @@ public class GuestCheckInServiceTests
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal("YA1234567", guest!.DocumentNumber);
         Assert.Equal(DateTime.UtcNow.Year + 7, guest.DataRetentionUntil.Year);
+    }
+
+    [Fact]
+    public async Task Submit_CancelledBooking_ReturnsFailureWithoutUpdatingGuest()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var booking = await seed.Db.Bookings.FindAsync(seed.BookingId);
+        booking!.Status = BookingStatus.Cancelled;
+        await seed.Db.SaveChangesAsync();
+
+        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
+        {
+            FirstName = "Luigi",
+            LastName = "Verdi",
+            DateOfBirth = new DateTime(1990, 5, 15),
+            Nationality = "Italiana",
+            DocumentType = "Passport",
+            DocumentNumber = "YA1234567",
+            DocumentIssuingCountry = "Italia",
+            PlaceOfBirth = "Roma",
+            GdprConsent = true,
+        });
+
+        Assert.False(result.Success);
+        Assert.False(result.Duplicate);
+
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.ConsentDate);
     }
 
     [Fact]
