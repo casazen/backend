@@ -48,6 +48,20 @@ public class SuppliersController(
                 ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
                 ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
 
+            if (userId is not null)
+            {
+                var authenticatedEmail = User.FindFirstValue("email")
+                    ?? User.FindFirstValue(ClaimTypes.Email);
+
+                if (!EmailsMatch(authenticatedEmail, request.Email))
+                {
+                    return BadRequest(new
+                    {
+                        error = "Authenticated email must match the supplier registration email.",
+                    });
+                }
+            }
+
             var (org, _) = await supplierService.RegisterAsync(
                 request.Email,
                 request.LegalName,
@@ -79,6 +93,13 @@ public class SuppliersController(
         }
     }
 
+    private static bool EmailsMatch(string? authenticatedEmail, string requestEmail) =>
+        !string.IsNullOrWhiteSpace(authenticatedEmail) &&
+        string.Equals(
+            authenticatedEmail.Trim(),
+            requestEmail.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Returns <c>Active</c> suppliers for a comune or property. Available to hosts (PropertyOwner role).
     /// </summary>
@@ -90,14 +111,12 @@ public class SuppliersController(
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
-        [FromQuery] string? comune,
-        [FromQuery] Guid? propertyId,
-        [FromQuery] string? category,
+        [FromQuery] GetSuppliersQuery query,
         CancellationToken cancellationToken)
     {
-        var resolvedComune = comune?.Trim();
+        var resolvedComune = query.Comune?.Trim();
 
-        if (propertyId is Guid pid)
+        if (query.PropertyId is Guid pid)
         {
             var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
             var userId = GetUserId();
@@ -121,7 +140,7 @@ public class SuppliersController(
         if (string.IsNullOrWhiteSpace(resolvedComune))
             return BadRequest(new { error = "Specificare comune o propertyId." });
 
-        var suppliers = await supplierService.GetActiveByComune(resolvedComune, category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComune(resolvedComune, query.Category, cancellationToken);
 
         var items = suppliers.Select(sp => new SupplierPickerDto
         {

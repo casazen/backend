@@ -84,8 +84,7 @@ public static class ICalImportSpike
 
         try
         {
-            var parsed = CalendarModel.Load(icsContent);
-            return parsed.Events.Count > 0;
+            return ParseImport(icsContent).Count > 0;
         }
         catch
         {

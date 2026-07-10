@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -22,7 +23,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC15_1_GetToken_ValidToken_Returns200WithContext()
     {
-        var (token, _) = await SeedSessionAsync();
+        var (token, _, _) = await SeedSessionAsync();
         var client = _factory.CreateClient();
 
         var response = await client.GetAsync($"/api/public/checkin/{token}");
@@ -36,7 +37,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC15_2_Submit_ValidData_Returns200()
     {
-        var (token, _) = await SeedSessionAsync();
+        var (token, _, _) = await SeedSessionAsync();
         var client = _factory.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
@@ -50,7 +51,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC15_3_DuplicateSubmit_Returns409()
     {
-        var (token, _) = await SeedSessionAsync();
+        var (token, _, _) = await SeedSessionAsync();
         var client = _factory.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
@@ -66,7 +67,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC15_4_ExpiredToken_Returns404()
     {
-        var (token, sessionId) = await SeedSessionAsync();
+        var (token, sessionId, _) = await SeedSessionAsync();
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -82,6 +83,36 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
+    public async Task GetToken_CancelledBooking_Returns404()
+    {
+        var (token, _, _) = await SeedSessionAsync(BookingStatus.Cancelled);
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync($"/api/public/checkin/{token}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Submit_CancelledBooking_Returns404AndDoesNotUpdateGuest()
+    {
+        var (token, _, guestId) = await SeedSessionAsync(BookingStatus.Cancelled);
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync(
+            $"/api/public/checkin/{token}",
+            BuildSubmitContent());
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var guest = await db.Guests.FindAsync(guestId);
+        Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.ConsentDate);
+    }
+
+    [Fact]
     public async Task AC15_5_InvalidToken_Returns404()
     {
         var client = _factory.CreateClient();
@@ -94,7 +125,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC15_6_GdprConsentFalse_Returns400()
     {
-        var (token, _) = await SeedSessionAsync();
+        var (token, _, _) = await SeedSessionAsync();
         var client = _factory.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
@@ -105,7 +136,8 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    private async Task<(string Token, Guid SessionId)> SeedSessionAsync()
+    private async Task<(string Token, Guid SessionId, Guid GuestId)> SeedSessionAsync(
+        BookingStatus bookingStatus = BookingStatus.Confirmed)
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
 
@@ -115,12 +147,14 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         // Look up the OrgId from the seeded booking
         var booking = await db.Bookings.FindAsync(seed.BookingId);
         var orgId = booking!.OrgId;
+        booking.Status = bookingStatus;
+        await db.SaveChangesAsync();
 
         var service = new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance);
         var token = await service.CreateSessionAsync(seed.BookingId, orgId);
         var session = await db.GuestCheckInSessions.OrderByDescending(s => s.CreatedAt).FirstAsync();
 
-        return (token, session.Id);
+        return (token, session.Id, seed.GuestId);
     }
 
     private static StringContent BuildSubmitContent(bool gdprConsent = true) =>

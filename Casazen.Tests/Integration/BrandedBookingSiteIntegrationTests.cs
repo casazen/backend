@@ -172,6 +172,7 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             CinCode = "IT-12345-0123456789",
             HouseRules = houseRules,
             IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
             PhotoUrls = ["https://cdn.example.com/branded.jpg"],
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,

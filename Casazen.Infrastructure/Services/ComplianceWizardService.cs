@@ -108,18 +108,21 @@ public class ComplianceWizardService(
             }
         }
 
-        var checkoutDue = await db.Bookings
+        var checkoutCandidates = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Where(b => b.OrgId == orgId)
             .Where(b => b.Status == BookingStatus.CheckedIn)
-            .Where(b => b.CheckOutDate.Date <= today)
             .OrderBy(b => b.CheckOutDate)
+            .ToListAsync(cancellationToken);
+
+        var checkoutDue = checkoutCandidates
+            .Where(b => b.CheckOutDate.Date <= today)
             .Select(b => new ComplianceSummaryItem(
                 b.Id,
                 $"{b.Guest.FirstName} {b.Guest.LastName}".Trim(),
                 $"/bookings/{b.Id}/checkout-wizard"))
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         var alloggiatiFailures = await db.AlloggiatiWebReports
             .AsNoTracking()
@@ -194,7 +197,7 @@ public class ComplianceWizardService(
                 booking.OrgId,
                 userId,
                 booking.PropertyId,
-                null,
+                booking.Id,
                 input.SupplierOrgId.Value,
                 input.ServiceCategory ?? "cleaning",
                 ServiceRequestUrgency.Normal,

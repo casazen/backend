@@ -141,6 +141,13 @@ public class AdminInviteResponse
     public DateTime ExpiresAt { get; set; }
 }
 
+public class GetSuppliersQuery
+{
+    public string? Comune { get; set; }
+    public Guid? PropertyId { get; set; }
+    public string? Category { get; set; }
+}
+
 public class SupplierPickerDto
 {
     public Guid OrgId { get; set; }

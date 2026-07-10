@@ -87,7 +87,9 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var request = await db.ServiceRequests.FirstOrDefaultAsync(r => r.BookingId == bookingId);
+        var request = await db.ServiceRequests
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.BookingId == bookingId);
         Assert.NotNull(request);
         Assert.Equal(supplierOrgId, request!.SupplierOrgId);
     }

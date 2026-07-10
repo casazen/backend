@@ -64,6 +64,91 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Register_AuthenticatedEmailMismatch_Returns400WithoutCreatingSupplierOrg()
+    {
+        var attackerId = $"auth0|attacker-{Guid.NewGuid():N}";
+        var attackerEmail = $"attacker-{Guid.NewGuid():N}@test.com";
+        var victimEmail = $"victim-{Guid.NewGuid():N}@test.com";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Users.Add(new User
+            {
+                Id = attackerId,
+                Email = attackerEmail,
+                FirstName = "Bad",
+                LastName = "Actor",
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(
+            attackerId,
+            roles: "Supplier",
+            email: attackerEmail);
+
+        var response = await client.PostAsJsonAsync("/api/suppliers/register", new
+        {
+            email = victimEmail,
+            legalName = "Victim Supplier Srl",
+            phone = "+39 06 123456",
+            comuneCode = "H501",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(verifyDb.SupplierProfiles.Any(sp => sp.Email == victimEmail));
+        Assert.Null(verifyDb.Users.Single(u => u.Id == attackerId).SupplierOrgId);
+    }
+
+    [Fact]
+    public async Task Register_AuthenticatedEmailMatch_LinksUserToCreatedSupplierOrg()
+    {
+        var userId = $"auth0|supplier-register-{Guid.NewGuid():N}";
+        var email = $"supplier-register-{Guid.NewGuid():N}@test.com";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Email = email,
+                FirstName = "Good",
+                LastName = "Supplier",
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(
+            userId,
+            roles: "Supplier",
+            email: email);
+
+        var response = await client.PostAsJsonAsync("/api/suppliers/register", new
+        {
+            email,
+            legalName = "Good Supplier Srl",
+            phone = "+39 06 123456",
+            comuneCode = "H501",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var orgId = body.GetProperty("orgId").GetGuid();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(orgId, verifyDb.Users.Single(u => u.Id == userId).SupplierOrgId);
+        Assert.True(verifyDb.SupplierProfiles.Any(sp => sp.OrgId == orgId && sp.Email == email));
+    }
+
     // ─── AC5: GET/POST activation ─────────────────────────────────────────────
 
     [Fact]
@@ -339,6 +424,102 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
 
         using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
         var response = await client.GetAsync("/api/suppliers?comune=F205");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        Assert.True(items.Count >= 1);
+    }
+
+    [Fact]
+    public async Task GetSuppliers_WithoutComuneOrPropertyId_Returns400WithItalianMessage()
+    {
+        using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
+
+        var response = await client.GetAsync("/api/suppliers");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Specificare comune o propertyId", body);
+        Assert.DoesNotContain("The comune field is required", body);
+    }
+
+    [Fact]
+    public async Task GetSuppliers_ByPropertyId_ReturnsActiveSuppliersForPropertyComune()
+    {
+        const string comune = "H501";
+        await SeedFullSupplierAsync(comuneCode: comune, autoActivate: true);
+
+        var hostId = $"auth0|host-{Guid.NewGuid():N}";
+        var hostOrg = await _factory.SeedOrgForOwnerAsync(hostId);
+
+        Guid propertyId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = new Property
+            {
+                OwnerId = hostId,
+                OrgId = hostOrg.Id,
+                Name = "Supplier Picker Property",
+                Address = $"Via Picker {Guid.NewGuid():N}",
+                City = comune,
+                PostalCode = "00100",
+                Bedrooms = 2,
+                Bathrooms = 1,
+                MaxGuests = 4,
+                NightlyRate = 100m,
+                CinCode = "IT-ABC123-DEF456",
+                IsActive = true,
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            propertyId = property.Id;
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var response = await client.GetAsync($"/api/suppliers?propertyId={propertyId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        Assert.True(items.Count >= 1);
+    }
+
+    [Fact]
+    public async Task GetSuppliers_ByPropertyId_MatchesSupplierWithLegacyComuneCode()
+    {
+        await SeedFullSupplierAsync(comuneCode: "H501", autoActivate: true);
+
+        var hostId = $"auth0|host-{Guid.NewGuid():N}";
+        var hostOrg = await _factory.SeedOrgForOwnerAsync(hostId);
+
+        Guid propertyId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = new Property
+            {
+                OwnerId = hostId,
+                OrgId = hostOrg.Id,
+                Name = "Roma Property",
+                Address = $"Via Roma {Guid.NewGuid():N}",
+                City = "Roma",
+                PostalCode = "00100",
+                Bedrooms = 2,
+                Bathrooms = 1,
+                MaxGuests = 4,
+                NightlyRate = 100m,
+                CinCode = "IT-ABC123-DEF456",
+                IsActive = true,
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            propertyId = property.Id;
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var response = await client.GetAsync($"/api/suppliers?propertyId={propertyId}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();

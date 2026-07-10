@@ -41,6 +41,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Stripe:PublishableKey"] = "pk_test_integration",
                 ["DirectBooking:ConsentVersion"] = "2026-06-direct-checkout-v1",
                 ["DirectBooking:PendingTtlMinutes"] = "15",
+                ["CheckIn:RateLimitPermitLimit"] = "1000",
+                ["CheckIn:SubmitRateLimitPermitLimit"] = "1000",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
@@ -72,6 +74,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Compliance:GdprRetentionYears"] = "7",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
                 ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
+                ["CheckIn:RateLimitPermitLimit"] = "100",
+                ["CheckIn:SubmitRateLimitPermitLimit"] = "100",
             });
         });
 
@@ -118,13 +122,18 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         });
     }
 
-    public HttpClient CreateAuthenticatedClient(string userId = TestAuthHandler.DefaultUserId, string? roles = null)
+    public HttpClient CreateAuthenticatedClient(
+        string userId = TestAuthHandler.DefaultUserId,
+        string? roles = null,
+        string? email = null)
     {
         var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthHandler.SchemeName, "test");
         client.DefaultRequestHeaders.Add("X-Test-User", userId);
         if (!string.IsNullOrWhiteSpace(roles))
             client.DefaultRequestHeaders.Add("X-Test-Roles", roles);
+        if (!string.IsNullOrWhiteSpace(email))
+            client.DefaultRequestHeaders.Add("X-Test-Email", email);
         return client;
     }
 

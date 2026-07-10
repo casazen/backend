@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -27,8 +28,13 @@ public class ServiceRequestService(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
-        if (command.BookingId is not null)
-            throw new InvalidOperationException("Le richieste di servizio devono essere collegate alla proprietà, non alla prenotazione.");
+        if (command.BookingId is { } bookingId)
+        {
+            var booking = await db.Bookings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == bookingId && b.PropertyId == command.PropertyId, cancellationToken)
+                ?? throw new InvalidOperationException("Prenotazione non valida per la proprietà indicata.");
+        }
 
         if (command.ChargeToGuest)
             throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
@@ -57,7 +63,7 @@ public class ServiceRequestService(
             throw new ServiceRequestStateException("Il fornitore non è attivo.");
 
         var comuni = JsonSerializer.Deserialize<string[]>(supplier.ComuniJson, JsonOpts) ?? [];
-        if (!comuni.Contains(property.City, StringComparer.OrdinalIgnoreCase))
+        if (!comuni.Any(c => ItalianComuneRegistry.Matches(property.City, c)))
             throw new ServiceRequestStateException("Il fornitore non opera nel comune della proprietà.");
 
         var request = new ServiceRequest

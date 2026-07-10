@@ -1,15 +1,18 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
+using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -27,19 +30,37 @@ public class BookingsController(
     IGuestService guestService,
     IBackgroundJobClient backgroundJobClient,
     IGuestCheckInService checkInService,
+    IComplianceWizardService complianceWizardService,
+    ICheckoutReminderScheduler checkoutReminderScheduler,
+    IOptions<ComplianceOptions> complianceOptions,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId = null, [FromQuery] Guid? guestId = null)
     {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
         IEnumerable<Booking> bookings;
 
-        if (guestId.HasValue)
-            bookings = await bookingService.GetGuestBookingsAsync(guestId.Value);
-        else if (propertyId.HasValue)
+        if (propertyId.HasValue)
+        {
+            if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId.Value, GetUserRoles()))
+                return NotFound();
+
             bookings = await bookingService.GetPropertyBookingsAsync(propertyId.Value);
+        }
+        else if (guestId.HasValue)
+        {
+            bookings = await bookingService.GetGuestBookingsAsync(guestId.Value);
+            bookings = await FilterAccessibleBookingsAsync(bookings, userId);
+        }
         else
+        {
             bookings = await bookingService.GetAllBookingsAsync();
+            bookings = await FilterAccessibleBookingsAsync(bookings, userId);
+        }
 
         return Ok(bookings.Select(BookingMapper.ToResponse));
     }
@@ -48,7 +69,17 @@ public class BookingsController(
     public async Task<ActionResult<BookingResponseDto>> GetById(Guid id)
     {
         var booking = await bookingService.GetBookingAsync(id);
-        return booking == null ? NotFound() : Ok(BookingMapper.ToResponse(booking));
+        if (booking == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
+            return NotFound();
+
+        return Ok(BookingMapper.ToResponse(booking));
     }
 
     [HttpPost]
@@ -142,7 +173,16 @@ public class BookingsController(
         if (existing == null)
             return NotFound();
 
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
+            return NotFound();
+
         booking.Id = id;
+        booking.PropertyId = existing.PropertyId;
+        booking.OrgId = existing.OrgId;
         await bookingService.UpdateBookingAsync(booking);
         return NoContent();
     }
@@ -154,6 +194,13 @@ public class BookingsController(
         logger.LogInformation("Cancelling booking: {BookingId}", id);
         var existing = await bookingService.GetBookingAsync(id);
         if (existing == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
             return NotFound();
 
         await bookingService.CancelBookingAsync(id);
@@ -171,6 +218,13 @@ public class BookingsController(
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null)
             return NotFound("Property not found");
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId, GetUserRoles()))
+            return NotFound();
 
         var targetTimezone = timezone ?? property.Timezone;
 
@@ -251,6 +305,17 @@ public class BookingsController(
         if (booking == null)
             return NotFound();
 
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
+            return NotFound();
+
+        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
+        if (property == null)
+            return NotFound();
+
         // Validate status transition
         if (booking.Status != BookingStatus.Confirmed)
         {
@@ -278,9 +343,93 @@ public class BookingsController(
         backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
             job => job.ReportGuestAsync(booking.GuestId, booking.Id));
 
+        var localCheckoutDate = TimezoneHelper.ConvertUtcToLocal(booking.CheckOutDate, property.Timezone);
+        var reminderAtLocal = localCheckoutDate.Date
+            .AddHours(complianceOptions.Value.CheckoutReminderHourLocal);
+        var reminderAt = TimezoneHelper.ConvertLocalToUtc(reminderAtLocal, property.Timezone);
+        if (reminderAt <= DateTime.UtcNow)
+            reminderAt = DateTime.UtcNow.AddMinutes(5);
+
+        booking.CheckoutReminderJobId = checkoutReminderScheduler.ScheduleReminder(booking.Id, reminderAt);
+        await bookingService.UpdateBookingAsync(booking);
+
         logger.LogInformation("Check-in completed for booking {BookingId}, queued Alloggiati Web report", id);
         var updated = await bookingService.GetBookingAsync(id);
         return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
+    }
+
+    [HttpPost("{id}/checkout-wizard/start")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CheckoutWizardDto>> StartCheckoutWizard(Guid id)
+    {
+        try
+        {
+            var (_, steps) = await complianceWizardService.StartCheckoutWizardAsync(id);
+            return Ok(new CheckoutWizardDto
+            {
+                Steps = steps.Select(s => new ComplianceActivationStepDto
+                {
+                    Id = s.Id,
+                    Label = s.Label,
+                    Status = s.Status,
+                    Blocker = s.Blocker,
+                    Message = s.Message,
+                }),
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { Error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id}/checkout-wizard/complete")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
+    [ProducesResponseType(typeof(CompleteCheckoutWizardResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CompleteCheckoutWizardResponse>> CompleteCheckoutWizard(
+        Guid id,
+        [FromBody] CompleteCheckoutWizardRequest request)
+    {
+        var userId = GetUserId();
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            var (booking, propertyReady) = await complianceWizardService.CompleteCheckoutWizardAsync(
+                id,
+                userId,
+                new CompleteCheckoutWizardInput(
+                    request.ConfirmDeparture,
+                    request.SupplierOrgId,
+                    request.ServiceNotes,
+                    request.ServiceCategory));
+
+            checkoutReminderScheduler.CancelReminder(booking.CheckoutReminderJobId);
+
+            return Ok(new CompleteCheckoutWizardResponse
+            {
+                PropertyReady = propertyReady,
+                BookingStatus = booking.Status.ToString(),
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { Error = ex.Message });
+        }
     }
 
     [HttpPost("{id}/check-out")]
@@ -289,6 +438,13 @@ public class BookingsController(
     {
         var booking = await bookingService.GetBookingAsync(id);
         if (booking == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
         // Validate status transition
@@ -323,6 +479,13 @@ public class BookingsController(
     {
         var booking = await bookingService.GetBookingAsync(id);
         if (booking == null)
+            return NotFound();
+
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
         var status = await alloggiatiWebService.GetStatusAsync(id);
@@ -415,6 +578,20 @@ public class BookingsController(
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-    private IEnumerable<string> GetUserRoles() =>
-        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
+    private IReadOnlyList<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+
+    private async Task<IReadOnlyList<Booking>> FilterAccessibleBookingsAsync(IEnumerable<Booking> bookings, string userId)
+    {
+        var roles = GetUserRoles();
+        var visible = new List<Booking>();
+
+        foreach (var booking in bookings)
+        {
+            if (await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, roles))
+                visible.Add(booking);
+        }
+
+        return visible;
+    }
 }
