@@ -160,7 +160,7 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var guest = db.Guests.Single(g => g.Id == seed.GuestId);
         Assert.Null(guest.ConsentDate);
-        Assert.Null(guest.DocumentNumber);
+        Assert.Equal(string.Empty, guest.DocumentNumber);
     }
 
     [Fact]
