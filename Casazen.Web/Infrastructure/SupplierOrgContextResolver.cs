@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Infrastructure;
 
@@ -11,12 +13,20 @@ namespace Casazen.Web.Infrastructure;
 public interface ISupplierOrgContextResolver
 {
     Task<Guid?> GetOrProvisionSupplierOrgIdAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves only an already-linked supplier org. This is for business
+    /// actions where silently creating or email-linking supplier membership
+    /// would be an authorization side effect.
+    /// </summary>
+    Task<Guid?> GetLinkedSupplierOrgIdAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class SupplierOrgContextResolver(
     IHttpContextAccessor httpContextAccessor,
     IUserService userService,
     ISupplierService supplierService,
+    AppDbContext db,
     IAuth0ManagementService auth0Management) : ISupplierOrgContextResolver
 {
     public async Task<Guid?> GetOrProvisionSupplierOrgIdAsync(CancellationToken cancellationToken = default)
@@ -58,6 +68,42 @@ public sealed class SupplierOrgContextResolver(
         }
 
         return orgId;
+    }
+
+    public async Task<Guid?> GetLinkedSupplierOrgIdAsync(CancellationToken cancellationToken = default)
+    {
+        var sub = ResolveSub();
+        if (string.IsNullOrWhiteSpace(sub))
+            return null;
+
+        var user = await userService.GetUserAsync(sub);
+        if (user is null)
+            return null;
+
+        if (user.SupplierOrgId is Guid supplierOrgId &&
+            await HasSupplierOrgWithProfileAsync(supplierOrgId, cancellationToken))
+        {
+            return supplierOrgId;
+        }
+
+        if (user.OrgId is Guid linkedOrgId &&
+            await HasSupplierOrgWithProfileAsync(linkedOrgId, cancellationToken))
+        {
+            return linkedOrgId;
+        }
+
+        return null;
+    }
+
+    private async Task<bool> HasSupplierOrgWithProfileAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var isSupplierOrg = await db.Orgs.AsNoTracking()
+            .AnyAsync(o => o.Id == orgId && o.OrgType == OrgType.Supplier, cancellationToken);
+        if (!isSupplierOrg)
+            return false;
+
+        return await db.SupplierProfiles.AsNoTracking()
+            .AnyAsync(sp => sp.OrgId == orgId, cancellationToken);
     }
 
     private static string ResolveEmail(string jwtEmail, Core.Entities.User? user)
