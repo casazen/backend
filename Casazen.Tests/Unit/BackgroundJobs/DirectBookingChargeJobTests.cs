@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Stripe;
 using Xunit;
+using OrgEntity = Casazen.Core.Entities.Org;
 using PropertyEntity = Casazen.Core.Entities.Property;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
@@ -124,13 +125,13 @@ public class DirectBookingChargeJobTests
             Mock.Of<ILogger<DirectBookingChargeJob>>());
     }
 
-    private static async Task<(Booking Booking, Org Org)> SeedChargeableBookingAsync(
+    private static async Task<(Booking Booking, OrgEntity Org)> SeedChargeableBookingAsync(
         AppDbContext context,
         PaymentStatus paymentStatus = PaymentStatus.Pending,
         string paymentDescription = DeadlineChargeDescription,
         string transactionId = "seti_pending")
     {
-        var org = new Org
+        var org = new OrgEntity
         {
             Id = Guid.NewGuid(),
             Name = "CasaZen Host",
