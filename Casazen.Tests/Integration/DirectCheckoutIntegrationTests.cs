@@ -327,7 +327,8 @@ internal sealed class FakeStripeService : IStripeService
         string paymentMethodId,
         long amountCents,
         string currency,
-        Dictionary<string, string> metadata)
+        Dictionary<string, string> metadata,
+        string? idempotencyKey = null)
     {
         LastPaymentIntentId = $"pi_test_{Guid.NewGuid():N}";
         return Task.FromResult(new PaymentIntent
