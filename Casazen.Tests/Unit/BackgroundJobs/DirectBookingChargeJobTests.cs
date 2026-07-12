@@ -10,7 +10,6 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Stripe;
 using Xunit;
-using OrgEntity = Casazen.Core.Entities.Org;
 using PropertyEntity = Casazen.Core.Entities.Property;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
