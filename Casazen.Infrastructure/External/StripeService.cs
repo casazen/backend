@@ -22,7 +22,8 @@ public interface IStripeService
         string paymentMethodId,
         long amountCents,
         string currency,
-        Dictionary<string, string> metadata);
+        Dictionary<string, string> metadata,
+        string? idempotencyKey = null);
 }
 
 public class StripeService(ILogger<StripeService> logger) : IStripeService
@@ -161,7 +162,8 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
         string paymentMethodId,
         long amountCents,
         string currency,
-        Dictionary<string, string> metadata)
+        Dictionary<string, string> metadata,
+        string? idempotencyKey = null)
     {
         try
         {
@@ -177,7 +179,11 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
                 ApplicationFeeAmount = 0,
             };
 
-            var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
+            var requestOptions = new RequestOptions
+            {
+                StripeAccount = connectedAccountId,
+                IdempotencyKey = idempotencyKey,
+            };
             var service = new PaymentIntentService();
             var paymentIntent = await service.CreateAsync(options, requestOptions);
             logger.LogInformation(
