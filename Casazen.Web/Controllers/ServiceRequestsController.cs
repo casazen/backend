@@ -118,7 +118,7 @@ public class ServiceRequestsController(
 
         if (string.Equals(view, "supplier", StringComparison.OrdinalIgnoreCase) && User.IsInRole("Supplier"))
         {
-            var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+            var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
             if (supplierOrgId is null) return NotFound();
 
             var openOnly = string.Equals(status, "open", StringComparison.OrdinalIgnoreCase);
@@ -154,12 +154,15 @@ public class ServiceRequestsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ServiceRequestDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (supplierOrgId is not null)
+        if (User.IsInRole("Supplier"))
         {
-            var supplierRequest = await serviceRequestService.GetByIdForSupplierAsync(id, supplierOrgId.Value, cancellationToken);
-            if (supplierRequest is not null)
-                return Ok(MapDto(supplierRequest));
+            var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+            if (supplierOrgId is not null)
+            {
+                var supplierRequest = await serviceRequestService.GetByIdForSupplierAsync(id, supplierOrgId.Value, cancellationToken);
+                if (supplierRequest is not null)
+                    return Ok(MapDto(supplierRequest));
+            }
         }
 
         var hostOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -177,7 +180,7 @@ public class ServiceRequestsController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ServiceRequestDto>> Take(Guid id, CancellationToken cancellationToken)
     {
-        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         var userId = GetUserId();
         if (supplierOrgId is null || userId is null) return NotFound();
 
@@ -209,7 +212,7 @@ public class ServiceRequestsController(
         [FromBody] CompleteServiceRequestRequest? request,
         CancellationToken cancellationToken)
     {
-        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (supplierOrgId is null) return NotFound();
 
         try
@@ -241,7 +244,7 @@ public class ServiceRequestsController(
         [FromBody] RejectServiceRequestRequest request,
         CancellationToken cancellationToken)
     {
-        var supplierOrgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (supplierOrgId is null) return NotFound();
 
         try
