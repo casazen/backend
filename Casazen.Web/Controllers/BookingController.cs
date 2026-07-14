@@ -365,6 +365,17 @@ public class BookingsController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CheckoutWizardDto>> StartCheckoutWizard(Guid id)
     {
+        var userId = GetUserId();
+        if (userId is null)
+            return Unauthorized();
+
+        var bookingForAuth = await bookingService.GetBookingAsync(id);
+        if (bookingForAuth is null)
+            return NotFound();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, GetUserRoles()))
+            return NotFound();
+
         try
         {
             var (_, steps) = await complianceWizardService.StartCheckoutWizardAsync(id);
@@ -402,6 +413,13 @@ public class BookingsController(
         var userId = GetUserId();
         if (userId is null)
             return Unauthorized();
+
+        var bookingForAuth = await bookingService.GetBookingAsync(id);
+        if (bookingForAuth is null)
+            return NotFound();
+
+        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, GetUserRoles()))
+            return NotFound();
 
         try
         {
