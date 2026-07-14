@@ -70,22 +70,25 @@ public class PublicBookingsController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var bookings = await bookingService.GetBookingsByEmailAsync(request.Email);
+        var booking = await bookingService.GetBookingAsync(request.BookingId!.Value);
+        if (booking is null ||
+            booking.Status == BookingStatus.Cancelled ||
+            !string.Equals(booking.Guest.Email, request.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(new GuestBookingLookupResponse([]));
+        }
 
-        var bookingItems = bookings
-            .Where(b => b.Status != BookingStatus.Cancelled)
-            .Select(b => new GuestBookingItem(
-                b.Id,
-                b.Property.Name,
-                b.Property.City,
-                b.CheckInDate,
-                b.CheckOutDate,
-                b.Status,
-                b.PaymentOption,
-                b.FreeRefundDeadline ?? b.CheckInDate.AddDays(-7)))
-            .ToList();
-
-        return Ok(new GuestBookingLookupResponse(bookingItems));
+        return Ok(new GuestBookingLookupResponse([
+            new GuestBookingItem(
+                booking.Id,
+                booking.Property.Name,
+                booking.Property.City,
+                booking.CheckInDate,
+                booking.CheckOutDate,
+                booking.Status,
+                booking.PaymentOption,
+                booking.FreeRefundDeadline ?? booking.CheckInDate.AddDays(-7))
+        ]));
     }
 
     [HttpPost]

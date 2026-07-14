@@ -15,6 +15,7 @@ public class BookingService(
     IPropertyRepository propertyRepository,
     IOrgService orgService,
     IGuestService guestService,
+    IGuestRepository guestRepository,
     ITaxCalculationService taxCalculationService,
     IStripeService stripeService,
     IPaymentRepository paymentRepository,
@@ -130,7 +131,7 @@ public class BookingService(
                 DirectBookingErrorCodes.NotAvailable);
         }
 
-        var guest = await UpsertGuestWithConsentAsync(input.Guest, input.ConsentVersion, input.ConsentIpAddress);
+        var guest = await CreateGuestSnapshotWithConsentAsync(input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
         var nights = (checkOut - checkIn).Days;
         var basePrice = property.NightlyRate * nights + property.CleaningFee;
@@ -387,32 +388,13 @@ public class BookingService(
         return await repository.GetByDateRangeAsync(propertyId, startDate, endDate);
     }
 
-    private async Task<Guest> UpsertGuestWithConsentAsync(
+    private async Task<Guest> CreateGuestSnapshotWithConsentAsync(
         DirectBookingGuestInput guestInput,
         string consentVersion,
         string consentIpAddress)
     {
         var now = DateTime.UtcNow;
         var retentionUntil = now.AddYears(7);
-        var existing = await guestService.GetGuestByEmailAsync(guestInput.Email);
-
-        if (existing is not null)
-        {
-            existing.FirstName = guestInput.FirstName;
-            existing.LastName = guestInput.LastName;
-            existing.PhoneNumber = guestInput.Phone ?? string.Empty;
-            existing.Country = guestInput.Country;
-            existing.DataProcessingConsentDate = now;
-            existing.ConsentIpAddress = consentIpAddress.Length > 50
-                ? consentIpAddress[..50]
-                : consentIpAddress;
-            existing.ConsentVersion = consentVersion;
-            existing.ConsentDate = now;
-            existing.DataRetentionUntil = retentionUntil;
-            existing.DataProcessingPurpose = "Direct Booking Checkout";
-            existing.UpdatedAt = now;
-            return await guestService.UpdateGuestAsync(existing);
-        }
 
         var guest = new Guest
         {
@@ -431,30 +413,6 @@ public class BookingService(
             UpdatedAt = now,
         };
 
-        try
-        {
-            return await guestService.CreateGuestAsync(guest);
-        }
-        catch (InvalidOperationException)
-        {
-            var raced = await guestService.GetGuestByEmailAsync(guestInput.Email);
-            if (raced is null)
-                throw;
-
-            raced.FirstName = guestInput.FirstName;
-            raced.LastName = guestInput.LastName;
-            raced.PhoneNumber = guestInput.Phone ?? string.Empty;
-            raced.Country = guestInput.Country;
-            raced.DataProcessingConsentDate = now;
-            raced.ConsentIpAddress = consentIpAddress.Length > 50
-                ? consentIpAddress[..50]
-                : consentIpAddress;
-            raced.ConsentVersion = consentVersion;
-            raced.ConsentDate = now;
-            raced.DataRetentionUntil = retentionUntil;
-            raced.DataProcessingPurpose = "Direct Booking Checkout";
-            raced.UpdatedAt = now;
-            return await guestService.UpdateGuestAsync(raced);
-        }
+        return await guestRepository.AddAsync(guest);
     }
 }
