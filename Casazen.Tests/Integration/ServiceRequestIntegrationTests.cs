@@ -139,6 +139,46 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
+    public async Task GetById_AsUnlinkedUserWithMatchingSupplierEmail_DoesNotBindSupplierOrg()
+    {
+        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        var serviceRequestId = await CreateServiceRequestAsync(hostId, propertyId, supplierOrgId);
+        var supplierEmail = await GetSupplierEmailAsync(supplierOrgId);
+        var attackerId = $"auth0|email-shadow-{Guid.NewGuid():N}";
+        await SeedUnlinkedUserAsync(attackerId, supplierEmail);
+
+        using var attackerClient = _factory.CreateAuthenticatedClient(
+            attackerId,
+            roles: "PropertyOwner",
+            email: supplierEmail);
+
+        var response = await attackerClient.GetAsync($"/api/service-requests/{serviceRequestId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await AssertUserSupplierOrgIdAsync(attackerId, expectedSupplierOrgId: null);
+    }
+
+    [Fact]
+    public async Task Take_AsUnlinkedSupplierWithMatchingEmail_DoesNotBindSupplierOrg()
+    {
+        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        var serviceRequestId = await CreateServiceRequestAsync(hostId, propertyId, supplierOrgId);
+        var supplierEmail = await GetSupplierEmailAsync(supplierOrgId);
+        var attackerId = $"auth0|supplier-shadow-{Guid.NewGuid():N}";
+        await SeedUnlinkedUserAsync(attackerId, supplierEmail);
+
+        using var attackerClient = _factory.CreateAuthenticatedClient(
+            attackerId,
+            roles: "Supplier",
+            email: supplierEmail);
+
+        var response = await attackerClient.PostAsJsonAsync($"/api/service-requests/{serviceRequestId}/take", new { });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await AssertUserSupplierOrgIdAsync(attackerId, expectedSupplierOrgId: null);
+    }
+
+    [Fact]
     public async Task List_Unauthenticated_Returns401()
     {
         using var client = _factory.CreateClient();
@@ -167,6 +207,57 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(HttpStatusCode.OK, reject.StatusCode);
         var body = await reject.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Rifiutato", body.GetProperty("status").GetString());
+    }
+
+    private async Task<Guid> CreateServiceRequestAsync(string hostId, Guid propertyId, Guid supplierOrgId)
+    {
+        using var hostClient = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var create = await hostClient.PostAsJsonAsync("/api/service-requests", new
+        {
+            propertyId,
+            supplierOrgId,
+            category = "cleaning",
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var body = await create.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("id").GetGuid();
+    }
+
+    private async Task<string> GetSupplierEmailAsync(Guid supplierOrgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.SupplierProfiles
+            .AsNoTracking()
+            .Where(sp => sp.OrgId == supplierOrgId)
+            .Select(sp => sp.Email)
+            .SingleAsync();
+    }
+
+    private async Task SeedUnlinkedUserAsync(string userId, string email)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Users.Add(new User
+        {
+            Id = userId,
+            Email = email,
+            FirstName = "Shadow",
+            LastName = "Supplier",
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task AssertUserSupplierOrgIdAsync(string userId, Guid? expectedSupplierOrgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var supplierOrgId = await db.Users
+            .Where(u => u.Id == userId)
+            .Select(u => u.SupplierOrgId)
+            .SingleAsync();
+        Assert.Equal(expectedSupplierOrgId, supplierOrgId);
     }
 
     private async Task<(string HostId, Guid HostOrgId, Guid PropertyId, Guid SupplierOrgId, string SupplierUserId)> SeedScenarioAsync()

@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using PlanTierEnum = Casazen.Core.Entities.Enums.PlanTier;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Stripe;
 using Xunit;
@@ -86,6 +87,99 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
+    public async Task DirectBooking_WithExistingGuestEmail_DoesNotOverwriteExistingGuest()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var email = $"existing.{Guid.NewGuid():N}@example.com";
+        Guid existingGuestId;
+
+        using (var seedScope = _factory.Services.CreateScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var existingGuest = new Guest
+            {
+                FirstName = "Original",
+                LastName = "Guest",
+                Email = email,
+                PhoneNumber = "+390000000000",
+                Country = "FR",
+                DataProcessingPurpose = "Existing booking",
+                CreatedAt = DateTime.UtcNow.AddDays(-10),
+                UpdatedAt = DateTime.UtcNow.AddDays(-10),
+            };
+            db.Guests.Add(existingGuest);
+            await db.SaveChangesAsync();
+            existingGuestId = existingGuest.Id;
+        }
+
+        var client = _factory.CreateClient();
+        var response = await PostDirectBookingAsync(
+            client,
+            BuildPayload(
+                property.Id,
+                guestEmail: email,
+                guestFirstName: "Injected",
+                guestLastName: "Profile",
+                guestPhone: "+399999999999",
+                guestCountry: "IT"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var originalGuest = await verifyDb.Guests.AsNoTracking().SingleAsync(g => g.Id == existingGuestId);
+        Assert.Equal("Original", originalGuest.FirstName);
+        Assert.Equal("Guest", originalGuest.LastName);
+        Assert.Equal("+390000000000", originalGuest.PhoneNumber);
+        Assert.Equal("FR", originalGuest.Country);
+        Assert.Equal("Existing booking", originalGuest.DataProcessingPurpose);
+
+        var booking = await verifyDb.Bookings
+            .AsNoTracking()
+            .Include(b => b.Guest)
+            .SingleAsync(b => b.PropertyId == property.Id);
+        Assert.NotEqual(existingGuestId, booking.GuestId);
+        Assert.Equal(email, booking.Guest.Email);
+        Assert.Equal("Injected", booking.Guest.FirstName);
+        Assert.Equal("Profile", booking.Guest.LastName);
+        Assert.Equal(2, await verifyDb.Guests.CountAsync(g => g.Email == email));
+    }
+
+    [Fact]
+    public async Task Lookup_RequiresBookingIdAndMatchingEmail()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var email = $"lookup.{Guid.NewGuid():N}@example.com";
+        var client = _factory.CreateClient();
+
+        var createResponse = await PostDirectBookingAsync(client, BuildPayload(property.Id, guestEmail: email));
+        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+        using var createDoc = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var bookingId = createDoc.RootElement.GetProperty("bookingId").GetGuid();
+
+        var missingBookingIdResponse = await PostLookupAsync(client, new { email });
+        Assert.Equal(HttpStatusCode.BadRequest, missingBookingIdResponse.StatusCode);
+
+        var wrongEmailResponse = await PostLookupAsync(client, new
+        {
+            bookingId,
+            email = $"other.{Guid.NewGuid():N}@example.com",
+        });
+        Assert.Equal(HttpStatusCode.OK, wrongEmailResponse.StatusCode);
+        using (var wrongEmailDoc = JsonDocument.Parse(await wrongEmailResponse.Content.ReadAsStringAsync()))
+        {
+            Assert.Empty(wrongEmailDoc.RootElement.GetProperty("bookings").EnumerateArray());
+        }
+
+        var lookupResponse = await PostLookupAsync(client, new { bookingId, email });
+        Assert.Equal(HttpStatusCode.OK, lookupResponse.StatusCode);
+        using var lookupDoc = JsonDocument.Parse(await lookupResponse.Content.ReadAsStringAsync());
+        var booking = Assert.Single(lookupDoc.RootElement.GetProperty("bookings").EnumerateArray());
+        Assert.Equal(bookingId, booking.GetProperty("bookingId").GetGuid());
+        Assert.Equal("Direct Checkout Villa", booking.GetProperty("propertyName").GetString());
+    }
+
+    [Fact]
     public async Task Webhook_ConfirmsDirectBooking()
     {
         var property = await SeedConnectReadyPropertyAsync();
@@ -133,7 +227,12 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         Guid propertyId,
         bool consent = true,
         DateTime? checkIn = null,
-        DateTime? checkOut = null)
+        DateTime? checkOut = null,
+        string? guestEmail = null,
+        string guestFirstName = "Mario",
+        string guestLastName = "Rossi",
+        string guestPhone = "+393331234567",
+        string guestCountry = "IT")
     {
         var inDate = checkIn ?? DateTime.UtcNow.Date.AddDays(30);
         var outDate = checkOut ?? inDate.AddDays(4);
@@ -146,11 +245,11 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             numberOfChildren = 0,
             guest = new
             {
-                firstName = "Mario",
-                lastName = "Rossi",
-                email = $"mario.{Guid.NewGuid():N}@example.com",
-                phone = "+393331234567",
-                country = "IT",
+                firstName = guestFirstName,
+                lastName = guestLastName,
+                email = guestEmail ?? $"mario.{Guid.NewGuid():N}@example.com",
+                phone = guestPhone,
+                country = guestCountry,
             },
             consent = new
             {
@@ -165,6 +264,14 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         var json = JsonSerializer.Serialize(payload);
         return await client.PostAsync(
             "/api/public/bookings",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+    }
+
+    private static async Task<HttpResponseMessage> PostLookupAsync(HttpClient client, object payload)
+    {
+        var json = JsonSerializer.Serialize(payload);
+        return await client.PostAsync(
+            "/api/public/bookings/lookup",
             new StringContent(json, Encoding.UTF8, "application/json"));
     }
 
@@ -327,7 +434,8 @@ internal sealed class FakeStripeService : IStripeService
         string paymentMethodId,
         long amountCents,
         string currency,
-        Dictionary<string, string> metadata)
+        Dictionary<string, string> metadata,
+        string? idempotencyKey = null)
     {
         LastPaymentIntentId = $"pi_test_{Guid.NewGuid():N}";
         return Task.FromResult(new PaymentIntent

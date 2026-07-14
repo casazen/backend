@@ -142,6 +142,51 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal("2026-06-alloggiati-checkin-v1", guest.ConsentVersion);
     }
 
+    [Fact]
+    public async Task GuestDataSubmit_CheckedOutBooking_Returns404AndDoesNotUpdateGuest()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
+        await MarkBookingStatusAsync(seed.BookingId, BookingStatus.CheckedOut);
+        var client = _factory.CreateClient();
+
+        var payload = BuildGuestDataPayload(includeDob: true);
+        var response = await client.PostAsync(
+            $"/api/checkin/{seed.CheckInToken}/guest-data",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var guest = db.Guests.Single(g => g.Id == seed.GuestId);
+        Assert.Null(guest.ConsentDate);
+        Assert.Equal(string.Empty, guest.DocumentNumber);
+    }
+
+    [Fact]
+    public async Task DocumentUpload_CheckedOutBooking_Returns404AndDoesNotUpdateGuest()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
+        await MarkBookingStatusAsync(seed.BookingId, BookingStatus.CheckedOut);
+        var client = _factory.CreateClient();
+
+        using var content = new MultipartFormDataContent();
+        var bytes = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "id-scan.png");
+
+        var response = await client.PostAsync($"/api/checkin/{seed.CheckInToken}/document", content);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var guest = db.Guests.Single(g => g.Id == seed.GuestId);
+        Assert.Null(guest.DocumentScanUrl);
+    }
+
     private static string BuildGuestDataPayload(bool includeDob)
     {
         var dob = includeDob ? "\"1990-05-15\"" : "null";
@@ -162,6 +207,15 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
               "consentAccepted": true
             }
             """;
+    }
+
+    private async Task MarkBookingStatusAsync(Guid bookingId, BookingStatus status)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var booking = db.Bookings.Single(b => b.Id == bookingId);
+        booking.Status = status;
+        await db.SaveChangesAsync();
     }
 }
 

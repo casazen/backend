@@ -34,6 +34,7 @@ public class BookingServiceTests
             new Mock<IPropertyRepository>().Object,
             new Mock<IOrgService>().Object,
             new Mock<IGuestService>().Object,
+            new Mock<IGuestRepository>().Object,
             new Mock<ITaxCalculationService>().Object,
             new Mock<IStripeService>().Object,
             new Mock<IPaymentRepository>().Object,
