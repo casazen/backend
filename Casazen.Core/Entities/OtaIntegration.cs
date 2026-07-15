@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Casazen.Core.Entities;
 
@@ -21,9 +22,11 @@ public class OtaIntegration
     public string ExternalPropertyId { get; set; } = string.Empty;
 
     [MaxLength(1000)]
+    [JsonIgnore]
     public string ApiKey { get; set; } = string.Empty;
 
     [MaxLength(1000)]
+    [JsonIgnore]
     public string ApiSecret { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;
