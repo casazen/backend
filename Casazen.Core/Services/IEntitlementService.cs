@@ -34,4 +34,11 @@ public interface IEntitlementService
 
     /// <summary>Downgrades stored plan tier when subscription is canceled or past due beyond grace.</summary>
     Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <c>true</c> when the org's effective plan tier (Pro or Scale) unlocks custom-domain
+    /// booking sites (#298 / US-024). Starter — and Pro/Scale downgraded to Starter by
+    /// <c>ResolveEffectiveTier</c> past-due logic — return <c>false</c>.
+    /// </summary>
+    Task<bool> CanUseCustomDomainAsync(Guid orgId, CancellationToken cancellationToken = default);
 }

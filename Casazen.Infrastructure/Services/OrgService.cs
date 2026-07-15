@@ -30,6 +30,25 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
     public Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default) =>
         dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Slug == slug && o.IsActive, cancellationToken);
 
+    public Task<Org?> GetByVerifiedCustomDomainAsync(string host, CancellationToken cancellationToken = default) =>
+        dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o =>
+            o.CustomDomain == host &&
+            o.DomainVerificationStatus == DomainVerificationStatus.Verified &&
+            o.PublicHostMode == PublicHostMode.CustomDomain &&
+            o.IsActive,
+            cancellationToken);
+
+    public async Task<Org?> GetBySubdomainOrSlugAsync(string label, CancellationToken cancellationToken = default)
+    {
+        var bySubdomain = await dbContext.Orgs.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Subdomain == label && o.IsActive, cancellationToken);
+        if (bySubdomain is not null)
+            return bySubdomain;
+
+        return await dbContext.Orgs.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Subdomain == null && o.Slug == label && o.IsActive, cancellationToken);
+    }
+
     public async Task<Org> EnsureOrgForUserAsync(
         string userId,
         string email,

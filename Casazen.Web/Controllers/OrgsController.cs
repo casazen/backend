@@ -46,6 +46,7 @@ public class OrgsController(
             return NotFound(new { error = "No organization assigned to the current user" });
 
         var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
+        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);
 
         return Ok(new EntitlementDto
         {
@@ -53,7 +54,8 @@ public class OrgsController(
             PlanTier = entitlement.PlanTier,
             Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
             Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
-            CanAddProperty = entitlement.CanAddProperty
+            CanAddProperty = entitlement.CanAddProperty,
+            CanUseCustomDomain = canUseCustomDomain
         });
     }
 
@@ -93,13 +95,15 @@ public class OrgsController(
             return NotFound(new { error = "Organization not found" });
 
         var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
+        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);
         return Ok(new EntitlementDto
         {
             OrgId = entitlement.OrgId,
             PlanTier = entitlement.PlanTier,
             Limits = new EntitlementLimitsDto { MaxProperties = entitlement.MaxProperties },
             Usage = new EntitlementUsageDto { Properties = entitlement.PropertyCount },
-            CanAddProperty = entitlement.CanAddProperty
+            CanAddProperty = entitlement.CanAddProperty,
+            CanUseCustomDomain = canUseCustomDomain
         });
     }
 }
