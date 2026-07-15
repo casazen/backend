@@ -156,6 +156,12 @@ builder.Services.AddRateLimiter(options =>
         limiter.PermitLimit = builder.Configuration.GetValue("SeoTouristTax:RateLimitPermitLimit", 30);
         limiter.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("PublicResolveHost", limiter =>
+    {
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.PermitLimit = builder.Configuration.GetValue("PublicHost:RateLimitPermitLimit", 60);
+        limiter.QueueLimit = 0;
+    });
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
