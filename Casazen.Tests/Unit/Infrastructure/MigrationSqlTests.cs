@@ -37,7 +37,8 @@ public class MigrationSqlTests
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        Assert.EndsWith("AddPropertySlug", keys[^1]);
+        Assert.EndsWith("AddOrgCustomDomain", keys[^1]);
+        Assert.Contains(keys, k => k.EndsWith("AddPropertySlug", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddPropertyComplianceStatus", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddGuestCheckInSession", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddCalendarBlocksAndICalFeeds", StringComparison.Ordinal));

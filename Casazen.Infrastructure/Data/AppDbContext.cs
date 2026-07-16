@@ -334,6 +334,16 @@ public class AppDbContext(
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
 
+        modelBuilder.Entity<Org>()
+            .HasIndex(o => o.CustomDomain)
+            .IsUnique()
+            .HasFilter("\"CustomDomain\" IS NOT NULL");
+
+        modelBuilder.Entity<Org>()
+            .HasIndex(o => o.Subdomain)
+            .IsUnique()
+            .HasFilter("\"Subdomain\" IS NOT NULL");
+
         modelBuilder.Entity<PlatformInvoice>()
             .HasOne(i => i.Org)
             .WithMany()

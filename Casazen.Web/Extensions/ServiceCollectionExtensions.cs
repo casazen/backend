@@ -301,6 +301,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
+        services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
+        services.AddScoped<IDomainVerificationService, DomainVerificationService>();
+        services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IVatCalculationService, VatCalculationService>();

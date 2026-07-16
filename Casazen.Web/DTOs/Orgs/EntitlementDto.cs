@@ -15,6 +15,9 @@ public class EntitlementDto
     public EntitlementUsageDto Usage { get; set; } = new();
 
     public bool CanAddProperty { get; set; }
+
+    /// <summary>Pro/Scale-only custom domain booking site (#298 / US-024). FE gate + upgrade CTA.</summary>
+    public bool CanUseCustomDomain { get; set; }
 }
 
 public class EntitlementLimitsDto

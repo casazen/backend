@@ -80,6 +80,20 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         }
     }
 
+    public async Task<bool> CanUseCustomDomainAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => new { o.PlanTier, o.SubscriptionStatus, o.PastDueSince })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (org is null)
+            return false;
+
+        var effectiveTier = ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
+        return effectiveTier is PlanTier.Pro or PlanTier.Scale;
+    }
+
     internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
         status switch
         {

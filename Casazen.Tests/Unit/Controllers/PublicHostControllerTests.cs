@@ -26,7 +26,7 @@ public class PublicHostControllerTests
             OrgId = Guid.NewGuid(),
             Slug = "villa-mare",
             PublicHostMode = PublicHostMode.CasazenSubdomain,
-            Branding = new PublicOrgDto { Slug = "villa-mare", DisplayName = "Villa Mare" },
+            Branding = new ResolveHostBrandingDto { Slug = "villa-mare", DisplayName = "Villa Mare" },
         };
         _resolver.Setup(r => r.ResolveAsync("villa-mare.casazen.it", It.IsAny<CancellationToken>()))
             .ReturnsAsync(dto);

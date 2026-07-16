@@ -90,4 +90,26 @@ public class Org
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    // ─── Custom domain / subdomain booking (US-024 / #298) ───────────────────────
+
+    /// <summary>How this org publishes its public booking site: path, subdomain, or custom domain.</summary>
+    [Required]
+    public PublicHostMode PublicHostMode { get; set; } = PublicHostMode.CasazenPath;
+
+    /// <summary>Normalized FQDN (lowercase, no scheme/port) — Pro/Scale feature; requires verification.</summary>
+    [MaxLength(253)]
+    public string? CustomDomain { get; set; }
+
+    /// <summary>TXT ownership challenge state for <see cref="CustomDomain"/>.</summary>
+    [Required]
+    public DomainVerificationStatus DomainVerificationStatus { get; set; } = DomainVerificationStatus.Pending;
+
+    /// <summary>Cryptographically random token expected in the <c>_casazen-challenge</c> TXT record.</summary>
+    [MaxLength(128)]
+    public string? DomainVerificationToken { get; set; }
+
+    /// <summary>Label for <c>{Subdomain}.casazen.it</c>; falls back to <see cref="Slug"/> when null.</summary>
+    [MaxLength(63)]
+    public string? Subdomain { get; set; }
 }
