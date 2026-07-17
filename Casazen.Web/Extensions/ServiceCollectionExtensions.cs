@@ -287,6 +287,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IPushNotificationService, PushNotificationService>();
+        services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<IGdprService, GdprService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();

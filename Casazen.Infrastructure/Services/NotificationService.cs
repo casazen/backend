@@ -3,7 +3,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-public class NotificationService(ILogger<NotificationService> logger) : INotificationService
+public class NotificationService(
+    IPushNotificationService pushNotificationService,
+    ILogger<NotificationService> logger) : INotificationService
 {
     public async Task SendBookingConfirmationAsync(Guid bookingId)
     {
@@ -44,6 +46,7 @@ public class NotificationService(ILogger<NotificationService> logger) : INotific
     public async Task SendCheckoutReminderAsync(Guid bookingId)
     {
         logger.LogInformation("Sending checkout reminder for booking {BookingId}", bookingId);
+        await pushNotificationService.SendCheckoutReminderAsync(bookingId);
         await Task.Delay(100);
     }
 

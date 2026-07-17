@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -12,6 +13,7 @@ namespace Casazen.Web.BackgroundJobs;
 public class GuestCheckInReminderJob(
     AppDbContext db,
     IEmailService emailService,
+    IPushNotificationService pushNotificationService,
     ILogger<GuestCheckInReminderJob> logger)
 {
     public async Task ExecuteAsync()
@@ -56,6 +58,8 @@ public class GuestCheckInReminderJob(
                 var html = BuildReminderHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
 
                 await emailService.SendEmailAsync(hostEmail, subject, html);
+
+                await pushNotificationService.SendGuestCheckInIncompleteAsync(booking.Id);
 
                 logger.LogInformation(
                     "Sent incomplete check-in reminder for booking {BookingId} to host {Email}",

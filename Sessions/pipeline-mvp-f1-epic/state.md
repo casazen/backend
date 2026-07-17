@@ -2,8 +2,8 @@
 
 ## Status
 - status: running
-- current_stage: wave-5-custom-domain (#298)
-- last_updated: 2026-07-14T13:10:00Z
+- current_stage: wave-6-native-host-app (#299)
+- last_updated: 2026-07-17T23:45:00+02:00
 
 ## Input
 - description: MVP Fase 1 epic (12–16 weeks) — ship sellable MVP: full Golden Journey on prod, E2E green in CI, ecosystem loop host↔supplier
@@ -15,7 +15,7 @@
 - issue: "#291"
 - issue_url: https://github.com/casazen/backend/issues/291
 - design_spec: Sessions/design-291.md
-- active_wave_pipeline: Sessions/pipeline-mvp-f1-wave5-custom-domain/state.md
+- active_wave_pipeline: Sessions/pipeline-native-host-app/state.md
 - release_report: (pending — epic exit)
 - tag: (pending — epic exit)
 - release_url: (pending)
@@ -31,8 +31,8 @@
 | 3b | #295 | ✅ shipped | closed 2026-07-15 |
 | 3c | #296 | ✅ shipped | guest check-in portal |
 | 4 | #297 | ✅ shipped | public site design system |
-| 5 | #298 | 🔄 active | custom domain — this pipeline |
-| 6 | #299 | open | native host app |
+| 5 | #298 | ✅ prod v1.2.9 | closed |
+| 6 | #299 | in_progress | native host app — Stage 03 |
 | 7 | #300 | open | SEO funnel |
 | 8 | #301 | ✅ shipped | GJ E2E harness (early) |
 | Platform | #271, #230, #273, #274 | open / partial | integrate across waves |

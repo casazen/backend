@@ -192,9 +192,10 @@ public class ServiceRequestServiceTests
         var config = new ConfigurationBuilder().Build();
         var env = new Mock<IHostEnvironment>();
         env.Setup(e => e.EnvironmentName).Returns("Testing");
+        var push = new Mock<IPushNotificationService>();
 
         return new ServiceRequestService(
-            db, repo, propertyAuth, email.Object, config, env.Object, NullLogger<ServiceRequestService>.Instance);
+            db, repo, propertyAuth, email.Object, push.Object, config, env.Object, NullLogger<ServiceRequestService>.Instance);
     }
 
     private static AppDbContext CreateDb()
