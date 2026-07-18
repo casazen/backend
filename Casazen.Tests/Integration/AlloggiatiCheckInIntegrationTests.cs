@@ -123,6 +123,24 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     }
 
     [Fact]
+    public async Task Summary_WithoutPropertyId_ExcludesOtherOrgBookings()
+    {
+        var ownerSeed = await _factory.SeedConfirmedBookingWithTokenAsync(
+            ownerId: $"auth0|alloggiati-owner-{Guid.NewGuid():N}");
+        var otherSeed = await _factory.SeedConfirmedBookingWithTokenAsync(
+            ownerId: $"auth0|alloggiati-other-{Guid.NewGuid():N}");
+        var client = _factory.CreateAuthenticatedClient(ownerSeed.OwnerId, roles: "PropertyOwner");
+
+        var response = await client.GetAsync("/api/alloggiati/summary");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var bookingIds = doc.RootElement.EnumerateArray().Select(e => e.GetProperty("bookingId").GetGuid()).ToList();
+        Assert.Contains(ownerSeed.BookingId, bookingIds);
+        Assert.DoesNotContain(otherSeed.BookingId, bookingIds);
+    }
+
+    [Fact]
     public async Task AC11_GuestDataSubmit_SetsConsentFields()
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
