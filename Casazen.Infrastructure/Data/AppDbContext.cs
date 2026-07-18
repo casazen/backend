@@ -55,6 +55,9 @@ public class AppDbContext(
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
+    // Native host app push tokens (US-025 / #299)
+    public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
+
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
@@ -620,6 +623,22 @@ public class AppDbContext(
                 .IsUnique()
                 .HasFilter("\"Status\" IN (0, 1, 2, 3)")
                 .HasDatabaseName("UIX_GuestCheckInSessions_BookingId_ActiveStatus");
+        });
+
+        // Native host app push tokens (US-025 / #299)
+        modelBuilder.Entity<DeviceRegistration>(entity =>
+        {
+            entity.HasOne(d => d.Org)
+                .WithMany()
+                .HasForeignKey(d => d.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(d => new { d.UserId, d.DeviceId })
+                .IsUnique()
+                .HasDatabaseName("UIX_DeviceRegistrations_UserId_DeviceId");
+
+            entity.HasIndex(d => d.UserId)
+                .HasDatabaseName("IX_DeviceRegistrations_UserId");
         });
     }
 }

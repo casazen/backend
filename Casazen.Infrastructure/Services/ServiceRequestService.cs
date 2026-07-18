@@ -18,6 +18,7 @@ public class ServiceRequestService(
     IServiceRequestRepository repository,
     IPropertyAuthorizationService propertyAuthorization,
     IEmailService emailService,
+    IPushNotificationService pushNotificationService,
     IConfiguration configuration,
     IHostEnvironment hostEnvironment,
     ILogger<ServiceRequestService> logger) : IServiceRequestService
@@ -108,6 +109,7 @@ public class ServiceRequestService(
 
         await repository.SaveChangesAsync(cancellationToken);
         await SendHostStatusEmailAsync(request, "presa in carico", cancellationToken);
+        await pushNotificationService.SendServiceRequestUpdateAsync(request.Id, "presa in carico", cancellationToken);
 
         return request;
     }
@@ -132,6 +134,7 @@ public class ServiceRequestService(
 
         await repository.SaveChangesAsync(cancellationToken);
         await SendHostStatusEmailAsync(request, "completata", cancellationToken);
+        await pushNotificationService.SendServiceRequestUpdateAsync(request.Id, "completata", cancellationToken);
 
         return request;
     }
