@@ -177,13 +177,13 @@ public class PushNotificationServiceTests
         Guid orgId,
         string pushToken,
         string deviceId) => new()
-    {
-        UserId = userId,
-        OrgId = orgId,
-        Platform = "ios",
-        PushToken = pushToken,
-        DeviceId = deviceId,
-    };
+        {
+            UserId = userId,
+            OrgId = orgId,
+            Platform = "ios",
+            PushToken = pushToken,
+            DeviceId = deviceId,
+        };
 
     private sealed record NotificationFixture(
         Guid OrgId,
