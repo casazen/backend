@@ -60,6 +60,7 @@ public class PushNotificationService(
     {
         var request = await db.ServiceRequests
             .AsNoTracking()
+            .IgnoreQueryFilters()
             .Include(r => r.Property)
             .FirstOrDefaultAsync(r => r.Id == serviceRequestId, cancellationToken);
 
