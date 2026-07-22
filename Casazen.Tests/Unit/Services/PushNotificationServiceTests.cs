@@ -35,7 +35,7 @@ public class PushNotificationServiceTests
         };
 
         db.Orgs.AddRange(
-            new Org
+            new OrgEntity
             {
                 Id = hostOrgId,
                 Name = "Host Org",
@@ -44,7 +44,7 @@ public class PushNotificationServiceTests
                 ContactEmail = "host@example.com",
                 PlanTier = PlanTier.Starter,
             },
-            new Org
+            new OrgEntity
             {
                 Id = supplierOrgId,
                 Name = "Supplier Org",
