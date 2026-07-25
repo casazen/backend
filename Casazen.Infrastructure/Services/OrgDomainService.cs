@@ -76,6 +76,7 @@ public partial class OrgDomainService(
 
                     org.PublicHostMode = PublicHostMode.CustomDomain;
                     org.CustomDomain = normalizedDomain;
+                    org.Subdomain = null;
                     org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                     org.DomainVerificationToken = GenerateVerificationToken();
                     break;
@@ -106,6 +107,7 @@ public partial class OrgDomainService(
 
             case PublicHostMode.CasazenPath:
                 org.PublicHostMode = PublicHostMode.CasazenPath;
+                org.Subdomain = null;
                 ClearCustomDomainFields(org);
                 break;
 
