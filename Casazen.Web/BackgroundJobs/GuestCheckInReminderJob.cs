@@ -50,16 +50,21 @@ public class GuestCheckInReminderJob(
         {
             try
             {
+                await pushNotificationService.SendGuestCheckInIncompleteAsync(booking.Id);
+
                 var hostEmail = booking.Org?.ContactEmail;
                 if (string.IsNullOrEmpty(hostEmail))
+                {
+                    logger.LogInformation(
+                        "Sent incomplete check-in push reminder for booking {BookingId}; no host email configured",
+                        booking.Id);
                     continue;
+                }
 
                 var subject = $"Check-in incompleto — {booking.Property.Name} ({booking.CheckInDate:dd/MM/yyyy})";
                 var html = BuildReminderHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
 
                 await emailService.SendEmailAsync(hostEmail, subject, html);
-
-                await pushNotificationService.SendGuestCheckInIncompleteAsync(booking.Id);
 
                 logger.LogInformation(
                     "Sent incomplete check-in reminder for booking {BookingId} to host {Email}",
