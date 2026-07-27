@@ -152,6 +152,7 @@ public class GuestCheckInServiceTests
             LastName = "Verdi",
             DateOfBirth = new DateTime(1990, 5, 15),
             Nationality = "Italiana",
+            Gender = Gender.Male,
             DocumentType = "Passport",
             DocumentNumber = "YA1234567",
             DocumentIssuingCountry = "Italia",
@@ -169,6 +170,7 @@ public class GuestCheckInServiceTests
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal("YA1234567", guest!.DocumentNumber);
+        Assert.Equal(Gender.Male, guest.Gender);
         Assert.Equal(DateTime.UtcNow.Year + 7, guest.DataRetentionUntil.Year);
     }
 
@@ -189,6 +191,7 @@ public class GuestCheckInServiceTests
             LastName = "Verdi",
             DateOfBirth = new DateTime(1990, 5, 15),
             Nationality = "Italiana",
+            Gender = Gender.Male,
             DocumentType = "Passport",
             DocumentNumber = "YA1234567",
             DocumentIssuingCountry = "Italia",
@@ -201,6 +204,7 @@ public class GuestCheckInServiceTests
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.Gender);
         Assert.Null(guest.ConsentDate);
     }
 

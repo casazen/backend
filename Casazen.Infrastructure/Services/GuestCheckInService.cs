@@ -105,6 +105,7 @@ public class GuestCheckInService(
         if (request.DateOfBirth.HasValue)
             guest.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value.Date, DateTimeKind.Utc);
         if (!string.IsNullOrWhiteSpace(request.Nationality)) guest.Nationality = request.Nationality;
+        if (request.Gender.HasValue) guest.Gender = request.Gender.Value;
         if (!string.IsNullOrWhiteSpace(request.DocumentNumber)) guest.DocumentNumber = request.DocumentNumber;
         if (!string.IsNullOrWhiteSpace(request.DocumentIssuingCountry)) guest.DocumentIssuingCountry = request.DocumentIssuingCountry;
         if (!string.IsNullOrWhiteSpace(request.PlaceOfBirth)) guest.PlaceOfBirth = request.PlaceOfBirth;
