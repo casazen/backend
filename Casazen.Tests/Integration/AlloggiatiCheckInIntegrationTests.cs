@@ -143,6 +143,38 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     }
 
     [Fact]
+    public async Task GuestDataSubmit_SharedGuest_CreatesSnapshotAndLeavesOriginalGuestUnchanged()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
+        var sharedBookingId = await SeedBookingSharingGuestAsync(seed.GuestId);
+        var client = _factory.CreateClient();
+
+        var payload = BuildGuestDataPayload(includeDob: true);
+        var response = await client.PostAsync(
+            $"/api/checkin/{seed.CheckInToken}/guest-data",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var originalGuest = db.Guests.Single(g => g.Id == seed.GuestId);
+        Assert.Equal(string.Empty, originalGuest.DocumentNumber);
+        Assert.Null(originalGuest.ConsentDate);
+
+        var submittedBooking = db.Bookings.Single(b => b.Id == seed.BookingId);
+        Assert.NotEqual(seed.GuestId, submittedBooking.GuestId);
+
+        var snapshot = db.Guests.Single(g => g.Id == submittedBooking.GuestId);
+        Assert.Equal("YA1234567", snapshot.DocumentNumber);
+        Assert.NotNull(snapshot.ConsentDate);
+
+        var sharedBooking = db.Bookings.Single(b => b.Id == sharedBookingId);
+        Assert.Equal(seed.GuestId, sharedBooking.GuestId);
+    }
+
+    [Fact]
     public async Task GuestDataSubmit_CheckedOutBooking_Returns404AndDoesNotUpdateGuest()
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
@@ -216,6 +248,35 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         var booking = db.Bookings.Single(b => b.Id == bookingId);
         booking.Status = status;
         await db.SaveChangesAsync();
+    }
+
+    private async Task<Guid> SeedBookingSharingGuestAsync(Guid guestId)
+    {
+        var ownerId = $"auth0|shared-guest-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(ownerId);
+        var bookingId = Guid.NewGuid();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Bookings.Add(new Booking
+        {
+            Id = bookingId,
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            GuestId = guestId,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+            NumberOfGuests = 1,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+            BasePrice = 200m,
+            TotalPrice = 208m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        return bookingId;
     }
 }
 
