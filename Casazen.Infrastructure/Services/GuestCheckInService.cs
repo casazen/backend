@@ -167,6 +167,39 @@ public class GuestCheckInService(
         return await CreateSessionAsync(bookingId, orgId);
     }
 
+    public async Task ExpireTokenAsync(string token)
+    {
+        var tokenHash = ComputeSha256Hex(token);
+        var session = await db.GuestCheckInSessions
+            .FirstOrDefaultAsync(s => s.TokenHash == tokenHash);
+
+        if (session is null)
+            return;
+
+        session.Status = GuestCheckInSessionStatus.Scaduto;
+        session.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep)
+    {
+        var tokenHashToKeep = ComputeSha256Hex(tokenToKeep);
+        var activeSessions = await db.GuestCheckInSessions
+            .Where(s =>
+                s.BookingId == bookingId &&
+                s.TokenHash != tokenHashToKeep &&
+                ActiveStatuses.Contains(s.Status))
+            .ToListAsync();
+
+        foreach (var session in activeSessions)
+        {
+            session.Status = GuestCheckInSessionStatus.Scaduto;
+            session.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     private static bool IsBookingEligibleForPublicCheckIn(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
 

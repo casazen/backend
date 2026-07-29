@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
@@ -34,6 +35,8 @@ public class BookingsControllerTests
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
+    private readonly Mock<IEmailService> _mockEmailService;
+    private readonly IConfiguration _configuration;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -56,6 +59,13 @@ public class BookingsControllerTests
         _mockCheckoutReminderScheduler
             .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
             .Returns("job-test");
+        _mockEmailService = new Mock<IEmailService>();
+        _configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:PublicSiteBaseUrl"] = "https://public.test",
+            })
+            .Build();
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = new BookingsController(
@@ -71,6 +81,8 @@ public class BookingsControllerTests
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
             Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
+            _configuration,
+            _mockEmailService.Object,
             _mockLogger.Object);
     }
 
@@ -368,6 +380,100 @@ public class BookingsControllerTests
                 It.IsAny<EnqueuedState>()),
             Times.Once);
         Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task ResendCheckInLink_EmailSent_ExpiresPreviousSessionsAfterDelivery()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockGuestCheckInService
+            .Setup(s => s.CreateSessionAsync(bookingId, OrgId))
+            .ReturnsAsync("new-token");
+        _mockEmailService
+            .Setup(s => s.SendEmailAsync(
+                guest.Email,
+                It.Is<string>(subject => subject.Contains("Test Villa")),
+                It.Is<string>(html => html.Contains("https://public.test/check-in/new-token"))))
+            .ReturnsAsync(new EmailSendResult(true));
+        _mockGuestCheckInService
+            .Setup(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"))
+            .Returns(Task.CompletedTask);
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
+        Assert.True(response.Success);
+        _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendCheckInLink_EmailSendFails_ExpiresOnlyNewToken()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockGuestCheckInService
+            .Setup(s => s.CreateSessionAsync(bookingId, OrgId))
+            .ReturnsAsync("new-token");
+        _mockEmailService
+            .Setup(s => s.SendEmailAsync(guest.Email, It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(false, "provider rejected request"));
+        _mockGuestCheckInService
+            .Setup(s => s.ExpireTokenAsync("new-token"))
+            .Returns(Task.CompletedTask);
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+        var response = Assert.IsType<DTOs.CheckIn.ResendCheckInLinkResponse>(objectResult.Value);
+        Assert.False(response.Success);
+        _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync("new-token"), Times.Once);
+        _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
