@@ -424,7 +424,7 @@ public class BookingsControllerTests
         var result = await _controller.ResendCheckInLink(bookingId);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var response = Assert.IsType<DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
         Assert.True(response.Success);
         _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
         _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
@@ -470,7 +470,7 @@ public class BookingsControllerTests
 
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
-        var response = Assert.IsType<DTOs.CheckIn.ResendCheckInLinkResponse>(objectResult.Value);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(objectResult.Value);
         Assert.False(response.Success);
         _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync("new-token"), Times.Once);
         _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);

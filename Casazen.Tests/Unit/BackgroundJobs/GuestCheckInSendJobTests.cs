@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using OrgEntity = Casazen.Core.Entities.Org;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
@@ -73,7 +74,7 @@ public class GuestCheckInSendJobTests
 
     private static async Task<Booking> SeedBookingAsync(AppDbContext db)
     {
-        var org = new Org
+        var org = new OrgEntity
         {
             Id = Guid.NewGuid(),
             Name = "CasaZen",
