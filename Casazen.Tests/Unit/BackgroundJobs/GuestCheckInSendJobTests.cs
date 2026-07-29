@@ -9,7 +9,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
-using OrgEntity = Casazen.Core.Entities.Org;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
