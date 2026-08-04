@@ -37,16 +37,16 @@ public class GuestCheckInReminderJob(
 
         var bookingIds = bookings.Select(b => b.Id).ToList();
 
-        var incompleteSessions = await db.GuestCheckInSessions
+        var completedSessionBookingIds = await db.GuestCheckInSessions
             .Where(s =>
                 bookingIds.Contains(s.BookingId) &&
-                (s.Status == GuestCheckInSessionStatus.Inviato ||
-                 s.Status == GuestCheckInSessionStatus.InCompilazione))
+                (s.Status == GuestCheckInSessionStatus.Completo ||
+                 s.Status == GuestCheckInSessionStatus.AlloggiatiInviato))
             .Select(s => s.BookingId)
             .Distinct()
             .ToListAsync();
 
-        foreach (var booking in bookings.Where(b => incompleteSessions.Contains(b.Id)))
+        foreach (var booking in bookings.Where(b => !completedSessionBookingIds.Contains(b.Id)))
         {
             try
             {
