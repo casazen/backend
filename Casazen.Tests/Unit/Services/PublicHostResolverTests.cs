@@ -72,6 +72,30 @@ public class PublicHostResolverTests
         Assert.Null(result);
     }
 
+    [Fact]
+    public async Task ResolveAsync_DoesNotCacheUnresolvedCustomDomain()
+    {
+        var org = BuildOrg("villa-mare", PublicHostMode.CustomDomain);
+        org.CustomDomain = "pending.example.it";
+        org.DomainVerificationStatus = DomainVerificationStatus.Verified;
+        var lookupCount = 0;
+
+        _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("pending.example.it", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => lookupCount++ == 0 ? null : org);
+        _orgService.Setup(s => s.GetBySubdomainOrSlugAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgEntity?)null);
+
+        var beforeVerify = await _resolver.ResolveAsync("pending.example.it", CancellationToken.None);
+        var afterVerify = await _resolver.ResolveAsync("pending.example.it", CancellationToken.None);
+
+        Assert.Null(beforeVerify);
+        Assert.NotNull(afterVerify);
+        Assert.Equal("villa-mare", afterVerify!.Slug);
+        _orgService.Verify(
+            s => s.GetByVerifiedCustomDomainAsync("pending.example.it", It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
     [Theory]
     [InlineData("api.casazen.it")]
     [InlineData("www.casazen.it")]
