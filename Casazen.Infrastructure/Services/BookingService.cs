@@ -172,7 +172,20 @@ public class BookingService(
                 DirectBookingErrorCodes.InvalidDates);
         }
 
-        var createdBooking = await repository.AddAsync(booking);
+        Booking createdBooking;
+        try
+        {
+            createdBooking = await repository.AddAsync(booking);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
+        {
+            await guestRepository.DeleteAsync(guest.Id);
+            throw new DirectBookingException(
+                "Property not available for selected dates",
+                DirectBookingErrorCodes.NotAvailable);
+        }
+
         var amountCents = (long)Math.Round(totalPrice * 100m, MidpointRounding.AwayFromZero);
         var metadata = new Dictionary<string, string>
         {
