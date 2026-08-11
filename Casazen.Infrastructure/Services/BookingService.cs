@@ -374,6 +374,7 @@ public class BookingService(
             return false;
 
         booking.Status = BookingStatus.Cancelled;
+        booking.CheckoutReminderJobId = null;
         await repository.UpdateAsync(booking);
         logger.LogInformation("Booking {Id} cancelled", bookingId);
         return true;
