@@ -98,6 +98,11 @@ public partial class OrgDomainService(
                     if (conflict)
                         return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
 
+                    var slugFallbackConflict = await dbContext.Orgs.AsNoTracking()
+                        .AnyAsync(o => o.Id != orgId && o.IsActive && o.Slug == normalizedLabel, cancellationToken);
+                    if (slugFallbackConflict)
+                        return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
+
                     org.PublicHostMode = PublicHostMode.CasazenSubdomain;
                     org.Subdomain = normalizedLabel;
                     ClearCustomDomainFields(org);

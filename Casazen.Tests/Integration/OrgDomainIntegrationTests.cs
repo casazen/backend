@@ -71,6 +71,26 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task SetSubdomain_ConflictingWithAnotherActiveOrgSlug_Returns409()
+    {
+        var ownerId = $"auth0|owner-{Guid.NewGuid():N}";
+        var attackerId = $"auth0|attacker-{Guid.NewGuid():N}";
+        var victim = await _factory.SeedOrgForOwnerAsync(ownerId);
+        var attacker = await _factory.SeedOrgForOwnerAsync(attackerId);
+        var victimSlug = $"villa-mare-{Guid.NewGuid():N}"[..30];
+        await SetSlugAsync(victim.Id, victimSlug);
+
+        using var client = _factory.CreateAuthenticatedClient(attackerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{attacker.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = victimSlug,
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ResolveHost_VerifiedCustomDomain_ReturnsBranding()
     {
         var ownerId = $"auth0|resolve-{Guid.NewGuid():N}";
@@ -94,6 +114,17 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.FindAsync(orgId);
         org!.PlanTier = tier;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SetSlugAsync(Guid orgId, string slug)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.FindAsync(orgId);
+        org!.Slug = slug;
+        org.Subdomain = null;
+        org.PublicHostMode = PublicHostMode.CasazenPath;
         await db.SaveChangesAsync();
     }
 
