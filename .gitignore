@@ -59,7 +59,18 @@ opencode.json  # Contains API keys - never commit
 ## Windows artifacts
 nul
 
-## SDLC reliability loop — runtime memory (local / agent only)
+## SDLC runtime — process memory / agent artifacts (local only)
+## Keep in git: Sessions/specs/, Sessions/PLANNING.md, Sessions/quality/{README,freeze-policy,nightly-template}.md
 Sessions/loop/
+Sessions/pipeline-*/
+Sessions/design-*.md
+Sessions/review-*.md
+Sessions/release-*.md
+Sessions/ops-report-*.md
+Sessions/dev-flow-verification*/
+Sessions/dev-flow-verification-*.md
 Sessions/quality/gap-backlog.md
 Sessions/quality/requirements.json
+Sessions/quality/ac-matrix-mvp.md
+Sessions/quality/nightly-*.md
+!Sessions/quality/nightly-template.md
