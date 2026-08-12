@@ -58,3 +58,8 @@ opencode.json  # Contains API keys - never commit
 
 ## Windows artifacts
 nul
+
+## SDLC reliability loop — runtime memory (local / agent only)
+Sessions/loop/
+Sessions/quality/gap-backlog.md
+Sessions/quality/requirements.json

@@ -21,6 +21,8 @@ Backlog: `Sessions/quality/gap-backlog.md` + `Sessions/quality/requirements.json
 Evidence: `Sessions/loop/evidence/<tick>/`  
 Next work: `Sessions/loop/next-prompt.md`
 
+These runtime files are **gitignored** (see root `.gitignore`). Regenerate with `extract-requirements.ps1` / `sdlc-spec-gap`; do not commit them.
+
 **Done when:** `open_p0_gaps == 0` (every P0 req is `pass` or explicit `stub` with `status:stub`).  
 **Escalate when:** same gap FAIL ≥ 3 consecutive ticks → `sdlc-escalate` + HITL.
 
