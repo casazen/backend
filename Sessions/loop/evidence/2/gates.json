@@ -1,0 +1,29 @@
+{
+  "tick": 2,
+  "gap_id": "MATRIX:native-host:AC4",
+  "started": "2026-08-12T17:04:00Z",
+  "finished": "2026-08-12T17:04:10Z",
+  "overall": "fail",
+  "dry_run": true,
+  "note": "Dry-run tick 2: prompt regenerated for next P0 gap; no UI implementation in dry-run — matrix AC4 remains fail.",
+  "gates": [
+    {
+      "id": "G-coverage",
+      "command": ".\\scripts\\quality\\check-spec-coverage.ps1",
+      "exit_code": 1,
+      "log": "gate-G-coverage.log"
+    },
+    {
+      "id": "G-anti-stub",
+      "command": ".\\scripts\\quality\\check-no-shipped-stubs.ps1",
+      "exit_code": 0,
+      "log": "gate-G-anti-stub.log"
+    },
+    {
+      "id": "G-matrix-row",
+      "command": "grep AC4 Calendar status in ac-matrix-mvp.md",
+      "exit_code": 1,
+      "log": "gate-G-matrix-row.log"
+    }
+  ]
+}
