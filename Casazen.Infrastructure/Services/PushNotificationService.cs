@@ -15,6 +15,7 @@ public class PushNotificationService(
     ILogger<PushNotificationService> logger) : IPushNotificationService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+    private static readonly UserRole[] OrgWideRecipientRoles = [UserRole.Admin, UserRole.PropertyManager];
 
     public async Task SendToUserAsync(
         string userId,
@@ -50,7 +51,12 @@ public class PushNotificationService(
             booking.Id,
             route);
 
-        await SendToOrgHostsAsync(booking.OrgId, payload, cancellationToken);
+        await SendToPropertyHostsAsync(
+            booking.OrgId,
+            booking.PropertyId,
+            booking.Property.OwnerId,
+            payload,
+            cancellationToken);
     }
 
     public async Task SendServiceRequestUpdateAsync(
@@ -77,7 +83,12 @@ public class PushNotificationService(
             request.BookingId,
             route);
 
-        await SendToOrgHostsAsync(request.OrgId, payload, cancellationToken);
+        await SendToPropertyHostsAsync(
+            request.OrgId,
+            request.PropertyId,
+            request.Property.OwnerId,
+            payload,
+            cancellationToken);
     }
 
     public async Task SendCheckoutReminderAsync(Guid bookingId, CancellationToken cancellationToken = default)
@@ -94,22 +105,44 @@ public class PushNotificationService(
             booking.Id,
             route);
 
-        await SendToOrgHostsAsync(booking.OrgId, payload, cancellationToken);
+        await SendToPropertyHostsAsync(
+            booking.OrgId,
+            booking.PropertyId,
+            booking.Property.OwnerId,
+            payload,
+            cancellationToken);
     }
 
-    private async Task SendToOrgHostsAsync(
+    private async Task SendToPropertyHostsAsync(
         Guid orgId,
+        Guid propertyId,
+        string propertyOwnerId,
         PushNotificationPayload payload,
         CancellationToken cancellationToken)
     {
-        var userIds = await db.Users
+        var devices = await db.DeviceRegistrations
             .AsNoTracking()
-            .Where(u => u.OrgId == orgId && u.IsActive)
-            .Select(u => u.Id)
+            .Join(
+                db.Users.AsNoTracking(),
+                device => device.UserId,
+                user => user.Id,
+                (device, user) => new { Device = device, User = user })
+            .Where(x =>
+                x.Device.OrgId == orgId &&
+                x.User.OrgId == orgId &&
+                x.User.IsActive &&
+                (x.User.Id == propertyOwnerId || OrgWideRecipientRoles.Contains(x.User.Role)))
+            .Select(x => x.Device)
             .ToListAsync(cancellationToken);
 
-        foreach (var userId in userIds)
-            await SendToUserAsync(userId, payload, cancellationToken);
+        if (devices.Count == 0)
+        {
+            logger.LogDebug("No authorized push devices registered for property {PropertyId}", propertyId);
+            return;
+        }
+
+        foreach (var device in devices)
+            await SendToDeviceAsync(device, payload, cancellationToken);
     }
 
     private async Task<Booking?> LoadBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
