@@ -13,11 +13,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Test-LooksLikeReqId {
+  param([string]$Cell)
+  if ([string]::IsNullOrWhiteSpace($Cell)) { return $false }
+  return [bool]($Cell -match '(?i)(SPEC:[A-Za-z0-9_.:-]+|ADR-\d+-R\d+)')
+}
+
 function Test-LooksLikePath {
   param([string]$Cell)
   if ([string]::IsNullOrWhiteSpace($Cell)) { return $false }
   if ($Cell -match '(?i)^(N/?A|—|-|none|non UI|scaffold)') { return $false }
-  if ($Cell -match '`([^`]+)`') { return $true }
+  if (Test-LooksLikeReqId $Cell) { return $false }
+  if ($Cell -match '`([^`]+)`') {
+    if (Test-LooksLikeReqId $Matches[1]) { return $false }
+    return $true
+  }
   if ($Cell -match '(?i)\.(ts|tsx|cs|yaml|yml|ps1)\b') { return $true }
   if ($Cell -match '(?i)(e2e/|Casazen\.|mobile/|\.maestro/)') { return $true }
   return $false
@@ -27,12 +37,13 @@ function Get-PathTokens {
   param([string]$Cell)
   $tokens = New-Object System.Collections.Generic.List[string]
   [regex]::Matches($Cell, '`([^`]+)`') | ForEach-Object {
-    $tokens.Add($_.Groups[1].Value.Trim())
+    $t = $_.Groups[1].Value.Trim()
+    if ($t -and -not (Test-LooksLikeReqId $t)) { $tokens.Add($t) }
   }
   if ($tokens.Count -eq 0 -and (Test-LooksLikePath $Cell)) {
     # bare path-ish cell
     $bare = ($Cell -split '\s+|;|,')[0].Trim()
-    if ($bare) { $tokens.Add($bare) }
+    if ($bare -and -not (Test-LooksLikeReqId $bare)) { $tokens.Add($bare) }
   }
   return $tokens
 }
@@ -91,7 +102,14 @@ function Assert-AcTestMap {
 
   foreach ($row in $rows) {
     $cells = @($row.Split('|') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
-    if ($cells.Count -lt 4) {
+    # Stage 02: | AC | REQ-ID | L1 | L2 | L3 | Seed |  — Stage 03 PR: | AC | L1 | L2 | L3 | Status |
+    $pathStart = 1
+    $minCells = 4
+    if ($cells.Count -ge 2 -and (Test-LooksLikeReqId $cells[1])) {
+      $pathStart = 2
+      $minCells = 5
+    }
+    if ($cells.Count -lt $minCells) {
       Write-Error "$Label incomplete AC row (need AC, L1, L2, L3 at minimum): $row"
     }
     foreach ($c in $cells) {
@@ -101,8 +119,12 @@ function Assert-AcTestMap {
     }
 
     if (-not $SkipPathCheck) {
-      # cells 1..3 are L1 L2 L3 (index 0 = AC id)
-      for ($i = 1; $i -le [Math]::Min(3, $cells.Count - 1); $i++) {
+      # L1/L2/L3 only (skip AC id and optional REQ-ID); do not treat Seed/Status as paths
+      $pathEnd = $pathStart + 2
+      if ($cells.Count - 1 -lt $pathEnd) {
+        Write-Error "$Label incomplete AC row (need L1, L2, L3 path columns): $row"
+      }
+      for ($i = $pathStart; $i -le $pathEnd; $i++) {
         $cell = $cells[$i]
         if (-not (Test-LooksLikePath $cell)) { continue }
         foreach ($token in (Get-PathTokens $cell)) {

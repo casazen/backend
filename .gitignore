@@ -60,7 +60,8 @@ opencode.json  # Contains API keys - never commit
 nul
 
 ## SDLC runtime — process memory / agent artifacts (local only)
-## Keep in git: Sessions/specs/, Sessions/PLANNING.md, Sessions/quality/{README,freeze-policy,nightly-template}.md
+## Keep in git: Sessions/specs/, Sessions/PLANNING.md,
+## Sessions/quality/{README,freeze-policy,nightly-template,ac-matrix-mvp}.md, Sessions/quality/requirements.json
 Sessions/loop/
 Sessions/pipeline-*/
 Sessions/design-*.md
@@ -70,7 +71,5 @@ Sessions/ops-report-*.md
 Sessions/dev-flow-verification*/
 Sessions/dev-flow-verification-*.md
 Sessions/quality/gap-backlog.md
-Sessions/quality/requirements.json
-Sessions/quality/ac-matrix-mvp.md
 Sessions/quality/nightly-*.md
 !Sessions/quality/nightly-template.md

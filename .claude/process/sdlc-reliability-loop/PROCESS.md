@@ -21,7 +21,7 @@ Backlog: `Sessions/quality/gap-backlog.md` + `Sessions/quality/requirements.json
 Evidence: `Sessions/loop/evidence/<tick>/`  
 Next work: `Sessions/loop/next-prompt.md`
 
-These runtime files — plus `Sessions/pipeline-*`, `design-*`, `review-*`, `release-*`, `ops-report-*`, and quality matrix/nightly — are **gitignored** (see root `.gitignore`). Keep committing `Sessions/specs/` and `Sessions/PLANNING.md` only. Regenerate gap/requirements with `extract-requirements.ps1` / `sdlc-spec-gap`.
+Loop/pipeline/design/review/release/ops and nightly reports are **gitignored** (see root `.gitignore`). Keep committing `Sessions/specs/`, `Sessions/PLANNING.md`, and `Sessions/quality/{ac-matrix-mvp.md,requirements.json}` so nightly freeze + coverage can evaluate real rows. Regenerate `gap-backlog.md` locally with `extract-requirements.ps1` / `sdlc-spec-gap`.
 
 **Done when:** `open_p0_gaps == 0` (every P0 req is `pass` or explicit `stub` with `status:stub`).  
 **Escalate when:** same gap FAIL ≥ 3 consecutive ticks → `sdlc-escalate` + HITL.
