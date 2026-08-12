@@ -10,7 +10,7 @@ Web reporting, tourist tax, GDPR).
 ## Stack snapshot
 - **Language**: C# 13 / .NET 10 (global.json sdk `10.0.0`)
 - **Framework**: ASP.NET Core Web API with Swagger/OpenAPI
-- **Database**: SQL Server (EF Core 10, code-first migrations)
+- **Database**: PostgreSQL via Supabase (EF Core 10 / Npgsql, code-first migrations)
 - **Auth**: Auth0 — JWT Bearer validated on every `/api` endpoint
 - **Background jobs**: Hangfire (OTA sync hourly, booking pull every 15 min, GDPR retention, pricing)
 - **Payments**: Stripe (webhook signature verification required)
@@ -50,7 +50,7 @@ Casazen.sln
 │   └── Integration/           # API, migration, resilience, controller integration tests
 ├── docs/                      # Project documentation (this folder)
 ├── Dockerfile                 # Multi-stage build
-├── docker-compose.yml         # API + SQL Server services
+├── docker-compose.yml         # API + PostgreSQL services
 └── .github/workflows/         # CI/CD pipelines
 ```
 
