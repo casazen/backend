@@ -74,10 +74,14 @@ public partial class OrgDomainService(
                     if (conflict)
                         return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
 
+                    var domainChanged = !string.Equals(org.CustomDomain, normalizedDomain, StringComparison.Ordinal);
                     org.PublicHostMode = PublicHostMode.CustomDomain;
                     org.CustomDomain = normalizedDomain;
-                    org.DomainVerificationStatus = DomainVerificationStatus.Pending;
-                    org.DomainVerificationToken = GenerateVerificationToken();
+                    if (domainChanged || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
+                    {
+                        org.DomainVerificationStatus = DomainVerificationStatus.Pending;
+                        org.DomainVerificationToken = GenerateVerificationToken();
+                    }
                     break;
                 }
 
