@@ -74,11 +74,20 @@ public partial class OrgDomainService(
                     if (conflict)
                         return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
 
+                    var domainChanged = !string.Equals(org.CustomDomain, normalizedDomain, StringComparison.Ordinal);
                     org.PublicHostMode = PublicHostMode.CustomDomain;
                     org.CustomDomain = normalizedDomain;
+<<<<<<< HEAD
                     org.Subdomain = null;
                     org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                     org.DomainVerificationToken = GenerateVerificationToken();
+=======
+                    if (domainChanged || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
+                    {
+                        org.DomainVerificationStatus = DomainVerificationStatus.Pending;
+                        org.DomainVerificationToken = GenerateVerificationToken();
+                    }
+>>>>>>> origin/develop
                     break;
                 }
 
@@ -97,6 +106,11 @@ public partial class OrgDomainService(
                     var conflict = await dbContext.Orgs.AsNoTracking()
                         .AnyAsync(o => o.Id != orgId && o.Subdomain == normalizedLabel, cancellationToken);
                     if (conflict)
+                        return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
+
+                    var slugFallbackConflict = await dbContext.Orgs.AsNoTracking()
+                        .AnyAsync(o => o.Id != orgId && o.IsActive && o.Slug == normalizedLabel, cancellationToken);
+                    if (slugFallbackConflict)
                         return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
 
                     org.PublicHostMode = PublicHostMode.CasazenSubdomain;

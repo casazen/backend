@@ -371,6 +371,34 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task Cancel_WhenBookingHasCheckoutReminder_CancelsScheduledReminder()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            Status = BookingStatus.CheckedIn,
+            CheckoutReminderJobId = "checkout-reminder-job",
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-1),
+            CheckOutDate = DateTime.UtcNow.Date,
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockBookingService.Setup(b => b.CancelBookingAsync(bookingId)).ReturnsAsync(true);
+
+        var result = await _controller.Cancel(bookingId);
+
+        Assert.IsType<NoContentResult>(result);
+        _mockCheckoutReminderScheduler.Verify(s => s.CancelReminder("checkout-reminder-job"), Times.Once);
+    }
+
+    [Fact]
     public async Task StartCheckoutWizard_WhenUnauthorizedForProperty_ReturnsNotFoundWithoutStartingWizard()
     {
         SetUser(OwnerId);

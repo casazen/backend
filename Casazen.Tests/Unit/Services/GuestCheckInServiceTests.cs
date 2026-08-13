@@ -152,6 +152,7 @@ public class GuestCheckInServiceTests
             LastName = "Verdi",
             DateOfBirth = new DateTime(1990, 5, 15),
             Nationality = "Italiana",
+            Gender = Gender.Male,
             DocumentType = "Passport",
             DocumentNumber = "YA1234567",
             DocumentIssuingCountry = "Italia",
@@ -169,7 +170,50 @@ public class GuestCheckInServiceTests
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal("YA1234567", guest!.DocumentNumber);
+        Assert.Equal(Gender.Male, guest.Gender);
         Assert.Equal(DateTime.UtcNow.Year + 7, guest.DataRetentionUntil.Year);
+    }
+
+    [Fact]
+    public async Task Submit_SharedGuest_CreatesSnapshotBeforeWritingCheckInData()
+    {
+        await using var seed = await SeedAsync();
+        var sharedBookingId = await AddBookingSharingGuestAsync(seed.Db, seed.GuestId);
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(token);
+
+        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
+        {
+            FirstName = "Luigi",
+            LastName = "Verdi",
+            DateOfBirth = new DateTime(1990, 5, 15),
+            Nationality = "Italiana",
+            DocumentType = "Passport",
+            DocumentNumber = "YA1234567",
+            DocumentIssuingCountry = "Italia",
+            PlaceOfBirth = "Roma",
+            GdprConsent = true,
+        });
+
+        Assert.True(result.Success);
+        Assert.True(result.GuestId.HasValue);
+        var snapshotGuestId = result.GuestId.Value;
+        Assert.NotEqual(seed.GuestId, snapshotGuestId);
+
+        var originalGuest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.Equal(string.Empty, originalGuest.DocumentNumber);
+        Assert.Null(originalGuest.ConsentDate);
+
+        var snapshot = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == snapshotGuestId);
+        Assert.Equal("YA1234567", snapshot.DocumentNumber);
+        Assert.NotNull(snapshot.ConsentDate);
+
+        var submittedBooking = await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        Assert.Equal(snapshotGuestId, submittedBooking.GuestId);
+
+        var sharedBooking = await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == sharedBookingId);
+        Assert.Equal(seed.GuestId, sharedBooking.GuestId);
     }
 
     [Fact]
@@ -189,6 +233,7 @@ public class GuestCheckInServiceTests
             LastName = "Verdi",
             DateOfBirth = new DateTime(1990, 5, 15),
             Nationality = "Italiana",
+            Gender = Gender.Male,
             DocumentType = "Passport",
             DocumentNumber = "YA1234567",
             DocumentIssuingCountry = "Italia",
@@ -201,6 +246,7 @@ public class GuestCheckInServiceTests
 
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.Gender);
         Assert.Null(guest.ConsentDate);
     }
 
@@ -257,5 +303,40 @@ public class GuestCheckInServiceTests
         Assert.Equal(2, sessions.Count);
         var expired = sessions.Single(s => s.Status == GuestCheckInSessionStatus.Scaduto);
         Assert.NotNull(expired);
+    }
+
+    private static async Task<Guid> AddBookingSharingGuestAsync(AppDbContext db, Guid guestId)
+    {
+        var orgId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Properties.Add(new Property
+        {
+            Id = propertyId,
+            OrgId = orgId,
+            OwnerId = "owner-shared",
+            Name = "Shared Guest Property",
+            Address = "Via Milano 1",
+            City = "Milano",
+            PostalCode = "20100",
+            NightlyRate = 120m,
+            IsActive = true,
+        });
+
+        db.Bookings.Add(new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            OrgId = orgId,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        });
+
+        await db.SaveChangesAsync();
+        return bookingId;
     }
 }

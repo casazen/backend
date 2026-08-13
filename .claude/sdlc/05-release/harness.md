@@ -2,16 +2,17 @@
 
 ## Entry Criteria
 
-- Stage 04 complete — 0 open 🔴 critical findings
-- Open feature PR(s) targeting `develop` (`pr_backend`, `pr_frontend`)
-- Design spec + issue acceptance criteria available for Phase B validation
+- Stage 04 complete — 0 open 🔴 critical findings; **G11 AC matrix PASS**
+- Open feature PR(s) targeting `develop` (`pr_backend`, `pr_frontend`, optional `pr_mobile`)
+- Design spec AC Test Map + issue ACs available for Phase B
+- **Release freeze**: if `Sessions/quality/ac-matrix-mvp.md` has any P0 `fail`, promote only hotfixes that clear those fails (L3 on broken path required)
 
 ## Council Run
 
 Coordinator spawns: `release-manager`, `qa-validator`
 
 Topic handed to council:
-> "Release Issue #N sequentially: merge feature PR(s) to develop, validate full BE+FE functionality on staging, then promote develop → main with tag vX.Y.Z. Run Phase D production checks before handoff to Stage 06."
+> "Release Issue #N: merge to develop, validate L2 + L3 staging (feature ACs + Golden Journey), then promote develop → main. Close issue only after Phase B AC matrix ✅ and Phase D smoke."
 
 ---
 
@@ -20,9 +21,11 @@ Topic handed to council:
 | # | Gate | Command | Pass condition |
 |---|---|---|---|
 | G1 | Backend feature PR CI green | `gh pr checks <P_be> --repo casazen/backend` | All ✅ (or N/A if no BE PR) |
-| G2 | Frontend feature PR CI green | `gh pr checks <P_fe> --repo casazen/frontend` | All ✅ (or N/A if no FE PR) |
-| G3 | Backend merged to develop | `gh pr merge <P_be> --squash` then verify closed | `state: MERGED` |
-| G4 | Frontend merged to develop | `gh pr merge <P_fe> --squash` then verify closed | `state: MERGED` |
+| G2 | Frontend feature PR CI green | `gh pr checks <P_fe> --repo casazen/frontend` | All ✅ including **e2e-l2** (or N/A) |
+| G2b | Mobile PR CI green | `gh pr checks` on casazen/mobile | All ✅ when mobile PR exists; else N/A |
+| G3 | Backend merged to develop | `gh pr merge <P_be> --squash` | `state: MERGED` |
+| G4 | Frontend merged to develop | `gh pr merge <P_fe> --squash` | `state: MERGED` |
+| G4b | Mobile merged to develop | `gh pr merge` mobile | When applicable |
 
 **Order**: G3 before G4 when both repos change.
 
@@ -38,18 +41,24 @@ Run after develop deploy completes (~90–120s post-merge).
 | G6 | Auth smoke | `curl` on `/api/properties`, `/api/bookings`, `/api/users/me`, `/api/me/contexts` | 401 each (never 5xx) |
 | G6b | API regression E2E | `E2E_STAGING=1 npm run test:e2e -- api-regression-smoke` | Authenticated: no 500 |
 | G6c | Vercel deploy smoke | `E2E_DEPLOY_SMOKE=1 npm run test:e2e -- vercel-deploy-smoke` | `#root` + no API 500 on load |
-| G6d | EF migrations applied | `.\scripts\migrate.ps1 -Target test` before Phase B; **`.\scripts\migrate.ps1 -Target prod` mandatory before Phase C** (do not rely on startup auto-migrate alone) | Exit 0 |
-| G7 | Backend tests (release candidate) | `dotnet test` (in `casazen/backend` on `develop`) | All tests pass, 0 failures (N/A if no BE changes in release) |
-| G8 | E2E tests (release candidate) | `npm run test:e2e` (in `casazen/frontend` on `develop`) | All Playwright tests pass, 0 failures (N/A if no FE changes in release) |
-| G9 | Feature AC validated | Automated E2E + spot-check vs Issue `#N` ACs on staging URLs | All ACs pass on staging BE+FE |
-| G10 | Staging FE serves SPA | `curl -sf $STAGING_FE_URL` | HTTP 200 **and** body contains `id="root"` — use Vercel **develop** deployment URL, **not** `casazen-app.vercel.app` (that is Production) |
+| G6d | EF migrations applied | `.\scripts\migrate.ps1 -Target test` before Phase B; **`.\scripts\migrate.ps1 -Target prod` mandatory before Phase C** | Exit 0 |
+| G7 | Backend tests (release candidate) | `dotnet test` (backend `develop`) | 0 failures (N/A if no BE changes) |
+| G8 | L2 E2E full suite | `npm run test:e2e` (frontend `develop`) | All demo Playwright tests pass (N/A if no FE changes) |
+| G9 | L3 Feature ACs on staging | `E2E_STAGING=1 npm run test:e2e -- --project=staging-gj` **and/or** feature `e2e/l3/*` mapped in AC Test Map against staging API | Every Issue UI AC PASS on real staging API (no mock of path under test) |
+| G9b | Golden Journey web | `E2E_STAGING=1 npm run test:e2e -- golden-journey-web` | GJ steps required for this release PASS (full 1–12 when MVP exit; subset documented otherwise) |
+| G9c | Mobile Maestro (when mobile released) | `maestro test e2e/` against staging/demo seed | M1–M7 PASS; N/A if no mobile changes |
+| G9d | AC matrix gate | `sdlc-matrix-writeback` from Phase B evidence + `.\scripts\quality\check-spec-coverage.ps1` for issue REQ-IDs | No `fail` remaining for issue ACs; stubs only with `status:stub`; **write-back required** |
+| G9e | Portfolio freeze | `.\scripts\quality\check-spec-coverage.ps1` when promoting unrelated work | Exit 0 **or** this release is an explicit P0-hotfix clearing freeze rows |
+| G10 | Staging FE serves SPA | `curl -sf $STAGING_FE_URL` | HTTP 200 **and** `id="root"` — Vercel **develop** URL, not production |
 
 `$RAILWAY_TEST_URL` from GitHub variable `RAILWAY_TEST_URL`.
 `$STAGING_FE_URL` = Vercel staging URL for branch `develop` (see `docs/INFRA.md`).
 
-**If G7, G8, or G9 fails**: stop — do not promote to `main`. Route fix to Stage 03.
+**If G7, G8, G9, G9b, G9d, or G10 fails**: stop — do not promote to `main`. Route fix to Stage 03.
 
-**Phase C precondition (non-negotiable)**: G7 **and** G8 **and** G9 **and** G10 must all pass in the same release run immediately before opening/merging `develop` → `main`.
+**Phase C precondition (non-negotiable)**: G7 **and** G8 **and** G9 **and** G9b **and** G9d **and** G9e **and** G10 must all pass in the same release run immediately before opening/merging `develop` → `main`. PASS only via **sdlc-gate-runner** evidence — not release markdown tables alone.
+
+**Issue close**: only after Phase B AC matrix ✅ — then `gh issue close <N>` (or `Closes #N` on the release PR). Never close at Stage 03/04.
 
 ---
 

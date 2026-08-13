@@ -137,8 +137,11 @@ public class ServiceRequestsController(
         var hostOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (hostOrgId is null) return Unauthorized();
 
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+
         var (hostItems, hostTotal) = await serviceRequestService.ListForHostAsync(
-            hostOrgId.Value, statusFilter, propertyId, page, pageSize, cancellationToken);
+            hostOrgId.Value, userId, GetUserRoles(), statusFilter, propertyId, page, pageSize, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {
@@ -168,7 +171,11 @@ public class ServiceRequestsController(
         var hostOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (hostOrgId is null) return Unauthorized();
 
-        var hostRequest = await serviceRequestService.GetByIdForHostAsync(id, hostOrgId.Value, cancellationToken);
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+
+        var hostRequest = await serviceRequestService.GetByIdForHostAsync(
+            id, hostOrgId.Value, userId, GetUserRoles(), cancellationToken);
         if (hostRequest is null) return NotFound();
 
         return Ok(MapDto(hostRequest));
@@ -295,6 +302,9 @@ public class ServiceRequestsController(
         User.FindFirstValue("sub")
         ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+
+    private IReadOnlyList<string> GetUserRoles() =>
+        User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
 
     internal static ServiceRequestDto MapDto(ServiceRequest r) => new()
     {

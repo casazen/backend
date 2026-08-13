@@ -21,10 +21,17 @@ public interface IServiceRequestService
     Task<ServiceRequest> CompleteAsync(Guid id, Guid supplierOrgId, string? notes, CancellationToken cancellationToken = default);
     Task<ServiceRequest> RejectAsync(Guid id, Guid supplierOrgId, string reason, CancellationToken cancellationToken = default);
     Task<ServiceRequest> MarkPaidAsync(Guid id, Guid hostOrgId, string userId, CancellationToken cancellationToken = default);
-    Task<ServiceRequest?> GetByIdForHostAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+    Task<ServiceRequest?> GetByIdForHostAsync(
+        Guid id,
+        Guid hostOrgId,
+        string userId,
+        IEnumerable<string> userRoles,
+        CancellationToken cancellationToken = default);
     Task<ServiceRequest?> GetByIdForSupplierAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         Guid orgId,
+        string userId,
+        IEnumerable<string> userRoles,
         ServiceRequestStatus? status,
         Guid? propertyId,
         int page,
