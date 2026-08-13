@@ -13,6 +13,52 @@ namespace Casazen.Tests.Unit.BackgroundJobs;
 public class GuestCheckInReminderJobTests
 {
     [Fact]
+    public async Task ExecuteAsync_WhenBookingHasNoCheckInSession_SendsHostReminder()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingWithinReminderWindowAsync(context, contactEmail: "host@example.com");
+        var email = new Mock<IEmailService>();
+        email.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(true));
+        var push = new Mock<IPushNotificationService>();
+        var job = CreateJob(context, email.Object, push.Object);
+
+        await job.ExecuteAsync();
+
+        email.Verify(e => e.SendEmailAsync(
+            "host@example.com",
+            It.Is<string>(subject => subject.Contains("Check-in incompleto")),
+            It.IsAny<string>()), Times.Once);
+        push.Verify(p => p.SendGuestCheckInIncompleteAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenBookingHasCompletedCheckInSession_SkipsReminder()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingWithinReminderWindowAsync(context, contactEmail: "host@example.com");
+        context.GuestCheckInSessions.Add(new GuestCheckInSession
+        {
+            BookingId = bookingId,
+            OrgId = context.Bookings.Single(b => b.Id == bookingId).OrgId,
+            TokenHash = new string('a', 64),
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+            Status = GuestCheckInSessionStatus.Completo,
+            SentAt = DateTime.UtcNow.AddHours(-1),
+            CompletedAt = DateTime.UtcNow,
+        });
+        await context.SaveChangesAsync();
+        var email = new Mock<IEmailService>();
+        var push = new Mock<IPushNotificationService>();
+        var job = CreateJob(context, email.Object, push.Object);
+
+        await job.ExecuteAsync();
+
+        email.Verify(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        push.Verify(p => p.SendGuestCheckInIncompleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SendsPush_WhenHostEmailMissing()
     {
         await using var context = CreateContext();
@@ -50,7 +96,6 @@ public class GuestCheckInReminderJobTests
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-
         return new AppDbContext(options);
     }
 
@@ -64,72 +109,75 @@ public class GuestCheckInReminderJobTests
             pushService,
             Mock.Of<ILogger<GuestCheckInReminderJob>>());
 
-    private static async Task<Guid> SeedIncompleteCheckInAsync(AppDbContext context, string contactEmail)
+    private static async Task<Guid> SeedBookingWithinReminderWindowAsync(AppDbContext context, string contactEmail)
     {
-        var org = new OrgEntity
+        var orgId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        context.Orgs.Add(new OrgEntity
         {
-            Id = Guid.NewGuid(),
-            Name = "CasaZen Host",
-            DisplayName = "CasaZen Host",
-            Slug = $"host-{Guid.NewGuid():N}",
+            Id = orgId,
+            Name = "Host Org",
+            Slug = $"host-{orgId:N}",
+            DisplayName = "Host Org",
             ContactEmail = contactEmail,
-            IsActive = true,
-        };
-        var property = new Property
+        });
+
+        context.Properties.Add(new Property
         {
-            Id = Guid.NewGuid(),
-            OrgId = org.Id,
-            Org = org,
+            Id = propertyId,
+            OrgId = orgId,
             OwnerId = "auth0|owner",
-            Name = "Apartment",
-            Address = "Via Roma 1",
+            Name = "Test Property",
+            Address = "Via Test 1",
             City = "Roma",
             PostalCode = "00100",
-            Bedrooms = 1,
-            Bathrooms = 1,
-            MaxGuests = 2,
             NightlyRate = 100m,
-        };
-        var guest = new Guest
+            MaxGuests = 4,
+            CinCode = "IT-TEST",
+        });
+
+        context.Guests.Add(new Guest
         {
-            Id = Guid.NewGuid(),
-            FirstName = "Ada",
-            LastName = "Lovelace",
-            Email = "ada@example.com",
-        };
-        var booking = new Booking
+            Id = guestId,
+            FirstName = "Anna",
+            LastName = "Bianchi",
+            Email = "anna@example.com",
+        });
+
+        context.Bookings.Add(new Booking
         {
-            Id = Guid.NewGuid(),
-            OrgId = org.Id,
-            Org = org,
-            PropertyId = property.Id,
-            Property = property,
-            GuestId = guest.Id,
-            Guest = guest,
+            Id = bookingId,
+            PropertyId = propertyId,
+            OrgId = orgId,
+            GuestId = guestId,
             CheckInDate = DateTime.UtcNow.AddHours(12),
             CheckOutDate = DateTime.UtcNow.AddDays(3),
-            NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
-            TotalPrice = 100m,
-        };
+            NumberOfGuests = 1,
+        });
 
-        context.Orgs.Add(org);
-        context.Properties.Add(property);
-        context.Guests.Add(guest);
-        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+        return bookingId;
+    }
+
+    private static async Task<Guid> SeedIncompleteCheckInAsync(AppDbContext context, string contactEmail)
+    {
+        var bookingId = await SeedBookingWithinReminderWindowAsync(context, contactEmail);
+        var orgId = context.Bookings.Single(b => b.Id == bookingId).OrgId;
         context.GuestCheckInSessions.Add(new GuestCheckInSession
         {
-            BookingId = booking.Id,
-            Booking = booking,
-            OrgId = org.Id,
+            BookingId = bookingId,
+            OrgId = orgId,
             TokenHash = new string('a', 64),
             ExpiresAt = DateTime.UtcNow.AddDays(1),
             Status = GuestCheckInSessionStatus.Inviato,
             SentAt = DateTime.UtcNow,
         });
-
         await context.SaveChangesAsync();
-        return booking.Id;
+        return bookingId;
     }
 }
