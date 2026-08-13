@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-13T21:21:37Z",
+  "updated": "2026-08-13T22:07:40Z",
   "requirements": [
     {
       "id": "ADR-001-R1",
@@ -147,13 +147,13 @@
       "gap_id": "REQ:ADR-003-R6"
     },
     {
-      "id": "SPEC:direct-checkout:AC-L3",
-      "source": "Sessions/specs/spec-direct-checkout.md",
+      "id": "SPEC:native-host-app:AC15",
+      "source": "Sessions/specs/spec-native-host-app.md",
       "priority": "P0",
-      "text": "L3 booking create seeded public property",
+      "text": "Maestro 0 crash on device",
       "active": true,
       "matrix_status": "blocked",
-      "gap_id": "MATRIX:checkout:L3"
+      "gap_id": "MATRIX:native-host:AC15"
     },
     {
       "id": "SPEC:native-host-app:AC4",
@@ -165,13 +165,22 @@
       "gap_id": "MATRIX:native-host:AC4"
     },
     {
-      "id": "SPEC:golden-journey-e2e:AC1",
-      "source": "Sessions/specs/spec-golden-journey-e2e.md",
+      "id": "SPEC:direct-checkout:AC-L3",
+      "source": "Sessions/specs/spec-direct-checkout.md",
       "priority": "P0",
-      "text": "GJ web steps 1–12 L2/L3",
+      "text": "L3 booking create seeded public property",
       "active": true,
       "matrix_status": "blocked",
-      "gap_id": "MATRIX:gj:AC1-5"
+      "gap_id": "MATRIX:checkout:L3"
+    },
+    {
+      "id": "SPEC:native-host-app:AC21",
+      "source": "Sessions/specs/spec-native-host-app.md",
+      "priority": "P0",
+      "text": "Backend push tests",
+      "active": true,
+      "matrix_status": "pass",
+      "gap_id": "MATRIX:native-host:AC21"
     },
     {
       "id": "SPEC:golden-journey-e2e:AC6",
@@ -183,22 +192,13 @@
       "gap_id": "MATRIX:gj:AC6-12"
     },
     {
-      "id": "SPEC:native-host-app:AC20",
-      "source": "Sessions/specs/spec-native-host-app.md",
+      "id": "SPEC:golden-journey-e2e:AC1",
+      "source": "Sessions/specs/spec-golden-journey-e2e.md",
       "priority": "P0",
-      "text": "Maestro M1–M7 device green",
+      "text": "GJ web steps 1–12 L2/L3",
       "active": true,
       "matrix_status": "blocked",
-      "gap_id": "MATRIX:native-host:AC20"
-    },
-    {
-      "id": "SPEC:native-host-app:AC21",
-      "source": "Sessions/specs/spec-native-host-app.md",
-      "priority": "P0",
-      "text": "Backend push tests",
-      "active": true,
-      "matrix_status": "pass",
-      "gap_id": "MATRIX:native-host:AC21"
+      "gap_id": "MATRIX:gj:AC1-5"
     },
     {
       "id": "SPEC:micro-marketplace-v0:AC-supplier",
@@ -219,13 +219,13 @@
       "gap_id": "MATRIX:marketplace:L3"
     },
     {
-      "id": "SPEC:native-host-app:AC15",
+      "id": "SPEC:native-host-app:AC20",
       "source": "Sessions/specs/spec-native-host-app.md",
       "priority": "P0",
-      "text": "Maestro 0 crash on device",
+      "text": "Maestro M1–M7 device green",
       "active": true,
       "matrix_status": "blocked",
-      "gap_id": "MATRIX:native-host:AC15"
+      "gap_id": "MATRIX:native-host:AC20"
     }
   ]
 }
