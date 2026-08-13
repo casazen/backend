@@ -1,11 +1,14 @@
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
 public class GdprService(
     IGuestRepository guestRepository,
+    AppDbContext db,
     ILogger<GdprService> logger) : IGdprService
 {
     public async Task<Dictionary<string, object>> ExportGuestDataAsync(Guid guestId)
@@ -81,5 +84,37 @@ public class GdprService(
         guest.Notes = string.Empty;
         guest.DocumentNumber = string.Empty;
         guest.PlaceOfBirth = string.Empty;
+    }
+
+    public async Task<Dictionary<string, object>> ExportOrgFiscalDataAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
+            ?? throw new KeyNotFoundException("Org not found");
+        var years = await db.PropertyFiscalYears.AsNoTracking()
+            .Where(y => y.OrgId == orgId)
+            .Select(y => new { y.PropertyId, y.TaxYear, Regime = y.Regime.ToString(), y.IsPrimaryForCedolare })
+            .ToListAsync(cancellationToken);
+        return new Dictionary<string, object>
+        {
+            ["hasPartitaIva"] = org.HasPartitaIva,
+            ["partitaIvaNumber"] = org.PartitaIvaNumber ?? "",
+            ["fiscalCode"] = org.FiscalCode ?? "",
+            ["fiscalDataRetentionUntil"] = org.FiscalDataRetentionUntil?.ToString("O") ?? "",
+            ["propertyFiscalYears"] = years,
+            ["exportedAt"] = DateTime.UtcNow.ToString("O"),
+        };
+    }
+
+    public async Task AnonymizeOrgFiscalDataAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var org = await db.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return;
+        var token = $"ANON-{orgId:N}";
+        org.FiscalCode = token.Length > 16 ? token[..16] : token;
+        org.PartitaIvaNumber = "00000000000";
+        org.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Org {OrgId} fiscal identifiers anonymized", orgId);
     }
 }

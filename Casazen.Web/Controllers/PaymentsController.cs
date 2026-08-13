@@ -14,6 +14,7 @@ public class PaymentsController(
     IPaymentService paymentService,
     IBookingService bookingService,
     IPropertyAuthorizationService authorizationService,
+    IFiscalRegimeService fiscalRegimeService,
     ILogger<PaymentsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -60,20 +61,30 @@ public class PaymentsController(
     }
 
     [HttpPost]
-    public async Task<ActionResult<Payment>> Create([FromBody] Payment payment)
+    [Authorize(Policy = "RequireContext:short-rent:payment.write")]
+    public async Task<ActionResult<Payment>> Create([FromBody] CreatePaymentRequest request)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var booking = await bookingService.GetBookingAsync(payment.BookingId);
+        var booking = await bookingService.GetBookingAsync(request.BookingId);
         if (booking == null)
             return NotFound("Booking not found");
 
         if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
-        payment.OrgId = booking.OrgId;
+        var payment = new Payment
+        {
+            BookingId = request.BookingId,
+            Amount = request.Amount,
+            Method = request.Method,
+            Description = request.Description ?? string.Empty,
+            OrgId = booking.OrgId,
+        };
+        await fiscalRegimeService.ApplyWithholdingOnCreateAsync(
+            payment, booking, request.ApplyOtaWithholding, request.ManualWithholdingTax);
         var created = await paymentService.CreatePaymentAsync(payment);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
@@ -199,3 +210,12 @@ public class PaymentsController(
         return visible;
     }
 }
+
+public record CreatePaymentRequest(
+    Guid BookingId,
+    decimal Amount,
+    PaymentMethod Method,
+    string? Description,
+    bool? ApplyOtaWithholding,
+    decimal? ManualWithholdingTax);
+

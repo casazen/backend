@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
@@ -44,6 +45,17 @@ public class Payment
     public string? StripePaymentIntentId { get; set; }
 
     public DateTime? ProcessedAt { get; set; }
+
+    /// <summary>OTA 21% acconto (issue #3). <see cref="Amount"/> remains gross.</summary>
+    [Precision(18, 2)]
+    public decimal OtaWithholdingTax { get; set; }
+
+    public bool WithholdingTaxApplied { get; set; }
+
+    [Precision(18, 2)]
+    public decimal NetAmountAfterWithholding { get; set; }
+
+    public WithholdingSource WithholdingSource { get; set; } = WithholdingSource.None;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
