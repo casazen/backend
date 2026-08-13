@@ -48,18 +48,33 @@ function Get-PathTokens {
   return $tokens
 }
 
+function Get-RepoParent {
+  # PowerShell Split-Path on single-segment roots like /workspace can return "".
+  $parent = Split-Path $RepoRoot -Parent
+  if ([string]::IsNullOrWhiteSpace($parent)) {
+    try {
+      $parent = [System.IO.Directory]::GetParent($RepoRoot)?.FullName
+    } catch {
+      $parent = $null
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($parent)) { $parent = [System.IO.Path]::DirectorySeparatorChar.ToString() }
+  return $parent
+}
+
 function Resolve-CandidatePaths {
   param([string]$Token)
   $candidates = New-Object System.Collections.Generic.List[string]
   $token = $Token -replace '^\./', ''
+  $parent = Get-RepoParent
   $candidates.Add((Join-Path $RepoRoot $token))
-  $candidates.Add((Join-Path (Split-Path $RepoRoot -Parent) $token)) # sibling monorepo root
-  $candidates.Add((Join-Path (Split-Path $RepoRoot -Parent) ('frontend\' + ($token -replace '^e2e/', 'e2e/'))))
+  $candidates.Add((Join-Path $parent $token)) # sibling monorepo root
+  $candidates.Add((Join-Path $parent ('frontend\' + ($token -replace '^e2e/', 'e2e/'))))
   if ($token -match '^e2e/') {
-    $candidates.Add((Join-Path (Split-Path $RepoRoot -Parent) ('frontend\' + $token.Replace('/', '\'))))
+    $candidates.Add((Join-Path $parent ('frontend\' + $token.Replace('/', '\'))))
   }
   if ($token -match '^mobile/') {
-    $candidates.Add((Join-Path (Split-Path $RepoRoot -Parent) ($token.Replace('/', '\'))))
+    $candidates.Add((Join-Path $parent ($token.Replace('/', '\'))))
   }
   if ($token -match '^\.\./frontend/') {
     $candidates.Add((Join-Path $RepoRoot ($token.Replace('/', '\'))))
@@ -130,7 +145,7 @@ function Assert-AcTestMap {
         foreach ($token in (Get-PathTokens $cell)) {
           if ($token -match '\*') {
             # glob: ok if any match under repo or siblings
-            $parent = Split-Path $RepoRoot -Parent
+            $parent = Get-RepoParent
             $hits = @()
             $hits += @(Get-ChildItem -Path $RepoRoot -Recurse -Filter ($token.Split('/')[-1]) -ErrorAction SilentlyContinue | Select-Object -First 1)
             $fe = Join-Path $parent 'frontend'
