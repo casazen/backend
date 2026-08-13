@@ -70,7 +70,11 @@ public partial class OrgDomainService(
                         return new SetOrgDomainResult(SetOrgDomainOutcome.PlanRequired, null);
 
                     var conflict = await dbContext.Orgs.AsNoTracking()
-                        .AnyAsync(o => o.Id != orgId && o.CustomDomain == normalizedDomain, cancellationToken);
+                        .AnyAsync(o =>
+                            o.Id != orgId &&
+                            o.CustomDomain == normalizedDomain &&
+                            o.DomainVerificationStatus == DomainVerificationStatus.Verified,
+                            cancellationToken);
                     if (conflict)
                         return new SetOrgDomainResult(SetOrgDomainOutcome.Conflict, null);
 

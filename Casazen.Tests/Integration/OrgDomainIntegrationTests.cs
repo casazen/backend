@@ -53,6 +53,38 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task SetCustomDomain_WhenOtherOrgClaimIsPending_AllowsOwnerToConfigureSameDomain()
+    {
+        var squatterId = $"auth0|domain-pending-{Guid.NewGuid():N}";
+        var ownerId = $"auth0|domain-owner-{Guid.NewGuid():N}";
+        var squatterOrg = await _factory.SeedOrgForOwnerAsync(squatterId);
+        var ownerOrg = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(squatterOrg.Id, PlanTier.Pro);
+        await SetPlanTierAsync(ownerOrg.Id, PlanTier.Pro);
+
+        using var squatterClient = _factory.CreateAuthenticatedClient(squatterId, "PropertyOwner");
+        var pendingResponse = await squatterClient.PostAsJsonAsync($"/api/orgs/{squatterOrg.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "www.pending-claim.it",
+        });
+        Assert.Equal(HttpStatusCode.OK, pendingResponse.StatusCode);
+
+        using var ownerClient = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var ownerResponse = await ownerClient.PostAsJsonAsync($"/api/orgs/{ownerOrg.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "www.pending-claim.it",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
+        var json = await ownerResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(ownerOrg.Id, json.GetProperty("orgId").GetGuid());
+        Assert.Equal("www.pending-claim.it", json.GetProperty("customDomain").GetString());
+        Assert.Equal("Pending", json.GetProperty("domainVerificationStatus").GetString());
+    }
+
+    [Fact]
     public async Task SetCustomDomain_WhenAlreadyVerifiedSameDomain_PreservesVerification()
     {
         var ownerId = $"auth0|verified-resave-{Guid.NewGuid():N}";
