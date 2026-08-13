@@ -114,9 +114,8 @@ src/config/     # env.config.ts, auth.config.ts, api.config.ts, demo.config.ts
 ## docker-infrastructure
 
 - `Dockerfile`: multi-stage build (SDK image → runtime image)
-- `docker-compose.yml`: `api` + `sqlserver` services
+- Local DB: PostgreSQL 16 / Supabase (see `docs/INFRA.md`)
 - CI/CD: `.github/workflows/ci-cd.yml` (build + test on push; deploy on release tag)
-- Automated PR review: `.github/workflows/claude-code-review.yml`
 
 ---
 

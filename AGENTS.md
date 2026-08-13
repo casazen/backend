@@ -52,7 +52,7 @@ dotnet format --verify-no-changes
 
 ### Gotchas
 
-- Root `docker-compose.yml` is **outdated** (SQL Server). Use local PostgreSQL or Supabase per `docs/INFRA.md`.
+- Use local PostgreSQL or Supabase per `docs/INFRA.md`. There is no root `docker-compose.yml`.
 - Integration tests that need a live DB are excluded in CI via `--filter` (see `ci-cd.yml`).
 - `dotnet ef` global tool must be installed once: `dotnet tool install --global dotnet-ef --version 10.0.0`
 - Auth0/Stripe/SendGrid keys in `appsettings.Development.json` are placeholders; external services are optional for local API smoke tests.

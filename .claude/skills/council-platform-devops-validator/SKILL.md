@@ -16,9 +16,7 @@ description: DevOps and GitHub Flow gate validation for CasaZen AI-SDLC — CI/C
 | Component | Location | Purpose |
 |---|---|---|
 | Main CI/CD | `.github/workflows/ci-cd.yml` | Build + test on push; deploy on release tag |
-| PR Code Review | `.github/workflows/claude-code-review.yml` | Automated code review on PR open/update |
-| Docker backend | `Dockerfile` | Multi-stage: SDK build → runtime image |
-| Docker compose | `docker-compose.yml` | api + sqlserver services |
+| Docker backend | `Dockerfile` | Multi-stage: SDK build → runtime image (Railway) |
 | Health endpoint | `GET /api/health` | Anonymous health check (backend) |
 
 ## GitHub Flow gate definitions

@@ -39,4 +39,4 @@
 
 ## Automated Review
 
-All PRs trigger `claude-code-review.yml`. Critical issues must be fixed before merge.
+PRs to `develop` are reviewed by Stage 04 agents (`code-reviewer` + `security-auditor`) and `sdlc-gate-runner`. Required GitHub checks must be green before auto-merge. Critical findings must be fixed before merge.
