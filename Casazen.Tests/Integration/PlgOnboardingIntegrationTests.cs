@@ -73,7 +73,9 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
         client.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.10");
 
-        var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
+        var response = await client.PostAsJsonAsync(
+            "/api/users/onboarding",
+            BuildOnboardingPayload("ShortTerm", consents: ValidConsents(marketingOptIn: true)));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -88,9 +90,10 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
             .Where(c => c.UserId == userId && c.OrgId == orgId)
             .ToListAsync();
 
-        Assert.Equal(4, records.Count);
+        Assert.Equal(5, records.Count);
         Assert.All(records, r => Assert.Equal("203.0.113.10", r.IpAddress));
         Assert.Contains(records, r => r.Type == ConsentType.Tos && r.Version == ConsentVersion);
+        Assert.Contains(records, r => r.Type == ConsentType.Marketing);
     }
 
     [Fact]
@@ -118,11 +121,38 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.True(status.GetProperty("orgProvisioned").GetBoolean());
         Assert.True(status.GetProperty("consentsAccepted").GetBoolean());
         Assert.False(status.GetProperty("propertyCreated").GetBoolean());
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.False(status.GetProperty("firstBookingTaken").GetBoolean());
         Assert.False(status.GetProperty("activated").GetBoolean());
     }
 
     [Fact]
-    public async Task AC7_PutOnboarding_DoesNotRequireConsents()
+    public async Task AC6_AC10_GetOnboardingStatus_ActivatedRequiresSixBoolConjunction()
+    {
+        var userId = $"auth0|plg-activated-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+
+        var onboard = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
+        Assert.Equal(HttpStatusCode.OK, onboard.StatusCode);
+        var onboardBody = await onboard.Content.ReadFromJsonAsync<JsonElement>();
+        var orgId = Guid.Parse(onboardBody.GetProperty("orgId").GetString()!);
+
+        await SeedActivationMilestonesAsync(userId, orgId);
+
+        var statusResponse = await client.GetAsync("/api/onboarding/status");
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+        var status = await statusResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.True(status.GetProperty("propertyCreated").GetBoolean());
+        Assert.True(status.GetProperty("sitePublished").GetBoolean());
+        Assert.True(status.GetProperty("firstBookingTaken").GetBoolean());
+        Assert.True(status.GetProperty("activated").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(status.GetProperty("publicBookingUrl").GetString()));
+        Assert.Contains("/book/", status.GetProperty("publicBookingUrl").GetString()!);
+    }
+
+    [Fact]
+    public async Task AC7_AC9_PutOnboarding_DoesNotRequireConsents()
     {
         var userId = $"auth0|plg-put-{Guid.NewGuid():N}";
         using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
@@ -138,13 +168,79 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.False(body.GetProperty("consentsRecorded").GetBoolean());
     }
 
+    private async Task SeedActivationMilestonesAsync(string userId, Guid orgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var org = await db.Orgs.IgnoreQueryFilters().FirstAsync(o => o.Id == orgId);
+        org.IsActive = true;
+        if (string.IsNullOrWhiteSpace(org.Slug))
+            org.Slug = $"plg-{Guid.NewGuid():N}"[..20];
+
+        var property = new Property
+        {
+            OwnerId = userId,
+            OrgId = orgId,
+            Name = "PLG Activation Villa",
+            Description = "Activation milestone property",
+            Address = $"Via PLG {Guid.NewGuid():N}",
+            City = "Rome",
+            PostalCode = "00100",
+            Latitude = 41.9028m,
+            Longitude = 12.4964m,
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+            NightlyRate = 120m,
+            CleaningFee = 40m,
+            DamageDeposit = 100m,
+            CinCode = "IT-12345-0123456789",
+            IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Properties.Add(property);
+
+        var guest = new Guest
+        {
+            FirstName = "PLG",
+            LastName = "Guest",
+            Email = $"plg-guest-{Guid.NewGuid():N}@example.com",
+            PhoneNumber = "+390612345678",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Guests.Add(guest);
+
+        db.Bookings.Add(new Booking
+        {
+            PropertyId = property.Id,
+            OrgId = orgId,
+            GuestId = guest.Id,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(7),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(10),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+            BasePrice = 360m,
+            TouristTax = 12m,
+            TotalPrice = 372m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
+    }
+
     private static object BuildOnboardingPayload(string rentalType, object? consents = null) => new
     {
         rentalType,
         consents = consents ?? ValidConsents(),
     };
 
-    private static object ValidConsents() => new
+    private static object ValidConsents(bool marketingOptIn = false) => new
     {
         tosAccepted = true,
         tosVersion = ConsentVersion,
@@ -154,5 +250,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         dpaVersion = ConsentVersion,
         subprocessorsAcknowledged = true,
         subprocessorsVersion = ConsentVersion,
+        marketingOptIn,
     };
 }

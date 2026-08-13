@@ -215,7 +215,7 @@ Data minimization: role, org, consent metadata only.
 | AC9 | SPEC:onboarding-plg:AC9 | `Casazen.Tests/Integration/PlgOnboardingIntegrationTests.cs` | `e2e/onboarding-plg.spec.ts` | `e2e/l3/onboarding-plg-l3.spec.ts` | POST + token refresh path |
 | AC10 | SPEC:onboarding-plg:AC10 | `Casazen.Tests/Integration/PlgOnboardingIntegrationTests.cs` | `e2e/onboarding-plg.spec.ts` | `e2e/l3/onboarding-plg-l3.spec.ts` | Dashboard mount + deep links |
 | AC11 | SPEC:onboarding-plg:AC11 | `Casazen.Tests/Integration/PlgOnboardingIntegrationTests.cs` | `e2e/onboarding-plg.spec.ts` | `e2e/l3/onboarding-plg-l3.spec.ts` | Public `/legal/subprocessors` |
-| AC12 | SPEC:onboarding-plg:AC12 | N/A — non UI | `e2e/onboarding-plg.spec.ts` | N/A — non UI | `VITE_DEMO_MODE` / demo profile |
+| AC12 | SPEC:onboarding-plg:AC12 | N/A — non UI | `e2e/onboarding-plg.spec.ts` | `e2e/l3/onboarding-plg-l3.spec.ts` | `VITE_DEMO_MODE` / demo profile + public legal without Auth0 |
 
 > L2/L3 path tokens are Stage 02 scaffolds under this repo’s `e2e/` (path-exists for G9). Canonical FE copies live in `casazen/frontend` (`e2e/onboarding-plg.spec.ts`, `e2e/l3/onboarding-plg-l3.spec.ts`) and must be mirrored in Stage 03 FE PR. Each UI AC uses a titled `test('ACn: …')`.
 

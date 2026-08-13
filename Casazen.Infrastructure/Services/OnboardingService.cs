@@ -4,12 +4,14 @@ using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Services;
 
 public class OnboardingService(
     AppDbContext db,
-    ILegalDocumentService legalDocumentService) : IOnboardingService
+    ILegalDocumentService legalDocumentService,
+    IConfiguration configuration) : IOnboardingService
 {
     public async Task<(bool Success, ConsentValidationError? Error, bool ConsentsRecorded)> ValidateAndRecordConsentsAsync(
         string userId,
@@ -35,13 +37,28 @@ public class OnboardingService(
             return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."), false);
 
         var now = DateTime.UtcNow;
-        db.ConsentRecords.AddRange(
-            new ConsentRecord { UserId = userId, OrgId = orgId, Type = ConsentType.Tos, Version = consents.TosVersion, IpAddress = clientIpAddress, RecordedAt = now },
-            new ConsentRecord { UserId = userId, OrgId = orgId, Type = ConsentType.Privacy, Version = consents.PrivacyVersion, IpAddress = clientIpAddress, RecordedAt = now },
-            new ConsentRecord { UserId = userId, OrgId = orgId, Type = ConsentType.Dpa, Version = consents.DpaVersion, IpAddress = clientIpAddress, RecordedAt = now },
-            new ConsentRecord { UserId = userId, OrgId = orgId, Type = ConsentType.SubprocessorsAck, Version = consents.SubprocessorsVersion, IpAddress = clientIpAddress, RecordedAt = now }
-        );
+        var records = new List<ConsentRecord>
+        {
+            new() { UserId = userId, OrgId = orgId, Type = ConsentType.Tos, Version = consents.TosVersion, IpAddress = clientIpAddress, RecordedAt = now },
+            new() { UserId = userId, OrgId = orgId, Type = ConsentType.Privacy, Version = consents.PrivacyVersion, IpAddress = clientIpAddress, RecordedAt = now },
+            new() { UserId = userId, OrgId = orgId, Type = ConsentType.Dpa, Version = consents.DpaVersion, IpAddress = clientIpAddress, RecordedAt = now },
+            new() { UserId = userId, OrgId = orgId, Type = ConsentType.SubprocessorsAck, Version = consents.SubprocessorsVersion, IpAddress = clientIpAddress, RecordedAt = now },
+        };
 
+        if (consents.MarketingOptIn == true)
+        {
+            records.Add(new ConsentRecord
+            {
+                UserId = userId,
+                OrgId = orgId,
+                Type = ConsentType.Marketing,
+                Version = consents.TosVersion,
+                IpAddress = clientIpAddress,
+                RecordedAt = now,
+            });
+        }
+
+        db.ConsentRecords.AddRange(records);
         await db.SaveChangesAsync(cancellationToken);
         return (true, null, true);
     }
@@ -56,20 +73,70 @@ public class OnboardingService(
         var orgProvisioned = user.OrgId.HasValue;
         var orgId = user.OrgId;
 
-        var consentsAccepted = orgId.HasValue && await db.ConsentRecords.IgnoreQueryFilters()
-            .AnyAsync(c => c.UserId == userId, cancellationToken);
+        var consentsAccepted = false;
+        if (orgId.HasValue)
+        {
+            var tos = legalDocumentService.GetTos();
+            var privacy = legalDocumentService.GetPrivacy();
+            var dpa = legalDocumentService.GetDpa();
+            var subprocessors = legalDocumentService.GetSubprocessors();
+            var userConsents = await db.ConsentRecords.IgnoreQueryFilters()
+                .Where(c => c.UserId == userId && c.OrgId == orgId)
+                .Select(c => new { c.Type, c.Version })
+                .ToListAsync(cancellationToken);
+
+            consentsAccepted =
+                userConsents.Any(c => c.Type == ConsentType.Tos && c.Version == tos.Version)
+                && userConsents.Any(c => c.Type == ConsentType.Privacy && c.Version == privacy.Version)
+                && userConsents.Any(c => c.Type == ConsentType.Dpa && c.Version == dpa.Version)
+                && userConsents.Any(c => c.Type == ConsentType.SubprocessorsAck && c.Version == subprocessors.Version);
+        }
 
         var propertyCreated = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
             .AnyAsync(p => p.OrgId == orgId, cancellationToken);
 
-        const bool sitePublished = false;
+        Org? org = null;
+        if (orgId.HasValue)
+        {
+            org = await db.Orgs.AsNoTracking().IgnoreQueryFilters()
+                .FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        }
+
+        var hasActiveProperty = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
+            .AnyAsync(p => p.OrgId == orgId && p.IsActive, cancellationToken);
+
+        var sitePublished = org is { IsActive: true } && hasActiveProperty;
 
         var firstBookingTaken = orgId.HasValue && await db.Bookings.IgnoreQueryFilters()
-            .AnyAsync(b => b.OrgId == orgId, cancellationToken);
+            .AnyAsync(
+                b => b.OrgId == orgId
+                     && b.Status == BookingStatus.Confirmed
+                     && b.Source == BookingSource.Direct,
+                cancellationToken);
 
-        var activated = roleChosen && orgProvisioned && consentsAccepted && propertyCreated;
+        string? publicBookingUrl = null;
+        if (sitePublished && org is not null && !string.IsNullOrWhiteSpace(org.Slug))
+        {
+            var baseUrl = (configuration["App:PublicSiteBaseUrl"] ?? "https://casazen.app").TrimEnd('/');
+            publicBookingUrl = $"{baseUrl}/book/{org.Slug}";
+        }
 
-        return new OnboardingActivationStatus(roleChosen, orgProvisioned, consentsAccepted, propertyCreated, sitePublished, firstBookingTaken, activated, null);
+        var activated = roleChosen
+                        && orgProvisioned
+                        && consentsAccepted
+                        && propertyCreated
+                        && sitePublished
+                        && firstBookingTaken;
+
+        return new OnboardingActivationStatus(
+            roleChosen,
+            orgProvisioned,
+            consentsAccepted,
+            propertyCreated,
+            sitePublished,
+            firstBookingTaken,
+            activated,
+            publicBookingUrl);
     }
 
     private string[] ValidateVersions(OnboardingConsentsInput consents)
