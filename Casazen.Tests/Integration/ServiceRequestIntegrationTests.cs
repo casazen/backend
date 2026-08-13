@@ -187,6 +187,36 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
+    public async Task List_AsSameOrgPropertyOwner_DoesNotReturnOtherOwnersRequests()
+    {
+        var (hostId, visibleRequestId, hiddenRequestId) = await SeedSameOrgRestrictedRequestsAsync();
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+
+        var response = await client.GetAsync("/api/service-requests");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("id").GetGuid())
+            .ToArray();
+        Assert.Contains(visibleRequestId, ids);
+        Assert.DoesNotContain(hiddenRequestId, ids);
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetById_AsSameOrgPropertyOwner_ForOtherOwnersRequest_Returns404()
+    {
+        var (hostId, _, hiddenRequestId) = await SeedSameOrgRestrictedRequestsAsync();
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+
+        var response = await client.GetAsync($"/api/service-requests/{hiddenRequestId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Reject_FromRichiesto_SetsRifiutato()
     {
         var (hostId, _, propertyId, supplierOrgId, supplierUserId) = await SeedScenarioAsync();
@@ -323,5 +353,68 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         await db.SaveChangesAsync();
         return (hostId, hostOrg.Id, property.Id, supplierOrg.Id, supplierUserId);
+    }
+
+    private async Task<(string HostId, Guid VisibleRequestId, Guid HiddenRequestId)> SeedSameOrgRestrictedRequestsAsync()
+    {
+        var (hostId, hostOrgId, visiblePropertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        var otherOwnerId = $"auth0|same-org-owner-{Guid.NewGuid():N}";
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Users.Add(new User
+        {
+            Id = otherOwnerId,
+            Email = $"{Guid.NewGuid():N}@example.com",
+            FirstName = "Other",
+            LastName = "Owner",
+            OrgId = hostOrgId,
+            IsActive = true,
+        });
+
+        var hiddenProperty = new Property
+        {
+            OwnerId = otherOwnerId,
+            OrgId = hostOrgId,
+            Name = "Hidden SR Property",
+            Address = $"Via Hidden {Guid.NewGuid():N}",
+            City = "H501",
+            PostalCode = "00100",
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+            NightlyRate = 100m,
+            CinCode = "IT-DEF123-GHI456",
+            IsActive = true,
+        };
+        db.Properties.Add(hiddenProperty);
+
+        var visibleRequest = new ServiceRequest
+        {
+            OrgId = hostOrgId,
+            PropertyId = visiblePropertyId,
+            SupplierOrgId = supplierOrgId,
+            Category = "cleaning",
+            Notes = "Visible owner request",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+            UpdatedAt = DateTime.UtcNow.AddMinutes(-1),
+        };
+
+        var hiddenRequest = new ServiceRequest
+        {
+            OrgId = hostOrgId,
+            PropertyId = hiddenProperty.Id,
+            SupplierOrgId = supplierOrgId,
+            Category = "cleaning",
+            Notes = "Hidden owner request",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        db.ServiceRequests.AddRange(visibleRequest, hiddenRequest);
+        await db.SaveChangesAsync();
+
+        return (hostId, visibleRequest.Id, hiddenRequest.Id);
     }
 }
