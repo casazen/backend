@@ -184,12 +184,24 @@ public class ServiceRequestService(
         return request;
     }
 
-    public Task<ServiceRequest?> GetByIdForHostAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default) =>
-        db.ServiceRequests
-            .IgnoreQueryFilters()
-            .Include(r => r.Property)
-            .Include(r => r.SupplierOrg)
-            .FirstOrDefaultAsync(r => r.Id == id && r.OrgId == hostOrgId, cancellationToken);
+    public Task<ServiceRequest?> GetByIdForHostAsync(
+        Guid id,
+        Guid hostOrgId,
+        string userId,
+        IEnumerable<string> userRoles,
+        CancellationToken cancellationToken = default)
+    {
+        var query = ApplyHostVisibility(
+            db.ServiceRequests
+                .IgnoreQueryFilters()
+                .Include(r => r.Property)
+                .Include(r => r.SupplierOrg)
+                .Where(r => r.Id == id && r.OrgId == hostOrgId),
+            userId,
+            userRoles);
+
+        return query.FirstOrDefaultAsync(cancellationToken);
+    }
 
     public Task<ServiceRequest?> GetByIdForSupplierAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default) =>
         db.ServiceRequests
@@ -200,12 +212,31 @@ public class ServiceRequestService(
 
     public Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         Guid orgId,
+        string userId,
+        IEnumerable<string> userRoles,
         ServiceRequestStatus? status,
         Guid? propertyId,
         int page,
         int pageSize,
-        CancellationToken cancellationToken = default) =>
-        repository.ListForHostAsync(orgId, status, propertyId, page, pageSize, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var query = ApplyHostVisibility(
+            db.ServiceRequests
+                .IgnoreQueryFilters()
+                .Include(r => r.Property)
+                .Include(r => r.SupplierOrg)
+                .Where(r => r.OrgId == orgId),
+            userId,
+            userRoles);
+
+        if (status is not null)
+            query = query.Where(r => r.Status == status.Value);
+
+        if (propertyId is not null)
+            query = query.Where(r => r.PropertyId == propertyId.Value);
+
+        return MaterializeServiceRequestPageAsync(query, page, pageSize, cancellationToken);
+    }
 
     public Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForSupplierAsync(
         Guid supplierOrgId,
@@ -227,6 +258,33 @@ public class ServiceRequestService(
             throw new UnauthorizedAccessException("Accesso negato.");
 
         return request;
+    }
+
+    private static IQueryable<ServiceRequest> ApplyHostVisibility(
+        IQueryable<ServiceRequest> query,
+        string userId,
+        IEnumerable<string> userRoles)
+    {
+        if (userRoles.Any(r => r is "PropertyManager" or "Admin"))
+            return query;
+
+        return query.Where(r => r.Property != null && r.Property.OwnerId == userId);
+    }
+
+    private static async Task<(IReadOnlyList<ServiceRequest> Items, int Total)> MaterializeServiceRequestPageAsync(
+        IQueryable<ServiceRequest> query,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
     }
 
     private async Task SendSupplierNewRequestEmailAsync(

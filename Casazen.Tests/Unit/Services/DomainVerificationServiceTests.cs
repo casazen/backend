@@ -46,6 +46,23 @@ public class DomainVerificationServiceTests
         Assert.NotNull(result.Message);
     }
 
+    [Fact]
+    public async Task VerifyAsync_WhenAlreadyVerifiedAndTxtMissing_KeepsVerified()
+    {
+        await using var db = CreateDb();
+        var org = await SeedOrgAsync(db, "token-abc", DomainVerificationStatus.Verified);
+        _dnsLookup.Setup(d => d.LookupTxtAsync("_casazen-challenge.www.example.it", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var service = CreateService(db);
+        var result = await service.VerifyAsync(org, CancellationToken.None);
+
+        Assert.Equal(DomainVerificationStatus.Verified, result.Status);
+        Assert.Null(result.Message);
+        var updated = await db.Orgs.SingleAsync(o => o.Id == org.Id);
+        Assert.Equal(DomainVerificationStatus.Verified, updated.DomainVerificationStatus);
+    }
+
     private DomainVerificationService CreateService(AppDbContext db) =>
         new(db, _dnsLookup.Object, Options.Create(new PublicHostOptions
         {
@@ -61,7 +78,10 @@ public class DomainVerificationServiceTests
         return new AppDbContext(options);
     }
 
-    private static async Task<OrgEntity> SeedOrgAsync(AppDbContext db, string token)
+    private static async Task<OrgEntity> SeedOrgAsync(
+        AppDbContext db,
+        string token,
+        DomainVerificationStatus status = DomainVerificationStatus.Pending)
     {
         var org = new OrgEntity
         {
@@ -72,7 +92,7 @@ public class DomainVerificationServiceTests
             PublicHostMode = PublicHostMode.CustomDomain,
             CustomDomain = "www.example.it",
             DomainVerificationToken = token,
-            DomainVerificationStatus = DomainVerificationStatus.Pending,
+            DomainVerificationStatus = status,
             PlanTier = PlanTier.Pro,
         };
         db.Orgs.Add(org);

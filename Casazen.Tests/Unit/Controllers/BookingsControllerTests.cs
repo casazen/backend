@@ -371,6 +371,128 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task ResendCheckInLink_EmailSent_ExpiresPreviousSessionsAfterDelivery()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockGuestCheckInService
+            .Setup(s => s.CreateSessionAsync(bookingId, OrgId))
+            .ReturnsAsync("new-token");
+        _mockEmailService
+            .Setup(s => s.SendEmailAsync(
+                guest.Email,
+                It.Is<string>(subject => subject.Contains("Test Villa")),
+                It.Is<string>(html => html.Contains("https://public.test/check-in/new-token"))))
+            .ReturnsAsync(new EmailSendResult(true));
+        _mockGuestCheckInService
+            .Setup(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"))
+            .Returns(Task.CompletedTask);
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
+        Assert.True(response.Success);
+        _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendCheckInLink_EmailSendFails_ExpiresOnlyNewToken()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockGuestCheckInService
+            .Setup(s => s.CreateSessionAsync(bookingId, OrgId))
+            .ReturnsAsync("new-token");
+        _mockEmailService
+            .Setup(s => s.SendEmailAsync(guest.Email, It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(false, "provider rejected request"));
+        _mockGuestCheckInService
+            .Setup(s => s.ExpireTokenAsync("new-token"))
+            .Returns(Task.CompletedTask);
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(objectResult.Value);
+        Assert.False(response.Success);
+        _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync("new-token"), Times.Once);
+        _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Cancel_WhenBookingHasCheckoutReminder_CancelsScheduledReminder()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            Status = BookingStatus.CheckedIn,
+            CheckoutReminderJobId = "checkout-reminder-job",
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-1),
+            CheckOutDate = DateTime.UtcNow.Date,
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockBookingService.Setup(b => b.CancelBookingAsync(bookingId)).ReturnsAsync(true);
+
+        var result = await _controller.Cancel(bookingId);
+
+        Assert.IsType<NoContentResult>(result);
+        _mockCheckoutReminderScheduler.Verify(s => s.CancelReminder("checkout-reminder-job"), Times.Once);
+    }
+
+    [Fact]
     public async Task StartCheckoutWizard_WhenUnauthorizedForProperty_ReturnsNotFoundWithoutStartingWizard()
     {
         SetUser(OwnerId);

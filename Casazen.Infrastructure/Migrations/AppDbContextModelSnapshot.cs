@@ -842,7 +842,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("CustomDomain")
                         .IsUnique()
-                        .HasFilter("\"CustomDomain\" IS NOT NULL");
+                        .HasFilter("\"CustomDomain\" IS NOT NULL AND \"DomainVerificationStatus\" = 1");
 
                     b.HasIndex("Slug")
                         .IsUnique();

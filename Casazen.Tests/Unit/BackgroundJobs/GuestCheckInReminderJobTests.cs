@@ -4,7 +4,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -15,13 +15,13 @@ public class GuestCheckInReminderJobTests
     [Fact]
     public async Task ExecuteAsync_WhenBookingHasNoCheckInSession_SendsHostReminder()
     {
-        await using var context = CreateDbContext();
-        var bookingId = await SeedBookingWithinReminderWindowAsync(context);
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingWithinReminderWindowAsync(context, contactEmail: "host@example.com");
         var email = new Mock<IEmailService>();
-        var push = new Mock<IPushNotificationService>();
         email.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new EmailSendResult(true));
-        var job = CreateJob(context, email, push);
+        var push = new Mock<IPushNotificationService>();
+        var job = CreateJob(context, email.Object, push.Object);
 
         await job.ExecuteAsync();
 
@@ -29,14 +29,14 @@ public class GuestCheckInReminderJobTests
             "host@example.com",
             It.Is<string>(subject => subject.Contains("Check-in incompleto")),
             It.IsAny<string>()), Times.Once);
-        push.Verify(p => p.SendGuestCheckInIncompleteAsync(bookingId, default), Times.Once);
+        push.Verify(p => p.SendGuestCheckInIncompleteAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task ExecuteAsync_WhenBookingHasCompletedCheckInSession_SkipsReminder()
     {
-        await using var context = CreateDbContext();
-        var bookingId = await SeedBookingWithinReminderWindowAsync(context);
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingWithinReminderWindowAsync(context, contactEmail: "host@example.com");
         context.GuestCheckInSessions.Add(new GuestCheckInSession
         {
             BookingId = bookingId,
@@ -50,25 +50,48 @@ public class GuestCheckInReminderJobTests
         await context.SaveChangesAsync();
         var email = new Mock<IEmailService>();
         var push = new Mock<IPushNotificationService>();
-        var job = CreateJob(context, email, push);
+        var job = CreateJob(context, email.Object, push.Object);
 
         await job.ExecuteAsync();
 
         email.Verify(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-        push.Verify(p => p.SendGuestCheckInIncompleteAsync(It.IsAny<Guid>(), default), Times.Never);
+        push.Verify(p => p.SendGuestCheckInIncompleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    private static GuestCheckInReminderJob CreateJob(
-        AppDbContext context,
-        Mock<IEmailService> email,
-        Mock<IPushNotificationService> push) =>
-        new(
-            context,
-            email.Object,
-            push.Object,
-            NullLogger<GuestCheckInReminderJob>.Instance);
+    [Fact]
+    public async Task ExecuteAsync_SendsPush_WhenHostEmailMissing()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedIncompleteCheckInAsync(context, contactEmail: string.Empty);
+        var emailService = new Mock<IEmailService>();
+        var pushService = new Mock<IPushNotificationService>();
+        var job = CreateJob(context, emailService.Object, pushService.Object);
 
-    private static AppDbContext CreateDbContext()
+        await job.ExecuteAsync();
+
+        pushService.Verify(p => p.SendGuestCheckInIncompleteAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
+        emailService.Verify(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SendsPushAndEmail_WhenHostEmailConfigured()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedIncompleteCheckInAsync(context, contactEmail: "host@example.com");
+        var emailService = new Mock<IEmailService>();
+        emailService
+            .Setup(e => e.SendEmailAsync("host@example.com", It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(true));
+        var pushService = new Mock<IPushNotificationService>();
+        var job = CreateJob(context, emailService.Object, pushService.Object);
+
+        await job.ExecuteAsync();
+
+        pushService.Verify(p => p.SendGuestCheckInIncompleteAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
+        emailService.Verify(e => e.SendEmailAsync("host@example.com", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    private static AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -76,7 +99,17 @@ public class GuestCheckInReminderJobTests
         return new AppDbContext(options);
     }
 
-    private static async Task<Guid> SeedBookingWithinReminderWindowAsync(AppDbContext context)
+    private static GuestCheckInReminderJob CreateJob(
+        AppDbContext context,
+        IEmailService emailService,
+        IPushNotificationService pushService) =>
+        new(
+            context,
+            emailService,
+            pushService,
+            Mock.Of<ILogger<GuestCheckInReminderJob>>());
+
+    private static async Task<Guid> SeedBookingWithinReminderWindowAsync(AppDbContext context, string contactEmail)
     {
         var orgId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
@@ -89,7 +122,7 @@ public class GuestCheckInReminderJobTests
             Name = "Host Org",
             Slug = $"host-{orgId:N}",
             DisplayName = "Host Org",
-            ContactEmail = "host@example.com",
+            ContactEmail = contactEmail,
         });
 
         context.Properties.Add(new Property
@@ -127,6 +160,23 @@ public class GuestCheckInReminderJobTests
             NumberOfGuests = 1,
         });
 
+        await context.SaveChangesAsync();
+        return bookingId;
+    }
+
+    private static async Task<Guid> SeedIncompleteCheckInAsync(AppDbContext context, string contactEmail)
+    {
+        var bookingId = await SeedBookingWithinReminderWindowAsync(context, contactEmail);
+        var orgId = context.Bookings.Single(b => b.Id == bookingId).OrgId;
+        context.GuestCheckInSessions.Add(new GuestCheckInSession
+        {
+            BookingId = bookingId,
+            OrgId = orgId,
+            TokenHash = new string('a', 64),
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+            Status = GuestCheckInSessionStatus.Inviato,
+            SentAt = DateTime.UtcNow,
+        });
         await context.SaveChangesAsync();
         return bookingId;
     }

@@ -15,7 +15,9 @@ public interface IStripeService
     Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null);
     Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
         string connectedAccountId,
-        Dictionary<string, string> metadata);
+        Dictionary<string, string> metadata,
+        string? customerEmail = null,
+        string? customerName = null);
     Task<PaymentIntent> ChargePaymentMethodAsync(
         string connectedAccountId,
         string customerId,
@@ -127,20 +129,30 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
 
     public async Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
         string connectedAccountId,
-        Dictionary<string, string> metadata)
+        Dictionary<string, string> metadata,
+        string? customerEmail = null,
+        string? customerName = null)
     {
         try
         {
+            var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
+            var customerId = await CreateConnectedAccountCustomerAsync(
+                connectedAccountId,
+                requestOptions,
+                customerEmail,
+                customerName,
+                metadata);
             var options = new SetupIntentCreateOptions
             {
+                Customer = customerId,
                 Metadata = metadata,
+                Usage = "off_session",
                 AutomaticPaymentMethods = new SetupIntentAutomaticPaymentMethodsOptions
                 {
                     Enabled = true,
                 },
             };
 
-            var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
             var service = new SetupIntentService();
             var setupIntent = await service.CreateAsync(options, requestOptions);
             logger.LogInformation(
@@ -154,6 +166,29 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
             logger.LogError(ex, "Error creating connected-account setup intent for {AccountId}", connectedAccountId);
             throw;
         }
+    }
+
+    private async Task<string> CreateConnectedAccountCustomerAsync(
+        string connectedAccountId,
+        RequestOptions requestOptions,
+        string? customerEmail,
+        string? customerName,
+        Dictionary<string, string> metadata)
+    {
+        var options = new CustomerCreateOptions
+        {
+            Email = string.IsNullOrWhiteSpace(customerEmail) ? null : customerEmail.Trim(),
+            Name = string.IsNullOrWhiteSpace(customerName) ? null : customerName.Trim(),
+            Metadata = metadata,
+        };
+
+        var service = new CustomerService();
+        var customer = await service.CreateAsync(options, requestOptions);
+        logger.LogInformation(
+            "Connected-account customer created: {CustomerId} on {AccountId}",
+            customer.Id,
+            connectedAccountId);
+        return customer.Id;
     }
 
     public async Task<PaymentIntent> ChargePaymentMethodAsync(

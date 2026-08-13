@@ -361,6 +361,16 @@ public class StripeWebhookHandler(
             return;
         }
 
+        if (booking.Status != BookingStatus.Pending)
+        {
+            logger.LogWarning(
+                "Ignoring setup intent {SetupIntentId} for booking {BookingId} in status {Status}",
+                setupIntent.Id,
+                bookingId,
+                booking.Status);
+            return;
+        }
+
         var paymentMethodId = setupIntent.PaymentMethodId;
         if (string.IsNullOrWhiteSpace(paymentMethodId))
         {
@@ -368,7 +378,14 @@ public class StripeWebhookHandler(
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(setupIntent.CustomerId))
+        {
+            logger.LogWarning("Setup intent has no customer: {SetupIntentId}", setupIntent.Id);
+            return;
+        }
+
         booking.StripePaymentMethodId = paymentMethodId;
+        booking.StripeCustomerId = setupIntent.CustomerId;
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
         await bookingRepository.UpdateAsync(booking);
@@ -396,8 +413,18 @@ public class StripeWebhookHandler(
         await paymentRepository.UpdateAsync(payment);
 
         var booking = await bookingRepository.GetByIdAsync(payment.BookingId);
-        if (booking is null || booking.Status == BookingStatus.Confirmed)
+        if (booking is null || booking.Status != BookingStatus.Pending)
+        {
+            if (booking is not null)
+            {
+                logger.LogWarning(
+                    "Payment intent {PaymentIntentId} completed for booking {BookingId} in status {Status}; booking was not confirmed",
+                    paymentIntent.Id,
+                    booking.Id,
+                    booking.Status);
+            }
             return;
+        }
 
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
