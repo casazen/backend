@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
@@ -34,6 +35,8 @@ public class BookingsControllerTests
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
+    private readonly Mock<IEmailService> _mockEmailService;
+    private readonly IConfiguration _configuration;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -53,6 +56,13 @@ public class BookingsControllerTests
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
         _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
+        _mockEmailService = new Mock<IEmailService>();
+        _configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:PublicSiteBaseUrl"] = "https://public.test",
+            })
+            .Build();
         _mockCheckoutReminderScheduler
             .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
             .Returns("job-test");
@@ -71,6 +81,8 @@ public class BookingsControllerTests
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
             Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
+            _configuration,
+            _mockEmailService.Object,
             _mockLogger.Object);
     }
 
@@ -416,6 +428,51 @@ public class BookingsControllerTests
         Assert.True(response.Success);
         _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
         _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendCheckInLink_WhenSessionAlreadyComplete_ReturnsConflictWithoutCreatingToken()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockGuestCheckInService
+            .Setup(s => s.GetSessionForBookingAsync(bookingId))
+            .ReturnsAsync(new GuestCheckInSession
+            {
+                BookingId = bookingId,
+                OrgId = OrgId,
+                Status = GuestCheckInSessionStatus.Completo,
+                CompletedAt = DateTime.UtcNow,
+            });
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(conflict.Value);
+        Assert.False(response.Success);
+        _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        _mockEmailService.Verify(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

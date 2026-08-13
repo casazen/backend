@@ -12,6 +12,12 @@ public class GuestCheckInService(
     AppDbContext db,
     ILogger<GuestCheckInService> logger) : IGuestCheckInService
 {
+    private static readonly GuestCheckInSessionStatus[] OpenLinkStatuses =
+    [
+        GuestCheckInSessionStatus.Inviato,
+        GuestCheckInSessionStatus.InCompilazione,
+    ];
+
     private static readonly GuestCheckInSessionStatus[] ActiveStatuses =
     [
         GuestCheckInSessionStatus.Inviato,
@@ -22,6 +28,8 @@ public class GuestCheckInService(
 
     public async Task<string> CreateSessionAsync(Guid bookingId, Guid orgId)
     {
+        await MakeRoomForNewSentSessionAsync(bookingId);
+
         var rawToken = GenerateToken();
         var tokenHash = ComputeSha256Hex(rawToken);
 
@@ -155,7 +163,7 @@ public class GuestCheckInService(
     public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId)
     {
         var activeSessions = await db.GuestCheckInSessions
-            .Where(s => s.BookingId == bookingId && ActiveStatuses.Contains(s.Status))
+            .Where(s => s.BookingId == bookingId && OpenLinkStatuses.Contains(s.Status))
             .ToListAsync();
 
         foreach (var s in activeSessions)
@@ -189,13 +197,40 @@ public class GuestCheckInService(
             .Where(s =>
                 s.BookingId == bookingId &&
                 s.TokenHash != tokenHashToKeep &&
-                ActiveStatuses.Contains(s.Status))
+                OpenLinkStatuses.Contains(s.Status))
             .ToListAsync();
 
         foreach (var session in activeSessions)
         {
             session.Status = GuestCheckInSessionStatus.Scaduto;
             session.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private async Task MakeRoomForNewSentSessionAsync(Guid bookingId)
+    {
+        var sentSessions = await db.GuestCheckInSessions
+            .Where(s => s.BookingId == bookingId && s.Status == GuestCheckInSessionStatus.Inviato)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToListAsync();
+
+        if (sentSessions.Count == 0)
+            return;
+
+        var hasInProgressSession = await db.GuestCheckInSessions
+            .AnyAsync(s => s.BookingId == bookingId && s.Status == GuestCheckInSessionStatus.InCompilazione);
+
+        var preserveOneUsableLink = !hasInProgressSession;
+        var now = DateTime.UtcNow;
+        foreach (var session in sentSessions)
+        {
+            session.Status = preserveOneUsableLink
+                ? GuestCheckInSessionStatus.InCompilazione
+                : GuestCheckInSessionStatus.Scaduto;
+            session.UpdatedAt = now;
+            preserveOneUsableLink = false;
         }
 
         await db.SaveChangesAsync();

@@ -83,6 +83,28 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
+    public async Task CreateSession_WhenUnopenedSessionExists_PreservesPreviousTokenAndCreatesReplacement()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var firstToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        Assert.NotEqual(firstToken, replacementToken);
+        var sessions = await seed.Db.GuestCheckInSessions
+            .OrderBy(s => s.CreatedAt)
+            .ToListAsync();
+        Assert.Equal(2, sessions.Count);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, sessions[0].Status);
+        Assert.Equal(GuestCheckInSessionStatus.Inviato, sessions[1].Status);
+
+        var previousSession = await svc.GetSessionByTokenAsync(firstToken);
+        Assert.NotNull(previousSession);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, previousSession.Status);
+    }
+
+    [Fact]
     public async Task GetSessionByToken_ValidToken_TransitionsToInCompilazione()
     {
         await using var seed = await SeedAsync();
@@ -334,6 +356,24 @@ public class GuestCheckInServiceTests
         var sessions = await seed.Db.GuestCheckInSessions.ToListAsync();
         Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Scaduto);
         Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.InCompilazione);
+    }
+
+    [Fact]
+    public async Task ExpireOtherActiveSessions_DoesNotExpireCompletedSession()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var completedToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(completedToken);
+        var submit = await svc.SubmitAsync(completedToken, new GuestCheckInSubmitRequest { GdprConsent = true });
+        Assert.True(submit.Success);
+
+        var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        await svc.ExpireOtherActiveSessionsAsync(seed.BookingId, replacementToken);
+
+        var sessions = await seed.Db.GuestCheckInSessions.ToListAsync();
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Completo);
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
     }
 
     private static async Task<Guid> AddBookingSharingGuestAsync(AppDbContext db, Guid guestId)
