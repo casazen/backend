@@ -19,14 +19,19 @@ public class PaymentsControllerTests
     private readonly Mock<IPaymentService> _paymentService = new();
     private readonly Mock<IBookingService> _bookingService = new();
     private readonly Mock<IPropertyAuthorizationService> _authz = new();
+    private readonly Mock<IFiscalRegimeService> _fiscal = new();
     private readonly PaymentsController _controller;
 
     public PaymentsControllerTests()
     {
+        _fiscal.Setup(f => f.ApplyWithholdingOnCreateAsync(
+                It.IsAny<Payment>(), It.IsAny<Booking>(), It.IsAny<bool?>(), It.IsAny<decimal?>()))
+            .Returns(Task.CompletedTask);
         _controller = new PaymentsController(
             _paymentService.Object,
             _bookingService.Object,
             _authz.Object,
+            _fiscal.Object,
             Mock.Of<ILogger<PaymentsController>>());
 
         SetUser(OwnerId);
@@ -84,22 +89,14 @@ public class PaymentsControllerTests
     public async Task Create_WhenAuthorized_DerivesOrgIdFromBooking()
     {
         var booking = MakeBooking(PropertyId);
-        var spoofedOrgId = Guid.NewGuid();
-        var payment = new Payment
-        {
-            BookingId = booking.Id,
-            OrgId = spoofedOrgId,
-            Amount = 100m,
-            Status = PaymentStatus.Pending,
-        };
-
         _bookingService.Setup(b => b.GetBookingAsync(booking.Id)).ReturnsAsync(booking);
         _authz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
             .ReturnsAsync(true);
         _paymentService.Setup(p => p.CreatePaymentAsync(It.IsAny<Payment>()))
             .ReturnsAsync((Payment p) => p);
 
-        var result = await _controller.Create(payment);
+        var result = await _controller.Create(new CreatePaymentRequest(
+            booking.Id, 100m, PaymentMethod.CreditCard, null, null, null));
 
         var created = Assert.IsType<CreatedAtActionResult>(result.Result);
         var createdPayment = Assert.IsType<Payment>(created.Value);

@@ -318,6 +318,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
+        services.AddScoped<IFiscalRegimeService, FiscalService>();
+        services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();

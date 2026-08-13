@@ -91,6 +91,17 @@ public class Org
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>STR fiscal profile (issue #3). Distinct from billing <see cref="VatId"/>.</summary>
+    public bool HasPartitaIva { get; set; }
+
+    [MaxLength(11)]
+    public string? PartitaIvaNumber { get; set; }
+
+    [MaxLength(16)]
+    public string? FiscalCode { get; set; }
+
+    public DateTime? FiscalDataRetentionUntil { get; set; }
+
     // ─── Custom domain / subdomain booking (US-024 / #298) ───────────────────────
 
     /// <summary>How this org publishes its public booking site: path, subdomain, or custom domain.</summary>

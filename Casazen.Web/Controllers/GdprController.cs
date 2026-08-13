@@ -57,6 +57,26 @@ public class GdprController(
         return NoContent();
     }
 
+    [HttpGet("org/export")]
+    public async Task<IActionResult> ExportOrgFiscal(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return NotFound();
+        var data = await gdprService.ExportOrgFiscalDataAsync(orgId.Value, cancellationToken);
+        return Ok(data);
+    }
+
+    [HttpPost("org/anonymize")]
+    public async Task<IActionResult> AnonymizeOrgFiscal(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return NotFound();
+        await gdprService.AnonymizeOrgFiscalDataAsync(orgId.Value, cancellationToken);
+        return NoContent();
+    }
+
     private async Task<bool> EnsureGuestAccessibleAsync(Guid guestId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);

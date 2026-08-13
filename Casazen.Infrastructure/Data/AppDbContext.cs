@@ -24,6 +24,7 @@ public class AppDbContext(
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
+    public DbSet<PropertyFiscalYear> PropertyFiscalYears { get; set; } = null!;
     public DbSet<OtaIntegration> OtaIntegrations { get; set; } = null!;
     public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
@@ -410,6 +411,26 @@ public class AppDbContext(
         modelBuilder.Entity<Payment>()
             .HasOne(p => p.Org).WithMany().HasForeignKey(p => p.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PropertyFiscalYear>()
+            .HasOne(y => y.Org).WithMany().HasForeignKey(y => y.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PropertyFiscalYear>()
+            .HasOne(y => y.Property).WithMany().HasForeignKey(y => y.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<PropertyFiscalYear>()
+            .HasIndex(y => new { y.PropertyId, y.TaxYear })
+            .IsUnique();
+        modelBuilder.Entity<PropertyFiscalYear>()
+            .HasIndex(y => new { y.OrgId, y.TaxYear })
+            .IsUnique()
+            .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
+        modelBuilder.Entity<PropertyFiscalYear>().HasIndex(y => y.OrgId);
+        modelBuilder.Entity<Payment>()
+            .Property(p => p.OtaWithholdingTax)
+            .HasPrecision(18, 2);
+        modelBuilder.Entity<Payment>()
+            .Property(p => p.NetAmountAfterWithholding)
+            .HasPrecision(18, 2);
         modelBuilder.Entity<User>()
             .HasOne(u => u.Org).WithMany().HasForeignKey(u => u.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -421,6 +442,7 @@ public class AppDbContext(
         modelBuilder.Entity<Booking>().HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
         modelBuilder.Entity<LeaseContract>().HasQueryFilter(l => !_tenant.FilterEnabled || l.OrgId == _tenant.OrgId);
         modelBuilder.Entity<Payment>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<PropertyFiscalYear>().HasQueryFilter(y => !_tenant.FilterEnabled || y.OrgId == _tenant.OrgId);
         modelBuilder.Entity<RentSchedule>().HasQueryFilter(s => !_tenant.FilterEnabled || s.OrgId == _tenant.OrgId);
         modelBuilder.Entity<RentLedgerEntry>().HasQueryFilter(e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
 
