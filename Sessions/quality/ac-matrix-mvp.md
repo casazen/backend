@@ -1,6 +1,6 @@
 # AC Matrix — MVP Phase 1
 
-**Updated:** 2026-08-13  
+**Updated:** 2026-08-13 (tick 6: GJ AC1–AC5 → blocked)  
 **Baseline:** Dev Flow Verification 2026-07-14 + quality-gates overhaul  
 **Statuses:** `pass` | `fail` | `stub` | `missing-test` | `in-progress` | `blocked`
 
@@ -21,7 +21,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 
 | AC | Description | L2 | L3 | Status | Notes |
 |---|---|---|---|---|---|
-| AC1–AC5 | Web steps harness | `e2e/golden-journey-web.spec.ts` | `e2e/l3/*` | `in-progress` | Steps 3–7 covered in L2; full 1–12 incomplete |
+| AC1–AC5 | Web steps harness | `e2e/golden-journey-web.spec.ts` | `e2e/l3/*` | `blocked` | Full 1–12 L2/L3 cannot land from this Automation — no write access to `casazen/frontend` (push 403); L3 also needs `E2E_AUTH0_*`. FE `golden-journey-web.spec.ts` only covers demo steps 3–4 today; unblock when FE push + (optional) Auth0 secrets available |
 | AC6–AC12 | Host app M1–M7 | `mobile/e2e/m*.yaml` | same + staging seed | `blocked` | `casazen/mobile` repo missing; Maestro CLI/device unavailable in Automation — unblock when mobile repo + device exist |
 | AC13 | Supplier mobile F1–F2 | — | — | `missing-test` | Spec pending suite |
 | AC14–AC15 | Parity + CI | CI e2e.yml L2 | staging-gj project | `in-progress` | L2 CI restored; staging needs secrets |
