@@ -1,9 +1,14 @@
 ﻿using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
 public class NotificationService(
+    AppDbContext db,
+    IEmailService emailService,
     IPushNotificationService pushNotificationService,
     ILogger<NotificationService> logger) : INotificationService
 {
@@ -39,8 +44,43 @@ public class NotificationService(
 
     public async Task SendAlloggiatiDeadlineAlertAsync(Guid bookingId)
     {
-        logger.LogInformation("Sending Alloggiati deadline alert for booking {BookingId}", bookingId);
-        await Task.Delay(100);
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Include(b => b.Org)
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == bookingId);
+
+        if (booking is null)
+        {
+            logger.LogWarning("Alloggiati deadline alert skipped because booking {BookingId} was not found", bookingId);
+            return;
+        }
+
+        var hostEmail = booking.Org?.ContactEmail;
+        if (!string.IsNullOrWhiteSpace(hostEmail))
+        {
+            var subject = $"Alloggiati Web in scadenza - {booking.Property.Name} ({booking.CheckInDate:dd/MM/yyyy})";
+            var html = BuildAlloggiatiDeadlineHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
+            var result = await emailService.SendEmailAsync(hostEmail, subject, html);
+
+            if (!result.Success)
+            {
+                logger.LogWarning(
+                    "Failed to send Alloggiati deadline email for booking {BookingId}: {Error}",
+                    bookingId,
+                    result.ErrorDetail);
+            }
+        }
+        else
+        {
+            logger.LogWarning(
+                "Alloggiati deadline email skipped for booking {BookingId} because org {OrgId} has no contact email",
+                bookingId,
+                booking.OrgId);
+        }
+
+        await pushNotificationService.SendGuestCheckInIncompleteAsync(bookingId);
     }
 
     public async Task SendCheckoutReminderAsync(Guid bookingId)
@@ -57,4 +97,12 @@ public class NotificationService(
             ownerId, propertyIds.Count, daysUntilDeadline);
         await Task.Delay(100);
     }
+
+    private static string BuildAlloggiatiDeadlineHtml(string propertyName, DateTime checkInDate, string guestName) =>
+        $"""
+        <p>Attenzione: la comunicazione Alloggiati Web per l'ospite <strong>{guestName}</strong>
+        presso <strong>{propertyName}</strong> e in scadenza per il check-in del
+        <strong>{checkInDate:dd/MM/yyyy}</strong>.</p>
+        <p>Completa o correggi i dati dell'ospite e invia la comunicazione dal gestionale.</p>
+        """;
 }

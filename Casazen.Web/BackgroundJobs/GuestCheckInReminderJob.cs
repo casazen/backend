@@ -19,6 +19,7 @@ public class GuestCheckInReminderJob(
     public async Task ExecuteAsync()
     {
         var now = DateTime.UtcNow;
+        var alertWindowStart = now.Date;
         var alertWindow = now.AddHours(24);
 
         var bookings = await db.Bookings
@@ -27,8 +28,8 @@ public class GuestCheckInReminderJob(
             .Include(b => b.Property)
             .Include(b => b.Org)
             .Where(b =>
-                b.Status == BookingStatus.Confirmed &&
-                b.CheckInDate >= now &&
+                (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn) &&
+                b.CheckInDate >= alertWindowStart &&
                 b.CheckInDate <= alertWindow)
             .ToListAsync();
 
@@ -37,29 +38,34 @@ public class GuestCheckInReminderJob(
 
         var bookingIds = bookings.Select(b => b.Id).ToList();
 
-        var incompleteSessions = await db.GuestCheckInSessions
+        var completedSessionBookingIds = await db.GuestCheckInSessions
             .Where(s =>
                 bookingIds.Contains(s.BookingId) &&
-                (s.Status == GuestCheckInSessionStatus.Inviato ||
-                 s.Status == GuestCheckInSessionStatus.InCompilazione))
+                (s.Status == GuestCheckInSessionStatus.Completo ||
+                 s.Status == GuestCheckInSessionStatus.AlloggiatiInviato))
             .Select(s => s.BookingId)
             .Distinct()
             .ToListAsync();
 
-        foreach (var booking in bookings.Where(b => incompleteSessions.Contains(b.Id)))
+        foreach (var booking in bookings.Where(b => !completedSessionBookingIds.Contains(b.Id)))
         {
             try
             {
+                await pushNotificationService.SendGuestCheckInIncompleteAsync(booking.Id);
+
                 var hostEmail = booking.Org?.ContactEmail;
                 if (string.IsNullOrEmpty(hostEmail))
+                {
+                    logger.LogInformation(
+                        "Sent incomplete check-in push reminder for booking {BookingId}; no host email configured",
+                        booking.Id);
                     continue;
+                }
 
                 var subject = $"Check-in incompleto — {booking.Property.Name} ({booking.CheckInDate:dd/MM/yyyy})";
                 var html = BuildReminderHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
 
                 await emailService.SendEmailAsync(hostEmail, subject, html);
-
-                await pushNotificationService.SendGuestCheckInIncompleteAsync(booking.Id);
 
                 logger.LogInformation(
                     "Sent incomplete check-in reminder for booking {BookingId} to host {Email}",

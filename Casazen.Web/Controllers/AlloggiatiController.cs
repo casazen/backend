@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Alloggiati;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,16 +14,21 @@ public class AlloggiatiController(
     IAlloggiatiWebService alloggiatiWebService,
     IBookingService bookingService,
     IPropertyAuthorizationService authorizationService,
+    IOrgContextResolver orgContextResolver,
     ILogger<AlloggiatiController> logger) : ControllerBase
 {
     [HttpGet("summary")]
     [Authorize(Policy = "RequireContext:short-rent:booking.read")]
     public async Task<ActionResult<IEnumerable<AlloggiatiSummaryDto>>> GetSummary([FromQuery] Guid? propertyId)
     {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
+
         if (propertyId.HasValue && !await CanAccessPropertyAsync(propertyId.Value))
             return Forbid();
 
-        var summaries = await alloggiatiWebService.GetSummaryAsync(propertyId);
+        var summaries = await alloggiatiWebService.GetSummaryAsync(orgId.Value, propertyId);
         return Ok(summaries.Select(MapSummary));
     }
 

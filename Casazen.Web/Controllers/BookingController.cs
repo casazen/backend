@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
@@ -33,6 +34,8 @@ public class BookingsController(
     IComplianceWizardService complianceWizardService,
     ICheckoutReminderScheduler checkoutReminderScheduler,
     IOptions<ComplianceOptions> complianceOptions,
+    IConfiguration configuration,
+    IEmailService emailService,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -203,7 +206,9 @@ public class BookingsController(
         if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
             return NotFound();
 
+        var checkoutReminderJobId = existing.CheckoutReminderJobId;
         await bookingService.CancelBookingAsync(id);
+        checkoutReminderScheduler.CancelReminder(checkoutReminderJobId);
         logger.LogInformation("Booking cancelled: {BookingId}", id);
         return NoContent();
     }
@@ -563,7 +568,45 @@ public class BookingsController(
         if (property is null) return NotFound();
         if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
 
-        await checkInService.RegenerateTokenAsync(booking.Id, booking.OrgId);
+        var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
+        var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";
+        var link = $"{baseUrl}/check-in/{token}";
+        var subject = $"Completa il check-in per il tuo soggiorno — {property.Name}";
+        var html = BuildCheckInEmailHtml(booking.Guest.FirstName, property.Name, booking.CheckInDate, link);
+
+        try
+        {
+            var result = await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+            if (!result.Success)
+            {
+                await checkInService.ExpireTokenAsync(token);
+                logger.LogError(
+                    "Failed to resend check-in link for booking {BookingId}: {ErrorDetail}",
+                    booking.Id,
+                    result.ErrorDetail ?? "email service returned failure");
+                return StatusCode(
+                    StatusCodes.Status502BadGateway,
+                    new DTOs.CheckIn.ResendCheckInLinkResponse
+                    {
+                        Success = false,
+                        Message = "Impossibile inviare il link di check-in.",
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            await checkInService.ExpireTokenAsync(token);
+            logger.LogError(ex, "Failed to resend check-in link for booking {BookingId}", booking.Id);
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                new DTOs.CheckIn.ResendCheckInLinkResponse
+                {
+                    Success = false,
+                    Message = "Impossibile inviare il link di check-in.",
+                });
+        }
+
+        await checkInService.ExpireOtherActiveSessionsAsync(booking.Id, token);
 
         return Ok(new DTOs.CheckIn.ResendCheckInLinkResponse { Success = true, Message = "Link rigenerato e inviato." });
     }
@@ -598,6 +641,15 @@ public class BookingsController(
 
     private IReadOnlyList<string> GetUserRoles() =>
         User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+
+    private static string BuildCheckInEmailHtml(string guestName, string propertyName, DateTime checkInDate, string link) =>
+        $"""
+        <p>Gentile {guestName},</p>
+        <p>Il tuo soggiorno presso <strong>{propertyName}</strong> inizia il <strong>{checkInDate:dd/MM/yyyy}</strong>.</p>
+        <p>Completa il check-in in anticipo cliccando il link qui sotto:</p>
+        <p><a href="{link}">Completa il check-in</a></p>
+        <p>Il link è valido per 7 giorni.</p>
+        """;
 
     private async Task<IReadOnlyList<Booking>> FilterAccessibleBookingsAsync(IEnumerable<Booking> bookings, string userId)
     {

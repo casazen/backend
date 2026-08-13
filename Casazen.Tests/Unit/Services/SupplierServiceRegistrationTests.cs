@@ -66,6 +66,78 @@ public class SupplierServiceRegistrationTests
         Assert.DoesNotContain(db.SupplierProfiles, sp => sp.Email == "new-registration@test.com");
     }
 
+    [Fact]
+    public async Task FixOrphanedSupplierOrgsAsync_BlankEmailProfiles_DoesNotMergeDistinctSuppliers()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateService(db);
+
+        var firstOrg = new OrgEntity
+        {
+            Name = "Blank Email Supplier One",
+            Slug = $"blank-one-{Guid.NewGuid():N}"[..30],
+            DisplayName = "Blank Email Supplier One",
+            ContactEmail = string.Empty,
+            OrgType = OrgType.Supplier,
+            PlanTier = PlanTier.Starter,
+        };
+        var secondOrg = new OrgEntity
+        {
+            Name = "Blank Email Supplier Two",
+            Slug = $"blank-two-{Guid.NewGuid():N}"[..30],
+            DisplayName = "Blank Email Supplier Two",
+            ContactEmail = string.Empty,
+            OrgType = OrgType.Supplier,
+            PlanTier = PlanTier.Starter,
+        };
+        db.Orgs.AddRange(firstOrg, secondOrg);
+        db.SupplierProfiles.AddRange(
+            new SupplierProfile
+            {
+                OrgId = firstOrg.Id,
+                Email = string.Empty,
+                LegalName = firstOrg.DisplayName,
+                Phone = string.Empty,
+            },
+            new SupplierProfile
+            {
+                OrgId = secondOrg.Id,
+                Email = string.Empty,
+                LegalName = secondOrg.DisplayName,
+                Phone = string.Empty,
+                Bio = "Fully separate supplier",
+            });
+        db.Users.AddRange(
+            new User
+            {
+                Id = $"auth0|blank-one-{Guid.NewGuid():N}",
+                Email = string.Empty,
+                FirstName = "Blank",
+                LastName = "One",
+                SupplierOrgId = firstOrg.Id,
+                IsActive = true,
+            },
+            new User
+            {
+                Id = $"auth0|blank-two-{Guid.NewGuid():N}",
+                Email = string.Empty,
+                FirstName = "Blank",
+                LastName = "Two",
+                SupplierOrgId = secondOrg.Id,
+                IsActive = true,
+            });
+        await db.SaveChangesAsync();
+
+        var report = await service.FixOrphanedSupplierOrgsAsync();
+
+        Assert.Equal(2, report.ProfilesScanned);
+        Assert.Equal(0, report.DuplicatesMerged);
+        Assert.Equal(2, await db.Orgs.CountAsync(o => o.OrgType == OrgType.Supplier));
+        Assert.Equal(2, await db.SupplierProfiles.CountAsync());
+        Assert.Contains(await db.SupplierProfiles.Select(sp => sp.OrgId).ToListAsync(), id => id == firstOrg.Id);
+        Assert.Contains(await db.SupplierProfiles.Select(sp => sp.OrgId).ToListAsync(), id => id == secondOrg.Id);
+    }
+
     private static SupplierService CreateService(AppDbContext db)
     {
         var config = new ConfigurationBuilder()

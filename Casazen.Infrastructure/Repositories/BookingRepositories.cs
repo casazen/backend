@@ -2,11 +2,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Casazen.Infrastructure.Repositories;
 
 public class BookingRepository(AppDbContext context) : IBookingRepository
 {
+    private const string PropertyUnavailableMessage = "Property not available for selected dates";
+
     public async Task<Booking?> GetByIdAsync(Guid id)
     {
         return await context.Bookings
@@ -76,15 +79,11 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             ? DateTime.UtcNow.AddMinutes(-directPendingTtlMinutes.Value)
             : (DateTime?)null;
 
-        var conflicting = await context.Bookings
-            .AnyAsync(b => b.PropertyId == propertyId &&
-                      b.CheckInDate.Date < checkOutDate &&
-                      b.CheckOutDate.Date > checkInDate &&
-                      b.Status != BookingStatus.Cancelled &&
-                      !(pendingCutoff.HasValue &&
-                        b.Status == BookingStatus.Pending &&
-                        b.Source == BookingSource.Direct &&
-                        b.CreatedAt < pendingCutoff.Value));
+        var conflicting = await HasActiveOverlapAsync(
+            propertyId,
+            checkInDate,
+            checkOutDate,
+            pendingCutoff);
 
         return !conflicting;
     }
@@ -114,16 +113,45 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
     public async Task<Booking> AddAsync(Booking booking)
     {
         EnsureCheckInToken(booking);
+        await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
+
+        if (booking.Status != BookingStatus.Cancelled &&
+            await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date))
+        {
+            throw new InvalidOperationException(PropertyUnavailableMessage);
+        }
+
         context.Bookings.Add(booking);
         await context.SaveChangesAsync();
+
+        if (transaction is not null)
+            await transaction.CommitAsync();
+
         return booking;
     }
 
     public async Task<Booking> UpdateAsync(Booking booking)
     {
         EnsureCheckInToken(booking);
+        await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
+
+        if (booking.Status != BookingStatus.Cancelled &&
+            await HasActiveOverlapAsync(
+                booking.PropertyId,
+                booking.CheckInDate.Date,
+                booking.CheckOutDate.Date,
+                pendingCutoff: null,
+                excludeBookingId: booking.Id))
+        {
+            throw new InvalidOperationException(PropertyUnavailableMessage);
+        }
+
         context.Bookings.Update(booking);
         await context.SaveChangesAsync();
+
+        if (transaction is not null)
+            await transaction.CommitAsync();
+
         return booking;
     }
 
@@ -180,4 +208,41 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         if (!booking.CheckInTokenExpiresAt.HasValue)
             booking.CheckInTokenExpiresAt = booking.CheckOutDate.AddDays(7);
     }
+
+    private async Task<bool> HasActiveOverlapAsync(
+        Guid propertyId,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        DateTime? pendingCutoff = null,
+        Guid? excludeBookingId = null)
+    {
+        var query = context.Bookings.Where(b =>
+            b.PropertyId == propertyId &&
+            b.CheckInDate.Date < checkOutDate &&
+            b.CheckOutDate.Date > checkInDate &&
+            b.Status != BookingStatus.Cancelled &&
+            !(pendingCutoff.HasValue &&
+              b.Status == BookingStatus.Pending &&
+              b.Source == BookingSource.Direct &&
+              b.CreatedAt < pendingCutoff.Value));
+
+        if (excludeBookingId.HasValue)
+            query = query.Where(b => b.Id != excludeBookingId.Value);
+
+        return await query.AnyAsync();
+    }
+
+    private async Task<IDbContextTransaction?> BeginPropertyGuardTransactionAsync(Guid propertyId)
+    {
+        if (!string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
+            return null;
+
+        var transaction = await context.Database.BeginTransactionAsync();
+        var lockKey = ToAdvisoryLockKey(propertyId);
+        await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", lockKey);
+        return transaction;
+    }
+
+    private static long ToAdvisoryLockKey(Guid value) =>
+        BitConverter.ToInt64(value.ToByteArray(), 0);
 }

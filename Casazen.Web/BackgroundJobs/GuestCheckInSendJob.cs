@@ -10,7 +10,7 @@ namespace Casazen.Web.BackgroundJobs;
 
 /// <summary>
 /// Daily 08:00 UTC job that emails guests with a tokenized check-in link (AC2, US-020).
-/// Targets Confirmed bookings whose check-in is within the configured window (default 3 days).
+/// Targets upcoming Confirmed bookings and already CheckedIn stays that still need self-service data.
 /// </summary>
 public class GuestCheckInSendJob(
     AppDbContext db,
@@ -31,9 +31,11 @@ public class GuestCheckInSendJob(
             .Include(b => b.Property)
             .Include(b => b.Org)
             .Where(b =>
-                b.Status == BookingStatus.Confirmed &&
-                b.CheckInDate >= now.Date &&
-                b.CheckInDate <= windowEnd)
+                (b.Status == BookingStatus.Confirmed &&
+                 b.CheckInDate >= now.Date &&
+                 b.CheckInDate <= windowEnd) ||
+                (b.Status == BookingStatus.CheckedIn &&
+                 b.CheckOutDate >= now.Date))
             .ToListAsync();
 
         if (bookings.Count == 0)
@@ -48,22 +50,44 @@ public class GuestCheckInSendJob(
             .Distinct()
             .ToListAsync();
 
+        var completedReportBookingIds = await db.AlloggiatiWebReports
+            .Where(r =>
+                bookingIds.Contains(r.BookingId) &&
+                (r.Status == AlloggiatiWebStatus.Submitted ||
+                 r.Status == AlloggiatiWebStatus.Confirmed))
+            .Select(r => r.BookingId)
+            .Distinct()
+            .ToListAsync();
+
         var pending = bookings
-            .Where(b => !existingActiveSessionBookingIds.Contains(b.Id))
+            .Where(b =>
+                !existingActiveSessionBookingIds.Contains(b.Id) &&
+                !completedReportBookingIds.Contains(b.Id))
             .ToList();
 
         var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";
 
         foreach (var booking in pending)
         {
+            string? token = null;
+
             try
             {
-                var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
+                token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
                 var link = $"{baseUrl}/check-in/{token}";
                 var subject = $"Completa il check-in per il tuo soggiorno — {booking.Property.Name}";
                 var html = BuildEmailHtml(booking.Guest.FirstName, booking.Property.Name, booking.CheckInDate, link);
 
-                await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+                var result = await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+                if (!result.Success)
+                {
+                    await ExpireUndeliveredTokenAsync(token, booking.Id);
+                    logger.LogError(
+                        "Failed to send check-in link for booking {BookingId}: {ErrorDetail}",
+                        booking.Id,
+                        result.ErrorDetail ?? "email service returned failure");
+                    continue;
+                }
 
                 logger.LogInformation(
                     "Sent check-in link for booking {BookingId} to guest {GuestId}",
@@ -71,8 +95,23 @@ public class GuestCheckInSendJob(
             }
             catch (Exception ex)
             {
+                if (token is not null)
+                    await ExpireUndeliveredTokenAsync(token, booking.Id);
+
                 logger.LogError(ex, "Failed to send check-in link for booking {BookingId}", booking.Id);
             }
+        }
+    }
+
+    private async Task ExpireUndeliveredTokenAsync(string token, Guid bookingId)
+    {
+        try
+        {
+            await checkInService.ExpireTokenAsync(token);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to expire undelivered check-in token for booking {BookingId}", bookingId);
         }
     }
 
