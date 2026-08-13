@@ -21,6 +21,12 @@ public interface IGuestCheckInService
 
     /// <summary>Expires any active session for the booking and creates a fresh one.</summary>
     Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId);
+
+    /// <summary>Expires the session matching the raw token.</summary>
+    Task ExpireTokenAsync(string token);
+
+    /// <summary>Expires active sessions for the booking except the session matching the raw token.</summary>
+    Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep);
 }
 
 public class GuestCheckInSubmitRequest

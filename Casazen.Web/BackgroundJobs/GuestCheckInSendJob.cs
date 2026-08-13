@@ -69,14 +69,25 @@ public class GuestCheckInSendJob(
 
         foreach (var booking in pending)
         {
+            string? token = null;
+
             try
             {
-                var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
+                token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
                 var link = $"{baseUrl}/check-in/{token}";
                 var subject = $"Completa il check-in per il tuo soggiorno — {booking.Property.Name}";
                 var html = BuildEmailHtml(booking.Guest.FirstName, booking.Property.Name, booking.CheckInDate, link);
 
-                await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+                var result = await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+                if (!result.Success)
+                {
+                    await ExpireUndeliveredTokenAsync(token, booking.Id);
+                    logger.LogError(
+                        "Failed to send check-in link for booking {BookingId}: {ErrorDetail}",
+                        booking.Id,
+                        result.ErrorDetail ?? "email service returned failure");
+                    continue;
+                }
 
                 logger.LogInformation(
                     "Sent check-in link for booking {BookingId} to guest {GuestId}",
@@ -84,8 +95,23 @@ public class GuestCheckInSendJob(
             }
             catch (Exception ex)
             {
+                if (token is not null)
+                    await ExpireUndeliveredTokenAsync(token, booking.Id);
+
                 logger.LogError(ex, "Failed to send check-in link for booking {BookingId}", booking.Id);
             }
+        }
+    }
+
+    private async Task ExpireUndeliveredTokenAsync(string token, Guid bookingId)
+    {
+        try
+        {
+            await checkInService.ExpireTokenAsync(token);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to expire undelivered check-in token for booking {BookingId}", bookingId);
         }
     }
 

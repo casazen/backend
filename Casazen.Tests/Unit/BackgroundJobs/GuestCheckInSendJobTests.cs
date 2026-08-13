@@ -2,10 +2,12 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -13,6 +15,33 @@ namespace Casazen.Tests.Unit.BackgroundJobs;
 
 public class GuestCheckInSendJobTests
 {
+    [Fact]
+    public async Task ExecuteAsync_EmailSendFails_ExpiresCreatedSessionSoBookingCanRetry()
+    {
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1);
+        var checkInService = new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance);
+        var emailService = new Mock<IEmailService>();
+        emailService
+            .Setup(s => s.SendEmailAsync(booking.Guest.Email, It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(false, "provider rejected request"));
+        var job = CreateJob(db, checkInService, emailService.Object);
+
+        await job.ExecuteAsync();
+        await job.ExecuteAsync();
+
+        emailService.Verify(
+            s => s.SendEmailAsync(booking.Guest.Email, It.IsAny<string>(), It.IsAny<string>()),
+            Times.Exactly(2));
+
+        var sessions = await db.GuestCheckInSessions
+            .Where(s => s.BookingId == booking.Id)
+            .ToListAsync();
+
+        Assert.Equal(2, sessions.Count);
+        Assert.All(sessions, s => Assert.Equal(GuestCheckInSessionStatus.Scaduto, s.Status));
+    }
+
     [Fact]
     public async Task ExecuteAsync_CheckedInBookingWithoutSession_SendsGuestLink()
     {
@@ -99,21 +128,30 @@ public class GuestCheckInSendJobTests
         AppDbContext context,
         BookingStatus status)
     {
+        var booking = await SeedBookingEntityAsync(context, status, daysUntilCheckIn: 0);
+        return (booking.Id, booking.OrgId);
+    }
+
+    private static async Task<Booking> SeedBookingEntityAsync(
+        AppDbContext context,
+        BookingStatus status,
+        int daysUntilCheckIn)
+    {
         var orgId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var guestId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
 
-        context.Orgs.Add(new OrgEntity
+        var org = new OrgEntity
         {
             Id = orgId,
             Name = "Test Org",
             Slug = $"org-{orgId:N}",
             DisplayName = "Test Org",
             ContactEmail = "host@example.com",
-        });
+        };
 
-        context.Properties.Add(new Property
+        var property = new Property
         {
             Id = propertyId,
             OrgId = orgId,
@@ -124,31 +162,39 @@ public class GuestCheckInSendJobTests
             PostalCode = "00100",
             NightlyRate = 100m,
             MaxGuests = 4,
-        });
+        };
 
-        context.Guests.Add(new Guest
+        var guest = new Guest
         {
             Id = guestId,
             FirstName = "Anna",
             LastName = "Bianchi",
             Email = "anna@example.com",
-        });
+        };
 
-        context.Bookings.Add(new Booking
+        var booking = new Booking
         {
             Id = bookingId,
             PropertyId = propertyId,
             OrgId = orgId,
             GuestId = guestId,
-            CheckInDate = DateTime.UtcNow.Date,
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(2),
+            Guest = guest,
+            Property = property,
+            Org = org,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(daysUntilCheckIn),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(daysUntilCheckIn + 2),
             Status = status,
             Source = BookingSource.Direct,
             NumberOfGuests = 1,
             TotalPrice = 100m,
-        });
+        };
+
+        context.Orgs.Add(org);
+        context.Properties.Add(property);
+        context.Guests.Add(guest);
+        context.Bookings.Add(booking);
 
         await context.SaveChangesAsync();
-        return (bookingId, orgId);
+        return booking;
     }
 }

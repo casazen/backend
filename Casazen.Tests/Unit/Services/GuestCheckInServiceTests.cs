@@ -75,7 +75,7 @@ public class GuestCheckInServiceTests
         var rawToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
 
         Assert.NotNull(rawToken);
-        Assert.Equal(64, rawToken.Length); // 32 bytes → 64 hex chars
+        Assert.Equal(64, rawToken.Length); // 32 bytes ΓåÆ 64 hex chars
 
         var session = await seed.Db.GuestCheckInSessions.FirstAsync();
         Assert.NotEqual(rawToken, session.TokenHash); // hash differs from raw
@@ -303,6 +303,37 @@ public class GuestCheckInServiceTests
         Assert.Equal(2, sessions.Count);
         var expired = sessions.Single(s => s.Status == GuestCheckInSessionStatus.Scaduto);
         Assert.NotNull(expired);
+    }
+
+    [Fact]
+    public async Task ExpireToken_ValidToken_MarksSessionExpired()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        await svc.ExpireTokenAsync(token);
+
+        var session = await seed.Db.GuestCheckInSessions.SingleAsync();
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, session.Status);
+    }
+
+    [Fact]
+    public async Task ExpireOtherActiveSessions_KeepsReplacementTokenActive()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        _ = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        await svc.ExpireOtherActiveSessionsAsync(seed.BookingId, replacementToken);
+
+        var replacement = await svc.GetSessionByTokenAsync(replacementToken);
+        Assert.NotNull(replacement);
+
+        var sessions = await seed.Db.GuestCheckInSessions.ToListAsync();
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Scaduto);
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.InCompilazione);
     }
 
     private static async Task<Guid> AddBookingSharingGuestAsync(AppDbContext db, Guid guestId)
