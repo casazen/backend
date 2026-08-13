@@ -85,13 +85,25 @@ if (Test-Path $matrixPath) {
     @{ Pattern = 'Host app M1'; Id = 'SPEC:golden-journey-e2e:AC6'; Status = 'fail' }
   )
   foreach ($h in $failHints) {
-    if ($matrix -match [regex]::Escape($h.Pattern)) {
+    # Prefer status cell from the matching matrix row when already resolved.
+    $rowPattern = '(?m)^\|[^\r\n]*' + [regex]::Escape($h.Pattern) + '[^\r\n]*\|\s*`([^`]+)`'
+    if ($matrix -match $rowPattern) {
+      $cellStatus = $Matches[1].Trim()
       $found = $requirements | Where-Object { $_.id -eq $h.Id } | Select-Object -First 1
       if ($found) {
-        # Do not clobber env/device/repo blocks (Automation must skip non-actionable P0s)
-        if ([string]$found.matrix_status -ne 'blocked') {
+        if ($cellStatus -in @('pass', 'stub', 'blocked')) {
+          $found.matrix_status = $cellStatus
+        }
+        elseif ([string]$found.matrix_status -ne 'blocked') {
+          # Do not clobber env/device/repo blocks (Automation must skip non-actionable P0s)
           $found.matrix_status = $h.Status
         }
+      }
+    }
+    elseif ($matrix -match [regex]::Escape($h.Pattern)) {
+      $found = $requirements | Where-Object { $_.id -eq $h.Id } | Select-Object -First 1
+      if ($found -and [string]$found.matrix_status -ne 'blocked') {
+        $found.matrix_status = $h.Status
       }
     }
   }
