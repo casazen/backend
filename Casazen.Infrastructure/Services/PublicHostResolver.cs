@@ -39,7 +39,7 @@ public class PublicHostResolver(
         var resolved = await ResolveUncachedAsync(normalizedHost, cancellationToken);
 
         var ttl = TimeSpan.FromSeconds(Math.Max(0, options.Value.ResolveCacheSeconds));
-        if (ttl > TimeSpan.Zero)
+        if (resolved is not null && ttl > TimeSpan.Zero)
             cache.Set(cacheKey, resolved, ttl);
 
         return resolved;
