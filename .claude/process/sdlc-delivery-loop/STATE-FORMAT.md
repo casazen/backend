@@ -23,7 +23,7 @@ Runtime under `Sessions/loop/` (gitignored). Keep committing process/skills only
 - last_evidence: (none) | Sessions/loop/evidence/delivery-<tick>/
 - pr_urls: (none) | <url>[, <url>...]
 - merge_wait: (none) | checks_pending
-- last_notify_event: (none) | pr_merged | review_failed | merge_wait | escalated | ...
+- last_notify_event: (none) | pr_merged | review_failed | merge_wait | escalated | goal_done | ...
 - goal_path: Sessions/loop/goal.md | (none)
 
 ## Notes
@@ -114,3 +114,15 @@ Same shape as reliability evidence (`STATE-FORMAT` in reliability-loop), with `"
 ## `merge_wait: checks_pending`
 
 Set when review gates PASS but GitHub required checks are not yet green. Next Automation tick re-checks and merges when green (or fails/escalates if checks fail).
+
+## Goal handoff (loop complete only)
+
+When status becomes `completed` for `goal_done` / `queue_empty` / `max_work_units`, `sdlc-goal-handoff` writes:
+
+| File | Purpose |
+|---|---|
+| `Sessions/loop/goal-handoff.md` | Always — capability list + journal |
+| `Sessions/loop/goal-handoff.html` | `kind=demo` only — graphical walkthrough (Mermaid + screens + API) |
+| `Sessions/loop/last-handoff.json` | Machine payload (kind, what_you_can_do, routes, endpoints) |
+
+`kind=demo` if the journal includes a feature and design/spec has FE routes or BE endpoints; otherwise `kind=report`. Webhook extra fields: `artifact_kind`, `artifact_path`, `html_path`.

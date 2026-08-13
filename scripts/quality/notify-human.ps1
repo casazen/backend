@@ -3,7 +3,7 @@
   POST a delivery-loop notification to NOTIFY_WEBHOOK_URL (Slack/Telegram bridge/etc).
 
 .DESCRIPTION
-  Payload: { event, work_id, pr_url, title, summary, evidence_path }.
+  Payload: { event, work_id, pr_url, title, summary, evidence_path, artifact_kind, artifact_path, html_path }.
   When -DryRun or NOTIFY_WEBHOOK_URL is unset: writes Sessions/loop/last-notify.json and exits 2 (warn).
   Success exit 0; HTTP failure exit 1.
 #>
@@ -24,6 +24,13 @@ param(
 
   [string]$EvidencePath = '',
 
+  [ValidateSet('', 'demo', 'report')]
+  [string]$ArtifactKind = '',
+
+  [string]$ArtifactPath = '',
+
+  [string]$HtmlPath = '',
+
   [string]$RepoRoot = '',
 
   [switch]$DryRun
@@ -43,6 +50,9 @@ $payload = [ordered]@{
   title           = $Title
   summary         = $Summary
   evidence_path   = $EvidencePath
+  artifact_kind   = $ArtifactKind
+  artifact_path   = $ArtifactPath
+  html_path       = $HtmlPath
   action_required = $false
   timestamp       = (Get-Date).ToUniversalTime().ToString('o')
 }
