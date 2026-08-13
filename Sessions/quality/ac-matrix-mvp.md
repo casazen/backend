@@ -43,7 +43,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | AC13–AC14 Parity/offline | `pass` | React Query + OfflineBanner |
 | AC15 Maestro 0 crash | `fail` | Device run not green; Expo Go push warnings |
 | AC19 typecheck | `fail` → fixed 2026-07-26 | Was missing `shouldShowBanner`/`shouldShowList` (SDK 54); re-run `npm run typecheck` |
-| AC20 Maestro M1–M7 | `fail` | Structural gate OK; **device Maestro not run / app runtime broken** |
+| AC20 Maestro M1–M7 | `blocked` | `casazen/mobile` repo missing; Maestro CLI/device unavailable in Automation — structural smoke alone cannot satisfy device M1–M7; unblock when mobile repo + device exist |
 | AC21 BE push tests | `missing-test` | Verify in backend suite |
 
 ## Micro-marketplace (#293) — P0
