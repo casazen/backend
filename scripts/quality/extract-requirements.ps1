@@ -81,7 +81,8 @@ if (Test-Path $matrixPath) {
     @{ Pattern = 'AC21 BE push'; Id = 'SPEC:native-host-app:AC21'; Status = 'missing-test' },
     @{ Pattern = 'Supplier take/complete'; Id = 'SPEC:micro-marketplace-v0:AC-supplier'; Status = 'fail' },
     @{ Pattern = 'L3 real API loop'; Id = 'SPEC:micro-marketplace-v0:AC-L3'; Status = 'missing-test' },
-    @{ Pattern = 'L3 booking create'; Id = 'SPEC:direct-checkout:AC-L3'; Status = 'missing-test' }
+    @{ Pattern = 'L3 booking create'; Id = 'SPEC:direct-checkout:AC-L3'; Status = 'missing-test' },
+    @{ Pattern = 'Host app M1'; Id = 'SPEC:golden-journey-e2e:AC6'; Status = 'fail' }
   )
   foreach ($h in $failHints) {
     if ($matrix -match [regex]::Escape($h.Pattern)) {

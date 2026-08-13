@@ -22,7 +22,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | AC | Description | L2 | L3 | Status | Notes |
 |---|---|---|---|---|---|
 | AC1–AC5 | Web steps harness | `e2e/golden-journey-web.spec.ts` | `e2e/l3/*` | `in-progress` | Steps 3–7 covered in L2; full 1–12 incomplete |
-| AC6–AC12 | Host app M1–M7 | `mobile/e2e/m*.yaml` | same + staging seed | `fail` | Flows were theatrical; rewritten fail-hard |
+| AC6–AC12 | Host app M1–M7 | `mobile/e2e/m*.yaml` | same + staging seed | `blocked` | `casazen/mobile` repo missing; Maestro CLI/device unavailable in Automation — unblock when mobile repo + device exist |
 | AC13 | Supplier mobile F1–F2 | — | — | `missing-test` | Spec pending suite |
 | AC14–AC15 | Parity + CI | CI e2e.yml L2 | staging-gj project | `in-progress` | L2 CI restored; staging needs secrets |
 

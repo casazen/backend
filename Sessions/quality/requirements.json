@@ -152,7 +152,7 @@
       "priority": "P0",
       "text": "Host app M1–M7 golden journey",
       "active": true,
-      "matrix_status": "fail",
+      "matrix_status": "blocked",
       "gap_id": "MATRIX:gj:AC6-12"
     },
     {
