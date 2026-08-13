@@ -206,7 +206,9 @@ public class BookingsController(
         if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
             return NotFound();
 
+        var checkoutReminderJobId = existing.CheckoutReminderJobId;
         await bookingService.CancelBookingAsync(id);
+        checkoutReminderScheduler.CancelReminder(checkoutReminderJobId);
         logger.LogInformation("Booking cancelled: {BookingId}", id);
         return NoContent();
     }

@@ -10,7 +10,7 @@ namespace Casazen.Web.BackgroundJobs;
 
 /// <summary>
 /// Daily 08:00 UTC job that emails guests with a tokenized check-in link (AC2, US-020).
-/// Targets Confirmed bookings whose check-in is within the configured window (default 3 days).
+/// Targets upcoming Confirmed bookings and already CheckedIn stays that still need self-service data.
 /// </summary>
 public class GuestCheckInSendJob(
     AppDbContext db,
@@ -31,9 +31,11 @@ public class GuestCheckInSendJob(
             .Include(b => b.Property)
             .Include(b => b.Org)
             .Where(b =>
-                b.Status == BookingStatus.Confirmed &&
-                b.CheckInDate >= now.Date &&
-                b.CheckInDate <= windowEnd)
+                (b.Status == BookingStatus.Confirmed &&
+                 b.CheckInDate >= now.Date &&
+                 b.CheckInDate <= windowEnd) ||
+                (b.Status == BookingStatus.CheckedIn &&
+                 b.CheckOutDate >= now.Date))
             .ToListAsync();
 
         if (bookings.Count == 0)
@@ -48,8 +50,19 @@ public class GuestCheckInSendJob(
             .Distinct()
             .ToListAsync();
 
+        var completedReportBookingIds = await db.AlloggiatiWebReports
+            .Where(r =>
+                bookingIds.Contains(r.BookingId) &&
+                (r.Status == AlloggiatiWebStatus.Submitted ||
+                 r.Status == AlloggiatiWebStatus.Confirmed))
+            .Select(r => r.BookingId)
+            .Distinct()
+            .ToListAsync();
+
         var pending = bookings
-            .Where(b => !existingActiveSessionBookingIds.Contains(b.Id))
+            .Where(b =>
+                !existingActiveSessionBookingIds.Contains(b.Id) &&
+                !completedReportBookingIds.Contains(b.Id))
             .ToList();
 
         var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";

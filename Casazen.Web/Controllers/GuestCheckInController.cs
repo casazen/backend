@@ -1,10 +1,12 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Web.DTOs.CheckIn;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
@@ -18,6 +20,7 @@ public class GuestCheckInController(
     IAlloggiatiWebService alloggiatiWebService,
     IGuestDocumentStorage documentStorage,
     IConfiguration configuration,
+    AppDbContext db,
     ILogger<GuestCheckInController> logger) : ControllerBase
 {
     private static bool IsTokenExpired(Booking booking) =>
@@ -62,6 +65,9 @@ public class GuestCheckInController(
         if (guest is null)
             return NotFound();
 
+        var now = DateTime.UtcNow;
+        guest = await EnsureBookingOwnsMutableGuestAsync(booking, guest, now);
+
         guest.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth!.Value.Date, DateTimeKind.Utc);
         guest.PlaceOfBirth = request.PlaceOfBirth;
         guest.Nationality = request.Nationality;
@@ -78,7 +84,6 @@ public class GuestCheckInController(
         guest.Country = request.Country;
 
         var consentVersion = configuration["CheckIn:ConsentVersion"] ?? "2026-06-alloggiati-checkin-v1";
-        var now = DateTime.UtcNow;
         var consentIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
         guest.ConsentDate = now;
         guest.ConsentVersion = consentVersion;
@@ -88,7 +93,7 @@ public class GuestCheckInController(
         guest.DataRetentionUntil = now.AddYears(7);
         guest.UpdatedAt = now;
 
-        await guestRepository.UpdateAsync(guest);
+        await db.SaveChangesAsync();
 
         var dataComplete = await alloggiatiWebService.ValidateGuestDataAsync(guest.Id);
         logger.LogInformation(
@@ -111,17 +116,36 @@ public class GuestCheckInController(
         if (!documentStorage.ValidateDocument(file))
             return BadRequest(new { error = "Invalid file", message = "Accepted formats: JPG, PNG, PDF (max 5MB)." });
 
-        var url = await documentStorage.UploadDocumentAsync(file, booking.OrgId, booking.GuestId);
-
         var guest = await guestRepository.GetByIdAsync(booking.GuestId);
         if (guest is null)
             return NotFound();
 
+        var now = DateTime.UtcNow;
+        guest = await EnsureBookingOwnsMutableGuestAsync(booking, guest, now);
+        var url = await documentStorage.UploadDocumentAsync(file, booking.OrgId, guest.Id);
         guest.DocumentScanUrl = url;
-        guest.UpdatedAt = DateTime.UtcNow;
-        await guestRepository.UpdateAsync(guest);
+        guest.UpdatedAt = now;
+        await db.SaveChangesAsync();
 
         return Ok(new GuestDocumentUploadResponse { DocumentScanUrl = url });
+    }
+
+    private async Task<Guest> EnsureBookingOwnsMutableGuestAsync(Booking booking, Guest guest, DateTime now)
+    {
+        var guestIsShared = await db.Bookings.AnyAsync(b => b.GuestId == guest.Id && b.Id != booking.Id);
+        if (!guestIsShared)
+            return guest;
+
+        var snapshot = guest.CreateSnapshot(now);
+        db.Guests.Add(snapshot);
+        booking.GuestId = snapshot.Id;
+        booking.Guest = snapshot;
+
+        logger.LogInformation(
+            "Created guest snapshot {SnapshotGuestId} for legacy check-in booking {BookingId} from shared guest {GuestId}",
+            snapshot.Id, booking.Id, guest.Id);
+
+        return snapshot;
     }
 
     private static CheckInContextDto MapContext(Booking booking, bool dataComplete) =>

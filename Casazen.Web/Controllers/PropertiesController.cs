@@ -67,8 +67,21 @@ public class PropertiesController(
     [HttpGet("{id}")]
     public async Task<ActionResult<Property>> GetById(Guid id)
     {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
         var property = await propertyService.GetPropertyAsync(id);
-        return property == null ? NotFound() : Ok(property);
+        if (property == null)
+            return NotFound();
+
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+            return Forbid();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "Property.Read");
+
+        return Ok(property);
     }
 
     /// <summary>

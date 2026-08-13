@@ -3,7 +3,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
@@ -35,8 +34,6 @@ public class BookingsControllerTests
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
-    private readonly Mock<IEmailService> _mockEmailService;
-    private readonly IConfiguration _configuration;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -59,13 +56,6 @@ public class BookingsControllerTests
         _mockCheckoutReminderScheduler
             .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
             .Returns("job-test");
-        _mockEmailService = new Mock<IEmailService>();
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["App:PublicSiteBaseUrl"] = "https://public.test",
-            })
-            .Build();
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = new BookingsController(
@@ -81,8 +71,6 @@ public class BookingsControllerTests
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
             Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
-            _configuration,
-            _mockEmailService.Object,
             _mockLogger.Object);
     }
 
@@ -474,6 +462,34 @@ public class BookingsControllerTests
         Assert.False(response.Success);
         _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync("new-token"), Times.Once);
         _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Cancel_WhenBookingHasCheckoutReminder_CancelsScheduledReminder()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            Status = BookingStatus.CheckedIn,
+            CheckoutReminderJobId = "checkout-reminder-job",
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-1),
+            CheckOutDate = DateTime.UtcNow.Date,
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockBookingService.Setup(b => b.CancelBookingAsync(bookingId)).ReturnsAsync(true);
+
+        var result = await _controller.Cancel(bookingId);
+
+        Assert.IsType<NoContentResult>(result);
+        _mockCheckoutReminderScheduler.Verify(s => s.CancelReminder("checkout-reminder-job"), Times.Once);
     }
 
     [Fact]

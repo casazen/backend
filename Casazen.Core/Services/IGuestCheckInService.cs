@@ -35,6 +35,7 @@ public class GuestCheckInSubmitRequest
     public string LastName { get; set; } = string.Empty;
     public DateTime? DateOfBirth { get; set; }
     public string Nationality { get; set; } = string.Empty;
+    public Gender? Gender { get; set; }
     public string DocumentType { get; set; } = string.Empty;
     public string DocumentNumber { get; set; } = string.Empty;
     public string DocumentIssuingCountry { get; set; } = string.Empty;

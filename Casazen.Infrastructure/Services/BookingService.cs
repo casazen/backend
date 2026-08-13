@@ -172,7 +172,20 @@ public class BookingService(
                 DirectBookingErrorCodes.InvalidDates);
         }
 
-        var createdBooking = await repository.AddAsync(booking);
+        Booking createdBooking;
+        try
+        {
+            createdBooking = await repository.AddAsync(booking);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
+        {
+            await guestRepository.DeleteAsync(guest.Id);
+            throw new DirectBookingException(
+                "Property not available for selected dates",
+                DirectBookingErrorCodes.NotAvailable);
+        }
+
         var amountCents = (long)Math.Round(totalPrice * 100m, MidpointRounding.AwayFromZero);
         var metadata = new Dictionary<string, string>
         {
@@ -194,7 +207,7 @@ public class BookingService(
 
             case PaymentOption.OnCancellationDeadline:
                 setupIntentClientSecret = await HandleDeferredPaymentAsync(
-                    createdBooking, org.StripeConnectedAccountId!, guest.Id, amountCents, currency, metadata);
+                    createdBooking, org.StripeConnectedAccountId!, guest, amountCents, currency, metadata);
                 break;
 
             case PaymentOption.OnSite:
@@ -263,7 +276,7 @@ public class BookingService(
     private async Task<string> HandleDeferredPaymentAsync(
         Booking booking,
         string stripeConnectedAccountId,
-        Guid guestId,
+        Guest guest,
         long amountCents,
         string currency,
         Dictionary<string, string> metadata)
@@ -278,7 +291,9 @@ public class BookingService(
         {
             setupIntent = await stripeService.CreateConnectedAccountSetupIntentAsync(
                 stripeConnectedAccountId,
-                setupMetadata);
+                setupMetadata,
+                guest.Email,
+                $"{guest.FirstName} {guest.LastName}".Trim());
         }
         catch (Exception ex)
         {
@@ -290,6 +305,7 @@ public class BookingService(
         }
 
         booking.StripeSetupIntentId = setupIntent.Id;
+        booking.StripeCustomerId = setupIntent.CustomerId;
         booking.UpdatedAt = DateTime.UtcNow;
         await repository.UpdateAsync(booking);
 
@@ -361,6 +377,7 @@ public class BookingService(
             return false;
 
         booking.Status = BookingStatus.Cancelled;
+        booking.CheckoutReminderJobId = null;
         await repository.UpdateAsync(booking);
         logger.LogInformation("Booking {Id} cancelled", bookingId);
         return true;

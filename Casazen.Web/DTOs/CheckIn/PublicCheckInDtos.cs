@@ -20,6 +20,7 @@ public class PublicCheckInGuestPrefill
     public string Email { get; set; } = string.Empty;
     public DateTime? DateOfBirth { get; set; }
     public string Nationality { get; set; } = string.Empty;
+    public Gender? Gender { get; set; }
     public string DocumentNumber { get; set; } = string.Empty;
     public string DocumentIssuingCountry { get; set; } = string.Empty;
     public string PlaceOfBirth { get; set; } = string.Empty;
@@ -38,6 +39,9 @@ public class PublicCheckInSubmitRequest
 
     [Required, MaxLength(100)]
     public string Nationality { get; set; } = string.Empty;
+
+    [Required]
+    public Gender? Gender { get; set; }
 
     [Required, MaxLength(50)]
     public string DocumentType { get; set; } = string.Empty;

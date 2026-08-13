@@ -1,19 +1,19 @@
 ---
-description: SDLC pipeline must run to completion without pausing for confirmation between stages
+description: SDLC reliability loop — run ticks/pipelines to completion only on gate-runner PASS
 alwaysApply: true
 ---
 
-# SDLC Pipeline — Run to Completion
+# SDLC Reliability Loop — Run to Completion
 
-When the user starts or resumes an SDLC pipeline (`/sdlc-pipeline`, `resume pipeline`, or equivalent):
+Canonical process: `.claude/process/sdlc-reliability-loop/PROCESS.md`  
+Entry skills: `sdlc-loop-tick` (outer), `sdlc-stage-run` + `sdlc-gate-runner` (inner).  
+`/sdlc-pipeline` is a deprecated redirect only.
 
-1. **Do not stop between stages** for routine handoffs (03→04→05→06). Execute the full flow through Stage 06 unless a gate fails after 3 harness iterations.
-2. **After Stage 04 review passes**, proceed automatically to Stage 05 (merge if needed, staging validation, `develop`→`main`, tag, Phase D).
-3. **After Stage 05 Phase D passes**, proceed automatically to Stage 06 (production ops audit + `Sessions/ops-report-<date>.md`).
-4. **Only pause and ask the user** when:
-   - A gate fails at max iterations (escalation)
-   - A destructive or irreversible action is required outside the standard release flow
-   - Credentials or secrets are missing and cannot be inferred from repo docs
-5. **Report once at the end** with the pipeline completion summary (issue, PRs, tag, release URL, ops report path).
+When the user starts or resumes the loop or a feature pipeline (`/sdlc-loop`, `/sdlc-pipeline`, `resume loop`, `resume pipeline`):
 
-This rule applies in addition to `.claude/skills/sdlc-pipeline/SKILL.md`.
+1. **Outer loop:** execute ticks until `open_p0_gaps == 0` or escalation (same gap FAIL × 3). Cursor Automation may run **one tick per invocation**.
+2. **Inner pipeline:** do not stop between stages 03→06 for routine handoffs **only if** `sdlc-gate-runner` wrote evidence PASS for the current stage.
+3. **Never** advance stage, clear a matrix P0 row, or promote `develop`→`main` on narrative/self-reported PASS.
+4. **Never** skip open P0 gaps while freeze is active to ship unrelated features (hotfixes for failing P0 only).
+5. Pause for the user only on: escalation at max iterations, missing secrets, or non-standard destructive actions.
+6. Report once when the outer loop completes or when an inner pipeline finishes Stage 06 with evidence.

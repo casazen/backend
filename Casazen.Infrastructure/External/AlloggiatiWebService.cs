@@ -123,13 +123,13 @@ public class AlloggiatiWebService(
         return BuildStatusInfo(booking, report, dataComplete);
     }
 
-    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid? propertyId)
+    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid orgId, Guid? propertyId)
     {
         var query = context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => ActiveBookingStatuses.Contains(b.Status));
+            .Where(b => b.OrgId == orgId && ActiveBookingStatuses.Contains(b.Status));
 
         if (propertyId.HasValue)
             query = query.Where(b => b.PropertyId == propertyId.Value);

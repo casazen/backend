@@ -97,14 +97,15 @@ public class GuestCheckInService(
         if (!request.GdprConsent)
             return new GuestCheckInSubmitResult { Success = false };
 
-        var guest = session.Booking.Guest;
         var now = DateTime.UtcNow;
+        var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
         if (!string.IsNullOrWhiteSpace(request.FirstName)) guest.FirstName = request.FirstName;
         if (!string.IsNullOrWhiteSpace(request.LastName)) guest.LastName = request.LastName;
         if (request.DateOfBirth.HasValue)
             guest.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value.Date, DateTimeKind.Utc);
         if (!string.IsNullOrWhiteSpace(request.Nationality)) guest.Nationality = request.Nationality;
+        if (request.Gender.HasValue) guest.Gender = request.Gender.Value;
         if (!string.IsNullOrWhiteSpace(request.DocumentNumber)) guest.DocumentNumber = request.DocumentNumber;
         if (!string.IsNullOrWhiteSpace(request.DocumentIssuingCountry)) guest.DocumentIssuingCountry = request.DocumentIssuingCountry;
         if (!string.IsNullOrWhiteSpace(request.PlaceOfBirth)) guest.PlaceOfBirth = request.PlaceOfBirth;
@@ -202,6 +203,26 @@ public class GuestCheckInService(
 
     private static bool IsBookingEligibleForPublicCheckIn(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
+
+    private async Task<Guest> EnsureBookingOwnsMutableGuestAsync(GuestCheckInSession session, DateTime now)
+    {
+        var booking = session.Booking;
+        var guest = booking.Guest;
+        var guestIsShared = await db.Bookings.AnyAsync(b => b.GuestId == guest.Id && b.Id != booking.Id);
+        if (!guestIsShared)
+            return guest;
+
+        var snapshot = guest.CreateSnapshot(now);
+        db.Guests.Add(snapshot);
+        booking.GuestId = snapshot.Id;
+        booking.Guest = snapshot;
+
+        logger.LogInformation(
+            "Created guest snapshot {SnapshotGuestId} for public check-in booking {BookingId} from shared guest {GuestId}",
+            snapshot.Id, booking.Id, guest.Id);
+
+        return snapshot;
+    }
 
     private static string GenerateToken()
     {
