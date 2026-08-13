@@ -13,6 +13,15 @@ Canonical index for all CasaZen specs. **Strategic order, phases, and freeze lis
 
 New specs: copy [`_TEMPLATE.md`](./_TEMPLATE.md), fill YAML frontmatter, add a row below.
 
+**Process contract (mandatory sections in `_TEMPLATE.md`):**
+- `## Verifiable Outcomes` — every ACn has an observable pass/fail (Stage 02 G9b / `check-ac-depth.ps1 -SpecPath`)
+- `## UX / UI Quality` — when Frontend ACs exist
+- `## Export / Report Criteria` — when CSV/PDF/Excel/export ACs exist
+- Stage 03/04: `check-ac-depth.ps1 -DesignPath … -RequireTests` enforces one titled `test('ACn:…')` per UI AC (anti-vacuous)
+
+Bulk upgrade helper (re-runnable): `.\scripts\quality\upgrade-specs-to-template.ps1 [-ForceRebuildVo]`
+Validate: `.\scripts\quality\check-ac-depth.ps1 -SpecPath Sessions\specs\spec-<slug>.md`
+
 ### Status values
 
 | Status | Meaning |

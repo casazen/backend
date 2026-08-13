@@ -1,6 +1,10 @@
 # Spec — RLI Registration, Rescoped to Assisted / Operator-Attended (US-010)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 **Rescope** the RLI capability from "automated filing" to **assisted / operator-attended** (Legal C4):
 counsel-reviewed contract templates + cedolare-secca decision support + RLI **pre-fill / export** +
@@ -18,6 +22,8 @@ Mode: **rescope existing integration to assisted + add guardrails**
 
 ### What EXISTS vs what is NEW
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | | Item |
 |---|---|
 | **EXISTS** | `LeaseRegistration` (Status, `ExternalRegistrationId`, `RegistrationCode`, `ReceiptStoragePath`, `SubmittedAt`, `ConfirmedAt`); `OpenapiLeaseRegistrationProvider` (`SubmitRegistrationAsync` / `PollStatusAsync` / `DownloadReceiptAsync` — currently a **stub** with `TODO`s); `LeaseWorkflowService.TriggerRegistrationAsync` (operator-triggered, requires `Signed`, guards double-submit); `LeaseRegistrationStatusPollingJob` (read-only poll); `LeaseContract.RegistrationDeadline` (= `StartDate + 30d`), `FiscalRegime`, `HasExtraEUTenant`; `LeaseContractTemplateService.GeneratePdfAsync`; `SendGridService` |
@@ -26,6 +32,8 @@ Mode: **rescope existing integration to assisted + add guardrails**
 ---
 
 ## User Story
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 As a **long-rent landlord**, I want CasaZen to help me register my lease correctly — give me a
 counsel-reviewed contract, advise on cedolare secca vs ordinary regime, pre-fill the RLI for review,
@@ -37,7 +45,11 @@ so I stay compliant without CasaZen acting as an unauthorized tax intermediary.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1 (per-filing authorization / delega)**: `TriggerRegistrationAsync` and
   `POST /api/leases/{id}/registration` require a recorded landlord **authorization (delega)** for that
@@ -91,6 +103,8 @@ so I stay compliant without CasaZen acting as an unauthorized tax intermediary.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC11 (assisted-flow contract — UI built in `spec-ltr-frontend`)**: The lease detail page surfaces:
   a **delega/attestation capture** that gates the "Submit RLI" action; a **cedolare decision panel** with
   the non-advice disclaimer; a **30-day countdown** from `RegistrationDeadline`; a **checklist** including
@@ -102,9 +116,98 @@ so I stay compliant without CasaZen acting as an unauthorized tax intermediary.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `ltr-rli-registration`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC11 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC12 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
+## Export / Report Criteria
+
+**Required** (export / feed / report ACs present).
+
+### Feed / file
+
+| Requirement | Required |
+|---|---|
+| Declared Content-Type matches payload (e.g. text/calendar, text/csv, application/pdf) | yes |
+| Non-empty body when seed data exists | yes |
+| No CF / P.IVA / secrets in filename or URL | yes |
+| Documented columns/fields or VEVENT shape in AC / design | yes |
+
+### PDF (when applicable)
+
+| Requirement | Required |
+|---|---|
+| Real PDF bytes (%PDF) - not empty stub | yes |
+| Readable labeled content for the intended audience | yes |
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend — Files to create / modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -127,6 +230,8 @@ so I stay compliant without CasaZen acting as an unauthorized tax intermediary.
 
 ### Frontend — Files to create / modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/leases/components/{cedolare-decision-panel,rli-checklist,delega-capture-dialog}.tsx` | **Delivered in `spec-ltr-frontend`** — listed here for traceability (AC11) |
@@ -134,6 +239,8 @@ so I stay compliant without CasaZen acting as an unauthorized tax intermediary.
 ---
 
 ## Compliance
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **No unattended filing** — operator-attended; **per-filing landlord authorization (delega capture)**;
   ToS places filing responsibility on the **landlord / authorized intermediary**; **Openapi.it = filing
@@ -148,7 +255,39 @@ so I stay compliant without CasaZen acting as an unauthorized tax intermediary.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `LeaseRegistration` (EXISTS), `LeaseWorkflowService` (EXISTS), `LeaseRegistrationStatusPollingJob` (EXISTS), `OpenapiLeaseRegistrationProvider` (EXISTS — stub), `RegistrationDeadline` / `FiscalRegime` / `HasExtraEUTenant` (EXISTS), `SendGridService` (EXISTS); `spec-tenant-boundary` — `OrgId` lands first so `LeaseRegistrationAuthorization` carries it from creation (RF3).
 - **Blocks**: LTR GA **legal** sign-off — the assisted framing + delega gate is the regulatory gate for the lease flow.
 - **Related**: `spec-ltr-verification` (asserts operator-attended, AC9 there), `spec-ltr-frontend` (builds the assisted-flow UI), `spec-ltr-recurring-rent` (the selected `FiscalRegime` drives the cedolare bollo rule on rent receipts).
 - **Does not modify**: the e-sign flow; the recurring-rent ledger; the read-only registration polling behaviour (it stays read-only).
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

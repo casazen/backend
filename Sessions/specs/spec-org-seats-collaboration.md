@@ -1,6 +1,10 @@
 # Spec — Org Seats & Collaboration (US-013)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Enable PM teams and agencies to **invite teammates** and assign them **seat-scoped roles**,
 so multiple people collaborate inside one `Org` under least-privilege RBAC — without sharing
@@ -23,6 +27,8 @@ Stage of entry: **Stage 01 Planning** (create the issue before design)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As an `Org` owner/admin (a PM team or agency), I want to invite teammates by email and grant
 them a specific role within a specific context (`short-rent` / `long-rent` / `admin`), so my
 team operates collaboratively under least-privilege RBAC.
@@ -34,7 +40,11 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New entity `OrgInvitation` (carries `OrgId` from creation — RF1):
   `{ Id, OrgId (FK), Email, ContextKey, RoleId (FK → existing Role), TokenHash, Status (enum:
@@ -96,6 +106,8 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC13**: `team-page.tsx` at `/settings/team` — member list (name, email, context, role,
   status) with a **seat-usage indicator** (e.g. *"7 / 10 posti"*) and an "Invita membro" button.
 
@@ -116,9 +128,82 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `org-seats-collaboration`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | New entity `OrgInvitation` (carries `OrgId` from creation — RF1): | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | `POST /api/orgs/{orgId}/invitations` — create an invitation and send the email via | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | `GET /api/orgs/{orgId}/invitations` (list, admin-only) and | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | Acceptance flow: | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC11 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC12 | L1 | Migration `AddOrgInvitations` creates `OrgInvitation` and adds `OrgId` to | Outcome not met; wrong status; silent no-op |
+| AC13 | L2 + L3 | `team-page.tsx` at `/settings/team` — member list (name, email, context, role, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC14 | L2 + L3 | Invite dialog — email + context selector + role selector, with validation and | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC15 | L2 + L3 | Pending-invitations list with **Revoca** (revoke) and **Invia di nuovo** (resend). | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC16 | L2 + L3 | Invitation acceptance page at `/invite/accept?token=…` — calls `validate` to show | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC17 | L2 + L3 | `<ProtectedRoute>` on team-management routes; team management is visible **only** to | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC18 | L2 + L3 | TanStack Query hooks, API client, and types for invitations/members. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend — Files to create/modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -142,6 +227,8 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 
 ### Frontend — Files to create/modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/team/team-page.tsx` | Create — member list + seat usage |
@@ -157,6 +244,8 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 ---
 
 ## Compliance
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **Least-privilege RBAC (council wording)**: seat roles are bounded by existing
   `Role`/`RolePermission` rows; an inviter cannot escalate beyond their own permissions (AC9);
@@ -175,6 +264,8 @@ granted exactly the seat-scoped access I was offered — no more, no less.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**:
   - `spec-tenant-boundary` (Phase 1) — `Org`/`OrgId` + plan entitlement (`SeatLimit`).
   - Context-RBAC — `AppContext`, `UserContextMembership`, `Role`, `RolePermission`,
@@ -187,3 +278,33 @@ granted exactly the seat-scoped access I was offered — no more, no less.
   - `spec-saas-billing` — seat counts feed seat-based subscription pricing/entitlement.
   - `spec-onboarding-plg` / `spec-role-onboarding` — first-user signup + role-assignment patterns
     that invitation acceptance complements.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

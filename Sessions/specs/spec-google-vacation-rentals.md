@@ -1,6 +1,10 @@
 # Spec — Google Vacation Rentals Integration (US-015)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Widen commission-free direct distribution by publishing CasaZen properties to **Google
 Vacation Rentals (GVR)**, with booking links pointing back to the operator's direct
@@ -20,6 +24,8 @@ Stage of entry: **Stage 01 Planning** (epic-level macro-spec; splits into issues
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As an **operator**, I want my properties discoverable and bookable through Google Vacation
 Rentals — with the booking link going to my own direct checkout — so that I capture Google
 demand without paying OTA commission, while CasaZen keeps my GVR feed accurate and policy-compliant.
@@ -28,7 +34,11 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: `GET /api/distribution/gvr/feed/{orgId}` produces a GVR-compliant feed
   (property listings + nightly pricing + availability) built **only** from the public
@@ -85,6 +95,8 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC10**: Distribution settings page (`/distribution/gvr`) lists eligible properties with a
   per-property enable/disable toggle, connection status, last-sync time, and the feed URL.
 
@@ -106,9 +118,79 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `google-vacation-rentals`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | `GET /api/distribution/gvr/feed/{orgId}` produces a GVR-compliant feed | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | Feed entries include a per-property **deep link** to the direct booking surface | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | **Price-accuracy guarantee** — the price emitted in the feed for a given | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | New tenant-scoped entity `GvrListingConfig` (carrying `OrgId` per RF1) holds | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | `GvrFeedSyncJob` (Hangfire) regenerates/refreshes the feed and availability on a | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | Only properties with a **valid CIN** and a published direct booking site are | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L2 + L3 | Distribution settings page (`/distribution/gvr`) lists eligible properties with a | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L2 + L3 | Per-property GVR panel shows eligibility (CIN valid + site published + | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L2 + L3 | Ineligible properties show an actionable reason — e.g. `"CIN mancante"`, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC13 | L2 + L3 | All `/distribution/*` routes wrapped in `<ProtectedRoute>`; operator-scoped. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC14 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend — Files to create/modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -125,6 +207,8 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 
 ### Frontend — Files to create/modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/distribution/gvr-settings-page.tsx` | Create (new module) — listing + toggles |
@@ -139,6 +223,8 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 ---
 
 ## Compliance
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **GVR price-accuracy policy**: the feed price MUST match the direct-checkout charge for the
   same stay; AC3 + auto-disable (AC9) enforce this. Persistent drift disables the listing
@@ -157,6 +243,8 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `spec-direct-checkout` (booking deep link + price source-of-truth for
   price-accuracy); `spec-public-booking-readmodel` (PII-safe feed source).
 - **Requires**: `spec-branded-booking-site` AC15 (itinerary-aware URL contract for deep links)
@@ -164,3 +252,33 @@ demand without paying OTA commission, while CasaZen keeps my GVR feed accurate a
 - **Blocks**: the Phase 3 exit criterion "a property is discoverable + bookable via GVR".
 - **Related**: `spec-branded-booking-site` (the surface GVR links into); `spec-tenant-boundary`
   (`OrgId` scoping, RF1); `spec-supplier-marketplace` (sibling Phase 3 spec).
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

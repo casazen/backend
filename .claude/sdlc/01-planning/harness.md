@@ -20,6 +20,7 @@ All gates must pass before exiting.
 |---|---|---|---|
 | G1 | GitHub Issue exists | `gh issue view <N>` | Issue is open with title and body |
 | G2 | Acceptance criteria present | Read issue body | At least 2 testable ACs in `## Acceptance Criteria` section |
+| G2b | Spec file when registry used | If `Sessions/specs/spec-*.md` created/updated | Follow `Sessions/specs/_TEMPLATE.md` (Verifiable Outcomes + UX/Export sections when applicable); validate with `.\scripts\quality\check-ac-depth.ps1 -SpecPath …` |
 | G3 | Technical scope specified | Read issue body | `## Technical Notes` section present with migration/OTA/background job impact noted |
 | G4 | Regulatory label applied | `gh issue view <N> --json labels` | `compliance` label if CIN/GDPR/Alloggiati/tourist-tax affected; `none-required` label otherwise |
 | G5 | Priority label applied | `gh issue view <N> --json labels` | One of: `priority:critical`, `priority:high`, `priority:medium`, `priority:low` |

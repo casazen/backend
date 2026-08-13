@@ -1,6 +1,10 @@
 # Spec — Self-Serve Onboarding & Activation (PLG) (US-006)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 `spec-role-onboarding` covers the first-run **role choice** (short-term / long-term / both → Auth0
 roles) for an already-signed-in user. This spec extends it into a full **product-led-growth (PLG)**
@@ -19,6 +23,8 @@ Stage of entry: **Stage 01 Planning** (new macro-spec)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a new operator, I want to sign up myself, accept the required legal terms, choose how I use CasaZen,
 get my own organization, and be guided step-by-step to publish my booking site and take my first
 booking — so that I reach value without sales hand-holding.
@@ -30,7 +36,11 @@ acknowledgement) with versions and timestamps, and a measurable activation funne
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: `POST /api/users/onboarding` (extends `spec-role-onboarding`) provisions an **`Org`** for the new user if none exists (`spec-tenant-boundary`: create `Org`, set `User.OrgId`, **`PlanTier` from onboarding step 2** defaulting to `Starter`). Idempotent: a user who already has an `Org` is not given a second one and the existing plan is **not** overwritten on re-run.
 
@@ -48,6 +58,8 @@ acknowledgement) with versions and timestamps, and a measurable activation funne
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC8**: The onboarding flow (extending `src/features/onboarding/onboarding-page.tsx`) becomes a short wizard: **(1) role choice** (existing cards) → **(2) legal consents** → completion. Step 2 shows checkboxes for **ToS**, **Privacy Policy**, **DPA**, and **subprocessor list** (with a link/expander listing Supabase EU, Auth0, Stripe, SendGrid), plus optional marketing opt-in. "Continua" is disabled until the four required boxes are checked.
 
 - **AC9**: On completion the FE calls the enhanced `POST /api/users/onboarding` with `rentalType` + `consents`, then refreshes the Auth0 token (`getAccessTokenSilently({ ignoreCache: true })`) and `useUserStore`/`useCurrentUser` (so the new `org` + roles are present), then routes to the dashboard.
@@ -60,9 +72,76 @@ acknowledgement) with versions and timestamps, and a measurable activation funne
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `onboarding-plg`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | `POST /api/users/onboarding` (extends `spec-role-onboarding`) provisions an **`Org`** for the new user if none exists (`spec-tenant-bound... | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | The request body adds a `consents` block: `{ tosAccepted: true, tosVersion, privacyAccepted: true, privacyVersion, dpaAccepted: true, dpa... | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | Consents are persisted to a new `ConsentRecord` entity `{ Id, UserId, OrgId, type (Tos/Privacy/Dpa/Subprocessors/Marketing), version, acc... | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | `GET /api/legal/subprocessors` (`[AllowAnonymous]`) returns the current **subprocessor list** with `version`: at minimum **Supabase (EU —... | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | `GET /api/onboarding/status` (authenticated) returns the activation checklist for the caller's `Org`: `{ roleChosen, orgProvisioned, cons... | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | Activation milestones are derived from real state — `propertyCreated` from the org having ≥1 `Property`; `sitePublished` when the org's b... | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | `PUT /api/users/onboarding` (idempotent re-run from settings, per `spec-role-onboarding`) keeps the existing `Org` and consents; only rol... | Outcome not met; wrong status; silent no-op |
+| AC8 | L2 + L3 | The onboarding flow (extending `src/features/onboarding/onboarding-page.tsx`) becomes a short wizard: **(1) role choice** (existing cards... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC9 | L1 + L2 + L3 | On completion the FE calls the enhanced `POST /api/users/onboarding` with `rentalType` + `consents`, then refreshes the Auth0 token (`get... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC10 | L1 + L2 + L3 | An **activation checklist** widget (`src/features/onboarding/components/activation-checklist.tsx`) on the dashboard renders `GET /api/onb... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L1 + L2 + L3 | A legal subprocessor view (`src/features/legal/subprocessors-page.tsx`, public) renders `GET /api/legal/subprocessors`; linked from the o... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -78,6 +157,8 @@ acknowledgement) with versions and timestamps, and a measurable activation funne
 | `Casazen.Web/Extensions/ServiceCollectionExtensions.cs` | Modify — register `IOnboardingService` |
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -95,6 +176,8 @@ acknowledgement) with versions and timestamps, and a measurable activation funne
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **GDPR consent + ToS**: required consents (Privacy + ToS) captured at signup with **version + timestamp + IP**, append-only in `ConsentRecord` (AC2–AC3); demonstrable consent per GDPR Art. 7.
 - **DPA (data processing agreement)**: the operator (`Org` = data controller) accepts a DPA with CasaZen (processor) at onboarding — the controller/processor delineation from `spec-tenant-boundary` is made contractual here (Legal C5).
 - **Subprocessor list**: explicit acknowledgement of **Supabase (EU hosting)**, **Auth0**, **Stripe**, **SendGrid** with purpose/region, exposed publicly and versioned (AC4, AC11); re-acknowledgement required on version bump.
@@ -104,8 +187,40 @@ acknowledgement) with versions and timestamps, and a measurable activation funne
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `spec-role-onboarding` (role-choice flow, `OnboardingGuard`, `POST/PUT /api/users/onboarding`, `User.RentalType`); `spec-admin-backend` (Auth0 Management API client / `Auth0ManagementService`, `UsersController`, `/me`); `spec-tenant-boundary` (`Org` provisioning + `User.OrgId`).
 - **Requires (activation signals)**: `spec-branded-booking-site` (`sitePublished`) and `spec-direct-checkout` (`firstBookingTaken`) for the checklist to reflect real milestones.
 - **Blocks**: PLG GTM motion (self-serve activation funnel) and the Phase 1 exit criterion "an external PM self-onboards".
 - **Related**: `spec-saas-billing` (post-activation upgrade prompt links into billing).
 - **Does not touch**: `LayerSwitcher`, `AppLayerProvider`, lease subsystem, OTA adapters.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

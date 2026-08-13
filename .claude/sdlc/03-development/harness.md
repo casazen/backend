@@ -46,7 +46,7 @@ All applicable gates must pass before exiting. Mark N/A only when the design spe
 | G9d | Mobile Maestro | `cd ../mobile && maestro test e2e/` | When mobile in scope: all M* flows pass with **non-optional** asserts; N/A otherwise |
 | G9e | AC matrix present | `.\scripts\quality\check-ac-matrix.ps1 -DesignPath Sessions/design-<N>.md -PrBodyPath <draft>` | Design + PR body AC tables complete; **paths exist** |
 | G9f | Contract check | Skill `sdlc-contract-check` → `Sessions/pipeline-<slug>/contract-check.md` | Overall PASS; FE client aligned when FE diff non-empty |
-| G9g | L3 hard for UI | Evidence that every UI AC L3/Maestro path from AC Test Map was executed | L2-only exit is **FAIL**; N/A only if `git diff --name-only` shows zero FE/mobile files |
+| G9g | L3 hard for UI + anti-vacuous | `.\scripts\quality\check-ac-depth.ps1 -DesignPath Sessions/design-<N>.md -RequireTests` **and** evidence every UI AC L3 path ran | Each UI AC has a `test('ACn:…')` in L2 **and** L3; one smoke cannot cover many ACs; export ACs need content/download asserts. L2-only exit is **FAIL**. |
 
 ### Compliance gates (both repos)
 
@@ -110,7 +110,7 @@ Mobile PR: ...
 Refs #N
 ```
 
-**test-engineer rule**: every AC in the Issue/design AC Test Map must have L1 and (for UI) L2 + L3 automated coverage before Stage 03 exits. Vacuous tests (conditional no-op, optional asserts on critical path) are failures.
+**test-engineer rule**: every AC in the Issue/design AC Test Map must have L1 and (for UI) L2 + L3 automated coverage before Stage 03 exits. Vacuous tests (conditional no-op, optional asserts, visibility-only for export ACs, or one L3 smoke claimed by many ACs) are **gate failures** via `check-ac-depth.ps1` — not narrative.
 
 ## Handoff to Stage 04
 
