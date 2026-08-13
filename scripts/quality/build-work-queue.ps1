@@ -139,9 +139,47 @@ if (Test-Path $specsReadme) {
     $stickyId = "sticky:$slug"
     if ($items | Where-Object { $_.work_id -eq $stickyId }) { continue }
     $notes = if ($issue) { "#$issue" } else { '' }
-    $workId = if ($issue) { "SPEC:$slug" } else { "SPEC:$slug" }
-    Add-Item -WorkId $workId -Kind 'feature' -Source 'specs+gh' -Status $status -Notes $notes
-    $featureSlugs[$slug] = $true
+    $workId = "SPEC:$slug"
+    # Defer Add-Item until after optional GH state filter (closed issues → skip)
+    $featureSlugs[$slug] = [pscustomobject]@{
+      work_id = $workId
+      kind    = 'feature'
+      source  = 'specs+gh'
+      status  = $status
+      notes   = $notes
+      issue   = $issue
+    }
+  }
+}
+
+# Drop registry features whose linked GitHub issue is closed/missing (stale planned/in-dev)
+if (-not $SkipGh -and $featureSlugs.Count -gt 0) {
+  foreach ($slug in @($featureSlugs.Keys)) {
+    $meta = $featureSlugs[$slug]
+    $issueNum = $meta.issue
+    if ($issueNum) {
+      try {
+        $issJson = & gh issue view $issueNum --json state 2>$null
+        if ($LASTEXITCODE -eq 0 -and $issJson) {
+          $st = ($issJson | ConvertFrom-Json).state
+          if ($st -ne 'OPEN') {
+            Write-Host ("build-work-queue: skip SPEC:{0} — issue #{1} is {2}" -f $slug, $issueNum, $st)
+            $featureSlugs.Remove($slug)
+            continue
+          }
+        }
+      }
+      catch {
+        Write-Host ("build-work-queue: could not verify issue #{0} for {1}" -f $issueNum, $slug)
+      }
+    }
+    Add-Item -WorkId $meta.work_id -Kind $meta.kind -Source $meta.source -Status $meta.status -Notes $meta.notes
+  }
+}
+elseif ($featureSlugs.Count -gt 0) {
+  foreach ($slug in @($featureSlugs.Keys)) {
+    $meta = $featureSlugs[$slug]
+    Add-Item -WorkId $meta.work_id -Kind $meta.kind -Source $meta.source -Status $meta.status -Notes $meta.notes
   }
 }
 
