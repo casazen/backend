@@ -26,7 +26,8 @@ Canonical process: [`.claude/process/sdlc-delivery-loop/PROCESS.md`](../../proce
 |---|---|
 | `sdlc-delivery-tick` | Default — one delivery work-unit |
 | `sdlc-work-queue` | Refresh unified queue |
-| `sdlc-notify-human` | After merge / review fail / escalate / goal done (informational) |
+| `sdlc-notify-human` | After merge / review fail / escalate (informational) |
+| `sdlc-goal-handoff` | When loop completes — demo (FE/BE feature) or report (gaps), then webhook |
 | Reliability skills | When work-unit kind is `gap` |
 | Stage 04 agents | Fresh-context review before auto-merge |
 

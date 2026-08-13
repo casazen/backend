@@ -20,6 +20,9 @@ description: >-
   "title": "<short>",
   "summary": "<1-3 sentences; informational — do not ask human to merge>",
   "evidence_path": "<path or empty>",
+  "artifact_kind": "demo | report | empty",
+  "artifact_path": "Sessions/loop/goal-handoff.md | empty",
+  "html_path": "Sessions/loop/goal-handoff.html | empty",
   "action_required": false
 }
 ```
@@ -29,6 +32,8 @@ description: >-
 ```powershell
 .\scripts\quality\notify-human.ps1 -Event <event> -WorkId <id> -PrUrl <url> -Title <title> -Summary <summary> -EvidencePath <path>
 ```
+
+On loop completion, prefer **sdlc-goal-handoff** which calls this script with `-ArtifactKind demo|report`. Direct `goal_done` notify without handoff is obsolete.
 
 Add `-DryRun` when webhook secret is unset and you only need to validate payload shape (log to stdout + `Sessions/loop/last-notify.json`).
 
@@ -50,7 +55,7 @@ Add `-DryRun` when webhook secret is unset and you only need to validate payload
 | `merge_wait` | Review OK; CI checks still pending — next cron retries |
 | `escalated` | Same work-unit failed × 3 |
 | `blocked` | Device/secrets missing |
-| `goal_done` / `queue_empty` / `max_work_units` | Loop stop conditions |
+| `goal_done` / `queue_empty` / `max_work_units` | Loop stop — fired by `sdlc-goal-handoff` with `artifact_kind` demo (FE/BE feature) or report (gaps/other) |
 | `stage_pass` | Non-PR stage advanced |
 
 ## Forbidden
