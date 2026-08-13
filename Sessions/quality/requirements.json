@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-13T20:29:29Z",
+  "updated": "2026-08-13T21:14:48Z",
   "requirements": [
     {
       "id": "ADR-001-R1",
@@ -147,6 +147,15 @@
       "gap_id": "REQ:ADR-003-R6"
     },
     {
+      "id": "SPEC:micro-marketplace-v0:AC-L3",
+      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
+      "priority": "P0",
+      "text": "L3 real API marketplace loop",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:marketplace:L3"
+    },
+    {
       "id": "SPEC:native-host-app:AC20",
       "source": "Sessions/specs/spec-native-host-app.md",
       "priority": "P0",
@@ -154,51 +163,6 @@
       "active": true,
       "matrix_status": "blocked",
       "gap_id": "MATRIX:native-host:AC20"
-    },
-    {
-      "id": "SPEC:golden-journey-e2e:AC1",
-      "source": "Sessions/specs/spec-golden-journey-e2e.md",
-      "priority": "P0",
-      "text": "GJ web steps 1–12 L2/L3",
-      "active": true,
-      "matrix_status": "blocked",
-      "gap_id": "MATRIX:gj:AC1-5"
-    },
-    {
-      "id": "SPEC:micro-marketplace-v0:AC-supplier",
-      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
-      "priority": "P0",
-      "text": "Supplier take/complete inbox state machine",
-      "active": true,
-      "matrix_status": "blocked",
-      "gap_id": "MATRIX:marketplace:supplier-take"
-    },
-    {
-      "id": "SPEC:native-host-app:AC4",
-      "source": "Sessions/specs/spec-native-host-app.md",
-      "priority": "P0",
-      "text": "Calendar month/week grid",
-      "active": true,
-      "matrix_status": "blocked",
-      "gap_id": "MATRIX:native-host:AC4"
-    },
-    {
-      "id": "SPEC:direct-checkout:AC-L3",
-      "source": "Sessions/specs/spec-direct-checkout.md",
-      "priority": "P0",
-      "text": "L3 booking create seeded public property",
-      "active": true,
-      "matrix_status": "missing-test",
-      "gap_id": "MATRIX:checkout:L3"
-    },
-    {
-      "id": "SPEC:golden-journey-e2e:AC6",
-      "source": "Sessions/specs/spec-golden-journey-e2e.md",
-      "priority": "P0",
-      "text": "Host app M1–M7 golden journey",
-      "active": true,
-      "matrix_status": "blocked",
-      "gap_id": "MATRIX:gj:AC6-12"
     },
     {
       "id": "SPEC:native-host-app:AC21",
@@ -219,13 +183,49 @@
       "gap_id": "MATRIX:native-host:AC15"
     },
     {
-      "id": "SPEC:micro-marketplace-v0:AC-L3",
-      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
+      "id": "SPEC:golden-journey-e2e:AC6",
+      "source": "Sessions/specs/spec-golden-journey-e2e.md",
       "priority": "P0",
-      "text": "L3 real API marketplace loop",
+      "text": "Host app M1–M7 golden journey",
       "active": true,
       "matrix_status": "blocked",
-      "gap_id": "MATRIX:marketplace:L3"
+      "gap_id": "MATRIX:gj:AC6-12"
+    },
+    {
+      "id": "SPEC:micro-marketplace-v0:AC-supplier",
+      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
+      "priority": "P0",
+      "text": "Supplier take/complete inbox state machine",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:marketplace:supplier-take"
+    },
+    {
+      "id": "SPEC:golden-journey-e2e:AC1",
+      "source": "Sessions/specs/spec-golden-journey-e2e.md",
+      "priority": "P0",
+      "text": "GJ web steps 1–12 L2/L3",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:gj:AC1-5"
+    },
+    {
+      "id": "SPEC:direct-checkout:AC-L3",
+      "source": "Sessions/specs/spec-direct-checkout.md",
+      "priority": "P0",
+      "text": "L3 booking create seeded public property",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:checkout:L3"
+    },
+    {
+      "id": "SPEC:native-host-app:AC4",
+      "source": "Sessions/specs/spec-native-host-app.md",
+      "priority": "P0",
+      "text": "Calendar month/week grid",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:native-host:AC4"
     }
   ]
 }

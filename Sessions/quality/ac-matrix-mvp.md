@@ -1,6 +1,6 @@
 # AC Matrix — MVP Phase 1
 
-**Updated:** 2026-08-13 (tick 9: Native Host AC15 Maestro 0-crash → blocked; no mobile/Maestro)  
+**Updated:** 2026-08-13 (tick 10: Direct checkout L3 booking create → blocked; no FE write / no L3 Playwright)  
 **Baseline:** Dev Flow Verification 2026-07-14 + quality-gates overhaul  
 **Statuses:** `pass` | `fail` | `stub` | `missing-test` | `in-progress` | `blocked`
 
@@ -71,7 +71,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | Public property amenities guard | `pass` | `?? []` |
 | Guest tax line + pay CTA | `pass` | Estimate + payNow i18n |
 | Cookie consent | `in-progress` | Verify L2 branded-booking-site |
-| L3 booking create | `missing-test` | Needs seeded public property |
+| L3 booking create | `blocked` | FE L3 Playwright (`e2e/l3/*direct-checkout*`) missing; Automation cannot push to `casazen/frontend` (403). BE `DirectCheckoutIntegrationTests` already seeds Connect-ready property + creates booking, but matrix L3 is FE/staging Playwright. Unblock when FE write + L3 spec + seeded public property available |
 
 ## Long-rent — P1
 
