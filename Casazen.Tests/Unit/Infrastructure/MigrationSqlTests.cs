@@ -38,7 +38,8 @@ public class MigrationSqlTests
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
         Assert.EndsWith("RestrictCustomDomainUniquenessToVerified", keys[^1]);
-        Assert.EndsWith("AddDeviceRegistrations", keys[^2]);
+        Assert.Contains(keys, k => k.EndsWith("NormalizeOrgPublicHostState", StringComparison.Ordinal));
+        Assert.Contains(keys, k => k.EndsWith("AddDeviceRegistrations", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddPropertySlug", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddPropertyComplianceStatus", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddGuestCheckInSession", StringComparison.Ordinal));
@@ -59,6 +60,22 @@ public class MigrationSqlTests
         Assert.Contains(
             "WHERE \"CustomDomain\" IS NOT NULL AND \"DomainVerificationStatus\" = 1",
             script);
+    }
+
+    [Fact]
+    public void NormalizeOrgPublicHostState_CorrectsLegacyModeAndStaleSubdomains()
+    {
+        using var db = NewNpgsqlContext();
+        var migrator = db.GetService<IMigrator>();
+        var script = migrator.GenerateScript(
+            fromMigration: "20260717213540_AddDeviceRegistrations",
+            toMigration: "20260725110112_NormalizeOrgPublicHostState");
+
+        Assert.Contains("SET \"PublicHostMode\" = 1", script);
+        Assert.Contains("AND \"Subdomain\" IS NULL", script);
+        Assert.Contains("AND \"CustomDomain\" IS NULL", script);
+        Assert.Contains("SET \"Subdomain\" = NULL", script);
+        Assert.Contains("WHERE \"PublicHostMode\" <> 0", script);
     }
 
     [Fact]

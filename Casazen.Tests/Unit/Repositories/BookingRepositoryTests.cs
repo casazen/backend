@@ -80,6 +80,54 @@ public class BookingRepositoryTests
     }
 
     [Fact]
+    public async Task AddAsync_WithOverlappingActiveBooking_Throws()
+    {
+        await SeedBookingAsync(
+            new DateTime(2026, 4, 1),
+            new DateTime(2026, 4, 5));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.AddAsync(new Booking
+            {
+                PropertyId = _propertyId,
+                GuestId = Guid.NewGuid(),
+                CheckInDate = new DateTime(2026, 4, 4),
+                CheckOutDate = new DateTime(2026, 4, 10),
+                Status = BookingStatus.Pending,
+                NumberOfGuests = 2,
+                TotalPrice = 300m
+            }));
+
+        Assert.Contains("Property not available", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithOverlappingActiveBooking_Throws()
+    {
+        await SeedBookingAsync(
+            new DateTime(2026, 4, 1),
+            new DateTime(2026, 4, 5));
+
+        var booking = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 4, 5),
+            CheckOutDate = new DateTime(2026, 4, 10),
+            Status = BookingStatus.Pending,
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+
+        booking.CheckInDate = new DateTime(2026, 4, 4);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.UpdateAsync(booking));
+
+        Assert.Contains("Property not available", ex.Message);
+    }
+
+    [Fact]
     public async Task IsAvailableAsync_WithFullOverlap_ReturnsFalse()
     {
         // New booking is entirely inside existing booking

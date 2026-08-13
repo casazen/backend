@@ -41,6 +41,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Stripe:PublishableKey"] = "pk_test_integration",
                 ["DirectBooking:ConsentVersion"] = "2026-06-direct-checkout-v1",
                 ["DirectBooking:PendingTtlMinutes"] = "15",
+                ["DirectBooking:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "1000",
                 ["Billing:Prices:Starter"] = "price_test_starter",

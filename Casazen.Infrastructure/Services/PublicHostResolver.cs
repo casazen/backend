@@ -17,6 +17,7 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public class PublicHostResolver(
     IOrgService orgService,
+    IEntitlementService entitlementService,
     IOptions<PublicHostOptions> options,
     IMemoryCache cache) : IPublicHostResolver
 {
@@ -38,7 +39,7 @@ public class PublicHostResolver(
         var resolved = await ResolveUncachedAsync(normalizedHost, cancellationToken);
 
         var ttl = TimeSpan.FromSeconds(Math.Max(0, options.Value.ResolveCacheSeconds));
-        if (ttl > TimeSpan.Zero)
+        if (resolved is not null && ttl > TimeSpan.Zero)
             cache.Set(cacheKey, resolved, ttl);
 
         return resolved;
@@ -56,7 +57,10 @@ public class PublicHostResolver(
     {
         var customDomainOrg = await orgService.GetByVerifiedCustomDomainAsync(normalizedHost, cancellationToken);
         if (customDomainOrg is not null)
-            return BuildResponse(customDomainOrg, PublicHostMode.CustomDomain);
+        {
+            var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(customDomainOrg.Id, cancellationToken);
+            return canUseCustomDomain ? BuildResponse(customDomainOrg, PublicHostMode.CustomDomain) : null;
+        }
 
         var subdomainLabel = TryExtractSubdomainLabel(normalizedHost);
         if (subdomainLabel is null)
