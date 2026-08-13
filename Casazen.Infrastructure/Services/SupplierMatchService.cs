@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -112,7 +114,8 @@ public class SupplierMatchService(
                 Note host: {notes ?? "nessuna"}
                 Rispondi in una frase italiana (max 120 caratteri) spiegando perché è la scelta migliore.
                 """;
-            var cacheKey = $"supplier-match:{profile.OrgId}:{category}:{urgency}:{openLoad}";
+            var notesFingerprint = BuildNotesFingerprint(notes);
+            var cacheKey = $"supplier-match:{profile.OrgId}:{category}:{urgency}:{openLoad}:{notesFingerprint}";
             var ai = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
             var text = ai.Content.Trim();
             if (text.Length > 160)
@@ -130,6 +133,13 @@ public class SupplierMatchService(
         openLoad == 0
             ? $"{profile.LegalName} è attivo nella zona con carico di lavoro basso."
             : $"{profile.LegalName} copre la categoria richiesta con {openLoad} interventi aperti.";
+
+    private static string BuildNotesFingerprint(string? notes)
+    {
+        var normalized = string.IsNullOrWhiteSpace(notes) ? string.Empty : notes.Trim();
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
+        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
+    }
 
     private static SupplierMatchCandidate ToCandidate(
         Casazen.Core.Entities.SupplierProfile profile,

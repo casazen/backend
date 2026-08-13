@@ -2,23 +2,23 @@
 
 ## Entry Criteria
 
-- `Sessions/design-<issue-N>.md` exists and all Stage 02 gates passed
+- `Sessions/design-<issue-N>.md` exists and all Stage 02 gates passed (including **G9 AC Test Map**)
 - Branch `feature/<issue-N>-<slug>` created from **`develop`** in each affected repo
 - No uncommitted changes from previous work on this branch
-- **Local backend ready for E2E**: `.\scripts\start-backend-local.ps1` running on `http://localhost:5000` (starts backend with InMemory DB — zero remote dependencies)
+- **Local backend ready for L3 E2E**: `.\scripts\quality\run-l3-local.ps1` (or `.\scripts\start-backend-local.ps1` on `http://localhost:5000`)
 
 ## Council Run
 
-Coordinator spawns: `backend-developer`, `frontend-developer`, `test-engineer` (**all three, always**)
+Coordinator spawns: `backend-developer`, `frontend-developer`, `test-engineer` (**always**), and `mobile-developer` when design scopes `casazen/mobile`.
 
 Topic handed to council:
-> "Implement Issue #N per spec Sessions/design-<issue-N>.md on branch feature/<issue-N>-<slug> in **both** casazen/backend and casazen/frontend. Backend first when API changes exist. Run all quality gates in both repos and open PR(s) targeting develop when all pass."
+> "Implement Issue #N per spec Sessions/design-<issue-N>.md on branch feature/<issue-N>-<slug>. Pass L1 + L2 + L3 gates. Open PR(s) targeting develop. Do NOT close the GitHub issue."
 
 ## Quality Gates
 
 All applicable gates must pass before exiting. Mark N/A only when the design spec explicitly scopes a layer out **and** the specialist confirms zero file changes.
 
-### Backend gates (repo: `casazen/backend`)
+### Backend gates (repo: `casazen/backend`) — L1
 
 | # | Gate | Command | Pass condition |
 |---|---|---|---|
@@ -27,7 +27,7 @@ All applicable gates must pass before exiting. Mark N/A only when the design spe
 | G3 | No compiler warnings | `dotnet build /warnaserror` | Exit code 0 |
 | G4 | Migration compiles | `dotnet ef migrations script --project Casazen.Infrastructure` | Exit code 0 if schema changed; N/A otherwise |
 
-### Frontend gates (repo: `casazen/frontend`)
+### Frontend gates (repo: `casazen/frontend`) — L1
 
 | # | Gate | Command | Pass condition |
 |---|---|---|---|
@@ -35,7 +35,18 @@ All applicable gates must pass before exiting. Mark N/A only when the design spe
 | G6 | TypeScript clean | `tsc -b --noEmit` | Exit code 0 |
 | G7 | Lint clean | `npm run lint` | Exit code 0, 0 errors |
 | G8 | Build succeeds | `npm run build` | Exit code 0 |
-| G9 | E2E tests pass (local backend, AC-driven) | `npm run test:e2e:local` (in `../frontend`) | All Playwright tests pass against local .NET backend (InMemory DB); **must include specs mapped to Issue ACs** from design spec. Backend must be running via `.\scripts\start-backend-local.ps1` before executing this gate. |
+
+### E2E / quality gates — L2 + L3
+
+| # | Gate | Command | Pass condition |
+|---|---|---|---|
+| G9a | L2 demo UI contract | `cd ../frontend && npm run test:e2e -- <L2 specs from AC Test Map>` | All listed L2 specs pass (demo + `page.route` OK) |
+| G9b | L3 real API | `.\scripts\quality\run-l3-local.ps1 -SpecFilter "<L3 specs>"` | All L3 specs pass against local .NET InMemory; **no `page.route` on paths under test** |
+| G9c | Anti-stub | `.\scripts\quality\check-no-shipped-stubs.ps1` | Exit 0 — no shipped-path stubs/TODO Implement / silent skips outside allowlist |
+| G9d | Mobile Maestro | `cd ../mobile && maestro test e2e/` | When mobile in scope: all M* flows pass with **non-optional** asserts; N/A otherwise |
+| G9e | AC matrix present | `.\scripts\quality\check-ac-matrix.ps1 -DesignPath Sessions/design-<N>.md -PrBodyPath <draft>` | Design + PR body AC tables complete; **paths exist** |
+| G9f | Contract check | Skill `sdlc-contract-check` → `Sessions/pipeline-<slug>/contract-check.md` | Overall PASS; FE client aligned when FE diff non-empty |
+| G9g | L3 hard for UI | Evidence that every UI AC L3/Maestro path from AC Test Map was executed | L2-only exit is **FAIL**; N/A only if `git diff --name-only` shows zero FE/mobile files |
 
 ### Compliance gates (both repos)
 
@@ -54,44 +65,56 @@ max_iterations = 3
 
 WHILE (any applicable gate in G1–G13 fails) AND (iteration < max_iterations):
   1. Coordinator lists failing gates with exact error output per repo
-  2. Route: G1–G4 → backend-developer, G5–G8 → frontend-developer, G9–G13 → test-engineer
+  2. Route: G1–G4 → backend-developer, G5–G8 → frontend-developer,
+     G9a–G9g → test-engineer (+ mobile-developer for G9d), G10–G13 → test-engineer
   3. Specialist implements fix
-  4. Re-run failed gates (plus dependencies)
+  4. Re-run failed gates via **sdlc-gate-runner** (write evidence); never self-certify
   5. iteration++
 
 IF iteration == max_iterations AND gates still failing:
-  ESCALATE — do NOT open PR with failing gates
+  ESCALATE via sdlc-escalate — do NOT open PR with failing gates
 ```
+
+**N/A rule (enforced):** any gate marked N/A requires empty `git diff --name-only` for that layer (BE/FE/mobile).
 
 ## Exit Artifact
 
-One open PR per repo with changes, **base branch = `develop`**:
+One open PR per repo with changes, **base branch = `develop`**.
 
-```bash
-# Backend (if changes)
-gh pr create --base develop --repo casazen/backend \
-  --title "feat(<area>): <description> (#N)" \
-  --body "## Summary\n...\n\n## Frontend PR\n<URL or N/A>\n\n## Test Plan\n...\n\nCloses #N"
-
-# Frontend (if changes)
-gh pr create --base develop --repo casazen/frontend \
-  --title "feat(<area>): <description> (#N)" \
-  --body "## Summary\n...\n\n## Backend PR\n<URL or N/A>\n\n## Test Plan\n...\n\nCloses casazen/backend#N"
-```
+**Do NOT close Issue `#N`.** Use `Refs #N` (not `Closes #N`) until Stage 05 Phase B passes.
 
 PR body must include:
-- `## Summary` — BE + FE changes (or explicit N/A per layer)
-- `## Test Plan` — how to verify full-stack behaviour on develop after merge
-- `## Acceptance criteria coverage` — table mapping each Issue AC → unit/integration/E2E test file
-- Cross-repo PR link
-- Gate status table (all ✅, including G9 E2E when FE touched — runs locally, NOT in CI)
-- `Closes #N`
 
-**test-engineer rule**: for every acceptance criterion in the Issue/design spec, add or extend at least one automated test (Vitest or Playwright E2E) before Stage 03 exits. E2E specs live in `e2e/` and run against the local backend (`npm run test:e2e:local`) with the backend started via `.\scripts\start-backend-local.ps1`. This gives real frontend↔backend integration without remote dependencies.
+```markdown
+## Summary
+...
+
+## AC Test Map
+| AC | L1 | L2 | L3 | Status |
+|---|---|---|---|---|
+| AC1 | ... | ... | ... | ✅ |
+
+## Gate status
+| Gate | Status |
+| G1–G8 | ✅ |
+| G9a L2 | ✅ |
+| G9b L3 | ✅ |
+| G9c anti-stub | ✅ |
+| G9d mobile | N/A or ✅ |
+
+## Cross-repo
+Backend PR: ...
+Frontend PR: ...
+Mobile PR: ...
+
+Refs #N
+```
+
+**test-engineer rule**: every AC in the Issue/design AC Test Map must have L1 and (for UI) L2 + L3 automated coverage before Stage 03 exits. Vacuous tests (conditional no-op, optional asserts on critical path) are failures.
 
 ## Handoff to Stage 04
 
 Pass to review stage:
-- Issue `#N`
-- `pr_backend` / `pr_frontend` numbers and URLs (either may be N/A)
-- Design spec path
+- Issue `#N` (still open)
+- `pr_backend` / `pr_frontend` / `pr_mobile` numbers and URLs
+- Design spec path with AC Test Map

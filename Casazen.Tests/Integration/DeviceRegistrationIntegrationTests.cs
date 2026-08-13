@@ -81,6 +81,48 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
+    public async Task RegisterDevice_WhenPushTokenMovesToAnotherUser_RemovesStaleRegistration()
+    {
+        var previousUserId = $"auth0|device-prev-{Guid.NewGuid():N}";
+        var currentUserId = $"auth0|device-current-{Guid.NewGuid():N}";
+        await SeedHostAsync(previousUserId);
+        await SeedHostAsync(currentUserId);
+
+        const string reusedPushToken = "ExponentPushToken[shared-device]";
+
+        using (var previousClient = _factory.CreateAuthenticatedClient(previousUserId, "PropertyOwner"))
+        {
+            var previousResponse = await previousClient.PostAsJsonAsync("/api/devices", new
+            {
+                platform = "ios",
+                pushToken = reusedPushToken,
+                deviceId = "previous-installation",
+            });
+            Assert.Equal(HttpStatusCode.Created, previousResponse.StatusCode);
+        }
+
+        using (var currentClient = _factory.CreateAuthenticatedClient(currentUserId, "PropertyOwner"))
+        {
+            var currentResponse = await currentClient.PostAsJsonAsync("/api/devices", new
+            {
+                platform = "ios",
+                pushToken = reusedPushToken,
+                deviceId = "current-installation",
+            });
+            Assert.Equal(HttpStatusCode.Created, currentResponse.StatusCode);
+        }
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.DeviceRegistrations.AnyAsync(d =>
+            d.UserId == previousUserId && d.PushToken == reusedPushToken));
+
+        var registration = await db.DeviceRegistrations.SingleAsync(d => d.PushToken == reusedPushToken);
+        Assert.Equal(currentUserId, registration.UserId);
+        Assert.Equal("current-installation", registration.DeviceId);
+    }
+
+    [Fact]
     public async Task RegisterDevice_WithoutAuth_Returns401()
     {
         using var client = _factory.CreateClient();

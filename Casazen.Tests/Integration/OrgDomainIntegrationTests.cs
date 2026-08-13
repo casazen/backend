@@ -53,6 +53,37 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task SetCustomDomain_WhenAlreadyVerifiedSameDomain_PreservesVerification()
+    {
+        var ownerId = $"auth0|verified-resave-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(org.Id, PlanTier.Pro);
+        await SetVerifiedCustomDomainAsync(org.Id, "www.verified-resave.it");
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{org.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "https://www.verified-resave.it/",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var updated = await db.Orgs.FindAsync(org.Id);
+            Assert.Equal(DomainVerificationStatus.Verified, updated!.DomainVerificationStatus);
+            Assert.Equal("verify-token", updated.DomainVerificationToken);
+            Assert.Equal("www.verified-resave.it", updated.CustomDomain);
+        }
+
+        var resolveResponse = await _factory.CreateClient()
+            .GetAsync("/api/public/resolve-host?host=www.verified-resave.it");
+
+        Assert.Equal(HttpStatusCode.OK, resolveResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task SetDomain_ForAnotherOrg_Returns403()
     {
         var ownerId = $"auth0|owner-{Guid.NewGuid():N}";
@@ -68,6 +99,26 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetSubdomain_ConflictingWithAnotherActiveOrgSlug_Returns409()
+    {
+        var ownerId = $"auth0|owner-{Guid.NewGuid():N}";
+        var attackerId = $"auth0|attacker-{Guid.NewGuid():N}";
+        var victim = await _factory.SeedOrgForOwnerAsync(ownerId);
+        var attacker = await _factory.SeedOrgForOwnerAsync(attackerId);
+        var victimSlug = $"villa-mare-{Guid.NewGuid():N}"[..30];
+        await SetSlugAsync(victim.Id, victimSlug);
+
+        using var client = _factory.CreateAuthenticatedClient(attackerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{attacker.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = victimSlug,
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Fact]
@@ -94,6 +145,17 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.FindAsync(orgId);
         org!.PlanTier = tier;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SetSlugAsync(Guid orgId, string slug)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.FindAsync(orgId);
+        org!.Slug = slug;
+        org.Subdomain = null;
+        org.PublicHostMode = PublicHostMode.CasazenPath;
         await db.SaveChangesAsync();
     }
 

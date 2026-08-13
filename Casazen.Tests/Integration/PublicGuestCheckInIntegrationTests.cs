@@ -37,7 +37,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC15_2_Submit_ValidData_Returns200()
     {
-        var (token, _, _) = await SeedSessionAsync();
+        var (token, _, guestId) = await SeedSessionAsync();
         var client = _factory.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
@@ -46,6 +46,11 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
             BuildSubmitContent());
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var guest = await db.Guests.FindAsync(guestId);
+        Assert.Equal(Gender.Male, guest!.Gender);
     }
 
     [Fact]
@@ -136,6 +141,25 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Submit_MissingGender_Returns400()
+    {
+        var (token, _, guestId) = await SeedSessionAsync();
+        var client = _factory.CreateClient();
+        _ = await client.GetAsync($"/api/public/checkin/{token}");
+
+        var response = await client.PostAsync(
+            $"/api/public/checkin/{token}",
+            BuildSubmitContent(includeGender: false));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var guest = await db.Guests.FindAsync(guestId);
+        Assert.Null(guest!.Gender);
+    }
+
     private async Task<(string Token, Guid SessionId, Guid GuestId)> SeedSessionAsync(
         BookingStatus bookingStatus = BookingStatus.Confirmed)
     {
@@ -157,16 +181,24 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         return (token, session.Id, seed.GuestId);
     }
 
-    private static StringContent BuildSubmitContent(bool gdprConsent = true) =>
-        new(BuildSubmitPayload(gdprConsent), Encoding.UTF8, "application/json");
+    private static StringContent BuildSubmitContent(bool gdprConsent = true, bool includeGender = true) =>
+        new(BuildSubmitPayload(gdprConsent, includeGender), Encoding.UTF8, "application/json");
 
-    private static string BuildSubmitPayload(bool gdprConsent = true) =>
-        $$"""
+    private static string BuildSubmitPayload(bool gdprConsent = true, bool includeGender = true)
+    {
+        var genderProperty = includeGender
+            ? """
+                  "gender": "Male",
+        """
+            : string.Empty;
+
+        return $$"""
         {
           "firstName": "Luigi",
           "lastName": "Verdi",
           "dateOfBirth": "1990-05-15",
           "nationality": "Italiana",
+        {{genderProperty}}
           "documentType": "Passport",
           "documentNumber": "YA1234567",
           "documentIssuingCountry": "Italia",
@@ -175,4 +207,5 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
           "marketingConsent": false
         }
         """;
+    }
 }
