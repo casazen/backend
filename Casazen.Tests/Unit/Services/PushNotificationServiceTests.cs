@@ -151,6 +151,34 @@ public class PushNotificationServiceTests
         Assert.Null(GetDataValue(handler, "bookingId"));
     }
 
+    [Fact]
+    public async Task SendCheckoutReminderAsync_SendsOnlyToPropertyOwnerAndPrivilegedUsers()
+    {
+        await using var db = CreateDb();
+        var fixture = await SeedNotificationFixtureAsync(db);
+        var service = CreateService(db, out var sentTokens);
+
+        await service.SendCheckoutReminderAsync(fixture.BookingId);
+
+        Assert.Equal(
+            ["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"],
+            sentTokens.Order().ToArray());
+    }
+
+    [Fact]
+    public async Task SendCheckoutReminderAsync_RoutesToBookingCheckout()
+    {
+        await using var db = CreateDb();
+        var fixture = await SeedNotificationFixtureAsync(db);
+        var service = CreateService(db, out _, out var handler);
+
+        await service.SendCheckoutReminderAsync(fixture.BookingId);
+
+        Assert.Equal($"/bookings/{fixture.BookingId}/checkout", GetRoute(handler));
+        Assert.Equal(fixture.BookingId.ToString(), GetDataValue(handler, "bookingId"));
+        Assert.Equal("checkout-reminder", GetDataValue(handler, "type"));
+    }
+
     private static PushNotificationService CreateService(AppDbContext db, out List<string> sentTokens)
         => CreateService(db, out sentTokens, out _);
 
