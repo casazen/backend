@@ -1,6 +1,10 @@
 # Spec — SaaS Subscription Billing (Platform Account) (US-005)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Today Stripe charges **guests** (booking payments); there is **no subscription billing to charge
 CasaZen's own customers**. This is a hard "sellable" gate. This spec adds **subscription billing**
@@ -24,6 +28,8 @@ Stage of entry: **Stage 01 Planning** (new macro-spec)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a CasaZen customer (an `Org` admin), I want to choose a plan (Starter/Pro/Scale) and pay a recurring
 subscription by card, manage my billing in a self-serve portal, and receive a tax-correct invoice, so
 that I can use CasaZen as a paid product.
@@ -36,7 +42,11 @@ be handled correctly before the first euro is charged.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: `GET /api/billing/plans` (authenticated) returns the available tiers `{ tier, displayName, priceMonthly, currency, unitAllowance, features[] }` mapped to Stripe **Price** ids (platform account). Read-only catalogue.
 
@@ -64,6 +74,8 @@ be handled correctly before the first euro is charged.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC10**: `src/features/billing/plans-page.tsx` (Org admin) shows the tier cards from `GET /api/billing/plans` with a "Scegli piano" CTA; clicking calls `POST /api/billing/checkout-session` and redirects to Stripe Checkout (`checkoutUrl`). **Until Stripe is live**, operators use the MVP `PUT /api/orgs/me/plan` / plan settings page from `spec-tenant-boundary` AC11b.
 
 - **AC11**: `src/features/billing/billing-settings-page.tsx` shows the current subscription (`GET /api/billing/subscription`) with a "Gestisci abbonamento" button → `POST /api/billing/portal-session` redirect to the Stripe portal.
@@ -74,9 +86,78 @@ be handled correctly before the first euro is charged.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `saas-billing`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | `GET /api/billing/plans` (authenticated) returns the available tiers `{ tier, displayName, priceMonthly, currency, unitAllowance, feature... | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | `POST /api/billing/checkout-session` (Org admin) creates a **Stripe Billing Checkout Session** (mode `subscription`) on the **platform ac... | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | `POST /api/billing/portal-session` (Org admin) creates a **Stripe Billing Customer Portal** session for `Org.StripeCustomerId` and return... | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | `GET /api/billing/subscription` (Org admin) returns the org's current `{ planTier, status (active/past_due/canceled/trialing), currentPer... | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | Subscription status drives access — an `Org` whose subscription is `canceled`/`past_due` beyond grace is **downgraded** (entitlement refl... | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC7b | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 + L2 + L3 | `src/features/billing/plans-page.tsx` (Org admin) shows the tier cards from `GET /api/billing/plans` with a "Scegli piano" CTA; clicking ... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L1 + L2 + L3 | `src/features/billing/billing-settings-page.tsx` shows the current subscription (`GET /api/billing/subscription`) with a "Gestisci abbona... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L2 + L3 | At checkout the FE collects **country** and optional **VAT id (Partita IVA)** for the billing profile (feeds AC7); Italian end-user strin... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC13 | L2 + L3 | Billing routes are Org-admin-only (behind `<ProtectedRoute>` + role check); a non-admin sees a "contatta l'amministratore" message. Subsc... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -98,6 +179,8 @@ be handled correctly before the first euro is charged.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/billing/plans-page.tsx` | Create — tier selection → Checkout redirect |
@@ -112,6 +195,8 @@ be handled correctly before the first euro is charged.
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Platform vs connected separation (RF2)**: platform-account Billing webhooks (`Stripe:WebhookSecret`) are verified and routed **separately** from connected-account Connect webhooks (`Stripe:ConnectWebhookSecret`, `spec-direct-checkout`). Each event source is verified with its **own** signing secret; the wrong secret rejects the event.
 - **IVA/OSS matrix [COUNSEL_REQUIRED]**: IT 22% / EU-B2B reverse charge (+ **VIES** validation) / EU-B2C **OSS** above €10k cross-border. Country + VAT id captured at checkout (AC7, AC12).
 - **SDI e-invoicing [COUNSEL_REQUIRED]**: Stripe invoices ≠ Italian *fattura elettronica*; IT invoices exported to **SDI** in FatturaPA XML, *imposta di bollo* where due (AC8).
@@ -122,8 +207,40 @@ be handled correctly before the first euro is charged.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `spec-tenant-boundary` (`Org` + `PlanTier` + `StripeCustomerId` + entitlement); existing Stripe integration + `WebhooksController`/`StripeWebhookJob`/`StripeWebhookHandler`.
 - **Requires (hard gate)**: P.IVA active + SDI e-invoicing channel live **before first charge** (Legal C2); resolve §A.11 vehicle (SRLS/SRL).
 - **Blocks**: monetization / "sellable" exit criterion of Phase 1 (an external PM pays CasaZen a subscription with a correct IVA/OSS + SDI invoice).
 - **Related (RF2)**: `spec-direct-checkout` (and Phase 1.5 `spec-ltr-recurring-rent`) — connected-account flows sharing the same webhook controller; coordinate signing-secret routing.
 - **[COUNSEL_REQUIRED]**: external tax/legal counsel must confirm the IVA/OSS rate logic, OSS threshold tracking/reporting, and SDI transmission wiring before go-live.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

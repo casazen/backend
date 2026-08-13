@@ -39,7 +39,7 @@ Topic handed to council:
 |---|---|---|---|
 | G9 | GDPR fields populated | Read Guest-touching code in PR diff | Flags set when Guest created |
 | G10 | Frontend auth routes | Read modified React/Expo routes | ProtectedRoute / session gate present |
-| G11 | AC matrix complete | PR body + design AC Test Map + **Stage 03 evidence** (L2+L3 exit codes) | 0 AC marked PASS without evidence paths; UI ACs require L3/Maestro evidence; stubs only if `status:stub` |
+| G11 | AC matrix complete | PR body + design AC Test Map + **Stage 03 evidence** (L2+L3 exit codes) + `.\scripts\quality\check-ac-depth.ps1 -DesignPath Sessions/design-<N>.md -RequireTests` | 0 AC marked PASS without evidence paths; UI ACs require L3/Maestro evidence **and** per-AC titled tests (anti-vacuous); export ACs need content asserts; stubs only if `status:stub` |
 | G12 | Anti-stub on diff | `.\scripts\quality\check-no-shipped-stubs.ps1` | Exit 0 |
 | G13 | Evidence-only PASS | `Sessions/loop/evidence/...` or `Sessions/pipeline-<slug>/evidence/` for Stage 03/04 | Stage 04 cannot approve on narrative tables alone |
 

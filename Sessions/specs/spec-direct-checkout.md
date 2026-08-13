@@ -1,6 +1,10 @@
 # Spec — Direct Checkout (Stripe Connect, Operator = Merchant of Record) (US-002)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 The current Stripe integration charges guests but assumes an **authenticated owner** creating the
 booking (`BookingController` is behind `PropertyOwner` + `RequireContext:short-rent:booking.*`) and
@@ -21,6 +25,8 @@ Stage of entry: **Stage 01 Planning** (new macro-spec)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As an anonymous guest, I want to select dates for a published property, enter my details and consent,
 and pay securely so that my booking is confirmed instantly — paying the **operator** directly with no
 booking commission added by CasaZen.
@@ -33,7 +39,11 @@ so I stay compliant without manual steps.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New `POST /api/public/bookings` (`[AllowAnonymous]`) accepts `CreateDirectBookingRequest`:
   `{ propertyId, checkInDate, checkOutDate, numberOfAdults, numberOfChildren, guest: { firstName, lastName, email, phone, country }, consent: { dataProcessing: true, consentVersion }, specialRequests? }`.
@@ -63,6 +73,8 @@ so I stay compliant without manual steps.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC10**: A public checkout flow (no Auth0) under the booking surface: date/guest step → payment step using **Stripe.js Elements** (`@stripe/stripe-js` + `@stripe/react-stripe-js`), initialized for the operator's connected account from `DirectBookingResponse`.
 
 - **AC11**: `src/api/public-booking.api.ts` `createDirectBooking(payload)` → `POST /api/public/bookings`; `src/queries/use-public-booking.ts` exposes `useCreateDirectBooking()` (no auth header on these calls).
@@ -75,9 +87,79 @@ so I stay compliant without manual steps.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `direct-checkout`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | New `POST /api/public/bookings` (`[AllowAnonymous]`) accepts `CreateDirectBookingRequest`: | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | On valid request the endpoint (a) upserts a `Guest` (match by email; sets `DataProcessingConsentDate`, `ConsentIpAddress`, `ConsentVersio... | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | The endpoint creates a **Stripe Connect** `PaymentIntent` **on the operator's connected account** and returns `DirectBookingResponse { bo... | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | A connected-account `payment_intent.payment_failed` / `canceled` event leaves the booking `Pending` (or marks it `Cancelled` after expiry... | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | **Tourist tax at checkout** — the `TouristTaxAmount` shown in `DirectBookingResponse` equals the amount included in the `PaymentIntent`; ... | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | **Alloggiati Web on check-in (enqueue, never inline)** — guest registration is **not** triggered by checkout. It remains driven by `POST ... | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | A public, anonymous `POST /api/public/bookings` cannot create a booking for another guest's data exfiltration — the response exposes only... | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | Rate-limiting / abuse guard on `POST /api/public/bookings` (per-IP throttle) and a short `Pending` booking TTL so unpaid holds release in... | Outcome not met; wrong status; silent no-op |
+| AC10 | L2 + L3 | A public checkout flow (no Auth0) under the booking surface: date/guest step → payment step using **Stripe.js Elements** (`@stripe/stripe... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L1 + L2 + L3 | `src/api/public-booking.api.ts` `createDirectBooking(payload)` → `POST /api/public/bookings`; `src/queries/use-public-booking.ts` exposes... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L2 + L3 | The payment step calls Stripe `confirmPayment` with the returned `clientSecret`; **SCA** challenges (3DS) are handled by Stripe.js. On su... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC13 | L2 + L3 | A mandatory **data-processing consent** checkbox (GDPR) and a visible price breakdown (nightly × nights, cleaning fee, **tourist tax** li... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC14 | L2 + L3 | No card data passes through CasaZen — only Stripe Elements; the publishable key/connected-account context comes from the API response, ne... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -95,6 +177,8 @@ so I stay compliant without manual steps.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/public-booking/checkout-page.tsx` | Create — date/guest + Stripe Elements payment step |
@@ -110,6 +194,8 @@ so I stay compliant without manual steps.
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Stripe Connect, operator = merchant of record**: the `PaymentIntent` is created **on the operator's connected account** with `application_fee_amount = 0` and no destination charge to CasaZen — **CasaZen never holds or settles guest funds**. This is the C3 regulatory gate; it must be enforced server-side (the connected account id is required, AC3).
 - **PSD2 / SCA**: `automatic_payment_methods` + Stripe.js `confirmPayment` delegate Strong Customer Authentication to Stripe; no PAN/card data touches CasaZen.
 - **Tourist tax at checkout**: computed from DB-driven `TouristTaxRate` (never hardcoded), included in the charged total (AC6).
@@ -120,7 +206,39 @@ so I stay compliant without manual steps.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `spec-public-booking-readmodel` (public property read-model for the checkout surface); `spec-tenant-boundary` (defines `Org.StripeConnectedAccountId`); **`spec-connect-onboarding` (operator Connect-account onboarding/KYC that actually populates `Org.StripeConnectedAccountId` — without it the AC3 `409` path is permanent and no direct booking can complete)**; existing Stripe integration, `Booking`/`Guest`/`Payment` entities, `ITaxCalculationService`, `AlloggiatiWebReportJob`.
 - **Blocks**: `spec-branded-booking-site` (the branded surface wraps this checkout); `spec-google-vacation-rentals` (Phase 3) feeds this flow.
 - **Related (RF2)**: `spec-saas-billing` shares `WebhooksController`/`StripeWebhookJob` — this spec owns **connected-account** routing; billing owns **platform-account** routing. Both must verify the correct signing secret per source.
 - **Does not touch**: authenticated owner booking endpoints (`BookingController` CRUD), OTA adapters, lease subsystem.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

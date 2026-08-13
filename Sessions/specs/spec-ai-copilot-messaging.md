@@ -1,6 +1,10 @@
 # Spec — AI Copilot Messaging (US-012)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Extend CasaZen's AI from **pricing-only** into a **guest-messaging copilot** that drafts —
 and optionally auto-sends — guest replies inside the unified inbox. This reuses the proven
@@ -24,6 +28,8 @@ Stage of entry: **Stage 01 Planning** (create the issue before design)
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a property manager, I want an AI copilot that drafts guest replies in the unified inbox —
 with a clear confidence signal, guest-facing transparency, and a human-in-the-loop default —
 so I can respond instantly without losing control or blowing my AI budget.
@@ -36,7 +42,11 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New entity `AiMessagingConfig` (per `Org`, optionally overridable per `Property`;
   carries `OrgId` — RF1), mirroring `PricingAdapterConfig`:
@@ -113,6 +123,8 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC16**: In the inbox composer (`message-composer.tsx` from `spec-unified-inbox`), an AI
   draft panel shows the suggested reply with a **confidence indicator** and Modifica / Approva
   e invia / Scarta actions.
@@ -132,9 +144,85 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `ai-copilot-messaging`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | New entity `AiMessagingConfig` (per `Org`, optionally overridable per `Property`; | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | New entity `AiMessageLog` (mirrors `PricingHistory`, incl. | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 | New Hangfire job `AiDraftGenerationJob` generates drafts **off-request** (mirrors | Outcome not met; wrong status; silent no-op |
+| AC11 | L1 + L2 + L3 | `POST /api/inbox/conversations/{id}/ai-draft` — on-demand draft for a conversation, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L1 | `GET /api/ai-messaging/config` and `PUT /api/ai-messaging/config` — read/update the | Outcome not met; wrong status; silent no-op |
+| AC13 | L1 | AI provider is abstracted behind `IAiProvider` (tiered: `Economy` / `Frontier`) in | Outcome not met; wrong status; silent no-op |
+| AC14 | L1 | Confidence + decision logging reuses the pricing convention — `AiConfidence` stored | Outcome not met; wrong status; silent no-op |
+| AC15 | L1 | Migration `AddAiMessaging` creates `AiMessagingConfig`/`AiMessageLog` with `OrgId` | Outcome not met; wrong status; silent no-op |
+| AC16 | L2 + L3 | In the inbox composer (`message-composer.tsx` from `spec-unified-inbox`), an AI | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC17 | L2 + L3 | `ai-messaging-settings-page.tsx` at `/settings/ai-messaging` — toggle enable, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC18 | L2 + L3 | A guest-facing **AI disclosure badge** (Italian: *"Assistito da AI"*) renders on | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC19 | L2 + L3 | A usage/cost panel surfaces `tokensUsed`, `% of cap`, `estimatedCostEur`, and | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC20 | L2 + L3 | `<ProtectedRoute>` on all AI settings routes; auto-send toggle defaults to OFF in | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend — Files to create/modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -163,6 +251,8 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 
 ### Frontend — Files to create/modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/inbox/components/ai-draft-panel.tsx` | Create — suggested reply + confidence + approve/edit/discard |
@@ -177,6 +267,8 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 ---
 
 ## Compliance
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **EU AI Act transparency disclosure (council wording)**: guest-facing *"you're talking to
   AI"* disclosure on auto-sent messages (AC8) **+ log AI decisions** (`AiMessageLog`, AC2)
@@ -196,6 +288,8 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**:
   - `spec-unified-inbox` (US-011) — `Conversation`/`Message` records + the ingestion event the
     copilot reacts to.
@@ -210,3 +304,33 @@ cost stays **≤ 10–15% of ARPU** and **gross margin ≥ 80%** at any account 
 - **Related**:
   - `WebhooksController` + `StripeWebhookJob` async pattern (off-request execution discipline).
   - Risk R6 (AI cost/quality erodes margin) — this spec's hard caps are its mitigation.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

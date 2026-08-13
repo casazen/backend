@@ -1,6 +1,10 @@
 # Spec — Supplier Marketplace (US-014)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Open CasaZen's second revenue stream (F10): a marketplace where operators discover,
 hire, and pay vetted **suppliers** (cleaning, maintenance, photography, linen) directly
@@ -20,6 +24,8 @@ Stage of entry: **Stage 01 Planning** (epic-level macro-spec; splits into issues
 
 ## User Story
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 As a **property manager (operator)**, I want to browse vetted suppliers, request and
 track service jobs (cleaning, maintenance, photography, linen), and pay them securely
 in-platform, so that I can outsource operations without leaving CasaZen — and as the
@@ -30,7 +36,11 @@ paying out the supplier's net via Stripe Connect.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1**: New tenant-scoped entities, each carrying `OrgId` per the `spec-tenant-boundary`
   invariant (RF1): `Supplier`, `SupplierServiceListing`, `MarketplaceOrder`,
@@ -73,6 +83,8 @@ paying out the supplier's net via Stripe Connect.
 
 ### Frontend
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **AC10**: Marketplace browse page (`/marketplace`) — supplier cards filtered by category
   and area; each card shows rating, categories, and "Richiedi servizio" CTA. Verified badge
   shown; no financial identifiers rendered.
@@ -92,9 +104,78 @@ paying out the supplier's net via Stripe Connect.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `supplier-marketplace`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | New tenant-scoped entities, each carrying `OrgId` per the `spec-tenant-boundary` | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 | `GET /api/marketplace/suppliers` — paginated, filterable by `category` | Outcome not met; wrong status; silent no-op |
+| AC3 | L1 | `POST /api/marketplace/orders` — operator creates a service order against a | Outcome not met; wrong status; silent no-op |
+| AC4 | L1 | Order lifecycle endpoints enforce a state machine | Outcome not met; wrong status; silent no-op |
+| AC5 | L1 | **Stripe Connect** payout flow — on order completion, payment is captured and | Outcome not met; wrong status; silent no-op |
+| AC6 | L1 | Supplier onboarding creates a **Stripe Connect connected account** and blocks | Outcome not met; wrong status; silent no-op |
+| AC7 | L1 | **Connected-account vs platform-account webhook routing** (RF2): connected-account | Outcome not met; wrong status; silent no-op |
+| AC8 | L1 | **DAC7 seller-data collection** — supplier onboarding captures the DAC7 reportable | Outcome not met; wrong status; silent no-op |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L2 + L3 | Marketplace browse page (`/marketplace`) — supplier cards filtered by category | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC11 | L2 + L3 | Supplier detail page with listings + "Crea ordine" dialog (service, date, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L2 + L3 | Operator order-tracking view reflects the AC4 state machine with status badges | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC13 | L2 + L3 | Supplier earnings/payouts view (for supplier role) — list of orders with | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC14 | L2 + L3 | All `/marketplace/*` routes wrapped in `<ProtectedRoute>`; supplier vs operator | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend — Files to create/modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -119,6 +200,8 @@ paying out the supplier's net via Stripe Connect.
 
 ### Frontend — Files to create/modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | `src/features/marketplace/marketplace-page.tsx` | Create (new module) — browse + filters |
@@ -136,6 +219,8 @@ paying out the supplier's net via Stripe Connect.
 
 ## Compliance
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Marketplace VAT**: take-rate invoicing and supplier-side VAT treatment to be confirmed
   with counsel (IT 22% IVA on the platform commission; EU cross-border supplier scenarios). **[COUNSEL_REQUIRED]**
 - **Stripe Connect / escrow**: payouts and escrow-style hold-until-completion run on Stripe
@@ -151,6 +236,8 @@ paying out the supplier's net via Stripe Connect.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `spec-tenant-boundary` (`OrgId` + plan entitlement, RF1); **Stripe Connect
   payouts** integration (shared with `spec-direct-checkout`); KYC via Connect.
 - **Blocks**: the §A.8 marketplace revenue stream (10–20% mix, F10) and the Phase 3 exit
@@ -158,3 +245,33 @@ paying out the supplier's net via Stripe Connect.
 - **Related**: `spec-saas-billing` (shared `WebhooksController`/`StripeWebhookHandler` —
   platform-account vs connected-account routing, RF2); `spec-direct-checkout` (Connect
   enablement); `spec-google-vacation-rentals` (sibling Phase 3 spec).
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

@@ -1,6 +1,10 @@
 # Spec — LTR Frontend over LeasesController (US-008)
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ## Overview
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Complete and verify the **long-term rental frontend** over the existing `LeasesController`
 workflow (create → e-sign → RLI register → receipt) and **add the recurring-rent UI**
@@ -19,6 +23,8 @@ Mode: **complete + verify over existing FE**
 
 ### What EXISTS vs what is NEW
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | | Item |
 |---|---|
 | **EXISTS** | `src/features/leases/*` (list / create / detail — #177); `LongTermAppShell`, `LongTermSidebar`, `layer-switcher`, `use-app-layer` (#189); `<ProtectedRoute>`; Axios JWT interceptor; TanStack Query + RHF/Zod patterns |
@@ -27,6 +33,8 @@ Mode: **complete + verify over existing FE**
 ---
 
 ## User Story
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 As a **long-rent landlord** in the long-term layer, I want a single lease workspace where I can
 create a lease, send it for e-signature, trigger and track RLI registration, download the receipt,
@@ -37,7 +45,11 @@ can run the whole lease lifecycle from the UI.
 
 ## Acceptance Criteria
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Backend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC1 (no new backend)**: The FE consumes the **existing** `LeasesController` endpoints —
   `GET /api/leases`, `GET /api/leases/{id}`, `POST /api/leases`, `POST /api/leases/{id}/signing`,
@@ -47,6 +59,8 @@ can run the whole lease lifecycle from the UI.
   existing `AllowFrontend` CORS policy and the Axios Bearer interceptor already cover `/api/leases/*`.
 
 ### Frontend
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **AC2**: `src/api/leases.api.ts` — typed module mapping every endpoint above:
   `listLeases`, `getLease`, `createLease`, `initiateSigning`, `triggerRegistration`,
@@ -103,9 +117,77 @@ can run the whole lease lifecycle from the UI.
 
 ---
 
+
+## UX / UI Quality
+
+
+
+**Required** (Frontend ACs present). Testable bar for Stage 03.
+
+
+
+| Criterion | Required | How to verify |
+
+|---|---|---|
+
+| Primary path clear | User completes happy path without guessing | L3 scripted flow below |
+
+| Language | End-user strings Italian | L2/L3 assert Italian primary labels |
+
+| Empty state | No blank dead-end when data length = 0 | L2 empty fixture |
+
+| Error state | 4xx/5xx as human Italian message | L2/L3 forced error |
+
+| Destructive / legal copy | Confirmations/disclaimers as in ACs | Assert documented phrases |
+
+
+
+**Happy-path script:**
+
+
+
+1. Enter the primary route for `ltr-frontend`
+
+2. Complete the main user action defined in Acceptance Criteria
+
+3. Done when the Verifiable Outcome for the primary AC holds
+
+---
+
+
+## Verifiable Outcomes
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| AC1 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC2 | L1 + L2 + L3 | `src/api/leases.api.ts` — typed module mapping every endpoint above: | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC3 | L2 + L3 | `src/queries/use-leases.ts` — `useLeases`, `useLease`, `useCreateLease`, | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC4 | L2 + L3 | Lease **list** page (`/leases`) renders a table with a `lease-status-badge` mapping all | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC5 | L2 + L3 | Lease **create** form (`/leases/new`) uses RHF + Zod (`lease.schema.ts`) mirroring | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC6 | L2 + L3 | Lease **detail** page (`/leases/:id`) shows a **workflow stepper** whose available action | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC7 | L1 + L2 + L3 | The signing step renders the `SignerInfo[]` returned by `POST /signing` | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC8 | L2 + L3 | The registration step shows `RegistrationStatus` + `RegistrationCode`; the **receipt download** | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC9 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC10 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+| AC11 | L2 + L3 | All `/leases/*` routes stay wrapped in `<ProtectedRoute>` and remain inside the | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+| AC12 | L1 | See Acceptance Criteria. | Outcome not met; wrong status; silent no-op |
+
+Rules:
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+- Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
+
+---
+
 ## Technical Notes
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 ### Frontend — Files to create / modify
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 | File | Action |
 |---|---|
@@ -131,6 +213,8 @@ can run the whole lease lifecycle from the UI.
 
 ### Backend — Files to create / modify
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 | File | Action |
 |---|---|
 | (none) | **No backend changes** — consumes existing `LeasesController` + `spec-ltr-recurring-rent` + `spec-ltr-rli-registration` endpoints |
@@ -138,6 +222,8 @@ can run the whole lease lifecycle from the UI.
 ---
 
 ## Compliance
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 - **GDPR (tenant / `Party` PII)**: no raw PII in views — `fiscalCode` masked; no PII in logs, toasts, or URLs; receipts only via the authenticated, owner-scoped endpoint.
 - **End-user UI strings in Italian**; IT regulatory terms preserved (RLI, cedolare secca, imposta di bollo, Agenzia delle Entrate).
@@ -147,7 +233,39 @@ can run the whole lease lifecycle from the UI.
 
 ## Dependencies
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 - **Requires**: `LeasesController` (EXISTS), `LeaseWorkflowService` (EXISTS), context `long-rent` (EXISTS), the #177 lease pages (EXISTS), the #189 long-term layer/shell/switcher (EXISTS), and `spec-ltr-recurring-rent` (rent endpoints/DTOs).
 - **Blocks**: LTR general availability — this is the operator-facing surface for the whole lease lifecycle.
 - **Related**: `spec-ltr-rli-registration` (supplies the cedolare panel + checklist + delega data), `spec-ltr-verification` (its Playwright E2E exercises this FE flow).
 - **Does not modify**: the short-stay `AppShell`/`Sidebar` or short-stay nav (the #189 layer separation keeps them isolated); lease CRUD already shipped in #177.
+
+## Test expectations (process contract)
+
+
+
+| Layer | Allowed | Forbidden as sole proof |
+
+|---|---|---|
+
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

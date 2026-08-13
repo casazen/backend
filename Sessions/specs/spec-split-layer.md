@@ -1,6 +1,10 @@
-﻿# Analisi strutturata del layer switch per ruoli e contesti in una web application
+# Analisi strutturata del layer switch per ruoli e contesti in una web application
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 ## Panoramica
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Per una web application con aree distinte come **affitti brevi**, **affitti lungo termine** e **pannello admin**, l'approccio più solido non è trattare queste sezioni come semplici pagine abilitate da ruoli globali, ma come **contesti applicativi** o **workspace** separati.[1][2] Questo modello è coerente con le architetture multi-tenant moderne, dove l'accesso viene valutato nel contesto attivo e non solo sul ruolo astratto dell'utente.[1][2]
 
@@ -8,11 +12,15 @@ Il problema per cui l'utente deve inserire manualmente la route giusta nasce di 
 
 ## Problema architetturale
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Quando l'applicazione usa solo RBAC classico, il modello implicito diventa `utente -> ruolo -> pagina`.[2][3] Questo schema funziona in applicazioni semplici, ma tende a rompersi quando uno stesso utente può operare in più aree con privilegi diversi, perché il ruolo non basta più a rappresentare il perimetro funzionale corretto.[1][2]
 
 Nel caso descritto, “affitti brevi”, “affitti lungo termine” e “admin” non sono semplicemente tre viste, ma tre **aree operative** con obiettivi, menu, flussi e permessi distinti.[1][4] Se queste aree non hanno un'identità architetturale propria, l'app tende a delegare all'utente la responsabilità di conoscere la route corretta, che è esattamente il comportamento da evitare in una UX solida.[4][3]
 
 ## Modello consigliato
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Il modello raccomandato separa chiaramente identità, contesto e permessi.[1][2] In pratica, l'utente ha una identità globale, ma i suoi ruoli e permessi vengono valutati all'interno di un contesto attivo come `short-rent`, `long-rent` o `admin`.[1][2]
 
@@ -27,6 +35,8 @@ Una struttura concettuale efficace è la seguente:
 Questo approccio evita la cosiddetta **role explosion**, cioè la proliferazione di ruoli globali che cercano di codificare tutte le combinazioni possibili di responsabilità e moduli.[2] Inoltre rende più semplice evolvere il sistema nel tempo, perché i permessi possono crescere per capability invece che per profili monolitici.[2][3]
 
 ## Routing e navigazione
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 L'applicazione dovrebbe adottare URL canonici basati sul contesto, ad esempio `/app/short-rent/*`, `/app/long-rent/*` e `/app/admin/*`.[4][3] In questo modo il contesto corrente diventa parte esplicita della navigazione e tutte le route figlie ereditano in modo naturale il perimetro funzionale corretto.[4][3]
 
@@ -44,6 +54,8 @@ Una configurazione di questo tipo permette di derivare da un unico punto sia il 
 
 ## Context switcher
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Lo switcher non dovrebbe essere pensato come un semplice “role switcher” visibile solo quando un utente ha due o più ruoli, ma come un vero **context switcher** o **workspace switcher** integrato nell'application shell.[4] Questo pattern viene usato nelle app modulari perché rende esplicito il fatto che l'utente sta cambiando area operativa, non semplicemente privilegi astratti.[4][2]
 
 Il comportamento consigliato è il seguente:
@@ -57,6 +69,8 @@ Il comportamento consigliato è il seguente:
 Questo elimina la necessità di digitare manualmente la route e trasforma il cambio area in un flusso intenzionale, comprensibile e consistente.[4][3]
 
 ## Backend e autorizzazione
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Dal lato backend è preferibile evitare ruoli globali come `Admin`, `AffittiBrevi`, `AffittiLunghi` se questi rappresentano in realtà aree operative.[2] Le architetture di autorizzazione scalabili suggeriscono di modellare i permessi in modo contestuale, così da poter valutare policy e capability nel perimetro corretto.[2]
 
@@ -81,6 +95,8 @@ In alternativa, una variante ancora più flessibile è basata su `User`, `Worksp
 
 ## Anti-pattern da evitare
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Gli anti-pattern principali in questo scenario sono i seguenti:
 
 - Route piatte senza namespace di contesto, ad esempio `/prenotazioni`, `/contratti`, `/users`.[3]
@@ -92,6 +108,8 @@ Gli anti-pattern principali in questo scenario sono i seguenti:
 Questi problemi tendono a produrre inconsistenza tra esperienza utente, struttura delle route e logica autorizzativa.[2][3] Nel tempo diventano particolarmente costosi da mantenere perché ogni nuova area o variante di accesso obbliga ad aggiungere condizioni sparse nel codice invece di estendere un modello coerente.[2]
 
 ## Raccomandazione operativa
+
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
 
 Per il caso in esame, la soluzione più ordinata è trasformare i tre layer in tre **app context ufficiali**: `short-rent`, `long-rent` e `admin`.[1][4] Da qui discendono alcune scelte implementative molto concrete.[2][3]
 
@@ -106,10 +124,42 @@ Dal punto di vista del naming, espressioni come **workspace switcher**, **area s
 
 ## Esempio di comportamento atteso
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 Si consideri un utente che ha accesso a `short-rent` e `admin`, ma non a `long-rent`.[1][2] Dopo il login, l'app può riaprire `short-rent` come ultimo contesto usato e portare l'utente a `/app/short-rent/dashboard`.[1][3]
 
 A quel punto la sidebar mostra soltanto le voci rilevanti per `short-rent`, mentre il context switcher permette il passaggio intenzionale a `admin`.[4][3] Se l'utente prova a navigare manualmente verso `/app/long-rent/contracts`, il sistema dovrebbe riconoscere l'assenza di membership o permessi e reindirizzare verso una route valida o rispondere con un 403 gestito.[2][3]
 
 ## Conclusione
 
+> Template contract: `Sessions/specs/_TEMPLATE.md`. Validated by Stage 02 G9b (`check-ac-depth.ps1 -SpecPath`).
+
 L'approccio più strutturato consiste nel trattare i tre layer come contesti applicativi distinti, con routing contestuale, navigazione derivata da configurazione centralizzata e autorizzazione valutata nel perimetro corretto.[1][2][3] In questo modo l'utente smette di dover conoscere la route corretta e l'applicazione acquisisce una base molto più robusta per crescere senza accumulare logica fragile e duplicata.[2][4][3]
+
+## Verifiable Outcomes
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+|---|---|---|---|
+| (none numbered) | L1 | Spec has no numbered ACn bullets - add them before Stage 02 or keep deferred | Missing ACs |
+
+## Test expectations (process contract)
+
+| Layer | Allowed | Forbidden as sole proof |
+|---|---|---|
+| L1 | xUnit unit/integration asserting AC outcomes | Compile-only |
+| L2 | Playwright demo + page.route OK; titled test per AC | One smoke for all ACs; visibility-only for exports |
+| L3 | Real API local/staging; titled test per UI AC | Mocking path under test; AC map without titled tests |
+
+Design Stage 02 must produce ## AC Test Map with one row per AC. Stage 03/04 gate check-ac-depth.ps1 -RequireTests enforces titled tests + export depth.
+
+## Regulatory / Legal Gates
+
+- None
+
+## Out of Scope
+
+- See Acceptance Criteria non-goals / PLANNING freeze list
+
+## Open Questions
+
+- None (or list with owner/date before Stage 03)

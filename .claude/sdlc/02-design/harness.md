@@ -27,6 +27,7 @@ All gates must pass before exiting.
 | G7 | Migration plan included | Read spec `## Migration Plan` section | Present if schema changes; `N/A — no schema changes` if not |
 | G8 | GDPR scope stated | Read spec `## GDPR Scope` section | Present if Guest data involved; `N/A` if not |
 | G9 | AC Test Map complete | `.\scripts\quality\check-ac-matrix.ps1 -DesignPath Sessions/design-<N>.md` (path-exists enabled) | **Hard fail without `## AC Test Map`.** Every Issue AC has a row with REQ-ID (`SPEC:<slug>:ACn` and/or `ADR-00N-Rk` in AC column or Notes). UI ACs must name L2 **and** L3 files that **exist** (or Maestro paths). `N/A — non UI` only for non-UI ACs. Gate PASS only via `sdlc-gate-runner` evidence. |
+| G9b | Spec verifiable outcomes | `.\scripts\quality\check-ac-depth.ps1 -SpecPath Sessions/specs/spec-<slug>.md` | Spec has `## Verifiable Outcomes` for every ACn; export/report ACs have `## Export / Report Criteria`; FE ACs have `## UX / UI Quality`. Exit 0. |
 | G10 | Spec/ADR linkage | Read design header | Design cites `Sessions/specs/spec-…` and any informing `docs/adr/ADR-…`; ACs align to those REQ-IDs |
 
 ## Harness Loop
@@ -37,7 +38,7 @@ max_iterations = 3
 
 WHILE (any gate in G1–G10 fails) AND (iteration < max_iterations):
   1. Coordinator identifies failed gates with specific missing content
-  2. Assigns specialists: api-designer → G2/G3/G7, frontend-designer → G4/G5/G9/G10, security-by-design → G3/G6/G8
+  2. Assigns specialists: api-designer → G2/G3/G7, frontend-designer → G4/G5/G9/G9b/G10, security-by-design → G3/G6/G8
   3. Specialists update spec file
   4. Re-check failed gates via **sdlc-gate-runner** (not narrative)
   5. iteration++
@@ -70,8 +71,11 @@ IF iteration == max_iterations AND gates still failing:
 
 Rules:
 - **AC Test Map is mandatory** — Stage 02 cannot exit without it (G9).
-- L2 may use `page.route()` mocks.
+- Spec must use [`Sessions/specs/_TEMPLATE.md`](../../../Sessions/specs/_TEMPLATE.md) sections: Verifiable Outcomes, UX/UI Quality, Export/Report Criteria when applicable (G9b).
+- L2 may use `page.route()` mocks for **UI contract only**.
 - L3 **must not** mock the API path under test (Auth0 setup may use storage state). L2 alone never closes a UI AC.
+- **One titled test per AC** in L2 and L3 (`test('AC3: …')`). Mapping many ACs to one smoke file is a Stage 03 `check-ac-depth` FAIL.
+- Export/report ACs: L1 and/or L3 must assert **content** (CSV headers/rows, PDF non-empty / magic bytes), not only button visibility or `Content-Type`.
 - Mobile ACs use Maestro YAML paths under `../mobile/e2e/`.
 - Referenced L1/L2/L3 paths must exist on disk (`check-ac-matrix.ps1`).
 
