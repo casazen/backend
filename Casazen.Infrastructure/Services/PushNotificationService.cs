@@ -75,7 +75,7 @@ public class PushNotificationService(
 
         var route = request.BookingId is Guid bookingId
             ? $"/bookings/{bookingId}"
-            : $"/bookings/{request.PropertyId}";
+            : $"/service-requests/{request.Id}";
 
         var payload = new PushNotificationPayload(
             "Aggiornamento fornitore",

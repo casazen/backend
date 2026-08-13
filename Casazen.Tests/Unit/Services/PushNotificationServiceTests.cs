@@ -91,7 +91,6 @@ public class PushNotificationServiceTests
     {
         await using var db = CreateDb();
         var fixture = await SeedNotificationFixtureAsync(db);
-
         var service = CreateService(db, out var sentTokens);
 
         await service.SendGuestCheckInIncompleteAsync(fixture.BookingId);
@@ -119,7 +118,6 @@ public class PushNotificationServiceTests
         await db.SaveChangesAsync();
 
         var service = CreateService(db, out var sentTokens);
-
         await service.SendServiceRequestUpdateAsync(serviceRequest.Id, "presa in carico");
 
         Assert.Equal(
@@ -127,10 +125,42 @@ public class PushNotificationServiceTests
             sentTokens.Order().ToArray());
     }
 
+    [Fact]
+    public async Task SendServiceRequestUpdateAsync_WhenRequestHasBooking_RoutesToBooking()
+    {
+        await using var db = CreateDb();
+        var seed = await SeedRoutingAsync(db, includeBooking: true);
+        var service = CreateService(db, out _, out var handler);
+
+        await service.SendServiceRequestUpdateAsync(seed.ServiceRequestId, "presa in carico");
+
+        Assert.Equal($"/bookings/{seed.BookingId}", GetRoute(handler));
+        Assert.Equal(seed.BookingId.ToString(), GetDataValue(handler, "bookingId"));
+    }
+
+    [Fact]
+    public async Task SendServiceRequestUpdateAsync_WhenRequestHasNoBooking_RoutesToServiceRequest()
+    {
+        await using var db = CreateDb();
+        var seed = await SeedRoutingAsync(db, includeBooking: false);
+        var service = CreateService(db, out _, out var handler);
+
+        await service.SendServiceRequestUpdateAsync(seed.ServiceRequestId, "completata");
+
+        Assert.Equal($"/service-requests/{seed.ServiceRequestId}", GetRoute(handler));
+        Assert.Null(GetDataValue(handler, "bookingId"));
+    }
+
     private static PushNotificationService CreateService(AppDbContext db, out List<string> sentTokens)
+        => CreateService(db, out sentTokens, out _);
+
+    private static PushNotificationService CreateService(
+        AppDbContext db,
+        out List<string> sentTokens,
+        out CapturingExpoHandler handler)
     {
         sentTokens = [];
-        var handler = new CapturingExpoHandler(sentTokens);
+        handler = new CapturingExpoHandler(sentTokens);
         var factory = new Mock<IHttpClientFactory>();
         factory
             .Setup(f => f.CreateClient("ExpoPush"))
@@ -232,8 +262,93 @@ public class PushNotificationServiceTests
             CreateDevice(ownerAId, staleOrgId, "ExponentPushToken[stale-org]", "old-owner-a-phone"));
 
         await db.SaveChangesAsync();
-
         return new NotificationFixture(orgId, supplierOrgId, property.Id, booking.Id);
+    }
+
+    private static async Task<RoutingSeed> SeedRoutingAsync(AppDbContext db, bool includeBooking)
+    {
+        var orgId = Guid.NewGuid();
+        var supplierOrgId = Guid.NewGuid();
+        const string ownerId = "auth0|route-owner";
+
+        db.Orgs.AddRange(
+            new OrgEntity
+            {
+                Id = orgId,
+                Name = "Host Org",
+                Slug = $"host-{Guid.NewGuid():N}"[..20],
+                ContactEmail = "host@example.com",
+                IsActive = true,
+            },
+            new OrgEntity
+            {
+                Id = supplierOrgId,
+                Name = "Supplier Org",
+                Slug = $"sup-{Guid.NewGuid():N}"[..20],
+                OrgType = OrgType.Supplier,
+                IsActive = true,
+            });
+
+        var property = new Property
+        {
+            OrgId = orgId,
+            OwnerId = ownerId,
+            Name = "Route Property",
+            Address = "Via Test 1",
+            City = "Roma",
+            PostalCode = "00100",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 100m,
+        };
+        db.Properties.Add(property);
+        db.Users.Add(CreateUser(ownerId, orgId, UserRole.PropertyOwner));
+        db.DeviceRegistrations.Add(CreateDevice(ownerId, orgId, "ExponentPushToken[route-owner]", "route-phone"));
+
+        Guid? bookingId = null;
+        if (includeBooking)
+        {
+            var guest = new Guest { FirstName = "Guest", LastName = "One", Email = "guest@example.com" };
+            var booking = new Booking
+            {
+                OrgId = orgId,
+                Property = property,
+                Guest = guest,
+                CheckInDate = DateTime.UtcNow.AddDays(1),
+                CheckOutDate = DateTime.UtcNow.AddDays(2),
+                Status = BookingStatus.Confirmed,
+            };
+            db.Guests.Add(guest);
+            db.Bookings.Add(booking);
+            await db.SaveChangesAsync();
+            bookingId = booking.Id;
+
+            var withBooking = new ServiceRequest
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                BookingId = booking.Id,
+                SupplierOrgId = supplierOrgId,
+                Category = "cleaning",
+                Status = ServiceRequestStatus.PresoInCarico,
+            };
+            db.ServiceRequests.Add(withBooking);
+            await db.SaveChangesAsync();
+            return new RoutingSeed(withBooking.Id, bookingId);
+        }
+
+        var withoutBooking = new ServiceRequest
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            SupplierOrgId = supplierOrgId,
+            Category = "cleaning",
+            Status = ServiceRequestStatus.Completata,
+        };
+        db.ServiceRequests.Add(withoutBooking);
+        await db.SaveChangesAsync();
+        return new RoutingSeed(withoutBooking.Id, null);
     }
 
     private static User CreateUser(string id, Guid orgId, UserRole role) => new()
@@ -260,20 +375,36 @@ public class PushNotificationServiceTests
             DeviceId = deviceId,
         };
 
+    private static string? GetRoute(CapturingExpoHandler handler) => GetDataValue(handler, "route");
+
+    private static string? GetDataValue(CapturingExpoHandler handler, string propertyName)
+    {
+        using var document = JsonDocument.Parse(handler.RequestBody!);
+        var first = document.RootElement.EnumerateArray().First();
+        if (!first.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty(propertyName, out var value))
+            return null;
+        return value.GetString();
+    }
+
     private sealed record NotificationFixture(
         Guid OrgId,
         Guid SupplierOrgId,
         Guid PropertyId,
         Guid BookingId);
 
+    private sealed record RoutingSeed(Guid ServiceRequestId, Guid? BookingId);
+
     private sealed class CapturingExpoHandler(List<string> sentTokens) : HttpMessageHandler
     {
+        public string? RequestBody { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            var json = await request.Content!.ReadAsStringAsync(cancellationToken);
-            using var document = JsonDocument.Parse(json);
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(RequestBody);
             foreach (var message in document.RootElement.EnumerateArray())
                 sentTokens.Add(message.GetProperty("to").GetString()!);
 
