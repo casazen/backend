@@ -43,7 +43,7 @@ function Scan-Files([string]$root, [string[]]$extensions) {
   Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
       $extensions -contains $_.Extension -and
-      $_.FullName -notmatch '\\(node_modules|bin|obj|\.git|dist|coverage)\\'
+      $_.FullName -notmatch '[\\/](node_modules|bin|obj|\.git|dist|coverage)[\\/]'
     } |
     ForEach-Object {
       if (Test-Allowed $_.FullName) { return }

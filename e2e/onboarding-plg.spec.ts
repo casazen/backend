@@ -26,6 +26,22 @@ test.describe('Onboarding PLG (#271)', () => {
         }),
       });
     });
+    await page.route('**/api/compliance/summary**', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          propertiesPending: { count: 0, items: [] },
+          guestCheckInsIncomplete: { count: 0, items: [] },
+          checkoutsDue: { count: 0, items: [] },
+          alloggiatiFailures: { count: 0, items: [] },
+        }),
+      });
+    });
   });
 
   test('AC8: consents wizard step requires four checkboxes before Continua', async ({ page }) => {

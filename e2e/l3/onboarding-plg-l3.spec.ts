@@ -25,7 +25,9 @@ test.describe('Onboarding PLG L3 (#271)', () => {
     );
 
     await page.goto('/legal/subprocessors');
-    await expect(page.getByText(/Responsabili del trattamento/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /Responsabili del trattamento/i })).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByTestId('subprocessors-list')).toContainText(/Supabase|Auth0|Stripe|SendGrid/i);
   });
 
@@ -56,5 +58,13 @@ test.describe('Onboarding PLG L3 (#271)', () => {
         await expect(page.getByTestId('activation-checklist')).toBeVisible({ timeout: 60_000 });
       }
     }
+  });
+
+  test('AC12: public legal route works without Auth0 session', async ({ page }) => {
+    await page.goto('/legal/subprocessors');
+    await expect(page.getByRole('heading', { name: /Responsabili del trattamento/i })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page).toHaveURL(/\/legal\/subprocessors/);
   });
 });

@@ -26,9 +26,31 @@ function Add-Fail([string]$msg) {
   Write-Host "FAIL: $msg"
 }
 
+function Get-RepoParent {
+  # PowerShell Split-Path on single-segment roots like /workspace can return "".
+  $parent = Split-Path $RepoRoot -Parent
+  if ([string]::IsNullOrWhiteSpace($parent)) {
+    try {
+      $parent = [System.IO.Directory]::GetParent($RepoRoot)?.FullName
+    } catch {
+      $parent = $null
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($parent)) { $parent = [System.IO.Path]::DirectorySeparatorChar.ToString() }
+  return $parent
+}
+
 function Get-FrontendRoot {
-  $sibling = Join-Path (Split-Path $RepoRoot -Parent) 'frontend'
-  if (Test-Path $sibling) { return $sibling }
+  $parent = Get-RepoParent
+  $candidates = @(
+    (Join-Path $parent 'frontend'),
+    (Join-Path $RepoRoot 'frontend'),
+    '/frontend',
+    '/tmp/casazen-frontend'
+  )
+  foreach ($c in $candidates) {
+    if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path }
+  }
   return $null
 }
 
@@ -36,10 +58,11 @@ function Resolve-TestFile([string]$Token) {
   $token = ($Token -replace '^`|`$', '').Trim()
   if ([string]::IsNullOrWhiteSpace($token)) { return $null }
   if ($token -match '(?i)^(N/?A|—|-|none)') { return $null }
+  $parent = Get-RepoParent
   $cands = @(
     (Join-Path $RepoRoot $token),
     (Join-Path $RepoRoot ($token.Replace('/', '\'))),
-    (Join-Path (Split-Path $RepoRoot -Parent) $token)
+    (Join-Path $parent $token)
   )
   $fe = Get-FrontendRoot
   if ($fe) {
