@@ -93,7 +93,7 @@ flowchart LR
 | Fase 1 | [#291](https://github.com/casazen/backend/issues/291) | Features #292–#301, #271, #230 |
 | Fase 2 | [#302](https://github.com/casazen/backend/issues/302) | #303–#304 |
 
-Issue bodies: `Sessions/gh-issues/`
+Issue bodies live on GitHub. Canonical AC live in `Sessions/specs/spec-*.md`.
 
 ---
 
@@ -172,7 +172,7 @@ Tracked as GH issues from gap analysis; may spawn specs when scoped.
 
 | Topic | Issue | Priority | Overlap |
 |---|---|---|---|
-| Regime fiscale / cedolare 2026 | [#3](https://github.com/casazen/backend/issues/3) | high | Parziale in LTR (`FiscalRegime`) |
+| Regime fiscale / cedolare 2026 | [#3](https://github.com/casazen/backend/issues/3) | high | Spec `spec-regime-fiscale-2026.md`; design `Sessions/design-3.md`. LTR `FiscalRegime` stays on leases only. |
 | Imposta di soggiorno | [#4](https://github.com/casazen/backend/issues/4) | medium | `TouristTaxRate` esiste, calcolo manca |
 | GDPR consent management | [#5](https://github.com/casazen/backend/issues/5) | medium | Coperto da US-006 in parte |
 | ISTAT reportistica | [#6](https://github.com/casazen/backend/issues/6) | medium | — |

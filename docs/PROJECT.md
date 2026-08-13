@@ -17,7 +17,7 @@ Web reporting, tourist tax, GDPR).
 - **Email**: MailKit SMTP (transactional; supplier invite uses `SupplierInviteEmailBuilder` HTML; supports any SMTP server or SendGrid relay)
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
-- **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`, `step-transitions.yml`)
+- **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`)
 
 ## Repo layout
 ```
@@ -50,7 +50,6 @@ Casazen.sln
 │   └── Integration/           # API, migration, resilience, controller integration tests
 ├── docs/                      # Project documentation (this folder)
 ├── Dockerfile                 # Multi-stage build
-├── docker-compose.yml         # API + PostgreSQL services
 └── .github/workflows/         # CI/CD pipelines
 ```
 

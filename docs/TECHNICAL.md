@@ -492,7 +492,7 @@ erDiagram
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment
-- **Containerisation**: `Dockerfile` and `docker-compose.yml` at repo root; `docker-compose up -d` starts the API
+- **Containerisation**: `Dockerfile` at repo root (Railway). Local API uses PostgreSQL/Supabase per `docs/INFRA.md`.
 - **CI/CD**: GitHub Actions — build + test on push; deploy on release tag (`.github/workflows/ci-cd.yml`)
 - **Environments**: Development (local), staging, production
 

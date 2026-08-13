@@ -3,9 +3,8 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- .NET 10 SDK 
-- SQL Server 2022+
-- Docker (optional)
+- .NET 10 SDK
+- PostgreSQL 16 (local `casazen_dev` or Supabase — see `docs/INFRA.md`)
 
 ### Local Setup
 
@@ -30,17 +29,7 @@ dotnet run --project Casazen.Web
 
 **API Swagger:** https://localhost:5001/swagger
 
-### Docker Setup
-
-```bash
-docker-compose up -d
-
-# View logs
-docker-compose logs -f api
-
-# Stop
-docker-compose down
-```
+Local PostgreSQL and Railway deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md`.
 
 ---
 
