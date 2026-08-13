@@ -1,8 +1,8 @@
 # AC Matrix — MVP Phase 1
 
-**Updated:** 2026-07-26  
+**Updated:** 2026-08-13  
 **Baseline:** Dev Flow Verification 2026-07-14 + quality-gates overhaul  
-**Statuses:** `pass` | `fail` | `stub` | `missing-test` | `in-progress`
+**Statuses:** `pass` | `fail` | `stub` | `missing-test` | `in-progress` | `blocked`
 
 P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 
@@ -53,7 +53,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | Host create ServiceRequest | `pass` | L2 marketplace-suppliers |
 | Supplier take/complete | `fail` | Inbox state machine L3 gap |
 | Mark paid | `pass` | Host path |
-| L3 real API loop | `missing-test` | `e2e/l3/marketplace-l3.spec.ts` shell only |
+| L3 real API loop | `blocked` | Needs FE Playwright L3 + `E2E_AUTH0_*` in Automation; BE `CompleteFlow_TakeCompleteMarkPaid_Succeeds` already covers API loop |
 
 ## Compliance wizards (#295) — P0
 
