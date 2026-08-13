@@ -22,7 +22,7 @@ gap | feature_stage
 - <PR URL(s) + Sessions/review-<N>.md when reviewing>
 
 ## Allowed actions
-- Skills: sdlc-init, sdlc-stage-run, sdlc-contract-check, sdlc-gate-runner, sdlc-matrix-writeback, sdlc-notify-human
+- Skills: sdlc-init, sdlc-stage-run, sdlc-contract-check, sdlc-gate-runner, sdlc-matrix-writeback, sdlc-notify-human, sdlc-goal-handoff
 - Exactly one stage if kind=feature_stage (unless this tick is review+merge only)
 - Feature branch `feature/<issue>-<slug>` (never push directly to develop/main)
 - Open/update PRs to `develop` with `Refs #N` when mergeable after impl PASS
@@ -39,12 +39,14 @@ gap | feature_stage
 3. sdlc-gate-runner Stage 04 → on PASS: gh pr merge → develop (never main)
 4. If checks pending: merge_wait + stop tick
 5. sdlc-notify-human: pr_merged | review_failed | merge_wait | blocked | escalated | stage_pass
+6. If this tick would set completed (goal satisfied / queue empty / max_work_units): sdlc-goal-handoff -Event <event> -Notify (demo HTML for FE/BE features, report for gaps)
 
 ## Done when
 1. Evidence at Sessions/loop/evidence/delivery-<N>/gates.json has overall pass|fail|blocked recorded honestly
 2. delivery-state + journal + metrics updated
 3. If review PASS and checks green: PR(s) merged to develop; notify pr_merged
 4. If secrets/device missing: last_result=blocked, Notes document blocker — do not invent PASS
+5. If loop completed: Sessions/loop/goal-handoff.md (and .html when kind=demo) + notify webhook
 
 ## Forbidden
 - Narrative PASS without evidence/

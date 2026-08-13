@@ -37,6 +37,7 @@ You are running exactly one tick of the CasaZen SDLC Delivery Loop.
    - Stage 04 sdlc-gate-runner; on PASS: gh pr merge → develop (never main, never --force)
    - On checks pending: set merge_wait checks_pending and stop
    - sdlc-notify-human: pr_merged | review_failed | merge_wait | escalated | blocked (informational — not "please merge")
+   - If setting completed (goal_done | queue_empty | max_work_units): sdlc-goal-handoff -Event <event> -Notify (demo HTML for FE/BE features; markdown report for gaps)
    - Update delivery-state, journal.md, metrics.md
 6. Never promote develop→main unless prompt lists Phase B/C gates and they PASS.
 7. Never declare PASS without evidence JSON. Never invent device/Maestro PASS — set blocked + Notes.
@@ -63,4 +64,5 @@ Dry-run queue only:
 ```powershell
 .\scripts\quality\build-work-queue.ps1 -DryRunPick -ApplyGoal
 .\scripts\quality\notify-human.ps1 -Event pr_merged -WorkId TEST -Title t -Summary 'Informational: PR reviewed and merged to develop.' -DryRun
+.\scripts\quality\build-goal-handoff.ps1 -Event goal_done -Notify -DryRun
 ```

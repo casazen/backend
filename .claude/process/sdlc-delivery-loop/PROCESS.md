@@ -34,11 +34,11 @@ A **work-unit** is atomic:
 1. Read this file + `Sessions/loop/delivery-state.md`.
 2. If `status` is `completed` or `escalated` → stop and report.
 3. If `merge_wait: checks_pending` → re-check PR with `gh pr view` / checks; if green continue merge path; if still pending → stop tick (retry next cron); if failed → treat as fail / escalate path.
-4. If `work_units_done >= max_work_units` (from goal or default 20) → notify + set `completed` (safety cap).
+4. If `work_units_done >= max_work_units` (from goal or default 20) → **sdlc-goal-handoff** (`-Event max_work_units -Notify`) then set `completed` (safety cap).
 5. Run **sdlc-work-queue** → refresh `Sessions/loop/work-queue.md` (+ optional `work-queue.json`).
 6. Apply `Sessions/loop/goal.md` filter if present; else treat mode as `until_empty`.
 7. Pick top work-unit (sticky running pipeline wins).
-8. If queue empty / goal satisfied → set `completed`, notify “goal done” / “queue empty”, stop.
+8. If queue empty / goal satisfied → **sdlc-goal-handoff** (`-Event goal_done` or `queue_empty -Notify`) then set `completed`, stop. Demo HTML for FE/BE features; markdown report for gaps/other.
 9. Increment `tick`; write `Sessions/loop/next-prompt.md` for this work-unit (delivery prompt template).
 10. Execute the work-unit (gap fix or one feature stage).
 11. Run **sdlc-gate-runner** → `Sessions/loop/evidence/delivery-<tick>/`.
@@ -102,10 +102,10 @@ Forbidden: replaying full chat history, reading every `Sessions/pipeline-*`, or 
 
 | Condition | Status / field |
 |---|---|
-| Goal satisfied or unified queue empty | `completed` |
+| Goal satisfied or unified queue empty | `completed` + `sdlc-goal-handoff` webhook (`demo` or `report`) |
 | Same work-unit FAIL × 3 (impl or review) | `escalated` |
 | CI/checks still pending on PR | `running` + `merge_wait: checks_pending` |
-| `max_work_units` reached | `completed` + notify |
+| `max_work_units` reached | `completed` + `sdlc-goal-handoff` (`max_work_units`) |
 
 ---
 
@@ -132,6 +132,7 @@ Inherited from reliability PROCESS, plus:
 | `sdlc-delivery-tick` | Orchestrate one delivery tick |
 | `sdlc-work-queue` | Build unified queue |
 | `sdlc-notify-human` | Webhook notify (informational) |
+| `sdlc-goal-handoff` | On loop complete: FE/BE demo HTML or gap report, then notify |
 | `sdlc-spec-gap` | Refresh gaps (when unit is gap) |
 | `sdlc-prompt-gen` | Reliability gap prompts; delivery uses delivery PROMPT-TEMPLATE |
 | `sdlc-init` / `sdlc-stage-run` | Feature pipeline |

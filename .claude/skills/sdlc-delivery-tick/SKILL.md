@@ -17,13 +17,13 @@ Read `.claude/process/sdlc-delivery-loop/PROCESS.md` first.
    - `completed` | `escalated` → report and stop.
    - If obsolete `awaiting_human_pr_review` → rewrite to `running` (set `merge_wait: checks_pending` if PR still open); continue.
    - If `merge_wait: checks_pending` → re-check PR checks; merge when green; stop if still pending; fail/escalate if checks failed.
-3. Read goal (`Sessions/loop/goal.md` if present). Cap: `max_work_units` (default 20). If `work_units_done >= max` → notify `max_work_units`, set `completed`, stop. Treat `stop_on: awaiting_human_pr_review` as `continue_next_item`.
+3. Read goal (`Sessions/loop/goal.md` if present). Cap: `max_work_units` (default 20). If `work_units_done >= max` → **sdlc-goal-handoff** `-Event max_work_units -Notify`, set `completed`, stop. Treat `stop_on: awaiting_human_pr_review` as `continue_next_item`.
 4. Run **sdlc-work-queue**.
 5. Pick top work-unit after goal include/exclude:
    - Sticky `feature_stage` always wins when present and not excluded.
    - Else first matching queue row.
    - Prefer `gap` over new `feature` when open P0 gaps exist, unless goal `include` forces a feature.
-6. If nothing to pick → notify `goal_done` or `queue_empty`, set `completed`, stop.
+6. If nothing to pick → **sdlc-goal-handoff** `-Event goal_done` or `queue_empty -Notify`, set `completed`, stop.
 7. Increment `tick`. Set `current_work_id`, `current_kind`, `sticky_pipeline` as applicable.
 8. Overwrite `Sessions/loop/next-prompt.md` using delivery PROMPT-TEMPLATE (include concrete gate commands).
 9. **Execute work-unit:**
