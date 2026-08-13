@@ -568,6 +568,16 @@ public class BookingsController(
         if (property is null) return NotFound();
         if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
 
+        var existingSession = await checkInService.GetSessionForBookingAsync(booking.Id);
+        if (existingSession?.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato)
+        {
+            return Conflict(new DTOs.CheckIn.ResendCheckInLinkResponse
+            {
+                Success = false,
+                Message = "Il check-in è già stato completato.",
+            });
+        }
+
         var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
         var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";
         var link = $"{baseUrl}/check-in/{token}";

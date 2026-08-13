@@ -419,6 +419,51 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task ResendCheckInLink_WhenSessionAlreadyComplete_ReturnsConflictWithoutCreatingToken()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockGuestCheckInService
+            .Setup(s => s.GetSessionForBookingAsync(bookingId))
+            .ReturnsAsync(new GuestCheckInSession
+            {
+                BookingId = bookingId,
+                OrgId = OrgId,
+                Status = GuestCheckInSessionStatus.Completo,
+                CompletedAt = DateTime.UtcNow,
+            });
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(conflict.Value);
+        Assert.False(response.Success);
+        _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        _mockEmailService.Verify(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ResendCheckInLink_EmailSendFails_ExpiresOnlyNewToken()
     {
         SetUser(OwnerId);
