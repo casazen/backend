@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
@@ -134,8 +135,12 @@ public class PropertiesControllerTests
     public async Task GetById_WithValidId_ReturnsProperty()
     {
         // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
         var propertyId = Guid.NewGuid();
-        var property = new Property { Id = propertyId, Name = "Test Property" };
+        var property = new Property { Id = propertyId, Name = "Test Property", OwnerId = userId };
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
 
         // Act
@@ -146,12 +151,15 @@ public class PropertiesControllerTests
         var returnedProperty = Assert.IsType<Property>(okResult.Value);
         Assert.Equal(propertyId, returnedProperty.Id);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockAuthz.Verify(x => x.CanAccess(userId, userId, It.IsAny<IEnumerable<string>>()), Times.Once);
     }
 
     [Fact]
     public async Task GetById_WithNonExistentId_ReturnsNotFound()
     {
         // Arrange
+        SetupUserClaims("auth0|owner_user_123");
+
         var propertyId = Guid.NewGuid();
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
 
@@ -161,6 +169,59 @@ public class PropertiesControllerTests
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetById_AsNonOwner_ReturnsForbidden()
+    {
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = ownerId, Name = "Owner Property" });
+        _mockAuthz
+            .Setup(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()))
+            .Returns(false);
+
+        var result = await _controller.GetById(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetById_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) }
+        };
+
+        var result = await _controller.GetById(Guid.NewGuid());
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public void OtaIntegrationSerialization_DoesNotExposeCredentials()
+    {
+        var integration = new OtaIntegration
+        {
+            Platform = "Airbnb",
+            ExternalPropertyId = "external-123",
+            ApiKey = "live-api-key",
+            ApiSecret = "live-api-secret"
+        };
+
+        var json = JsonSerializer.Serialize(integration);
+
+        Assert.DoesNotContain("live-api-key", json);
+        Assert.DoesNotContain("live-api-secret", json);
+        Assert.DoesNotContain(nameof(OtaIntegration.ApiKey), json);
+        Assert.DoesNotContain(nameof(OtaIntegration.ApiSecret), json);
     }
 
     [Fact]

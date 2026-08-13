@@ -122,6 +122,46 @@ public class Guest
 
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
+
+    public Guest CreateSnapshot(DateTime now) => new()
+    {
+        FirstName = FirstName,
+        LastName = LastName,
+        Email = Email,
+        PhoneNumber = PhoneNumber,
+        Address = Address,
+        City = City,
+        PostalCode = PostalCode,
+        Country = Country,
+        DateOfBirth = DateOfBirth,
+        PlaceOfBirth = PlaceOfBirth,
+        Nationality = Nationality,
+        DocumentType = DocumentType,
+        DocumentNumber = DocumentNumber,
+        DocumentIssueDate = DocumentIssueDate,
+        DocumentExpiryDate = DocumentExpiryDate,
+        DocumentIssuingCountry = DocumentIssuingCountry,
+        DocumentScanUrl = DocumentScanUrl,
+        DataProcessingConsentDate = DataProcessingConsentDate,
+        ConsentIpAddress = ConsentIpAddress,
+        DataRetentionExpiryDate = DataRetentionExpiryDate,
+        ErasureRequested = ErasureRequested,
+        ErasureRequestedDate = ErasureRequestedDate,
+        DataAnonymizedDate = DataAnonymizedDate,
+        Notes = Notes,
+        Gender = Gender,
+        ConsentDate = ConsentDate,
+        ConsentVersion = ConsentVersion,
+        MarketingConsent = MarketingConsent,
+        MarketingConsentDate = MarketingConsentDate,
+        DataRetentionUntil = DataRetentionUntil,
+        DataProcessingPurpose = DataProcessingPurpose,
+        IsDeleted = IsDeleted,
+        DeletedAt = DeletedAt,
+        DeletionReason = DeletionReason,
+        CreatedAt = now,
+        UpdatedAt = now,
+    };
 }
 
 public enum GuestDocumentType

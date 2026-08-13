@@ -28,9 +28,12 @@ public class CheckoutReminderJob(
             return;
         }
 
-        if (booking.Status == BookingStatus.CheckedOut)
+        if (booking.Status != BookingStatus.CheckedIn)
         {
-            logger.LogDebug("Checkout reminder skipped — booking {BookingId} already checked out", bookingId);
+            logger.LogDebug(
+                "Checkout reminder skipped — booking {BookingId} status is {Status}",
+                bookingId,
+                booking.Status);
             return;
         }
 

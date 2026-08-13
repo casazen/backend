@@ -28,7 +28,10 @@ public class DomainVerificationService(
         var records = await LookupWithTimeoutAsync(txtHost, cancellationToken);
         var isVerified = records.Any(r => string.Equals(r, org.DomainVerificationToken, StringComparison.Ordinal));
 
-        var status = isVerified ? DomainVerificationStatus.Verified : DomainVerificationStatus.Failed;
+        var wasAlreadyVerified = org.DomainVerificationStatus == DomainVerificationStatus.Verified;
+        var status = isVerified || wasAlreadyVerified
+            ? DomainVerificationStatus.Verified
+            : DomainVerificationStatus.Failed;
         org.DomainVerificationStatus = status;
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -38,7 +41,7 @@ public class DomainVerificationService(
             status,
             customDomain,
             checkedAt,
-            isVerified ? null : FailedMessage);
+            status == DomainVerificationStatus.Verified ? null : FailedMessage);
     }
 
     private async Task<IReadOnlyList<string>> LookupWithTimeoutAsync(string host, CancellationToken cancellationToken)

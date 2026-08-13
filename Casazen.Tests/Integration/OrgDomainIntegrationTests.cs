@@ -53,6 +53,69 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task SetCustomDomain_WhenOtherOrgClaimIsPending_AllowsOwnerToConfigureSameDomain()
+    {
+        var squatterId = $"auth0|domain-pending-{Guid.NewGuid():N}";
+        var ownerId = $"auth0|domain-owner-{Guid.NewGuid():N}";
+        var squatterOrg = await _factory.SeedOrgForOwnerAsync(squatterId);
+        var ownerOrg = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(squatterOrg.Id, PlanTier.Pro);
+        await SetPlanTierAsync(ownerOrg.Id, PlanTier.Pro);
+
+        using var squatterClient = _factory.CreateAuthenticatedClient(squatterId, "PropertyOwner");
+        var pendingResponse = await squatterClient.PostAsJsonAsync($"/api/orgs/{squatterOrg.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "www.pending-claim.it",
+        });
+        Assert.Equal(HttpStatusCode.OK, pendingResponse.StatusCode);
+
+        using var ownerClient = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var ownerResponse = await ownerClient.PostAsJsonAsync($"/api/orgs/{ownerOrg.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "www.pending-claim.it",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
+        var json = await ownerResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(ownerOrg.Id, json.GetProperty("orgId").GetGuid());
+        Assert.Equal("www.pending-claim.it", json.GetProperty("customDomain").GetString());
+        Assert.Equal("Pending", json.GetProperty("domainVerificationStatus").GetString());
+    }
+
+    [Fact]
+    public async Task SetCustomDomain_WhenAlreadyVerifiedSameDomain_PreservesVerification()
+    {
+        var ownerId = $"auth0|verified-resave-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(org.Id, PlanTier.Pro);
+        await SetVerifiedCustomDomainAsync(org.Id, "www.verified-resave.it");
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{org.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "https://www.verified-resave.it/",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var updated = await db.Orgs.FindAsync(org.Id);
+            Assert.Equal(DomainVerificationStatus.Verified, updated!.DomainVerificationStatus);
+            Assert.Equal("verify-token", updated.DomainVerificationToken);
+            Assert.Equal("www.verified-resave.it", updated.CustomDomain);
+        }
+
+        var resolveResponse = await _factory.CreateClient()
+            .GetAsync("/api/public/resolve-host?host=www.verified-resave.it");
+
+        Assert.Equal(HttpStatusCode.OK, resolveResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task SetDomain_ForAnotherOrg_Returns403()
     {
         var ownerId = $"auth0|owner-{Guid.NewGuid():N}";
@@ -68,6 +131,26 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetSubdomain_ConflictingWithAnotherActiveOrgSlug_Returns409()
+    {
+        var ownerId = $"auth0|owner-{Guid.NewGuid():N}";
+        var attackerId = $"auth0|attacker-{Guid.NewGuid():N}";
+        var victim = await _factory.SeedOrgForOwnerAsync(ownerId);
+        var attacker = await _factory.SeedOrgForOwnerAsync(attackerId);
+        var victimSlug = $"villa-mare-{Guid.NewGuid():N}"[..30];
+        await SetSlugAsync(victim.Id, victimSlug);
+
+        using var client = _factory.CreateAuthenticatedClient(attackerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{attacker.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = victimSlug,
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Fact]
@@ -88,12 +171,68 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(org.Slug, json.GetProperty("slug").GetString());
     }
 
+    [Fact]
+    public async Task SwitchingAwayFromSubdomain_ReleasesLabelForAnotherOrg()
+    {
+        var ownerA = $"auth0|domain-a-{Guid.NewGuid():N}";
+        var ownerB = $"auth0|domain-b-{Guid.NewGuid():N}";
+        var orgA = await _factory.SeedOrgForOwnerAsync(ownerA);
+        var orgB = await _factory.SeedOrgForOwnerAsync(ownerB);
+        await SetPlanTierAsync(orgA.Id, PlanTier.Pro);
+        var label = $"shared-{Guid.NewGuid():N}"[..20];
+
+        using var clientA = _factory.CreateAuthenticatedClient(ownerA, "PropertyOwner");
+        var setSubdomain = await clientA.PostAsJsonAsync($"/api/orgs/{orgA.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = label,
+        });
+        Assert.Equal(HttpStatusCode.OK, setSubdomain.StatusCode);
+
+        var switchToCustom = await clientA.PostAsJsonAsync($"/api/orgs/{orgA.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = $"www.{label}.it",
+        });
+        Assert.Equal(HttpStatusCode.OK, switchToCustom.StatusCode);
+
+        using var clientB = _factory.CreateAuthenticatedClient(ownerB, "PropertyOwner");
+        var reuseSubdomain = await clientB.PostAsJsonAsync($"/api/orgs/{orgB.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = label,
+        });
+        Assert.Equal(HttpStatusCode.OK, reuseSubdomain.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var reloadedOrgA = await db.Orgs.FindAsync(orgA.Id);
+        Assert.Null(reloadedOrgA!.Subdomain);
+
+        using var publicClient = _factory.CreateClient();
+        var resolve = await publicClient.GetAsync($"/api/public/resolve-host?host={label}.casazen.it");
+        Assert.Equal(HttpStatusCode.OK, resolve.StatusCode);
+        var resolvedJson = await resolve.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(orgB.Id, resolvedJson.GetProperty("orgId").GetGuid());
+    }
+
     private async Task SetPlanTierAsync(Guid orgId, PlanTier tier)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.FindAsync(orgId);
         org!.PlanTier = tier;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SetSlugAsync(Guid orgId, string slug)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.FindAsync(orgId);
+        org!.Slug = slug;
+        org.Subdomain = null;
+        org.PublicHostMode = PublicHostMode.CasazenPath;
         await db.SaveChangesAsync();
     }
 
