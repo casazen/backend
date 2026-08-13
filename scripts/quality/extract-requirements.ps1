@@ -87,7 +87,10 @@ if (Test-Path $matrixPath) {
     if ($matrix -match [regex]::Escape($h.Pattern)) {
       $found = $requirements | Where-Object { $_.id -eq $h.Id } | Select-Object -First 1
       if ($found) {
-        $found.matrix_status = $h.Status
+        # Do not clobber env/device/repo blocks (Automation must skip non-actionable P0s)
+        if ([string]$found.matrix_status -ne 'blocked') {
+          $found.matrix_status = $h.Status
+        }
       }
     }
   }
