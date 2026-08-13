@@ -54,7 +54,7 @@ test.describe('Onboarding PLG (#271)', () => {
     await expect(page.getByTestId('onboarding-consents-continue')).toBeDisabled();
   });
 
-  test('AC9: completing onboarding routes to dashboard', async ({ page }) => {
+  test('AC9: onboarding wizard shows role step before consents', async ({ page }) => {
     await page.goto(demoUrl('/onboarding', 'onboarding'));
     await expect(page.getByRole('heading', { name: /Come vuoi usare CasaZen|How do you want to use CasaZen/i })).toBeVisible({
       timeout: 15_000,

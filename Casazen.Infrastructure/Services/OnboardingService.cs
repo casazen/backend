@@ -73,8 +73,24 @@ public class OnboardingService(
         var orgProvisioned = user.OrgId.HasValue;
         var orgId = user.OrgId;
 
-        var consentsAccepted = orgId.HasValue && await db.ConsentRecords.IgnoreQueryFilters()
-            .AnyAsync(c => c.UserId == userId && c.Type == ConsentType.Tos, cancellationToken);
+        var consentsAccepted = false;
+        if (orgId.HasValue)
+        {
+            var tos = legalDocumentService.GetTos();
+            var privacy = legalDocumentService.GetPrivacy();
+            var dpa = legalDocumentService.GetDpa();
+            var subprocessors = legalDocumentService.GetSubprocessors();
+            var userConsents = await db.ConsentRecords.IgnoreQueryFilters()
+                .Where(c => c.UserId == userId && c.OrgId == orgId)
+                .Select(c => new { c.Type, c.Version })
+                .ToListAsync(cancellationToken);
+
+            consentsAccepted =
+                userConsents.Any(c => c.Type == ConsentType.Tos && c.Version == tos.Version)
+                && userConsents.Any(c => c.Type == ConsentType.Privacy && c.Version == privacy.Version)
+                && userConsents.Any(c => c.Type == ConsentType.Dpa && c.Version == dpa.Version)
+                && userConsents.Any(c => c.Type == ConsentType.SubprocessorsAck && c.Version == subprocessors.Version);
+        }
 
         var propertyCreated = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
             .AnyAsync(p => p.OrgId == orgId, cancellationToken);
