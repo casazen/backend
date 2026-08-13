@@ -77,17 +77,12 @@ public partial class OrgDomainService(
                     var domainChanged = !string.Equals(org.CustomDomain, normalizedDomain, StringComparison.Ordinal);
                     org.PublicHostMode = PublicHostMode.CustomDomain;
                     org.CustomDomain = normalizedDomain;
-<<<<<<< HEAD
                     org.Subdomain = null;
-                    org.DomainVerificationStatus = DomainVerificationStatus.Pending;
-                    org.DomainVerificationToken = GenerateVerificationToken();
-=======
                     if (domainChanged || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
                     {
                         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                         org.DomainVerificationToken = GenerateVerificationToken();
                     }
->>>>>>> origin/develop
                     break;
                 }
 
