@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-12T17:02:06Z",
+  "updated": "2026-08-13T12:22:40Z",
   "requirements": [
     {
       "id": "ADR-001-R1",
@@ -143,34 +143,8 @@
       "priority": "P0",
       "text": "Maestro smoke (`mobile/.maestro/smoke.yaml`) launches to login screen",
       "active": true,
-      "matrix_status": "fail"
-    },
-    {
-      "id": "SPEC:native-host-app:AC4",
-      "source": "Sessions/specs/spec-native-host-app.md",
-      "priority": "P0",
-      "text": "Calendar month/week grid",
-      "active": true,
-      "matrix_status": "fail",
-      "gap_id": "MATRIX:native-host:AC4"
-    },
-    {
-      "id": "SPEC:golden-journey-e2e:AC6",
-      "source": "Sessions/specs/spec-golden-journey-e2e.md",
-      "priority": "P0",
-      "text": "Host app M1–M7 golden journey",
-      "active": true,
-      "matrix_status": "fail",
-      "gap_id": "MATRIX:gj:AC6-12"
-    },
-    {
-      "id": "SPEC:native-host-app:AC20",
-      "source": "Sessions/specs/spec-native-host-app.md",
-      "priority": "P0",
-      "text": "Maestro M1–M7 device green",
-      "active": true,
-      "matrix_status": "fail",
-      "gap_id": "MATRIX:native-host:AC20"
+      "matrix_status": "blocked",
+      "gap_id": "REQ:ADR-003-R6"
     },
     {
       "id": "SPEC:micro-marketplace-v0:AC-L3",
@@ -182,24 +156,6 @@
       "gap_id": "MATRIX:marketplace:L3"
     },
     {
-      "id": "SPEC:micro-marketplace-v0:AC-supplier",
-      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
-      "priority": "P0",
-      "text": "Supplier take/complete inbox state machine",
-      "active": true,
-      "matrix_status": "fail",
-      "gap_id": "MATRIX:marketplace:supplier-take"
-    },
-    {
-      "id": "SPEC:direct-checkout:AC-L3",
-      "source": "Sessions/specs/spec-direct-checkout.md",
-      "priority": "P0",
-      "text": "L3 booking create seeded public property",
-      "active": true,
-      "matrix_status": "missing-test",
-      "gap_id": "MATRIX:checkout:L3"
-    },
-    {
       "id": "SPEC:native-host-app:AC21",
       "source": "Sessions/specs/spec-native-host-app.md",
       "priority": "P0",
@@ -207,6 +163,15 @@
       "active": true,
       "matrix_status": "missing-test",
       "gap_id": "MATRIX:native-host:AC21"
+    },
+    {
+      "id": "SPEC:native-host-app:AC20",
+      "source": "Sessions/specs/spec-native-host-app.md",
+      "priority": "P0",
+      "text": "Maestro M1–M7 device green",
+      "active": true,
+      "matrix_status": "fail",
+      "gap_id": "MATRIX:native-host:AC20"
     },
     {
       "id": "SPEC:golden-journey-e2e:AC1",
@@ -218,6 +183,15 @@
       "gap_id": "MATRIX:gj:AC1-5"
     },
     {
+      "id": "SPEC:direct-checkout:AC-L3",
+      "source": "Sessions/specs/spec-direct-checkout.md",
+      "priority": "P0",
+      "text": "L3 booking create seeded public property",
+      "active": true,
+      "matrix_status": "missing-test",
+      "gap_id": "MATRIX:checkout:L3"
+    },
+    {
       "id": "SPEC:native-host-app:AC15",
       "source": "Sessions/specs/spec-native-host-app.md",
       "priority": "P0",
@@ -225,6 +199,33 @@
       "active": true,
       "matrix_status": "fail",
       "gap_id": "MATRIX:native-host:AC15"
+    },
+    {
+      "id": "SPEC:native-host-app:AC4",
+      "source": "Sessions/specs/spec-native-host-app.md",
+      "priority": "P0",
+      "text": "Calendar month/week grid",
+      "active": true,
+      "matrix_status": "fail",
+      "gap_id": "MATRIX:native-host:AC4"
+    },
+    {
+      "id": "SPEC:micro-marketplace-v0:AC-supplier",
+      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
+      "priority": "P0",
+      "text": "Supplier take/complete inbox state machine",
+      "active": true,
+      "matrix_status": "fail",
+      "gap_id": "MATRIX:marketplace:supplier-take"
+    },
+    {
+      "id": "SPEC:golden-journey-e2e:AC6",
+      "source": "Sessions/specs/spec-golden-journey-e2e.md",
+      "priority": "P0",
+      "text": "Host app M1–M7 golden journey",
+      "active": true,
+      "matrix_status": "fail",
+      "gap_id": "MATRIX:gj:AC6-12"
     }
   ]
 }

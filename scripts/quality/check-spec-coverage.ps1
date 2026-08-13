@@ -19,15 +19,25 @@ if (-not (Test-Path $reqPath)) {
 }
 
 $data = Get-Content -Raw -Path $reqPath | ConvertFrom-Json
+# `blocked` = env/device/repo unavailable — not actionable until unblocked (do not invent PASS)
+$resolvedStatuses = @('pass', 'stub', 'blocked')
 $open = @($data.requirements | Where-Object {
     $_.active -eq $true -and
     $_.priority -eq 'P0' -and
-    $_.matrix_status -notin @('pass', 'stub')
+    $_.matrix_status -notin $resolvedStatuses
+  })
+$blocked = @($data.requirements | Where-Object {
+    $_.active -eq $true -and
+    $_.priority -eq 'P0' -and
+    $_.matrix_status -eq 'blocked'
   })
 
-Write-Host ("check-spec-coverage: {0} open P0 requirement(s)" -f $open.Count)
+Write-Host ("check-spec-coverage: {0} open P0 requirement(s), {1} blocked" -f $open.Count, $blocked.Count)
 foreach ($o in $open) {
   Write-Host ("  - {0} [{1}] {2}" -f $o.id, $o.matrix_status, $o.text)
+}
+foreach ($b in $blocked) {
+  Write-Host ("  - {0} [blocked] {1}" -f $b.id, $b.text)
 }
 
 # Heuristic freeze: P0 `fail` rows in matrix
@@ -45,6 +55,7 @@ if ($UpdateBacklog) {
     '# Gap backlog',
     ("**Updated:** {0}" -f (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')),
     ("**Open P0:** {0}" -f $open.Count),
+    ("**Blocked P0:** {0}" -f $blocked.Count),
     '',
     '| Priority | Gap ID | REQ-ID | Source | Status | Fail ticks | Suggested action |',
     '|---|---|---|---|---|---|---|'
@@ -54,6 +65,12 @@ if ($UpdateBacklog) {
     $gapId = if ($o.gap_id) { $o.gap_id } else { "REQ:$($o.id)" }
     $src = if ($o.source -match 'adr') { 'adr' } elseif ($o.source -match 'spec') { 'spec' } else { 'matrix' }
     $lines += ("| {0} | {1} | {2} | {3} | open | 0 | Close via sdlc-loop-tick |" -f $i, $gapId, $o.id, $src)
+    $i++
+  }
+  foreach ($b in $blocked) {
+    $gapId = if ($b.gap_id) { $b.gap_id } else { "REQ:$($b.id)" }
+    $src = if ($b.source -match 'adr') { 'adr' } elseif ($b.source -match 'spec') { 'spec' } else { 'matrix' }
+    $lines += ("| {0} | {1} | {2} | {3} | blocked | 0 | Unblock when env/repo/device available |" -f $i, $gapId, $b.id, $src)
     $i++
   }
   ($lines -join "`n") + "`n" | Set-Content -Path $backlogPath -Encoding UTF8
