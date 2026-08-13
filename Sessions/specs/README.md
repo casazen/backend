@@ -107,19 +107,19 @@ Issue bodies live on GitHub. Canonical AC live in `Sessions/specs/spec-*.md`.
 | — | `connect-onboarding` | Stripe Connect onboarding (enabler) | P0 | shipped | [#224](https://github.com/casazen/backend/issues/224) | Unblocks checkout + LTR rent |
 | US-002 | `direct-checkout` | Direct checkout (Connect, operator MoR) | P0 | shipped | [#226](https://github.com/casazen/backend/issues/226) | v1.1.11 |
 | US-003 | `branded-booking-site` | Branded public booking site | P0 | shipped → **redesign** | [#215](https://github.com/casazen/backend/issues/215) | API ok; UI → design system |
-| US-023 | `public-site-design-system` | Marketing-grade site templates | **P0** | planned | [#297](https://github.com/casazen/backend/issues/297) | Holidu-quality UX |
-| US-024 | `custom-domain-booking` | Subdomain `*.casazen.it` + custom CNAME | **P0** | planned | [#298](https://github.com/casazen/backend/issues/298) | Holidu domain model |
-| US-025 | `native-host-app` | Expo app — subset on-the-go (web = completa) | **P0** | planned | [#299](https://github.com/casazen/backend/issues/299) | Complemento web |
-| US-022 | `supplier-console-web` | Console fornitore web — inbox, incarichi | **P0** | planned | [#292](https://github.com/casazen/backend/issues/292) | GJ step 1–2, 8–9 |
-| US-019 | `compliance-wizards` | Wizard property, check-out + cockpit | **P0** | planned | [#295](https://github.com/casazen/backend/issues/295) | Guest portal separato |
-| US-020 | `guest-check-in-portal` | Portale ospite self-service check-in | **P0** | planned | [#296](https://github.com/casazen/backend/issues/296) | GJ step 6 |
-| GJ-001 | `golden-journey-e2e` | GJ 12-step web + Maestro + fornitore mobile | **P0** | planned | [#301](https://github.com/casazen/backend/issues/301) | Exit criterion MVP |
-| US-018 | `ical-calendar-sync` | iCal import/export OTA calendar | **P0** | planned | [#294](https://github.com/casazen/backend/issues/294) | GJ step 5 |
-| US-021 | `micro-marketplace-v0` | Service request + payment tracking | **P0** | planned | [#293](https://github.com/casazen/backend/issues/293) | GJ step 7–10 |
-| US-026 | `seo-funnel` | SEO pages → signup CTA | **P0** | planned | [#300](https://github.com/casazen/backend/issues/300) | Builds on #258 |
+| US-023 | `public-site-design-system` | Marketing-grade site templates | **P0** | shipped | [#297](https://github.com/casazen/backend/issues/297) | Holidu-quality UX; FE PublicSiteShell + BE Org theme |
+| US-024 | `custom-domain-booking` | Subdomain `*.casazen.it` + custom CNAME | **P0** | shipped | [#298](https://github.com/casazen/backend/issues/298) | Holidu domain model |
+| US-025 | `native-host-app` | Expo app — subset on-the-go (web = completa) | **P0** | shipped | [#299](https://github.com/casazen/backend/issues/299) | Complemento web; Maestro gaps env-blocked |
+| US-022 | `supplier-console-web` | Console fornitore web — inbox, incarichi | **P0** | shipped | [#292](https://github.com/casazen/backend/issues/292) | GJ step 1–2, 8–9 |
+| US-019 | `compliance-wizards` | Wizard property, check-out + cockpit | **P0** | shipped | [#295](https://github.com/casazen/backend/issues/295) | Guest portal separato |
+| US-020 | `guest-check-in-portal` | Portale ospite self-service check-in | **P0** | shipped | [#296](https://github.com/casazen/backend/issues/296) | GJ step 6 |
+| GJ-001 | `golden-journey-e2e` | GJ 12-step web + Maestro + fornitore mobile | **P0** | shipped | [#301](https://github.com/casazen/backend/issues/301) | Harness shipped; L3/Maestro env-blocked |
+| US-018 | `ical-calendar-sync` | iCal import/export OTA calendar | **P0** | shipped | [#294](https://github.com/casazen/backend/issues/294) | GJ step 5 |
+| US-021 | `micro-marketplace-v0` | Service request + payment tracking | **P0** | shipped | [#293](https://github.com/casazen/backend/issues/293) | GJ step 7–10; L3 env-blocked |
+| US-026 | `seo-funnel` | SEO pages → signup CTA | **P0** | planned | [#300](https://github.com/casazen/backend/issues/300) | Builds on #258; Stage 01 needs `compliance` label (SeoEvent IP) — automation cannot edit issues |
 | US-004 | `tenant-boundary` | Org + OrgId + plan entitlement | P0 | shipped | [#202](https://github.com/casazen/backend/issues/202) | v1.1.6 |
 | — | `role-onboarding` | Role choice (STR/LTR/both) | P0 | shipped | [#198](https://github.com/casazen/backend/issues/198) | Pre-requisite PLG |
-| US-005 | `saas-billing` | SaaS subscription billing | P1 | planned | [#230](https://github.com/casazen/backend/issues/230) | Reopened F1; freemium + Pro gate |
+| US-005 | `saas-billing` | SaaS subscription billing | P1 | shipped | [#230](https://github.com/casazen/backend/issues/230) | Freemium + Pro gate |
 | US-006 | `onboarding-plg` | Self-serve onboarding + activation | **P0** | in-dev | [#271](https://github.com/casazen/backend/issues/271) | F0/F1 epic #286 #291 |
 
 ### Phase 1.5 — LTR (**frozen** — see PLANNING.md)
