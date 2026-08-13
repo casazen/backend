@@ -10,7 +10,7 @@
 Coordinator spawns: `api-designer`, `frontend-designer`, `security-by-design`
 
 Topic handed to council:
-> "Produce a complete design spec at Sessions/design-<issue-N>.md for Issue #N: [issue title]. Cover API contract, frontend flow, and security model."
+> "Produce a complete design spec at Sessions/design-<issue-N>.md for Issue #N: [issue title]. Cover API contract, frontend flow, security model, and AC Test Map (L1/L2/L3)."
 
 ## Quality Gates
 
@@ -21,11 +21,13 @@ All gates must pass before exiting.
 | G1 | Spec file exists | `Test-Path Sessions/design-<issue-N>.md` | File exists and non-empty |
 | G2 | API contract complete | Read spec `## API Contract` section | Every new/changed endpoint has method, path, request schema, response schema, auth requirement |
 | G3 | Every endpoint has auth decision | Read spec `## API Contract` | Each endpoint specifies `[Authorize]` or explicit public justification |
-| G4 | Frontend flow defined | Read spec `## Frontend Flow` section | Route changes and component breakdown described |
-| G5 | `<ProtectedRoute>` specified | Read spec `## Frontend Flow` | Every new authenticated route marked with `<ProtectedRoute>` |
+| G4 | Frontend flow defined | Read spec `## Frontend Flow` section | Route changes and component breakdown described (or N/A with BE-only justification) |
+| G5 | `<ProtectedRoute>` specified | Read spec `## Frontend Flow` | Every new authenticated route marked with `<ProtectedRoute>` (or Expo session gate for mobile) |
 | G6 | Security notes present | Read spec `## Security Notes` section | OTA keys in config, PII data flow, threat summary |
 | G7 | Migration plan included | Read spec `## Migration Plan` section | Present if schema changes; `N/A — no schema changes` if not |
 | G8 | GDPR scope stated | Read spec `## GDPR Scope` section | Present if Guest data involved; `N/A` if not |
+| G9 | AC Test Map complete | `.\scripts\quality\check-ac-matrix.ps1 -DesignPath Sessions/design-<N>.md` (path-exists enabled) | **Hard fail without `## AC Test Map`.** Every Issue AC has a row with REQ-ID (`SPEC:<slug>:ACn` and/or `ADR-00N-Rk` in AC column or Notes). UI ACs must name L2 **and** L3 files that **exist** (or Maestro paths). `N/A — non UI` only for non-UI ACs. Gate PASS only via `sdlc-gate-runner` evidence. |
+| G10 | Spec/ADR linkage | Read design header | Design cites `Sessions/specs/spec-…` and any informing `docs/adr/ADR-…`; ACs align to those REQ-IDs |
 
 ## Harness Loop
 
@@ -33,27 +35,45 @@ All gates must pass before exiting.
 iteration = 0
 max_iterations = 3
 
-WHILE (any gate in G1–G8 fails) AND (iteration < max_iterations):
+WHILE (any gate in G1–G10 fails) AND (iteration < max_iterations):
   1. Coordinator identifies failed gates with specific missing content
-  2. Assigns specialists: api-designer → G2/G3/G7, frontend-designer → G4/G5, security-by-design → G3/G6/G8
+  2. Assigns specialists: api-designer → G2/G3/G7, frontend-designer → G4/G5/G9/G10, security-by-design → G3/G6/G8
   3. Specialists update spec file
-  4. Re-check all failed gates
+  4. Re-check failed gates via **sdlc-gate-runner** (not narrative)
   5. iteration++
 
 IF iteration == max_iterations AND gates still failing:
-  ESCALATE: add escalation block to spec file
-  Human decision required before proceeding to development
+  ESCALATE via sdlc-escalate — do not hand off to Stage 03
 ```
 
 ## Exit Artifact
 
 `Sessions/design-<issue-N>.md` with sections:
 - `## API Contract` — full endpoint table
-- `## Frontend Flow` — route + component plan
+- `## Frontend Flow` — route + component plan (or mobile route map)
 - `## Security Notes` — auth gates, PII, OTA keys
 - `## Migration Plan` — EF Core changes or N/A
 - `## GDPR Scope` — affected Guest fields or N/A
+- `## AC Test Map` — required table (see template below)
 - `## Open Questions` — empty (all resolved) or with answers
+
+### AC Test Map template
+
+```markdown
+## AC Test Map
+
+| AC | REQ-ID | L1 (unit/integration) | L2 (demo Playwright / Maestro UI) | L3 (real API local/staging) | Seed / fixture |
+|---|---|---|---|---|---|
+| AC1 | SPEC:example:AC1 | `Casazen.Tests/...` | `e2e/foo.spec.ts` | `e2e/l3/foo-l3.spec.ts` | InMemory seed X |
+| AC2 | ADR-001-R2 | N/A — non UI | — | — | — |
+```
+
+Rules:
+- **AC Test Map is mandatory** — Stage 02 cannot exit without it (G9).
+- L2 may use `page.route()` mocks.
+- L3 **must not** mock the API path under test (Auth0 setup may use storage state). L2 alone never closes a UI AC.
+- Mobile ACs use Maestro YAML paths under `../mobile/e2e/`.
+- Referenced L1/L2/L3 paths must exist on disk (`check-ac-matrix.ps1`).
 
 ## Handoff to Stage 03
 

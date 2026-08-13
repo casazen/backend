@@ -100,13 +100,20 @@ public class BookingServiceTests
     public async Task CancelBookingAsync_WithValidBooking_CancelsBooking()
     {
         var bookingId = Guid.NewGuid();
-        var booking = new Booking { Id = bookingId, Status = BookingStatus.Confirmed };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            Status = BookingStatus.Confirmed,
+            CheckoutReminderJobId = "checkout-reminder-job",
+        };
         _mockRepository.Setup(x => x.GetByIdAsync(bookingId)).ReturnsAsync(booking);
         _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Booking>())).ReturnsAsync(booking);
 
         var result = await _service.CancelBookingAsync(bookingId);
 
         Assert.True(result);
-        _mockRepository.Verify(x => x.UpdateAsync(It.Is<Booking>(b => b.Status == BookingStatus.Cancelled)), Times.Once);
+        _mockRepository.Verify(x => x.UpdateAsync(It.Is<Booking>(b =>
+            b.Status == BookingStatus.Cancelled &&
+            b.CheckoutReminderJobId == null)), Times.Once);
     }
 }

@@ -58,6 +58,17 @@ Export token: 32-byte cryptographically random, rotatable by host.
 
 `ImportUrl` encrypted at rest via ASP.NET Data Protection (same pattern as Stripe keys).
 
+## Requirements
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-002-R1 | P0 | Parse RFC 5545 with Ical.Net; upsert `CalendarBlock` by `(PropertyId, ExternalUid)` |
+| ADR-002-R2 | P0 | Hangfire `ICalSyncJob` runs on configurable interval (default 15 minutes) |
+| ADR-002-R3 | P0 | `GET /api/public/ical/{exportToken}` exports `text/calendar` with **no PII** in SUMMARY/DESCRIPTION |
+| ADR-002-R4 | P0 | Availability checks include overlapping `Booking` + `CalendarBlock` |
+| ADR-002-R5 | P0 | `ImportUrl` encrypted at rest via ASP.NET Data Protection |
+| ADR-002-R6 | P1 | Failed imports surface Italian error in host console without blocking direct bookings |
+
 ## PoC scope (Fase 0)
 
 Spike validates:

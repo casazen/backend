@@ -38,6 +38,12 @@ public class DevicesController(
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(pushToken))
             return BadRequest(new { error = "DeviceId and PushToken are required." });
 
+        var staleRegistrations = await db.DeviceRegistrations
+            .Where(d => d.PushToken == pushToken && d.UserId != userId)
+            .ToListAsync(cancellationToken);
+        if (staleRegistrations.Count > 0)
+            db.DeviceRegistrations.RemoveRange(staleRegistrations);
+
         var existing = await db.DeviceRegistrations
             .FirstOrDefaultAsync(d => d.UserId == userId && d.DeviceId == deviceId, cancellationToken);
 

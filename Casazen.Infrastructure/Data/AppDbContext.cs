@@ -340,7 +340,7 @@ public class AppDbContext(
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)
             .IsUnique()
-            .HasFilter("\"CustomDomain\" IS NOT NULL");
+            .HasFilter("\"CustomDomain\" IS NOT NULL AND \"DomainVerificationStatus\" = 1");
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.Subdomain)
