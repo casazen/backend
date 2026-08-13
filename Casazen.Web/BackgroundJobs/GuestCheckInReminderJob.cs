@@ -19,6 +19,7 @@ public class GuestCheckInReminderJob(
     public async Task ExecuteAsync()
     {
         var now = DateTime.UtcNow;
+        var alertWindowStart = now.Date;
         var alertWindow = now.AddHours(24);
 
         var bookings = await db.Bookings
@@ -27,8 +28,8 @@ public class GuestCheckInReminderJob(
             .Include(b => b.Property)
             .Include(b => b.Org)
             .Where(b =>
-                b.Status == BookingStatus.Confirmed &&
-                b.CheckInDate >= now &&
+                (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn) &&
+                b.CheckInDate >= alertWindowStart &&
                 b.CheckInDate <= alertWindow)
             .ToListAsync();
 

@@ -572,10 +572,10 @@ public class SupplierService(
             .OrderBy(sp => sp.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        // Group by normalized email to detect duplicates.
-        // Empty-email profiles all land in the "" bucket and are deduplicated together.
+        // Group by normalized email to detect duplicates. Blank email is not an
+        // identity key, so those profiles are never merged together.
         var profilesByEmail = allProfiles
-            .GroupBy(sp => (sp.Email ?? string.Empty).Trim().ToLowerInvariant())
+            .GroupBy(sp => NormalizeSupplierEmail(sp.Email))
             .ToList();
 
         foreach (var group in profilesByEmail)
@@ -584,7 +584,7 @@ public class SupplierService(
             var profiles = group.ToList();
 
             // Case C: Duplicate profiles — keep the richest one
-            if (profiles.Count > 1)
+            if (!string.IsNullOrWhiteSpace(email) && profiles.Count > 1)
             {
                 static int Score(SupplierProfile p)
                 {
@@ -690,6 +690,9 @@ public class SupplierService(
 
         return report;
     }
+
+    private static string NormalizeSupplierEmail(string? email) =>
+        string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
     private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
     {
