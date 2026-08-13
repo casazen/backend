@@ -77,6 +77,7 @@ public partial class OrgDomainService(
                     var domainChanged = !string.Equals(org.CustomDomain, normalizedDomain, StringComparison.Ordinal);
                     org.PublicHostMode = PublicHostMode.CustomDomain;
                     org.CustomDomain = normalizedDomain;
+                    org.Subdomain = null;
                     if (domainChanged || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
                     {
                         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
@@ -115,6 +116,7 @@ public partial class OrgDomainService(
 
             case PublicHostMode.CasazenPath:
                 org.PublicHostMode = PublicHostMode.CasazenPath;
+                org.Subdomain = null;
                 ClearCustomDomainFields(org);
                 break;
 

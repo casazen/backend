@@ -139,6 +139,51 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(org.Slug, json.GetProperty("slug").GetString());
     }
 
+    [Fact]
+    public async Task SwitchingAwayFromSubdomain_ReleasesLabelForAnotherOrg()
+    {
+        var ownerA = $"auth0|domain-a-{Guid.NewGuid():N}";
+        var ownerB = $"auth0|domain-b-{Guid.NewGuid():N}";
+        var orgA = await _factory.SeedOrgForOwnerAsync(ownerA);
+        var orgB = await _factory.SeedOrgForOwnerAsync(ownerB);
+        await SetPlanTierAsync(orgA.Id, PlanTier.Pro);
+        var label = $"shared-{Guid.NewGuid():N}"[..20];
+
+        using var clientA = _factory.CreateAuthenticatedClient(ownerA, "PropertyOwner");
+        var setSubdomain = await clientA.PostAsJsonAsync($"/api/orgs/{orgA.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = label,
+        });
+        Assert.Equal(HttpStatusCode.OK, setSubdomain.StatusCode);
+
+        var switchToCustom = await clientA.PostAsJsonAsync($"/api/orgs/{orgA.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = $"www.{label}.it",
+        });
+        Assert.Equal(HttpStatusCode.OK, switchToCustom.StatusCode);
+
+        using var clientB = _factory.CreateAuthenticatedClient(ownerB, "PropertyOwner");
+        var reuseSubdomain = await clientB.PostAsJsonAsync($"/api/orgs/{orgB.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = label,
+        });
+        Assert.Equal(HttpStatusCode.OK, reuseSubdomain.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var reloadedOrgA = await db.Orgs.FindAsync(orgA.Id);
+        Assert.Null(reloadedOrgA!.Subdomain);
+
+        using var publicClient = _factory.CreateClient();
+        var resolve = await publicClient.GetAsync($"/api/public/resolve-host?host={label}.casazen.it");
+        Assert.Equal(HttpStatusCode.OK, resolve.StatusCode);
+        var resolvedJson = await resolve.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(orgB.Id, resolvedJson.GetProperty("orgId").GetGuid());
+    }
+
     private async Task SetPlanTierAsync(Guid orgId, PlanTier tier)
     {
         using var scope = _factory.Services.CreateScope();
