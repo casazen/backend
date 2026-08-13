@@ -26,10 +26,10 @@ Extend first-run onboarding into a PLG funnel: provision an `Org` (idempotent), 
 | `Id` | `Guid` PK | |
 | `UserId` | `string` MaxLength 255 | Auth0 `sub` |
 | `OrgId` | `Guid` FK → Org | Tenant boundary |
-| `Type` | `ConsentType` enum | `Tos` \| `Privacy` \| `Dpa` \| `Subprocessors` \| `Marketing` |
+| `Type` | `ConsentType` enum | Shipped: `Tos` \| `Privacy` \| `Dpa` \| `SubprocessorsAck`. Stage 03 adds `Marketing` (see Migration Plan). |
 | `Version` | `string` MaxLength 100 | Document version at acceptance |
 | `IpAddress` | `string?` MaxLength 100 | From `X-Forwarded-For` / remote IP |
-| `RecordedAt` | `DateTime` UTC | Append-only; version bump → new row |
+| `RecordedAt` | `DateTime` UTC | Append-only; version bump → new row (spec prose `acceptedAt` maps to this column) |
 
 **Indexes:** `(UserId)`, `(OrgId)`, `(Type)` as configured in `AppDbContext`.
 
@@ -41,11 +41,11 @@ Extend first-run onboarding into a PLG funnel: provision an `Org` (idempotent), 
 |---|---|---|---|---|---|
 | **Extend** | POST | `/api/users/onboarding` | `[Authorize]` | `OnboardingRequestDto` | 200 `OnboardingResponseDto` / 400 / 401 / 500 |
 | **Extend** | PUT | `/api/users/onboarding` | `[Authorize]` | `OnboardingRequestDto` | 200 `OnboardingResponseDto` / 400 / 401 |
-| **New** | GET | `/api/onboarding/status` | `[Authorize]` | — | 200 `OnboardingStatusDto` / 401 |
-| **New** | GET | `/api/legal/subprocessors` | `[AllowAnonymous]` — public legal transparency | — | 200 `SubprocessorsDocumentDto` |
-| **New** | GET | `/api/legal/dpa` | `[AllowAnonymous]` — public legal doc metadata | — | 200 `LegalDocumentDto` |
-| **New** | GET | `/api/legal/tos` | `[AllowAnonymous]` — public legal doc metadata | — | 200 `LegalDocumentDto` |
-| **New** | GET | `/api/legal/privacy` | `[AllowAnonymous]` — public legal doc metadata | — | 200 `LegalDocumentDto` |
+| **Exists / verify** | GET | `/api/onboarding/status` | `[Authorize]` | — | 200 `OnboardingStatusDto` / 401 |
+| **Exists / verify** | GET | `/api/legal/subprocessors` | `[AllowAnonymous]` — public legal transparency | — | 200 `SubprocessorsDocumentDto` |
+| **Exists / verify** | GET | `/api/legal/dpa` | `[AllowAnonymous]` — public legal doc metadata | — | 200 `LegalDocumentDto` |
+| **Exists / verify** | GET | `/api/legal/tos` | `[AllowAnonymous]` — public legal doc metadata | — | 200 `LegalDocumentDto` |
+| **Exists / verify** | GET | `/api/legal/privacy` | `[AllowAnonymous]` — public legal doc metadata | — | 200 `LegalDocumentDto` |
 
 ### POST `/api/users/onboarding`
 
@@ -85,7 +85,7 @@ Extend first-run onboarding into a PLG funnel: provision an `Org` (idempotent), 
 
 **Auth**: `[Authorize]` — same JWT subject. Admins bypass onboarding guard on FE (`spec-role-onboarding` AC9); API still authorizes the caller.
 
-**Request**: same DTO; `consents` **not required** (`requireConsents: false`). Existing Org + consent history retained; only role/`rentalType` (and optional plan on first provision path) applied (AC7).
+**Request**: same DTO; `consents` **not required** (`requireConsents: false`). Existing Org + consent history retained. Only `rentalType` / Auth0 roles are applied when `OrgId` is already set — **never overwrite `PlanTier`** on re-run (AC7). `planTier` applies only if this call is the first Org provision (edge case for incomplete users).
 
 **Responses:** `200` / `400` / `401` as above.
 
@@ -103,8 +103,10 @@ Extend first-run onboarding into a PLG funnel: provision an `Org` (idempotent), 
 | `propertyCreated` | `bool` | Org has ≥1 `Property` |
 | `sitePublished` | `bool` | Org branded site active (`Org.IsActive` + ≥1 active property) |
 | `firstBookingTaken` | `bool` | Org has ≥1 `Confirmed` direct `Booking` |
-| `activated` | `bool` | All activation milestones true |
+| `activated` | `bool` | **Stage 03 target formula (explicit):** `roleChosen && orgProvisioned && consentsAccepted && propertyCreated && sitePublished && firstBookingTaken`. Hide checklist when true (AC10). |
 | `publicBookingUrl` | `string?` | Share URL when available |
+
+> **Known tree gap (Stage 03):** current BE may compute a weaker `activated` and stub `sitePublished`. Stage 03 L1 must assert the six-bool conjunction above — not the weaker interim formula.
 
 ### GET `/api/legal/*` (anonymous)
 
@@ -178,9 +180,10 @@ Extend first-run onboarding into a PLG funnel: provision an `Org` (idempotent), 
 
 | Migration | Entity / change |
 |---|---|
-| `20260611213956_AddConsentRecords` | `ConsentRecords` table + indexes (`UserId`, `OrgId`, `Type`) |
+| `20260611213956_AddConsentRecords` | `ConsentRecords` table + indexes (`UserId`, `OrgId`, `Type`) — **already shipped** |
+| Stage 03 enum extend | Add `ConsentType.Marketing` to `Casazen.Core/Entities/Enums/ConsentType.cs` (EF stores enum as int — **no new table**; confirm snapshot/model still valid). Keep shipped name `SubprocessorsAck` (do not invent parallel `Subprocessors` vocabulary in tests). |
 
-Register `DbSet<ConsentRecord>` in `AppDbContext` (already present). Stage 03 verifies migration applied on staging before L3; no additional schema expected unless gap analysis finds missing indexes.
+Register `DbSet<ConsentRecord>` in `AppDbContext` (already present). Stage 03 verifies consent migration applied on staging before L3; add Marketing enum member so GDPR marketing opt-in rows can persist without inventing a second store.
 
 ---
 
@@ -190,7 +193,7 @@ Register `DbSet<ConsentRecord>` in `AppDbContext` (already present). Stage 03 ve
 - Consent evidence: type, version, `RecordedAt`, IP — GDPR Art. 7 demonstrability.
 - DPA acceptance establishes Org as controller / CasaZen as processor (`spec-tenant-boundary`).
 - Subprocessor acknowledgement (Supabase EU, Auth0, Stripe, SendGrid) with versioned public list.
-- Marketing opt-in optional; stored as `ConsentType.Marketing` when true.
+- Marketing opt-in optional; when true, persist as `ConsentType.Marketing` (**Stage 03 enum addition** — see Migration Plan). Until that lands, do not silently drop marketing opt-in: Stage 03 must ship the enum value in the same PR that records marketing rows.
 
 **Out of scope:** Guest name/DOB/document — **N/A — no Guest personal data in this flow.**  
 Data minimization: role, org, consent metadata only.
@@ -221,3 +224,10 @@ Data minimization: role, org, consent metadata only.
 ## Open Questions
 
 (none — all resolved)
+
+### Stage 04 🟡 dispositions (PR #403)
+
+| Finding | Disposition |
+|---|---|
+| ConsentType Marketing / Subprocessors vs Migration Plan | **Fixed** — design aligns to shipped `SubprocessorsAck`; Migration Plan requires Stage 03 `Marketing` enum member |
+| `activated` underspecified | **Fixed** — explicit six-bool conjunction documented as Stage 03 target |

@@ -104,3 +104,14 @@ No Maestro/device paths; no Stage 03 FE activation checklist claimed complete
 | ⚪ Low | 1 |
 
 **Merge OK: no** — from code-review perspective, resolve or explicitly defer the two 🟡 items in `Sessions/design-271.md` (Marketing/`ConsentType` + Migration Plan honesty; explicit `activated` formula) before treating Stage 02 design as Stage 03-ready. Do **not** fail this PR for missing FE activation checklist implementation (Stage 03). Security review is out of this agent’s scope. Do not merge from this agent (parent/delivery tick owns merge).
+
+---
+
+## Follow-up (parent tick) — 🟡 resolved
+
+Design patch on `Sessions/design-271.md` addresses both open 🟡 items:
+
+1. ConsentType vocabulary + Migration Plan honesty (`SubprocessorsAck` + Stage 03 `Marketing` enum)
+2. Explicit `activated` = six-bool conjunction
+
+**Open 🟡 after patch: 0.** Merge OK (code-review): **yes**.

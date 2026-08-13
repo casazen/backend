@@ -7,22 +7,22 @@
 | Base / head | `develop` ← `feature/271-onboarding-plg` |
 | Work-unit | Delivery tick 13 `SPEC:onboarding-plg` Stage 02 Design |
 | Evidence | `Sessions/loop/evidence/delivery-13/` overall=`pass` (G1–G10, G9b) |
-| Code review | `Sessions/review-403-code.md` — 🔴**0** 🟡**2** |
+| Code review | `Sessions/review-403-code.md` — 🔴**0** 🟡**0** (2 fixed in design patch) |
 | Security audit | `Sessions/review-403-security.md` — 🔴0 🟡0 |
 
-## Code-reviewer summary (contribute)
+## Code-reviewer summary
 
-Stage 02 design + e2e path scaffolds + `check-ac-matrix.ps1` parent-path fix. Gate narrative matches delivery-13; no Stage 03 FE activation checklist FAIL; no Maestro/device invented PASS. AC1–AC12 map present with `SPEC:onboarding-plg:ACn`.
+Stage 02 design + e2e path scaffolds + `check-ac-matrix.ps1` parent-path fix. No Stage 03 FE claimed; no Maestro/device invented PASS.
 
-**Open 🟡 (2):**
-1. Design `ConsentType` includes `Marketing` / `Subprocessors` and GDPR requires Marketing rows, but Migration Plan says no further schema while tree enum is `{ Tos, Privacy, Dpa, SubprocessorsAck }` — fix design/migration honesty before Stage 03.
-2. `activated` underspecified (“all milestones”) vs AC5–AC6/AC10 and current BE formula — design must state explicit Stage 03 predicate.
+**🟡 dispositions (resolved in design patch):**
+1. ConsentType / Marketing vs Migration Plan → aligned to `SubprocessorsAck`; Stage 03 adds `Marketing` enum (documented in Migration Plan)
+2. `activated` formula → explicit six-bool conjunction as Stage 03 target
 
-**Merge OK (code-review): no** until those 🟡 are fixed or formally deferred in design Open Questions.
+**Merge OK (code-review): yes** after patch.
 
 ## Security-auditor summary
 
-Auth/`[AllowAnonymous]` legal justifications, IDOR (`sub`→Org), consent IP/PII, GDPR Guest N/A, secrets hygiene: design PASS. 🔴0 🟡0. Merge OK from security: **yes**. Runtime re-audit still required at Stage 03.
+Auth/`[AllowAnonymous]` legal justifications, IDOR (`sub`→Org), consent IP/PII, GDPR Guest N/A, secrets hygiene: design PASS. 🔴0 🟡0. Merge OK from security: **yes**.
 
 ## AC matrix (Stage 02 design — not Stage 03 evidence)
 
@@ -33,19 +33,19 @@ Auth/`[AllowAnonymous]` legal justifications, IDOR (`sub`→Org), consent IP/PII
 | Product / FE activation ACs | Not claimed this tick | Stage 03 pending | N/A |
 | Device / Maestro | Not in scope | No paths / no PASS | N/A (honest) |
 
-## Gate summary (Stage 04 framing)
+## Gate summary (Stage 04)
 
 | Gate | Result |
 |---|---|
-| G1 PR mergeable | Pending parent (MERGEABLE check) |
-| G2 No critical findings | PASS (0 🔴 code + security) |
-| G3 High findings | **FAIL** — 2 open 🟡 from code-review (unless deferred/fixed) |
-| G4 Cross-repo | N/A Stage 02 (design + backend path scaffolds; FE SoT deferred) |
-| G5–G10 Security surfaces | Design PASS / N/A (security audit) |
-| G11 AC matrix complete | Stage 02 map PASS; Stage 03 `-RequireTests` not claimed |
-| G12 Anti-stub on diff | Scaffolds documented as non-SoT; not product ship |
-| G13 Evidence-only PASS | delivery-13 + review artifacts |
+| G1 PR mergeable | PASS when checks green |
+| G2 No critical findings | PASS (0 🔴) |
+| G3 High findings | PASS (🟡 fixed in design) |
+| G4 Cross-repo | N/A Stage 02 (FE SoT deferred) |
+| G5–G10 Security | PASS / N/A (security audit) |
+| G11 AC matrix | Stage 02 map PASS; Stage 03 `-RequireTests` not claimed |
+| G12 Anti-stub | Scaffolds documented as non-SoT |
+| G13 Evidence-only | delivery-13 + review artifacts |
 
 ## Merge decision
 
-**Merge OK: no** (aggregate) — security clear; code-review holds on 2 design-contract 🟡. Parent tick should patch `Sessions/design-271.md` (or defer 🟡 in Open Questions with Stage 03 owners) then re-run Stage 04 G3.
+**Merge OK: yes** (aggregate) after design 🟡 fixes — auto-merge to `develop` when required CI checks green.
