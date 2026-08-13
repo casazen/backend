@@ -156,12 +156,15 @@ builder.Services.AddRateLimiter(options =>
         limiter.PermitLimit = builder.Configuration.GetValue("SeoTouristTax:RateLimitPermitLimit", 30);
         limiter.QueueLimit = 0;
     });
-    options.AddFixedWindowLimiter("PublicResolveHost", limiter =>
-    {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = builder.Configuration.GetValue("PublicHost:RateLimitPermitLimit", 60);
-        limiter.QueueLimit = 0;
-    });
+    options.AddPolicy("PublicResolveHost", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetClientIpRateLimitKey(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = builder.Configuration.GetValue("PublicHost:RateLimitPermitLimit", 60),
+                QueueLimit = 0,
+            }));
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
@@ -451,6 +454,17 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         job => job.ExecuteAsync(),
         "0 10 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+}
+
+static string GetClientIpRateLimitKey(HttpContext context)
+{
+    var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+    var forwardedClient = forwarded?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+        .FirstOrDefault();
+
+    return string.IsNullOrWhiteSpace(forwardedClient)
+        ? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"
+        : forwardedClient;
 }
 
 public partial class Program { }
