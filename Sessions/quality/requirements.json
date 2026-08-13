@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-13T17:33:57Z",
+  "updated": "2026-08-13T18:19:33Z",
   "requirements": [
     {
       "id": "ADR-001-R1",
@@ -147,31 +147,22 @@
       "gap_id": "REQ:ADR-003-R6"
     },
     {
-      "id": "SPEC:direct-checkout:AC-L3",
-      "source": "Sessions/specs/spec-direct-checkout.md",
-      "priority": "P0",
-      "text": "L3 booking create seeded public property",
-      "active": true,
-      "matrix_status": "missing-test",
-      "gap_id": "MATRIX:checkout:L3"
-    },
-    {
-      "id": "SPEC:golden-journey-e2e:AC6",
-      "source": "Sessions/specs/spec-golden-journey-e2e.md",
-      "priority": "P0",
-      "text": "Host app M1–M7 golden journey",
-      "active": true,
-      "matrix_status": "blocked",
-      "gap_id": "MATRIX:gj:AC6-12"
-    },
-    {
-      "id": "SPEC:micro-marketplace-v0:AC-supplier",
+      "id": "SPEC:micro-marketplace-v0:AC-L3",
       "source": "Sessions/specs/spec-micro-marketplace-v0.md",
       "priority": "P0",
-      "text": "Supplier take/complete inbox state machine",
+      "text": "L3 real API marketplace loop",
       "active": true,
       "matrix_status": "blocked",
-      "gap_id": "MATRIX:marketplace:supplier-take"
+      "gap_id": "MATRIX:marketplace:L3"
+    },
+    {
+      "id": "SPEC:native-host-app:AC15",
+      "source": "Sessions/specs/spec-native-host-app.md",
+      "priority": "P0",
+      "text": "Maestro 0 crash on device",
+      "active": true,
+      "matrix_status": "fail",
+      "gap_id": "MATRIX:native-host:AC15"
     },
     {
       "id": "SPEC:native-host-app:AC21",
@@ -197,8 +188,35 @@
       "priority": "P0",
       "text": "Calendar month/week grid",
       "active": true,
-      "matrix_status": "fail",
+      "matrix_status": "blocked",
       "gap_id": "MATRIX:native-host:AC4"
+    },
+    {
+      "id": "SPEC:micro-marketplace-v0:AC-supplier",
+      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
+      "priority": "P0",
+      "text": "Supplier take/complete inbox state machine",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:marketplace:supplier-take"
+    },
+    {
+      "id": "SPEC:golden-journey-e2e:AC6",
+      "source": "Sessions/specs/spec-golden-journey-e2e.md",
+      "priority": "P0",
+      "text": "Host app M1–M7 golden journey",
+      "active": true,
+      "matrix_status": "blocked",
+      "gap_id": "MATRIX:gj:AC6-12"
+    },
+    {
+      "id": "SPEC:direct-checkout:AC-L3",
+      "source": "Sessions/specs/spec-direct-checkout.md",
+      "priority": "P0",
+      "text": "L3 booking create seeded public property",
+      "active": true,
+      "matrix_status": "missing-test",
+      "gap_id": "MATRIX:checkout:L3"
     },
     {
       "id": "SPEC:native-host-app:AC20",
@@ -208,24 +226,6 @@
       "active": true,
       "matrix_status": "blocked",
       "gap_id": "MATRIX:native-host:AC20"
-    },
-    {
-      "id": "SPEC:native-host-app:AC15",
-      "source": "Sessions/specs/spec-native-host-app.md",
-      "priority": "P0",
-      "text": "Maestro 0 crash on device",
-      "active": true,
-      "matrix_status": "fail",
-      "gap_id": "MATRIX:native-host:AC15"
-    },
-    {
-      "id": "SPEC:micro-marketplace-v0:AC-L3",
-      "source": "Sessions/specs/spec-micro-marketplace-v0.md",
-      "priority": "P0",
-      "text": "L3 real API marketplace loop",
-      "active": true,
-      "matrix_status": "blocked",
-      "gap_id": "MATRIX:marketplace:L3"
     }
   ]
 }

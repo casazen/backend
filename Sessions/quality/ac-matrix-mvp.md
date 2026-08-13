@@ -33,7 +33,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | AC1 Scaffold | `pass` | Expo project exists |
 | AC2 Auth0 PKCE | `pass` | expo-auth-session |
 | AC3 API client | `pass` | Axios + JWT |
-| AC4 Calendar month/week | `fail` | FlatList only — not month/week grid |
+| AC4 Calendar month/week | `blocked` | Needs Expo calendar month/week UI in `casazen/mobile` — repo missing (404) and no `mobile/` tree in this Automation; matrix note historically FlatList-only. Unblock when mobile repo is available and calendar grid ships |
 | AC5 Booking detail | `pass` | Screen present |
 | AC6 Service request | `pass` | Screen + API |
 | AC7 Mark paid | `pass` | Mutation present |
