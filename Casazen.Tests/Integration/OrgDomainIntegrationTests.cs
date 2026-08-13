@@ -134,6 +134,28 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task SetDomain_AsStaffRole_Returns403_AndDoesNotMutateDomain()
+    {
+        var userId = $"auth0|staff-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(userId);
+
+        using var client = _factory.CreateAuthenticatedClient(userId, "Staff");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{org.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CasazenSubdomain,
+            subdomain = "staff-hijack",
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await db.Orgs.FindAsync(org.Id);
+        Assert.Equal(PublicHostMode.CasazenPath, persisted!.PublicHostMode);
+        Assert.Null(persisted.Subdomain);
+    }
+
+    [Fact]
     public async Task SetSubdomain_ConflictingWithAnotherActiveOrgSlug_Returns409()
     {
         var ownerId = $"auth0|owner-{Guid.NewGuid():N}";

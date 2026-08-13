@@ -13,7 +13,7 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/orgs/{orgId:guid}/domain")]
-[Authorize]
+[Authorize(Policy = "RequireOrgBillingAdmin")]
 public class OrgDomainController(
     IOrgContextResolver orgContextResolver,
     IOrgDomainService orgDomainService) : ControllerBase
