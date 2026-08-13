@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
@@ -34,6 +35,8 @@ public class BookingsControllerTests
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
+    private readonly Mock<IEmailService> _mockEmailService;
+    private readonly IConfiguration _configuration;
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -53,6 +56,13 @@ public class BookingsControllerTests
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
         _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
+        _mockEmailService = new Mock<IEmailService>();
+        _configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:PublicSiteBaseUrl"] = "https://public.test",
+            })
+            .Build();
         _mockCheckoutReminderScheduler
             .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
             .Returns("job-test");
@@ -71,6 +81,8 @@ public class BookingsControllerTests
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
             Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
+            _configuration,
+            _mockEmailService.Object,
             _mockLogger.Object);
     }
 

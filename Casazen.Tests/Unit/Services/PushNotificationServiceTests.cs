@@ -161,10 +161,11 @@ public class PushNotificationServiceTests
     {
         sentTokens = [];
         handler = new CapturingExpoHandler(sentTokens);
+        var capturedHandler = handler;
         var factory = new Mock<IHttpClientFactory>();
         factory
             .Setup(f => f.CreateClient("ExpoPush"))
-            .Returns(() => new HttpClient(handler));
+            .Returns(() => new HttpClient(capturedHandler));
 
         return new PushNotificationService(
             db,
@@ -344,7 +345,7 @@ public class PushNotificationServiceTests
             PropertyId = property.Id,
             SupplierOrgId = supplierOrgId,
             Category = "cleaning",
-            Status = ServiceRequestStatus.Completata,
+            Status = ServiceRequestStatus.Completato,
         };
         db.ServiceRequests.Add(withoutBooking);
         await db.SaveChangesAsync();
