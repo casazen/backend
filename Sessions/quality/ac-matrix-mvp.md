@@ -1,6 +1,6 @@
 # AC Matrix — MVP Phase 1
 
-**Updated:** 2026-08-13 (tick 8: Native Host AC21 BE push tests → pass)  
+**Updated:** 2026-08-13 (tick 9: Native Host AC15 Maestro 0-crash → blocked; no mobile/Maestro)  
 **Baseline:** Dev Flow Verification 2026-07-14 + quality-gates overhaul  
 **Statuses:** `pass` | `fail` | `stub` | `missing-test` | `in-progress` | `blocked`
 
@@ -41,7 +41,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | AC9 Properties | `pass` | Read-only list |
 | AC10–AC12 Push | `stub` | Placeholder EAS projectId |
 | AC13–AC14 Parity/offline | `pass` | React Query + OfflineBanner |
-| AC15 Maestro 0 crash | `fail` | Device run not green; Expo Go push warnings |
+| AC15 Maestro 0 crash | `blocked` | `casazen/mobile` repo missing (404); Maestro CLI/device unavailable in Automation — cannot prove 0-crash on device; unblock when mobile repo + device/Maestro exist |
 | AC19 typecheck | `fail` → fixed 2026-07-26 | Was missing `shouldShowBanner`/`shouldShowList` (SDK 54); re-run `npm run typecheck` |
 | AC20 Maestro M1–M7 | `blocked` | `casazen/mobile` repo missing; Maestro CLI/device unavailable in Automation — structural smoke alone cannot satisfy device M1–M7; unblock when mobile repo + device exist |
 | AC21 BE push tests | `pass` | BE suite: `PushNotificationServiceTests` (guest check-in, service-request, checkout reminder + routing) + `DeviceRegistrationIntegrationTests` (`POST/DELETE /api/devices`); closed delivery tick 8 |
