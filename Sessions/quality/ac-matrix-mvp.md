@@ -51,7 +51,7 @@ P0 rows with `fail` trigger [freeze-policy.md](./freeze-policy.md).
 | AC | Status | Notes |
 |---|---|---|
 | Host create ServiceRequest | `pass` | L2 marketplace-suppliers |
-| Supplier take/complete | `fail` | Inbox state machine L3 gap |
+| Supplier take/complete | `blocked` | FE inbox L2 take/complete Playwright cannot land — Automation has no write access to `casazen/frontend` (403); L3 also needs `E2E_AUTH0_*`. BE `ServiceRequestServiceTests` + `CompleteFlow_TakeCompleteMarkPaid_Succeeds` already cover API state machine; unblock when FE push + (optional) Auth0 secrets available |
 | Mark paid | `pass` | Host path |
 | L3 real API loop | `blocked` | Needs FE Playwright L3 + `E2E_AUTH0_*` in Automation; BE `CompleteFlow_TakeCompleteMarkPaid_Succeeds` already covers API loop |
 
