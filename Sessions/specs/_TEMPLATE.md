@@ -15,7 +15,7 @@ last_reviewed: YYYY-MM-DD
 
 # Spec — {Title} ({id or Issue #})
 
-> Copy this file to `spec-{slug}.md`. Stage 02 gate **G9b** (`check-ac-depth.ps1 -SpecPath`) fails if Verifiable Outcomes / UX / Export sections are missing when applicable.
+> Copy this file to `spec-{slug}.md`. Verifiable Outcomes / UX / Export sections are required when applicable.
 
 ## Overview
 
@@ -55,7 +55,7 @@ Number ACs continuously (`AC1`…`ACn`). Map 1:1 to GitHub issue ACs and to desi
 
 ## Verifiable Outcomes
 
-**Required.** One row per AC. This is what Stage 03 L1/L2/L3 must assert — not “page loads”.
+**Required.** One row per AC. This is what tests must assert — not “page loads”.
 
 | AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
 |---|---|---|---|
@@ -134,15 +134,13 @@ Rules:
 
 ---
 
-## Test expectations (process contract)
+## Test expectations
 
 | Layer | Allowed | Forbidden as sole proof |
 |---|---|---|
 | L1 | xUnit unit/integration asserting AC outcomes | “Compiles” |
 | L2 | Playwright demo + `page.route` for UI contract; titled `test('ACn: …')` | One smoke for all ACs; visibility-only for exports |
 | L3 | Real API local/staging; titled `test('ACn: …')` per UI AC | Mocking the path under test; AC map pointing at file without titled test |
-
-Design Stage 02 must produce `## AC Test Map` with one row per AC. Stage 03 gate `check-ac-depth.ps1 -RequireTests` enforces titled tests + export depth.
 
 ---
 
@@ -160,4 +158,4 @@ Design Stage 02 must produce `## AC Test Map` with one row per AC. Stage 03 gate
 
 ## Open Questions
 
-- Resolved before Stage 03, or listed with owner/date
+- Resolved before implementation, or listed with owner/date

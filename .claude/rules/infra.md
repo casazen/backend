@@ -49,7 +49,7 @@ HTTPS is NOT used inside the container — Railway handles it externally.
 - **Production deploy**: Railway native — push to `main` → production environment (never manual prod deploy)
 - **PR backend**: Railway PR deploys (if enabled) OR validate on shared test after merge to `develop`
 - **Version tags** (`v*`): GitHub Release / changelog only — **do not** trigger Railway or Vercel deploys
-- **Never deploy to production** without Stage 05 bundle check (all features in the Epic verified on test)
+- **Never deploy to production** without verifying all features in the epic on the test environment
 
 ## Secrets management
 
@@ -70,4 +70,4 @@ Supabase free tier pauses after 7 days of inactivity. Use `supabase-keepalive.ym
 
 ## Release bundles
 
-When a feature spans both BE and FE (e.g., BE #165 + FE #177), they form a Release Bundle tracked in `Sessions/bundle-<epic>.md`. Both must be verified on test before either is promoted to production. See Stage 05 harness for the full bundle gate specification.
+When a feature spans both BE and FE (e.g., BE #165 + FE #177), they form a Release Bundle tracked in `Sessions/bundle-<epic>.md`. Both must be verified on test before either is promoted to production.

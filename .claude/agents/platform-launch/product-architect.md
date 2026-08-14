@@ -16,7 +16,7 @@ Your role: validate that the roadmap and macro-specs are implementable increment
 
 - Mapping roadmap phases to bounded contexts and new entities/endpoints
 - Assessing gap between current PMS and market-analysis vision (direct booking site, unified inbox, LTR, marketplace)
-- Validating macro-spec format matches `Sessions/specs/` conventions for AI-SDLC
+- Validating macro-spec format matches `Sessions/specs/` conventions
 - Identifying infrastructure and dependency risks per phase
 
 ---
@@ -26,7 +26,7 @@ Your role: validate that the roadmap and macro-specs are implementable increment
 1. Read `councils/casazen-platform-launch/domain-context.md` tech sections and existing specs in `Sessions/specs/`.
 2. For each roadmap phase: identify affected services, new APIs, FE features, migration needs.
 3. Vote **OBJECT** if phases are too large, skip dependencies, or ignore current implementation state.
-4. Propose spec decomposition when a phase exceeds one SDLC cycle.
+4. Propose spec decomposition when a phase is too large for one increment.
 
 ---
 

@@ -83,7 +83,7 @@ The original economics assume CAC is "mostly non-cash". Added as an explicit, fu
 
 ## §10 — Five-year horizon marked provisional (addresses #14, partial)
 
-The "**18-month-to-first-cohort**" horizon is relabelled **[EST] planning assumption, not a committed schedule**. Indicative, non-binding per-phase durations (solo/small team, AI-SDLC-assisted) to make it falsifiable:
+The "**18-month-to-first-cohort**" horizon is relabelled **[EST] planning assumption, not a committed schedule**. Indicative, non-binding per-phase durations (solo/small team) to make it falsifiable:
 
 | Phase | Indicative duration **[EST]** | Gates it depends on |
 |---|:---:|---|

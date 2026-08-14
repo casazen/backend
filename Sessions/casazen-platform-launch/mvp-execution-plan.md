@@ -2,7 +2,6 @@
 
 > **Council**: Platform Launch · **Phase**: MVP Execution · **Date**: 2026-06-09
 > **Status**: consensus (Round MVP-1) · **Source**: `round-mvp-1.md`
-> **Feeds**: AI-SDLC pipeline (`sdlc-pipeline` skill) — one spec per pipeline run
 
 ---
 
@@ -14,8 +13,8 @@ Deliver the **first sellable MVP**: an external property manager self-onboards, 
 
 ## 2. Current state (2026-06-09)
 
-| Spec | Pipeline status | Artifact |
-|------|-----------------|----------|
+| Spec | Status | Artifact |
+|------|--------|----------|
 | `spec-tenant-boundary` | ✅ Complete | v1.1.6, PR #203/#104 |
 | `spec-public-booking-readmodel` | 🟡 Stage 03 done | PR #213/#112, review pending |
 | `spec-branded-booking-site` | 🟡 In progress | `feature/215-branded-booking-site`, `PublicOrgController` |
@@ -33,20 +32,20 @@ Deliver the **first sellable MVP**: an external property manager self-onboards, 
 ### Wave 1 — Unblock payments (weeks 1–2)
 | Priority | Spec | Action | Owner |
 |:---:|------|--------|-------|
-| **P0** | `spec-connect-onboarding` | New pipeline: issue → design → dev | SDLC |
-| **P0** | `spec-public-booking-readmodel` | Stage 04 Review → 05 Release → merge | SDLC |
+| **P0** | `spec-connect-onboarding` | New work: issue → design → dev | — |
+| **P0** | `spec-public-booking-readmodel` | Review → release → merge | — |
 
 ### Wave 2 — Revenue path (weeks 2–4)
 | Priority | Spec | Action | Depends on |
 |:---:|------|--------|------------|
-| **P1** | `spec-direct-checkout` | New pipeline after Connect merges | connect-onboarding, read-model |
+| **P1** | `spec-direct-checkout` | After Connect merges | connect-onboarding, read-model |
 | **P1** | `spec-branded-booking-site` | Complete FE routes + publish gate (AC11) | read-model; Connect for publish |
 
 ### Wave 3 — Sellable gate (weeks 4–6)
 | Priority | Spec | Action | Depends on |
 |:---:|------|--------|------------|
-| **P2** | `spec-saas-billing` | Pipeline; requires P.IVA + SDI [COUNSEL_REQUIRED] | tenant-boundary |
-| **P2** | `spec-onboarding-plg` | Pipeline; DPA + activation checklist | tenant-boundary, branded-site signals |
+| **P2** | `spec-saas-billing` | Requires P.IVA + SDI [COUNSEL_REQUIRED] | tenant-boundary |
+| **P2** | `spec-onboarding-plg` | DPA + activation checklist | tenant-boundary, branded-site signals |
 
 ---
 
@@ -87,22 +86,14 @@ Deliver the **first sellable MVP**: an external property manager self-onboards, 
 | Branded-site BE (`PublicOrgController`) | ✅ | N/A |
 | Branded-site FE routes/shell | ✅ | ❌ until Connect |
 | Connect onboarding | ✅ (with read-model release) | — |
-| SaaS billing design (Stage 02) | ✅ (while Wave 2 dev) | ❌ until P.IVA/SDI |
+| SaaS billing design | ✅ (while Wave 2 dev) | ❌ until P.IVA/SDI |
 
 ---
 
-## 7. Next pipeline invocation
+## 7. Next work
 
-```text
-/sdlc-pipeline spec-connect-onboarding
-```
-
-Then:
-
-```text
-# After PR #213/#112 review:
-/sdlc-pipeline spec-public-booking-readmodel --resume stage-04
-```
+1. `spec-connect-onboarding`
+2. After PR #213/#112 review: finish `spec-public-booking-readmodel`
 
 ---
 

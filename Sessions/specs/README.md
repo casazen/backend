@@ -8,19 +8,14 @@ Canonical index for all CasaZen specs. **Strategic order, phases, and freeze lis
 |---|---|---|
 | **`Sessions/PLANNING.md`** | Vision, phases, priorities, next steps | Any reprioritization or phase shift |
 | **`Sessions/specs/spec-*.md`** | Acceptance criteria + technical detail | When scope/AC changes |
-| **GitHub issue** | Execution ticket (SDLC Stage 01+) | When work is ready to build |
-| **`Sessions/pipeline-*/state.md`** | Pipeline run state (ephemeral) | During SDLC runs only |
+| **GitHub issue** | Execution ticket | When work is ready to build |
 
 New specs: copy [`_TEMPLATE.md`](./_TEMPLATE.md), fill YAML frontmatter, add a row below.
 
-**Process contract (mandatory sections in `_TEMPLATE.md`):**
-- `## Verifiable Outcomes` — every ACn has an observable pass/fail (Stage 02 G9b / `check-ac-depth.ps1 -SpecPath`)
+**Required sections in `_TEMPLATE.md`:**
+- `## Verifiable Outcomes` — every ACn has an observable pass/fail
 - `## UX / UI Quality` — when Frontend ACs exist
 - `## Export / Report Criteria` — when CSV/PDF/Excel/export ACs exist
-- Stage 03/04: `check-ac-depth.ps1 -DesignPath … -RequireTests` enforces one titled `test('ACn:…')` per UI AC (anti-vacuous)
-
-Bulk upgrade helper (re-runnable): `.\scripts\quality\upgrade-specs-to-template.ps1 [-ForceRebuildVo]`
-Validate: `.\scripts\quality\check-ac-depth.ps1 -SpecPath Sessions\specs\spec-<slug>.md`
 
 ### Status values
 
@@ -29,7 +24,7 @@ Validate: `.\scripts\quality\check-ac-depth.ps1 -SpecPath Sessions\specs\spec-<s
 | `idea` | On roadmap, no spec file yet |
 | `specced` | Spec written, no GH issue |
 | `planned` | GH issue open, not in dev |
-| `in-dev` | Stage 03 active |
+| `in-dev` | Implementation in progress |
 | `shipped` | In production |
 | `blocked` | Escalated / external dependency |
 | `deferred` | Explicitly parked |

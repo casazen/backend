@@ -95,7 +95,7 @@ CasaZen is evolving from a vacation-rental PMS (Italian STR compliance, OTA sync
 
 ## operational-context
 
-- **Implementation pipeline**: AI-SDLC (`.claude/sdlc/`) consumes macro-specs from `Sessions/specs/`
+- **Implementation**: macro-specs live in `Sessions/specs/`
 - **Existing macro-specs**: property-detail, admin-backend, pricing-adapter-verification, role-onboarding, split-layer
 - **Current release cadence**: GitHub Flow — feature → develop → staging → main
 - **Infra**: Supabase (PostgreSQL), Vercel (FE), Railway/Render (BE)

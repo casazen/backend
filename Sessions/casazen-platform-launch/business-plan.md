@@ -199,6 +199,6 @@ Planning **[EST]**, not forecast. Y1 ARR floor ≈ €90k = ~42 accounts × €1
 
 1. Finalize entity/regime with a commercialista (§11) and, if pursuing grants, register as *startup innovativa*.
 2. Stand up the Phase 1 legal pre-requisites (P.IVA + ATECO + **SDI e-invoicing live**) before the first SaaS charge.
-3. Begin Phase 1 + parallel Phase 1.5 implementation per `implementation-roadmap.md`, feeding macro-specs into the AI-SDLC pipeline.
+3. Begin Phase 1 + parallel Phase 1.5 implementation per `implementation-roadmap.md`.
 4. Prove the $0-window GH Actions cron fires Alloggiati + GDPR endpoints; set the €5/mo upgrade at first real guest check-in.
 5. Engage counsel on the **[COUNSEL_REQUIRED]** pack (ToS/SLA, DPA + subprocessors, AI-Act disclosure, RLI delega, rent-receipt tax).
