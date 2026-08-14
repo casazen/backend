@@ -4,6 +4,10 @@ namespace Casazen.Core.Services;
 
 public interface IOnboardingService
 {
+    (bool Success, ConsentValidationError? Error) ValidateConsents(
+        OnboardingConsentsInput? consents,
+        bool requireConsents);
+
     Task<(bool Success, ConsentValidationError? Error, bool ConsentsRecorded)> ValidateAndRecordConsentsAsync(
         string userId,
         Guid orgId,
