@@ -58,6 +58,7 @@ public class GdprController(
     }
 
     [HttpGet("org/export")]
+    [Authorize(Policy = "RequireContext:short-rent:property.read")]
     public async Task<IActionResult> ExportOrgFiscal(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -68,6 +69,7 @@ public class GdprController(
     }
 
     [HttpPost("org/anonymize")]
+    [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<IActionResult> AnonymizeOrgFiscal(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
