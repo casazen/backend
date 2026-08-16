@@ -223,8 +223,8 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
                 .Where(p => p.OrgId == orgId && p.Booking.PropertyId == property.Id)
                 .ToListAsync(cancellationToken);
             assignments.TryGetValue(property.Id, out var row);
-            var gross = payments.Sum(p => p.Amount);
-            var withholding = payments.Sum(p => p.OtaWithholdingTax);
+            var gross = payments.Sum(ReportableGross);
+            var withholding = payments.Sum(ReportableWithholding);
             lines.Add(new AnnualIncomeLine(property.Id, property.Name, row?.Regime, gross, withholding, gross - withholding));
         }
 
@@ -252,9 +252,9 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
             p.Booking.PropertyId,
             p.Booking.Source.ToString(),
             p.ProcessedAt ?? p.CreatedAt,
-            p.Amount,
-            p.OtaWithholdingTax,
-            p.NetAmountAfterWithholding)).ToList();
+            ReportableGross(p),
+            ReportableWithholding(p),
+            ReportableNet(p))).ToList();
 
         var byOta = lines
             .GroupBy(l => l.Source)
@@ -351,6 +351,21 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
             (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded)
             && (p.ProcessedAt ?? p.CreatedAt) >= yearStart
             && (p.ProcessedAt ?? p.CreatedAt) < yearEnd);
+
+    private static decimal ReportableGross(Payment payment) =>
+        Math.Max(0m, payment.Amount - payment.RefundedAmount);
+
+    private static decimal ReportableWithholding(Payment payment)
+    {
+        var gross = ReportableGross(payment);
+        if (gross <= 0 || payment.Amount <= 0 || payment.OtaWithholdingTax <= 0)
+            return 0m;
+
+        return decimal.Round(payment.OtaWithholdingTax * (gross / payment.Amount), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal ReportableNet(Payment payment) =>
+        ReportableGross(payment) - ReportableWithholding(payment);
 
     private static string Csv(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
     private static string F(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);

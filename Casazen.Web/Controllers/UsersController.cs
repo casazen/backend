@@ -194,6 +194,8 @@ public class UsersController(
 
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
+        if (!requireConsents && !hadOrg)
+            return BadRequest(new { error = "Initial onboarding must be completed with required consents." });
 
         var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
             sub, rentalType, planTier, email, firstName, lastName);

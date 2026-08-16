@@ -168,6 +168,21 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.False(body.GetProperty("consentsRecorded").GetBoolean());
     }
 
+    [Fact]
+    public async Task AC1_PutOnboarding_WithoutExistingOrg_Returns400AndDoesNotProvision()
+    {
+        var userId = $"auth0|plg-put-first-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+
+        var response = await client.PutAsJsonAsync("/api/users/onboarding", new { rentalType = "ShortTerm" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
+        Assert.Null(user);
+    }
+
     private async Task SeedActivationMilestonesAsync(string userId, Guid orgId)
     {
         using var scope = _factory.Services.CreateScope();

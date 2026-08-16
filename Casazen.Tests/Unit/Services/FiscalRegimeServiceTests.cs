@@ -162,22 +162,55 @@ public class FiscalRegimeServiceTests
             CreatedAt = new DateTime(2025, 12, 28, 0, 0, 0, DateTimeKind.Utc),
             ProcessedAt = new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc),
         };
+        var partiallyRefundedPayment = new Payment
+        {
+            OrgId = orgId,
+            BookingId = booking.Id,
+            Booking = booking,
+            Amount = 100m,
+            RefundedAmount = 40m,
+            Status = PaymentStatus.PartiallyRefunded,
+            OtaWithholdingTax = 21m,
+            WithholdingTaxApplied = true,
+            NetAmountAfterWithholding = 79m,
+            CreatedAt = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc),
+            ProcessedAt = new DateTime(2026, 2, 2, 0, 0, 0, DateTimeKind.Utc),
+        };
+        var refundedPayment = new Payment
+        {
+            OrgId = orgId,
+            BookingId = booking.Id,
+            Booking = booking,
+            Amount = 50m,
+            RefundedAmount = 50m,
+            Status = PaymentStatus.Refunded,
+            OtaWithholdingTax = 10.50m,
+            WithholdingTaxApplied = true,
+            NetAmountAfterWithholding = 39.50m,
+            CreatedAt = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
+            ProcessedAt = new DateTime(2026, 3, 2, 0, 0, 0, DateTimeKind.Utc),
+        };
         db.Bookings.Add(booking);
-        db.Payments.AddRange(pendingPayment, completedPayment);
+        db.Payments.AddRange(pendingPayment, completedPayment, partiallyRefundedPayment, refundedPayment);
         await db.SaveChangesAsync();
         var sut = new FiscalService(db);
 
         var annual = await sut.GetAnnualReportAsync(orgId, 2026);
         var annualLine = Assert.Single(annual.Properties);
-        Assert.Equal(200m, annualLine.GrossIncome);
-        Assert.Equal(42m, annualLine.Withholding);
-        Assert.Equal(158m, annualLine.Net);
+        Assert.Equal(260m, annualLine.GrossIncome);
+        Assert.Equal(54.60m, annualLine.Withholding);
+        Assert.Equal(205.40m, annualLine.Net);
 
         var withholding = await sut.GetWithholdingReportAsync(orgId, 2026);
-        var withholdingLine = Assert.Single(withholding.Lines);
+        Assert.Equal(2, withholding.Lines.Count);
+        var withholdingLine = Assert.Single(withholding.Lines, l => l.PaymentId == completedPayment.Id);
         Assert.Equal(completedPayment.Id, withholdingLine.PaymentId);
         Assert.Equal(completedPayment.ProcessedAt!.Value, withholdingLine.PaidAt);
-        Assert.Equal(1, Assert.Single(withholding.ByOta).PayoutCount);
+        var bucket = Assert.Single(withholding.ByOta);
+        Assert.Equal(260m, bucket.Gross);
+        Assert.Equal(54.60m, bucket.Withholding);
+        Assert.Equal(205.40m, bucket.Net);
+        Assert.Equal(2, bucket.PayoutCount);
     }
 
     private static AppDbContext CreateDb()
