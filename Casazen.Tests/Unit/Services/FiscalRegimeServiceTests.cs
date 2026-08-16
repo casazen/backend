@@ -121,6 +121,65 @@ public class FiscalRegimeServiceTests
         Assert.False(directPayment.WithholdingTaxApplied);
     }
 
+    [Fact]
+    public async Task Reports_ExcludeUnsettledPayments_AndUseProcessedAtTaxYear()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var property = SeedProperty(db, orgId, "Casa Report");
+        var booking = new Booking
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            Property = property,
+            CheckInDate = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+            CheckOutDate = new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc),
+            Source = BookingSource.Airbnb,
+        };
+        var pendingPayment = new Payment
+        {
+            OrgId = orgId,
+            BookingId = booking.Id,
+            Booking = booking,
+            Amount = 100m,
+            Status = PaymentStatus.Pending,
+            OtaWithholdingTax = 21m,
+            WithholdingTaxApplied = true,
+            NetAmountAfterWithholding = 79m,
+            CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc),
+        };
+        var completedPayment = new Payment
+        {
+            OrgId = orgId,
+            BookingId = booking.Id,
+            Booking = booking,
+            Amount = 200m,
+            Status = PaymentStatus.Completed,
+            OtaWithholdingTax = 42m,
+            WithholdingTaxApplied = true,
+            NetAmountAfterWithholding = 158m,
+            CreatedAt = new DateTime(2025, 12, 28, 0, 0, 0, DateTimeKind.Utc),
+            ProcessedAt = new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc),
+        };
+        db.Bookings.Add(booking);
+        db.Payments.AddRange(pendingPayment, completedPayment);
+        await db.SaveChangesAsync();
+        var sut = new FiscalService(db);
+
+        var annual = await sut.GetAnnualReportAsync(orgId, 2026);
+        var annualLine = Assert.Single(annual.Properties);
+        Assert.Equal(200m, annualLine.GrossIncome);
+        Assert.Equal(42m, annualLine.Withholding);
+        Assert.Equal(158m, annualLine.Net);
+
+        var withholding = await sut.GetWithholdingReportAsync(orgId, 2026);
+        var withholdingLine = Assert.Single(withholding.Lines);
+        Assert.Equal(completedPayment.Id, withholdingLine.PaymentId);
+        Assert.Equal(completedPayment.ProcessedAt!.Value, withholdingLine.PaidAt);
+        Assert.Equal(1, Assert.Single(withholding.ByOta).PayoutCount);
+    }
+
     private static AppDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
