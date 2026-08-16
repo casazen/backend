@@ -1,0 +1,18 @@
+name: E2E Golden Journey
+
+# Canonical Playwright/Maestro jobs live in casazen/frontend
+# (.github/workflows/e2e-golden-journey.yml). This backend workflow is the
+# spec-named path (GJ-001 AC15) and records the gate.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  pointer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Frontend owns the GJ suite
+        run: echo "Run casazen/frontend .github/workflows/e2e-golden-journey.yml for web + e2e-app Maestro."
