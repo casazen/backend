@@ -26,6 +26,7 @@ public class ServiceRequestRepository(AppDbContext db) : IServiceRequestReposito
         Guid orgId,
         ServiceRequestStatus? status,
         Guid? propertyId,
+        Guid? bookingId,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default)
@@ -41,6 +42,9 @@ public class ServiceRequestRepository(AppDbContext db) : IServiceRequestReposito
 
         if (propertyId is not null)
             query = query.Where(r => r.PropertyId == propertyId.Value);
+
+        if (bookingId is not null)
+            query = query.Where(r => r.BookingId == bookingId.Value);
 
         var total = await query.CountAsync(cancellationToken);
         var items = await query

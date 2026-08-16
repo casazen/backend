@@ -268,6 +268,61 @@ public class PropertiesControllerTests
     }
 
     [Fact]
+    public async Task Create_WhenAddressUniqueConstraintViolated_ReturnsConflict()
+    {
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+
+        var request = new CreatePropertyRequest
+        {
+            Name = "Dup Address",
+            City = "Roma",
+            Address = "Via Roma 10",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        };
+
+        _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
+            .ThrowsAsync(new DbUpdateException(
+                "unique",
+                new InvalidOperationException("23505 unique constraint UIX")));
+
+        var result = await _controller.Create(request);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_WhenSlugAlreadyInUse_ReturnsConflict()
+    {
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+
+        var request = new CreatePropertyRequest
+        {
+            Name = "Dup Slug",
+            City = "Roma",
+            Address = "Via Roma 99",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m,
+            Slug = "taken"
+        };
+
+        _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
+            .ThrowsAsync(new InvalidOperationException("Slug already in use within this organization."));
+
+        var result = await _controller.Create(request);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_WithoutSubClaim_ReturnsUnauthorized()
     {
         // Arrange - User without "sub" claim

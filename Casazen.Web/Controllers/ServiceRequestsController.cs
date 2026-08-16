@@ -104,6 +104,7 @@ public class ServiceRequestsController(
     public async Task<ActionResult<ServiceRequestListResponse>> List(
         [FromQuery] string? status,
         [FromQuery] Guid? propertyId,
+        [FromQuery] Guid? bookingId,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? view = null,
@@ -141,7 +142,7 @@ public class ServiceRequestsController(
         if (userId is null) return Unauthorized();
 
         var (hostItems, hostTotal) = await serviceRequestService.ListForHostAsync(
-            hostOrgId.Value, userId, GetUserRoles(), statusFilter, propertyId, page, pageSize, cancellationToken);
+            hostOrgId.Value, userId, GetUserRoles(), statusFilter, propertyId, bookingId, page, pageSize, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {

@@ -246,6 +246,9 @@ public class SupplierService(
             if (category is not null)
             {
                 var cats = JsonSerializer.Deserialize<string[]>(sp.CategoriesJson, JsonOpts) ?? [];
+                // Active suppliers may still be filling categories (activation only gates ToS).
+                if (cats.Length == 0)
+                    return true;
                 return cats.Contains(category, StringComparer.OrdinalIgnoreCase);
             }
             return true;

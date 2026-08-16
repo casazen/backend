@@ -10,6 +10,7 @@ public interface IServiceRequestRepository
         Guid orgId,
         ServiceRequestStatus? status,
         Guid? propertyId,
+        Guid? bookingId,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default);

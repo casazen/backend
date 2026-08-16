@@ -166,6 +166,37 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
+    public async Task ListForHostAsync_WhenBookingIdProvided_ReturnsOnlyMatchingRequests()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var matched = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, "matched", false));
+        await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, "other", false));
+
+        var bookingId = Guid.NewGuid();
+        matched.BookingId = bookingId;
+        await db.SaveChangesAsync();
+
+        var (items, total) = await service.ListForHostAsync(
+            hostOrgId,
+            TestAuthHandler.DefaultUserId,
+            ["PropertyOwner"],
+            status: null,
+            propertyId: null,
+            bookingId,
+            page: 1,
+            pageSize: 20);
+
+        Assert.Equal(1, total);
+        Assert.Equal(matched.Id, Assert.Single(items).Id);
+    }
+
+    [Fact]
     public async Task RejectAsync_FromRichiesto_SetsRifiutato()
     {
         await using var db = CreateDb();
