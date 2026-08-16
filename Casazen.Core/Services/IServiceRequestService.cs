@@ -34,6 +34,7 @@ public interface IServiceRequestService
         IEnumerable<string> userRoles,
         ServiceRequestStatus? status,
         Guid? propertyId,
+        Guid? bookingId,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default);

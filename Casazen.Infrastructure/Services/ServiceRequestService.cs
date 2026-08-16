@@ -216,6 +216,7 @@ public class ServiceRequestService(
         IEnumerable<string> userRoles,
         ServiceRequestStatus? status,
         Guid? propertyId,
+        Guid? bookingId,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default)
@@ -234,6 +235,9 @@ public class ServiceRequestService(
 
         if (propertyId is not null)
             query = query.Where(r => r.PropertyId == propertyId.Value);
+
+        if (bookingId is not null)
+            query = query.Where(r => r.BookingId == bookingId.Value);
 
         return MaterializeServiceRequestPageAsync(query, page, pageSize, cancellationToken);
     }

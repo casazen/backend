@@ -67,6 +67,37 @@ public class SupplierServiceRegistrationTests
     }
 
     [Fact]
+    public async Task GetActiveByComune_ActiveSupplierWithEmptyCategories_MatchesRequestedCategory()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateService(db);
+        var org = new OrgEntity
+        {
+            Name = "Empty Cats Srl",
+            Slug = $"empty-cats-{Guid.NewGuid():N}"[..30],
+            DisplayName = "Empty Cats Srl",
+            ContactEmail = "empty-cats@test.com",
+            OrgType = OrgType.Supplier,
+        };
+        db.Orgs.Add(org);
+        db.SupplierProfiles.Add(new SupplierProfile
+        {
+            OrgId = org.Id,
+            Email = org.ContactEmail,
+            LegalName = org.DisplayName,
+            Phone = "+39 06 333333",
+            Status = SupplierStatus.Active,
+            ComuniJson = """["058091"]""",
+            CategoriesJson = "[]",
+        });
+        await db.SaveChangesAsync();
+
+        var found = await service.GetActiveByComune("Roma", "cleaning");
+
+        Assert.Contains(found, sp => sp.OrgId == org.Id);
+    }
+
+    [Fact]
     public async Task FixOrphanedSupplierOrgsAsync_BlankEmailProfiles_DoesNotMergeDistinctSuppliers()
     {
         await using var db = CreateDbContext();

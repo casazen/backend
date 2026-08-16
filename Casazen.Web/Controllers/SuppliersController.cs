@@ -53,7 +53,8 @@ public class SuppliersController(
                 var authenticatedEmail = User.FindFirstValue("email")
                     ?? User.FindFirstValue(ClaimTypes.Email);
 
-                if (!EmailsMatch(authenticatedEmail, request.Email))
+                if (!string.IsNullOrWhiteSpace(authenticatedEmail)
+                    && !EmailsMatch(authenticatedEmail, request.Email))
                 {
                     return BadRequest(new
                     {

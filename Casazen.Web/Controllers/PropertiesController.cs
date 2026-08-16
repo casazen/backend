@@ -9,6 +9,7 @@ using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
@@ -95,11 +96,13 @@ public class PropertiesController(
     /// <returns>The newly created property with its assigned <c>Id</c> and <c>OwnerId</c>.</returns>
     /// <response code="201">Property created successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="409">Duplicate active address or slug within the organization.</response>
     [HttpPost]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
     [ProducesResponseType(typeof(Property), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<Property>> Create([FromBody] CreatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -140,9 +143,26 @@ public class PropertiesController(
         var property = request.ToProperty(userId);
         // AC7: tenant key is server-set from the caller's org, never client-supplied.
         property.OrgId = orgId.Value;
-        var created = await propertyService.CreatePropertyAsync(property);
-        logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        try
+        {
+            var created = await propertyService.CreatePropertyAsync(property);
+            logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Property creation conflict for user {UserId}", userId);
+            return Conflict(new { error = ex.Message, code = "duplicate_property_slug" });
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            logger.LogWarning(ex, "Property creation unique constraint for user {UserId}", userId);
+            return Conflict(new
+            {
+                error = "Indirizzo già usato da un immobile attivo",
+                code = "duplicate_property_address"
+            });
+        }
     }
 
     /// <summary>
@@ -842,5 +862,12 @@ public class PropertiesController(
         {
             return Conflict(new { error = ex.Message });
         }
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        var inner = ex.InnerException?.Message ?? string.Empty;
+        return inner.Contains("23505", StringComparison.Ordinal)
+            || inner.Contains("unique", StringComparison.OrdinalIgnoreCase);
     }
 }
