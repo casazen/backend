@@ -219,13 +219,12 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
         var lines = new List<AnnualIncomeLine>();
         foreach (var property in counted)
         {
-            var payments = await db.Payments.AsNoTracking()
-                .Where(p => p.OrgId == orgId && p.Booking.PropertyId == property.Id
-                    && p.CreatedAt >= yearStart && p.CreatedAt < yearEnd)
+            var payments = await SettledInTaxYear(db.Payments.AsNoTracking(), yearStart, yearEnd)
+                .Where(p => p.OrgId == orgId && p.Booking.PropertyId == property.Id)
                 .ToListAsync(cancellationToken);
             assignments.TryGetValue(property.Id, out var row);
-            var gross = payments.Sum(p => p.Amount);
-            var withholding = payments.Sum(p => p.OtaWithholdingTax);
+            var gross = payments.Sum(ReportableGross);
+            var withholding = payments.Sum(ReportableWithholding);
             lines.Add(new AnnualIncomeLine(property.Id, property.Name, row?.Regime, gross, withholding, gross - withholding));
         }
 
@@ -244,20 +243,18 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
     {
         ValidateTaxYear(taxYear);
         var (yearStart, yearEnd) = YearBounds(taxYear);
-        var payments = await db.Payments.AsNoTracking()
-            .Include(p => p.Booking)
-            .Where(p => p.OrgId == orgId && p.WithholdingTaxApplied
-                && p.CreatedAt >= yearStart && p.CreatedAt < yearEnd)
+        var payments = await SettledInTaxYear(db.Payments.AsNoTracking().Include(p => p.Booking), yearStart, yearEnd)
+            .Where(p => p.OrgId == orgId && p.WithholdingTaxApplied)
             .ToListAsync(cancellationToken);
 
         var lines = payments.Select(p => new WithholdingLine(
             p.Id,
             p.Booking.PropertyId,
             p.Booking.Source.ToString(),
-            p.CreatedAt,
-            p.Amount,
-            p.OtaWithholdingTax,
-            p.NetAmountAfterWithholding)).ToList();
+            p.ProcessedAt ?? p.CreatedAt,
+            ReportableGross(p),
+            ReportableWithholding(p),
+            ReportableNet(p))).ToList();
 
         var byOta = lines
             .GroupBy(l => l.Source)
@@ -348,6 +345,27 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
     private static (DateTime Start, DateTime End) YearBounds(int taxYear) =>
         (new DateTime(taxYear, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             new DateTime(taxYear + 1, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+    private static IQueryable<Payment> SettledInTaxYear(IQueryable<Payment> payments, DateTime yearStart, DateTime yearEnd) =>
+        payments.Where(p =>
+            (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded)
+            && (p.ProcessedAt ?? p.CreatedAt) >= yearStart
+            && (p.ProcessedAt ?? p.CreatedAt) < yearEnd);
+
+    private static decimal ReportableGross(Payment payment) =>
+        Math.Max(0m, payment.Amount - payment.RefundedAmount);
+
+    private static decimal ReportableWithholding(Payment payment)
+    {
+        var gross = ReportableGross(payment);
+        if (gross <= 0 || payment.Amount <= 0 || payment.OtaWithholdingTax <= 0)
+            return 0m;
+
+        return decimal.Round(payment.OtaWithholdingTax * (gross / payment.Amount), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal ReportableNet(Payment payment) =>
+        ReportableGross(payment) - ReportableWithholding(payment);
 
     private static string Csv(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
     private static string F(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
