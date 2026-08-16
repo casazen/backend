@@ -13,6 +13,28 @@ public class OnboardingService(
     ILegalDocumentService legalDocumentService,
     IConfiguration configuration) : IOnboardingService
 {
+    public (bool Success, ConsentValidationError? Error) ValidateConsents(
+        OnboardingConsentsInput? consents,
+        bool requireConsents)
+    {
+        if (consents is null)
+        {
+            if (requireConsents)
+                return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."));
+
+            return (true, null);
+        }
+
+        var stale = ValidateVersions(consents);
+        if (stale.Length > 0)
+            return (false, new ConsentValidationError(ConsentValidationErrorType.StaleVersion, "Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.", stale));
+
+        if (!consents.TosAccepted || !consents.PrivacyAccepted || !consents.DpaAccepted || !consents.SubprocessorsAcknowledged)
+            return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."));
+
+        return (true, null);
+    }
+
     public async Task<(bool Success, ConsentValidationError? Error, bool ConsentsRecorded)> ValidateAndRecordConsentsAsync(
         string userId,
         Guid orgId,
@@ -21,20 +43,12 @@ public class OnboardingService(
         string? clientIpAddress,
         CancellationToken cancellationToken)
     {
+        var (success, error) = ValidateConsents(consents, requireConsents);
+        if (!success)
+            return (false, error, false);
+
         if (consents is null)
-        {
-            if (requireConsents)
-                return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."), false);
-
             return (true, null, false);
-        }
-
-        var stale = ValidateVersions(consents);
-        if (stale.Length > 0)
-            return (false, new ConsentValidationError(ConsentValidationErrorType.StaleVersion, "Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.", stale), false);
-
-        if (!consents.TosAccepted || !consents.PrivacyAccepted || !consents.DpaAccepted || !consents.SubprocessorsAcknowledged)
-            return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."), false);
 
         var now = DateTime.UtcNow;
         var records = new List<ConsentRecord>

@@ -42,15 +42,23 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
     [Fact]
     public async Task AC1_PostOnboarding_WithoutConsents_Returns400()
     {
-        using var client = _factory.CreateAuthenticatedClient($"auth0|plg-no-consent-{Guid.NewGuid():N}", roles: string.Empty);
+        var userId = $"auth0|plg-no-consent-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
         var response = await client.PostAsJsonAsync("/api/users/onboarding", new { rentalType = "ShortTerm" });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
+        Assert.Null(user);
+        Assert.False(await db.ConsentRecords.IgnoreQueryFilters().AnyAsync(c => c.UserId == userId));
     }
 
     [Fact]
     public async Task AC2_PostOnboarding_StaleConsentVersion_Returns400()
     {
-        using var client = _factory.CreateAuthenticatedClient($"auth0|plg-stale-{Guid.NewGuid():N}", roles: string.Empty);
+        var userId = $"auth0|plg-stale-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
         var payload = BuildOnboardingPayload("ShortTerm", consents: new
         {
             tosAccepted = true,
@@ -64,6 +72,12 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         });
         var response = await client.PostAsJsonAsync("/api/users/onboarding", payload);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
+        Assert.Null(user);
+        Assert.False(await db.ConsentRecords.IgnoreQueryFilters().AnyAsync(c => c.UserId == userId));
     }
 
     [Fact]
