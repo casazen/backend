@@ -11,7 +11,9 @@ namespace Casazen.Web.Controllers;
 [Route("api/[controller]")]
 [Authorize(Policy = "LongTermLandlord")]
 [Authorize(Policy = "RequireContext:long-rent:lease.read")]
-public class LeasesController(ILeaseWorkflowService leaseService) : ControllerBase
+public class LeasesController(
+    ILeaseWorkflowService leaseService,
+    IComuneImuNotificationService imuNotification) : ControllerBase
 {
     private string? GetOwnerId() =>
         User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
@@ -136,6 +138,41 @@ public class LeasesController(ILeaseWorkflowService leaseService) : ControllerBa
         catch (UnauthorizedAccessException)
         {
             return Forbid();
+        }
+    }
+
+    /// <summary>Export a draft comune IMU-reduction notification (PDF). Landlord sends it themselves.</summary>
+    [HttpGet("{id:guid}/canone-concordato/imu-notification/export")]
+    public async Task<IActionResult> ExportImuNotification(Guid id, CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        try
+        {
+            var result = await imuNotification.ExportAsync(id, ownerId, cancellationToken);
+            return result is null
+                ? NotFound()
+                : File(result.PdfBytes, "application/pdf", result.FileName);
+        }
+        catch (ImuNotificationNotReadyException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Landlord attests they sent the IMU notification. Never inferred.</summary>
+    [HttpPost("{id:guid}/canone-concordato/imu-notification/mark-sent")]
+    [Authorize(Policy = "RequireContext:long-rent:lease.register")]
+    public async Task<IActionResult> MarkImuNotificationSent(Guid id, CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        try
+        {
+            var result = await imuNotification.MarkSentAsync(id, ownerId, cancellationToken);
+            return result is null ? NotFound() : NoContent();
+        }
+        catch (ImuNotificationNotReadyException ex)
+        {
+            return Conflict(new { error = ex.Message });
         }
     }
 }
