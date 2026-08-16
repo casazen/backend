@@ -134,6 +134,7 @@ Issue bodies live on GitHub. Canonical AC live in `Sessions/specs/spec-*.md`.
 | US-008 | `ltr-frontend` | LTR UI over LeasesController | — | **frozen** | — | |
 | US-009 | `ltr-verification` | LTR E2E verification | — | **frozen** | — | |
 | US-010 | `ltr-rli-registration` | RLI assisted / operator-attended | — | **frozen** | — | |
+| — | `ltr-canone-concordato-calculator` | Canone concordato eligibility calculator + assisted IMU notification | — | **frozen** | — | Pilot: Seveso + Cesano Maderno (Monza e Brianza); depends on `ltr-rli-registration` + `ltr-frontend`; research in `Sessions/research-canone-concordato-mb.md` |
 
 ### Phase 2 — Ecosistema minimo (post-MVP)
 
