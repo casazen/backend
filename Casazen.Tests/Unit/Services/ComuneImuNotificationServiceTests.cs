@@ -242,13 +242,13 @@ public class ComuneImuNotificationServiceTests
         string city,
         LeaseStatus status,
         FiscalRegime fiscalRegime = FiscalRegime.CanoneConcordato) => new()
-    {
-        Id = Guid.NewGuid(),
-        Status = status,
-        FiscalRegime = fiscalRegime,
-        StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
-        EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
-        MonthlyRent = 400m,
-        Property = new Property { OwnerId = OwnerId, City = city, Name = "Alloggio" },
-    };
+        {
+            Id = Guid.NewGuid(),
+            Status = status,
+            FiscalRegime = fiscalRegime,
+            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+            MonthlyRent = 400m,
+            Property = new Property { OwnerId = OwnerId, City = city, Name = "Alloggio" },
+        };
 }
