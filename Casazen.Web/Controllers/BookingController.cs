@@ -321,23 +321,21 @@ public class BookingsController(
         if (property == null)
             return NotFound();
 
-        // Validate status transition
-        if (booking.Status != BookingStatus.Confirmed)
+        if (booking.Status is not BookingStatus.Confirmed and not BookingStatus.Pending)
         {
             return BadRequest(new
             {
-                Error = "Invalid status transition",
-                Message = $"Can only check-in bookings with Confirmed status. Current status: {booking.Status}"
+                error = "Transizione di stato non valida",
+                message = $"Il check-in è possibile solo da Pending o Confirmed. Stato attuale: {booking.Status}"
             });
         }
 
-        // Validate date
         if (booking.CheckInDate.Date > DateTime.UtcNow.Date)
         {
             return BadRequest(new
             {
-                Error = "Check-in date not reached",
-                Message = $"Cannot check-in before check-in date: {booking.CheckInDate:yyyy-MM-dd}"
+                error = "Data di check-in non raggiunta",
+                message = $"Impossibile fare check-in prima del {booking.CheckInDate:yyyy-MM-dd}"
             });
         }
 
@@ -402,7 +400,7 @@ public class BookingsController(
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { Error = ex.Message });
+            return Conflict(new { error = ex.Message });
         }
     }
 
@@ -451,7 +449,7 @@ public class BookingsController(
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { Error = ex.Message });
+            return Conflict(new { error = ex.Message });
         }
     }
 
@@ -580,45 +578,38 @@ public class BookingsController(
 
         var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
         var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";
-        var link = $"{baseUrl}/check-in/{token}";
+        var link = $"{baseUrl}/checkin/{token}";
         var subject = $"Completa il check-in per il tuo soggiorno — {property.Name}";
         var html = BuildCheckInEmailHtml(booking.Guest.FirstName, property.Name, booking.CheckInDate, link);
 
+        var emailSent = false;
         try
         {
             var result = await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+            emailSent = result.Success;
             if (!result.Success)
             {
-                await checkInService.ExpireTokenAsync(token);
-                logger.LogError(
-                    "Failed to resend check-in link for booking {BookingId}: {ErrorDetail}",
+                logger.LogWarning(
+                    "Check-in link created for booking {BookingId} but email was not sent: {ErrorDetail}",
                     booking.Id,
                     result.ErrorDetail ?? "email service returned failure");
-                return StatusCode(
-                    StatusCodes.Status502BadGateway,
-                    new DTOs.CheckIn.ResendCheckInLinkResponse
-                    {
-                        Success = false,
-                        Message = "Impossibile inviare il link di check-in.",
-                    });
             }
         }
         catch (Exception ex)
         {
-            await checkInService.ExpireTokenAsync(token);
-            logger.LogError(ex, "Failed to resend check-in link for booking {BookingId}", booking.Id);
-            return StatusCode(
-                StatusCodes.Status502BadGateway,
-                new DTOs.CheckIn.ResendCheckInLinkResponse
-                {
-                    Success = false,
-                    Message = "Impossibile inviare il link di check-in.",
-                });
+            logger.LogWarning(ex, "Check-in link created for booking {BookingId} but email threw", booking.Id);
         }
 
         await checkInService.ExpireOtherActiveSessionsAsync(booking.Id, token);
 
-        return Ok(new DTOs.CheckIn.ResendCheckInLinkResponse { Success = true, Message = "Link rigenerato e inviato." });
+        return Ok(new DTOs.CheckIn.ResendCheckInLinkResponse
+        {
+            Success = true,
+            CheckInLink = link,
+            Message = emailSent
+                ? "Link rigenerato e inviato."
+                : "Link check-in pronto. L'email non è partita: copia il link e invialo all'ospite.",
+        });
     }
 
     /// <summary>Returns the current active guest check-in session for a booking (host view).</summary>

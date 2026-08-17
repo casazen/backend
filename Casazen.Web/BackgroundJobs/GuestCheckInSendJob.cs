@@ -74,7 +74,7 @@ public class GuestCheckInSendJob(
             try
             {
                 token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
-                var link = $"{baseUrl}/check-in/{token}";
+                var link = $"{baseUrl}/checkin/{token}";
                 var subject = $"Completa il check-in per il tuo soggiorno — {booking.Property.Name}";
                 var html = BuildEmailHtml(booking.Guest.FirstName, booking.Property.Name, booking.CheckInDate, link);
 

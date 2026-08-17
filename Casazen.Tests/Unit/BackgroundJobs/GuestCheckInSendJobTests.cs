@@ -64,7 +64,7 @@ public class GuestCheckInSendJobTests
         emailService.Verify(s => s.SendEmailAsync(
             "anna@example.com",
             It.Is<string>(subject => subject.Contains("Completa il check-in")),
-            It.Is<string>(html => html.Contains("https://public.example/check-in/guest-token"))),
+            It.Is<string>(html => html.Contains("https://public.example/checkin/guest-token"))),
             Times.Once);
     }
 

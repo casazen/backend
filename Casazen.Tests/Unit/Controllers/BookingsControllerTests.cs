@@ -342,6 +342,39 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task CheckIn_PendingBooking_EnqueuesAlloggiatiJob()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = Guid.NewGuid(),
+            Status = BookingStatus.Pending,
+            CheckInDate = DateTime.UtcNow.Date,
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(2),
+            NumberOfGuests = 2,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
+            .ReturnsAsync((Booking b) => b);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
+            .ReturnsAsync(MakeProperty());
+        _mockBackgroundJobClient
+            .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
+            .Returns("job-test");
+
+        var result = await _controller.CheckIn(bookingId);
+
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
     public async Task CheckIn_ConfirmedBooking_EnqueuesAlloggiatiJob()
     {
         SetUser(OwnerId);
@@ -415,7 +448,7 @@ public class BookingsControllerTests
             .Setup(s => s.SendEmailAsync(
                 guest.Email,
                 It.Is<string>(subject => subject.Contains("Test Villa")),
-                It.Is<string>(html => html.Contains("https://public.test/check-in/new-token"))))
+                It.Is<string>(html => html.Contains("https://public.test/checkin/new-token"))))
             .ReturnsAsync(new EmailSendResult(true));
         _mockGuestCheckInService
             .Setup(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"))
@@ -476,7 +509,7 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task ResendCheckInLink_EmailSendFails_ExpiresOnlyNewToken()
+    public async Task ResendCheckInLink_EmailSendFails_KeepsSessionAndReturnsLink()
     {
         SetUser(OwnerId);
         var bookingId = Guid.NewGuid();
@@ -508,17 +541,17 @@ public class BookingsControllerTests
             .Setup(s => s.SendEmailAsync(guest.Email, It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new EmailSendResult(false, "provider rejected request"));
         _mockGuestCheckInService
-            .Setup(s => s.ExpireTokenAsync("new-token"))
+            .Setup(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"))
             .Returns(Task.CompletedTask);
 
         var result = await _controller.ResendCheckInLink(bookingId);
 
-        var objectResult = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
-        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(objectResult.Value);
-        Assert.False(response.Success);
-        _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync("new-token"), Times.Once);
-        _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
+        Assert.True(response.Success);
+        Assert.Contains("/checkin/new-token", response.CheckInLink);
+        _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
     }
 
     [Fact]
