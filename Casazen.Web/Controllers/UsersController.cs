@@ -192,8 +192,15 @@ public class UsersController(
                        ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
                        ?? string.Empty;
 
+        var consentInput = dto.Consents.ToInput();
+        var (validationSuccess, validationError) = onboardingService.ValidateConsents(consentInput, requireConsents);
+        if (!validationSuccess)
+            return ToConsentError(validationError);
+
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
+        if (!requireConsents && !hadOrg)
+            return BadRequest(new { error = "Initial onboarding must be completed with required consents." });
 
         var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
             sub, rentalType, planTier, email, firstName, lastName);
@@ -204,24 +211,13 @@ public class UsersController(
         var (success, error, consentsRecorded) = await onboardingService.ValidateAndRecordConsentsAsync(
             sub,
             orgId,
-            dto.Consents.ToInput(),
+            consentInput,
             requireConsents,
             GetClientIpAddress(),
             HttpContext.RequestAborted);
 
         if (!success)
-        {
-            return error?.Type switch
-            {
-                ConsentValidationErrorType.Incomplete => BadRequest(new { error = error.Message }),
-                ConsentValidationErrorType.StaleVersion => BadRequest(new
-                {
-                    error = error.Message,
-                    staleDocuments = error.StaleDocuments,
-                }),
-                _ => BadRequest(new { error = error?.Message ?? "Invalid consents." }),
-            };
-        }
+            return ToConsentError(error);
 
         return Ok(new OnboardingResponseDto
         {
@@ -232,6 +228,18 @@ public class UsersController(
             ConsentsRecorded = consentsRecorded,
         });
     }
+
+    private ActionResult<OnboardingResponseDto> ToConsentError(ConsentValidationError? error) =>
+        error?.Type switch
+        {
+            ConsentValidationErrorType.Incomplete => BadRequest(new { error = error.Message }),
+            ConsentValidationErrorType.StaleVersion => BadRequest(new
+            {
+                error = error.Message,
+                staleDocuments = error.StaleDocuments,
+            }),
+            _ => BadRequest(new { error = error?.Message ?? "Invalid consents." }),
+        };
 
     private string? GetClientIpAddress()
     {
