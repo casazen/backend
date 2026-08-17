@@ -1,9 +1,11 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -15,6 +17,8 @@ public class LeaseWorkflowService(
     ILeaseESignService eSignService,
     ILeaseRegistrationService registrationService,
     IPropertyRepository propertyRepository,
+    ILeaseRegistrationAuthorizationRepository authorizationRepository,
+    IOptions<RliOptions> rliOptions,
     ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
 {
     private static readonly HashSet<string> EuCitizenships =
@@ -47,6 +51,7 @@ public class LeaseWorkflowService(
         var lease = new LeaseContract
         {
             PropertyId = propertyId,
+            OrgId = property.OrgId,
             FiscalRegime = request.FiscalRegime,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
@@ -133,7 +138,8 @@ public class LeaseWorkflowService(
         }
     }
 
-    public async Task<LeaseRegistration> TriggerRegistrationAsync(Guid leaseId, string ownerId)
+    public async Task<LeaseRegistration> TriggerRegistrationAsync(
+        Guid leaseId, string ownerId, RegistrationAuthorizationRequest authorization)
     {
         var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
 
@@ -143,6 +149,31 @@ public class LeaseWorkflowService(
         var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
         if (existing is not null)
             throw new InvalidOperationException("Registration has already been submitted for this lease.");
+
+        var expectedTos = rliOptions.Value.TosVersion;
+        if (!authorization.AttestationAccepted
+            || string.IsNullOrWhiteSpace(authorization.TosVersion)
+            || !string.Equals(authorization.TosVersion, expectedTos, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Landlord authorization (delega) is required before RLI submission.");
+        }
+
+        await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
+        {
+            OrgId = lease.OrgId,
+            LeaseContractId = lease.Id,
+            AuthorizerUserId = ownerId,
+            TosVersion = authorization.TosVersion,
+            AttestationAccepted = true,
+            Scope = "rli-filing",
+        });
+        await eventRepository.AddAsync(new LeaseEvent
+        {
+            LeaseContractId = lease.Id,
+            EventType = LeaseEventType.RegistrationAuthorized,
+            Payload = authorization.TosVersion,
+        });
 
         var externalId = await registrationService.SubmitRegistrationAsync(lease);
 

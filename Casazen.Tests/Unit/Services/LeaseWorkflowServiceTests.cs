@@ -1,10 +1,12 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -19,13 +21,18 @@ public class LeaseWorkflowServiceTests
     private readonly Mock<ILeaseESignService> _eSignService = new();
     private readonly Mock<ILeaseRegistrationService> _regService = new();
     private readonly Mock<IPropertyRepository> _propertyRepo = new();
+    private readonly Mock<ILeaseRegistrationAuthorizationRepository> _authRepo = new();
     private readonly LeaseWorkflowService _sut;
 
     private static readonly string OwnerId = "auth0|owner123";
     private static readonly Guid PropertyId = Guid.NewGuid();
+    private static readonly RegistrationAuthorizationRequest ValidAuth =
+        new("2026-08-rli-delega-bozza", true);
 
     public LeaseWorkflowServiceTests()
     {
+        _authRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()))
+            .ReturnsAsync((LeaseRegistrationAuthorization a) => a);
         _sut = new LeaseWorkflowService(
             _leaseRepo.Object,
             _regRepo.Object,
@@ -34,6 +41,8 @@ public class LeaseWorkflowServiceTests
             _eSignService.Object,
             _regService.Object,
             _propertyRepo.Object,
+            _authRepo.Object,
+            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
             new Mock<ILogger<LeaseWorkflowService>>().Object);
     }
 
@@ -180,7 +189,7 @@ public class LeaseWorkflowServiceTests
             .ReturnsAsync("RLI-EXTERNAL-001");
 
         // Act
-        var registration = await _sut.TriggerRegistrationAsync(lease.Id, OwnerId);
+        var registration = await _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth);
 
         // Assert
         Assert.Equal(RegistrationStatus.SentToProvider, registration.Status);
@@ -197,7 +206,7 @@ public class LeaseWorkflowServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId));
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
     }
 
     [Fact]
@@ -211,7 +220,7 @@ public class LeaseWorkflowServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId));
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
     }
 
     [Fact]
@@ -351,6 +360,7 @@ public class LeaseWorkflowServiceTests
             Id = Guid.NewGuid(),
             PropertyId = PropertyId,
             Property = property,
+            OrgId = Guid.NewGuid(),
             Status = status,
             FiscalRegime = FiscalRegime.CedolareSecca,
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),

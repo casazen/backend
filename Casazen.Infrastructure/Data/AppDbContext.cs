@@ -69,6 +69,7 @@ public class AppDbContext(
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
+    public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
@@ -277,6 +278,22 @@ public class AppDbContext(
 
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
+
+        modelBuilder.Entity<LeaseRegistrationAuthorization>()
+            .HasOne(a => a.LeaseContract)
+            .WithMany()
+            .HasForeignKey(a => a.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseRegistrationAuthorization>()
+            .HasOne(a => a.Org)
+            .WithMany()
+            .HasForeignKey(a => a.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<LeaseRegistrationAuthorization>()
+            .HasIndex(a => a.LeaseContractId);
+        modelBuilder.Entity<LeaseRegistrationAuthorization>().HasIndex(a => a.OrgId);
+        modelBuilder.Entity<LeaseRegistrationAuthorization>()
+            .HasQueryFilter(a => !_tenant.FilterEnabled || a.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<RentSchedule>()
             .HasOne(s => s.LeaseContract)

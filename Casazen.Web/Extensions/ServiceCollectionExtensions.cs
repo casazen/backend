@@ -323,6 +323,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
+        services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
+        services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
+        services.AddScoped<IRliExportService, RliExportService>();
+        services.AddScoped<IRliChecklistService, RliChecklistService>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();

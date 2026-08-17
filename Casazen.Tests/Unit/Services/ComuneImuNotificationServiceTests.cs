@@ -6,9 +6,11 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 using Moq;
 using Xunit;
 
@@ -200,7 +202,13 @@ public class ComuneImuNotificationServiceTests
 
     private static LeasesController CreateController(IComuneImuNotificationService imu)
     {
-        var controller = new LeasesController(Mock.Of<ILeaseWorkflowService>(), imu);
+        var controller = new LeasesController(
+            Mock.Of<ILeaseWorkflowService>(),
+            imu,
+            Mock.Of<ICedolareAdvisoryService>(),
+            Mock.Of<IRliExportService>(),
+            Mock.Of<IRliChecklistService>(),
+            Mock.Of<IStringLocalizer<SharedResources>>());
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext

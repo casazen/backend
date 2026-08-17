@@ -132,4 +132,10 @@
   <data name="PlanDescription_Scale" xml:space="preserve">
     <value>Proprietà illimitate — per agenzie e PM.</value>
   </data>
+  <data name="RliDelegaRequired" xml:space="preserve">
+    <value>Serve la delega e l'attestazione del locatore prima di inviare la RLI.</value>
+  </data>
+  <data name="RliRegistrationAccepted" xml:space="preserve">
+    <value>Registrazione inviata. Controlla lo stato in GET /api/leases/{id}/registration.</value>
+  </data>
 </root>

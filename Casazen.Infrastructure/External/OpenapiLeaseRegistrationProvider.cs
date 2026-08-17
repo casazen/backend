@@ -1,24 +1,23 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// RLI registration via Openapi.it Docuengine.
-/// Config: appsettings.json → Openapi:ApiKey, Openapi:BaseUrl
-/// Docs: https://openapi.it/prodotti/servizi-contratti-di-locazione
+/// RLI registration via Openapi.it Docuengine. Filing stays stub until counsel sign-off (AC8).
 /// </summary>
-public class OpenapiLeaseRegistrationProvider(ILogger<OpenapiLeaseRegistrationProvider> logger) : ILeaseRegistrationService
+public class OpenapiLeaseRegistrationProvider(
+    IOptions<RliOptions> rliOptions,
+    ILogger<OpenapiLeaseRegistrationProvider> logger) : ILeaseRegistrationService
 {
     public async Task<string> SubmitRegistrationAsync(LeaseContract lease)
     {
-        logger.LogInformation("Submitting RLI registration for LeaseId={LeaseId}", lease.Id);
-
-        // TODO: inject IConfiguration + IHttpClientFactory when implementing real Openapi.it calls
-        // var apiKey = configuration["Openapi:ApiKey"];
-        // var client = httpClientFactory.CreateClient("Openapi");
-        // var response = await client.PostAsJsonAsync("/locazioni/registrazione", payload);
+        logger.LogInformation(
+            "Submitting RLI registration for LeaseId={LeaseId} FilingEnabled={FilingEnabled}",
+            lease.Id, rliOptions.Value.FilingEnabled);
 
         var stubExternalId = $"RLI-STUB-{lease.Id:N}";
         logger.LogInformation("Registration submitted (stub). ExternalId={ExternalId}", stubExternalId);
@@ -29,7 +28,6 @@ public class OpenapiLeaseRegistrationProvider(ILogger<OpenapiLeaseRegistrationPr
     {
         logger.LogInformation("Polling registration status for ExternalId={ExternalId}", externalRegistrationId);
 
-        // TODO: GET Openapi.it status endpoint
         return await Task.FromResult(new RegistrationStatusResult(
             externalRegistrationId,
             "Pending",
@@ -41,7 +39,6 @@ public class OpenapiLeaseRegistrationProvider(ILogger<OpenapiLeaseRegistrationPr
     {
         logger.LogInformation("Downloading receipt for ExternalId={ExternalId}", externalRegistrationId);
 
-        // TODO: GET Openapi.it receipt download endpoint
         var placeholder = System.Text.Encoding.UTF8.GetBytes("[RECEIPT PLACEHOLDER]");
         return await Task.FromResult<Stream>(new MemoryStream(placeholder));
     }

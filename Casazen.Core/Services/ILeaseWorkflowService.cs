@@ -8,7 +8,8 @@ public interface ILeaseWorkflowService
     Task<LeaseContract> CreateDraftAsync(Guid propertyId, string ownerId, CreateLeaseRequest request);
     Task<SigningInitiatedResult> InitiateSigningAsync(Guid leaseId, string ownerId);
     Task HandleESignEventAsync(string providerPayload);
-    Task<LeaseRegistration> TriggerRegistrationAsync(Guid leaseId, string ownerId);
+    Task<LeaseRegistration> TriggerRegistrationAsync(
+        Guid leaseId, string ownerId, RegistrationAuthorizationRequest authorization);
     Task<LeaseRegistration?> GetRegistrationAsync(Guid leaseId, string ownerId);
     Task<Stream> GetRegistrationReceiptAsync(Guid leaseId, string ownerId);
     Task<IEnumerable<LeaseContract>> GetOwnerLeasesAsync(string ownerId, Guid? propertyId = null);
