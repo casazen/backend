@@ -77,6 +77,15 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
                 ["CheckIn:RateLimitPermitLimit"] = "100",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "100",
+                ["ESign:WebhookSecret"] = "esign-test-secret",
+                ["Stripe:WebhookSecret"] = "whsec_test_casazen_integration",
+                ["Rli:TosVersion"] = "2026-08-rli-delega-bozza",
+                ["LeaseTemplates:Variants:CedolareSecca:VersionId"] = "dev-stub",
+                ["LeaseTemplates:Variants:CedolareSecca:Approved"] = "true",
+                ["LeaseTemplates:Variants:RegimeOrdinario:VersionId"] = "dev-stub",
+                ["LeaseTemplates:Variants:RegimeOrdinario:Approved"] = "true",
+                ["LeaseTemplates:Variants:CanoneConcordato:VersionId"] = "dev-stub",
+                ["LeaseTemplates:Variants:CanoneConcordato:Approved"] = "true",
             });
         });
 
@@ -264,7 +273,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         await db.SaveChangesAsync();
     }
 
-    private static void RemoveService<T>(IServiceCollection services)
+    protected static void RemoveService<T>(IServiceCollection services)
     {
         var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(T));
         if (descriptor != null)
