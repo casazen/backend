@@ -144,7 +144,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
 
         var sign = await clientB.PostAsync($"/api/leases/{leaseId}/signing", null);
-        Assert.Equal(HttpStatusCode.Forbidden, sign.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, sign.StatusCode);
     }
 
     [Fact]
@@ -252,6 +252,8 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         });
         using var scope = _factory.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<ESignWebhookJob>().ProcessEventAsync(payload);
+        var signed = await GetLease(client, leaseId);
+        Assert.Equal("Signed", signed.GetProperty("status").GetString());
         return leaseId;
     }
 
@@ -302,6 +304,15 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!await db.AppContexts.AnyAsync(c => c.Key == "long-rent"))
+        {
+            db.AppContexts.Add(new Casazen.Core.Entities.AppContext
+            {
+                Key = "long-rent",
+                DisplayName = "Affitti lungo termine",
+            });
+        }
+
         var roleId = Random.Shared.Next(20_000, 1_000_000);
         db.Roles.Add(new Role { Id = roleId, ContextKey = "long-rent", RoleKey = $"lease_read_only_{roleId}" });
         db.RolePermissions.Add(new RolePermission { RoleId = roleId, PermissionKey = "lease.read" });

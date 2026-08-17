@@ -3,12 +3,12 @@ using Casazen.Tests.Integration.Fakes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// Lease full-flow factory: no-op APE gate + confirming RLI stub so poll can reach Registered.
+/// Lease full-flow factory: confirming RLI stub so poll can reach Registered.
+/// APE is stubbed on the base factory.
 /// </summary>
 public class LeaseFlowWebApplicationFactory : CasazenWebApplicationFactory
 {
@@ -17,13 +17,7 @@ public class LeaseFlowWebApplicationFactory : CasazenWebApplicationFactory
         base.ConfigureWebHost(builder);
         builder.ConfigureTestServices(services =>
         {
-            RemoveService<IApeComplianceService>(services);
-            var ape = new Mock<IApeComplianceService>();
-            ape.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>()))
-                .Returns(Task.CompletedTask);
-            services.AddSingleton(ape.Object);
-
-            RemoveService<ILeaseRegistrationService>(services);
+            RemoveAllOf<ILeaseRegistrationService>(services);
             services.AddSingleton<ILeaseRegistrationService, ConfirmingLeaseRegistrationService>();
         });
     }

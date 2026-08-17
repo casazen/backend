@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -141,12 +142,12 @@ public class LeaseWorkflowService(
     {
         var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
 
-        if (lease.Status != LeaseStatus.Signed)
-            throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
-
         var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
         if (existing is not null)
             throw new InvalidOperationException("Registration has already been submitted for this lease.");
+
+        if (lease.Status != LeaseStatus.Signed)
+            throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
 
         var expectedTos = rliOptions.Value.TosVersion;
         if (!authorization.AttestationAccepted
@@ -228,7 +229,7 @@ public class LeaseWorkflowService(
     private async Task<LeaseContract> GetVerifiedLeaseAsync(Guid leaseId, string ownerId)
     {
         var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId)
-            ?? throw new InvalidOperationException($"Lease {leaseId} not found.");
+            ?? throw new NotFoundException($"Lease {leaseId} not found.");
 
         if (lease.Property is null || lease.Property.OwnerId != ownerId)
             throw new UnauthorizedAccessException("Lease does not belong to this owner.");

@@ -221,21 +221,21 @@ public class LeasesController(
 }
 
 public record CreateLeaseDto(
-    [property: Required] Guid PropertyId,
-    [property: Required] FiscalRegime FiscalRegime,
-    [property: Required] DateTime StartDate,
-    [property: Required] DateTime EndDate,
-    [property: Range(0.01, 1_000_000.0)] decimal MonthlyRent,
-    [property: Required, MinLength(1)] IEnumerable<CreatePartyDto> Parties);
+    [param: Required] Guid PropertyId,
+    [param: Required] FiscalRegime FiscalRegime,
+    [param: Required] DateTime StartDate,
+    [param: Required] DateTime EndDate,
+    [param: Range(0.01, 1_000_000.0)] decimal MonthlyRent,
+    [param: Required, MinLength(1)] IEnumerable<CreatePartyDto> Parties);
 
 public record CreatePartyDto(
-    [property: Required] PartyRole Role,
-    [property: Required, MaxLength(100), MinLength(1)] string FirstName,
-    [property: Required, MaxLength(100), MinLength(1)] string LastName,
-    [property: Required, MaxLength(16), MinLength(1)] string FiscalCode,
-    [property: Required, MaxLength(2), MinLength(2)] string Citizenship,
-    [property: Required, EmailAddress] string ContactEmail);
+    [param: Required] PartyRole Role,
+    [param: Required, MaxLength(100), MinLength(1)] string FirstName,
+    [param: Required, MaxLength(100), MinLength(1)] string LastName,
+    [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
+    [param: Required, MaxLength(2), MinLength(2)] string Citizenship,
+    [param: Required, EmailAddress] string ContactEmail);
 
 public record TriggerRegistrationDto(
-    [property: Required, MaxLength(80)] string TosVersion,
-    [property: Required] bool AttestationAccepted);
+    [param: Required, MaxLength(80)] string TosVersion,
+    [param: Required] bool AttestationAccepted);
