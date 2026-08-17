@@ -3,7 +3,7 @@ namespace Casazen.Core.Services;
 public sealed class ImuNotificationNotReadyException : InvalidOperationException
 {
     public ImuNotificationNotReadyException()
-        : base("La comunicazione IMU e' esportabile solo dopo la registrazione RLI del contratto.")
+        : base("La comunicazione IMU e' esportabile solo per contratti a canone concordato registrati.")
     {
     }
 }

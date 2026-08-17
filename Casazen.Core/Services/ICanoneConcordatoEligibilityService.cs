@@ -12,6 +12,9 @@ public static class CanoneConcordatoCopy
 
     public const string ReasonZoneRequired =
         "zona o foglio catastale obbligatorio";
+
+    public const string ReasonInvalidSqm =
+        "superficie catastale non valida";
 }
 
 public record RentBandCharacteristics(

@@ -321,12 +321,12 @@ public class BookingsController(
         if (property == null)
             return NotFound();
 
-        if (booking.Status is not BookingStatus.Confirmed and not BookingStatus.Pending)
+        if (booking.Status != BookingStatus.Confirmed)
         {
             return BadRequest(new
             {
                 error = "Transizione di stato non valida",
-                message = $"Il check-in è possibile solo da Pending o Confirmed. Stato attuale: {booking.Status}"
+                message = $"Il check-in è possibile solo da Confirmed. Stato attuale: {booking.Status}"
             });
         }
 
@@ -566,6 +566,15 @@ public class BookingsController(
         if (property is null) return NotFound();
         if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
 
+        if (!IsPublicCheckInLinkEligible(booking.Status))
+        {
+            return Conflict(new DTOs.CheckIn.ResendCheckInLinkResponse
+            {
+                Success = false,
+                Message = $"Il link check-in è disponibile solo per prenotazioni confermate o in check-in. Stato attuale: {booking.Status}.",
+            });
+        }
+
         var existingSession = await checkInService.GetSessionForBookingAsync(booking.Id);
         if (existingSession?.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato)
         {
@@ -642,6 +651,9 @@ public class BookingsController(
 
     private IReadOnlyList<string> GetUserRoles() =>
         User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+
+    private static bool IsPublicCheckInLinkEligible(BookingStatus status) =>
+        status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
     private static string BuildCheckInEmailHtml(string guestName, string propertyName, DateTime checkInDate, string link) =>
         $"""

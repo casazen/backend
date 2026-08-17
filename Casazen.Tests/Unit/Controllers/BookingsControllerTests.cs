@@ -342,7 +342,7 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task CheckIn_PendingBooking_EnqueuesAlloggiatiJob()
+    public async Task CheckIn_PendingBooking_ReturnsBadRequestWithoutMutating()
     {
         SetUser(OwnerId);
         var bookingId = Guid.NewGuid();
@@ -361,17 +361,15 @@ public class BookingsControllerTests
         _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
         _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
             .ReturnsAsync(true);
-        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
-            .ReturnsAsync((Booking b) => b);
         _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
             .ReturnsAsync(MakeProperty());
-        _mockBackgroundJobClient
-            .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
-            .Returns("job-test");
 
         var result = await _controller.CheckIn(bookingId);
 
-        Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(BookingStatus.Pending, booking.Status);
+        _mockBookingService.Verify(b => b.UpdateBookingAsync(It.IsAny<Booking>()), Times.Never);
+        _mockBackgroundJobClient.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
     }
 
     [Fact]
@@ -498,6 +496,42 @@ public class BookingsControllerTests
                 Status = GuestCheckInSessionStatus.Completo,
                 CompletedAt = DateTime.UtcNow,
             });
+
+        var result = await _controller.ResendCheckInLink(bookingId);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(conflict.Value);
+        Assert.False(response.Success);
+        _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        _mockEmailService.Verify(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResendCheckInLink_PendingBooking_ReturnsConflictWithoutCreatingToken()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = "mario@example.com",
+        };
+        var booking = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Pending,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
 
         var result = await _controller.ResendCheckInLink(bookingId);
 

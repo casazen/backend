@@ -16,7 +16,7 @@ public class ComuneImuNotificationService(
         var lease = await LoadOwnedLeaseAsync(leaseId, ownerId);
         if (lease is null)
             return null;
-        if (lease.Status != LeaseStatus.Registered)
+        if (!IsReadyForImuNotification(lease))
             throw new ImuNotificationNotReadyException();
 
         var city = lease.Property.City;
@@ -39,7 +39,7 @@ public class ComuneImuNotificationService(
         var lease = await LoadOwnedLeaseAsync(leaseId, ownerId);
         if (lease is null)
             return null;
-        if (lease.Status != LeaseStatus.Registered)
+        if (!IsReadyForImuNotification(lease))
             throw new ImuNotificationNotReadyException();
 
         await events.AddAsync(new LeaseEvent
@@ -57,6 +57,10 @@ public class ComuneImuNotificationService(
             return null;
         return lease;
     }
+
+    private static bool IsReadyForImuNotification(LeaseContract lease) =>
+        lease.Status == LeaseStatus.Registered &&
+        lease.FiscalRegime == FiscalRegime.CanoneConcordato;
 
     private static string BuildBody(LeaseContract lease, string city)
     {
