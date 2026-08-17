@@ -162,7 +162,7 @@ public class ComplianceWizardService(
             !(booking.Status == BookingStatus.Confirmed && booking.CheckOutDate.Date <= today))
         {
             throw new InvalidOperationException(
-                $"Checkout wizard requires CheckedIn status. Current: {booking.Status}");
+                $"Il check-out richiede una prenotazione in check-in. Stato attuale: {booking.Status}.");
         }
 
         booking.CheckoutWizardStartedAt ??= DateTime.UtcNow;
@@ -180,7 +180,7 @@ public class ComplianceWizardService(
         CancellationToken cancellationToken = default)
     {
         if (!input.ConfirmDeparture)
-            throw new InvalidOperationException("confirmDeparture is required");
+            throw new InvalidOperationException("Conferma che l'ospite ha lasciato la struttura.");
 
         var booking = await db.Bookings
             .Include(b => b.Property)
@@ -189,7 +189,8 @@ public class ComplianceWizardService(
             ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
 
         if (booking.Status != BookingStatus.CheckedIn)
-            throw new InvalidOperationException($"Booking must be CheckedIn. Current: {booking.Status}");
+            throw new InvalidOperationException(
+                $"Il check-out richiede una prenotazione in check-in. Stato attuale: {booking.Status}.");
 
         if (input.SupplierOrgId.HasValue)
         {

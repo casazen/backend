@@ -59,6 +59,11 @@ public class AppDbContext(
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
+    public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
+    public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
+    public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
+    public DbSet<HighTensionAreaComune> HighTensionAreaComuni { get; set; } = null!;
+
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
@@ -646,6 +651,22 @@ public class AppDbContext(
                 .HasFilter("\"Status\" IN (0, 1, 2, 3)")
                 .HasDatabaseName("UIX_GuestCheckInSessions_BookingId_ActiveStatus");
         });
+
+        modelBuilder.Entity<TerritorialRentAgreement>(entity =>
+        {
+            entity.HasIndex(a => a.Comune);
+            entity.HasMany(a => a.Bands)
+                .WithOne(b => b.Agreement)
+                .HasForeignKey(b => b.TerritorialRentAgreementId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(a => a.Signatories)
+                .WithOne(s => s.Agreement)
+                .HasForeignKey(s => s.TerritorialRentAgreementId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<HighTensionAreaComune>()
+            .HasIndex(c => c.Comune);
 
         // Native host app push tokens (US-025 / #299)
         modelBuilder.Entity<DeviceRegistration>(entity =>

@@ -122,32 +122,58 @@ Applies to **AC8–AC10** (annual + withholding, `format=csv|pdf`).
 ---
 
 
-## Verifiable Outcomes
-
-**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
-
-| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
-|---|---|---|---|
-| AC1 | L1 | Given 1 active STR property for tax year 2026, When `GET /api/fiscal/regime?taxYear=2026`, Then `recommendedRegime=CedolareSecca21` and d... | Outcome not met; wrong status; silent no-op |
-| AC3 | L1 | Given 1 STR property, When `PUT` regime `CedolareSecca26`, Then **400**. | Outcome not met; wrong status; silent no-op |
-| AC4 | L2 + L3 | Given 3 active STR properties, When reading regime, Then `requiresPartitaIva=true`; assigning cedolare on a third property returns **409*... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC6 | L1 | Given OTA-sourced booking (Airbnb/BookingCom/…), When creating Payment, Then store gross, 21% withholding, net, `WithholdingTaxApplied=tr... | Outcome not met; wrong status; silent no-op |
-| AC7 | L1 | Given Direct/Local booking, When creating Payment, Then do not auto-apply 21%; optional manual withholding allowed. | Outcome not met; wrong status; silent no-op |
-| AC11 | L1 | Threshold counts only active STR properties in that tax year (not inactive, not LTR-only). | Outcome not met; wrong status; silent no-op |
-| AC12 | L1 | Cross-org fiscal reads/writes return **404**; OrgId never client-supplied. | Outcome not met; wrong status; silent no-op |
-| AC2 | L2 + L3 | Given 2 STR properties, When owner designates primary, Then primary shows 21% and the other 26%; only one primary per org+tax year. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC5 | L2 + L3 | Given `hasPartitaIva=true`, Then owner can set Ordinario or Forfettario per property and save succeeds. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC8 | L2 + L3 | Withholding report by OTA source shows per-source gross / withholding / net (labels only). | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC9 | L2 + L3 | Annual income report shows labeled totals without tax-due / IRPEF fields. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC10 | L2 + L3 | Owner can download CSV **and** PDF commercialista packs for annual and withholding reports meeting **Export / Report Criteria** below. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC13 | L2 + L3 | Italian copy citing L. 199/2025 and D.L. 50/2017; CasaZen does not file taxes / replace a commercialista. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC14 | L2 + L3 | (UX): Happy path “open fiscal → set regime on one property → open reports → download CSV” is completable without dead-ends; primary CTAs ... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC15 | L2 + L3 | (UX): Empty reports (no payouts) show an Italian empty state, not a blank table. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-| AC16 | L2 + L3 | (UX): API/validation errors surface a human-readable Italian message (no raw JSON / stack). | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
-
-Rules:
-- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
-- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+## Verifiable Outcomes
+
+
+
+**Required.** One row per AC. Stage 03 L1/L2/L3 must assert these outcomes - not only that a page loads.
+
+
+
+| AC | Layer (min) | Observable pass condition | Fail examples (must catch) |
+
+|---|---|---|---|
+
+| AC1 | L1 | Given 1 active STR property for tax year 2026, When `GET /api/fiscal/regime?taxYear=2026`, Then `recommendedRegime=CedolareSecca21` and d... | Outcome not met; wrong status; silent no-op |
+
+| AC3 | L1 | Given 1 STR property, When `PUT` regime `CedolareSecca26`, Then **400**. | Outcome not met; wrong status; silent no-op |
+
+| AC4 | L2 + L3 | Given 3 active STR properties, When reading regime, Then `requiresPartitaIva=true`; assigning cedolare on a third property returns **409*... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC6 | L1 | Given OTA-sourced booking (Airbnb/BookingCom/…), When creating Payment, Then store gross, 21% withholding, net, `WithholdingTaxApplied=tr... | Outcome not met; wrong status; silent no-op |
+
+| AC7 | L1 | Given Direct/Local booking, When creating Payment, Then do not auto-apply 21%; optional manual withholding allowed. | Outcome not met; wrong status; silent no-op |
+
+| AC11 | L1 | Threshold counts only active STR properties in that tax year (not inactive, not LTR-only). | Outcome not met; wrong status; silent no-op |
+
+| AC12 | L1 | Cross-org fiscal reads/writes return **404**; OrgId never client-supplied. | Outcome not met; wrong status; silent no-op |
+
+| AC2 | L2 + L3 | Given 2 STR properties, When owner designates primary, Then primary shows 21% and the other 26%; only one primary per org+tax year. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC5 | L2 + L3 | Given `hasPartitaIva=true`, Then owner can set Ordinario or Forfettario per property and save succeeds. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC8 | L2 + L3 | Withholding report by OTA source shows per-source gross / withholding / net (labels only). | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC9 | L2 + L3 | Annual income report shows labeled totals without tax-due / IRPEF fields. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC10 | L2 + L3 | Owner can download CSV **and** PDF commercialista packs for annual and withholding reports meeting **Export / Report Criteria** below. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC13 | L2 + L3 | Italian copy citing L. 199/2025 and D.L. 50/2017; CasaZen does not file taxes / replace a commercialista. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC14 | L2 + L3 | (UX): Happy path “open fiscal → set regime on one property → open reports → download CSV” is completable without dead-ends; primary CTAs ... | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC15 | L2 + L3 | (UX): Empty reports (no payouts) show an Italian empty state, not a blank table. | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+| AC16 | L2 + L3 | (UX): API/validation errors surface a human-readable Italian message (no raw JSON / stack). | Missing Italian CTA; blank empty state; flow dead-end; visibility-only |
+
+
+
+Rules:
+
+- UI ACs need L2 **and** L3 outcomes (titled tests per AC).
+
+- Non-UI ACs may be L1-only (`N/A` L2/L3 in design map).
+
 - Visibility-only asserts are insufficient for mutations, exports, or multi-step flows.
 
 ---

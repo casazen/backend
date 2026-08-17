@@ -9,5 +9,7 @@ public enum LeaseEventType
     RegistrationSubmitted,
     RegistrationConfirmed,
     RegistrationFailed,
-    ErasureRequested
+    ErasureRequested,
+    ImuNotificationExported,
+    ImuNotificationMarkedSent
 }

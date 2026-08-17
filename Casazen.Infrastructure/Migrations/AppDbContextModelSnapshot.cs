@@ -300,6 +300,61 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("CancellationPolicies");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CadastralSheets")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("MaxSqm")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinSqm")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SubFascia1MaxEurSqmYear")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SubFascia1MinEurSqmYear")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SubFascia2MaxEurSqmYear")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SubFascia2MinEurSqmYear")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SubFascia3MaxEurSqmYear")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SubFascia3MinEurSqmYear")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("TerritorialRentAgreementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ZoneName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TerritorialRentAgreementId");
+
+                    b.ToTable("ConcordatoRentBands");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ConsentRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -588,6 +643,40 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"Status\" IN (0, 1, 2, 3)");
 
                     b.ToTable("GuestCheckInSessions");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.HighTensionAreaComune", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Comune")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("LastVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("VerifiedDirectly")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Comune");
+
+                    b.ToTable("HighTensionAreaComuni");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.LeaseContract", b =>
@@ -2346,6 +2435,123 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("TaxRates");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.TerritorialAgreementSignatory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Contact")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TerritorialRentAgreementId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TerritorialRentAgreementId");
+
+                    b.ToTable("TerritorialAgreementSignatories");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.TerritorialRentAgreement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AgreementName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Comune")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("DataCompleteness")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Duration4UpliftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("Duration5UpliftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("Duration6UpliftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime>("EffectiveDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("FurnishedUpliftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<int>("LargeSqmMin")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("LargeSqmReductionPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime?>("LastVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MidSqmMax")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MidSqmMin")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("MidSqmUpliftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("RequiredTypeACount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SignedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SmallSqmMax")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SmallSqmUpliftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Comune");
+
+                    b.ToTable("TerritorialRentAgreements");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.TouristTaxRate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2556,6 +2762,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.TerritorialRentAgreement", "Agreement")
+                        .WithMany("Bands")
+                        .HasForeignKey("TerritorialRentAgreementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agreement");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.DeviceRegistration", b =>
@@ -2929,6 +3146,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.TerritorialAgreementSignatory", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.TerritorialRentAgreement", "Agreement")
+                        .WithMany("Signatories")
+                        .HasForeignKey("TerritorialRentAgreementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agreement");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.User", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
@@ -3029,6 +3257,13 @@ namespace Casazen.Infrastructure.Migrations
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentPage", b =>
                 {
                     b.Navigation("Revisions");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.TerritorialRentAgreement", b =>
+                {
+                    b.Navigation("Bands");
+
+                    b.Navigation("Signatories");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.User", b =>

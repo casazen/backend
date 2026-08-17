@@ -270,6 +270,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingRepository, BookingRepository>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
+        services.AddScoped<ITerritorialRentAgreementRepository, TerritorialRentAgreementRepository>();
+        services.AddScoped<IHighTensionAreaComuneRepository, HighTensionAreaComuneRepository>();
         services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
@@ -318,6 +320,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
+        services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
+        services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
+        services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
