@@ -2,13 +2,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Stub PDF/A generation. Real Docuengine call is blocked until counsel-reviewed templates exist.
+/// Draft PDF/A generation. Counsel-reviewed wording is still a BOZZA until templates are approved beyond dev-stub.
 /// </summary>
 public class LeaseContractTemplateService(
     IOptions<LeaseTemplateOptions> options,
@@ -27,8 +28,14 @@ public class LeaseContractTemplateService(
             "Generating PDF/A for LeaseId={LeaseId} FiscalRegime={Regime} TemplateVersion={Version}",
             lease.Id, lease.FiscalRegime, variant.VersionId);
 
-        var placeholder = System.Text.Encoding.UTF8.GetBytes(
-            $"[LEASE CONTRACT PDF PLACEHOLDER - LeaseId: {lease.Id} Regime: {lease.FiscalRegime} Version: {variant.VersionId}]");
-        return Task.FromResult(placeholder);
+        var isConcordato = lease.FiscalRegime == FiscalRegime.CanoneConcordato;
+        var title = isConcordato
+            ? "Contratto di locazione a canone concordato - BOZZA"
+            : "Contratto di locazione - BOZZA";
+        var body = isConcordato
+            ? CanoneConcordatoContractBody.Build(lease, variant.VersionId)
+            : CanoneConcordatoContractBody.BuildGenericDraft(lease, variant.VersionId);
+
+        return Task.FromResult(FiscalPdfWriter.Write(title, body));
     }
 }

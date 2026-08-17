@@ -8,6 +8,7 @@ using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -77,6 +78,15 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
                 ["CheckIn:RateLimitPermitLimit"] = "100",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "100",
+                ["ESign:WebhookSecret"] = "esign-test-secret",
+                ["Stripe:WebhookSecret"] = "whsec_test_casazen_integration",
+                ["Rli:TosVersion"] = "2026-08-rli-delega-bozza",
+                ["LeaseTemplates:Variants:CedolareSecca:VersionId"] = "dev-stub",
+                ["LeaseTemplates:Variants:CedolareSecca:Approved"] = "true",
+                ["LeaseTemplates:Variants:RegimeOrdinario:VersionId"] = "dev-stub",
+                ["LeaseTemplates:Variants:RegimeOrdinario:Approved"] = "true",
+                ["LeaseTemplates:Variants:CanoneConcordato:VersionId"] = "dev-stub",
+                ["LeaseTemplates:Variants:CanoneConcordato:Approved"] = "true",
             });
         });
 
@@ -120,6 +130,14 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 gate.Setup(g => g.AssertCanChargeAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
                 return gate.Object;
             });
+
+            // Lease create requires a verified APE; integration tests stub the gate unless a suite replaces it.
+            RemoveAllOf<IApeComplianceService>(services);
+            var ape = new Mock<IApeComplianceService>();
+            ape.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
+            ape.Setup(s => s.EnsureUploadedFileIsOfficialApeAsync(It.IsAny<IFormFile>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(ape.Object);
         });
     }
 
@@ -264,10 +282,16 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         await db.SaveChangesAsync();
     }
 
-    private static void RemoveService<T>(IServiceCollection services)
+    protected static void RemoveService<T>(IServiceCollection services)
     {
         var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(T));
         if (descriptor != null)
+            services.Remove(descriptor);
+    }
+
+    protected static void RemoveAllOf<T>(IServiceCollection services)
+    {
+        foreach (var descriptor in services.Where(d => d.ServiceType == typeof(T)).ToList())
             services.Remove(descriptor);
     }
 

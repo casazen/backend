@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -33,14 +34,30 @@ public class LeaseESignHttpAdapter(ILogger<LeaseESignHttpAdapter> logger) : ILea
     {
         logger.LogInformation("Parsing e-sign webhook event");
 
-        // TODO: implement real payload parsing per chosen provider
-        var stub = new ESignEvent(
-            ExternalSessionId: "stub",
-            EventType: "party_signed",
-            SignerEmail: null,
-            AllSigned: false,
-            SignedDocumentPath: null);
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+            var sessionId = root.TryGetProperty("externalSessionId", out var session)
+                ? session.GetString() ?? "stub"
+                : "stub";
+            var eventType = root.TryGetProperty("eventType", out var typeEl)
+                ? typeEl.GetString() ?? "party_signed"
+                : "party_signed";
+            var signerEmail = root.TryGetProperty("signerEmail", out var emailEl)
+                ? emailEl.GetString()
+                : null;
+            var allSigned = root.TryGetProperty("allSigned", out var signedEl)
+                && signedEl.ValueKind == JsonValueKind.True;
+            var signedPath = root.TryGetProperty("signedDocumentPath", out var pathEl)
+                ? pathEl.GetString()
+                : null;
 
-        return Task.FromResult(stub);
+            return Task.FromResult(new ESignEvent(sessionId, eventType, signerEmail, allSigned, signedPath));
+        }
+        catch (JsonException)
+        {
+            return Task.FromResult(new ESignEvent("stub", "party_signed", null, false, null));
+        }
     }
 }

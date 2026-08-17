@@ -89,13 +89,58 @@ public class ApeDocumentInspectorTests
         Assert.True(result.IsValid);
     }
 
+    [Fact]
+    public void Inspect_FlateZipBomb_IsContentMismatchWithoutExpandingUnbounded()
+    {
+        var pdf = FlatePdfFromRaw(new byte[5 * 1024 * 1024]);
+
+        using var stream = new MemoryStream(pdf);
+        var result = _sut.Inspect(stream);
+
+        Assert.Equal(ApeInspectionStatus.ContentMismatch, result.Status);
+        Assert.True(pdf.Length < 100_000);
+    }
+
+    [Fact]
+    public void Inspect_ManyFlateStreams_FindsApeInEarlyStream()
+    {
+        var pdf = MultiFlatePdf(
+            PdfLiteralTextExtractor.MaxFlateStreams + 50,
+            "ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE");
+
+        using var stream = new MemoryStream(pdf);
+        var result = _sut.Inspect(stream);
+
+        Assert.True(result.IsValid);
+    }
+
     private static byte[] FlatePdf(string text)
     {
         var content = Encoding.ASCII.GetBytes($"BT ({text}) Tj ET");
-        using var compressed = new MemoryStream();
-        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
-            zlib.Write(content);
-        var payload = compressed.ToArray();
+        return FlatePdfFromRaw(content);
+    }
+
+    private static byte[] MultiFlatePdf(int streamCount, string text)
+    {
+        using var pdf = new MemoryStream();
+        pdf.Write("%PDF-1.4\n"u8);
+        for (var i = 0; i < streamCount; i++)
+        {
+            var payload = Compress(Encoding.ASCII.GetBytes($"BT ({text}) Tj ET"));
+            var header = Encoding.ASCII.GetBytes(
+                $"{i + 1} 0 obj << /Length {payload.Length} /Filter /FlateDecode >> stream\n");
+            pdf.Write(header);
+            pdf.Write(payload);
+            pdf.Write("\nendstream endobj\n"u8);
+        }
+
+        pdf.Write("%%EOF"u8);
+        return pdf.ToArray();
+    }
+
+    private static byte[] FlatePdfFromRaw(byte[] content)
+    {
+        var payload = Compress(content);
 
         using var pdf = new MemoryStream();
         var header = Encoding.ASCII.GetBytes(
@@ -105,5 +150,13 @@ public class ApeDocumentInspectorTests
         pdf.Write(payload);
         pdf.Write(footer);
         return pdf.ToArray();
+    }
+
+    private static byte[] Compress(byte[] content)
+    {
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+            zlib.Write(content);
+        return compressed.ToArray();
     }
 }

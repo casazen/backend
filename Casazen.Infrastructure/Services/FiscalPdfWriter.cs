@@ -41,7 +41,7 @@ internal static class FiscalPdfWriter
             .Replace('ì', 'i').Replace('ò', 'o').Replace('ù', 'u')
             .Replace('À', 'A').Replace('È', 'E').Replace('É', 'E')
             .Replace('—', '-').Replace('«', '"').Replace('»', '"');
-        return folded.Length > 1800 ? folded[..1800] : folded;
+        return folded.Length > 4000 ? folded[..4000] : folded;
     }
 
     private static string Escape(string s) => s.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)").Replace("\r", " ").Replace("\n", ") Tj T* (");
