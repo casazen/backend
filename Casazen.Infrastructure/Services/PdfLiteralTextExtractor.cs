@@ -9,6 +9,12 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class PdfLiteralTextExtractor
 {
+    internal const int MaxFlateStreams = 128;
+    internal const int MaxDecodedBytesPerStream = 2 * 1024 * 1024;
+    internal const int MaxTotalDecodedBytes = 8 * 1024 * 1024;
+
+    private const int CopyBufferSize = 8192;
+
     private static readonly byte[] StreamToken = "stream"u8.ToArray();
     private static readonly byte[] EndStreamToken = "endstream"u8.ToArray();
     private static readonly byte[] FlateToken = "/FlateDecode"u8.ToArray();
@@ -27,7 +33,9 @@ internal static class PdfLiteralTextExtractor
     private static IEnumerable<byte[]> DecodeFlateStreams(byte[] pdf)
     {
         var offset = 0;
-        while (true)
+        var streamsSeen = 0;
+        var totalDecoded = 0;
+        while (streamsSeen < MaxFlateStreams && totalDecoded < MaxTotalDecodedBytes)
         {
             var streamAt = IndexOf(pdf, StreamToken, offset);
             if (streamAt < 0)
@@ -46,27 +54,41 @@ internal static class PdfLiteralTextExtractor
 
             if (isFlate && endAt > dataStart)
             {
+                streamsSeen++;
+                var remaining = MaxTotalDecodedBytes - totalDecoded;
+                var cap = Math.Min(MaxDecodedBytesPerStream, remaining);
+                if (cap <= 0)
+                    yield break;
+
                 var payload = pdf[dataStart..endAt];
-                if (TryInflate(payload, out var decoded))
+                var status = TryInflate(payload, cap, out var decoded);
+                if (status == InflateStatus.Oversize)
+                    totalDecoded += cap;
+                else if (status == InflateStatus.Success)
+                {
+                    totalDecoded += decoded.Length;
                     yield return decoded;
+                }
             }
 
             offset = endAt + EndStreamToken.Length;
         }
     }
 
-    private static bool TryInflate(byte[] payload, out byte[] decoded)
+    private static InflateStatus TryInflate(byte[] payload, int maxDecodedBytes, out byte[] decoded)
     {
         decoded = [];
-        if (payload.Length == 0)
-            return false;
+        if (payload.Length == 0 || maxDecodedBytes <= 0)
+            return InflateStatus.Empty;
 
-        if (TryInflateWith(payload, useZlib: true, out decoded))
-            return true;
-        return TryInflateWith(payload, useZlib: false, out decoded);
+        var status = TryInflateWith(payload, useZlib: true, maxDecodedBytes, out decoded);
+        if (status is InflateStatus.Success or InflateStatus.Oversize)
+            return status;
+
+        return TryInflateWith(payload, useZlib: false, maxDecodedBytes, out decoded);
     }
 
-    private static bool TryInflateWith(byte[] payload, bool useZlib, out byte[] decoded)
+    private static InflateStatus TryInflateWith(byte[] payload, bool useZlib, int maxDecodedBytes, out byte[] decoded)
     {
         decoded = [];
         try
@@ -78,15 +100,40 @@ internal static class PdfLiteralTextExtractor
             using (decompressor)
             {
                 using var output = new MemoryStream();
-                decompressor.CopyTo(output);
+                var status = CopyBounded(decompressor, output, maxDecodedBytes);
+                if (status != InflateStatus.Success)
+                    return status;
+
                 decoded = output.ToArray();
-                return decoded.Length > 0;
+                return decoded.Length > 0 ? InflateStatus.Success : InflateStatus.Empty;
             }
         }
         catch (InvalidDataException)
         {
-            return false;
+            return InflateStatus.Empty;
         }
+    }
+
+    private static InflateStatus CopyBounded(Stream source, Stream dest, int maxBytes)
+    {
+        var buffer = new byte[CopyBufferSize];
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (dest.Length + read > maxBytes)
+                return InflateStatus.Oversize;
+
+            dest.Write(buffer, 0, read);
+        }
+
+        return dest.Length > 0 ? InflateStatus.Success : InflateStatus.Empty;
+    }
+
+    private enum InflateStatus
+    {
+        Empty,
+        Success,
+        Oversize
     }
 
     private static void AppendLiterals(byte[] data, StringBuilder sb)
