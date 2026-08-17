@@ -247,6 +247,44 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task GetRegistrationReceiptAsync_WhenNotRegistered_ThrowsReceiptNotAvailable()
+    {
+        var lease = BuildLease(LeaseStatus.SentToProvider);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.SentToProvider,
+            ExternalRegistrationId = "RLI-WAIT",
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.GetRegistrationReceiptAsync(lease.Id, OwnerId));
+        Assert.Equal("Receipt is not available yet.", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetRegistrationReceiptAsync_WhenRegistered_ReturnsProviderStream()
+    {
+        var lease = BuildLease(LeaseStatus.Registered);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Registered,
+            ExternalRegistrationId = "RLI-OK",
+            ReceiptStoragePath = "/receipts/ignored-by-stub.pdf",
+        });
+        _regService.Setup(s => s.DownloadReceiptAsync("RLI-OK"))
+            .ReturnsAsync(new MemoryStream("pdf"u8.ToArray()));
+
+        await using var stream = await _sut.GetRegistrationReceiptAsync(lease.Id, OwnerId);
+        using var reader = new StreamReader(stream);
+        Assert.Equal("pdf", await reader.ReadToEndAsync());
+        _regService.Verify(s => s.DownloadReceiptAsync("RLI-OK"), Times.Once);
+    }
+
+    [Fact]
     public async Task TriggerRegistrationAsync_WhenAlreadySubmitted_ThrowsInvalidOperationException()
     {
         // Arrange
