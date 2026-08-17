@@ -295,6 +295,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGdprService, GdprService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
+        services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
+        services.AddScoped<IApeComplianceService, ApeComplianceService>();
         services.AddScoped<IImageStorageService, LocalImageStorageService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
@@ -323,6 +325,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
+        services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
+        services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
+        services.AddScoped<IRliExportService, RliExportService>();
+        services.AddScoped<IRliChecklistService, RliChecklistService>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();

@@ -201,6 +201,19 @@ public class LocalImageStorageService : IImageStorageService
         return true;
     }
 
+    public Task<Stream?> OpenReadAsync(string storageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(storageUrl))
+            return Task.FromResult<Stream?>(null);
+
+        var relativePath = storageUrl.Replace(_baseUrl, "").TrimStart('/');
+        var filePath = ResolveSafePath(relativePath);
+        if (!File.Exists(filePath))
+            return Task.FromResult<Stream?>(null);
+
+        return Task.FromResult<Stream?>(File.OpenRead(filePath));
+    }
+
     private string ResolveSafePath(string relativePath)
     {
         var combined = Path.Combine(_storagePath, relativePath);

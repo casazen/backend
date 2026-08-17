@@ -30,4 +30,8 @@
     <ProjectReference Include="..\Casazen.Core\Casazen.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Casazen.Tests" />
+  </ItemGroup>
+
 </Project>

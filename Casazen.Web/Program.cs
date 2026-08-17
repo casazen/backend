@@ -182,6 +182,7 @@ builder.Services.AddScoped<GdprDataRetentionJob>();
 builder.Services.AddScoped<ESignWebhookJob>();
 builder.Services.AddScoped<LeaseSignStatusPollingJob>();
 builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
+builder.Services.AddScoped<RliDeadlineReminderJob>();
 builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
@@ -194,6 +195,12 @@ builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.RliOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.LeaseTemplateOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.LeaseTemplateOptions.SectionName));
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API
@@ -417,6 +424,12 @@ void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
         "lease-registration-status-poll",
         job => job.ExecuteAsync(),
         "*/5 * * * *",
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
+        "rli-deadline-reminder",
+        job => job.ExecuteAsync(),
+        "0 8 * * *",
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
     recurringJobManager.AddOrUpdate<SeoContentRefreshJob>(

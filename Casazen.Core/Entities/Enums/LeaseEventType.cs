@@ -11,5 +11,8 @@ public enum LeaseEventType
     RegistrationFailed,
     ErasureRequested,
     ImuNotificationExported,
-    ImuNotificationMarkedSent
+    ImuNotificationMarkedSent,
+    RegistrationAuthorized,
+    RliExported,
+    DeadlineReminderSent
 }

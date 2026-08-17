@@ -15,12 +15,14 @@ public class TerritorialRentAgreementMigrationTests
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
-        Assert.EndsWith("AddTerritorialRentAgreements", keys[^1]);
+        var territorial = keys.Single(k => k.EndsWith("AddTerritorialRentAgreements", StringComparison.Ordinal));
+        var idx = keys.IndexOf(territorial);
+        Assert.True(idx > 0);
 
         var migrator = db.GetService<IMigrator>();
         var script = migrator.GenerateScript(
-            fromMigration: keys[^2],
-            toMigration: keys[^1]);
+            fromMigration: keys[idx - 1],
+            toMigration: territorial);
 
         Assert.Contains("CREATE TABLE \"TerritorialRentAgreements\"", script);
         Assert.Contains("CREATE TABLE \"ConcordatoRentBands\"", script);

@@ -2,8 +2,10 @@ using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -13,7 +15,11 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = "RequireContext:long-rent:lease.read")]
 public class LeasesController(
     ILeaseWorkflowService leaseService,
-    IComuneImuNotificationService imuNotification) : ControllerBase
+    IComuneImuNotificationService imuNotification,
+    ICedolareAdvisoryService cedolareAdvisory,
+    IRliExportService rliExport,
+    IRliChecklistService rliChecklist,
+    IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
     private string? GetOwnerId() =>
         User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
@@ -55,6 +61,13 @@ public class LeasesController(
             var lease = await leaseService.CreateDraftAsync(dto.PropertyId, ownerId, request);
             return CreatedAtAction(nameof(GetById), new { id = lease.Id }, lease);
         }
+        catch (ApeComplianceException ex)
+        {
+            var error = ex.Code == ApeComplianceException.InvalidContentCode
+                ? localizer["ApeInvalidContent"].Value
+                : ex.Message;
+            return BadRequest(new { error, code = ex.Code });
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
@@ -86,20 +99,23 @@ public class LeasesController(
         }
     }
 
-    /// <summary>Submit a Signed lease to Openapi.it Docuengine for RLI registration (async).</summary>
+    /// <summary>Submit a Signed lease to the filing channel after per-lease delega (async).</summary>
     [HttpPost("{id:guid}/registration")]
     [Authorize(Policy = "RequireContext:long-rent:lease.register")]
-    public async Task<IActionResult> TriggerRegistration(Guid id)
+    public async Task<IActionResult> TriggerRegistration(Guid id, [FromBody] TriggerRegistrationDto dto)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        if (dto is null || !dto.AttestationAccepted)
+            return BadRequest(new { error = localizer["RliDelegaRequired"].Value });
         try
         {
-            var registration = await leaseService.TriggerRegistrationAsync(id, ownerId);
+            var registration = await leaseService.TriggerRegistrationAsync(
+                id, ownerId, new RegistrationAuthorizationRequest(dto.TosVersion, dto.AttestationAccepted));
             return Accepted(new
             {
                 leaseId = id,
                 registrationStatus = registration.Status.ToString(),
-                message = $"Registration submitted. Check GET /api/leases/{id}/registration for status."
+                message = localizer["RliRegistrationAccepted"].Value
             });
         }
         catch (InvalidOperationException ex)
@@ -110,6 +126,33 @@ public class LeasesController(
         {
             return Forbid();
         }
+    }
+
+    [HttpGet("{id:guid}/rli/advisory")]
+    public async Task<IActionResult> GetRliAdvisory(Guid id, CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        var result = await cedolareAdvisory.EvaluateAsync(id, ownerId, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpGet("{id:guid}/rli/export")]
+    [Authorize(Policy = "RequireContext:long-rent:lease.register")]
+    public async Task<IActionResult> ExportRli(Guid id, CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        var result = await rliExport.ExportAsync(id, ownerId, cancellationToken);
+        return result is null
+            ? NotFound()
+            : File(result.PdfBytes, "application/pdf", result.FileName);
+    }
+
+    [HttpGet("{id:guid}/rli/checklist")]
+    public async Task<IActionResult> GetRliChecklist(Guid id, CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        var result = await rliChecklist.GetAsync(id, ownerId, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
     }
 
     /// <summary>Get current RLI registration status.</summary>
@@ -192,3 +235,7 @@ public record CreatePartyDto(
     [property: Required, MaxLength(16), MinLength(1)] string FiscalCode,
     [property: Required, MaxLength(2), MinLength(2)] string Citizenship,
     [property: Required, EmailAddress] string ContactEmail);
+
+public record TriggerRegistrationDto(
+    [property: Required, MaxLength(80)] string TosVersion,
+    [property: Required] bool AttestationAccepted);

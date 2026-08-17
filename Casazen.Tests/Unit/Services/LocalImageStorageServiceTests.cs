@@ -223,6 +223,34 @@ public class LocalImageStorageServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.DeleteImageAsync(traversalUrl));
     }
 
+    [Fact]
+    public async Task OpenReadAsync_WithUploadedDocument_ReturnsStoredBytes()
+    {
+        var propertyId = Guid.NewGuid();
+        var mockFile = CreateMockFormFile("ape.pdf", "application/pdf", 2048);
+
+        var url = await _service.UploadDocumentAsync(mockFile, propertyId);
+        await using var stream = await _service.OpenReadAsync(url);
+        Assert.NotNull(stream);
+        using var reader = new MemoryStream();
+        await stream!.CopyToAsync(reader);
+        Assert.Equal(2048, reader.Length);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_WithMissingFile_ReturnsNull()
+    {
+        var stream = await _service.OpenReadAsync("/uploads/properties/missing/doc.pdf");
+        Assert.Null(stream);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_WithTraversalPath_Throws()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.OpenReadAsync("/uploads/properties/../../outside.pdf"));
+    }
+
     public void Dispose()
     {
         // Cleanup test storage directory
