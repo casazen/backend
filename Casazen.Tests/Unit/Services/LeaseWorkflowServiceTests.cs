@@ -22,6 +22,7 @@ public class LeaseWorkflowServiceTests
     private readonly Mock<ILeaseRegistrationService> _regService = new();
     private readonly Mock<IPropertyRepository> _propertyRepo = new();
     private readonly Mock<ILeaseRegistrationAuthorizationRepository> _authRepo = new();
+    private readonly Mock<IApeComplianceService> _apeCompliance = new();
     private readonly LeaseWorkflowService _sut;
 
     private static readonly string OwnerId = "auth0|owner123";
@@ -33,6 +34,8 @@ public class LeaseWorkflowServiceTests
     {
         _authRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()))
             .ReturnsAsync((LeaseRegistrationAuthorization a) => a);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>()))
+            .Returns(Task.CompletedTask);
         _sut = new LeaseWorkflowService(
             _leaseRepo.Object,
             _regRepo.Object,
@@ -42,6 +45,7 @@ public class LeaseWorkflowServiceTests
             _regService.Object,
             _propertyRepo.Object,
             _authRepo.Object,
+            _apeCompliance.Object,
             Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
             new Mock<ILogger<LeaseWorkflowService>>().Object);
     }
@@ -76,10 +80,43 @@ public class LeaseWorkflowServiceTests
         // Arrange
         var property = BuildProperty(hasApe: false);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(PropertyId))
+            .ThrowsAsync(ApeComplianceException.Required());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
             _sut.CreateDraftAsync(PropertyId, OwnerId, BuildCreateRequest()));
+        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenApeContentIsNotOfficialCertificate_ThrowsInvalidApeException()
+    {
+        var property = BuildProperty(hasApe: true);
+        property.PropertyDocuments.Clear();
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(PropertyId))
+            .ThrowsAsync(ApeComplianceException.InvalidContent());
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, BuildCreateRequest()));
+        Assert.Equal(ApeComplianceException.InvalidContentCode, ex.Code);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenDocumentsNotLoadedOnProperty_StillChecksStoredApe()
+    {
+        var property = BuildProperty(hasApe: false);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+
+        var result = await _sut.CreateDraftAsync(PropertyId, OwnerId, BuildCreateRequest());
+
+        Assert.Equal(LeaseStatus.Draft, result.Status);
+        _apeCompliance.Verify(s => s.EnsurePropertyHasValidApeAsync(PropertyId), Times.Once);
     }
 
     [Fact]

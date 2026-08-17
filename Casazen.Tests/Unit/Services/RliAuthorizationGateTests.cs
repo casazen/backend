@@ -101,6 +101,7 @@ public class RliAuthorizationGateTests
         var regService = new Mock<ILeaseRegistrationService>();
         var properties = new Mock<IPropertyRepository>();
         var authRepo = new Mock<ILeaseRegistrationAuthorizationRepository>();
+        var apeCompliance = new Mock<IApeComplianceService>();
         var workflow = new LeaseWorkflowService(
             leaseRepo.Object,
             regRepo.Object,
@@ -110,6 +111,7 @@ public class RliAuthorizationGateTests
             regService.Object,
             properties.Object,
             authRepo.Object,
+            apeCompliance.Object,
             Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
             Mock.Of<ILogger<LeaseWorkflowService>>());
         return (new SutBundle(workflow, leaseRepo, regRepo, events), regService, authRepo);

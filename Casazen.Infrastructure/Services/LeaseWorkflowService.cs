@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -18,6 +17,7 @@ public class LeaseWorkflowService(
     ILeaseRegistrationService registrationService,
     IPropertyRepository propertyRepository,
     ILeaseRegistrationAuthorizationRepository authorizationRepository,
+    IApeComplianceService apeCompliance,
     IOptions<RliOptions> rliOptions,
     ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
 {
@@ -35,9 +35,7 @@ public class LeaseWorkflowService(
         if (property.OwnerId != ownerId)
             throw new UnauthorizedAccessException("Property does not belong to this owner.");
 
-        var hasApe = property.PropertyDocuments?.Any(d => d.DocumentType == DocumentType.Ape) ?? false;
-        if (!hasApe)
-            throw new InvalidOperationException("APE document is required before creating a lease contract.");
+        await apeCompliance.EnsurePropertyHasValidApeAsync(propertyId);
 
         if (request.EndDate <= request.StartDate)
             throw new InvalidOperationException("Lease end date must be after start date.");

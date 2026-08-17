@@ -138,4 +138,7 @@
   <data name="RliRegistrationAccepted" xml:space="preserve">
     <value>Registrazione inviata. Controlla lo stato in GET /api/leases/{id}/registration.</value>
   </data>
+  <data name="ApeInvalidContent" xml:space="preserve">
+    <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
+  </data>
 </root>

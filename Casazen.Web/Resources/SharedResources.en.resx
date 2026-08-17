@@ -138,4 +138,7 @@
   <data name="RliRegistrationAccepted" xml:space="preserve">
     <value>Registration submitted. Check GET /api/leases/{id}/registration for status.</value>
   </data>
+  <data name="ApeInvalidContent" xml:space="preserve">
+    <value>The uploaded file is not a valid APE (energy performance certificate). The PDF content does not match an official attestato di prestazione energetica. Upload a valid official APE and try again.</value>
+  </data>
 </root>

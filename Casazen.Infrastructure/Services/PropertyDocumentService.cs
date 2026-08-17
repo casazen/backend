@@ -11,6 +11,7 @@ public class PropertyDocumentService(
     IPropertyDocumentRepository documentRepository,
     IImageStorageService storageService,
     IPropertyRepository propertyRepository,
+    IApeComplianceService apeCompliance,
     ILogger<PropertyDocumentService> logger) : IPropertyDocumentService
 {
     public async Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
@@ -25,6 +26,9 @@ public class PropertyDocumentService(
         {
             throw new InvalidOperationException("Invalid document file type or size");
         }
+
+        if (documentType == DocumentType.Ape)
+            await apeCompliance.EnsureUploadedFileIsOfficialApeAsync(file);
 
         var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
 

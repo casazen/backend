@@ -596,7 +596,11 @@ public class PropertiesController(
             var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
             return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Invalid document", StringComparison.OrdinalIgnoreCase))
+        catch (ApeComplianceException ex)
+        {
+            return BadRequest(new { error = ex.Message, code = ex.Code });
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
         }

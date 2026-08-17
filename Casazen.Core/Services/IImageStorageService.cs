@@ -34,4 +34,9 @@ public interface IImageStorageService
     /// Validate if a file is an accepted compliance document (PDF, DOC, DOCX, JPG, PNG)
     /// </summary>
     bool ValidateDocument(IFormFile file);
+
+    /// <summary>
+    /// Opens a previously uploaded file for reading, or null if it is missing.
+    /// </summary>
+    Task<Stream?> OpenReadAsync(string storageUrl);
 }

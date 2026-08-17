@@ -61,6 +61,13 @@ public class LeasesController(
             var lease = await leaseService.CreateDraftAsync(dto.PropertyId, ownerId, request);
             return CreatedAtAction(nameof(GetById), new { id = lease.Id }, lease);
         }
+        catch (ApeComplianceException ex)
+        {
+            var error = ex.Code == ApeComplianceException.InvalidContentCode
+                ? localizer["ApeInvalidContent"].Value
+                : ex.Message;
+            return BadRequest(new { error, code = ex.Code });
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
