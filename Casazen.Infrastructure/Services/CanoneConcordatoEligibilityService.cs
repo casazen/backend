@@ -20,6 +20,19 @@ public class CanoneConcordatoEligibilityService(
         if (property is null || property.OwnerId != ownerId)
             return null;
 
+        if (characteristics.Sqm < 1m)
+        {
+            return new CanoneConcordatoEligibilityDto(
+                false,
+                CanoneConcordatoCopy.ReasonInvalidSqm,
+                property.City,
+                characteristics.ZoneName,
+                null, null, null, null, null,
+                null,
+                false, false, true,
+                CanoneConcordatoCopy.Disclaimer);
+        }
+
         var agreement = await agreements.GetByComuneAsync(property.City, cancellationToken);
         if (agreement is null || agreement.DataCompleteness == DataCompleteness.Missing || agreement.Bands.Count == 0)
         {
@@ -80,11 +93,11 @@ public class CanoneConcordatoEligibilityService(
             if (string.IsNullOrWhiteSpace(characteristics.ZoneName) && string.IsNullOrWhiteSpace(characteristics.CadastralSheet))
                 return null;
 
-            candidates = candidates.Where(b => MatchesZoneOrSheet(b, characteristics));
+            candidates = candidates.Where(b => MatchesProvidedZoneAndSheet(b, characteristics));
         }
         else if (!string.IsNullOrWhiteSpace(characteristics.ZoneName) || !string.IsNullOrWhiteSpace(characteristics.CadastralSheet))
         {
-            var filtered = candidates.Where(b => MatchesZoneOrSheet(b, characteristics)).ToList();
+            var filtered = candidates.Where(b => MatchesProvidedZoneAndSheet(b, characteristics)).ToList();
             if (filtered.Count > 0)
                 candidates = filtered;
         }
@@ -95,16 +108,22 @@ public class CanoneConcordatoEligibilityService(
             .FirstOrDefault();
     }
 
-    private static bool MatchesZoneOrSheet(ConcordatoRentBand band, RentBandCharacteristics characteristics)
+    private static bool MatchesProvidedZoneAndSheet(ConcordatoRentBand band, RentBandCharacteristics characteristics)
     {
-        if (!string.IsNullOrWhiteSpace(characteristics.ZoneName)
-            && string.Equals(band.ZoneName, characteristics.ZoneName.Trim(), StringComparison.OrdinalIgnoreCase))
-            return true;
+        var zoneProvided = !string.IsNullOrWhiteSpace(characteristics.ZoneName);
+        var sheetProvided = !string.IsNullOrWhiteSpace(characteristics.CadastralSheet);
 
-        if (string.IsNullOrWhiteSpace(characteristics.CadastralSheet) || string.IsNullOrWhiteSpace(band.CadastralSheets))
+        if (zoneProvided &&
+            !string.Equals(band.ZoneName, characteristics.ZoneName!.Trim(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        var sheet = characteristics.CadastralSheet.Trim();
+        if (!sheetProvided)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(band.CadastralSheets))
+            return false;
+
+        var sheet = characteristics.CadastralSheet!.Trim();
         return band.CadastralSheets
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Any(s => string.Equals(s, sheet, StringComparison.OrdinalIgnoreCase));

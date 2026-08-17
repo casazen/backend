@@ -150,6 +150,42 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Fact]
+    public async Task Calculate_CesanoWithConflictingZoneAndFoglio_ReturnsUnavailable()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Cesano Maderno");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0, zone: "Centrale", foglio: "2"));
+
+        Assert.False(result!.Available);
+        Assert.Null(result.CanoneMinAnnuo);
+        Assert.Null(result.CanoneMaxAnnuo);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.5)]
+    public async Task Calculate_InvalidSqm_ReturnsUnavailableWithoutNumericRange(decimal sqm)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(sqm, 2, 3, 0, 0));
+
+        Assert.False(result!.Available);
+        Assert.Equal(CanoneConcordatoCopy.ReasonInvalidSqm, result.Reason);
+        Assert.Null(result.CanoneMinAnnuo);
+        Assert.Null(result.CanoneMaxAnnuo);
+    }
+
+    [Fact]
     public async Task Calculate_UnknownOwner_ReturnsNull()
     {
         await using var db = CreateDb();

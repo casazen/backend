@@ -64,6 +64,19 @@ public class ComuneImuNotificationServiceTests
     }
 
     [Fact]
+    public async Task ExportAsync_NonCanoneConcordatoLease_ThrowsNotReadyWithoutEvent()
+    {
+        var (sut, events) = CreateSut(BuildLease(
+            "Seveso",
+            LeaseStatus.Registered,
+            FiscalRegime.CedolareSecca));
+
+        await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
+            () => sut.ExportAsync(Guid.NewGuid(), OwnerId));
+        events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ExportAsync_OtherOwner_ReturnsNull()
     {
         var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Registered));
@@ -116,6 +129,19 @@ public class ComuneImuNotificationServiceTests
     public async Task MarkSentAsync_NotRegistered_ThrowsAndDoesNotEmit()
     {
         var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Signed));
+
+        await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
+            () => sut.MarkSentAsync(Guid.NewGuid(), OwnerId));
+        events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MarkSentAsync_NonCanoneConcordatoLease_ThrowsAndDoesNotEmit()
+    {
+        var (sut, events) = CreateSut(BuildLease(
+            "Seveso",
+            LeaseStatus.Registered,
+            FiscalRegime.RegimeOrdinario));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
             () => sut.MarkSentAsync(Guid.NewGuid(), OwnerId));
@@ -212,11 +238,14 @@ public class ComuneImuNotificationServiceTests
         return controller;
     }
 
-    private static LeaseContract BuildLease(string city, LeaseStatus status) => new()
+    private static LeaseContract BuildLease(
+        string city,
+        LeaseStatus status,
+        FiscalRegime fiscalRegime = FiscalRegime.CanoneConcordato) => new()
     {
         Id = Guid.NewGuid(),
         Status = status,
-        FiscalRegime = FiscalRegime.CanoneConcordato,
+        FiscalRegime = fiscalRegime,
         StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
         MonthlyRent = 400m,
