@@ -116,6 +116,15 @@ public class LeaseWorkflowService(
 
         if (esignEvent.AllSigned)
         {
+            if (lease.Status != LeaseStatus.AwaitingSignature)
+            {
+                logger.LogInformation(
+                    "Ignoring all-signed webhook for lease {LeaseId} in status {Status}",
+                    lease.Id,
+                    lease.Status);
+                return;
+            }
+
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = esignEvent.SignedDocumentPath;
             await leaseRepository.UpdateAsync(lease);

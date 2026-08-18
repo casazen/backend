@@ -363,6 +363,28 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task HandleESignEventAsync_WhenAllSignedReplayedAfterRegistration_DoesNotDowngradeLease()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Registered);
+        lease.ExternalSigningSessionId = "session-xyz";
+        lease.SignedPdfStoragePath = "/path/original.pdf";
+        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, "/path/replayed.pdf");
+        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
+        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
+
+        // Act
+        await _sut.HandleESignEventAsync("payload");
+
+        // Assert
+        Assert.Equal(LeaseStatus.Registered, lease.Status);
+        Assert.Equal("/path/original.pdf", lease.SignedPdfStoragePath);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(
+            e => e.EventType == LeaseEventType.AllPartiesSigned)), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_ThrowsInvalidOperationException()
     {
         // Arrange

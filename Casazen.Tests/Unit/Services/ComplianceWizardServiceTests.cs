@@ -146,6 +146,52 @@ public class ComplianceWizardServiceTests
         Assert.True(summary.CheckoutsDue.Count >= 1);
     }
 
+    [Fact]
+    public async Task CompleteCheckoutWizard_WhenConfirmedBookingReachedCheckoutDay_CompletesBooking()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_WhenConfirmedBookingReachedCheckoutDay_CompletesBooking));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        property.ComplianceStatus = PropertyComplianceStatus.Active;
+        var guest = new Guest
+        {
+            FirstName = "Luigi",
+            LastName = "Verdi",
+            Email = $"luigi-{Guid.NewGuid():N}@test.com",
+        };
+        db.Guests.Add(guest);
+
+        var booking = new Booking
+        {
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            GuestId = guest.Id,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
+            CheckOutDate = DateTime.UtcNow.Date,
+            Status = BookingStatus.Confirmed,
+            NumberOfGuests = 2,
+            BasePrice = 100,
+            TouristTax = 0,
+            TotalPrice = 100,
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        await service.StartCheckoutWizardAsync(booking.Id);
+        var (updated, propertyReady) = await service.CompleteCheckoutWizardAsync(
+            booking.Id,
+            property.OwnerId,
+            new CompleteCheckoutWizardInput(
+                ConfirmDeparture: true,
+                SupplierOrgId: null,
+                ServiceNotes: null,
+                ServiceCategory: null));
+
+        Assert.True(propertyReady);
+        Assert.Equal(BookingStatus.CheckedOut, updated.Status);
+        Assert.Equal(booking.CheckOutDate.AddYears(7), updated.Guest.DataRetentionUntil);
+    }
+
     private static async Task<Property> SeedPropertyAsync(
         AppDbContext db,
         Guid? orgId = null,
