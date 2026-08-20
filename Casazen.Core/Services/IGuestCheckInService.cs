@@ -52,4 +52,5 @@ public class GuestCheckInSubmitResult
     public Guid? SessionId { get; set; }
     public Guid? BookingId { get; set; }
     public Guid? GuestId { get; set; }
+    public string? ValidationError { get; set; }
 }

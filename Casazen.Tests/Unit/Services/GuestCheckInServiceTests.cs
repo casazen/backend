@@ -168,19 +168,7 @@ public class GuestCheckInServiceTests
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(token); // advance to InCompilazione
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
-        {
-            FirstName = "Luigi",
-            LastName = "Verdi",
-            DateOfBirth = new DateTime(1990, 5, 15),
-            Nationality = "Italiana",
-            Gender = Gender.Male,
-            DocumentType = "Passport",
-            DocumentNumber = "YA1234567",
-            DocumentIssuingCountry = "Italia",
-            PlaceOfBirth = "Roma",
-            GdprConsent = true,
-        });
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
         Assert.True(result.Success);
         Assert.False(result.Duplicate);
@@ -197,6 +185,29 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
+    public async Task Submit_InvalidDocumentType_ReturnsValidationFailureWithoutCompletingSession()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(token);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest(documentType: "AlienPermit"));
+
+        Assert.False(result.Success);
+        Assert.False(result.Duplicate);
+        Assert.Equal("DocumentType is not valid.", result.ValidationError);
+
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
+
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        Assert.Equal(string.Empty, guest!.DocumentNumber);
+        Assert.Null(guest.DocumentType);
+        Assert.Null(guest.ConsentDate);
+    }
+
+    [Fact]
     public async Task Submit_SharedGuest_CreatesSnapshotBeforeWritingCheckInData()
     {
         await using var seed = await SeedAsync();
@@ -205,18 +216,7 @@ public class GuestCheckInServiceTests
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(token);
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
-        {
-            FirstName = "Luigi",
-            LastName = "Verdi",
-            DateOfBirth = new DateTime(1990, 5, 15),
-            Nationality = "Italiana",
-            DocumentType = "Passport",
-            DocumentNumber = "YA1234567",
-            DocumentIssuingCountry = "Italia",
-            PlaceOfBirth = "Roma",
-            GdprConsent = true,
-        });
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
         Assert.True(result.Success);
         Assert.True(result.GuestId.HasValue);
@@ -249,19 +249,7 @@ public class GuestCheckInServiceTests
         booking!.Status = BookingStatus.Cancelled;
         await seed.Db.SaveChangesAsync();
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
-        {
-            FirstName = "Luigi",
-            LastName = "Verdi",
-            DateOfBirth = new DateTime(1990, 5, 15),
-            Nationality = "Italiana",
-            Gender = Gender.Male,
-            DocumentType = "Passport",
-            DocumentNumber = "YA1234567",
-            DocumentIssuingCountry = "Italia",
-            PlaceOfBirth = "Roma",
-            GdprConsent = true,
-        });
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
         Assert.False(result.Success);
         Assert.False(result.Duplicate);
@@ -280,15 +268,7 @@ public class GuestCheckInServiceTests
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(token);
 
-        var req = new GuestCheckInSubmitRequest
-        {
-            GdprConsent = true,
-            DocumentType = "Passport",
-            DocumentNumber = "AA999",
-            DocumentIssuingCountry = "Italia",
-            Nationality = "Italiana",
-            PlaceOfBirth = "Milano",
-        };
+        var req = BuildValidSubmitRequest();
         _ = await svc.SubmitAsync(token, req);
 
         var secondResult = await svc.SubmitAsync(token, req);
@@ -365,7 +345,7 @@ public class GuestCheckInServiceTests
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var completedToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         _ = await svc.GetSessionByTokenAsync(completedToken);
-        var submit = await svc.SubmitAsync(completedToken, new GuestCheckInSubmitRequest { GdprConsent = true });
+        var submit = await svc.SubmitAsync(completedToken, BuildValidSubmitRequest());
         Assert.True(submit.Success);
 
         var replacementToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
@@ -410,4 +390,18 @@ public class GuestCheckInServiceTests
         await db.SaveChangesAsync();
         return bookingId;
     }
+
+    private static GuestCheckInSubmitRequest BuildValidSubmitRequest(string documentType = "Passport") => new()
+    {
+        FirstName = "Luigi",
+        LastName = "Verdi",
+        DateOfBirth = new DateTime(1990, 5, 15),
+        Nationality = "Italiana",
+        Gender = Gender.Male,
+        DocumentType = documentType,
+        DocumentNumber = "YA1234567",
+        DocumentIssuingCountry = "Italia",
+        PlaceOfBirth = "Roma",
+        GdprConsent = true,
+    };
 }

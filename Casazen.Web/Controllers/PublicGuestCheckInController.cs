@@ -96,6 +96,9 @@ public class PublicGuestCheckInController(
         if (result.Duplicate)
             return Conflict(new { error = "AlreadySubmitted", message = "Check-in data was already submitted." });
 
+        if (!string.IsNullOrWhiteSpace(result.ValidationError))
+            return BadRequest(new { error = "InvalidCheckInData", message = result.ValidationError });
+
         if (!result.Success)
             return NotFound();
 

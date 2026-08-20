@@ -160,6 +160,30 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Null(guest!.Gender);
     }
 
+    [Fact]
+    public async Task Submit_InvalidDocumentType_Returns400AndKeepsSessionEditable()
+    {
+        var (token, sessionId, guestId) = await SeedSessionAsync();
+        var client = _factory.CreateClient();
+        _ = await client.GetAsync($"/api/public/checkin/{token}");
+
+        var response = await client.PostAsync(
+            $"/api/public/checkin/{token}",
+            BuildSubmitContent(documentType: "AlienPermit"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var session = await db.GuestCheckInSessions.FindAsync(sessionId);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session!.Status);
+
+        var guest = await db.Guests.FindAsync(guestId);
+        Assert.Null(guest!.DocumentType);
+        Assert.Equal(string.Empty, guest.DocumentNumber);
+        Assert.Null(guest.ConsentDate);
+    }
+
     private async Task<(string Token, Guid SessionId, Guid GuestId)> SeedSessionAsync(
         BookingStatus bookingStatus = BookingStatus.Confirmed)
     {
@@ -181,10 +205,16 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         return (token, session.Id, seed.GuestId);
     }
 
-    private static StringContent BuildSubmitContent(bool gdprConsent = true, bool includeGender = true) =>
-        new(BuildSubmitPayload(gdprConsent, includeGender), Encoding.UTF8, "application/json");
+    private static StringContent BuildSubmitContent(
+        bool gdprConsent = true,
+        bool includeGender = true,
+        string documentType = "Passport") =>
+        new(BuildSubmitPayload(gdprConsent, includeGender, documentType), Encoding.UTF8, "application/json");
 
-    private static string BuildSubmitPayload(bool gdprConsent = true, bool includeGender = true)
+    private static string BuildSubmitPayload(
+        bool gdprConsent = true,
+        bool includeGender = true,
+        string documentType = "Passport")
     {
         var genderProperty = includeGender
             ? """
@@ -199,7 +229,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
           "dateOfBirth": "1990-05-15",
           "nationality": "Italiana",
         {{genderProperty}}
-          "documentType": "Passport",
+          "documentType": "{{documentType}}",
           "documentNumber": "YA1234567",
           "documentIssuingCountry": "Italia",
           "placeOfBirth": "Roma",

@@ -105,6 +105,9 @@ public class GuestCheckInService(
         if (!request.GdprConsent)
             return new GuestCheckInSubmitResult { Success = false };
 
+        if (!TryValidateRequest(request, out var documentType, out var validationError))
+            return new GuestCheckInSubmitResult { Success = false, ValidationError = validationError };
+
         var now = DateTime.UtcNow;
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
@@ -118,8 +121,7 @@ public class GuestCheckInService(
         if (!string.IsNullOrWhiteSpace(request.DocumentIssuingCountry)) guest.DocumentIssuingCountry = request.DocumentIssuingCountry;
         if (!string.IsNullOrWhiteSpace(request.PlaceOfBirth)) guest.PlaceOfBirth = request.PlaceOfBirth;
 
-        if (Enum.TryParse<GuestDocumentType>(request.DocumentType, true, out var docType))
-            guest.DocumentType = docType;
+        guest.DocumentType = documentType;
 
         guest.ConsentDate = now;
         guest.DataProcessingConsentDate = now;
@@ -238,6 +240,43 @@ public class GuestCheckInService(
 
     private static bool IsBookingEligibleForPublicCheckIn(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
+
+    private static bool TryValidateRequest(
+        GuestCheckInSubmitRequest request,
+        out GuestDocumentType documentType,
+        out string? validationError)
+    {
+        documentType = default;
+        validationError = null;
+
+        if (string.IsNullOrWhiteSpace(request.FirstName)
+            || string.IsNullOrWhiteSpace(request.LastName)
+            || !request.DateOfBirth.HasValue
+            || string.IsNullOrWhiteSpace(request.Nationality)
+            || !request.Gender.HasValue
+            || string.IsNullOrWhiteSpace(request.DocumentNumber)
+            || string.IsNullOrWhiteSpace(request.DocumentIssuingCountry)
+            || string.IsNullOrWhiteSpace(request.PlaceOfBirth))
+        {
+            validationError = "Required Alloggiati Web guest fields are missing.";
+            return false;
+        }
+
+        if (!Enum.IsDefined(typeof(Gender), request.Gender.Value))
+        {
+            validationError = "Gender is not valid.";
+            return false;
+        }
+
+        if (!Enum.TryParse(request.DocumentType, ignoreCase: true, out documentType)
+            || !Enum.IsDefined(typeof(GuestDocumentType), documentType))
+        {
+            validationError = "DocumentType is not valid.";
+            return false;
+        }
+
+        return true;
+    }
 
     private async Task<Guest> EnsureBookingOwnsMutableGuestAsync(GuestCheckInSession session, DateTime now)
     {
