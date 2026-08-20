@@ -278,6 +278,23 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
+    public async Task GetSessionByToken_CompletedSession_ReturnsNullButSubmitReturnsDuplicate()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        _ = await svc.GetSessionByTokenAsync(token);
+        _ = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        var contextSession = await svc.GetSessionByTokenAsync(token);
+        var duplicateSubmit = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.Null(contextSession);
+        Assert.False(duplicateSubmit.Success);
+        Assert.True(duplicateSubmit.Duplicate);
+    }
+
+    [Fact]
     public async Task Submit_GdprConsentFalse_ReturnsFailure()
     {
         await using var seed = await SeedAsync();

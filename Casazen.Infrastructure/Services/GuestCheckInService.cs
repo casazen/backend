@@ -54,6 +54,19 @@ public class GuestCheckInService(
 
     public async Task<GuestCheckInSession?> GetSessionByTokenAsync(string token)
     {
+        var session = await GetUsableSessionByTokenAsync(token);
+
+        if (session is null)
+            return null;
+
+        if (session.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato)
+            return null;
+
+        return session;
+    }
+
+    private async Task<GuestCheckInSession?> GetUsableSessionByTokenAsync(string token)
+    {
         var tokenHash = ComputeSha256Hex(token);
         var session = await db.GuestCheckInSessions
             .Include(s => s.Booking)
@@ -71,7 +84,7 @@ public class GuestCheckInService(
         if (!IsBookingEligibleForPublicCheckIn(session.Booking.Status))
             return null;
 
-        // Advance Inviato→InCompilazione on first open
+        // Advance Inviato->InCompilazione on first open/submit.
         if (session.Status == GuestCheckInSessionStatus.Inviato)
         {
             session.Status = GuestCheckInSessionStatus.InCompilazione;
@@ -92,7 +105,7 @@ public class GuestCheckInService(
 
     public async Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request)
     {
-        var session = await GetSessionByTokenAsync(token);
+        var session = await GetUsableSessionByTokenAsync(token);
         if (session is null)
             return new GuestCheckInSubmitResult { Success = false };
 

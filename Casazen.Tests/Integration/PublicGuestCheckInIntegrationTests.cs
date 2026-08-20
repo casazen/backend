@@ -70,6 +70,20 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
+    public async Task GetToken_AfterSuccessfulSubmit_Returns404()
+    {
+        var (token, _, _) = await SeedSessionAsync();
+        var client = _factory.CreateClient();
+        _ = await client.GetAsync($"/api/public/checkin/{token}");
+        var submit = await client.PostAsync($"/api/public/checkin/{token}", BuildSubmitContent());
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+
+        var response = await client.GetAsync($"/api/public/checkin/{token}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task AC15_4_ExpiredToken_Returns404()
     {
         var (token, sessionId, _) = await SeedSessionAsync();
