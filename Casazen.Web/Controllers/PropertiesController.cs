@@ -394,9 +394,20 @@ public class PropertiesController(
     [HttpGet("{id}/images")]
     public async Task<ActionResult<List<string>>> GetImages(Guid id)
     {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
         var property = await propertyService.GetPropertyAsync(id);
         if (property == null)
             return NotFound();
+
+        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        {
+            logger.LogWarning("User {UserId} attempted to view images for property {PropertyId} owned by {OwnerId}",
+                userId, id, property.OwnerId);
+            return Forbid();
+        }
 
         return Ok(property.PhotoUrls);
     }

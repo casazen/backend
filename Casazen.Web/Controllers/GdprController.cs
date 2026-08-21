@@ -15,6 +15,7 @@ public class GdprController(
     ILogger<GdprController> logger) : ControllerBase
 {
     [HttpGet("guests/{id}/export")]
+    [Authorize(Policy = "RequireContext:short-rent:guest.read")]
     public async Task<IActionResult> ExportGuestData(Guid id)
     {
         if (!await EnsureGuestAccessibleAsync(id))
@@ -26,6 +27,7 @@ public class GdprController(
     }
 
     [HttpDelete("guests/{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> DeleteGuestData(Guid id, [FromQuery] string reason = "User request")
     {
         if (!await EnsureGuestAccessibleAsync(id))
@@ -37,6 +39,7 @@ public class GdprController(
     }
 
     [HttpPost("guests/{id}/anonymize")]
+    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> AnonymizeGuestData(Guid id)
     {
         if (!await EnsureGuestAccessibleAsync(id))
@@ -48,6 +51,7 @@ public class GdprController(
     }
 
     [HttpPut("guests/{id}/consent")]
+    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> UpdateConsent(Guid id, [FromBody] UpdateConsentRequest request)
     {
         if (!await EnsureGuestAccessibleAsync(id))
