@@ -21,7 +21,8 @@ public record CreateLeaseRequest(
     DateTime StartDate,
     DateTime EndDate,
     decimal MonthlyRent,
-    IEnumerable<CreatePartyRequest> Parties);
+    IEnumerable<CreatePartyRequest> Parties,
+    RentBandCharacteristics? CanoneConcordatoCharacteristics = null);
 
 public record CreatePartyRequest(
     PartyRole Role,

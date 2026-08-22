@@ -121,6 +121,7 @@ public class RliAuthorizationGateTests
         var properties = new Mock<IPropertyRepository>();
         var authRepo = new Mock<ILeaseRegistrationAuthorizationRepository>();
         var apeCompliance = new Mock<IApeComplianceService>();
+        var canoneEligibility = new Mock<ICanoneConcordatoEligibilityService>();
         var workflow = new LeaseWorkflowService(
             leaseRepo.Object,
             regRepo.Object,
@@ -131,6 +132,7 @@ public class RliAuthorizationGateTests
             properties.Object,
             authRepo.Object,
             apeCompliance.Object,
+            canoneEligibility.Object,
             Options.Create(new RliOptions
             {
                 TosVersion = "2026-08-rli-delega-bozza",

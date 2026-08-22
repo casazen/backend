@@ -19,6 +19,7 @@ public class LeaseWorkflowService(
     IPropertyRepository propertyRepository,
     ILeaseRegistrationAuthorizationRepository authorizationRepository,
     IApeComplianceService apeCompliance,
+    ICanoneConcordatoEligibilityService canoneConcordatoEligibility,
     IOptions<RliOptions> rliOptions,
     ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
 {
@@ -40,6 +41,9 @@ public class LeaseWorkflowService(
 
         if (request.EndDate <= request.StartDate)
             throw new InvalidOperationException("Lease end date must be after start date.");
+
+        if (request.FiscalRegime == FiscalRegime.CanoneConcordato)
+            await EnsureCanoneConcordatoRentIsValidAsync(propertyId, ownerId, request);
 
         var parties = request.Parties.ToList();
         if (!parties.Any(p => p.Role == PartyRole.Landlord))
@@ -238,5 +242,36 @@ public class LeaseWorkflowService(
             throw new UnauthorizedAccessException("Lease does not belong to this owner.");
 
         return lease;
+    }
+
+    private async Task EnsureCanoneConcordatoRentIsValidAsync(
+        Guid propertyId,
+        string ownerId,
+        CreateLeaseRequest request)
+    {
+        if (request.CanoneConcordatoCharacteristics is null)
+            throw new InvalidOperationException(
+                "Canone concordato characteristics are required for canone concordato leases.");
+
+        var eligibility = await canoneConcordatoEligibility.CalculateAsync(
+            propertyId,
+            ownerId,
+            request.CanoneConcordatoCharacteristics);
+
+        if (eligibility is not
+            {
+                Available: true,
+                CanoneMinMensile: decimal minMonthly,
+                CanoneMaxMensile: decimal maxMonthly
+            })
+        {
+            throw new InvalidOperationException("Canone concordato rent band is unavailable for this property.");
+        }
+
+        if (request.MonthlyRent < minMonthly || request.MonthlyRent > maxMonthly)
+        {
+            throw new InvalidOperationException(
+                "Monthly rent must be within the calculated canone concordato range.");
+        }
     }
 }

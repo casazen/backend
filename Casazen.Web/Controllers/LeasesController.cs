@@ -56,7 +56,19 @@ public class LeasesController(
                 dto.EndDate,
                 dto.MonthlyRent,
                 dto.Parties.Select(p => new CreatePartyRequest(
-                    p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail)));
+                    p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail)),
+                dto.CanoneConcordato is null
+                    ? null
+                    : new RentBandCharacteristics(
+                        dto.CanoneConcordato.Sqm,
+                        dto.CanoneConcordato.TypeAElementCount,
+                        dto.CanoneConcordato.TypeBElementCount,
+                        dto.CanoneConcordato.TypeCElementCount,
+                        dto.CanoneConcordato.TypeDElementCount,
+                        dto.CanoneConcordato.IsFurnished,
+                        dto.CanoneConcordato.ContractYears,
+                        dto.CanoneConcordato.ZoneName,
+                        dto.CanoneConcordato.CadastralSheet));
 
             var lease = await leaseService.CreateDraftAsync(dto.PropertyId, ownerId, request);
             return CreatedAtAction(nameof(GetById), new { id = lease.Id }, lease);
@@ -226,7 +238,19 @@ public record CreateLeaseDto(
     [param: Required] DateTime StartDate,
     [param: Required] DateTime EndDate,
     [param: Range(0.01, 1_000_000.0)] decimal MonthlyRent,
-    [param: Required, MinLength(1)] IEnumerable<CreatePartyDto> Parties);
+    [param: Required, MinLength(1)] IEnumerable<CreatePartyDto> Parties,
+    CanoneConcordatoCharacteristicsDto? CanoneConcordato = null);
+
+public record CanoneConcordatoCharacteristicsDto(
+    [param: Range(1, 10_000)] decimal Sqm,
+    [param: Range(0, 100)] int TypeAElementCount,
+    [param: Range(0, 100)] int TypeBElementCount,
+    [param: Range(0, 100)] int TypeCElementCount,
+    [param: Range(0, 100)] int TypeDElementCount,
+    bool IsFurnished,
+    [param: Range(1, 99)] int ContractYears,
+    [param: MaxLength(100)] string? ZoneName,
+    [param: MaxLength(100)] string? CadastralSheet);
 
 public record CreatePartyDto(
     [param: Required] PartyRole Role,
