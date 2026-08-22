@@ -158,6 +158,9 @@ public class LeaseWorkflowService(
                 "Landlord authorization (delega) is required before RLI submission.");
         }
 
+        if (!rliOptions.Value.FilingEnabled)
+            throw new InvalidOperationException("RLI filing is currently disabled.");
+
         await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
         {
             OrgId = lease.OrgId,

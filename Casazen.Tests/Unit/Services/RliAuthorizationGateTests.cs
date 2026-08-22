@@ -45,6 +45,24 @@ public class RliAuthorizationGateTests
     }
 
     [Fact]
+    public async Task TriggerRegistrationAsync_WhenFilingDisabled_DoesNotPersistAuthorizationOrCallProvider()
+    {
+        var (sut, regService, authRepo) = CreateSut(filingEnabled: false);
+        var lease = SignedLease();
+        SetupLease(sut.LeaseRepo, lease);
+        sut.RegRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.Workflow.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+
+        Assert.Equal("RLI filing is currently disabled.", ex.Message);
+        authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
+        sut.Events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
+        regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+        sut.RegRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+    }
+
+    [Fact]
     public async Task TriggerRegistrationAsync_ValidDelega_PersistsAuthorizationThenSubmits()
     {
         var (sut, regService, authRepo) = CreateSut();
@@ -91,7 +109,8 @@ public class RliAuthorizationGateTests
         };
     }
 
-    private static (SutBundle Sut, Mock<ILeaseRegistrationService> RegService, Mock<ILeaseRegistrationAuthorizationRepository> AuthRepo) CreateSut()
+    private static (SutBundle Sut, Mock<ILeaseRegistrationService> RegService, Mock<ILeaseRegistrationAuthorizationRepository> AuthRepo) CreateSut(
+        bool filingEnabled = true)
     {
         var leaseRepo = new Mock<ILeaseContractRepository>();
         var regRepo = new Mock<ILeaseRegistrationRepository>();
@@ -112,7 +131,11 @@ public class RliAuthorizationGateTests
             properties.Object,
             authRepo.Object,
             apeCompliance.Object,
-            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
+            Options.Create(new RliOptions
+            {
+                TosVersion = "2026-08-rli-delega-bozza",
+                FilingEnabled = filingEnabled,
+            }),
             Mock.Of<ILogger<LeaseWorkflowService>>());
         return (new SutBundle(workflow, leaseRepo, regRepo, events), regService, authRepo);
     }

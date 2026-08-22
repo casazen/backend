@@ -46,7 +46,7 @@ public class LeaseWorkflowServiceTests
             _propertyRepo.Object,
             _authRepo.Object,
             _apeCompliance.Object,
-            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
+            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", FilingEnabled = true }),
             new Mock<ILogger<LeaseWorkflowService>>().Object);
     }
 
