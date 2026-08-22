@@ -63,6 +63,30 @@ public class CanoneConcordatoEligibilityServiceTests
         Assert.Equal(3380.00m, result.CanoneMaxAnnuo);
     }
 
+    [Theory]
+    [InlineData("Centrale", null)]
+    [InlineData(null, "999")]
+    public async Task Calculate_SevesoWithMismatchedLocation_ReturnsUnavailable(
+        string? zone,
+        string? foglio)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id,
+            OwnerId,
+            Characteristics(65, 2, 3, 0, 0, zone: zone, foglio: foglio));
+
+        Assert.False(result!.Available);
+        Assert.Equal(CanoneConcordatoCopy.ReasonZoneRequired, result.Reason);
+        Assert.Null(result.CanoneMinAnnuo);
+        Assert.Null(result.CanoneMaxAnnuo);
+    }
+
     [Fact]
     public async Task Calculate_AtaApplies_OnlyWhenVerifiedDirectly()
     {

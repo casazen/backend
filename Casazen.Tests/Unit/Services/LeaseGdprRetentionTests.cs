@@ -40,6 +40,7 @@ public class LeaseGdprRetentionTests
             properties.Object,
             Mock.Of<ILeaseRegistrationAuthorizationRepository>(),
             ape.Object,
+            Mock.Of<ICanoneConcordatoEligibilityService>(),
             Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
 

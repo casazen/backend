@@ -98,8 +98,9 @@ public class CanoneConcordatoEligibilityService(
         else if (!string.IsNullOrWhiteSpace(characteristics.ZoneName) || !string.IsNullOrWhiteSpace(characteristics.CadastralSheet))
         {
             var filtered = candidates.Where(b => MatchesProvidedZoneAndSheet(b, characteristics)).ToList();
-            if (filtered.Count > 0)
-                candidates = filtered;
+            if (filtered.Count == 0)
+                return null;
+            candidates = filtered;
         }
 
         return candidates
