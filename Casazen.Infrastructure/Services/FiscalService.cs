@@ -81,7 +81,8 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
             foreach (var other in others)
             {
                 other.IsPrimaryForCedolare = false;
-                other.Regime = StrFiscalRegime.CedolareSecca26;
+                if (other.Regime is StrFiscalRegime.CedolareSecca21 or StrFiscalRegime.CedolareSecca26)
+                    other.Regime = StrFiscalRegime.CedolareSecca26;
                 other.UpdatedAt = DateTime.UtcNow;
             }
         }
