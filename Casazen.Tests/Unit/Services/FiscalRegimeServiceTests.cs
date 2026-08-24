@@ -75,6 +75,25 @@ public class FiscalRegimeServiceTests
     }
 
     [Fact]
+    public async Task AssignRegime_Cedolare21_WhenSiblingHasImpresaRegime_PreservesSiblingRegime()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId, hasPartitaIva: true);
+        var first = SeedProperty(db, orgId, "Casa Cedolare");
+        var second = SeedProperty(db, orgId, "Casa Impresa");
+        await db.SaveChangesAsync();
+        var sut = new FiscalService(db);
+
+        await sut.AssignRegimeAsync(orgId, second.Id, 2026, StrFiscalRegime.RegimeForfettario, false);
+        await sut.AssignRegimeAsync(orgId, first.Id, 2026, StrFiscalRegime.CedolareSecca21, true);
+
+        var sibling = await db.PropertyFiscalYears.SingleAsync(y => y.PropertyId == second.Id && y.TaxYear == 2026);
+        Assert.Equal(StrFiscalRegime.RegimeForfettario, sibling.Regime);
+        Assert.False(sibling.IsPrimaryForCedolare);
+    }
+
+    [Fact]
     public async Task Count_ExcludesInactiveAndLtrOnly()
     {
         var orgId = Guid.NewGuid();
@@ -221,7 +240,7 @@ public class FiscalRegimeServiceTests
         return new AppDbContext(options, NullTenantContext.Instance);
     }
 
-    private static void SeedOrg(AppDbContext db, Guid orgId)
+    private static void SeedOrg(AppDbContext db, Guid orgId, bool hasPartitaIva = false)
     {
         db.Orgs.Add(new OrgEntity
         {
@@ -230,6 +249,8 @@ public class FiscalRegimeServiceTests
             Slug = $"org-{orgId:N}"[..20],
             DisplayName = "Host",
             ContactEmail = "h@example.com",
+            HasPartitaIva = hasPartitaIva,
+            PartitaIvaNumber = hasPartitaIva ? "12345678901" : null,
         });
     }
 
