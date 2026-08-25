@@ -87,6 +87,8 @@ public class LeaseWorkflowService(
         if (lease.Status != LeaseStatus.Draft)
             throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
 
+        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
+
         var pdfBytes = await templateService.GeneratePdfAsync(lease);
         var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
 
@@ -157,6 +159,8 @@ public class LeaseWorkflowService(
             throw new InvalidOperationException(
                 "Landlord authorization (delega) is required before RLI submission.");
         }
+
+        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
 
         await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
         {

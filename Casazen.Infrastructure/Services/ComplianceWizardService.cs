@@ -211,13 +211,36 @@ public class ComplianceWizardService(
         booking.UpdatedAt = DateTime.UtcNow;
 
         var retentionYears = configuration.GetValue("Compliance:GdprRetentionYears", 7);
-        booking.Guest.DataRetentionUntil = booking.CheckOutDate.AddYears(retentionYears);
+        var retentionUntil = await CalculateGuestRetentionUntilAsync(
+            booking.GuestId,
+            retentionYears,
+            cancellationToken);
+        if (retentionUntil > booking.Guest.DataRetentionUntil)
+            booking.Guest.DataRetentionUntil = retentionUntil;
         booking.Guest.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Checkout wizard completed for booking {BookingId}", bookingId);
 
         return (booking, true);
+    }
+
+    private async Task<DateTime> CalculateGuestRetentionUntilAsync(
+        Guid guestId,
+        int retentionYears,
+        CancellationToken cancellationToken)
+    {
+        var checkoutDates = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.GuestId == guestId && b.Status != BookingStatus.Cancelled)
+            .Select(b => b.CheckOutDate)
+            .ToListAsync(cancellationToken);
+
+        var latestCheckout = checkoutDates.Count == 0
+            ? DateTime.UtcNow
+            : checkoutDates.Max();
+
+        return latestCheckout.AddYears(retentionYears);
     }
 
     private async Task<Property?> LoadPropertyAsync(Guid propertyId, CancellationToken cancellationToken) =>

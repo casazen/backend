@@ -210,6 +210,23 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task InitiateSigningAsync_WhenApeWasDeletedAfterDraft_BlocksBeforeCreatingSigningSession()
+    {
+        var lease = BuildLease(LeaseStatus.Draft);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(lease.PropertyId))
+            .ThrowsAsync(ApeComplianceException.Required());
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
+            _sut.InitiateSigningAsync(lease.Id, OwnerId));
+
+        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
+        _templateService.Verify(s => s.GeneratePdfAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _eSignService.Verify(s => s.InitiateSigningAsync(It.IsAny<LeaseContract>(), It.IsAny<byte[]>()), Times.Never);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
     public async Task TriggerRegistrationAsync_WhenStatusIsSigned_SubmitsAndTransitionsStatus()
     {
         // Arrange
@@ -244,6 +261,25 @@ public class LeaseWorkflowServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenApeWasDeletedAfterSigning_BlocksBeforeAuthorizationAndFiling()
+    {
+        var lease = BuildLease(LeaseStatus.Signed);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(lease.PropertyId))
+            .ThrowsAsync(ApeComplianceException.Required());
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+
+        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
+        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _regRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
     }
 
     [Fact]

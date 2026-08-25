@@ -342,6 +342,105 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task Update_PreservesServerOwnedGuestPaymentAndLifecycleFields()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var originalGuestId = Guid.NewGuid();
+        var maliciousGuestId = Guid.NewGuid();
+        var existing = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = originalGuestId,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+            ExternalId = "original-external",
+            BasePrice = 300m,
+            TouristTax = 12m,
+            TouristTaxAmount = 12m,
+            TotalPrice = 312m,
+            PaymentOption = PaymentOption.OnCancellationDeadline,
+            FreeRefundDeadline = DateTime.UtcNow.Date.AddDays(5),
+            StripeSetupIntentId = "seti_original",
+            StripePaymentMethodId = "pm_original",
+            StripeCustomerId = "cus_original",
+            CheckInToken = Guid.NewGuid(),
+            CheckInTokenExpiresAt = DateTime.UtcNow.AddDays(10),
+            CheckoutReminderJobId = "reminder-original",
+            CheckoutWizardStartedAt = DateTime.UtcNow.AddDays(-1),
+            CreatedAt = DateTime.UtcNow.AddDays(-3),
+            CheckInDate = DateTime.UtcNow.Date.AddDays(7),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(10),
+            NumberOfGuests = 2,
+        };
+        var update = new Booking
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = Guid.NewGuid(),
+            OrgId = Guid.NewGuid(),
+            GuestId = maliciousGuestId,
+            Status = BookingStatus.CheckedOut,
+            Source = BookingSource.Airbnb,
+            ExternalId = "tampered-external",
+            BasePrice = 9000m,
+            TouristTax = 999m,
+            TouristTaxAmount = 999m,
+            TotalPrice = 9999m,
+            PaymentOption = PaymentOption.OnCancellationDeadline,
+            FreeRefundDeadline = DateTime.UtcNow.Date.AddDays(-1),
+            StripeSetupIntentId = "seti_tampered",
+            StripePaymentMethodId = "pm_tampered",
+            StripeCustomerId = "cus_tampered",
+            CheckInToken = Guid.NewGuid(),
+            CheckInTokenExpiresAt = DateTime.UtcNow.AddYears(1),
+            CheckoutReminderJobId = "reminder-tampered",
+            CheckoutWizardStartedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            CheckInDate = existing.CheckInDate,
+            CheckOutDate = existing.CheckOutDate,
+            NumberOfGuests = 3,
+            SpecialRequests = "late checkout",
+        };
+
+        Booking? saved = null;
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(existing);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
+            .Callback<Booking>(b => saved = b)
+            .ReturnsAsync((Booking b) => b);
+
+        var result = await _controller.Update(bookingId, update);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.NotNull(saved);
+        Assert.Equal(bookingId, saved!.Id);
+        Assert.Equal(PropertyId, saved.PropertyId);
+        Assert.Equal(OrgId, saved.OrgId);
+        Assert.Equal(originalGuestId, saved.GuestId);
+        Assert.Equal(existing.Status, saved.Status);
+        Assert.Equal(existing.Source, saved.Source);
+        Assert.Equal(existing.ExternalId, saved.ExternalId);
+        Assert.Equal(existing.BasePrice, saved.BasePrice);
+        Assert.Equal(existing.TouristTax, saved.TouristTax);
+        Assert.Equal(existing.TouristTaxAmount, saved.TouristTaxAmount);
+        Assert.Equal(existing.TotalPrice, saved.TotalPrice);
+        Assert.Equal(existing.PaymentOption, saved.PaymentOption);
+        Assert.Equal(existing.FreeRefundDeadline, saved.FreeRefundDeadline);
+        Assert.Equal(existing.StripeSetupIntentId, saved.StripeSetupIntentId);
+        Assert.Equal(existing.StripePaymentMethodId, saved.StripePaymentMethodId);
+        Assert.Equal(existing.StripeCustomerId, saved.StripeCustomerId);
+        Assert.Equal(existing.CheckInToken, saved.CheckInToken);
+        Assert.Equal(existing.CheckInTokenExpiresAt, saved.CheckInTokenExpiresAt);
+        Assert.Equal(existing.CheckoutReminderJobId, saved.CheckoutReminderJobId);
+        Assert.Equal(existing.CheckoutWizardStartedAt, saved.CheckoutWizardStartedAt);
+        Assert.Equal(existing.CreatedAt, saved.CreatedAt);
+        Assert.Equal("late checkout", saved.SpecialRequests);
+    }
+
+    [Fact]
     public async Task CheckIn_PendingBooking_ReturnsBadRequestWithoutMutating()
     {
         SetUser(OwnerId);
