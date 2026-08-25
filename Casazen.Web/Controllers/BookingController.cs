@@ -186,6 +186,24 @@ public class BookingsController(
         booking.Id = id;
         booking.PropertyId = existing.PropertyId;
         booking.OrgId = existing.OrgId;
+        booking.GuestId = existing.GuestId;
+        booking.Status = existing.Status;
+        booking.Source = existing.Source;
+        booking.ExternalId = existing.ExternalId;
+        booking.BasePrice = existing.BasePrice;
+        booking.TouristTax = existing.TouristTax;
+        booking.TouristTaxAmount = existing.TouristTaxAmount;
+        booking.TotalPrice = existing.TotalPrice;
+        booking.PaymentOption = existing.PaymentOption;
+        booking.FreeRefundDeadline = existing.FreeRefundDeadline;
+        booking.StripeSetupIntentId = existing.StripeSetupIntentId;
+        booking.StripePaymentMethodId = existing.StripePaymentMethodId;
+        booking.StripeCustomerId = existing.StripeCustomerId;
+        booking.CheckInToken = existing.CheckInToken;
+        booking.CheckInTokenExpiresAt = existing.CheckInTokenExpiresAt;
+        booking.CheckoutReminderJobId = existing.CheckoutReminderJobId;
+        booking.CheckoutWizardStartedAt = existing.CheckoutWizardStartedAt;
+        booking.CreatedAt = existing.CreatedAt;
         await bookingService.UpdateBookingAsync(booking);
         return NoContent();
     }
