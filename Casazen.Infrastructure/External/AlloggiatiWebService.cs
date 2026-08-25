@@ -33,11 +33,20 @@ public class AlloggiatiWebService(
         }
 
         var existingReport = await reportRepository.GetByBookingIdAsync(bookingId);
+        if (existingReport?.Status is AlloggiatiWebStatus.Submitted or AlloggiatiWebStatus.Confirmed)
+        {
+            logger.LogInformation(
+                "Alloggiati Web report for booking {BookingId} already has status {Status}; skipping duplicate submission",
+                bookingId, existingReport.Status);
+            return;
+        }
+
         var report = existingReport ?? new AlloggiatiWebReport
         {
             GuestId = guestId,
             BookingId = bookingId,
         };
+        report.GuestId = guestId;
 
         if (!await ValidateGuestDataAsync(guestId))
         {
