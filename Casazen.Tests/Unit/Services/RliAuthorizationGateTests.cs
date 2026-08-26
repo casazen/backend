@@ -84,6 +84,7 @@ public class RliAuthorizationGateTests
             PropertyId = property.Id,
             Property = property,
             Status = LeaseStatus.Signed,
+            SignedPdfStoragePath = "/path/signed.pdf",
             FiscalRegime = FiscalRegime.CedolareSecca,
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),

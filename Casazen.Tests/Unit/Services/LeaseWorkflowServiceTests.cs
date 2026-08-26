@@ -247,6 +247,23 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task TriggerRegistrationAsync_WhenSignedPdfMissing_ThrowsBeforeSubmitting()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Signed);
+        lease.SignedPdfStoragePath = null;
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+        Assert.Equal("Signed lease PDF must be stored before registration.", ex.Message);
+        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetRegistrationReceiptAsync_WhenNotRegistered_ThrowsReceiptNotAvailable()
     {
         var lease = BuildLease(LeaseStatus.SentToProvider);
@@ -363,6 +380,27 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task HandleESignEventAsync_WhenAllSignedMissingSignedPdf_DoesNotMarkSigned()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.AwaitingSignature);
+        lease.ExternalSigningSessionId = "session-xyz";
+        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, null);
+        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
+        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
+
+        // Act
+        await _sut.HandleESignEventAsync("payload");
+
+        // Assert
+        Assert.Equal(LeaseStatus.AwaitingSignature, lease.Status);
+        Assert.Null(lease.SignedPdfStoragePath);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
+            e.EventType == LeaseEventType.AllPartiesSigned)), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_ThrowsInvalidOperationException()
     {
         // Arrange
@@ -437,6 +475,7 @@ public class LeaseWorkflowServiceTests
             Property = property,
             OrgId = Guid.NewGuid(),
             Status = status,
+            SignedPdfStoragePath = status == LeaseStatus.Signed ? "/path/signed.pdf" : null,
             FiscalRegime = FiscalRegime.CedolareSecca,
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
