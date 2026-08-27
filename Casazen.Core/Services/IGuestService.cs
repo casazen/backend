@@ -9,6 +9,7 @@ public interface IGuestService
     Task<IEnumerable<Guest>> GetAllGuestsAsync();
     Task<IEnumerable<Guest>> SearchGuestsAsync(string? searchTerm);
     Task<Guest> CreateGuestAsync(Guest guest);
+    Task<Guest> CreateGuestSnapshotAsync(Guest guest);
     Task<Guest> UpdateGuestAsync(Guest guest);
     Task<bool> DeleteGuestAsync(Guid id);
 }

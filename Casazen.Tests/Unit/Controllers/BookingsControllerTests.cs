@@ -247,8 +247,7 @@ public class BookingsControllerTests
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
         _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
-        _mockGuestService.Setup(g => g.GetGuestByEmailAsync(guest.Email)).ReturnsAsync((Guest?)null);
-        _mockGuestService.Setup(g => g.CreateGuestAsync(It.IsAny<Guest>())).ReturnsAsync(guest);
+        _mockGuestService.Setup(g => g.CreateGuestSnapshotAsync(It.IsAny<Guest>())).ReturnsAsync(guest);
         _mockBookingService.Setup(b => b.IsPropertyAvailableAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(true);
         _mockTaxService.Setup(t => t.CalculateTouristTaxAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), 2))
@@ -282,25 +281,63 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task Create_ReusesExistingGuestByEmail()
+    public async Task Create_WithExistingGuestEmail_CreatesBookingGuestSnapshot()
     {
         SetUser(OwnerId);
-        var existingGuest = new Guest { Id = Guid.NewGuid(), Email = "mario.rossi@example.com" };
+        var existingGuest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Other",
+            LastName = "Tenant",
+            Email = "mario.rossi@example.com",
+            PhoneNumber = "+390000000000",
+            Country = "France",
+        };
+        var snapshotGuest = new Guest
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Email = existingGuest.Email,
+            PhoneNumber = "+393331234567",
+            Country = "Italia",
+        };
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
         _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
         _mockGuestService.Setup(g => g.GetGuestByEmailAsync(existingGuest.Email)).ReturnsAsync(existingGuest);
+        _mockGuestService.Setup(g => g.CreateGuestSnapshotAsync(It.IsAny<Guest>())).ReturnsAsync(snapshotGuest);
         _mockBookingService.Setup(b => b.IsPropertyAvailableAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(true);
         _mockTaxService.Setup(t => t.CalculateTouristTaxAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), 2))
             .ReturnsAsync(0m);
         _mockBookingService.Setup(b => b.CreateBookingAsync(It.IsAny<Booking>()))
             .ReturnsAsync((Booking b) => { b.Id = Guid.NewGuid(); return b; });
+        _mockBookingService.Setup(b => b.GetBookingAsync(It.IsAny<Guid>()))
+            .ReturnsAsync((Guid id) => new Booking
+            {
+                Id = id,
+                PropertyId = PropertyId,
+                OrgId = OrgId,
+                GuestId = snapshotGuest.Id,
+                Guest = snapshotGuest,
+                Property = MakeProperty(),
+                NumberOfGuests = 2,
+                Status = BookingStatus.Pending,
+                Source = BookingSource.Direct,
+            });
 
         var result = await _controller.Create(MakeRequest());
 
-        Assert.IsType<CreatedAtActionResult>(result.Result);
-        _mockGuestService.Verify(g => g.CreateGuestAsync(It.IsAny<Guest>()), Times.Never);
+        var created = Assert.IsType<CreatedAtActionResult>(result.Result);
+        var booking = Assert.IsType<BookingResponseDto>(created.Value);
+        Assert.Equal("Mario", booking.Guest.FirstName);
+        Assert.Equal("+393331234567", booking.Guest.Phone);
+        Assert.Equal("Italia", booking.Guest.Country);
+        _mockGuestService.Verify(g => g.GetGuestByEmailAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestService.Verify(g => g.CreateGuestSnapshotAsync(
+            It.Is<Guest>(guest => guest.Email == existingGuest.Email && guest.FirstName == "Mario")),
+            Times.Once);
     }
 
     [Fact]

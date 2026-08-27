@@ -525,10 +525,6 @@ public class BookingsController(
 
     private async Task<Guest> ResolveGuestAsync(CreateBookingGuestRequest guestInfo)
     {
-        var existing = await guestService.GetGuestByEmailAsync(guestInfo.Email);
-        if (existing != null)
-            return existing;
-
         var guest = new Guest
         {
             FirstName = guestInfo.FirstName,
@@ -540,17 +536,7 @@ public class BookingsController(
             UpdatedAt = DateTime.UtcNow,
         };
 
-        try
-        {
-            return await guestService.CreateGuestAsync(guest);
-        }
-        catch (InvalidOperationException)
-        {
-            var raced = await guestService.GetGuestByEmailAsync(guestInfo.Email);
-            if (raced == null)
-                throw;
-            return raced;
-        }
+        return await guestService.CreateGuestSnapshotAsync(guest);
     }
 
     /// <summary>Regenerates the guest check-in token and resends the email (AC9, US-020).</summary>
