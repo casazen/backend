@@ -42,6 +42,7 @@ public class LeaseContractTemplateServiceTests
         Assert.Contains("850.00", text, StringComparison.Ordinal);
         Assert.Contains("dev-stub", text, StringComparison.Ordinal);
         Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
+        Assert.Contains("Luigi Verdi", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -52,20 +53,35 @@ public class LeaseContractTemplateServiceTests
             ["CedolareSecca"] = new() { VersionId = "dev-stub", Approved = true },
         });
 
-        var bytes = await sut.GeneratePdfAsync(new LeaseContract
-        {
-            Id = Guid.NewGuid(),
-            FiscalRegime = FiscalRegime.CedolareSecca,
-            MonthlyRent = 1000m,
-            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
-            EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
-        });
+        var bytes = await sut.GeneratePdfAsync(BuildGenericLease(FiscalRegime.CedolareSecca));
 
         Assert.Equal("%PDF", Encoding.ASCII.GetString(bytes, 0, 4));
         var text = Encoding.ASCII.GetString(bytes);
         Assert.Contains("BOZZA", text, StringComparison.Ordinal);
         Assert.Contains("dev-stub", text, StringComparison.Ordinal);
+        Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
+        Assert.Contains("Luigi Verdi", text, StringComparison.Ordinal);
         Assert.DoesNotContain("LEASE CONTRACT PDF PLACEHOLDER", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GeneratePdfAsync_CanoneConcordatoWithMultipleParties_IncludesEveryParty()
+    {
+        var sut = CreateSut(new Dictionary<string, LeaseTemplateVariantOptions>
+        {
+            ["CanoneConcordato"] = new() { VersionId = "dev-stub", Approved = true },
+        });
+        var lease = BuildConcordatoLease();
+        lease.Parties.Add(new Party { Role = PartyRole.Landlord, FirstName = "Anna", LastName = "Bianchi", FiscalCode = "BNCNNA82A41F205Z" });
+        lease.Parties.Add(new Party { Role = PartyRole.Tenant, FirstName = "Sara", LastName = "Neri", FiscalCode = "NRISRA91C45F205Y" });
+
+        var bytes = await sut.GeneratePdfAsync(lease);
+        var text = Encoding.ASCII.GetString(bytes);
+
+        Assert.Contains("Locatore 1: Mario Rossi", text, StringComparison.Ordinal);
+        Assert.Contains("Locatore 2: Anna Bianchi", text, StringComparison.Ordinal);
+        Assert.Contains("Conduttore 1: Luigi Verdi", text, StringComparison.Ordinal);
+        Assert.Contains("Conduttore 2: Sara Neri", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -104,6 +120,24 @@ public class LeaseContractTemplateServiceTests
             Name = "Condominio Il Parco",
             City = "Seveso",
             Address = "Via Roma 1",
+        },
+        Parties =
+        [
+            new Party { Role = PartyRole.Landlord, FirstName = "Mario", LastName = "Rossi", FiscalCode = "RSSMRA80A01H501U" },
+            new Party { Role = PartyRole.Tenant, FirstName = "Luigi", LastName = "Verdi", FiscalCode = "VRDLGU85B02F205X" },
+        ],
+    };
+
+    private static LeaseContract BuildGenericLease(FiscalRegime regime) => new()
+    {
+        Id = Guid.NewGuid(),
+        FiscalRegime = regime,
+        MonthlyRent = 1000m,
+        StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+        EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+        Property = new Property
+        {
+            City = "Milano",
         },
         Parties =
         [
