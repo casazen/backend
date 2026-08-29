@@ -34,6 +34,8 @@ public class LeaseWorkflowServiceTests
     {
         _authRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()))
             .ReturnsAsync((LeaseRegistrationAuthorization a) => a);
+        _regRepo.Setup(r => r.TryReserveSubmissionAsync(It.IsAny<LeaseRegistration>()))
+            .ReturnsAsync(true);
         _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>()))
             .Returns(Task.CompletedTask);
         _sut = new LeaseWorkflowService(
@@ -218,7 +220,7 @@ public class LeaseWorkflowServiceTests
         _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
             .ReturnsAsync((LeaseContract l) => l);
         _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-        _regRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistration>()))
+        _regRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
             .ReturnsAsync((LeaseRegistration r) => r);
         _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
             .ReturnsAsync((LeaseEvent e) => e);
@@ -232,6 +234,25 @@ public class LeaseWorkflowServiceTests
         Assert.Equal(RegistrationStatus.SentToProvider, registration.Status);
         Assert.Equal("RLI-EXTERNAL-001", registration.ExternalRegistrationId);
         Assert.NotNull(registration.SubmittedAt);
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenReservationAlreadyClaimed_ThrowsBeforeProviderCall()
+    {
+        var lease = BuildLease(LeaseStatus.Signed);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+        _regRepo.Setup(r => r.TryReserveSubmissionAsync(It.Is<LeaseRegistration>(registration =>
+                registration.LeaseContractId == lease.Id
+                && registration.Status == RegistrationStatus.Pending)))
+            .ReturnsAsync(false);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+
+        Assert.Equal("Registration has already been submitted for this lease.", ex.Message);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _regRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()), Times.Never);
     }
 
     [Fact]

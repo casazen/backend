@@ -51,7 +51,8 @@ public class RliAuthorizationGateTests
         var lease = SignedLease();
         SetupLease(sut.LeaseRepo, lease);
         sut.RegRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-        sut.RegRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistration>())).ReturnsAsync((LeaseRegistration r) => r);
+        sut.RegRepo.Setup(r => r.TryReserveSubmissionAsync(It.IsAny<LeaseRegistration>())).ReturnsAsync(true);
+        sut.RegRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>())).ReturnsAsync((LeaseRegistration r) => r);
         sut.LeaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>())).ReturnsAsync((LeaseContract l) => l);
         sut.Events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
         authRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()))
