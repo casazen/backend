@@ -110,6 +110,80 @@ public class ContextAuthorizationServiceTests
         Assert.Contains(shortRent.Permissions, p => p == "booking.read");
     }
 
+    [Fact]
+    public void BuildFallbackAccess_LongTermLandlord_HasSharedPropertyPermissions()
+    {
+        var contexts = ContextAccessBootstrap.BuildFallbackAccess(["LongTermLandlord"]);
+
+        var longRent = Assert.Single(contexts, c => c.ContextKey == "long-rent");
+        Assert.Contains(longRent.Permissions, p => p == "property.read");
+        Assert.Contains(longRent.Permissions, p => p == "property.write");
+        Assert.DoesNotContain(longRent.Permissions, p => p == "booking.read");
+    }
+
+    [Fact]
+    public async Task HasPermissionAsync_LongTermLandlord_CanSatisfyExistingPropertyPolicies()
+    {
+        await using var db = CreateDbContext();
+        var httpContext = BuildHttpContext("auth0|long-only", ["LongTermLandlord"]);
+        var service = CreateService(db, httpContext);
+
+        var canReadProperty = await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.read");
+        var canWriteProperty = await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.write");
+        var canReadBookings = await service.HasPermissionAsync("auth0|long-only", "short-rent", "booking.read");
+
+        Assert.True(canReadProperty);
+        Assert.True(canWriteProperty);
+        Assert.False(canReadBookings);
+    }
+
+    [Fact]
+    public async Task HasPermissionAsync_LongRentMembership_CanSatisfyExistingPropertyPolicies()
+    {
+        await using var db = CreateDbContext();
+        if (!await db.AppContexts.AnyAsync(c => c.Key == "long-rent"))
+        {
+            db.AppContexts.Add(new Core.Entities.AppContext { Key = "long-rent", DisplayName = "Affitti lungo termine" });
+        }
+
+        db.Roles.Add(new Core.Entities.Role
+        {
+            Id = 20,
+            ContextKey = "long-rent",
+            RoleKey = "long_term_landlord",
+            Permissions =
+            [
+                new Core.Entities.RolePermission { RoleId = 20, PermissionKey = "property.read" },
+                new Core.Entities.RolePermission { RoleId = 20, PermissionKey = "property.write" },
+                new Core.Entities.RolePermission { RoleId = 20, PermissionKey = "lease.read" },
+            ],
+        });
+        db.Users.Add(new Core.Entities.User
+        {
+            Id = "auth0|long-membership",
+            Email = "long@test.com",
+            FirstName = "Long",
+            LastName = "User",
+            IsActive = true,
+        });
+        db.UserContextMemberships.Add(new Core.Entities.UserContextMembership
+        {
+            UserId = "auth0|long-membership",
+            ContextKey = "long-rent",
+            RoleId = 20,
+        });
+        await db.SaveChangesAsync();
+
+        var httpContext = BuildHttpContext("auth0|long-membership", []);
+        var service = CreateService(db, httpContext);
+
+        var canWriteProperty = await service.HasPermissionAsync("auth0|long-membership", "short-rent", "property.write");
+        var canReadBookings = await service.HasPermissionAsync("auth0|long-membership", "short-rent", "booking.read");
+
+        Assert.True(canWriteProperty);
+        Assert.False(canReadBookings);
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
