@@ -105,6 +105,14 @@ public class ContextAuthorizationService(
             var context = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase));
             if (context is null)
             {
+                if (IsSharedPropertyPermission(contextKey, permissionKey) &&
+                    contexts.Any(c =>
+                        IsRentalContext(c.ContextKey) &&
+                        c.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+
                 logger.LogDebug(
                     "Permission denied: user {UserId} has no context {ContextKey}",
                     userId, contextKey);
@@ -117,6 +125,14 @@ public class ContextAuthorizationService(
             }
 
             var hasPermission = context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
+            if (!hasPermission && IsSharedPropertyPermission(contextKey, permissionKey))
+            {
+                hasPermission = contexts.Any(c =>
+                    !string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase) &&
+                    IsRentalContext(c.ContextKey) &&
+                    c.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase));
+            }
+
             if (!hasPermission)
             {
                 logger.LogDebug(
@@ -155,6 +171,15 @@ public class ContextAuthorizationService(
 
         return [];
     }
+
+    private static bool IsSharedPropertyPermission(string contextKey, string permissionKey) =>
+        IsRentalContext(contextKey) &&
+        (string.Equals(permissionKey, "property.read", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(permissionKey, "property.write", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsRentalContext(string contextKey) =>
+        string.Equals(contextKey, "short-rent", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(contextKey, "long-rent", StringComparison.OrdinalIgnoreCase);
 
     private IReadOnlyList<string> ResolveJwtRoles()
     {
