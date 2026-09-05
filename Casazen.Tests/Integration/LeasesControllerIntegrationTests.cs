@@ -128,6 +128,56 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     }
 
     [Fact]
+    public async Task AC3_Create_WithOutOfRangeFiscalRegime_Returns400_AndDoesNotPersist()
+    {
+        var owner = UniqueOwner("invalid-regime");
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+
+        var response = await client.PostAsJsonAsync("/api/leases", new
+        {
+            propertyId = property.Id,
+            fiscalRegime = 999,
+            startDate = "2026-09-01T00:00:00Z",
+            endDate = "2030-08-31T00:00:00Z",
+            monthlyRent = 1200m,
+            parties = ValidParties(),
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertNoLeasesPersistedAsync(property.Id);
+    }
+
+    [Fact]
+    public async Task AC3_Create_WithOutOfRangePartyRole_Returns400_AndDoesNotPersistInvalidParty()
+    {
+        var owner = UniqueOwner("invalid-role");
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+
+        var response = await client.PostAsJsonAsync("/api/leases", new
+        {
+            propertyId = property.Id,
+            fiscalRegime = "CedolareSecca",
+            startDate = "2026-09-01T00:00:00Z",
+            endDate = "2030-08-31T00:00:00Z",
+            monthlyRent = 1200m,
+            parties = ValidParties().Append(new
+            {
+                role = 999,
+                firstName = "Invalid",
+                lastName = "Role",
+                fiscalCode = "NVLRLE90B02F205X",
+                citizenship = "IT",
+                contactEmail = "invalid-role@example.com",
+            }).ToArray(),
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertNoLeasesPersistedAsync(property.Id);
+    }
+
+    [Fact]
     public async Task AC2_OtherOwner_GetReturns404_MutationsForbid()
     {
         var ownerA = UniqueOwner("owner-a");
@@ -229,12 +279,14 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         startDate = "2026-09-01T00:00:00Z",
         endDate = "2030-08-31T00:00:00Z",
         monthlyRent = 1200m,
-        parties = new object[]
-        {
-            new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = LandlordCf, citizenship = "IT", contactEmail = "mario@example.com" },
-            new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = TenantCf, citizenship = "IT", contactEmail = "giulia@example.com" },
-        },
+        parties = ValidParties(),
     };
+
+    private static object[] ValidParties() =>
+    [
+        new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = LandlordCf, citizenship = "IT", contactEmail = "mario@example.com" },
+        new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = TenantCf, citizenship = "IT", contactEmail = "giulia@example.com" },
+    ];
 
     private async Task<Guid> DriveToSignedAsync(HttpClient client, Guid propertyId)
     {
@@ -274,6 +326,13 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         var response = await client.GetAsync($"/api/leases/{leaseId}");
         response.EnsureSuccessStatusCode();
         return await ReadJson(response);
+    }
+
+    private async Task AssertNoLeasesPersistedAsync(Guid propertyId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(0, await db.LeaseContracts.CountAsync(l => l.PropertyId == propertyId));
     }
 
     private static async Task<JsonElement> ReadJson(HttpResponseMessage response)
