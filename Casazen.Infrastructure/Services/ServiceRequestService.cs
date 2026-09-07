@@ -50,7 +50,7 @@ public class ServiceRequestService(
             throw new InvalidOperationException("Proprietà non appartiene all'organizzazione.");
 
         if (!await propertyAuthorization.CanAccessPropertyAsync(
-                command.UserId, command.PropertyId, ["PropertyOwner", "Admin", "PropertyManager"]))
+                command.UserId, command.PropertyId, command.UserRoles ?? []))
             throw new UnauthorizedAccessException("Accesso negato alla proprietà.");
 
         var supplier = await db.SupplierProfiles
