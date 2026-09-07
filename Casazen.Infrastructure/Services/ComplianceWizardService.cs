@@ -176,6 +176,7 @@ public class ComplianceWizardService(
     public async Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
+        IEnumerable<string> userRoles,
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default)
     {
@@ -203,7 +204,8 @@ public class ComplianceWizardService(
                 input.ServiceCategory ?? "cleaning",
                 ServiceRequestUrgency.Normal,
                 input.ServiceNotes,
-                ChargeToGuest: false), cancellationToken);
+                ChargeToGuest: false,
+                UserRoles: userRoles), cancellationToken);
         }
 
         booking.Status = BookingStatus.CheckedOut;

@@ -421,7 +421,8 @@ public class BookingsController(
         if (bookingForAuth is null)
             return NotFound();
 
-        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, GetUserRoles()))
+        var userRoles = GetUserRoles();
+        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, userRoles))
             return NotFound();
 
         try
@@ -429,6 +430,7 @@ public class BookingsController(
             var (booking, propertyReady) = await complianceWizardService.CompleteCheckoutWizardAsync(
                 id,
                 userId,
+                userRoles,
                 new CompleteCheckoutWizardInput(
                     request.ConfirmDeparture,
                     request.SupplierOrgId,
