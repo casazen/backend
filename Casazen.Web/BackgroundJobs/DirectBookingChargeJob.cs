@@ -24,7 +24,9 @@ public class DirectBookingChargeJob(
         var pendingBookings = await context.Bookings
             .Where(b => b.PaymentOption == PaymentOption.OnCancellationDeadline &&
                         b.FreeRefundDeadline <= today &&
-                        b.Status == BookingStatus.Confirmed &&
+                        (b.Status == BookingStatus.Confirmed ||
+                         b.Status == BookingStatus.CheckedIn ||
+                         b.Status == BookingStatus.CheckedOut) &&
                         !context.Payments.Any(p =>
                             p.BookingId == b.Id &&
                             p.Status == PaymentStatus.Completed &&
