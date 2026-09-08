@@ -101,6 +101,52 @@ public class DirectBookingChargeJobTests
         Assert.Equal("pi_existing_deadline", payment.TransactionId);
     }
 
+    [Theory]
+    [InlineData(BookingStatus.CheckedIn)]
+    [InlineData(BookingStatus.CheckedOut)]
+    public async Task ExecuteAsync_DeferredBookingPastConfirmationWithoutCompletedDeadlineCharge_Charges(BookingStatus status)
+    {
+        await using var context = CreateContext();
+        var (booking, org) = await SeedChargeableBookingAsync(context, bookingStatus: status);
+        var paymentRepository = new PaymentRepository(context);
+        var stripeService = new Mock<IStripeService>();
+        var orgService = new Mock<IOrgService>();
+        orgService
+            .Setup(s => s.GetByIdAsync(org.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+        stripeService
+            .Setup(s => s.ChargePaymentMethodAsync(
+                org.StripeConnectedAccountId!,
+                booking.StripeCustomerId!,
+                booking.StripePaymentMethodId!,
+                12345,
+                "eur",
+                It.IsAny<Dictionary<string, string>>(),
+                $"direct-booking-deadline:{booking.Id}"))
+            .ReturnsAsync(new PaymentIntent { Id = $"pi_deadline_{status}" });
+
+        var job = CreateJob(context, paymentRepository, stripeService.Object, orgService.Object);
+
+        await job.ExecuteAsync();
+
+        stripeService.Verify(s => s.ChargePaymentMethodAsync(
+            org.StripeConnectedAccountId!,
+            booking.StripeCustomerId!,
+            booking.StripePaymentMethodId!,
+            12345,
+            "eur",
+            It.Is<Dictionary<string, string>>(m =>
+                m["bookingId"] == booking.Id.ToString() &&
+                m["kind"] == "direct-booking-deadline-charge"),
+            $"direct-booking-deadline:{booking.Id}"), Times.Once);
+
+        var payment = Assert.Single(await context.Payments.Where(p => p.BookingId == booking.Id).ToListAsync());
+        Assert.Equal(PaymentStatus.Completed, payment.Status);
+        Assert.Equal($"pi_deadline_{status}", payment.TransactionId);
+        Assert.Equal($"pi_deadline_{status}", payment.StripePaymentIntentId);
+        Assert.NotNull(payment.ProcessedAt);
+    }
+
     private static AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -126,6 +172,7 @@ public class DirectBookingChargeJobTests
 
     private static async Task<(Booking Booking, OrgEntity Org)> SeedChargeableBookingAsync(
         AppDbContext context,
+        BookingStatus bookingStatus = BookingStatus.Confirmed,
         PaymentStatus paymentStatus = PaymentStatus.Pending,
         string paymentDescription = DeadlineChargeDescription,
         string transactionId = "seti_pending")
@@ -173,7 +220,7 @@ public class DirectBookingChargeJobTests
             CheckInDate = DateTime.UtcNow.Date.AddDays(7),
             CheckOutDate = DateTime.UtcNow.Date.AddDays(10),
             NumberOfGuests = 2,
-            Status = BookingStatus.Confirmed,
+            Status = bookingStatus,
             Source = BookingSource.Direct,
             TotalPrice = 123.45m,
             PaymentOption = PaymentOption.OnCancellationDeadline,
