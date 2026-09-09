@@ -41,6 +41,8 @@ public class LeaseWorkflowService(
         if (request.EndDate <= request.StartDate)
             throw new InvalidOperationException("Lease end date must be after start date.");
 
+        EnsureCanoneConcordatoMinimumTerm(request.FiscalRegime, request.StartDate, request.EndDate);
+
         var parties = request.Parties.ToList();
         if (!parties.Any(p => p.Role == PartyRole.Landlord))
             throw new InvalidOperationException("At least one Landlord party is required.");
@@ -86,6 +88,8 @@ public class LeaseWorkflowService(
 
         if (lease.Status != LeaseStatus.Draft)
             throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
+
+        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
 
         var pdfBytes = await templateService.GeneratePdfAsync(lease);
         var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
@@ -148,6 +152,8 @@ public class LeaseWorkflowService(
 
         if (lease.Status != LeaseStatus.Signed)
             throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
+
+        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
 
         var expectedTos = rliOptions.Value.TosVersion;
         if (!authorization.AttestationAccepted
@@ -235,5 +241,21 @@ public class LeaseWorkflowService(
             throw new UnauthorizedAccessException("Lease does not belong to this owner.");
 
         return lease;
+    }
+
+    private static void EnsureCanoneConcordatoMinimumTerm(
+        FiscalRegime fiscalRegime,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        if (fiscalRegime != FiscalRegime.CanoneConcordato)
+            return;
+
+        var minimumEndDate = startDate.Date.AddYears(3).AddDays(-1);
+        if (endDate.Date < minimumEndDate)
+        {
+            throw new InvalidOperationException(
+                "Canone concordato leases must cover at least the initial 3-year term required for contratto tipo 3+2.");
+        }
     }
 }
