@@ -31,23 +31,33 @@ public class LeaseRegistrationStatusPollingJob(
 
                 if (!statusResult.IsConfirmed) continue;
 
+                var lease = await leaseRepository.GetByIdAsync(registration.LeaseContractId);
+                if (lease is not null)
+                {
+                    if (lease.Status != LeaseStatus.Registered)
+                    {
+                        lease.Status = LeaseStatus.Registered;
+                        await leaseRepository.UpdateAsync(lease);
+                    }
+
+                    var leaseEvents = await eventRepository.GetByLeaseIdAsync(lease.Id);
+                    if (!leaseEvents.Any(e =>
+                            e.EventType == LeaseEventType.RegistrationConfirmed
+                            && e.Payload == statusResult.RegistrationCode))
+                    {
+                        await eventRepository.AddAsync(new LeaseEvent
+                        {
+                            LeaseContractId = lease.Id,
+                            EventType = LeaseEventType.RegistrationConfirmed,
+                            Payload = statusResult.RegistrationCode
+                        });
+                    }
+                }
+
                 registration.Status = RegistrationStatus.Registered;
                 registration.RegistrationCode = statusResult.RegistrationCode;
                 registration.ConfirmedAt = DateTime.UtcNow;
                 await registrationRepository.UpdateAsync(registration);
-
-                var lease = await leaseRepository.GetByIdAsync(registration.LeaseContractId);
-                if (lease is not null)
-                {
-                    lease.Status = LeaseStatus.Registered;
-                    await leaseRepository.UpdateAsync(lease);
-                    await eventRepository.AddAsync(new LeaseEvent
-                    {
-                        LeaseContractId = lease.Id,
-                        EventType = LeaseEventType.RegistrationConfirmed,
-                        Payload = statusResult.RegistrationCode
-                    });
-                }
 
                 logger.LogInformation("Registration confirmed. LeaseId={LeaseId} Code={Code}",
                     registration.LeaseContractId, statusResult.RegistrationCode);
