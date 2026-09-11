@@ -75,6 +75,13 @@ public class BookingService(
 
     public async Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input)
     {
+        if (!Enum.IsDefined(input.PaymentOption))
+        {
+            throw new DirectBookingException(
+                "Invalid payment option",
+                DirectBookingErrorCodes.InvalidPaymentOption);
+        }
+
         var allowedConsentVersion = configuration["DirectBooking:ConsentVersion"] ?? "2026-06-direct-checkout-v1";
         if (!string.Equals(input.ConsentVersion, allowedConsentVersion, StringComparison.Ordinal))
         {

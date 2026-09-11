@@ -58,6 +58,36 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task CreateDirectBookingAsync_WithInvalidPaymentOption_RejectsBeforePersisting()
+    {
+        var input = new DirectBookingCreateInput(
+            Guid.NewGuid(),
+            DateTime.UtcNow.Date.AddDays(10),
+            DateTime.UtcNow.Date.AddDays(12),
+            1,
+            0,
+            new DirectBookingGuestInput(
+                "Ada",
+                "Lovelace",
+                "ada@example.com",
+                null,
+                "IT"),
+            "2026-06-direct-checkout-v1",
+            "127.0.0.1",
+            null,
+            (PaymentOption)999);
+
+        var ex = await Assert.ThrowsAsync<DirectBookingException>(() =>
+            _service.CreateDirectBookingAsync(input));
+
+        Assert.Equal(DirectBookingErrorCodes.InvalidPaymentOption, ex.ErrorCode);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateBookingAsync_WithValidBooking_ReturnsCreatedBooking()
     {
         var booking = new Booking
