@@ -64,5 +64,6 @@ public class CreateDirectBookingRequest
 
     /// <summary>Payment option: Immediate, OnCancellationDeadline, or OnSite.</summary>
     [Required]
+    [EnumDataType(typeof(PaymentOption), ErrorMessage = "Invalid payment option")]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
 }
