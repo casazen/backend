@@ -212,16 +212,32 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
         ValidateTaxYear(taxYear);
         var (yearStart, yearEnd) = YearBounds(taxYear);
         var counted = await GetCountedPropertiesAsync(orgId, taxYear, cancellationToken);
+        var reportProperties = counted.ToDictionary(p => p.Id);
+        var settledPayments = await SettledInTaxYear(
+                db.Payments.AsNoTracking()
+                    .Include(p => p.Booking)
+                    .ThenInclude(b => b.Property),
+                yearStart,
+                yearEnd)
+            .Where(p => p.OrgId == orgId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var property in settledPayments.Select(p => p.Booking.Property))
+        {
+            if (!reportProperties.ContainsKey(property.Id))
+                reportProperties.Add(property.Id, property);
+        }
+
         var assignments = await db.PropertyFiscalYears.AsNoTracking()
             .Where(y => y.OrgId == orgId && y.TaxYear == taxYear)
             .ToDictionaryAsync(y => y.PropertyId, cancellationToken);
 
         var lines = new List<AnnualIncomeLine>();
-        foreach (var property in counted)
+        foreach (var property in reportProperties.Values.OrderBy(p => p.Name).ThenBy(p => p.Id))
         {
-            var payments = await SettledInTaxYear(db.Payments.AsNoTracking(), yearStart, yearEnd)
-                .Where(p => p.OrgId == orgId && p.Booking.PropertyId == property.Id)
-                .ToListAsync(cancellationToken);
+            var payments = settledPayments
+                .Where(p => p.Booking.PropertyId == property.Id)
+                .ToList();
             assignments.TryGetValue(property.Id, out var row);
             var gross = payments.Sum(ReportableGross);
             var withholding = payments.Sum(ReportableWithholding);
