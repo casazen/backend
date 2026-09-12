@@ -271,6 +271,99 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
+    public async Task Webhook_CancelsDirectBooking_WhenPropertyNoLongerActive()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var response = await PostDirectBookingAsync(client, BuildPayload(property.Id));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var bookingId = doc.RootElement.GetProperty("bookingId").GetGuid();
+        var paymentIntentId = FakeStripeService.LastPaymentIntentId!;
+
+        using var scope = _factory.Services.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var delistedProperty = await db.Properties.SingleAsync(p => p.Id == property.Id);
+        delistedProperty.IsActive = false;
+        delistedProperty.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var paymentIntent = new PaymentIntent
+        {
+            Id = paymentIntentId,
+            Amount = 65000,
+            Metadata = new Dictionary<string, string>
+            {
+                ["kind"] = "direct-booking",
+                ["bookingId"] = bookingId.ToString(),
+            },
+        };
+
+        await handler.HandleEventAsync(new Event
+        {
+            Type = "payment_intent.succeeded",
+            Data = new EventData { Object = paymentIntent },
+        }, WebhookSource.Connected);
+
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+
+        var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
+        Assert.Equal(PaymentStatus.Completed, payment.Status);
+    }
+
+    [Fact]
+    public async Task SetupWebhook_CancelsDeferredBooking_WhenPropertyComplianceSuspended()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var response = await PostDirectBookingAsync(
+            client,
+            BuildPayload(property.Id, paymentOption: PaymentOption.OnCancellationDeadline));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var bookingId = doc.RootElement.GetProperty("bookingId").GetGuid();
+
+        using var scope = _factory.Services.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var createdBooking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        var suspendedProperty = await db.Properties.SingleAsync(p => p.Id == property.Id);
+        suspendedProperty.ComplianceStatus = PropertyComplianceStatus.Suspended;
+        suspendedProperty.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var setupIntent = new SetupIntent
+        {
+            Id = createdBooking.StripeSetupIntentId,
+            CustomerId = createdBooking.StripeCustomerId,
+            PaymentMethodId = $"pm_saved_{Guid.NewGuid():N}",
+            Metadata = new Dictionary<string, string>
+            {
+                ["kind"] = "direct-booking-setup",
+                ["bookingId"] = bookingId.ToString(),
+            },
+        };
+
+        await handler.HandleEventAsync(new Event
+        {
+            Type = "setup_intent.succeeded",
+            Data = new EventData { Object = setupIntent },
+        }, WebhookSource.Connected);
+
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        Assert.Null(booking.StripePaymentMethodId);
+    }
+
+    [Fact]
     public async Task Webhook_DoesNotConfirmCancelledDirectBooking()
     {
         var property = await SeedConnectReadyPropertyAsync();

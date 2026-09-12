@@ -384,6 +384,9 @@ public class StripeWebhookHandler(
             return;
         }
 
+        if (!await EnsureDirectBookingStillBookableAsync(booking, setupIntent.Id))
+            return;
+
         booking.StripePaymentMethodId = paymentMethodId;
         booking.StripeCustomerId = setupIntent.CustomerId;
         booking.Status = BookingStatus.Confirmed;
@@ -426,9 +429,33 @@ public class StripeWebhookHandler(
             return;
         }
 
+        if (!await EnsureDirectBookingStillBookableAsync(booking, paymentIntent.Id))
+            return;
+
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
         await bookingRepository.UpdateAsync(booking);
+    }
+
+    private async Task<bool> EnsureDirectBookingStillBookableAsync(Booking booking, string stripeObjectId)
+    {
+        await dbContext.Entry(booking).Reference(b => b.Property).LoadAsync();
+
+        if (booking.Property is { IsActive: true, ComplianceStatus: PropertyComplianceStatus.Active })
+            return true;
+
+        logger.LogWarning(
+            "Cancelling direct booking {BookingId} from Stripe event {StripeObjectId} because property {PropertyId} is no longer bookable. IsActive={IsActive}, ComplianceStatus={ComplianceStatus}",
+            booking.Id,
+            stripeObjectId,
+            booking.PropertyId,
+            booking.Property?.IsActive,
+            booking.Property?.ComplianceStatus);
+
+        booking.Status = BookingStatus.Cancelled;
+        booking.UpdatedAt = DateTime.UtcNow;
+        await bookingRepository.UpdateAsync(booking);
+        return false;
     }
 
     private async Task HandlePaymentFailedAsync(PaymentIntent? paymentIntent, WebhookSource source, string eventType)
