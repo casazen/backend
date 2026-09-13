@@ -192,6 +192,107 @@ public class BookingRepositoryTests
     }
 
     [Fact]
+    public async Task IsAvailableAsync_ExpiredPendingDirectBookingWithTtl_DoesNotBlock()
+    {
+        await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 4, 1),
+            CheckOutDate = new DateTime(2026, 4, 10),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            StripeSetupIntentId = "seti_expired",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-20),
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+
+        var strictResult = await _repository.IsAvailableAsync(
+            _propertyId,
+            new DateTime(2026, 4, 3),
+            new DateTime(2026, 4, 7));
+        var ttlResult = await _repository.IsAvailableAsync(
+            _propertyId,
+            new DateTime(2026, 4, 3),
+            new DateTime(2026, 4, 7),
+            directPendingTtlMinutes: 15);
+
+        Assert.False(strictResult);
+        Assert.True(ttlResult);
+    }
+
+    [Fact]
+    public async Task CancelExpiredPendingDirectBookingsAsync_CancelsOnlyExpiredDirectHolds()
+    {
+        var expired = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 4, 1),
+            CheckOutDate = new DateTime(2026, 4, 5),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            StripeSetupIntentId = "seti_expired",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-20),
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+        var fresh = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 4, 5),
+            CheckOutDate = new DateTime(2026, 4, 10),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            CreatedAt = DateTime.UtcNow,
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+        var manualPending = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 4, 10),
+            CheckOutDate = new DateTime(2026, 4, 15),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-20),
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+        var paymentIntentHold = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 4, 15),
+            CheckOutDate = new DateTime(2026, 4, 20),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-20),
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+        _context.Payments.Add(new Payment
+        {
+            BookingId = paymentIntentHold.Id,
+            OrgId = Guid.NewGuid(),
+            Amount = paymentIntentHold.TotalPrice,
+            StripePaymentIntentId = "pi_expired",
+        });
+        await _context.SaveChangesAsync();
+
+        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(_propertyId, 15);
+
+        Assert.Equal(2, cancelled);
+        Assert.Equal(BookingStatus.Cancelled, (await _context.Bookings.FindAsync(expired.Id))!.Status);
+        Assert.Equal(BookingStatus.Pending, (await _context.Bookings.FindAsync(fresh.Id))!.Status);
+        Assert.Equal(BookingStatus.Pending, (await _context.Bookings.FindAsync(manualPending.Id))!.Status);
+        Assert.Equal(BookingStatus.Cancelled, (await _context.Bookings.FindAsync(paymentIntentHold.Id))!.Status);
+    }
+
+    [Fact]
     public async Task AddAsync_ConfirmedBooking_SetsCheckInTokenAndExpiry()
     {
         var checkOut = new DateTime(2026, 5, 10);
