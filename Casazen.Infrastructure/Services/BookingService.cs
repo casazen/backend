@@ -121,8 +121,7 @@ public class BookingService(
                 DirectBookingErrorCodes.InvalidDates);
         }
 
-        var pendingTtlMinutes = configuration.GetValue("DirectBooking:PendingTtlMinutes", 15);
-        await repository.CancelExpiredPendingDirectBookingsAsync(input.PropertyId, pendingTtlMinutes);
+        var pendingTtlMinutes = GetPendingDirectTtlMinutes();
 
         if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, pendingTtlMinutes))
         {
@@ -389,7 +388,10 @@ public class BookingService(
         DateTime checkOut,
         int? pendingDirectTtlMinutes = null)
     {
-        if (!await repository.IsAvailableAsync(propertyId, checkIn, checkOut, pendingDirectTtlMinutes))
+        var effectivePendingTtlMinutes = pendingDirectTtlMinutes ?? GetPendingDirectTtlMinutes();
+        await repository.CancelExpiredPendingDirectBookingsAsync(propertyId, effectivePendingTtlMinutes);
+
+        if (!await repository.IsAvailableAsync(propertyId, checkIn, checkOut, effectivePendingTtlMinutes))
             return false;
 
         return !await propertyICalSyncService.HasOverlappingBlockAsync(propertyId, checkIn, checkOut);
@@ -402,7 +404,13 @@ public class BookingService(
 
     public async Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate)
     {
+        await repository.CancelExpiredPendingDirectBookingsAsync(propertyId, GetPendingDirectTtlMinutes());
         return await repository.GetByDateRangeAsync(propertyId, startDate, endDate);
+    }
+
+    private int GetPendingDirectTtlMinutes()
+    {
+        return Math.Max(1, configuration.GetValue("DirectBooking:PendingTtlMinutes", 15));
     }
 
     private async Task<Guest> CreateGuestSnapshotWithConsentAsync(

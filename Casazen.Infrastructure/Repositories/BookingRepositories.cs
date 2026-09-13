@@ -95,6 +95,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .Where(b => b.PropertyId == propertyId &&
                         b.Status == BookingStatus.Pending &&
                         b.Source == BookingSource.Direct &&
+                        (b.StripeSetupIntentId != null ||
+                         b.Payments.Any(p => p.StripePaymentIntentId != null)) &&
                         b.CreatedAt < cutoff)
             .ToListAsync();
 
@@ -224,6 +226,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             !(pendingCutoff.HasValue &&
               b.Status == BookingStatus.Pending &&
               b.Source == BookingSource.Direct &&
+              (b.StripeSetupIntentId != null ||
+               b.Payments.Any(p => p.StripePaymentIntentId != null)) &&
               b.CreatedAt < pendingCutoff.Value));
 
         if (excludeBookingId.HasValue)
