@@ -4,12 +4,12 @@ namespace Casazen.Core.Validation;
 
 public static class BookingValidator
 {
-    public static BookingValidationResult ValidateBooking(Booking booking)
+    public static BookingValidationResult ValidateBooking(Booking booking, bool allowPastCheckIn = false)
     {
         var errors = new List<string>();
 
         // Validate dates
-        if (booking.CheckInDate < DateTime.UtcNow.Date)
+        if (!allowPastCheckIn && booking.CheckInDate < DateTime.UtcNow.Date)
         {
             errors.Add("Check-in date cannot be in the past");
         }

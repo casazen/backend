@@ -84,6 +84,26 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task CreateBookingAsync_WithPastCheckIn_ThrowsValidationError()
+    {
+        var booking = new Booking
+        {
+            PropertyId = Guid.NewGuid(),
+            GuestId = Guid.NewGuid(),
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-1),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(1),
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.CreateBookingAsync(booking));
+
+        Assert.Contains("Check-in date cannot be in the past", ex.Message);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+    }
+
+    [Fact]
     public async Task IsPropertyAvailableAsync_WithAvailableProperty_ReturnsTrue()
     {
         var propertyId = Guid.NewGuid();
@@ -94,6 +114,46 @@ public class BookingServiceTests
         var result = await _service.IsPropertyAvailableAsync(propertyId, checkIn, checkOut);
 
         Assert.True(result);
+    }
+
+    [Fact]
+    public async Task UpdateBookingAsync_WithPastUnchangedCheckIn_AllowsCheckoutStatusUpdate()
+    {
+        var bookingId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var checkIn = DateTime.UtcNow.Date.AddDays(-2);
+        var checkOut = DateTime.UtcNow.Date;
+        var existing = new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            Status = BookingStatus.CheckedIn,
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+        var update = new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            Status = BookingStatus.CheckedOut,
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+
+        _mockRepository.Setup(x => x.GetByIdAsync(bookingId)).ReturnsAsync(existing);
+        _mockRepository.Setup(x => x.UpdateAsync(update)).ReturnsAsync(update);
+
+        var result = await _service.UpdateBookingAsync(update);
+
+        Assert.Equal(BookingStatus.CheckedOut, result.Status);
+        _mockRepository.Verify(x => x.UpdateAsync(update), Times.Once);
     }
 
     [Fact]
