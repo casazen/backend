@@ -299,6 +299,48 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task TriggerRegistrationAsync_WhenPreviousRegistrationFailed_ReusesRowForRetry()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Signed);
+        var failedRegistration = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Failed,
+            ExternalRegistrationId = "RLI-OLD",
+            RegistrationCode = "OLD-CODE",
+            ReceiptStoragePath = "/old-receipt.pdf",
+            SubmittedAt = DateTime.UtcNow.AddDays(-1),
+            ConfirmedAt = DateTime.UtcNow.AddDays(-1),
+        };
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(failedRegistration);
+        _regRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
+            .ReturnsAsync((LeaseRegistration r) => r);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+        _regService.Setup(s => s.SubmitRegistrationAsync(lease))
+            .ReturnsAsync("RLI-RETRY-001");
+
+        // Act
+        var registration = await _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth);
+
+        // Assert
+        Assert.Same(failedRegistration, registration);
+        Assert.Equal(RegistrationStatus.SentToProvider, registration.Status);
+        Assert.Equal("RLI-RETRY-001", registration.ExternalRegistrationId);
+        Assert.Null(registration.RegistrationCode);
+        Assert.Null(registration.ReceiptStoragePath);
+        Assert.Null(registration.ConfirmedAt);
+        Assert.NotNull(registration.SubmittedAt);
+        Assert.Equal(LeaseStatus.SentToProvider, lease.Status);
+        _regRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+        _regRepo.Verify(r => r.UpdateAsync(failedRegistration), Times.Once);
+    }
+
+    [Fact]
     public async Task InitiateSigningAsync_WhenAlreadyAwaitingSignature_ThrowsInvalidOperationException()
     {
         // Arrange
