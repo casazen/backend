@@ -143,7 +143,7 @@ public class LeaseWorkflowService(
         var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
 
         var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
-        if (existing is not null)
+        if (existing is not null && existing.Status != RegistrationStatus.Failed)
             throw new InvalidOperationException("Registration has already been submitted for this lease.");
 
         if (lease.Status != LeaseStatus.Signed)
@@ -175,16 +175,27 @@ public class LeaseWorkflowService(
         });
 
         var externalId = await registrationService.SubmitRegistrationAsync(lease);
+        var submittedAt = DateTime.UtcNow;
 
-        var registration = new LeaseRegistration
+        var registration = existing ?? new LeaseRegistration
         {
             LeaseContractId = lease.Id,
             Status = RegistrationStatus.SentToProvider,
             ExternalRegistrationId = externalId,
-            SubmittedAt = DateTime.UtcNow
+            SubmittedAt = submittedAt
         };
 
-        await registrationRepository.AddAsync(registration);
+        registration.Status = RegistrationStatus.SentToProvider;
+        registration.ExternalRegistrationId = externalId;
+        registration.RegistrationCode = null;
+        registration.ReceiptStoragePath = null;
+        registration.SubmittedAt = submittedAt;
+        registration.ConfirmedAt = null;
+
+        if (existing is null)
+            await registrationRepository.AddAsync(registration);
+        else
+            await registrationRepository.UpdateAsync(registration);
 
         lease.Status = LeaseStatus.SentToProvider;
         await leaseRepository.UpdateAsync(lease);

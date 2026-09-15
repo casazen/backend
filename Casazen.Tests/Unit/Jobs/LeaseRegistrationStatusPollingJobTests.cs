@@ -94,6 +94,55 @@ public class LeaseRegistrationStatusPollingJobTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenPollReturnsTerminalFailure_MarksFailedAndRestoresSignedLease()
+    {
+        var lease = new LeaseContract
+        {
+            Id = Guid.NewGuid(),
+            Status = LeaseStatus.SentToProvider,
+        };
+        var pending = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.SentToProvider,
+            ExternalRegistrationId = "RLI-FAIL-1",
+        };
+
+        var leases = new Mock<ILeaseContractRepository>();
+        leases.Setup(r => r.GetByIdAsync(lease.Id)).ReturnsAsync(lease);
+        leases.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+
+        var regs = new Mock<ILeaseRegistrationRepository>();
+        regs.Setup(r => r.GetByStatusAsync(RegistrationStatus.SentToProvider)).ReturnsAsync([pending]);
+        regs.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
+            .ReturnsAsync((LeaseRegistration r) => r);
+
+        var provider = new Mock<ILeaseRegistrationService>();
+        provider.Setup(s => s.PollStatusAsync("RLI-FAIL-1"))
+            .ReturnsAsync(new RegistrationStatusResult("RLI-FAIL-1", "Rejected", null, false));
+
+        var events = new Mock<ILeaseEventRepository>();
+        events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
+
+        var job = new LeaseRegistrationStatusPollingJob(
+            leases.Object,
+            regs.Object,
+            provider.Object,
+            events.Object,
+            Mock.Of<ILogger<LeaseRegistrationStatusPollingJob>>());
+
+        await job.ExecuteAsync();
+
+        Assert.Equal(RegistrationStatus.Failed, pending.Status);
+        Assert.Equal(LeaseStatus.Signed, lease.Status);
+        events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
+            e.LeaseContractId == lease.Id
+            && e.EventType == LeaseEventType.RegistrationFailed
+            && e.Payload == "Rejected")), Times.Once);
+    }
+
+    [Fact]
     public void AC3_ExecuteAsync_HasDisableConcurrentExecution()
     {
         var method = typeof(LeaseRegistrationStatusPollingJob)
