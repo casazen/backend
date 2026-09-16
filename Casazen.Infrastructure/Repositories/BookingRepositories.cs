@@ -95,7 +95,9 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .Where(b => b.PropertyId == propertyId &&
                         b.Status == BookingStatus.Pending &&
                         b.Source == BookingSource.Direct &&
-                        b.CreatedAt < cutoff)
+                        b.CreatedAt < cutoff &&
+                        (b.StripeSetupIntentId != null ||
+                         b.Payments.Any(p => p.StripePaymentIntentId != null)))
             .ToListAsync();
 
         foreach (var booking in expired)
@@ -224,7 +226,9 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             !(pendingCutoff.HasValue &&
               b.Status == BookingStatus.Pending &&
               b.Source == BookingSource.Direct &&
-              b.CreatedAt < pendingCutoff.Value));
+              b.CreatedAt < pendingCutoff.Value &&
+              (b.StripeSetupIntentId != null ||
+               b.Payments.Any(p => p.StripePaymentIntentId != null))));
 
         if (excludeBookingId.HasValue)
             query = query.Where(b => b.Id != excludeBookingId.Value);
