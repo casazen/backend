@@ -83,6 +83,16 @@ public class DirectBookingChargeJob(
                 metadata,
                 $"direct-booking-deadline:{booking.Id}");
 
+            if (!string.Equals(paymentIntent.Status, "succeeded", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogWarning(
+                    "Booking {BookingId} deadline charge returned PaymentIntent {PaymentIntentId} with status {Status}; payment was not marked completed",
+                    booking.Id,
+                    paymentIntent.Id,
+                    paymentIntent.Status);
+                return;
+            }
+
             logger.LogInformation("Charged booking {BookingId}: {PaymentIntentId}", booking.Id, paymentIntent.Id);
 
             var existingPaymentIntent = await paymentRepository.GetByTransactionIdAsync(paymentIntent.Id);

@@ -39,7 +39,7 @@ public class DirectBookingChargeJobTests
                 "eur",
                 It.IsAny<Dictionary<string, string>>(),
                 $"direct-booking-deadline:{booking.Id}"))
-            .ReturnsAsync(new PaymentIntent { Id = "pi_deadline_1" });
+            .ReturnsAsync(new PaymentIntent { Id = "pi_deadline_1", Status = "succeeded" });
 
         var job = CreateJob(context, paymentRepository, stripeService.Object, orgService.Object);
 
@@ -99,6 +99,39 @@ public class DirectBookingChargeJobTests
         var payment = Assert.Single(await context.Payments.Where(p => p.BookingId == booking.Id).ToListAsync());
         Assert.Equal(PaymentStatus.Completed, payment.Status);
         Assert.Equal("pi_existing_deadline", payment.TransactionId);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ChargeRequiresAction_DoesNotMarkPaymentCompleted()
+    {
+        await using var context = CreateContext();
+        var (booking, org) = await SeedChargeableBookingAsync(context);
+        var paymentRepository = new PaymentRepository(context);
+        var stripeService = new Mock<IStripeService>();
+        var orgService = new Mock<IOrgService>();
+        orgService
+            .Setup(s => s.GetByIdAsync(org.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+        stripeService
+            .Setup(s => s.ChargePaymentMethodAsync(
+                org.StripeConnectedAccountId!,
+                booking.StripeCustomerId!,
+                booking.StripePaymentMethodId!,
+                12345,
+                "eur",
+                It.IsAny<Dictionary<string, string>>(),
+                $"direct-booking-deadline:{booking.Id}"))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_requires_action", Status = "requires_action" });
+
+        var job = CreateJob(context, paymentRepository, stripeService.Object, orgService.Object);
+
+        await job.ExecuteAsync();
+
+        var payment = Assert.Single(await context.Payments.Where(p => p.BookingId == booking.Id).ToListAsync());
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.Equal("seti_pending", payment.TransactionId);
+        Assert.Null(payment.StripePaymentIntentId);
+        Assert.Null(payment.ProcessedAt);
     }
 
     private static AppDbContext CreateContext()

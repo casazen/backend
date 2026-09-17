@@ -210,6 +210,8 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
                 PaymentMethod = paymentMethodId,
                 ConfirmationMethod = "automatic",
                 Confirm = true,
+                OffSession = true,
+                ErrorOnRequiresAction = true,
                 Metadata = metadata,
                 ApplicationFeeAmount = 0,
             };
