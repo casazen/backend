@@ -17,7 +17,7 @@ public class ApeDocumentInspectorTests
             ATTESTATO DI PRESTAZIONE ENERGETICA
             Classe energetica G
             EPgl,nren 180 kWh/m2 anno
-            SIAPE codice identificativo
+            SIAPE codice identificativo APE2026RM000123
             Certificatore energetico
             """;
 
@@ -37,6 +37,22 @@ public class ApeDocumentInspectorTests
     }
 
     [Fact]
+    public void InspectExtractedText_MarkerOnlyApeWording_IsContentMismatch()
+    {
+        var text = """
+            ATTESTATO DI PRESTAZIONE ENERGETICA
+            Classe energetica G
+            SIAPE codice identificativo
+            Certificatore energetico
+            """;
+
+        var result = _sut.InspectExtractedText(text);
+
+        Assert.False(result.IsValid);
+        Assert.Equal(ApeInspectionStatus.ContentMismatch, result.Status);
+    }
+
+    [Fact]
     public void InspectExtractedText_Empty_IsContentMismatch()
     {
         var result = _sut.InspectExtractedText("   ");
@@ -49,7 +65,7 @@ public class ApeDocumentInspectorTests
     {
         var pdf = FiscalPdfWriter.Write(
             "ATTESTATO DI PRESTAZIONE ENERGETICA",
-            "Classe energetica D. EPgl,nren 95. SIAPE. Certificatore energetico. D.Lgs. 192/2005.");
+            "Classe energetica D. EPgl,nren 95. SIAPE codice identificativo APE2026RM000123. Certificatore energetico. D.Lgs. 192/2005.");
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);
@@ -81,7 +97,7 @@ public class ApeDocumentInspectorTests
     [Fact]
     public void Inspect_FlateEncodedApePdf_IsValid()
     {
-        var pdf = FlatePdf("ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE");
+        var pdf = FlatePdf("ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE codice identificativo APE2026RM000123");
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);
@@ -106,7 +122,7 @@ public class ApeDocumentInspectorTests
     {
         var pdf = MultiFlatePdf(
             PdfLiteralTextExtractor.MaxFlateStreams + 50,
-            "ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE");
+            "ATTESTATO DI PRESTAZIONE ENERGETICA Classe energetica A4 EPgl SIAPE codice identificativo APE2026RM000123");
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);
