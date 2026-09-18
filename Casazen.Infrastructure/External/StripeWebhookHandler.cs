@@ -5,6 +5,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
@@ -30,10 +31,15 @@ public class StripeWebhookHandler(
 
     public async Task HandleEventAsync(Event stripeEvent, WebhookSource source)
     {
-        // Claim the event slot FIRST — unique PK on EventId prevents concurrent workers
-        // from processing the same event twice. If the insert fails (duplicate), skip.
+        await using var eventTransaction = await BeginEventTransactionAsync();
+
+        // Claim the event inside the same transaction as the business updates. A failed
+        // attempt must roll back the marker so Hangfire/Stripe can retry the event.
         if (!await TryClaimEventAsync(stripeEvent, source))
         {
+            if (eventTransaction is not null)
+                await eventTransaction.RollbackAsync();
+
             logger.LogInformation("Skipping duplicate Stripe event {EventId}", stripeEvent.Id);
             return;
         }
@@ -79,22 +85,46 @@ public class StripeWebhookHandler(
                     logger.LogInformation("Unhandled Stripe event: {EventType} (source={Source})", stripeEvent.Type, source);
                     break;
             }
+
+            if (eventTransaction is not null)
+                await eventTransaction.CommitAsync();
         }
         catch (Exception ex)
         {
+            if (eventTransaction is not null)
+            {
+                await eventTransaction.RollbackAsync();
+            }
+            else
+            {
+                await RemoveClaimedEventAsync(stripeEvent.Id);
+            }
+
             logger.LogError(ex, "Error handling Stripe webhook");
             throw;
         }
     }
 
-    // Returns false if the event was already processed (duplicate); true if claimed successfully.
-    // Inserts the idempotency record before business logic so concurrent Hangfire workers cannot
-    // both pass the guard. The unique PK on EventId is the enforcement mechanism.
-    // Events with no Id (e.g. synthetic test events) are always processed.
+    private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
+    {
+        if (!dbContext.Database.IsRelational())
+            return null;
+
+        return await dbContext.Database.BeginTransactionAsync();
+    }
+
+    // Returns false if the event was already processed/claimed by another worker; true if claimed.
+    // Production relational providers keep this insert uncommitted until business logic succeeds.
+    // Events with no Id (e.g. synthetic test events) are always processed and not tracked.
     private async Task<bool> TryClaimEventAsync(Event stripeEvent, WebhookSource source)
     {
         if (string.IsNullOrEmpty(stripeEvent.Id))
             return true;
+
+        if (await dbContext.ProcessedStripeEvents
+                .AsNoTracking()
+                .AnyAsync(e => e.EventId == stripeEvent.Id))
+            return false;
 
         dbContext.ProcessedStripeEvents.Add(new ProcessedStripeEvent
         {
@@ -115,6 +145,19 @@ public class StripeWebhookHandler(
             dbContext.ChangeTracker.Clear();
             return false;
         }
+    }
+
+    private async Task RemoveClaimedEventAsync(string? eventId)
+    {
+        if (string.IsNullOrEmpty(eventId))
+            return;
+
+        var processed = await dbContext.ProcessedStripeEvents.FindAsync(eventId);
+        if (processed is null)
+            return;
+
+        dbContext.ProcessedStripeEvents.Remove(processed);
+        await dbContext.SaveChangesAsync();
     }
 
     private async Task HandleSubscriptionChangedAsync(Subscription? subscription, string eventType)
