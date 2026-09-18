@@ -28,6 +28,10 @@ public sealed class ApeDocumentInspector : IApeDocumentInspector
         "DECRETO LEGISLATIVO 192"
     ];
 
+    private static readonly Regex CertificateIdentifierPattern = new(
+        @"\b(?:CODICE IDENTIFICATIVO|CODICE APE|ID APE|PROTOCOLLO)\s+(?=[A-Z0-9 ]{6,48}\b)(?=[A-Z0-9 ]*\d)[A-Z0-9]{2,}(?:\s+[A-Z0-9]{2,}){0,3}\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public ApeInspectionResult Inspect(Stream content)
     {
         if (content is null || !content.CanRead)
@@ -56,8 +60,9 @@ public sealed class ApeDocumentInspector : IApeDocumentInspector
         var normalized = Normalize(text);
         var hasTitle = TitleMarkers.Any(m => normalized.Contains(m, StringComparison.Ordinal));
         var hasSupporting = SupportingMarkers.Any(m => normalized.Contains(m, StringComparison.Ordinal));
+        var hasCertificateIdentifier = CertificateIdentifierPattern.IsMatch(normalized);
 
-        return hasTitle && hasSupporting
+        return hasTitle && hasSupporting && hasCertificateIdentifier
             ? new ApeInspectionResult(ApeInspectionStatus.Valid)
             : new ApeInspectionResult(ApeInspectionStatus.ContentMismatch);
     }
