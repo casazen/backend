@@ -1,7 +1,9 @@
 ﻿using System.Security.Claims;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs;
@@ -21,6 +23,7 @@ public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
     IPropertyAuthorizationService authorizationService,
+    ILeaseContractRepository leaseContractRepository,
     IPropertyDocumentService documentService,
     IAdminAccessAuditService adminAccessAuditService,
     IOrgContextResolver orgContextResolver,
@@ -202,10 +205,29 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Update");
 
+        if (IsCityChange(existing.City, request.City) && await HasSubmittedCanoneConcordatoLeaseAsync(id))
+        {
+            return Conflict(new
+            {
+                message = "Property city cannot be changed after a canone concordato lease has been submitted for registration."
+            });
+        }
+
         request.ApplyTo(existing);
         await propertyService.UpdatePropertyAsync(existing);
         return NoContent();
     }
+
+    private async Task<bool> HasSubmittedCanoneConcordatoLeaseAsync(Guid propertyId)
+    {
+        var leases = await leaseContractRepository.GetByPropertyAsync(propertyId);
+        return leases.Any(lease =>
+            lease.FiscalRegime == FiscalRegime.CanoneConcordato &&
+            lease.Status is LeaseStatus.SentToProvider or LeaseStatus.Registered);
+    }
+
+    private static bool IsCityChange(string currentCity, string requestedCity) =>
+        !string.Equals(currentCity.Trim(), requestedCity.Trim(), StringComparison.OrdinalIgnoreCase);
 
     [HttpGet("cin-compliance")]
     [Authorize(Policy = "RequireContext:short-rent:property.read")]
