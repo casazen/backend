@@ -23,6 +23,9 @@ public class StripeWebhookHandler(
     ILogger<StripeWebhookHandler> logger)
 {
     private const string DirectBookingKind = "direct-booking";
+    private const string DirectBookingDeadlineChargeKind = "direct-booking-deadline-charge";
+    private const string DeadlineChargeDescription = "Direct checkout - deferred payment (charged at deadline)";
+    private const string LegacyDeadlineChargeDescription = "Direct booking - charged at deadline";
     private const string RentChargeKind = "rent-charge";
 
     public Task HandleEventAsync(Event stripeEvent) =>
@@ -329,6 +332,11 @@ public class StripeWebhookHandler(
                 await HandleDirectBookingPaymentSucceededAsync(paymentIntent);
                 return;
             }
+            if (string.Equals(kind, DirectBookingDeadlineChargeKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
+            {
+                await HandleDirectBookingDeadlineChargeSucceededAsync(paymentIntent);
+                return;
+            }
         }
 
         if (source != WebhookSource.Platform)
@@ -429,6 +437,72 @@ public class StripeWebhookHandler(
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
         await bookingRepository.UpdateAsync(booking);
+    }
+
+    private async Task HandleDirectBookingDeadlineChargeSucceededAsync(PaymentIntent paymentIntent)
+    {
+        logger.LogInformation("Direct booking deadline charge succeeded: {PaymentIntentId}", paymentIntent.Id);
+
+        var existingPaymentIntent = await paymentRepository.GetByTransactionIdAsync(paymentIntent.Id);
+        if (existingPaymentIntent is not null)
+        {
+            if (existingPaymentIntent.Status != PaymentStatus.Completed)
+            {
+                existingPaymentIntent.Status = PaymentStatus.Completed;
+                existingPaymentIntent.StripePaymentIntentId = paymentIntent.Id;
+                existingPaymentIntent.ProcessedAt = DateTime.UtcNow;
+                existingPaymentIntent.UpdatedAt = DateTime.UtcNow;
+                await paymentRepository.UpdateAsync(existingPaymentIntent);
+            }
+            return;
+        }
+
+        if (!paymentIntent.Metadata.TryGetValue("bookingId", out var bookingIdRaw) ||
+            !Guid.TryParse(bookingIdRaw, out var bookingId))
+        {
+            logger.LogWarning("Deadline charge payment intent has no bookingId metadata: {PaymentIntentId}", paymentIntent.Id);
+            return;
+        }
+
+        var booking = await bookingRepository.GetByIdAsync(bookingId);
+        if (booking is null)
+        {
+            logger.LogWarning("No booking found for deadline charge payment intent: {BookingId}", bookingId);
+            return;
+        }
+
+        var payments = (await paymentRepository.GetByBookingAsync(booking.Id)).ToList();
+        var deferredPayment = payments.FirstOrDefault(p =>
+            p.Status == PaymentStatus.Pending &&
+            (p.TransactionId == booking.StripeSetupIntentId ||
+             p.Description == DeadlineChargeDescription ||
+             p.Description == LegacyDeadlineChargeDescription));
+
+        if (deferredPayment is not null)
+        {
+            deferredPayment.Status = PaymentStatus.Completed;
+            deferredPayment.TransactionId = paymentIntent.Id;
+            deferredPayment.StripePaymentIntentId = paymentIntent.Id;
+            deferredPayment.ProcessedAt = DateTime.UtcNow;
+            deferredPayment.UpdatedAt = DateTime.UtcNow;
+            await paymentRepository.UpdateAsync(deferredPayment);
+            return;
+        }
+
+        await paymentRepository.AddAsync(new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = booking.TotalPrice,
+            Status = PaymentStatus.Completed,
+            Method = Casazen.Core.Entities.PaymentMethod.CreditCard,
+            TransactionId = paymentIntent.Id,
+            StripePaymentIntentId = paymentIntent.Id,
+            Description = DeadlineChargeDescription,
+            ProcessedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
     }
 
     private async Task HandlePaymentFailedAsync(PaymentIntent? paymentIntent, WebhookSource source, string eventType)

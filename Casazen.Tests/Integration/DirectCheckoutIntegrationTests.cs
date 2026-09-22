@@ -271,6 +271,70 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
+    public async Task DeferredBooking_DeadlineChargeWebhook_CompletesPendingPayment()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var response = await PostDirectBookingAsync(
+            client,
+            BuildPayload(property.Id, paymentOption: PaymentOption.OnCancellationDeadline));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var bookingId = doc.RootElement.GetProperty("bookingId").GetGuid();
+
+        using var scope = _factory.Services.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var createdBooking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        var setupIntent = new SetupIntent
+        {
+            Id = createdBooking.StripeSetupIntentId,
+            CustomerId = createdBooking.StripeCustomerId,
+            PaymentMethodId = $"pm_saved_{Guid.NewGuid():N}",
+            Metadata = new Dictionary<string, string>
+            {
+                ["kind"] = "direct-booking-setup",
+                ["bookingId"] = bookingId.ToString(),
+            },
+        };
+
+        await handler.HandleEventAsync(new Event
+        {
+            Type = "setup_intent.succeeded",
+            Data = new EventData { Object = setupIntent },
+        }, WebhookSource.Connected);
+
+        var deadlinePaymentIntentId = $"pi_deadline_{Guid.NewGuid():N}";
+        var deadlinePaymentIntent = new PaymentIntent
+        {
+            Id = deadlinePaymentIntentId,
+            Amount = 65000,
+            Metadata = new Dictionary<string, string>
+            {
+                ["kind"] = "direct-booking-deadline-charge",
+                ["bookingId"] = bookingId.ToString(),
+            },
+        };
+        var deadlineEvent = new Event
+        {
+            Type = "payment_intent.succeeded",
+            Data = new EventData { Object = deadlinePaymentIntent },
+        };
+
+        await handler.HandleEventAsync(deadlineEvent, WebhookSource.Connected);
+        await handler.HandleEventAsync(deadlineEvent, WebhookSource.Connected);
+
+        var payments = await db.Payments.AsNoTracking().Where(p => p.BookingId == bookingId).ToListAsync();
+        var payment = Assert.Single(payments);
+        Assert.Equal(PaymentStatus.Completed, payment.Status);
+        Assert.Equal(deadlinePaymentIntentId, payment.TransactionId);
+        Assert.Equal(deadlinePaymentIntentId, payment.StripePaymentIntentId);
+        Assert.NotNull(payment.ProcessedAt);
+    }
+
+    [Fact]
     public async Task Webhook_DoesNotConfirmCancelledDirectBooking()
     {
         var property = await SeedConnectReadyPropertyAsync();
