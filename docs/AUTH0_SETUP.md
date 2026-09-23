@@ -4,6 +4,11 @@
 
 Complete guide to configure Auth0 for CasaZen. A new developer should be up and running in under 30 minutes.
 
+> **Operations runbook:** tenants (test/prod), the M2M application for the Management API (client
+> credentials, scopes), Railway variables, the post-login Action with the `https://casazen.app/email`,
+> `/name`, `/email_verified` claims, the Native client for the mobile app and the one-off role repair are in
+> [`docs/runbooks/auth0.md`](runbooks/auth0.md). It supersedes the Action and M2M notes below where they differ.
+
 ---
 
 ## Table of Contents
@@ -125,6 +130,9 @@ Assign `LongTermLandlord` (alone or with `PropertyOwner`) in Auth0 for users who
 Assign `Supplier` for users who operate the **supplier console**. Users with both host and supplier roles see a workspace tab (wrench icon) to switch between host/admin and `/supplier/inbox`. After self-serve or invite-based registration, the supplier must have the `Supplier` role in Auth0 before protected `/api/supplier/*` endpoints return 200.
 
 ### Step 2: Create Auth0 Action for Custom Claims
+
+> The current Action (roles **plus** email/name/email_verified on the access token) is in
+> [`docs/runbooks/auth0.md` § 6](runbooks/auth0.md#6-post-login-action-roles--profile-claims-on-the-access-token).
 
 Auth0 Dashboard → **Actions** → **Library** → **Create Action** → **Build from scratch**
 
@@ -281,6 +289,11 @@ logout({ logoutParams: { returnTo: window.location.origin } });
 ---
 
 ## 7. Testing with Postman / M2M Token
+
+> This M2M app is for calling **the CasaZen API** in tests. The backend's own M2M app for the **Auth0
+> Management API** (role sync, `Auth0__ManagementClientId` / `Auth0__ManagementClientSecret`) is described in
+> [`docs/runbooks/auth0.md` § 4–5](runbooks/auth0.md#4-m2m-application-for-the-management-api).
+> `Auth0:ManagementApiToken` (static token) is deprecated.
 
 For API testing without the frontend (Postman, curl, integration tests).
 

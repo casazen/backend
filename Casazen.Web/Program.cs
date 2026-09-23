@@ -14,12 +14,14 @@ using Casazen.Web.Extensions;
 using Casazen.Web.HostedServices;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
+using Casazen.Web.Resources;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
@@ -96,7 +98,7 @@ builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
-builder.Services.AddScoped<IAuth0ManagementService, Auth0ManagementService>();
+builder.Services.AddCasazenAuth0Management();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
@@ -114,17 +116,27 @@ builder.Services.AddHttpClient("Openapi");
 // OTA Integrations with resilience patterns
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
-// Localization — Italian (default) and English
-builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+// Localization — Italian (default) and English.
+// No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
+// (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.
+// With ResourcesPath = "Resources" it looked for Casazen.Web.Resources.Resources.SharedResources and every
+// lookup returned its raw key.
+builder.Services.AddLocalization();
 
 builder.Services.AddRequestLocalization(options =>
 {
-    var supportedCultures = new[] { "it-IT", "en-US" };
+    // Neutral cultures too, so "Accept-Language: en" (or en-GB) resolves to English instead of the default.
+    var supportedCultures = new[] { "it-IT", "it", "en-US", "en" };
     options.SetDefaultCulture(supportedCultures[0])
            .AddSupportedCultures(supportedCultures)
            .AddSupportedUICultures(supportedCultures);
     options.ApplyCurrentCultureToResponseHeaders = true;
 });
+
+// Single error contract: every ProblemDetails (framework-generated too) gets code, traceId and localized texts.
+builder.Services.AddProblemDetails(options =>
+    options.CustomizeProblemDetails = context =>
+        ApiProblemDetails.Complete(context.ProblemDetails, context.HttpContext));
 
 // Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
@@ -207,29 +219,29 @@ builder.Services.Configure<Casazen.Core.Options.LeaseTemplateOptions>(
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API
-builder.Services.AddControllers()
+builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     })
+    // Validation attributes may use a SharedResources key as ErrorMessage (a literal message is kept as is).
+    .AddDataAnnotationsLocalization(options =>
+        options.DataAnnotationLocalizerProvider = (_, factory) => factory.Create(typeof(SharedResources)))
     .ConfigureApiBehaviorOptions(options =>
     {
-        // Override default 400 response with RFC 7807 Problem Details for model validation errors
+        // Model binding/validation errors: 400 ValidationProblemDetails (code "validation_error", field errors).
         options.InvalidModelStateResponseFactory = context =>
         {
-            var problemDetails = new ValidationProblemDetails(context.ModelState)
-            {
-                Type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                Title = "One or more validation errors occurred.",
-                Status = StatusCodes.Status400BadRequest,
-                Instance = $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}",
-            };
-            problemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+            var problemDetailsFactory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problemDetails = problemDetailsFactory.CreateValidationProblemDetails(
+                context.HttpContext,
+                context.ModelState,
+                StatusCodes.Status400BadRequest);
 
             return new BadRequestObjectResult(problemDetails)
             {
-                ContentTypes = { "application/problem+json" },
+                ContentTypes = { ApiProblemDetails.ContentType },
             };
         };
     });

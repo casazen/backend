@@ -36,14 +36,47 @@
   <data name="ValidationError" xml:space="preserve">
     <value>Uno o più errori di validazione.</value>
   </data>
-  <data name="PaymentProcessingError" xml:space="preserve">
-    <value>Errore elaborazione pagamento</value>
+  <data name="BadRequest" xml:space="preserve">
+    <value>Richiesta non valida</value>
   </data>
-  <data name="StripeIntegrationError" xml:space="preserve">
-    <value>Errore integrazione Stripe</value>
+  <data name="BadRequestDetail" xml:space="preserve">
+    <value>La richiesta non è valida. Controlla i dati inviati e riprova.</value>
   </data>
-  <data name="OperationFailed" xml:space="preserve">
-    <value>Operazione fallita</value>
+  <data name="NotFoundDetail" xml:space="preserve">
+    <value>La risorsa richiesta non esiste o non è accessibile.</value>
+  </data>
+  <data name="Conflict" xml:space="preserve">
+    <value>Conflitto</value>
+  </data>
+  <data name="ConflictDetail" xml:space="preserve">
+    <value>L'operazione è in conflitto con lo stato attuale dei dati. Aggiorna la pagina e riprova.</value>
+  </data>
+  <data name="BusinessRuleViolation" xml:space="preserve">
+    <value>Operazione non consentita</value>
+  </data>
+  <data name="BusinessRuleViolationDetail" xml:space="preserve">
+    <value>L'operazione non è consentita nello stato attuale.</value>
+  </data>
+  <data name="TooManyRequests" xml:space="preserve">
+    <value>Troppe richieste</value>
+  </data>
+  <data name="TooManyRequestsDetail" xml:space="preserve">
+    <value>Troppe richieste in poco tempo. Riprova tra qualche istante.</value>
+  </data>
+  <data name="ServiceUnavailable" xml:space="preserve">
+    <value>Servizio non disponibile</value>
+  </data>
+  <data name="ServiceUnavailableDetail" xml:space="preserve">
+    <value>Il servizio non è al momento disponibile. Riprova più tardi.</value>
+  </data>
+  <data name="PaymentProviderUnavailableDetail" xml:space="preserve">
+    <value>Il servizio di pagamento non ha risposto correttamente. Riprova più tardi.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>Richiesta non riuscita</value>
+  </data>
+  <data name="RequestFailedDetail" xml:space="preserve">
+    <value>La richiesta non può essere elaborata.</value>
   </data>
   <data name="OrganizationNotFound" xml:space="preserve">
     <value>Organizzazione non trovata</value>
@@ -140,5 +173,23 @@
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
+  </data>
+  <data name="LeaseNotFound" xml:space="preserve">
+    <value>Contratto di locazione non trovato</value>
+  </data>
+  <data name="ServiceRequestNotFound" xml:space="preserve">
+    <value>Richiesta di servizio non trovata</value>
+  </data>
+  <data name="PropertySlugTaken" xml:space="preserve">
+    <value>Questo indirizzo web (slug) è già usato da un altro immobile della tua organizzazione.</value>
+  </data>
+  <data name="BookingUpdateInvalid" xml:space="preserve">
+    <value>La prenotazione non può essere modificata così: controlla le date, il numero di ospiti e lo stato della prenotazione.</value>
+  </data>
+  <data name="BookingDatesUnavailable" xml:space="preserve">
+    <value>L'immobile non è disponibile nelle date selezionate.</value>
+  </data>
+  <data name="Auth0RoleSyncFailed" xml:space="preserve">
+    <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
 </root>

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -165,7 +166,11 @@ public class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         var request = await repository.GetByIdAsync(id, cancellationToken)
-            ?? throw new InvalidOperationException("Richiesta non trovata.");
+            ?? throw new NotFoundException($"Service request {id} not found")
+            {
+                Code = "service_request_not_found",
+                MessageKey = "ServiceRequestNotFound",
+            };
 
         if (request.OrgId != hostOrgId)
             throw new UnauthorizedAccessException("Accesso negato.");

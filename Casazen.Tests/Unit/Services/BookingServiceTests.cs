@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -202,6 +203,68 @@ public class BookingServiceTests
 
         Assert.Equal(BookingStatus.CheckedOut, result.Status);
         _mockRepository.Verify(x => x.UpdateAsync(update), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateBookingAsync_CancelledBooking_ThrowsDomainRuleException()
+    {
+        var (existing, update) = CreateFutureBookingPair(BookingStatus.Cancelled);
+        _mockRepository.Setup(x => x.GetByIdAsync(existing.Id)).ReturnsAsync(existing);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.UpdateBookingAsync(update));
+
+        Assert.Equal("booking_update_invalid", ex.Code);
+        Assert.Equal("BookingUpdateInvalid", ex.MessageKey);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Booking>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateBookingAsync_OverlappingBooking_ThrowsDomainConflictException()
+    {
+        var (existing, update) = CreateFutureBookingPair(BookingStatus.Confirmed);
+        _mockRepository.Setup(x => x.GetByIdAsync(existing.Id)).ReturnsAsync(existing);
+        _mockRepository
+            .Setup(x => x.UpdateAsync(update))
+            .ThrowsAsync(new InvalidOperationException("Property not available for selected dates"));
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.UpdateBookingAsync(update));
+
+        Assert.Equal("booking_dates_unavailable", ex.Code);
+        Assert.Equal("BookingDatesUnavailable", ex.MessageKey);
+    }
+
+    [Fact]
+    public async Task UpdateBookingAsync_RepositoryFailsForOtherReason_PropagatesOriginalException()
+    {
+        var (existing, update) = CreateFutureBookingPair(BookingStatus.Confirmed);
+        _mockRepository.Setup(x => x.GetByIdAsync(existing.Id)).ReturnsAsync(existing);
+        _mockRepository
+            .Setup(x => x.UpdateAsync(update))
+            .ThrowsAsync(new InvalidOperationException("The instance of entity type 'Booking' cannot be tracked"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UpdateBookingAsync(update));
+    }
+
+    private static (Booking Existing, Booking Update) CreateFutureBookingPair(BookingStatus existingStatus)
+    {
+        var bookingId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var checkIn = DateTime.UtcNow.Date.AddDays(10);
+        var checkOut = checkIn.AddDays(3);
+        Booking Create(BookingStatus status) => new()
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            Status = status,
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+
+        return (Create(existingStatus), Create(BookingStatus.Confirmed));
     }
 
     [Fact]

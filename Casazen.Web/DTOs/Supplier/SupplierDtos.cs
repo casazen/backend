@@ -83,6 +83,16 @@ public class SupplierRegisterResponse
 {
     public Guid OrgId { get; set; }
     public string AuthRedirectUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when the Auth0 <c>Supplier</c> role was assigned (authenticated registrations only).
+    /// Backend supplier access works regardless (it derives from the DB link); when false the client
+    /// should not expect the role in a refreshed token.
+    /// </summary>
+    public bool RolesSynced { get; set; }
+
+    /// <summary>Stable error code of the failed Auth0 sync, null when synced or not attempted.</summary>
+    public string? RolesSyncError { get; set; }
 }
 
 public class SupplierProfileDto

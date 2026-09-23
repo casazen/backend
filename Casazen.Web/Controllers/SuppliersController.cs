@@ -20,6 +20,7 @@ namespace Casazen.Web.Controllers;
 public class SuppliersController(
     ISupplierService supplierService,
     IAuth0ManagementService auth0Management,
+    IUserAuthorizationCache authorizationCache,
     AppDbContext db,
     IOrgContextResolver orgContextResolver,
     IPropertyAuthorizationService propertyAuthorization,
@@ -74,18 +75,22 @@ public class SuppliersController(
 
             logger.LogInformation("Supplier registered: {OrgId} for {Email}", org.Id, request.Email);
 
-            // Fire-and-forget: assign the Supplier role in Auth0 so the user can access
-            // supplier endpoints after completing Auth0 signup. Silently skips if the
-            // Management API token is not configured.
+            // Registration is the moment the supplier link is created: assign the Supplier role in
+            // Auth0 once, here (additive — host/admin roles are preserved). The outcome is returned
+            // instead of being swallowed; backend supplier access already works through the DB link.
+            Auth0SyncResult? roleSync = null;
             if (userId is not null)
             {
-                _ = auth0Management.AssignRoleAsync(userId, UserRole.Supplier);
+                authorizationCache.Invalidate(userId);
+                roleSync = await auth0Management.AssignRoleAsync(userId, UserRole.Supplier, cancellationToken);
             }
 
             return CreatedAtAction(nameof(Register), new SupplierRegisterResponse
             {
                 OrgId = org.Id,
                 AuthRedirectUrl = "/supplier/activation",
+                RolesSynced = roleSync?.Succeeded == true,
+                RolesSyncError = roleSync is { Succeeded: false } ? roleSync.ErrorCode : null,
             });
         }
         catch (InvalidOperationException ex)
