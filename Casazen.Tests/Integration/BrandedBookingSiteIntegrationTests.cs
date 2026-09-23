@@ -56,6 +56,20 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
+    public async Task AC1_GetPublicOrg_ShowPoweredByTrue_ForStoredProWithoutSubscription()
+    {
+        // A3-07 / A3-37: a Pro tier no subscription pays for is effectively Starter and keeps "Powered by".
+        var org = await SeedOrgAsync($"unpaid-pro-org-{Guid.NewGuid():N}", planTier: PlanTier.Pro, paid: false);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/public/orgs/{org.Slug}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("showPoweredBy").GetBoolean());
+    }
+
+    [Fact]
     public async Task AC1_GetPublicOrg_Returns404_ForUnknownSlug()
     {
         var client = _factory.CreateClient();
@@ -122,8 +136,14 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             Assert.DoesNotContain(key.ToLowerInvariant(), lower);
     }
 
-    private async Task<OrgEntity> SeedOrgAsync(string slug, bool isActive = true, PlanTier planTier = PlanTier.Starter)
+    /// <summary>A paid <paramref name="planTier"/> is seeded with an active subscription unless <paramref name="paid"/> is false (#274).</summary>
+    private async Task<OrgEntity> SeedOrgAsync(
+        string slug,
+        bool isActive = true,
+        PlanTier planTier = PlanTier.Starter,
+        bool paid = true)
     {
+        var withSubscription = planTier != PlanTier.Starter && paid;
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
@@ -136,6 +156,8 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             ThemeColor = "#2563eb",
             ContactEmail = "contact@branded.example",
             PlanTier = planTier,
+            SubscriptionId = withSubscription ? $"sub_test_{Guid.NewGuid():N}" : null,
+            SubscriptionStatus = withSubscription ? SubscriptionStatus.Active : SubscriptionStatus.None,
             PublicThemeId = "mare",
             HeroImageUrl = "https://cdn.example.com/hero.webp",
             Tagline = "Il tuo rifugio sul mare",

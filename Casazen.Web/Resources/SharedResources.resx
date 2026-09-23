@@ -108,6 +108,9 @@
   <data name="ManagedByStripe" xml:space="preserve">
     <value>Il piano è gestito da Stripe. Usa il portale di fatturazione.</value>
   </data>
+  <data name="SubscriptionRequired" xml:space="preserve">
+    <value>Per passare a un piano a pagamento serve un abbonamento attivo: attivalo dalla pagina di fatturazione.</value>
+  </data>
   <data name="BillingNotAvailable" xml:space="preserve">
     <value>Fatturazione non ancora disponibile</value>
   </data>

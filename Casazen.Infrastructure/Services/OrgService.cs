@@ -53,7 +53,6 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         string userId,
         string email,
         string displayName,
-        PlanTier planTier,
         CancellationToken cancellationToken = default)
     {
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
@@ -72,7 +71,7 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
             Name = orgName,
             DisplayName = orgName,
             Slug = slug,
-            PlanTier = planTier,
+            PlanTier = PlanTier.Starter,
             ContactEmail = email,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,

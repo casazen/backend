@@ -246,7 +246,6 @@ public class UserService(
     public async Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
-        PlanTier planTier,
         string email,
         string firstName,
         string lastName)
@@ -270,7 +269,7 @@ public class UserService(
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = email;
 
-        await orgService.EnsureOrgForUserAsync(sub, email, displayName, planTier);
+        await orgService.EnsureOrgForUserAsync(sub, email, displayName);
 
         user = await repository.GetByIdAsync(sub) ?? user;
 
@@ -290,8 +289,8 @@ public class UserService(
         if (roleSync.Succeeded)
         {
             logger.LogInformation(
-                "Onboarding completed: userId={UserId} rentalType={RentalType} planTier={PlanTier} roles=[{Roles}]",
-                sub, rentalType, planTier, string.Join(", ", assigned));
+                "Onboarding completed: userId={UserId} rentalType={RentalType} roles=[{Roles}]",
+                sub, rentalType, string.Join(", ", assigned));
         }
         else
         {

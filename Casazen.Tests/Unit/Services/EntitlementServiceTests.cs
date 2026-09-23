@@ -26,9 +26,21 @@ public class EntitlementServiceTests
             .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
             .Build();
 
+    /// <summary>A paid tier is seeded with the active subscription that pays for it (#274).</summary>
     private static async Task<Guid> SeedOrgWithPropertiesAsync(AppDbContext db, PlanTier tier, int properties)
     {
-        var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}", DisplayName = "Org", ContactEmail = "o@x.it", PlanTier = tier, IsActive = true };
+        var paid = tier != PlanTier.Starter;
+        var org = new OrgEntity
+        {
+            Name = "Org",
+            Slug = $"org-{Guid.NewGuid():N}",
+            DisplayName = "Org",
+            ContactEmail = "o@x.it",
+            PlanTier = tier,
+            SubscriptionId = paid ? $"sub_{Guid.NewGuid():N}" : null,
+            SubscriptionStatus = paid ? SubscriptionStatus.Active : SubscriptionStatus.None,
+            IsActive = true,
+        };
         db.Orgs.Add(org);
         for (var i = 0; i < properties; i++)
             db.Properties.Add(new Property { OwnerId = "auth0|owner", OrgId = org.Id, Name = $"P{i}", Address = "A", City = "Rome" });
@@ -209,5 +221,103 @@ public class EntitlementServiceTests
         var updated = await db.Orgs.FindAsync(org.Id);
         Assert.NotNull(updated);
         Assert.Equal(PlanTier.Starter, updated!.PlanTier);
+    }
+
+    // ── Effective tier (#274, A3-07, A9-02, A3-37) ───────────────────────────────
+
+    private static OrgEntity OrgWith(PlanTier tier, SubscriptionStatus status, DateTime? pastDueSince = null) => new()
+    {
+        Name = "Org",
+        Slug = $"org-{Guid.NewGuid():N}",
+        DisplayName = "Org",
+        ContactEmail = "o@x.it",
+        PlanTier = tier,
+        SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}",
+        SubscriptionStatus = status,
+        PastDueSince = pastDueSince,
+        IsActive = true,
+    };
+
+    [Theory]
+    [InlineData(PlanTier.Pro)]
+    [InlineData(PlanTier.Scale)]
+    public void ResolveEffectiveTier_PaidTierWithoutSubscription_ReturnsStarter(PlanTier stored)
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        Assert.Equal(PlanTier.Starter, service.ResolveEffectiveTier(OrgWith(stored, SubscriptionStatus.None)));
+    }
+
+    [Theory]
+    [InlineData(SubscriptionStatus.Active)]
+    [InlineData(SubscriptionStatus.Trialing)]
+    public void ResolveEffectiveTier_PaidSubscription_ReturnsStoredTier(SubscriptionStatus status)
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        Assert.Equal(PlanTier.Scale, service.ResolveEffectiveTier(OrgWith(PlanTier.Scale, status)));
+    }
+
+    [Fact]
+    public void ResolveEffectiveTier_Canceled_ReturnsStarter()
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        Assert.Equal(PlanTier.Starter, service.ResolveEffectiveTier(OrgWith(PlanTier.Pro, SubscriptionStatus.Canceled)));
+    }
+
+    [Fact]
+    public void ResolveEffectiveTier_UnmappedStatus_FailsClosedToStarter()
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        Assert.Equal(PlanTier.Starter, service.ResolveEffectiveTier(OrgWith(PlanTier.Pro, (SubscriptionStatus)99)));
+    }
+
+    [Fact]
+    public async Task GetEntitlementAsync_StoredProWithoutSubscription_ReturnsStarterLimits()
+    {
+        await using var db = NewDb();
+        var org = OrgWith(PlanTier.Pro, SubscriptionStatus.None);
+        db.Orgs.Add(org);
+        for (var i = 0; i < 3; i++)
+            db.Properties.Add(new Property { OwnerId = "auth0|owner", OrgId = org.Id, Name = $"P{i}", Address = "A", City = "Rome" });
+        await db.SaveChangesAsync();
+        var service = new EntitlementService(db, Config());
+
+        var result = await service.GetEntitlementAsync(org.Id);
+
+        Assert.Equal(PlanTier.Starter.ToString(), result.PlanTier);
+        Assert.Equal(3, result.MaxProperties);
+        Assert.False(result.CanAddProperty);
+        Assert.False(await service.ReservePropertySlotAsync(org.Id));
+    }
+
+    [Fact]
+    public async Task CanUseCustomDomainAsync_StoredProWithoutSubscription_ReturnsFalse()
+    {
+        await using var db = NewDb();
+        var org = OrgWith(PlanTier.Pro, SubscriptionStatus.None);
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+        var service = new EntitlementService(db, Config());
+
+        Assert.False(await service.CanUseCustomDomainAsync(org.Id));
+    }
+
+    [Fact]
+    public async Task CanUseCustomDomainAsync_ProWithActiveSubscription_ReturnsTrue()
+    {
+        await using var db = NewDb();
+        var org = OrgWith(PlanTier.Pro, SubscriptionStatus.Active);
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+        var service = new EntitlementService(db, Config());
+
+        Assert.True(await service.CanUseCustomDomainAsync(org.Id));
     }
 }
