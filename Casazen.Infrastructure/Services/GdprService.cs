@@ -12,9 +12,9 @@ public class GdprService(
     AppDbContext db,
     ILogger<GdprService> logger) : IGdprService
 {
-    public async Task<Dictionary<string, object>> ExportGuestDataAsync(Guid guestId)
+    public async Task<Dictionary<string, object>> ExportGuestDataAsync(Guid orgId, Guid guestId)
     {
-        var guest = await guestRepository.GetByIdAsync(guestId)
+        var guest = await guestRepository.GetByIdInOrgAsync(orgId, guestId)
             ?? throw GuestNotFound(guestId);
 
         return new Dictionary<string, object>
@@ -37,9 +37,9 @@ public class GdprService(
         };
     }
 
-    public async Task DeleteGuestDataAsync(Guid guestId, string reason)
+    public async Task DeleteGuestDataAsync(Guid orgId, Guid guestId, string reason)
     {
-        var guest = await guestRepository.GetByIdAsync(guestId)
+        var guest = await guestRepository.GetByIdInOrgAsync(orgId, guestId)
             ?? throw GuestNotFound(guestId);
 
         guest.IsDeleted = true;
@@ -50,19 +50,19 @@ public class GdprService(
         logger.LogInformation("Guest {GuestId} data deleted, reason: {Reason}", guestId, reason);
     }
 
-    public async Task AnonymizeGuestDataAsync(Guid guestId)
+    public async Task AnonymizeGuestDataAsync(Guid orgId, Guid guestId)
     {
-        var guest = await guestRepository.GetByIdAsync(guestId);
-        if (guest == null) return;
+        var guest = await guestRepository.GetByIdInOrgAsync(orgId, guestId)
+            ?? throw GuestNotFound(guestId);
 
         AnonymizeFields(guest);
         await guestRepository.UpdateAsync(guest);
         logger.LogInformation("Guest {GuestId} data anonymized (retention period expired)", guestId);
     }
 
-    public async Task UpdateConsentAsync(Guid guestId, bool marketingConsent)
+    public async Task UpdateConsentAsync(Guid orgId, Guid guestId, bool marketingConsent)
     {
-        var guest = await guestRepository.GetByIdAsync(guestId)
+        var guest = await guestRepository.GetByIdInOrgAsync(orgId, guestId)
             ?? throw GuestNotFound(guestId);
 
         guest.MarketingConsent = marketingConsent;

@@ -377,6 +377,7 @@ public class GuestCheckInService(
             return guest;
 
         var snapshot = guest.CreateSnapshot(now);
+        snapshot.OrgId = booking.OrgId;
         db.Guests.Add(snapshot);
         booking.GuestId = snapshot.Id;
         booking.Guest = snapshot;

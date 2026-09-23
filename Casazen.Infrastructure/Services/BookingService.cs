@@ -16,7 +16,6 @@ public class BookingService(
     IBookingRepository repository,
     IPropertyRepository propertyRepository,
     IOrgService orgService,
-    IGuestService guestService,
     IGuestRepository guestRepository,
     ITaxCalculationService taxCalculationService,
     IStripeService stripeService,
@@ -41,15 +40,6 @@ public class BookingService(
     public async Task<IEnumerable<Booking>> GetGuestBookingsAsync(Guid guestId)
     {
         return await repository.GetByGuestAsync(guestId);
-    }
-
-    public async Task<IEnumerable<Booking>> GetBookingsByEmailAsync(string email)
-    {
-        var guest = await guestService.GetGuestByEmailAsync(email);
-        if (guest is null)
-            return Enumerable.Empty<Booking>();
-
-        return await repository.GetByGuestAsync(guest.Id);
     }
 
     public async Task<IEnumerable<Booking>> GetAllBookingsAsync()
@@ -142,7 +132,8 @@ public class BookingService(
                 DirectBookingErrorCodes.NotAvailable);
         }
 
-        var guest = await CreateGuestSnapshotWithConsentAsync(input.Guest, input.ConsentVersion, input.ConsentIpAddress);
+        var guest = await CreateGuestSnapshotWithConsentAsync(
+            property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
         var nights = (checkOut - checkIn).Days;
         var basePrice = property.NightlyRate * nights + property.CleaningFee;
@@ -439,6 +430,7 @@ public class BookingService(
     }
 
     private async Task<Guest> CreateGuestSnapshotWithConsentAsync(
+        Guid orgId,
         DirectBookingGuestInput guestInput,
         string consentVersion,
         string consentIpAddress)
@@ -448,6 +440,7 @@ public class BookingService(
 
         var guest = new Guest
         {
+            OrgId = orgId,
             FirstName = guestInput.FirstName,
             LastName = guestInput.LastName,
             Email = guestInput.Email,

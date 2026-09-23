@@ -47,7 +47,7 @@ public class GdprControllerTests
         var result = await _controller.ExportGuestData(guestId);
 
         Assert.IsType<NotFoundResult>(result);
-        _mockGdprService.Verify(x => x.ExportGuestDataAsync(It.IsAny<Guid>()), Times.Never);
+        _mockGdprService.Verify(x => x.ExportGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class GdprControllerTests
             .Setup(x => x.IsGuestAccessibleAsync(guestId, OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _mockGdprService
-            .Setup(x => x.ExportGuestDataAsync(guestId))
+            .Setup(x => x.ExportGuestDataAsync(OrgId, guestId))
             .ReturnsAsync(new Dictionary<string, object> { ["guestId"] = guestId });
 
         var result = await _controller.ExportGuestData(guestId);
@@ -90,6 +90,6 @@ public class GdprControllerTests
         var result = await _controller.AnonymizeGuestData(guestId);
 
         Assert.IsType<NoContentResult>(result);
-        _mockGdprService.Verify(x => x.AnonymizeGuestDataAsync(guestId), Times.Once);
+        _mockGdprService.Verify(x => x.AnonymizeGuestDataAsync(OrgId, guestId), Times.Once);
     }
 }
