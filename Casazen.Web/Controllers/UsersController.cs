@@ -5,6 +5,7 @@ using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Mapping;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -133,16 +134,27 @@ public class UsersController(
         if (adminSub == null)
             return Unauthorized();
 
+        Auth0SyncResult sync;
         try
         {
-            await userService.ChangeRoleAsync(id, newRole, adminSub);
+            sync = await userService.ChangeRoleAsync(id, newRole, adminSub);
         }
         catch (KeyNotFoundException)
         {
             return NotFound();
         }
 
-        return Ok(new { id, role = dto.Role });
+        if (!sync.Succeeded)
+        {
+            // The CasaZen role is unchanged: Auth0 is the source of the JWT roles, so a role change
+            // that cannot reach it must not be reported as done. Retrying is safe (idempotent).
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
+        }
+
+        return Ok(new { id, role = newRole.ToString(), rolesSynced = true });
     }
 
     /// <summary>Soft-deletes a user (sets IsActive = false). Admin only. Cannot self-delete.</summary>
@@ -202,7 +214,7 @@ public class UsersController(
         if (!requireConsents && !hadOrg)
             return BadRequest(new { error = "Initial onboarding must be completed with required consents." });
 
-        var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
+        var (user, rolesAssigned, roleSync) = await userService.CompleteOnboardingAsync(
             sub, rentalType, planTier, email, firstName, lastName);
 
         if (user.OrgId is not Guid orgId)
@@ -226,6 +238,8 @@ public class UsersController(
             OrgId = orgId,
             OrgProvisioned = !hadOrg,
             ConsentsRecorded = consentsRecorded,
+            RolesSynced = roleSync.Succeeded,
+            RolesSyncError = roleSync.Succeeded ? null : roleSync.ErrorCode,
         });
     }
 

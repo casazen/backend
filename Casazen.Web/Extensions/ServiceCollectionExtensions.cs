@@ -116,14 +116,14 @@ public static class ServiceCollectionExtensions
                                 {
                                     try
                                     {
-                                        var db = context.HttpContext.RequestServices
-                                            .GetRequiredService<AppDbContext>();
-                                        var supplierOrgId = await db.Users
-                                            .Where(u => u.Id == sub)
-                                            .Select(u => u.SupplierOrgId)
-                                            .FirstOrDefaultAsync();
+                                        // Cached per request and for a short time per user (A4-30):
+                                        // no DB round-trip on every authenticated call.
+                                        var snapshots = context.HttpContext.RequestServices
+                                            .GetRequiredService<IUserAuthorizationSnapshotStore>();
+                                        var snapshot = await snapshots.GetAsync(
+                                            sub, context.HttpContext.RequestAborted);
 
-                                        if (supplierOrgId is not null)
+                                        if (snapshot.SupplierOrgId is not null)
                                         {
                                             identity.AddClaim(new Claim(
                                                 "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
@@ -156,6 +156,11 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddCasazenAuthorization(this IServiceCollection services)
     {
         services.AddHttpContextAccessor();
+        services.AddMemoryCache();
+        services.AddScoped<UserAuthorizationSnapshotStore>();
+        services.AddScoped<IUserAuthorizationSnapshotStore>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
+        services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
+        services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         services.AddScoped<IAuthorizationHandler, ContextAuthorizationHandler>();
 
