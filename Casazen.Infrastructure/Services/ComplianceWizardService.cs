@@ -52,7 +52,7 @@ public class ComplianceWizardService(
             property.UpdatedAt = DateTime.UtcNow;
         }
 
-        if (tosAccepted == false)
+        if (tosAccepted != true)
             throw new InvalidOperationException("Devi accettare i termini di servizio");
 
         var steps = await BuildActivationStepsAsync(property, cancellationToken);
