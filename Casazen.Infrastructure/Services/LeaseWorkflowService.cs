@@ -91,6 +91,8 @@ public class LeaseWorkflowService(
         if (lease.Status != LeaseStatus.Draft)
             throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
 
+        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
+
         var pdfBytes = await templateService.GeneratePdfAsync(lease);
         var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
 
@@ -164,6 +166,8 @@ public class LeaseWorkflowService(
 
         if (!rliOptions.Value.FilingEnabled)
             throw new InvalidOperationException("RLI filing is currently disabled.");
+
+        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
 
         await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
         {

@@ -10,6 +10,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:guest.read")]
 public class GuestsController(
     IGuestService guestService,
     IOrgContextResolver orgContextResolver,
@@ -76,6 +77,7 @@ public class GuestsController(
     }
 
     [HttpPost]
+    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<ActionResult<Guest>> Create([FromBody] CreateGuestRequest request)
     {
         if (!ModelState.IsValid)
@@ -112,6 +114,7 @@ public class GuestsController(
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<ActionResult<Guest>> Update(Guid id, [FromBody] UpdateGuestRequest request)
     {
         if (!ModelState.IsValid)
@@ -153,6 +156,7 @@ public class GuestsController(
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> Delete(Guid id)
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
