@@ -163,7 +163,8 @@ public class PublicBookingsController(
                     error = "Property not available for selected dates",
                 }),
                 DirectBookingErrorCodes.TooManyGuests or DirectBookingErrorCodes.InvalidDates
-                    or DirectBookingErrorCodes.InvalidConsentVersion => BadRequest(new
+                    or DirectBookingErrorCodes.InvalidConsentVersion
+                    or DirectBookingErrorCodes.InvalidPaymentOption => BadRequest(new
                     {
                         error = ex.ErrorCode,
                         message = ex.Message,

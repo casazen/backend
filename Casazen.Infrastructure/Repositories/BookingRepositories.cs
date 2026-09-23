@@ -95,6 +95,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .Where(b => b.PropertyId == propertyId &&
                         b.Status == BookingStatus.Pending &&
                         b.Source == BookingSource.Direct &&
+                        (b.StripeSetupIntentId != null ||
+                         b.Payments.Any(p => p.StripePaymentIntentId != null)) &&
                         b.CreatedAt < cutoff)
             .ToListAsync();
 
@@ -224,6 +226,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             !(pendingCutoff.HasValue &&
               b.Status == BookingStatus.Pending &&
               b.Source == BookingSource.Direct &&
+              (b.StripeSetupIntentId != null ||
+               b.Payments.Any(p => p.StripePaymentIntentId != null)) &&
               b.CreatedAt < pendingCutoff.Value));
 
         if (excludeBookingId.HasValue)
@@ -237,8 +241,14 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         if (!string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
             return null;
 
-        var transaction = await context.Database.BeginTransactionAsync();
         var lockKey = ToAdvisoryLockKey(propertyId);
+        if (context.Database.CurrentTransaction is not null)
+        {
+            await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", lockKey);
+            return null;
+        }
+
+        var transaction = await context.Database.BeginTransactionAsync();
         await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", lockKey);
         return transaction;
     }
