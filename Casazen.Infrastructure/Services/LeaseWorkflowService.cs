@@ -187,6 +187,14 @@ public class LeaseWorkflowService(
 
         await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
 
+        var registration = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Pending
+        };
+        if (!await registrationRepository.TryReserveSubmissionAsync(registration))
+            throw new InvalidOperationException("Registration has already been submitted for this lease.");
+
         await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
         {
             OrgId = lease.OrgId,
@@ -205,15 +213,10 @@ public class LeaseWorkflowService(
 
         var externalId = await registrationService.SubmitRegistrationAsync(lease);
 
-        var registration = new LeaseRegistration
-        {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.SentToProvider,
-            ExternalRegistrationId = externalId,
-            SubmittedAt = DateTime.UtcNow
-        };
-
-        await registrationRepository.AddAsync(registration);
+        registration.Status = RegistrationStatus.SentToProvider;
+        registration.ExternalRegistrationId = externalId;
+        registration.SubmittedAt = DateTime.UtcNow;
+        await registrationRepository.UpdateAsync(registration);
 
         lease.Status = LeaseStatus.SentToProvider;
         await leaseRepository.UpdateAsync(lease);
