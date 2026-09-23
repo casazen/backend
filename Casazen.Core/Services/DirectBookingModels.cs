@@ -47,5 +47,6 @@ public static class DirectBookingErrorCodes
     public const string InvalidConsentVersion = "invalid_consent_version";
     public const string TooManyGuests = "too_many_guests";
     public const string InvalidDates = "invalid_dates";
+    public const string InvalidPaymentOption = "invalid_payment_option";
     public const string StripeError = "stripe_error";
 }
