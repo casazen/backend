@@ -39,6 +39,7 @@ public interface IComplianceWizardService
     Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
+        IEnumerable<string> userRoles,
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default);
 }

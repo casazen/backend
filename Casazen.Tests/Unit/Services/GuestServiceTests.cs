@@ -217,6 +217,28 @@ public class GuestServiceTests
     }
 
     [Fact]
+    public async Task CreateGuestSnapshotAsync_WithExistingEmail_DoesNotCheckGlobalEmailUniqueness()
+    {
+        // Arrange
+        var guest = new Guest
+        {
+            FirstName = "John",
+            LastName = "Doe",
+            Email = "john.doe@example.com"
+        };
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Guest>())).ReturnsAsync(guest);
+
+        // Act
+        var result = await _service.CreateGuestSnapshotAsync(guest);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(guest.Email, result.Email);
+        _mockRepository.Verify(x => x.ExistsByEmailAsync(It.IsAny<string>()), Times.Never);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Once);
+    }
+
+    [Fact]
     public async Task UpdateGuestAsync_WithExistingGuest_ReturnsUpdatedGuest()
     {
         // Arrange
