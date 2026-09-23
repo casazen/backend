@@ -10,12 +10,14 @@ using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using Polly;
 
 namespace Casazen.Web.Extensions;
@@ -45,6 +47,15 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenAuthentication(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
+        // Domain and Audience validate every JWT: outside Development/Testing the app does not start without them (FD-12).
+        var auth0Options = services.AddOptions<Auth0Options>()
+            .Bind(configuration.GetSection(Auth0Options.SectionName));
+        if (RequiredConfiguration.IsEnforced(environment))
+        {
+            services.AddSingleton<IValidateOptions<Auth0Options>, Auth0OptionsValidator>();
+            auth0Options.ValidateOnStart();
+        }
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
