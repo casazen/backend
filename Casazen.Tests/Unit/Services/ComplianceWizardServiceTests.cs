@@ -174,6 +174,9 @@ public class ComplianceWizardServiceTests
             FirstName = "Luigi",
             LastName = "Verdi",
             Email = $"luigi-{Guid.NewGuid():N}@test.com",
+            // Retention is only ever extended (#429): start below checkout + 7y so the wizard's
+            // checkout-anchored horizon is observable regardless of the entity's UtcNow default.
+            DataRetentionUntil = DateTime.UtcNow.Date.AddYears(1),
         };
         db.Guests.Add(guest);
 
@@ -208,6 +211,39 @@ public class ComplianceWizardServiceTests
         Assert.True(propertyReady);
         Assert.Equal(BookingStatus.CheckedOut, updated.Status);
         Assert.Equal(booking.CheckOutDate.AddYears(7), updated.Guest.DataRetentionUntil);
+    }
+
+    [Fact]
+    public async Task CompleteCheckoutWizard_SharedGuest_KeepsRetentionForLatestBooking()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_SharedGuest_KeepsRetentionForLatestBooking));
+        var org = new OrgEntity { Name = "Repeat Guest Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var property = await SeedPropertyAsync(db, org.Id);
+        var guest = new Guest
+        {
+            FirstName = "Repeat",
+            LastName = "Guest",
+            Email = $"repeat-{Guid.NewGuid():N}@test.com",
+            DataRetentionUntil = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc).AddYears(7),
+        };
+        db.Guests.Add(guest);
+
+        var earlyCheckout = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+        var laterCheckout = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        var earlyBooking = BuildBooking(property, guest, earlyCheckout, BookingStatus.CheckedIn);
+        var laterBooking = BuildBooking(property, guest, laterCheckout, BookingStatus.Confirmed);
+        db.Bookings.AddRange(earlyBooking, laterBooking);
+        await db.SaveChangesAsync();
+
+        await CreateService(db).CompleteCheckoutWizardAsync(
+            earlyBooking.Id,
+            property.OwnerId,
+            ["PropertyOwner"],
+            new CompleteCheckoutWizardInput(true, null, null, null));
+
+        var reloadedGuest = await db.Guests.SingleAsync(g => g.Id == guest.Id);
+        Assert.Equal(laterCheckout.AddYears(7), reloadedGuest.DataRetentionUntil);
     }
 
     private static async Task<Property> SeedPropertyAsync(
@@ -247,6 +283,23 @@ public class ComplianceWizardServiceTests
         await db.SaveChangesAsync();
         return property;
     }
+
+    private static Booking BuildBooking(Property property, Guest guest, DateTime checkout, BookingStatus status) => new()
+    {
+        Id = Guid.NewGuid(),
+        PropertyId = property.Id,
+        Property = property,
+        OrgId = property.OrgId,
+        GuestId = guest.Id,
+        Guest = guest,
+        CheckInDate = checkout.AddDays(-2),
+        CheckOutDate = checkout,
+        Status = status,
+        NumberOfGuests = 2,
+        BasePrice = 100,
+        TouristTax = 0,
+        TotalPrice = 100,
+    };
 
     private static async Task<Property> SeedFullyCompliantPropertyAsync(AppDbContext db, Guid? orgId = null)
     {

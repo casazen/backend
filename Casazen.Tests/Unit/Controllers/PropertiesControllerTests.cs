@@ -2,7 +2,9 @@ using System.Security.Claims;
 using System.Text.Json;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -24,6 +26,7 @@ public class PropertiesControllerTests
     private readonly Mock<IPropertyService> _mockService;
     private readonly Mock<IImageStorageService> _mockImageStorage;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
+    private readonly Mock<ILeaseContractRepository> _mockLeaseContractRepository;
     private readonly Mock<IPropertyDocumentService> _mockDocumentService;
     private readonly Mock<IAdminAccessAuditService> _mockAuditService;
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
@@ -37,6 +40,7 @@ public class PropertiesControllerTests
         _mockService = new Mock<IPropertyService>();
         _mockImageStorage = new Mock<IImageStorageService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
+        _mockLeaseContractRepository = new Mock<ILeaseContractRepository>();
         _mockDocumentService = new Mock<IPropertyDocumentService>();
         _mockAuditService = new Mock<IAdminAccessAuditService>();
         _mockOrgContextResolver = new Mock<IOrgContextResolver>();
@@ -47,6 +51,7 @@ public class PropertiesControllerTests
             _mockService.Object,
             _mockImageStorage.Object,
             _mockAuthz.Object,
+            _mockLeaseContractRepository.Object,
             _mockDocumentService.Object,
             _mockAuditService.Object,
             _mockOrgContextResolver.Object,
@@ -63,6 +68,9 @@ public class PropertiesControllerTests
         _mockEntitlementService
             .Setup(x => x.ReservePropertySlotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        _mockLeaseContractRepository
+            .Setup(x => x.GetByPropertyAsync(It.IsAny<Guid>()))
+            .ReturnsAsync(Array.Empty<LeaseContract>());
     }
 
     private static PropertyICalSyncService CreatePropertyICalSyncService()
@@ -489,6 +497,106 @@ public class PropertiesControllerTests
         // ApplyTo mutates existingProperty in place; OwnerId and Id are preserved
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId && p.OwnerId == userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Update_ChangingCityAfterCanoneConcordatoRegistrationSubmission_ReturnsConflict()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = userId,
+            City = "Cesano Maderno"
+        };
+        var request = new UpdatePropertyRequest
+        {
+            Name = "Original",
+            City = "Seveso",
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockLeaseContractRepository
+            .Setup(x => x.GetByPropertyAsync(propertyId))
+            .ReturnsAsync(new[]
+            {
+                new LeaseContract
+                {
+                    PropertyId = propertyId,
+                    FiscalRegime = FiscalRegime.CanoneConcordato,
+                    Status = LeaseStatus.Registered
+                }
+            });
+
+        // Act
+        var result = await _controller.Update(propertyId, request);
+
+        // Assert
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal("Cesano Maderno", existingProperty.City);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_KeepingCityAfterCanoneConcordatoRegistrationSubmission_UpdatesProperty()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = userId,
+            City = "Cesano Maderno"
+        };
+        var request = new UpdatePropertyRequest
+        {
+            Name = "Updated",
+            City = " cesano maderno ",
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        };
+
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
+            .ReturnsAsync(existingProperty);
+        _mockLeaseContractRepository
+            .Setup(x => x.GetByPropertyAsync(propertyId))
+            .ReturnsAsync(new[]
+            {
+                new LeaseContract
+                {
+                    PropertyId = propertyId,
+                    FiscalRegime = FiscalRegime.CanoneConcordato,
+                    Status = LeaseStatus.Registered
+                }
+            });
+
+        // Act
+        var result = await _controller.Update(propertyId, request);
+
+        // Assert
+        Assert.IsType<NoContentResult>(result);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
+            p => p.Id == propertyId && p.City == request.City)), Times.Once);
     }
 
     [Fact]

@@ -19,6 +19,7 @@ public class LeaseWorkflowService(
     IPropertyRepository propertyRepository,
     ILeaseRegistrationAuthorizationRepository authorizationRepository,
     IApeComplianceService apeCompliance,
+    ICanoneConcordatoEligibilityService canoneConcordatoEligibility,
     IOptions<RliOptions> rliOptions,
     ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
 {
@@ -40,6 +41,11 @@ public class LeaseWorkflowService(
 
         if (request.EndDate <= request.StartDate)
             throw new InvalidOperationException("Lease end date must be after start date.");
+
+        EnsureCanoneConcordatoMinimumTerm(request.FiscalRegime, request.StartDate, request.EndDate);
+
+        if (request.FiscalRegime == FiscalRegime.CanoneConcordato)
+            await EnsureCanoneConcordatoRentIsValidAsync(propertyId, ownerId, request);
 
         var parties = request.Parties.ToList();
         if (!parties.Any(p => p.Role == PartyRole.Landlord))
@@ -87,6 +93,10 @@ public class LeaseWorkflowService(
         if (lease.Status != LeaseStatus.Draft)
             throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
 
+        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
+
+        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
+
         var pdfBytes = await templateService.GeneratePdfAsync(lease);
         var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
 
@@ -125,6 +135,15 @@ public class LeaseWorkflowService(
                 return;
             }
 
+            if (string.IsNullOrWhiteSpace(esignEvent.SignedDocumentPath))
+            {
+                logger.LogWarning(
+                    "ESign all-signed webhook missing signed document path. LeaseId={LeaseId} SessionId={SessionId}",
+                    lease.Id,
+                    esignEvent.ExternalSessionId);
+                return;
+            }
+
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = esignEvent.SignedDocumentPath;
             await leaseRepository.UpdateAsync(lease);
@@ -152,11 +171,16 @@ public class LeaseWorkflowService(
         var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
 
         var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
-        if (existing is not null)
+        if (existing is not null && existing.Status != RegistrationStatus.Failed)
             throw new InvalidOperationException("Registration has already been submitted for this lease.");
 
         if (lease.Status != LeaseStatus.Signed)
             throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
+
+        if (string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath))
+            throw new InvalidOperationException("Signed lease PDF must be stored before registration.");
+
+        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
 
         var expectedTos = rliOptions.Value.TosVersion;
         if (!authorization.AttestationAccepted
@@ -165,6 +189,32 @@ public class LeaseWorkflowService(
         {
             throw new InvalidOperationException(
                 "Landlord authorization (delega) is required before RLI submission.");
+        }
+
+        if (!rliOptions.Value.FilingEnabled)
+            throw new InvalidOperationException("RLI filing is currently disabled.");
+
+        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
+
+        // Reserve the single per-lease registration row before calling the external provider so that
+        // concurrent requests cannot both submit. A row left Failed by the provider is claimed atomically
+        // (Failed -> Pending) and reused, keeping the one-registration-per-lease invariant.
+        LeaseRegistration registration;
+        if (existing is null)
+        {
+            registration = new LeaseRegistration
+            {
+                LeaseContractId = lease.Id,
+                Status = RegistrationStatus.Pending
+            };
+            if (!await registrationRepository.TryReserveSubmissionAsync(registration))
+                throw new InvalidOperationException("Registration has already been submitted for this lease.");
+        }
+        else
+        {
+            registration = existing;
+            if (!await registrationRepository.TryReserveRetryAsync(registration))
+                throw new InvalidOperationException("Registration has already been submitted for this lease.");
         }
 
         await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
@@ -184,16 +234,15 @@ public class LeaseWorkflowService(
         });
 
         var externalId = await registrationService.SubmitRegistrationAsync(lease);
+        var submittedAt = DateTime.UtcNow;
 
-        var registration = new LeaseRegistration
-        {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.SentToProvider,
-            ExternalRegistrationId = externalId,
-            SubmittedAt = DateTime.UtcNow
-        };
-
-        await registrationRepository.AddAsync(registration);
+        registration.Status = RegistrationStatus.SentToProvider;
+        registration.ExternalRegistrationId = externalId;
+        registration.RegistrationCode = null;
+        registration.ReceiptStoragePath = null;
+        registration.SubmittedAt = submittedAt;
+        registration.ConfirmedAt = null;
+        await registrationRepository.UpdateAsync(registration);
 
         lease.Status = LeaseStatus.SentToProvider;
         await leaseRepository.UpdateAsync(lease);
@@ -244,5 +293,52 @@ public class LeaseWorkflowService(
             throw new UnauthorizedAccessException("Lease does not belong to this owner.");
 
         return lease;
+    }
+
+    private async Task EnsureCanoneConcordatoRentIsValidAsync(
+        Guid propertyId,
+        string ownerId,
+        CreateLeaseRequest request)
+    {
+        if (request.CanoneConcordatoCharacteristics is null)
+            throw new InvalidOperationException(
+                "Canone concordato characteristics are required for canone concordato leases.");
+
+        var eligibility = await canoneConcordatoEligibility.CalculateAsync(
+            propertyId,
+            ownerId,
+            request.CanoneConcordatoCharacteristics);
+
+        if (eligibility is not
+            {
+                Available: true,
+                CanoneMinMensile: decimal minMonthly,
+                CanoneMaxMensile: decimal maxMonthly
+            })
+        {
+            throw new InvalidOperationException("Canone concordato rent band is unavailable for this property.");
+        }
+
+        if (request.MonthlyRent < minMonthly || request.MonthlyRent > maxMonthly)
+        {
+            throw new InvalidOperationException(
+                "Monthly rent must be within the calculated canone concordato range.");
+        }
+    }
+
+    private static void EnsureCanoneConcordatoMinimumTerm(
+        FiscalRegime fiscalRegime,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        if (fiscalRegime != FiscalRegime.CanoneConcordato)
+            return;
+
+        var minimumEndDate = startDate.Date.AddYears(3).AddDays(-1);
+        if (endDate.Date < minimumEndDate)
+        {
+            throw new InvalidOperationException(
+                "Canone concordato leases must cover at least the initial 3-year term required for contratto tipo 3+2.");
+        }
     }
 }

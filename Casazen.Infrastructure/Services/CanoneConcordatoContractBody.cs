@@ -10,8 +10,6 @@ internal static class CanoneConcordatoContractBody
 {
     public static string Build(LeaseContract lease, string versionId)
     {
-        var landlord = lease.Parties?.FirstOrDefault(p => p.Role == PartyRole.Landlord);
-        var tenant = lease.Parties?.FirstOrDefault(p => p.Role == PartyRole.Tenant);
         var city = lease.Property?.City ?? string.Empty;
         var address = lease.Property?.Address ?? string.Empty;
         var annual = lease.MonthlyRent * 12;
@@ -23,8 +21,8 @@ internal static class CanoneConcordatoContractBody
         sb.AppendLine("art. 2 comma 3 Legge 431/1998 - contratto tipo 3+2 - D.M. 16 gennaio 2017.");
         sb.AppendLine($"TemplateVersion: {versionId}");
         sb.AppendLine(CanoneConcordatoCopy.Disclaimer);
-        sb.AppendLine(PartyLine("Locatore", landlord));
-        sb.AppendLine(PartyLine("Conduttore", tenant));
+        AppendPartyLines(sb, "Locatore", lease.Parties, PartyRole.Landlord);
+        AppendPartyLines(sb, "Conduttore", lease.Parties, PartyRole.Tenant);
         sb.AppendLine($"Comune: {city}");
         sb.AppendLine($"Indirizzo: {address}");
         sb.AppendLine($"Decorrenza: {lease.StartDate:yyyy-MM-dd} - {lease.EndDate:yyyy-MM-dd}");
@@ -42,16 +40,31 @@ internal static class CanoneConcordatoContractBody
         sb.AppendLine("BOZZA - MODELLO DI LAVORO INTERNO. Da confermare con legale.");
         sb.AppendLine($"Regime fiscale: {lease.FiscalRegime}");
         sb.AppendLine($"TemplateVersion: {versionId}");
+        AppendPartyLines(sb, "Locatore", lease.Parties, PartyRole.Landlord);
+        AppendPartyLines(sb, "Conduttore", lease.Parties, PartyRole.Tenant);
         sb.AppendLine(string.Create(CultureInfo.InvariantCulture, $"Canone mensile: {lease.MonthlyRent:0.00} EUR"));
         sb.AppendLine($"Decorrenza: {lease.StartDate:yyyy-MM-dd} - {lease.EndDate:yyyy-MM-dd}");
         sb.AppendLine($"Comune: {lease.Property?.City}");
         return sb.ToString();
     }
 
-    private static string PartyLine(string role, Party? party)
+    private static void AppendPartyLines(StringBuilder sb, string label, IEnumerable<Party>? parties, PartyRole role)
     {
-        if (party is null)
-            return $"{role}: [da compilare]";
-        return $"{role}: {party.FirstName} {party.LastName} CF:{party.FiscalCode}";
+        var matchingParties = parties?
+            .Where(p => p.Role == role)
+            .ToList() ?? [];
+
+        if (matchingParties.Count == 0)
+        {
+            sb.AppendLine($"{label}: [da compilare]");
+            return;
+        }
+
+        for (var i = 0; i < matchingParties.Count; i++)
+        {
+            var party = matchingParties[i];
+            var suffix = matchingParties.Count == 1 ? string.Empty : $" {i + 1}";
+            sb.AppendLine($"{label}{suffix}: {party.FirstName} {party.LastName} CF:{party.FiscalCode}");
+        }
     }
 }

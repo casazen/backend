@@ -37,9 +37,11 @@ public class MigrationSqlTests
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        Assert.EndsWith("AddLeaseRegistrationAuthorization", keys[^1]);
-        Assert.EndsWith("AddTerritorialRentAgreements", keys[^2]);
-        Assert.EndsWith("AddStrFiscalRegime2026", keys[^3]);
+        Assert.EndsWith("AddLongRentPropertyPermissions", keys[^1]);
+        Assert.EndsWith("AddLeaseRegistrationAuthorization", keys[^2]);
+        Assert.EndsWith("AddTerritorialRentAgreements", keys[^3]);
+        Assert.EndsWith("AddStrFiscalRegime2026", keys[^4]);
+        Assert.Contains(keys, k => k.EndsWith("AddLongRentPropertyPermissions", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddLeaseRegistrationAuthorization", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("RestrictCustomDomainUniquenessToVerified", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("NormalizeOrgPublicHostState", StringComparison.Ordinal));
@@ -80,6 +82,19 @@ public class MigrationSqlTests
         Assert.Contains("AND \"CustomDomain\" IS NULL", script);
         Assert.Contains("SET \"Subdomain\" = NULL", script);
         Assert.Contains("WHERE \"PublicHostMode\" <> 0", script);
+    }
+
+    [Fact]
+    public void AddLongRentPropertyPermissions_GrantsPropertyReadWriteToLongRentRole()
+    {
+        using var db = NewNpgsqlContext();
+        var migrator = db.GetService<IMigrator>();
+        var script = migrator.GenerateScript(
+            fromMigration: "20260817084000_AddLeaseRegistrationAuthorization",
+            toMigration: "20260831111000_AddLongRentPropertyPermissions");
+
+        Assert.Contains("('property.read', 2)", script);
+        Assert.Contains("('property.write', 2)", script);
     }
 
     [Fact]

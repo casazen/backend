@@ -83,6 +83,7 @@ public class ESignWebhookJobTests
             Mock.Of<IPropertyRepository>(),
             Mock.Of<ILeaseRegistrationAuthorizationRepository>(),
             Mock.Of<IApeComplianceService>(),
+            Mock.Of<ICanoneConcordatoEligibilityService>(),
             Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
 
@@ -113,6 +114,7 @@ public class ESignWebhookJobTests
             Mock.Of<IPropertyRepository>(),
             Mock.Of<ILeaseRegistrationAuthorizationRepository>(),
             Mock.Of<IApeComplianceService>(),
+            Mock.Of<ICanoneConcordatoEligibilityService>(),
             Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
         return (sut, leaseRepo, events);
