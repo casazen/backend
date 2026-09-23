@@ -1,5 +1,6 @@
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -9,6 +10,7 @@ public class GdprDataRetentionJob(
     IGdprService gdprService,
     ILogger<GdprDataRetentionJob> logger)
 {
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var expiredGuests = await context.Guests

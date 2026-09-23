@@ -4,6 +4,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -21,6 +22,7 @@ public class GuestCheckInReminderJob(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var now = _clock.GetUtcNow().UtcDateTime;

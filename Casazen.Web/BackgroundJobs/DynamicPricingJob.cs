@@ -1,5 +1,6 @@
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
@@ -35,6 +36,7 @@ public class DynamicPricingJob
     /// <summary>
     /// Main entry point for the recurring job. Called daily at 02:00 UTC by Hangfire.
     /// </summary>
+    [DisableConcurrentExecution("DynamicPricingJob", JobLockTimeouts.DefaultSeconds)] // shared with the per-property run: same prices
     public async Task ExecuteAsync()
     {
         _logger.LogInformation("Starting DynamicPricingJob at {Timestamp}", DateTime.UtcNow);
@@ -80,6 +82,7 @@ public class DynamicPricingJob
     /// <summary>
     /// Manual one-off trigger for a single property. Skips silently if config is missing or disabled.
     /// </summary>
+    [DisableConcurrentExecution("DynamicPricingJob", JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteForPropertyAsync(Guid propertyId)
     {
         var config = await _configRepository.GetByPropertyIdAsync(propertyId);
