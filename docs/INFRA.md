@@ -195,14 +195,7 @@ dotnet ef database update --project Casazen.Infrastructure \
 
 ### 4 — Update integration tests
 
-Replace `UseInMemoryDatabase` or SQL Server test setup with SQLite in-memory or a test Supabase connection:
-
-```csharp
-// Casazen.Tests/Integration/ApiTestBase.cs
-options.UseNpgsql(
-    Environment.GetEnvironmentVariable("TEST_CONNECTION_STRING")
-    ?? "Host=localhost;Database=casazen_test;Username=postgres;Password=dev");
-```
+Done (FD-04): integration tests run on real PostgreSQL. Set `TEST_POSTGRES_CONNECTION` (CI uses a `postgres:16` service in `ci-cd.yml`) or let Testcontainers start a container; each web factory creates, migrates and drops its own `it_<guid>` database. Details: `docs/TECHNICAL.md` § Testing.
 
 ### 5 — Update Dockerfile
 
