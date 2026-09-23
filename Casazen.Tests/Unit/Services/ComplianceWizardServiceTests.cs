@@ -198,6 +198,7 @@ public class ComplianceWizardServiceTests
         var (updated, propertyReady) = await service.CompleteCheckoutWizardAsync(
             booking.Id,
             property.OwnerId,
+            ["PropertyOwner"],
             new CompleteCheckoutWizardInput(
                 ConfirmDeparture: true,
                 SupplierOrgId: null,
