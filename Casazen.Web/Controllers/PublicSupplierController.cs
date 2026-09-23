@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,8 +26,9 @@ public class PublicSupplierController : ControllerBase
         if (profile is null)
             return NotFound(new { error = "Supplier not found" });
 
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
         var availability = await _db.SupplierAvailability
-            .Where(sa => sa.OrgId == profile.OrgId && sa.Date >= DateOnly.FromDateTime(DateTime.UtcNow))
+            .Where(sa => sa.OrgId == profile.OrgId && sa.Date >= today)
             .OrderBy(sa => sa.Date)
             .Take(14)
             .Select(sa => new { sa.Date, sa.Available })

@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
@@ -11,8 +12,11 @@ public class RliChecklistService(
     ILeaseContractRepository leases,
     ILeaseRegistrationAuthorizationRepository authorizations,
     ILeaseEventRepository events,
-    IOptions<RliOptions> rliOptions) : IRliChecklistService
+    IOptions<RliOptions> rliOptions,
+    TimeProvider? timeProvider = null) : IRliChecklistService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     public async Task<RliChecklistResult?> GetAsync(
         Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
     {
@@ -22,7 +26,7 @@ public class RliChecklistService(
 
         var auth = await authorizations.GetByLeaseIdAsync(lease.Id);
         var leaseEvents = (await events.GetByLeaseIdAsync(lease.Id)).ToList();
-        var daysRemaining = (int)(lease.RegistrationDeadline.Date - DateTime.UtcNow.Date).TotalDays;
+        var daysRemaining = (int)(lease.RegistrationDeadline.Date - _clock.TodayInRome()).TotalDays;
 
         var items = new List<RliChecklistItem>
         {

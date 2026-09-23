@@ -2,6 +2,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,8 +15,11 @@ public class ComplianceWizardService(
     IConfiguration configuration,
     IAlloggiatiWebService alloggiatiWebService,
     IServiceRequestService serviceRequestService,
-    ILogger<ComplianceWizardService> logger) : IComplianceWizardService
+    ILogger<ComplianceWizardService> logger,
+    TimeProvider? timeProvider = null) : IComplianceWizardService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
     public async Task<(Property Property, IReadOnlyList<ComplianceActivationStep> Steps)> GetActivationWizardAsync(
@@ -77,8 +81,7 @@ public class ComplianceWizardService(
 
     public async Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        var now = DateTime.UtcNow;
-        var today = now.Date;
+        var today = _clock.TodayInRome();
 
         var pendingProperties = await db.Properties
             .AsNoTracking()
@@ -363,9 +366,9 @@ public class ComplianceWizardService(
         ];
     }
 
-    private static bool CanCompleteCheckout(Booking booking)
+    private bool CanCompleteCheckout(Booking booking)
     {
-        var today = DateTime.UtcNow.Date;
+        var today = _clock.TodayInRome();
         return booking.Status == BookingStatus.CheckedIn
             || (booking.Status == BookingStatus.Confirmed && booking.CheckOutDate.Date <= today);
     }
