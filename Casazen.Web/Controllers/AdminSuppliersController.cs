@@ -15,12 +15,14 @@ public class AdminSuppliersController(
     ISupplierService supplierService,
     ILogger<AdminSuppliersController> logger) : ControllerBase
 {
-    /// <summary>Sends an invite email to a prospective supplier for a given comune.</summary>
+    /// <summary>
+    /// Creates an invite for a prospective supplier of a given comune and queues its email (delivered by a Hangfire
+    /// job, so a provider error no longer fails the request).
+    /// </summary>
     [HttpPost("invite")]
     [ProducesResponseType(typeof(AdminInviteResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<AdminInviteResponse>> InviteSupplier(
         [FromBody] AdminInviteSupplierRequest request,
         CancellationToken cancellationToken)
@@ -47,11 +49,6 @@ public class AdminSuppliersController(
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("Pending invite", StringComparison.Ordinal))
         {
             return Conflict(new { error = ex.Message, code = "duplicate_invite" });
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogError(ex, "Supplier invite email delivery failed for {Email}", request.Email);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message, code = "invite_email_failed" });
         }
     }
 

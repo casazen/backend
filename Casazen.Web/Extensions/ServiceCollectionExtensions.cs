@@ -364,7 +364,6 @@ public static class ServiceCollectionExtensions
     {
         // Note: Auth0Service was removed as dead code (never used)
         // JWT authentication is handled directly by AddCasazenAuthentication()
-        services.AddScoped<ResendEmailService>();
         services.AddScoped<StripeService>();
         services.AddCasazenAiProvider(configuration);
         services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();

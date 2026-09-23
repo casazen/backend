@@ -3,16 +3,19 @@ using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
@@ -34,8 +37,9 @@ public class BookingsController(
     IComplianceWizardService complianceWizardService,
     ICheckoutReminderScheduler checkoutReminderScheduler,
     IOptions<ComplianceOptions> complianceOptions,
-    IConfiguration configuration,
-    IEmailService emailService,
+    IEmailQueue emailQueue,
+    PublicSiteLinks publicSiteLinks,
+    IStringLocalizer<SharedResources> localizer,
     ILogger<BookingsController> logger,
     TimeProvider? timeProvider = null) : ControllerBase
 {
@@ -594,29 +598,22 @@ public class BookingsController(
             });
         }
 
-        var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
-        var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";
-        var link = $"{baseUrl}/checkin/{token}";
-        var subject = $"Completa il check-in per il tuo soggiorno — {property.Name}";
-        var html = BuildCheckInEmailHtml(booking.Guest.FirstName, property.Name, booking.CheckInDate, link);
+        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any session is created: never a wrong link.
+        publicSiteLinks.EnsureConfigured();
 
-        var emailSent = false;
-        try
-        {
-            var result = await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
-            emailSent = result.Success;
-            if (!result.Success)
-            {
-                logger.LogWarning(
-                    "Check-in link created for booking {BookingId} but email was not sent: {ErrorDetail}",
-                    booking.Id,
-                    result.ErrorDetail ?? "email service returned failure");
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Check-in link created for booking {BookingId} but email threw", booking.Id);
-        }
+        var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
+        var link = publicSiteLinks.GuestCheckIn(token);
+        var email = EmailTemplates.GuestCheckInLink(
+            EmailTemplates.DefaultCulture,
+            booking.Guest.FirstName,
+            property.Name,
+            booking.CheckInDate,
+            link);
+
+        // Delivered by a Hangfire job: the provider is never called inside the request.
+        var emailQueued = emailQueue.Enqueue(booking.Guest.Email, email, EmailTemplates.Names.GuestCheckInLink);
+        if (!emailQueued)
+            logger.LogWarning("Check-in link created for booking {BookingId} but its email was not queued", booking.Id);
 
         await checkInService.ExpireOtherActiveSessionsAsync(booking.Id, token);
 
@@ -624,9 +621,7 @@ public class BookingsController(
         {
             Success = true,
             CheckInLink = link,
-            Message = emailSent
-                ? "Link rigenerato e inviato."
-                : "Link check-in pronto. L'email non è partita: copia il link e invialo all'ospite.",
+            Message = emailQueued ? localizer["CheckInLinkEmailQueued"] : localizer["CheckInLinkEmailNotQueued"],
         });
     }
 
@@ -663,15 +658,6 @@ public class BookingsController(
 
     private static bool IsPublicCheckInLinkEligible(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
-
-    private static string BuildCheckInEmailHtml(string guestName, string propertyName, DateTime checkInDate, string link) =>
-        $"""
-        <p>Gentile {guestName},</p>
-        <p>Il tuo soggiorno presso <strong>{propertyName}</strong> inizia il <strong>{checkInDate:dd/MM/yyyy}</strong>.</p>
-        <p>Completa il check-in in anticipo cliccando il link qui sotto:</p>
-        <p><a href="{link}">Completa il check-in</a></p>
-        <p>Il link è valido per 7 giorni.</p>
-        """;
 
     private async Task<IReadOnlyList<Booking>> FilterAccessibleBookingsAsync(IEnumerable<Booking> bookings, string userId)
     {

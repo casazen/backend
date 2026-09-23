@@ -1,5 +1,6 @@
 ﻿using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -60,9 +61,13 @@ public class NotificationService(
         var hostEmail = booking.Org?.ContactEmail;
         if (!string.IsNullOrWhiteSpace(hostEmail))
         {
-            var subject = $"Alloggiati Web in scadenza - {booking.Property.Name} ({booking.CheckInDate:dd/MM/yyyy})";
-            var html = BuildAlloggiatiDeadlineHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
-            var result = await emailService.SendEmailAsync(hostEmail, subject, html);
+            // Runs inside the Hangfire alert job: the email is sent directly, not queued again.
+            var email = EmailTemplates.AlloggiatiDeadline(
+                EmailTemplates.DefaultCulture,
+                booking.Guest.FirstName,
+                booking.Property.Name,
+                booking.CheckInDate);
+            var result = await emailService.SendEmailAsync(hostEmail, email.Subject, email.HtmlBody);
 
             if (!result.Success)
             {
@@ -97,12 +102,4 @@ public class NotificationService(
             ownerId, propertyIds.Count, daysUntilDeadline);
         await Task.Delay(100);
     }
-
-    private static string BuildAlloggiatiDeadlineHtml(string propertyName, DateTime checkInDate, string guestName) =>
-        $"""
-        <p>Attenzione: la comunicazione Alloggiati Web per l'ospite <strong>{guestName}</strong>
-        presso <strong>{propertyName}</strong> e in scadenza per il check-in del
-        <strong>{checkInDate:dd/MM/yyyy}</strong>.</p>
-        <p>Completa o correggi i dati dell'ospite e invia la comunicazione dal gestionale.</p>
-        """;
 }

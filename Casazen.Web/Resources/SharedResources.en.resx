@@ -201,4 +201,10 @@
   <data name="SignedUrlUnavailable" xml:space="preserve">
     <value>The configured storage cannot create signed links: download the document from the application.</value>
   </data>
+  <data name="CheckInLinkEmailQueued" xml:space="preserve">
+    <value>Check-in link regenerated: the email to the guest is queued for delivery.</value>
+  </data>
+  <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
+    <value>Check-in link ready, but the email to the guest was not sent: copy the link and send it to the guest.</value>
+  </data>
 </root>

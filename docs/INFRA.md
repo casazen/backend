@@ -97,7 +97,7 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 Integrations link repos and trigger deploys. They **do not** copy env vars across platforms:
 
 - Supabase connection string → must be set on **Railway** (`ConnectionStrings__DefaultConnection`)
-- Auth0 / Stripe / Email (SMTP) → **Railway** only
+- Auth0 / Stripe / Email (Resend) → **Railway** only
 - `VITE_*` → **Vercel** only
 - Public API URLs → **GitHub Variables** (`RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`) for CI health checks and PR comments only
 
@@ -369,16 +369,12 @@ Auth0__Domain=[your-tenant.auth0.com]
 Auth0__Audience=https://casazen-api
 Stripe__SecretKey=[sk_live_... or sk_test_...]
 Stripe__WebhookSecret=[whsec_...]
-# Email — SMTP (MailKit). Use Gmail free tier or any SMTP provider.
-# Option A: Direct SMTP (recommended)
-Email__SmtpHost=smtp.gmail.com
-Email__SmtpPort=587
-Email__SmtpUsername=casazen@gmail.com
-Email__SmtpPassword=[16-char-app-password]
-# Option B: SendGrid SMTP relay (legacy, 100 emails/day free)
-# Email__SendGridApiKey=SG....
-Email__FromAddress=noreply@casazen.app
-App__PublicSiteBaseUrl=https://casazen-app.vercel.app
+# Email — Resend (docs/runbooks/email.md). Required in Production: the app does not start without them.
+Email__Provider=Resend
+Email__ApiKey=[re_...]
+Email__FromAddress=[sender on the domain verified on Resend]
+Email__FromName=CasaZen
+App__PublicSiteBaseUrl=[public URL of the web app for this environment]
 Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
 Hangfire__Schema=hangfire_casazen_test
@@ -403,7 +399,7 @@ DataProtection__CertificatePfxBase64=[base64 .pfx]
 DataProtection__CertificatePassword=[pfx password]
 ```
 
-`App__PublicSiteBaseUrl` is required for **supplier invite emails** (`POST /api/admin/suppliers/invite`): the signup link is built as `{PublicSiteBaseUrl}/login?inviteToken=…&email=…&comune=…`. Use the Vercel URL for the matching environment (test → preview/staging FE, production → `https://casazen.app` or production Vercel URL).
+`App__PublicSiteBaseUrl` is the base of **every link in emails** (supplier invite `/register?inviteToken=…`, supplier inbox, guest check-in `/checkin/{token}`): there is no fallback domain in code. Use the web app URL of the matching environment. Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
 Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
 
@@ -585,7 +581,7 @@ Often auto-created by **Supabase ↔ GitHub** integration. Not used by Railway r
 | Secret / config | Set on |
 |---|---|
 | Database password / connection string | **Railway** per environment |
-| Auth0, Stripe, Email (SMTP) | **Railway** per environment |
+| Auth0, Stripe, Email (Resend) | **Railway** per environment |
 | `VITE_*` | **Vercel** Preview + Production |
 | Supabase service role (if needed for admin scripts) | **Supabase** dashboard or GitHub (optional) |
 

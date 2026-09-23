@@ -6,10 +6,9 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -17,9 +16,8 @@ namespace Casazen.Infrastructure.Services;
 
 public class SupplierService(
     AppDbContext db,
-    IEmailService emailService,
-    IConfiguration configuration,
-    IHostEnvironment hostEnvironment,
+    IEmailQueue emailQueue,
+    PublicSiteLinks publicSiteLinks,
     ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -279,10 +277,15 @@ public class SupplierService(
             Message = message,
             ExpiresAt = DateTime.UtcNow.AddDays(7),
         };
+
+        // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
+        var inviteEmail = BuildInviteEmail(invite);
+
         db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
 
-        await SendInviteEmailAsync(invite, cancellationToken);
+        if (!emailQueue.Enqueue(invite.Email, inviteEmail, EmailTemplates.Names.SupplierInvite))
+            logger.LogWarning("Supplier invite {InviteId} created but its email was not queued", invite.Id);
 
         logger.LogInformation("Admin invite created for {Email}, expires {ExpiresAt}", email, invite.ExpiresAt);
         return new SupplierInvite(invite.Id, invite.ExpiresAt);
@@ -698,81 +701,12 @@ public class SupplierService(
     private static string NormalizeSupplierEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
-    private async Task SendInviteEmailAsync(SupplierInviteRecord invite, CancellationToken cancellationToken)
-    {
-        if (!IsEmailConfigured())
-        {
-            if (ShouldSkipInviteEmail())
-            {
-                logger.LogWarning(
-                    "Email not configured — supplier invite email skipped for {Email} (env={Environment})",
-                    invite.Email,
-                    hostEnvironment.EnvironmentName);
-                return;
-            }
-
-            db.SupplierInviteRecords.Remove(invite);
-            await db.SaveChangesAsync(cancellationToken);
-            throw new InvalidOperationException(
-                "Email non configurata. Impostare Email__ResendApiKey su Railway (https://resend.com, gratis 100 email/giorno).");
-        }
-
-        var signupUrl = configuration["App:SupplierLoginUrl"];
-        if (string.IsNullOrWhiteSpace(signupUrl))
-        {
-            var apiBaseUrl = configuration["App:ApiBaseUrl"];
-            if (!string.IsNullOrWhiteSpace(apiBaseUrl))
-            {
-                signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(apiBaseUrl, invite);
-            }
-            else
-            {
-                var frontendBaseUrl = configuration["App:PublicSiteBaseUrl"];
-                if (string.IsNullOrWhiteSpace(frontendBaseUrl))
-                {
-                    throw new InvalidOperationException(
-                        "App:ApiBaseUrl o App:PublicSiteBaseUrl non configurato: impossibile inviare l'invito.");
-                }
-                signupUrl = SupplierInviteEmailBuilder.BuildSignupUrl(frontendBaseUrl, invite);
-            }
-        }
-        var (subject, html) = SupplierInviteEmailBuilder.Build(invite, signupUrl, invite.ExpiresAt);
-
-        var result = await emailService.SendEmailAsync(invite.Email, subject, html);
-        if (result.Success)
-        {
-            logger.LogInformation("Supplier invite email sent to {Email}", invite.Email);
-            return;
-        }
-
-        db.SupplierInviteRecords.Remove(invite);
-        await db.SaveChangesAsync(cancellationToken);
-        var reason = string.IsNullOrWhiteSpace(result.ErrorDetail)
-            ? "Impossibile inviare l'email di invito. Riprovare."
-            : "Impossibile inviare l'email di invito. Controllare la configurazione email del server.";
-        throw new InvalidOperationException(reason);
-    }
-
-    private bool IsEmailConfigured()
-    {
-        // Resend HTTP API (primary — works on all Railway plans)
-        var resendKey = configuration["Email:ResendApiKey"];
-        if (!string.IsNullOrWhiteSpace(resendKey) && resendKey.StartsWith("re_"))
-            return true;
-
-        // SMTP (local dev only — blocked on Railway Hobby)
-        if (!string.IsNullOrWhiteSpace(configuration["Email:SmtpHost"]))
-            return true;
-
-        // SendGrid SMTP relay (legacy fallback)
-        var sgKey = configuration["Email:SendGridApiKey"];
-        return !string.IsNullOrWhiteSpace(sgKey)
-            && !sgKey.StartsWith("SG.YOUR", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private bool ShouldSkipInviteEmail()
-    {
-        // Only called when !IsEmailConfigured() — skip in dev/test, throw in production.
-        return hostEnvironment.IsEnvironment("Testing") || hostEnvironment.IsDevelopment();
-    }
+    private EmailContent BuildInviteEmail(SupplierInviteRecord invite) =>
+        EmailTemplates.SupplierInvite(
+            EmailTemplates.DefaultCulture,
+            invite.Email,
+            invite.ComuneCode,
+            invite.Message,
+            publicSiteLinks.SupplierInviteSignup(invite.Id, invite.Email, invite.ComuneCode),
+            invite.ExpiresAt);
 }

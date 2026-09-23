@@ -1,61 +1,82 @@
-using Microsoft.Extensions.Configuration;
+using Casazen.Infrastructure.Email;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Resend;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Sends email via Resend HTTP API using the official Resend .NET SDK.
-/// Works on all Railway plans (HTTPS port 443).
-///
-/// <para><b>Setup:</b></para>
-/// <list type="number">
-///   <item>Sign up at https://resend.com (free, no credit card)</item>
-///   <item>Create API key → starts with <c>re_</c></item>
-///   <item>Set <c>Email__ResendApiKey</c> on Railway</item>
-/// </list>
-///
-/// <para>Free tier: 100 emails/day, 2 emails/second.</para>
+/// Sends email through the Resend HTTP API (HTTPS 443, works on every Railway plan) with the sender configured in
+/// <see cref="EmailOptions"/>: the sender is never rewritten. Setup, domain verification (SPF/DKIM) and Railway
+/// variables: <c>docs/runbooks/email.md</c>.
 /// </summary>
-public sealed class ResendEmailService : IEmailService
+public sealed class ResendEmailService(
+    IResend resend,
+    IOptions<EmailOptions> options,
+    ILogger<ResendEmailService> logger) : IEmailService
 {
-    private readonly string _fromEmail;
-    private readonly IResend _resend;
-    private readonly ILogger<ResendEmailService> _logger;
-
-    public ResendEmailService(IConfiguration configuration, ILogger<ResendEmailService> logger)
-    {
-        var from = configuration["Email:FromAddress"];
-        _fromEmail = string.IsNullOrWhiteSpace(from) || from.Contains("casazen.app", StringComparison.OrdinalIgnoreCase)
-            ? "onboarding@resend.dev"
-            : from;
-        var apiKey = configuration["Email:ResendApiKey"] ?? string.Empty;
-        _resend = ResendClient.Create(apiKey);
-        _logger = logger;
-    }
-
     public async Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent)
     {
+        var settings = options.Value;
+        if (!settings.IsConfigured)
+        {
+            logger.LogWarning(
+                "Email not sent: the email provider is not configured (Email__ApiKey, Email__FromAddress). Subject: {Subject}",
+                subject);
+            return EmailSendResult.NotConfigured();
+        }
+
         try
         {
-            var resp = await _resend.EmailSendAsync(new EmailMessage
+            var response = await resend.EmailSendAsync(BuildMessage(settings, to, subject, htmlContent));
+            if (response.Success)
             {
-                From = _fromEmail,
-                To = to,
-                Subject = subject,
-                HtmlBody = htmlContent,
-            });
+                logger.LogInformation("Email sent via Resend (id={EmailId})", response.Content);
+                return EmailSendResult.Sent();
+            }
 
-            _logger.LogInformation("Email sent to {To} via Resend (id={Id})", to, resp.Content);
-            return new EmailSendResult(true);
+            return Failure(response.Exception);
         }
-        catch (Exception ex)
+        catch (ResendException ex)
         {
-            _logger.LogError(ex, "Resend API call failed for {To}", to);
-            return new EmailSendResult(false, Truncate(ex.Message, 200));
+            return Failure(ex);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException)
+        {
+            logger.LogWarning(ex, "Resend API unreachable");
+            return new EmailSendResult(false, Truncate(ex.Message), IsTransient: true);
         }
     }
 
-    private static string Truncate(string value, int max) =>
-        value.Length > max ? value[..max] : value;
+    /// <summary>The message handed to Resend: the configured sender, unchanged.</summary>
+    public static EmailMessage BuildMessage(EmailOptions settings, string to, string subject, string htmlContent) => new()
+    {
+        From = new EmailAddress
+        {
+            Email = settings.FromAddress!.Trim(),
+            DisplayName = string.IsNullOrWhiteSpace(settings.FromName) ? null : settings.FromName.Trim(),
+        },
+        To = to,
+        Subject = subject,
+        HtmlBody = htmlContent,
+    };
+
+    private EmailSendResult Failure(ResendException? ex)
+    {
+        if (ex is null)
+        {
+            logger.LogError("Resend API call failed without details");
+            return new EmailSendResult(false, "resend_error", IsTransient: true);
+        }
+
+        logger.LogError(
+            ex,
+            "Resend API call failed: {ErrorType} (HTTP {StatusCode}, transient={IsTransient})",
+            ex.ErrorType,
+            (int?)ex.StatusCode,
+            ex.IsTransient);
+        return new EmailSendResult(false, Truncate($"{ex.ErrorType}: {ex.Message}"), IsTransient: ex.IsTransient);
+    }
+
+    private static string Truncate(string value) => value.Length > 200 ? value[..200] : value;
 }
