@@ -201,4 +201,10 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
+  <data name="CheckInLinkEmailQueued" xml:space="preserve">
+    <value>Check-in link regenerated: the email to the guest is queued for delivery.</value>
+  </data>
+  <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
+    <value>Check-in link ready, but the email to the guest was not sent: copy the link and send it to the guest.</value>
+  </data>
 </root>

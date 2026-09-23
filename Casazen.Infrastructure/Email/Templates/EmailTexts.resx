@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Layout_Footer" xml:space="preserve">
+    <value>CasaZen — gestione affitti brevi</value>
+  </data>
+  <data name="Format_Date" xml:space="preserve">
+    <value>dd/MM/yyyy</value>
+  </data>
+  <data name="Format_DateTime" xml:space="preserve">
+    <value>dd/MM/yyyy HH:mm</value>
+  </data>
+  <data name="ServiceRequestCreated_Subject" xml:space="preserve">
+    <value>Nuova richiesta di servizio — {0}</value>
+  </data>
+  <data name="ServiceRequestCreated_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestCreated_Body" xml:space="preserve">
+    <value>Hai ricevuto una nuova richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per la proprietà &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCreated_NotesLabel" xml:space="preserve">
+    <value>Note:</value>
+  </data>
+  <data name="ServiceRequestCreated_Cta" xml:space="preserve">
+    <value>Apri la console fornitore</value>
+  </data>
+  <data name="ServiceRequestTaken_Subject" xml:space="preserve">
+    <value>Richiesta fornitore presa in carico — {0}</value>
+  </data>
+  <data name="ServiceRequestTaken_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;presa in carico&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCompleted_Subject" xml:space="preserve">
+    <value>Richiesta fornitore completata — {0}</value>
+  </data>
+  <data name="ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;completata&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestRejected_Subject" xml:space="preserve">
+    <value>Richiesta fornitore rifiutata — {0}</value>
+  </data>
+  <data name="ServiceRequestRejected_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;rifiutata&lt;/strong&gt; dal fornitore.</value>
+  </data>
+  <data name="ServiceRequestRejected_ReasonLabel" xml:space="preserve">
+    <value>Motivo:</value>
+  </data>
+  <data name="SupplierInvite_Subject" xml:space="preserve">
+    <value>Invito CasaZen — Console fornitore</value>
+  </data>
+  <data name="SupplierInvite_Title" xml:space="preserve">
+    <value>Sei stato invitato su CasaZen</value>
+  </data>
+  <data name="SupplierInvite_Body" xml:space="preserve">
+    <value>CasaZen ti invita a registrarti come &lt;strong&gt;fornitore&lt;/strong&gt; per il comune &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInvite_EmailHint" xml:space="preserve">
+    <value>Usa l'email &lt;strong&gt;{0}&lt;/strong&gt; per registrarti: il tuo profilo fornitore verrà attivato automaticamente.</value>
+  </data>
+  <data name="SupplierInvite_MessageLabel" xml:space="preserve">
+    <value>Messaggio dal team CasaZen:</value>
+  </data>
+  <data name="SupplierInvite_Cta" xml:space="preserve">
+    <value>Accetta l'invito e registrati</value>
+  </data>
+  <data name="SupplierInvite_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="SupplierInvite_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestCheckInLink_Subject" xml:space="preserve">
+    <value>Completa il check-in per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestCheckInLink_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestCheckInLink_Body" xml:space="preserve">
+    <value>Il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; inizia il &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestCheckInLink_Instructions" xml:space="preserve">
+    <value>Completa il check-in in anticipo cliccando il link qui sotto:</value>
+  </data>
+  <data name="GuestCheckInLink_Cta" xml:space="preserve">
+    <value>Completa il check-in</value>
+  </data>
+  <data name="GuestCheckInLink_Validity" xml:space="preserve">
+    <value>Il link è valido per 7 giorni.</value>
+  </data>
+  <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
+    <value>Check-in incompleto — {0} ({1})</value>
+  </data>
+  <data name="GuestCheckInIncomplete_Body" xml:space="preserve">
+    <value>Attenzione: il check-in per l'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt; è previsto per &lt;strong&gt;{2}&lt;/strong&gt; e non è ancora stato completato.</value>
+  </data>
+  <data name="GuestCheckInIncomplete_Action" xml:space="preserve">
+    <value>Contatta l'ospite o inserisci manualmente i dati dal gestionale.</value>
+  </data>
+  <data name="AlloggiatiDeadline_Subject" xml:space="preserve">
+    <value>Alloggiati Web in scadenza - {0} ({1})</value>
+  </data>
+  <data name="AlloggiatiDeadline_Body" xml:space="preserve">
+    <value>Attenzione: la comunicazione Alloggiati Web per l'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt; è in scadenza per il check-in del &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="AlloggiatiDeadline_Action" xml:space="preserve">
+    <value>Completa o correggi i dati dell'ospite e invia la comunicazione dal gestionale.</value>
+  </data>
+</root>

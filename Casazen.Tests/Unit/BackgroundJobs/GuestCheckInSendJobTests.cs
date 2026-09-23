@@ -3,6 +3,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Casazen.Web.BackgroundJobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -95,6 +96,48 @@ public class GuestCheckInSendJobTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_PublicSiteBaseUrlMissing_CreatesNoSessionAndSendsNothing()
+    {
+        await using var context = CreateContext();
+        await SeedBookingAsync(context, BookingStatus.Confirmed);
+        var checkInService = new Mock<IGuestCheckInService>();
+        var emailService = new Mock<IEmailService>();
+        var job = CreateJob(context, checkInService.Object, emailService.Object, publicSiteBaseUrl: null);
+
+        await job.ExecuteAsync();
+
+        checkInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        emailService.Verify(
+            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_GuestNameWithMarkup_IsHtmlEncodedInEmail()
+    {
+        await using var context = CreateContext();
+        var (bookingId, orgId) = await SeedBookingAsync(context, BookingStatus.CheckedIn);
+        var guest = context.Bookings.Include(b => b.Guest).Single(b => b.Id == bookingId).Guest;
+        guest.FirstName = "<a href=\"https://phish.example\">Paga qui</a>";
+        await context.SaveChangesAsync();
+        var checkInService = new Mock<IGuestCheckInService>();
+        checkInService.Setup(s => s.CreateSessionAsync(bookingId, orgId)).ReturnsAsync("guest-token");
+        string? sentHtml = null;
+        var emailService = new Mock<IEmailService>();
+        emailService
+            .Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Callback<string, string, string>((_, _, html) => sentHtml = html)
+            .ReturnsAsync(EmailSendResult.Sent());
+        var job = CreateJob(context, checkInService.Object, emailService.Object);
+
+        await job.ExecuteAsync();
+
+        Assert.NotNull(sentHtml);
+        Assert.DoesNotContain("<a href=\"https://phish.example\"", sentHtml);
+        Assert.Contains("&lt;a href=&quot;https://phish.example&quot;&gt;Paga qui&lt;/a&gt;", sentHtml);
+    }
+
     private static AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -106,12 +149,12 @@ public class GuestCheckInSendJobTests
     private static GuestCheckInSendJob CreateJob(
         AppDbContext context,
         IGuestCheckInService checkInService,
-        IEmailService emailService)
+        IEmailService emailService,
+        string? publicSiteBaseUrl = "https://public.example")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["App:PublicSiteBaseUrl"] = "https://public.example",
                 ["CheckIn:SendWindowDays"] = "3",
             })
             .Build();
@@ -120,6 +163,7 @@ public class GuestCheckInSendJobTests
             context,
             checkInService,
             emailService,
+            EmailTestHelpers.Links(publicSiteBaseUrl),
             configuration,
             Mock.Of<ILogger<GuestCheckInSendJob>>());
     }

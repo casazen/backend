@@ -1,14 +1,18 @@
+using System.Globalization;
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
+using Casazen.Web.Resources;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
@@ -16,7 +20,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
@@ -35,8 +41,8 @@ public class BookingsControllerTests
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
-    private readonly Mock<IEmailService> _mockEmailService;
-    private readonly IConfiguration _configuration;
+    private readonly Mock<IEmailQueue> _mockEmailQueue;
+    private readonly List<(string? To, EmailContent Content, string Template)> _queuedEmails = [];
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
     private readonly BookingsController _controller;
 
@@ -56,19 +62,21 @@ public class BookingsControllerTests
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
         _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
-        _mockEmailService = new Mock<IEmailService>();
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["App:PublicSiteBaseUrl"] = "https://public.test",
-            })
-            .Build();
+        _mockEmailQueue = new Mock<IEmailQueue>();
+        _mockEmailQueue
+            .Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
+            .Callback<string?, EmailContent, string>((to, content, template) => _queuedEmails.Add((to, content, template)))
+            .Returns(true);
         _mockCheckoutReminderScheduler
             .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
             .Returns("job-test");
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
-        _controller = new BookingsController(
+        _controller = CreateController(EmailTestHelpers.Links("https://public.test"));
+    }
+
+    private BookingsController CreateController(PublicSiteLinks publicSiteLinks, TimeProvider? timeProvider = null) =>
+        new(
             _mockBookingService.Object,
             _mockTaxService.Object,
             _mockAlloggiatiService.Object,
@@ -81,10 +89,16 @@ public class BookingsControllerTests
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
             Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
-            _configuration,
-            _mockEmailService.Object,
-            _mockLogger.Object);
-    }
+            _mockEmailQueue.Object,
+            publicSiteLinks,
+            CreateLocalizer(),
+            _mockLogger.Object,
+            timeProvider);
+
+    private static IStringLocalizer<SharedResources> CreateLocalizer() =>
+        new StringLocalizer<SharedResources>(new ResourceManagerStringLocalizerFactory(
+            Options.Create(new LocalizationOptions()),
+            NullLoggerFactory.Instance));
 
     private static PropertyICalSyncService CreatePropertyICalSyncService()
     {
@@ -105,23 +119,7 @@ public class BookingsControllerTests
 
     private BookingsController CreateControllerAt(DateTimeOffset utcNow)
     {
-        var controller = new BookingsController(
-            _mockBookingService.Object,
-            _mockTaxService.Object,
-            _mockAlloggiatiService.Object,
-            _mockPropertyService.Object,
-            _mockAuthz.Object,
-            CreatePropertyICalSyncService(),
-            _mockGuestService.Object,
-            _mockBackgroundJobClient.Object,
-            _mockGuestCheckInService.Object,
-            _mockComplianceWizardService.Object,
-            _mockCheckoutReminderScheduler.Object,
-            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
-            _configuration,
-            _mockEmailService.Object,
-            _mockLogger.Object,
-            new FixedTimeProvider(utcNow));
+        var controller = CreateController(EmailTestHelpers.Links("https://public.test"), new FixedTimeProvider(utcNow));
         var identity = new ClaimsIdentity(new[] { new Claim("sub", OwnerId) }, "TestAuth");
         controller.ControllerContext = new ControllerContext
         {
@@ -699,7 +697,7 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task ResendCheckInLink_EmailSent_ExpiresPreviousSessionsAfterDelivery()
+    public async Task ResendCheckInLink_ValidBooking_QueuesEmailWithLinkFromConfigAndExpiresPreviousSessions()
     {
         SetUser(OwnerId);
         var bookingId = Guid.NewGuid();
@@ -727,12 +725,6 @@ public class BookingsControllerTests
         _mockGuestCheckInService
             .Setup(s => s.CreateSessionAsync(bookingId, OrgId))
             .ReturnsAsync("new-token");
-        _mockEmailService
-            .Setup(s => s.SendEmailAsync(
-                guest.Email,
-                It.Is<string>(subject => subject.Contains("Test Villa")),
-                It.Is<string>(html => html.Contains("https://public.test/checkin/new-token"))))
-            .ReturnsAsync(new EmailSendResult(true));
         _mockGuestCheckInService
             .Setup(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"))
             .Returns(Task.CompletedTask);
@@ -742,6 +734,12 @@ public class BookingsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
         Assert.True(response.Success);
+        Assert.Equal("https://public.test/checkin/new-token", response.CheckInLink);
+        var (to, content, template) = Assert.Single(_queuedEmails);
+        Assert.Equal(guest.Email, to);
+        Assert.Equal(EmailTemplates.Names.GuestCheckInLink, template);
+        Assert.Contains("Test Villa", content.Subject);
+        Assert.Contains("href=\"https://public.test/checkin/new-token\"", content.HtmlBody);
         _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
         _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
     }
@@ -788,7 +786,7 @@ public class BookingsControllerTests
         var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(conflict.Value);
         Assert.False(response.Success);
         _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
-        _mockEmailService.Verify(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        Assert.Empty(_queuedEmails);
     }
 
     [Fact]
@@ -824,11 +822,11 @@ public class BookingsControllerTests
         var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(conflict.Value);
         Assert.False(response.Success);
         _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
-        _mockEmailService.Verify(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        Assert.Empty(_queuedEmails);
     }
 
     [Fact]
-    public async Task ResendCheckInLink_EmailSendFails_KeepsSessionAndReturnsLink()
+    public async Task ResendCheckInLink_EmailNotQueued_KeepsSessionAndReturnsLink()
     {
         SetUser(OwnerId);
         var bookingId = Guid.NewGuid();
@@ -856,21 +854,62 @@ public class BookingsControllerTests
         _mockGuestCheckInService
             .Setup(s => s.CreateSessionAsync(bookingId, OrgId))
             .ReturnsAsync("new-token");
-        _mockEmailService
-            .Setup(s => s.SendEmailAsync(guest.Email, It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new EmailSendResult(false, "provider rejected request"));
+        _mockEmailQueue
+            .Setup(q => q.Enqueue(guest.Email, It.IsAny<EmailContent>(), It.IsAny<string>()))
+            .Returns(false);
         _mockGuestCheckInService
             .Setup(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"))
             .Returns(Task.CompletedTask);
 
-        var result = await _controller.ResendCheckInLink(bookingId);
+        var previousCulture = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentUICulture = new CultureInfo("it-IT");
+        ActionResult<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse> result;
+        try
+        {
+            result = await _controller.ResendCheckInLink(bookingId);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previousCulture;
+        }
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<Casazen.Web.DTOs.CheckIn.ResendCheckInLinkResponse>(ok.Value);
         Assert.True(response.Success);
         Assert.Contains("/checkin/new-token", response.CheckInLink);
+        Assert.Contains("copia il link", response.Message);
         _mockGuestCheckInService.Verify(s => s.ExpireTokenAsync(It.IsAny<string>()), Times.Never);
         _mockGuestCheckInService.Verify(s => s.ExpireOtherActiveSessionsAsync(bookingId, "new-token"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendCheckInLink_PublicSiteBaseUrlMissing_ThrowsConfigurationErrorWithoutCreatingSession()
+    {
+        var controller = CreateController(EmailTestHelpers.Links(null));
+        var identity = new ClaimsIdentity(new[] { new Claim("sub", OwnerId) }, "TestAuth");
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) },
+        };
+        var bookingId = Guid.NewGuid();
+        var guest = new Guest { Id = Guid.NewGuid(), FirstName = "Mario", LastName = "Rossi", Email = "mario@example.com" };
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guest.Id,
+            Guest = guest,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.Confirmed,
+        });
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+
+        await Assert.ThrowsAsync<EmailConfigurationException>(() => controller.ResendCheckInLink(bookingId));
+
+        _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        Assert.Empty(_queuedEmails);
     }
 
     [Fact]

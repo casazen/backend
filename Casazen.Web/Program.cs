@@ -77,7 +77,7 @@ builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
-builder.Services.AddScoped<IEmailService, ResendEmailService>();
+builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
@@ -173,7 +173,6 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
 builder.Services.AddScoped<DynamicPricingJob>();
-builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
 builder.Services.AddScoped<AlloggiatiDeadlineAlertJob>();
