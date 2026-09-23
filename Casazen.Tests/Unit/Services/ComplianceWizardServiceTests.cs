@@ -189,6 +189,7 @@ public class ComplianceWizardServiceTests
         await CreateService(db).CompleteCheckoutWizardAsync(
             earlyBooking.Id,
             property.OwnerId,
+            ["PropertyOwner"],
             new CompleteCheckoutWizardInput(true, null, null, null));
 
         var reloadedGuest = await db.Guests.SingleAsync(g => g.Id == guest.Id);
