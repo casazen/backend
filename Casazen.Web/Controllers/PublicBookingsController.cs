@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -19,6 +20,7 @@ public class PublicBookingsController(
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     [HttpGet("property/{propertyId}/availability")]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<PropertyAvailabilityResponse>> GetPropertyAvailability(
         Guid propertyId,
         [FromQuery] DateTime? startDate = null,
@@ -55,6 +57,7 @@ public class PublicBookingsController(
     }
 
     [HttpGet("{bookingId}/status")]
+    [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     public async Task<ActionResult<BookingStatusResponse>> GetBookingStatus(Guid bookingId)
     {
         var booking = await bookingService.GetBookingAsync(bookingId);
@@ -68,7 +71,7 @@ public class PublicBookingsController(
     }
 
     [HttpPost("lookup")]
-    [EnableRateLimiting("PublicBookingCreate")]
+    [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     public async Task<ActionResult<GuestBookingLookupResponse>> LookupGuestBookings(
         [FromBody] GuestBookingLookupRequest request)
     {
@@ -97,7 +100,7 @@ public class PublicBookingsController(
     }
 
     [HttpPost]
-    [EnableRateLimiting("PublicBookingCreate")]
+    [EnableRateLimiting(RateLimitPolicies.PublicBookingCreate)]
     public async Task<ActionResult<DirectBookingResponse>> CreateDirectBooking(
         [FromBody] CreateDirectBookingRequest request)
     {
@@ -113,7 +116,7 @@ public class PublicBookingsController(
             });
         }
 
-        var consentIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+        var consentIp = ClientIp.GetString(HttpContext) ?? string.Empty;
         var guest = request.Guest;
 
         try

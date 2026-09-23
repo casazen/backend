@@ -3,6 +3,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.DTOs.CheckIn;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -13,7 +14,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/checkin")]
 [AllowAnonymous]
-[EnableRateLimiting("GuestCheckIn")]
+[EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
 public class GuestCheckInController(
     IBookingRepository bookingRepository,
     IGuestRepository guestRepository,
@@ -84,7 +85,7 @@ public class GuestCheckInController(
         guest.Country = request.Country;
 
         var consentVersion = configuration["CheckIn:ConsentVersion"] ?? "2026-06-alloggiati-checkin-v1";
-        var consentIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+        var consentIp = ClientIp.GetString(HttpContext) ?? string.Empty;
         guest.ConsentDate = now;
         guest.ConsentVersion = consentVersion;
         guest.DataProcessingConsentDate = now;

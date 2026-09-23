@@ -390,6 +390,8 @@ Ai__OpenAiBaseUrl=https://api.deepseek.com
 
 Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
 
+Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
+
 ### Get service URLs → GitHub Variables
 
 After first native deploy:

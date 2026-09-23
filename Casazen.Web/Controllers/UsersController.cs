@@ -223,7 +223,7 @@ public class UsersController(
             orgId,
             consentInput,
             requireConsents,
-            GetClientIpAddress(),
+            ClientIp.GetString(HttpContext),
             HttpContext.RequestAborted);
 
         if (!success)
@@ -252,15 +252,6 @@ public class UsersController(
             }),
             _ => BadRequest(new { error = error?.Message ?? "Invalid consents." }),
         };
-
-    private string? GetClientIpAddress()
-    {
-        var forwarded = Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(forwarded))
-            return forwarded.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-
-        return HttpContext.Connection.RemoteIpAddress?.ToString();
-    }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 

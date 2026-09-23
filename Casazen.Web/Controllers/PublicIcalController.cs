@@ -1,12 +1,15 @@
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/public/ical")]
 [AllowAnonymous]
+[EnableRateLimiting(RateLimitPolicies.PublicIcal)]
 public class PublicIcalController(PropertyICalSyncService syncService) : ControllerBase
 {
     [HttpGet("{exportToken:guid}")]

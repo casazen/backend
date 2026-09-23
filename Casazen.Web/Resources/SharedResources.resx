@@ -63,6 +63,9 @@
   <data name="TooManyRequestsDetail" xml:space="preserve">
     <value>Troppe richieste in poco tempo. Riprova tra qualche istante.</value>
   </data>
+  <data name="RateLimitedDetail" xml:space="preserve">
+    <value>Troppe richieste in poco tempo. Riprova tra {0} secondi.</value>
+  </data>
   <data name="ServiceUnavailable" xml:space="preserve">
     <value>Servizio non disponibile</value>
   </data>
