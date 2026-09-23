@@ -4,15 +4,11 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
-using Microsoft.AspNetCore.Hosting;
+using Casazen.Tests.Integration.Postgres;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -21,17 +17,17 @@ namespace Casazen.Tests.Integration;
 /// FD-06 (R-01, A9-12, A2-15, A5-17, A7-05): date-only values sent by the web app
 /// ("yyyy-MM-dd") must reach PostgreSQL <c>timestamptz</c> columns as UTC instead of
 /// failing with "Cannot write DateTime with Kind=Unspecified" (HTTP 500).
-/// Runs the real API on a throw-away PostgreSQL database with all migrations applied.
+/// Runs the real API on the factory's migrated PostgreSQL database (FD-04).
 /// </summary>
-public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicationFactory factory)
-    : IClassFixture<PostgresDateTimeWebApplicationFactory>
+public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory factory)
+    : IClassFixture<CasazenWebApplicationFactory>
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    [Fact]
+    [PostgresFact]
     public async Task CalculateTouristTax_DateOnlyPayload_Returns200WithTax()
     {
-        await factory.SeedTouristTaxRateAsync("Milano", 2.50m, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        await SeedTouristTaxRateAsync("Milano", 2.50m);
         using var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/public/tourist-tax/calculate", new
@@ -49,9 +45,10 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
         Assert.Equal(15.00m, body.GetProperty("taxAmount").GetDecimal());
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CalculateTouristTax_DateOnlyPayloadForComuneWithoutRate_Returns404()
     {
+        await WithDbAsync(db => db.TouristTaxRates.Where(r => r.City == "Firenze").ExecuteDeleteAsync());
         using var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/public/tourist-tax/calculate", new
@@ -66,10 +63,10 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetTouristTaxRateByCity_DateOnlyQuery_Returns200()
     {
-        await factory.SeedTouristTaxRateAsync("Bologna", 3.00m, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        await SeedTouristTaxRateAsync("Bologna", 3.00m);
         using var client = factory.CreateAuthenticatedClient();
 
         var response = await client.GetAsync("/api/tourist-tax-rates/city/Bologna?date=2026-10-01");
@@ -77,7 +74,7 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task AdminTouristTaxRatePayload_DateOnlyValues_DeserializeAndPersistAsUtcMidnight()
     {
         // Same JSON options as the API; the admin create/update flow itself is tracked by A5-06 (CO-03).
@@ -86,22 +83,20 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
             """{"city":"Torino","regionCode":"PIE","ratePerPersonPerNight":2.30,"effectiveFrom":"2026-04-01","effectiveTo":"2026-12-31"}""",
             jsonOptions)!;
 
-        await using (var db = factory.CreateDbContext())
-            await new TouristTaxRateRepository(db).AddAsync(rate);
+        await WithDbAsync(db => new TouristTaxRateRepository(db).AddAsync(rate));
 
-        await using var read = factory.CreateDbContext();
-        var stored = await read.TouristTaxRates.AsNoTracking().SingleAsync(r => r.Id == rate.Id);
+        var stored = await WithDbAsync(db => db.TouristTaxRates.AsNoTracking().SingleAsync(r => r.Id == rate.Id));
         Assert.Equal(new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc), stored.EffectiveFrom);
         Assert.Equal(DateTimeKind.Utc, stored.EffectiveFrom.Kind);
         Assert.Equal(new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc), stored.EffectiveTo);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetPricingHistory_DateOnlyFilters_Returns200WithEntriesOfBothBoundaryDays()
     {
         var owner = $"auth0|fd06-pricing-{Guid.NewGuid():N}";
         var property = await factory.SeedPropertyAsync(owner);
-        await factory.SeedPricingHistoryAtAsync(
+        await SeedPricingHistoryAtAsync(
             property.Id,
             new DateTime(2026, 8, 31, 2, 0, 0, DateTimeKind.Utc),
             new DateTime(2026, 9, 1, 2, 0, 0, DateTimeKind.Utc),
@@ -121,7 +116,7 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
         Assert.Equal([new DateTime(2026, 9, 1), new DateTime(2026, 9, 10)], dates);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task CreateLease_DateOnlyPayload_Returns201AndStoresUtcMidnight()
     {
         var owner = $"auth0|fd06-lease-{Guid.NewGuid():N}";
@@ -145,14 +140,13 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var id = (await response.Content.ReadFromJsonAsync<JsonElement>(JsonOpts)).GetProperty("id").GetGuid();
 
-        await using var db = factory.CreateDbContext();
-        var lease = await db.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == id);
+        var lease = await WithDbAsync(db => db.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == id));
         Assert.Equal(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc), lease.StartDate);
         Assert.Equal(new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
         Assert.Equal(DateTimeKind.Utc, lease.StartDate.Kind);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetPublicAvailability_DateOnlyQuery_Returns200()
     {
         var property = await factory.SeedPropertyAsync($"auth0|fd06-avail-{Guid.NewGuid():N}");
@@ -164,38 +158,36 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GetActiveByCityAsync_UnspecifiedKindParameter_QueriesTimestamptzWithoutError()
     {
-        await factory.SeedTouristTaxRateAsync("Napoli", 2.00m, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-        await using var db = factory.CreateDbContext();
+        await SeedTouristTaxRateAsync("Napoli", 2.00m);
 
-        var rate = await new TouristTaxRateRepository(db).GetActiveByCityAsync(
+        var rate = await WithDbAsync(db => new TouristTaxRateRepository(db).GetActiveByCityAsync(
             "Napoli",
-            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Unspecified));
+            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Unspecified)));
 
         Assert.NotNull(rate);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Query_DateMemberOfConvertedColumn_TranslatesOnPostgres()
     {
         var property = await factory.SeedPropertyAsync($"auth0|fd06-query-{Guid.NewGuid():N}");
-        await factory.SeedPricingHistoryAtAsync(property.Id, new DateTime(2026, 9, 10, 2, 0, 0, DateTimeKind.Utc));
-        await using var db = factory.CreateDbContext();
+        await SeedPricingHistoryAtAsync(property.Id, new DateTime(2026, 9, 10, 2, 0, 0, DateTimeKind.Utc));
         var day = new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Unspecified);
 
-        var count = await db.PricingHistories
-            .CountAsync(h => h.PropertyId == property.Id && h.AdaptationDate.Date <= day);
+        var count = await WithDbAsync(db => db.PricingHistories
+            .CountAsync(h => h.PropertyId == property.Id && h.AdaptationDate.Date <= day));
 
         Assert.Equal(1, count);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SaveChanges_UnspecifiedKindValue_IsStoredAsUtcAndReadBackAsUtc()
     {
         var id = Guid.NewGuid();
-        await using (var db = factory.CreateDbContext())
+        await WithDbAsync(db =>
         {
             db.TouristTaxRates.Add(new TouristTaxRate
             {
@@ -206,112 +198,56 @@ public class DateTimeUtcNormalizationPostgresTests(PostgresDateTimeWebApplicatio
                 EffectiveFrom = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Unspecified),
                 EffectiveTo = new DateTime(2026, 9, 30, 0, 0, 0, DateTimeKind.Unspecified),
             });
-            await db.SaveChangesAsync();
-        }
+            return db.SaveChangesAsync();
+        });
 
-        await using var read = factory.CreateDbContext();
-        var stored = await read.TouristTaxRates.AsNoTracking().SingleAsync(r => r.Id == id);
+        var stored = await WithDbAsync(db => db.TouristTaxRates.AsNoTracking().SingleAsync(r => r.Id == id));
         Assert.Equal(new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc), stored.EffectiveFrom);
         Assert.Equal(DateTimeKind.Utc, stored.EffectiveFrom.Kind);
         Assert.Equal(DateTimeKind.Utc, stored.EffectiveTo!.Value.Kind);
     }
-}
 
-/// <summary>
-/// API factory backed by a throw-away PostgreSQL database with all EF migrations applied.
-/// Uses TEST_POSTGRES_CONNECTION when set (database created and dropped per fixture),
-/// otherwise a Testcontainers PostgreSQL instance.
-/// </summary>
-public sealed class PostgresDateTimeWebApplicationFactory : CasazenWebApplicationFactory, IAsyncLifetime
-{
-    private PostgreSqlContainer? _container;
-    private string _connectionString = string.Empty;
-
-    public async Task InitializeAsync()
+    private async Task<T> WithDbAsync<T>(Func<AppDbContext, Task<T>> action)
     {
-        var baseConnection = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(baseConnection))
+        await using var scope = factory.Services.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+    }
+
+    private Task SeedTouristTaxRateAsync(string city, decimal rate) =>
+        WithDbAsync(async db =>
         {
-            _container = new PostgreSqlBuilder().WithImage("postgres:16-alpine").Build();
-            await _container.StartAsync();
-            _connectionString = _container.GetConnectionString();
-        }
-        else
-        {
-            _connectionString = new NpgsqlConnectionStringBuilder(baseConnection)
+            if (await db.TouristTaxRates.AnyAsync(r => r.City == city))
+                return 0;
+
+            db.TouristTaxRates.Add(new TouristTaxRate
             {
-                Database = $"wt_fd06_{Guid.NewGuid():N}",
-            }.ConnectionString;
-        }
-
-        await using var db = CreateDbContext();
-        await db.Database.MigrateAsync();
-    }
-
-    async Task IAsyncLifetime.DisposeAsync()
-    {
-        if (_container is null)
-        {
-            await using var db = CreateDbContext();
-            await db.Database.EnsureDeletedAsync();
-        }
-
-        await DisposeAsync();
-
-        if (_container is not null)
-            await _container.DisposeAsync();
-    }
-
-    public AppDbContext CreateDbContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
-
-    public async Task SeedTouristTaxRateAsync(string city, decimal rate, DateTime effectiveFrom)
-    {
-        await using var db = CreateDbContext();
-        if (await db.TouristTaxRates.AnyAsync(r => r.City == city))
-            return;
-
-        db.TouristTaxRates.Add(new TouristTaxRate
-        {
-            City = city,
-            RegionCode = "XX",
-            RatePerPersonPerNight = rate,
-            MinimumAge = 14,
-            IsActive = true,
-            EffectiveFrom = effectiveFrom,
-        });
-        await db.SaveChangesAsync();
-    }
-
-    public async Task SeedPricingHistoryAtAsync(Guid propertyId, params DateTime[] adaptationDates)
-    {
-        await using var db = CreateDbContext();
-        foreach (var date in adaptationDates)
-        {
-            db.PricingHistories.Add(new PricingHistory
-            {
-                PropertyId = propertyId,
-                AdaptationDate = date,
-                PreviousPrice = 100m,
-                NewPrice = 110m,
-                ChangeReason = "seasonal",
-                OtasSynced = string.Empty,
-                SyncStatus = "Synced",
-                CreatedAt = date,
+                City = city,
+                RegionCode = "XX",
+                RatePerPersonPerNight = rate,
+                MinimumAge = 14,
+                IsActive = true,
+                EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             });
-        }
-
-        await db.SaveChangesAsync();
-    }
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        base.ConfigureWebHost(builder);
-        builder.ConfigureTestServices(services =>
-        {
-            RemoveAllOf<DbContextOptions<AppDbContext>>(services);
-            RemoveAllOf<IDbContextOptionsConfiguration<AppDbContext>>(services);
-            services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+            return await db.SaveChangesAsync();
         });
-    }
+
+    private Task SeedPricingHistoryAtAsync(Guid propertyId, params DateTime[] adaptationDates) =>
+        WithDbAsync(db =>
+        {
+            foreach (var date in adaptationDates)
+            {
+                db.PricingHistories.Add(new PricingHistory
+                {
+                    PropertyId = propertyId,
+                    AdaptationDate = date,
+                    PreviousPrice = 100m,
+                    NewPrice = 110m,
+                    ChangeReason = "seasonal",
+                    SyncStatus = "Synced",
+                    CreatedAt = date,
+                });
+            }
+
+            return db.SaveChangesAsync();
+        });
 }
