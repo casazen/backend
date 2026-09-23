@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -21,6 +22,7 @@ public class DirectBookingChargeJob(
     private const string DeadlineChargeDescription = "Direct checkout - deferred payment (charged at deadline)";
     private const string LegacyDeadlineChargeDescription = "Direct booking - charged at deadline";
 
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)] // never two charging runs at once
     public async Task ExecuteAsync()
     {
         var today = _clock.TodayInRome();

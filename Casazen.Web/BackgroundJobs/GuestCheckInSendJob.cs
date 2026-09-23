@@ -3,6 +3,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -23,6 +24,7 @@ public class GuestCheckInSendJob(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var sendWindowDays = configuration.GetValue("CheckIn:SendWindowDays", 3);

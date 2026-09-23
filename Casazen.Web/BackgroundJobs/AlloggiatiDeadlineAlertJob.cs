@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -11,6 +12,7 @@ public class AlloggiatiDeadlineAlertJob(
     INotificationService notificationService,
     ILogger<AlloggiatiDeadlineAlertJob> logger)
 {
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var now = DateTime.UtcNow;

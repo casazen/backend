@@ -1,0 +1,262 @@
+# Runbook: Hangfire (one schema per environment, no overlapping runs)
+
+Task FD-11 (audit defect A9-03, P0). The code is in place; the product owner applies the Supabase and Railway
+steps below, test first, then production.
+
+## The problem
+
+Test and production use **one** Supabase database and differ only by the EF `SearchPath`
+(`casazen_test` / `casazen_prod`). Until FD-11 Hangfire always used the fixed schema `hangfire` in that same
+database, so both Railway environments:
+
+- consumed **the same queue**: a production Stripe webhook job could be taken by the test worker, which looks
+  for the booking in `casazen_test`, does not find it and loses the event;
+- shared **the same recurring jobs** (same ids, e.g. `direct-booking-charge`): the daily production run could be
+  executed by the test server against the test data, so production charges were skipped;
+- registered each other's job types: a `develop` deploy with a new job left a recurring job the production
+  server cannot deserialize.
+
+## What the backend does now
+
+| Concern | Behaviour | Code |
+|---|---|---|
+| Schema | 1. `Hangfire:Schema` when set. 2. Otherwise `hangfire_<first SearchPath schema>`, e.g. `hangfire_casazen_prod`. 3. Otherwise, outside Production only, `hangfire_<environment>` (e.g. `hangfire_development` locally). 4. Production with neither: **startup fails** with an explicit message. `hangfire` together with a SearchPath is refused at startup. Only lowercase letters, digits and `_` are accepted | `Casazen.Web/Configuration/HangfireStorageSettings.cs`, `Casazen.Web/Extensions/HangfireServiceCollectionExtensions.cs` |
+| Startup log | `Hangfire storage schema: hangfire_casazen_prod`, plus Hangfire's own `Starting Hangfire Server using job storage: '… Schema: …'` | `Casazen.Web/Program.cs` |
+| Recurring jobs | Registered (`AddOrUpdate`) at every startup in the environment's schema | `Casazen.Web/BackgroundJobs/RecurringJobsRegistration.cs` |
+| No overlapping runs | `[DisableConcurrentExecution]` on every recurring job, and on the Alloggiati report per booking. A run waits for the previous one (60 s for jobs every 5–15 minutes, 300 s otherwise), then fails with a lock timeout and Hangfire retries it later | `Casazen.Web/BackgroundJobs/JobLockTimeouts.cs` and each job |
+| Lock expiry | `Hangfire:DistributedLockTimeoutMinutes`, default **30** (Hangfire.PostgreSql's own default is 10). A lock older than this is considered abandoned and taken over, so it must exceed the longest run; it is also the longest a lock survives a crashed container | `HangfireStorageSettings` |
+| Dashboard | Unchanged: off by default (`Hangfire:DashboardEnabled=false`), behind `HangfireAuthorizationFilter` (API key header or Admin role). The title now shows the schema | `Casazen.Web/Program.cs` |
+
+Locks live in the environment's own schema (table `<schema>.lock`, resource `<schema>:<Job>.<Method>`), so test
+and production never block each other.
+
+| Recurring job | Cron (UTC) | Lock resource | Wait |
+|---|---|---|---|
+| `ota-sync-all` | hourly | `OtaSyncJob.ExecuteAsync:<propertyId>` (also manual syncs) | 300 s |
+| `booking-pull-all` | `*/15` | `BookingPullJob.ExecuteAsync:<propertyId>` | 60 s |
+| `dynamic-pricing-adaptation` | 02:00 | `DynamicPricingJob` (shared with the per-property manual run) | 300 s |
+| `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
+| `alloggiati-deadline-alert` | hourly | `AlloggiatiDeadlineAlertJob.ExecuteAsync` | 300 s |
+| `cin-deadline-alert` | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` | 300 s |
+| `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
+| `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
+| `rli-deadline-reminder` | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
+| `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
+| `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
+| `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
+| `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
+| `guest-checkin-send` | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
+| `guest-checkin-reminder` | 10:00 | `GuestCheckInReminderJob.ExecuteAsync` | 300 s |
+
+On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
+submissions of the same booking to Alloggiati Web never run at once.
+
+The test `RecurringJobsConcurrencyTests` fails if a recurring job is added without `[DisableConcurrentExecution]`.
+
+## 1. Check now: do test and production share the queue?
+
+Read-only; run it in the Supabase **SQL editor** before deploying FD-11.
+
+**1a. Servers in the shared schema**
+
+```sql
+SELECT id,
+       lastheartbeat,
+       now() - lastheartbeat        AS since_heartbeat,
+       data ->> 'StartedAt'         AS started_at,
+       data ->> 'WorkerCount'       AS workers
+FROM hangfire.server
+ORDER BY lastheartbeat DESC;
+```
+
+A server is alive when its heartbeat is less than a minute or two old. The id is
+`<container hostname>:<pid>:<guid>`.
+
+**1b. Which environment is each server?** In Railway → each environment → the service → **Deploy logs** of the
+current deployment, search `successfully announced`: the line `Server <id> successfully announced` gives that
+environment's server id. If ids from **both** the test and the production logs appear in `hangfire.server`
+(ignore the short overlap of old and new container during a deploy), the queue is shared: deploy FD-11 as soon as
+possible.
+
+**1c. Who executed the critical jobs** (only jobs not yet expired: succeeded jobs are kept for one day, failed jobs
+until deleted)
+
+```sql
+SELECT j.id,
+       j.createdat,
+       j.statename,
+       j.invocationdata ->> 'Type'  AS job_type,
+       s.data ->> 'ServerId'        AS executed_by
+FROM hangfire.job j
+JOIN hangfire.state s ON s.jobid = j.id AND s.name = 'Processing'
+WHERE j.invocationdata ->> 'Type' LIKE 'Casazen.Web.BackgroundJobs.DirectBookingChargeJob%'
+   OR j.invocationdata ->> 'Type' LIKE 'Casazen.Web.BackgroundJobs.StripeWebhookJob%'
+ORDER BY j.createdat DESC
+LIMIT 200;
+```
+
+A `DirectBookingChargeJob` executed by the test server means that day's production charges were skipped; a
+failed `StripeWebhookJob` executed by the test server means a production event was lost. Replay them as in §3.4.
+
+**1d. Pending jobs** (they will not run after the switch, see §3.4)
+
+```sql
+SELECT j.id,
+       j.statename,
+       j.createdat,
+       j.invocationdata ->> 'Type'   AS job_type,
+       j.invocationdata ->> 'Method' AS method,
+       j.arguments
+FROM hangfire.job j
+WHERE j.statename IN ('Enqueued', 'Scheduled', 'Processing', 'Awaiting', 'Failed')
+ORDER BY j.createdat;
+```
+
+Save the output: it is the to-do list for §3.4.
+
+## 2. Railway variables
+
+Set per environment (Railway → environment → service → **Variables**):
+
+| Variable | test | production |
+|---|---|---|
+| `Hangfire__Schema` | `hangfire_casazen_test` | `hangfire_casazen_prod` |
+| `Hangfire__DistributedLockTimeoutMinutes` | optional, default `30` | optional, default `30` |
+| `ConnectionStrings__DefaultConnection` | unchanged, `SearchPath=casazen_test` | unchanged, `SearchPath=casazen_prod` |
+| `Hangfire__DashboardEnabled` | `false` (enable only temporarily) | `false` |
+| `Hangfire__DashboardApiKey` | only while the dashboard is enabled | same |
+
+- The values equal the names derived from the SearchPath, so setting them moves nothing; they make the choice
+  visible and keep it stable if the connection string changes.
+- Never use the same value in two environments, and never `hangfire` with a SearchPath (startup refuses it).
+- Both environments run with `ASPNETCORE_ENVIRONMENT=Production`: without a SearchPath and without
+  `Hangfire__Schema` the service does not start (`Hangfire schema is ambiguous…`).
+- **Railway PR environments** copy the variables of their base environment. If they are enabled, give them their
+  own `Hangfire__Schema` (e.g. `hangfire_casazen_pr`) — better, their own database — otherwise an unreviewed PR
+  build consumes the test queue.
+- On first start Hangfire creates its schema and tables (`PrepareSchemaIfNecessary`): the database user needs
+  `CREATE` on the database, or the schema must exist and belong to that user (§4).
+
+## 3. Switching over (one-time)
+
+1. Run §1 and save the output of 1d.
+2. **Test**: set `Hangfire__Schema=hangfire_casazen_test`, deploy `develop`. Verify with §5. From now on only
+   production reads `hangfire`.
+3. **Production**: set `Hangfire__Schema=hangfire_casazen_prod`, release to `main`. Verify with §5.
+4. **Pending jobs of the old schema.** Recurring jobs need nothing: each environment re-registers them in its own
+   schema at every startup; the old definitions in `hangfire` stay inert. Everything else left in `hangfire`
+   (enqueued, scheduled — retries and checkout reminders included — interrupted, awaiting) **never runs**: no server
+   reads that schema any more. "Letting them expire" does not happen by itself either: Hangfire removes expired
+   rows through the expiration manager of a server attached to the schema, and there is none. Handle the list from
+   1d by hand; the arguments (booking id, event id) tell the environment — look the id up in `casazen_prod` and
+   `casazen_test`:
+
+   | Job type | What to do |
+   |---|---|
+   | `StripeWebhookJob` | Stripe Dashboard → Developers → Events → the event → **Resend** to that environment's endpoint (processing is idempotent per event id) |
+   | `AlloggiatiWebReportJob` | Send the booking's report again; the hourly `alloggiati-deadline-alert` flags every booking still missing it |
+   | `CheckoutReminderJob` | Reminder lost; remind the host manually if still relevant (query below) |
+   | `ESignWebhookJob` | Ask the e-sign provider to resend the event, or check the lease status there |
+   | `OtaSyncJob`, `DynamicPricingJob`, `SeoPageGenerationJob` | Trigger again from the app/admin if needed; periodic work is covered by the next recurring run |
+   | `DirectBookingChargeJob` and other recurring jobs | Nothing: the next run in the new schema catches up (it charges every booking past its deadline without a completed charge) |
+
+   Bookings whose checkout reminder was scheduled in the old schema:
+
+   ```sql
+   SELECT "Id", "CheckOutDate", "CheckoutReminderJobId" FROM casazen_prod."Bookings"
+   WHERE "CheckoutReminderJobId" IS NOT NULL;   -- same for casazen_test
+   ```
+
+5. **Right after each environment's first start in its new schema**, move its job id sequence past the old ids.
+   Bookings store the Hangfire id of their checkout reminder, and ids restart from 1 in a new schema: without
+   this, cancelling an old reminder at checkout could delete an unrelated new job with the same number.
+
+   ```sql
+   SELECT setval('hangfire_casazen_test.job_id_seq', (SELECT last_value FROM hangfire.job_id_seq) + 1000000);
+   SELECT setval('hangfire_casazen_prod.job_id_seq', (SELECT last_value FROM hangfire.job_id_seq) + 1000000);
+   ```
+
+6. **Cleanup**, after both environments have run on their own schema for at least a week and 3.4 is done:
+   optionally keep a copy (`pg_dump --schema=hangfire …`), then
+
+   ```sql
+   DROP SCHEMA hangfire CASCADE;
+   ```
+
+## 4. Stronger isolation (recommended)
+
+Separate schemas stop the shared queue, but both environments still connect as `postgres`: a bug or an unreviewed
+build running in test can still read and write `casazen_prod` and `hangfire_casazen_prod`.
+
+**Option A — separate Supabase projects (preferred).** One project for test, one for production (the free plan
+allows two active projects). Test code cannot reach production data at all, and backups, keys, pausing and limits
+are separate. Each project keeps the same layout (`casazen_*` + `hangfire_casazen_*`), only the connection strings
+change. Migrate the test data by re-running the migrations on the new project (`scripts/migrate.sh test`).
+
+**Option B — one login role per environment**, limited to its own schemas. Sketch, to rehearse on test first
+(SQL editor, as `postgres`; choose strong passwords and store them only in Railway):
+
+```sql
+CREATE ROLE casazen_test_app LOGIN PASSWORD '<strong password>';
+CREATE ROLE casazen_prod_app LOGIN PASSWORD '<strong password>';
+GRANT casazen_test_app, casazen_prod_app TO postgres;  -- lets postgres hand objects over to them
+
+-- Each role owns only its environment's schemas (EF migrations and Hangfire's installer run DDL at startup).
+CREATE SCHEMA IF NOT EXISTS hangfire_casazen_test AUTHORIZATION casazen_test_app;
+CREATE SCHEMA IF NOT EXISTS hangfire_casazen_prod AUTHORIZATION casazen_prod_app;
+ALTER SCHEMA casazen_test OWNER TO casazen_test_app;
+ALTER SCHEMA casazen_prod OWNER TO casazen_prod_app;
+
+-- Existing tables and sequences stay owned by postgres: hand them over (repeat with casazen_prod / casazen_prod_app).
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT format('%I.%I', schemaname, tablename) AS t FROM pg_tables WHERE schemaname = 'casazen_test' LOOP
+    EXECUTE 'ALTER TABLE ' || r.t || ' OWNER TO casazen_test_app';
+  END LOOP;
+END $$;
+
+-- Only if Hangfire's installer fails with "permission denied for database postgres":
+-- GRANT CREATE ON DATABASE postgres TO casazen_test_app, casazen_prod_app;
+
+-- No access to the other environment: nothing is granted, so only check that no grant was left behind.
+SELECT grantee, table_schema, count(*) FROM information_schema.role_table_grants
+WHERE grantee IN ('casazen_test_app', 'casazen_prod_app') GROUP BY 1, 2;
+```
+
+Then set the connection string of each Railway environment to its role (with the Supabase pooler the user name
+is `<role>.<project ref>`), check §5, and stop using `postgres` in Railway. Do the step for `hangfire_casazen_*`
+before the first start with FD-11, or hand over the tables Hangfire created with the same `DO` block.
+
+## 5. Verify after each deploy
+
+- Railway deploy logs: `Hangfire storage schema: hangfire_casazen_test` (or `_prod`).
+- SQL:
+
+  ```sql
+  -- One live server per environment, each in its own schema
+  SELECT 'test' AS env, id, lastheartbeat FROM hangfire_casazen_test.server
+  UNION ALL
+  SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
+  ORDER BY env, lastheartbeat DESC;
+
+  -- 15 recurring jobs in each schema
+  SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
+  UNION ALL
+  SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
+
+  -- Must be empty once both environments are switched
+  SELECT id, lastheartbeat FROM hangfire.server WHERE lastheartbeat > now() - interval '5 minutes';
+  ```
+
+- If the dashboard is enabled temporarily, its title shows the schema.
+
+## 6. Troubleshooting
+
+| Symptom | Meaning / action |
+|---|---|
+| Startup fails: `Hangfire schema is ambiguous…` | Production without SearchPath and without `Hangfire__Schema`: set the variable (§2) |
+| Startup fails: `Hangfire:Schema 'hangfire' is the Hangfire schema shared…` | The old shared value is set: use `hangfire_casazen_test` / `hangfire_casazen_prod` |
+| Job failed with `DistributedLockTimeoutException` (`…distributed lock on the '…' resource`) | The previous run was still going; Hangfire retries it. Occasional on the 15-minute syncs when a run is slow; if systematic, the job is too slow for its schedule |
+| A job seems blocked by a lock after a crash | `SELECT resource, acquired FROM hangfire_casazen_prod.lock ORDER BY acquired;` The lock expires after `Hangfire__DistributedLockTimeoutMinutes`. Delete the row only if the dashboard shows no run of that job in *Processing* |
+| A job legitimately runs longer than 30 minutes | Raise `Hangfire__DistributedLockTimeoutMinutes` above its duration. Hangfire.PostgreSql also hands a job still running after 30 minutes (invisibility timeout) to another worker; the lock makes that second run wait instead of running in parallel |
