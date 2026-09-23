@@ -58,6 +58,36 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task CreateDirectBookingAsync_WithInvalidPaymentOption_RejectsBeforePersisting()
+    {
+        var input = new DirectBookingCreateInput(
+            Guid.NewGuid(),
+            DateTime.UtcNow.Date.AddDays(10),
+            DateTime.UtcNow.Date.AddDays(12),
+            1,
+            0,
+            new DirectBookingGuestInput(
+                "Ada",
+                "Lovelace",
+                "ada@example.com",
+                null,
+                "IT"),
+            "2026-06-direct-checkout-v1",
+            "127.0.0.1",
+            null,
+            (PaymentOption)999);
+
+        var ex = await Assert.ThrowsAsync<DirectBookingException>(() =>
+            _service.CreateDirectBookingAsync(input));
+
+        Assert.Equal(DirectBookingErrorCodes.InvalidPaymentOption, ex.ErrorCode);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateBookingAsync_WithValidBooking_ReturnsCreatedBooking()
     {
         var booking = new Booking
@@ -79,8 +109,29 @@ public class BookingServiceTests
         Assert.NotNull(result);
         Assert.Equal(booking.PropertyId, result.PropertyId);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Once);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(booking.PropertyId, 15), Times.Once);
         _mockRepository.Verify(x => x.IsAvailableAsync(
-            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, null), Times.Once);
+            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, 15), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateBookingAsync_WithPastCheckIn_ThrowsValidationError()
+    {
+        var booking = new Booking
+        {
+            PropertyId = Guid.NewGuid(),
+            GuestId = Guid.NewGuid(),
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-1),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(1),
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.CreateBookingAsync(booking));
+
+        Assert.Contains("Check-in date cannot be in the past", ex.Message);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
     }
 
     [Fact]
@@ -89,11 +140,68 @@ public class BookingServiceTests
         var propertyId = Guid.NewGuid();
         var checkIn = DateTime.Now.AddDays(10);
         var checkOut = DateTime.Now.AddDays(15);
-        _mockRepository.Setup(x => x.IsAvailableAsync(propertyId, checkIn, checkOut, null)).ReturnsAsync(true);
+        _mockRepository.Setup(x => x.IsAvailableAsync(propertyId, checkIn, checkOut, 15)).ReturnsAsync(true);
 
         var result = await _service.IsPropertyAvailableAsync(propertyId, checkIn, checkOut);
 
         Assert.True(result);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(propertyId, 15), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCalendarAsync_CancelsExpiredPendingDirectBookingsBeforeLoadingCalendar()
+    {
+        var propertyId = Guid.NewGuid();
+        var start = DateTime.UtcNow.Date;
+        var end = start.AddDays(30);
+        _mockRepository.Setup(x => x.GetByDateRangeAsync(propertyId, start, end))
+            .ReturnsAsync([]);
+
+        var result = await _service.GetCalendarAsync(propertyId, start, end);
+
+        Assert.Empty(result);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(propertyId, 15), Times.Once);
+        _mockRepository.Verify(x => x.GetByDateRangeAsync(propertyId, start, end), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateBookingAsync_WithPastUnchangedCheckIn_AllowsCheckoutStatusUpdate()
+    {
+        var bookingId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var checkIn = DateTime.UtcNow.Date.AddDays(-2);
+        var checkOut = DateTime.UtcNow.Date;
+        var existing = new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            Status = BookingStatus.CheckedIn,
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+        var update = new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            GuestId = guestId,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            Status = BookingStatus.CheckedOut,
+            TotalPrice = 500m,
+            NumberOfGuests = 2,
+        };
+
+        _mockRepository.Setup(x => x.GetByIdAsync(bookingId)).ReturnsAsync(existing);
+        _mockRepository.Setup(x => x.UpdateAsync(update)).ReturnsAsync(update);
+
+        var result = await _service.UpdateBookingAsync(update);
+
+        Assert.Equal(BookingStatus.CheckedOut, result.Status);
+        _mockRepository.Verify(x => x.UpdateAsync(update), Times.Once);
     }
 
     [Fact]
