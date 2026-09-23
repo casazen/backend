@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,16 +13,20 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicBookingsController(
     IBookingService bookingService,
-    ILogger<PublicBookingsController> logger) : ControllerBase
+    ILogger<PublicBookingsController> logger,
+    TimeProvider? timeProvider = null) : ControllerBase
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     [HttpGet("property/{propertyId}/availability")]
     public async Task<ActionResult<PropertyAvailabilityResponse>> GetPropertyAvailability(
         Guid propertyId,
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.UtcNow.Date;
-        var end = endDate ?? DateTime.UtcNow.Date.AddDays(365);
+        var today = _clock.TodayInRome();
+        var start = startDate ?? today;
+        var end = endDate ?? today.AddDays(365);
 
         var bookings = await bookingService.GetCalendarAsync(propertyId, start, end);
 

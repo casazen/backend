@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Hangfire;
@@ -11,13 +12,16 @@ namespace Casazen.Web.BackgroundJobs;
 public class RliDeadlineReminderJob(
     AppDbContext db,
     IEmailService emailService,
-    ILogger<RliDeadlineReminderJob> logger)
+    ILogger<RliDeadlineReminderJob> logger,
+    TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     [AutomaticRetry(Attempts = 3)]
     [DisableConcurrentExecution(timeoutInSeconds: 120)]
     public async Task ExecuteAsync()
     {
-        var today = DateTime.UtcNow.Date;
+        var today = _clock.TodayInRome();
         var leases = await db.LeaseContracts
             .Include(l => l.Parties)
             .Include(l => l.Events)

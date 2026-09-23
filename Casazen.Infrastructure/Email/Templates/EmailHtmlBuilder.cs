@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
@@ -56,16 +57,14 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
         return Append($"<p style=\"{MutedStyle}\">{Text(key)}<br /><a href=\"{encoded}\">{encoded}</a></p>");
     }
 
-    /// <summary>Date of a stay (no time zone conversion: stay dates carry no time).</summary>
+    /// <summary>Date of a stay (date-only value stored as midnight UTC: no time zone conversion).</summary>
     public string FormatDate(DateTime date) => date.ToString(Text("Format_Date"), Culture);
 
     /// <summary>A UTC instant shown in Italian time (Europe/Rome).</summary>
     public string FormatInstant(DateTime utc)
     {
         var asUtc = utc.Kind == DateTimeKind.Utc ? utc : DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-        return Casazen.Core.Utilities.TimezoneHelper
-            .ConvertUtcToLocal(asUtc, "Europe/Rome")
-            .ToString(Text("Format_DateTime"), Culture);
+        return TimeZoneInfo.ConvertTimeFromUtc(asUtc, RomeCalendar.TimeZone).ToString(Text("Format_DateTime"), Culture);
     }
 
     /// <summary>Wraps the blocks in the layout. The subject is plain text (values are not HTML-encoded there).</summary>

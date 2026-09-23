@@ -59,6 +59,10 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
         foreach (var role in expectedRoles)
             Assert.Contains(role, assigned);
 
+        // No Management API credentials in the test host: the failed Auth0 sync is reported, not hidden.
+        Assert.False(body.GetProperty("rolesSynced").GetBoolean());
+        Assert.Equal("auth0_management_not_configured", body.GetProperty("rolesSyncError").GetString());
+
         var me = await client.GetAsync("/api/users/me");
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         var profile = await me.Content.ReadFromJsonAsync<JsonElement>();

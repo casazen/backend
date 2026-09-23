@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
@@ -130,8 +131,9 @@ public class GuestCheckInReminderJobTests
             OrgId = org.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date,
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(2),
+            // Arrival "today" on the Rome calendar, as the job computes it (FD-06).
+            CheckInDate = TimeProvider.System.TodayInRome(),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(2),
             NumberOfGuests = 1,
             Status = BookingStatus.CheckedIn,
             Source = BookingSource.Direct,

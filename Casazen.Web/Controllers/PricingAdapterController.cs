@@ -181,8 +181,14 @@ public class PricingAdapterController(
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 50;
 
+        // from/to arrive as UTC (FD-06). A date-only "to" (e.g. 2026-09-10) includes that whole day.
         var startDate = from ?? DateTime.UtcNow.AddDays(-90);
-        var endDate = to ?? DateTime.UtcNow;
+        var endDate = to switch
+        {
+            null => DateTime.UtcNow,
+            { TimeOfDay.Ticks: 0 } endDay => endDay.AddDays(1).AddTicks(-1),
+            { } endInstant => endInstant,
+        };
 
         var (items, total) = await pricingService.GetHistoryPagedAsync(propertyId, startDate, endDate, page, pageSize);
 

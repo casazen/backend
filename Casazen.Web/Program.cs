@@ -74,6 +74,9 @@ builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 builder.Services.AddHttpClient<PublicHolidayService>();
 builder.Services.AddMemoryCache();
 
+// Dates: UTC normalization of JSON/query/route DateTime values + clock for "today" in Europe/Rome (FD-06)
+builder.Services.AddCasazenUtcDateTimeHandling();
+
 // Stripe configuration — set API key globally for all Stripe services
 var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
 if (!string.IsNullOrEmpty(stripeSecretKey))
@@ -95,7 +98,7 @@ builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
-builder.Services.AddScoped<IAuth0ManagementService, Auth0ManagementService>();
+builder.Services.AddCasazenAuth0Management();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
 builder.Services.AddScoped<IGdprService, GdprService>();

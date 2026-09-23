@@ -1,15 +1,23 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Validation;
 
 public static class BookingValidator
 {
-    public static BookingValidationResult ValidateBooking(Booking booking, bool allowPastCheckIn = false)
+    /// <param name="booking">Booking to validate.</param>
+    /// <param name="allowPastCheckIn">Skip the "check-in in the past" rule (e.g. unchanged dates on update).</param>
+    /// <param name="today">Calendar "today" in Europe/Rome as midnight UTC; defaults to the system clock.</param>
+    public static BookingValidationResult ValidateBooking(
+        Booking booking,
+        bool allowPastCheckIn = false,
+        DateTime? today = null)
     {
         var errors = new List<string>();
+        var referenceToday = today ?? TimeProvider.System.TodayInRome();
 
         // Validate dates
-        if (!allowPastCheckIn && booking.CheckInDate < DateTime.UtcNow.Date)
+        if (!allowPastCheckIn && booking.CheckInDate.Date < referenceToday)
         {
             errors.Add("Check-in date cannot be in the past");
         }

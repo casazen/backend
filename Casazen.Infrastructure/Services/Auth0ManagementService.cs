@@ -1,22 +1,35 @@
+using System.Net;
+using Auth0.Core.Exceptions;
 using Auth0.ManagementApi;
 using Auth0.ManagementApi.Models;
+using Auth0.ManagementApi.Paging;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Wraps the Auth0 Management API for role synchronisation.
-/// Reads <c>Auth0:ManagementApiToken</c> and <c>Auth0:ManagementApiDomain</c> from configuration.
-/// If either value is absent the service logs a warning and returns gracefully — it must never throw
-/// in environments (e.g., Railway test) where the M2M token is not configured.
+/// <list type="bullet">
+/// <item>Tokens come from <see cref="IAuth0ManagementTokenProvider"/> (client credentials, cached).</item>
+/// <item>Role assignment is additive only: other roles of the user are never removed.
+/// Removal is explicit and limited to the named roles.</item>
+/// <item>Auth0 role ids are cached in <see cref="IMemoryCache"/>.</item>
+/// <item>Every call returns an <see cref="Auth0SyncResult"/>; failures are logged with context and
+/// reported to the caller instead of being swallowed.</item>
+/// </list>
 /// </summary>
 public class Auth0ManagementService(
-    IConfiguration configuration,
+    IAuth0ManagementTokenProvider tokenProvider,
+    IHttpClientFactory httpClientFactory,
+    IMemoryCache memoryCache,
     ILogger<Auth0ManagementService> logger) : IAuth0ManagementService
 {
+    /// <summary>How long the Auth0 role name → id map stays cached.</summary>
+    public static readonly TimeSpan RoleIdCacheDuration = TimeSpan.FromHours(1);
+
     // Map C# enum values to Auth0 role names that match the Auth0 Action output.
     private static readonly Dictionary<UserRole, string> RoleNames = new()
     {
@@ -29,166 +42,41 @@ public class Auth0ManagementService(
         { UserRole.Supplier,         "Supplier" },
     };
 
-    private static readonly UserRole[] OnboardingRoles =
-    [
-        UserRole.PropertyOwner,
-        UserRole.LongTermLandlord
-    ];
+    public bool IsConfigured => tokenProvider.IsConfigured;
 
-    /// <summary>
-    /// Assigns a role to an Auth0 user via the Management API.
-    /// All existing roles are removed; the new one is assigned.
-    /// Silently skips if the token or domain is not configured.
-    /// </summary>
-    public async Task AssignRoleAsync(string userId, UserRole role)
-    {
-        var token = configuration["Auth0:ManagementApiToken"];
-        var domain = configuration["Auth0:ManagementApiDomain"]
-                     ?? configuration["Auth0:Domain"];
+    public Task<Auth0SyncResult> AssignRoleAsync(
+        string userId,
+        UserRole role,
+        CancellationToken cancellationToken = default) =>
+        AssignRolesAsync(userId, [role], cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(domain))
-        {
-            logger.LogWarning(
-                "Auth0ManagementService: ManagementApiToken or Domain not configured — " +
-                "skipping role sync for user {UserId}", userId);
-            return;
-        }
+    public Task<Auth0SyncResult> AssignRolesAsync(
+        string userId,
+        IReadOnlyCollection<UserRole> roles,
+        CancellationToken cancellationToken = default) =>
+        ChangeRolesAsync(userId, roles, remove: false, cancellationToken);
 
-        if (!RoleNames.TryGetValue(role, out var roleName))
-        {
-            logger.LogWarning("Auth0ManagementService: No Auth0 role mapping for {Role}", role);
-            return;
-        }
+    public Task<Auth0SyncResult> RemoveRoleAsync(
+        string userId,
+        UserRole role,
+        CancellationToken cancellationToken = default) =>
+        RemoveRolesAsync(userId, [role], cancellationToken);
 
-        try
-        {
-            var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
-
-            var existingRoles = await client.Users.GetRolesAsync(userId);
-            if (existingRoles != null && existingRoles.Count > 0)
-            {
-                await client.Users.RemoveRolesAsync(userId, new AssignRolesRequest
-                {
-                    Roles = existingRoles.Select(r => r.Id).ToArray()
-                });
-            }
-
-            var allRoles = await client.Roles.GetAllAsync(new GetRolesRequest { NameFilter = roleName });
-            var targetRole = allRoles?.FirstOrDefault(r =>
-                string.Equals(r.Name, roleName, StringComparison.OrdinalIgnoreCase));
-
-            if (targetRole == null)
-            {
-                logger.LogWarning(
-                    "Auth0ManagementService: Role '{RoleName}' not found in Auth0 — " +
-                    "skipping assignment for {UserId}", roleName, userId);
-                return;
-            }
-
-            await client.Users.AssignRolesAsync(userId, new AssignRolesRequest
-            {
-                Roles = new[] { targetRole.Id }
-            });
-
-            logger.LogInformation(
-                "Auth0ManagementService: Assigned role {RoleName} to user {UserId}",
-                roleName, userId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex,
-                "Auth0ManagementService: Failed to sync role {Role} for user {UserId}", role, userId);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task AssignOnboardingRolesAsync(string userId, IReadOnlyList<UserRole> roles)
-    {
-        var token = configuration["Auth0:ManagementApiToken"];
-        var domain = configuration["Auth0:ManagementApiDomain"]
-                     ?? configuration["Auth0:Domain"];
-
-        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(domain))
-        {
-            logger.LogWarning(
-                "Auth0ManagementService: ManagementApiToken or Domain not configured — " +
-                "skipping role sync for user {UserId}", userId);
-            return;
-        }
-
-        var targetRoleNames = roles
-            .Where(r => RoleNames.ContainsKey(r))
-            .Select(r => RoleNames[r])
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (targetRoleNames.Count == 0)
-        {
-            logger.LogWarning("Auth0ManagementService: No valid Auth0 role mapping for onboarding user {UserId}", userId);
-            return;
-        }
-
-        try
-        {
-            var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
-            var existingRoles = await client.Users.GetRolesAsync(userId);
-
-            var onboardingRoleNames = OnboardingRoles
-                .Select(r => RoleNames[r])
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            var rolesToRemove = existingRoles
-                .Where(r => onboardingRoleNames.Contains(r.Name ?? string.Empty))
-                .Select(r => r.Id)
-                .ToArray();
-
-            if (rolesToRemove.Length > 0)
-            {
-                await client.Users.RemoveRolesAsync(userId, new AssignRolesRequest { Roles = rolesToRemove });
-            }
-
-            var allRoles = await client.Roles.GetAllAsync(new GetRolesRequest());
-            var roleIdsToAssign = allRoles?
-                .Where(r => targetRoleNames.Contains(r.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-                .Select(r => r.Id)
-                .Distinct()
-                .ToArray() ?? [];
-
-            if (roleIdsToAssign.Length == 0)
-            {
-                logger.LogWarning(
-                    "Auth0ManagementService: Target onboarding roles not found in Auth0 for user {UserId}",
-                    userId);
-                return;
-            }
-
-            await client.Users.AssignRolesAsync(userId, new AssignRolesRequest { Roles = roleIdsToAssign });
-
-            logger.LogInformation(
-                "Auth0ManagementService: Assigned onboarding roles [{Roles}] to user {UserId}",
-                string.Join(", ", targetRoleNames), userId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex,
-                "Auth0ManagementService: Failed to sync onboarding roles for user {UserId}", userId);
-        }
-    }
+    public Task<Auth0SyncResult> RemoveRolesAsync(
+        string userId,
+        IReadOnlyCollection<UserRole> roles,
+        CancellationToken cancellationToken = default) =>
+        ChangeRolesAsync(userId, roles, remove: true, cancellationToken);
 
     /// <inheritdoc />
     public async Task<Auth0UserProfile?> GetUserProfileAsync(string userId)
     {
-        var token = configuration["Auth0:ManagementApiToken"];
-        var domain = configuration["Auth0:ManagementApiDomain"]
-                     ?? configuration["Auth0:Domain"];
-
-        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(domain))
+        if (!tokenProvider.IsConfigured)
             return null;
 
         try
         {
-            var client = new ManagementApiClient(token, new Uri($"https://{domain}/api/v2"));
-            var auth0User = await client.Users.GetAsync(userId);
+            var auth0User = await ExecuteAsync(client => client.Users.GetAsync(userId), CancellationToken.None);
             if (auth0User is null)
                 return null;
 
@@ -209,10 +97,178 @@ public class Auth0ManagementService(
 
             return new Auth0UserProfile(email, firstName, lastName);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Auth0ManagementService: Failed to fetch profile for user {UserId}", userId);
             return null;
         }
+    }
+
+    private async Task<Auth0SyncResult> ChangeRolesAsync(
+        string userId,
+        IReadOnlyCollection<UserRole> roles,
+        bool remove,
+        CancellationToken cancellationToken)
+    {
+        var operation = remove ? "remove" : "assign";
+        var roleNames = roles
+            .Where(RoleNames.ContainsKey)
+            .Select(r => RoleNames[r])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (roleNames.Count == 0)
+            return Auth0SyncResult.Synced;
+
+        if (!tokenProvider.IsConfigured)
+        {
+            logger.LogWarning(
+                "Auth0ManagementService: Management API not configured — cannot {Operation} roles [{Roles}] for user {UserId}",
+                operation, string.Join(", ", roleNames), userId);
+            return Auth0SyncResult.NotConfigured;
+        }
+
+        try
+        {
+            var roleIds = await ResolveRoleIdsAsync(roleNames, cancellationToken);
+            if (roleIds is null)
+            {
+                logger.LogError(
+                    "Auth0ManagementService: Auth0 roles [{Roles}] not found — cannot {Operation} them for user {UserId}",
+                    string.Join(", ", roleNames), operation, userId);
+                return Auth0SyncResult.Failed(Auth0SyncResult.RoleNotFoundCode);
+            }
+
+            var request = new AssignRolesRequest { Roles = roleIds };
+            await ExecuteAsync(
+                client => remove
+                    ? client.Users.RemoveRolesAsync(userId, request, cancellationToken)
+                    : client.Users.AssignRolesAsync(userId, request, cancellationToken),
+                cancellationToken);
+
+            logger.LogInformation(
+                "Auth0ManagementService: {Operation} roles [{Roles}] for user {UserId} succeeded",
+                operation, string.Join(", ", roleNames), userId);
+            return Auth0SyncResult.Synced;
+        }
+        catch (Auth0ManagementTokenException ex)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: No Management API token — cannot {Operation} roles [{Roles}] for user {UserId}",
+                operation, string.Join(", ", roleNames), userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+        }
+        catch (RateLimitApiException ex)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Rate limited while trying to {Operation} roles [{Roles}] for user {UserId}",
+                operation, string.Join(", ", roleNames), userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.RateLimitedCode);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Failed to {Operation} roles [{Roles}] for user {UserId} (status {StatusCode})",
+                operation, string.Join(", ", roleNames), userId, (ex as ErrorApiException)?.StatusCode);
+            return Auth0SyncResult.Failed(Auth0SyncResult.ApiErrorCode);
+        }
+    }
+
+    /// <summary>
+    /// Returns the Auth0 ids of <paramref name="roleNames"/>, or null when any of them does not exist.
+    /// The full name → id map is cached; a miss triggers one refresh before giving up.
+    /// </summary>
+    private async Task<string[]?> ResolveRoleIdsAsync(
+        IReadOnlyList<string> roleNames,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = $"auth0:role-ids:{tokenProvider.Domain}";
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (attempt > 0 || !memoryCache.TryGetValue(cacheKey, out IReadOnlyDictionary<string, string>? map) || map is null)
+            {
+                map = await FetchRoleIdsAsync(cancellationToken);
+                memoryCache.Set(cacheKey, map, RoleIdCacheDuration);
+            }
+
+            var ids = new List<string>(roleNames.Count);
+            foreach (var name in roleNames)
+            {
+                if (!map.TryGetValue(name, out var id))
+                    break;
+                ids.Add(id);
+            }
+
+            if (ids.Count == roleNames.Count)
+                return ids.ToArray();
+        }
+
+        return null;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> FetchRoleIdsAsync(CancellationToken cancellationToken)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        const int pageSize = 100;
+        for (var page = 0; ; page++)
+        {
+            var currentPage = page;
+            var roles = await ExecuteAsync(
+                client => client.Roles.GetAllAsync(
+                    new GetRolesRequest(),
+                    new PaginationInfo(currentPage, pageSize, false),
+                    cancellationToken),
+                cancellationToken);
+
+            if (roles is null)
+                break;
+
+            foreach (var role in roles)
+            {
+                if (!string.IsNullOrWhiteSpace(role.Name) && !string.IsNullOrWhiteSpace(role.Id))
+                    map[role.Name] = role.Id;
+            }
+
+            if (roles.Count < pageSize)
+                break;
+        }
+
+        return map;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="call"/> with a fresh client. On HTTP 401 the cached token is dropped and
+    /// the call is retried once with a new token.
+    /// </summary>
+    private async Task<T> ExecuteAsync<T>(Func<ManagementApiClient, Task<T>> call, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            using var client = await CreateClientAsync(cancellationToken);
+            try
+            {
+                return await call(client);
+            }
+            catch (ErrorApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
+            {
+                logger.LogWarning("Auth0ManagementService: Management API returned 401 — renewing token");
+                tokenProvider.Invalidate();
+            }
+        }
+    }
+
+    private Task ExecuteAsync(Func<ManagementApiClient, Task> call, CancellationToken cancellationToken) =>
+        ExecuteAsync<bool>(async client =>
+        {
+            await call(client);
+            return true;
+        }, cancellationToken);
+
+    private async Task<ManagementApiClient> CreateClientAsync(CancellationToken cancellationToken)
+    {
+        var token = await tokenProvider.GetTokenAsync(cancellationToken);
+        var connection = new HttpClientManagementConnection(
+            httpClientFactory.CreateClient(Auth0ManagementTokenProvider.HttpClientName));
+        return new ManagementApiClient(token, new Uri($"https://{tokenProvider.Domain}/api/v2"), connection);
     }
 }

@@ -116,6 +116,54 @@ public class BookingsControllerTests
             Mock.Of<ILogger<PropertyICalSyncService>>());
     }
 
+    private BookingsController CreateControllerAt(DateTimeOffset utcNow)
+    {
+        var controller = new BookingsController(
+            _mockBookingService.Object,
+            _mockTaxService.Object,
+            _mockAlloggiatiService.Object,
+            _mockPropertyService.Object,
+            _mockAuthz.Object,
+            CreatePropertyICalSyncService(),
+            _mockGuestService.Object,
+            _mockBackgroundJobClient.Object,
+            _mockGuestCheckInService.Object,
+            _mockComplianceWizardService.Object,
+            _mockCheckoutReminderScheduler.Object,
+            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
+            _configuration,
+            _mockEmailService.Object,
+            _mockLogger.Object,
+            new FixedTimeProvider(utcNow));
+        var identity = new ClaimsIdentity(new[] { new Claim("sub", OwnerId) }, "TestAuth");
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) },
+        };
+        return controller;
+    }
+
+    private Booking SetupAccessibleBooking(BookingStatus status, DateTime checkIn, DateTime checkOut)
+    {
+        var booking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = Guid.NewGuid(),
+            Status = status,
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            NumberOfGuests = 2,
+        };
+        _mockBookingService.Setup(b => b.GetBookingAsync(booking.Id)).ReturnsAsync(booking);
+        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) => b);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
+        return booking;
+    }
+
     private void SetUser(string userId)
     {
         var identity = new ClaimsIdentity(new[] { new Claim("sub", userId) }, "TestAuth");
@@ -569,6 +617,53 @@ public class BookingsControllerTests
         Assert.Equal(BookingStatus.Pending, booking.Status);
         _mockBookingService.Verify(b => b.UpdateBookingAsync(It.IsAny<Booking>()), Times.Never);
         _mockBackgroundJobClient.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CheckIn_AfterMidnightInRomeOnCheckInDay_ReturnsOk()
+    {
+        // 22:30 UTC on 30/09 is 00:30 on 01/10 in Rome: the check-in day has started.
+        var controller = CreateControllerAt(new DateTimeOffset(2026, 9, 30, 22, 30, 0, TimeSpan.Zero));
+        var booking = SetupAccessibleBooking(
+            BookingStatus.Confirmed,
+            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
+
+        var result = await controller.CheckIn(booking.Id);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(BookingStatus.CheckedIn, booking.Status);
+    }
+
+    [Fact]
+    public async Task CheckIn_LateEveningInRomeBeforeCheckInDay_ReturnsBadRequest()
+    {
+        // 21:30 UTC on 30/09 is 23:30 on 30/09 in Rome: check-in (01/10) not reached yet.
+        var controller = CreateControllerAt(new DateTimeOffset(2026, 9, 30, 21, 30, 0, TimeSpan.Zero));
+        var booking = SetupAccessibleBooking(
+            BookingStatus.Confirmed,
+            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
+
+        var result = await controller.CheckIn(booking.Id);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(BookingStatus.Confirmed, booking.Status);
+    }
+
+    [Fact]
+    public async Task CheckOut_AfterMidnightInRomeOnCheckOutDay_ReturnsOk()
+    {
+        var controller = CreateControllerAt(new DateTimeOffset(2026, 10, 2, 22, 15, 0, TimeSpan.Zero));
+        var booking = SetupAccessibleBooking(
+            BookingStatus.CheckedIn,
+            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
+
+        var result = await controller.CheckOut(booking.Id);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(BookingStatus.CheckedOut, booking.Status);
     }
 
     [Fact]

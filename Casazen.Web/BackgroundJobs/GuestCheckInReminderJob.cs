@@ -3,6 +3,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -15,12 +16,15 @@ public class GuestCheckInReminderJob(
     AppDbContext db,
     IEmailService emailService,
     IPushNotificationService pushNotificationService,
-    ILogger<GuestCheckInReminderJob> logger)
+    ILogger<GuestCheckInReminderJob> logger,
+    TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     public async Task ExecuteAsync()
     {
-        var now = DateTime.UtcNow;
-        var alertWindowStart = now.Date;
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var alertWindowStart = _clock.TodayInRome();
         var alertWindow = now.AddHours(24);
 
         var bookings = await db.Bookings
