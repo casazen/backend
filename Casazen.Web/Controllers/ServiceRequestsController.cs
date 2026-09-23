@@ -80,7 +80,8 @@ public class ServiceRequestsController(
                     request.Category,
                     request.Urgency,
                     request.Notes,
-                    request.ChargeToGuest),
+                    request.ChargeToGuest,
+                    UserRoles: GetUserRoles()),
                 cancellationToken);
 
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
