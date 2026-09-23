@@ -46,6 +46,14 @@ public class GuestService(IGuestRepository repository, ILogger<GuestService> log
         return created;
     }
 
+    public async Task<Guest> CreateGuestSnapshotAsync(Guest guest)
+    {
+        logger.LogInformation("Creating guest snapshot");
+        var created = await repository.AddAsync(guest);
+        logger.LogInformation("Guest snapshot created: {GuestId}", created.Id);
+        return created;
+    }
+
     public async Task<Guest> UpdateGuestAsync(Guest guest)
     {
         logger.LogInformation("Updating guest: {GuestId}", guest.Id);
