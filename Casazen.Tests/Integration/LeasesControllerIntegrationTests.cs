@@ -267,6 +267,60 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         Assert.Equal(HttpStatusCode.NotFound, registration.StatusCode);
     }
 
+    [Fact]
+    public async Task GetRegistration_ColleagueOfSameOrgNotOwner_Returns403ForbiddenProblem()
+    {
+        var owner = UniqueOwner("reg-owner");
+        var colleague = UniqueOwner("reg-colleague");
+        var property = await _factory.SeedPropertyAsync(owner);
+        await AddUserToOrgOfOwnerAsync(owner, colleague);
+
+        using var ownerClient = LandlordClient(owner);
+        var created = await ReadJson(await ownerClient.PostAsJsonAsync("/api/leases", CreateBody(property.Id)));
+        var leaseId = created.GetProperty("id").GetGuid();
+
+        using var colleagueClient = LandlordClient(colleague);
+        var response = await colleagueClient.GetAsync($"/api/leases/{leaseId}/registration");
+
+        // Authenticated but not the lease owner: 403 (a 401 would make the frontend log the user out).
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await ReadJson(response);
+        Assert.Equal("forbidden", problem.GetProperty("code").GetString());
+        Assert.DoesNotContain("does not belong", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task GetRegistration_UnknownLease_Returns404LeaseNotFoundProblem()
+    {
+        var owner = UniqueOwner("reg-missing");
+        await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+
+        var response = await client.GetAsync($"/api/leases/{Guid.NewGuid()}/registration");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var problem = await ReadJson(response);
+        Assert.Equal("lease_not_found", problem.GetProperty("code").GetString());
+        Assert.Equal("Contratto di locazione non trovato", problem.GetProperty("detail").GetString());
+    }
+
+    private async Task AddUserToOrgOfOwnerAsync(string ownerId, string userId)
+    {
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Users.Add(new User
+        {
+            Id = userId,
+            Email = $"{Guid.NewGuid():N}@example.com",
+            FirstName = "Collega",
+            LastName = "Stessa Org",
+            OrgId = org.Id,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+    }
+
     private HttpClient LandlordClient(string ownerId)
         => _factory.CreateAuthenticatedClient(ownerId, "LongTermLandlord");
 

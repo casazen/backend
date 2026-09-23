@@ -1,3 +1,4 @@
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -14,7 +15,7 @@ public class GdprService(
     public async Task<Dictionary<string, object>> ExportGuestDataAsync(Guid guestId)
     {
         var guest = await guestRepository.GetByIdAsync(guestId)
-            ?? throw new InvalidOperationException($"Guest {guestId} not found");
+            ?? throw GuestNotFound(guestId);
 
         return new Dictionary<string, object>
         {
@@ -39,7 +40,7 @@ public class GdprService(
     public async Task DeleteGuestDataAsync(Guid guestId, string reason)
     {
         var guest = await guestRepository.GetByIdAsync(guestId)
-            ?? throw new InvalidOperationException($"Guest {guestId} not found");
+            ?? throw GuestNotFound(guestId);
 
         guest.IsDeleted = true;
         guest.DeletedAt = DateTime.UtcNow;
@@ -62,13 +63,16 @@ public class GdprService(
     public async Task UpdateConsentAsync(Guid guestId, bool marketingConsent)
     {
         var guest = await guestRepository.GetByIdAsync(guestId)
-            ?? throw new InvalidOperationException($"Guest {guestId} not found");
+            ?? throw GuestNotFound(guestId);
 
         guest.MarketingConsent = marketingConsent;
         guest.MarketingConsentDate = DateTime.UtcNow;
         await guestRepository.UpdateAsync(guest);
         logger.LogInformation("Guest {GuestId} marketing consent updated to {Consent}", guestId, marketingConsent);
     }
+
+    private static NotFoundException GuestNotFound(Guid guestId) =>
+        new($"Guest {guestId} not found") { Code = "guest_not_found", MessageKey = "GuestNotFound" };
 
     private static void AnonymizeFields(Core.Entities.Guest guest)
     {

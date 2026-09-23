@@ -1,5 +1,6 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -174,6 +175,21 @@ public class PropertyServiceTests
         Assert.Equal(property.Id, result.Id);
         Assert.Equal(property.Name, result.Name);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_SlugUsedByAnotherPropertyOfOrg_ThrowsDomainConflictException()
+    {
+        var property = new Property { Id = Guid.NewGuid(), OrgId = Guid.NewGuid(), Name = "Villa", Slug = "villa-rossa" };
+        _mockRepository
+            .Setup(x => x.SlugExistsInOrgAsync(property.OrgId, "villa-rossa", property.Id))
+            .ReturnsAsync(true);
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.UpdatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_slug", ex.Code);
+        Assert.Equal("PropertySlugTaken", ex.MessageKey);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
     }
 
     // Image Management Tests

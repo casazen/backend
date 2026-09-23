@@ -287,7 +287,11 @@ public class LeaseWorkflowService(
     private async Task<LeaseContract> GetVerifiedLeaseAsync(Guid leaseId, string ownerId)
     {
         var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId)
-            ?? throw new NotFoundException($"Lease {leaseId} not found.");
+            ?? throw new NotFoundException($"Lease {leaseId} not found.")
+            {
+                Code = "lease_not_found",
+                MessageKey = "LeaseNotFound",
+            };
 
         if (lease.Property is null || lease.Property.OwnerId != ownerId)
             throw new UnauthorizedAccessException("Lease does not belong to this owner.");
