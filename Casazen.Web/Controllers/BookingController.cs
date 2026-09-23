@@ -132,7 +132,7 @@ public class BookingsController(
             return BadRequest("Property not available for these dates");
         }
 
-        var guest = await ResolveGuestAsync(request.Guest);
+        var guest = await ResolveGuestAsync(property.OrgId, request.Guest);
         var nights = (checkOut - checkIn).Days;
         var basePrice = property.NightlyRate * nights + property.CleaningFee;
 
@@ -546,10 +546,13 @@ public class BookingsController(
         });
     }
 
-    private async Task<Guest> ResolveGuestAsync(CreateBookingGuestRequest guestInfo)
+    // One guest snapshot per host booking (#431), owned by the property's org (TN-1): never a lookup by
+    // e-mail, so a booking can neither reuse nor reveal a guest of another org.
+    private async Task<Guest> ResolveGuestAsync(Guid orgId, CreateBookingGuestRequest guestInfo)
     {
         var guest = new Guest
         {
+            OrgId = orgId,
             FirstName = guestInfo.FirstName,
             LastName = guestInfo.LastName,
             Email = guestInfo.Email,

@@ -7,6 +7,9 @@ namespace Casazen.Infrastructure.Repositories;
 
 public class GuestRepository(AppDbContext context) : IGuestRepository
 {
+    private static readonly BookingStatus[] OpenBookingStatuses =
+        [BookingStatus.Pending, BookingStatus.Confirmed, BookingStatus.CheckedIn];
+
     public async Task<Guest?> GetByIdAsync(Guid id)
     {
         return await context.Guests
@@ -14,33 +17,53 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
             .FirstOrDefaultAsync(g => g.Id == id);
     }
 
-    public async Task<Guest?> GetByEmailAsync(string email)
+    public async Task<Guest?> GetByIdInOrgAsync(Guid orgId, Guid id, CancellationToken cancellationToken = default)
     {
         return await context.Guests
             .Include(g => g.Bookings)
-            .FirstOrDefaultAsync(g => g.Email.ToLower() == email.ToLower());
+            .FirstOrDefaultAsync(g => g.Id == id && g.OrgId == orgId, cancellationToken);
     }
 
-    public async Task<IEnumerable<Guest>> GetAllAsync()
+    public async Task<Guest?> GetByEmailAsync(Guid orgId, string email, CancellationToken cancellationToken = default)
     {
+        var normalized = email.Trim().ToLower();
         return await context.Guests
+            .Where(g => g.OrgId == orgId && g.Email.ToLower() == normalized)
             .OrderByDescending(g => g.CreatedAt)
-            .ToListAsync();
+            .ThenBy(g => g.Id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<IEnumerable<Guest>> SearchAsync(string? searchTerm)
+    public async Task<(IReadOnlyList<Guest> Items, int TotalCount)> GetPageAsync(
+        Guid orgId,
+        string? searchTerm,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(searchTerm))
-            return await GetAllAsync();
+        var query = context.Guests
+            .AsNoTracking()
+            .Where(g => g.OrgId == orgId && !g.IsDeleted);
 
-        var lowerSearchTerm = searchTerm.ToLower();
-        return await context.Guests
-            .Where(g => g.FirstName.ToLower().Contains(lowerSearchTerm) ||
-                       g.LastName.ToLower().Contains(lowerSearchTerm) ||
-                       g.Email.ToLower().Contains(lowerSearchTerm) ||
-                       g.PhoneNumber.Contains(searchTerm))
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.Trim();
+            var lowerTerm = term.ToLower();
+            query = query.Where(g => g.FirstName.ToLower().Contains(lowerTerm) ||
+                                     g.LastName.ToLower().Contains(lowerTerm) ||
+                                     g.Email.ToLower().Contains(lowerTerm) ||
+                                     g.PhoneNumber.Contains(term));
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
             .OrderByDescending(g => g.CreatedAt)
-            .ToListAsync();
+            .ThenBy(g => g.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
     }
 
     public async Task<Guest> AddAsync(Guest guest)
@@ -73,8 +96,27 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
         return await context.Guests.AnyAsync(g => g.Id == id);
     }
 
-    public async Task<bool> ExistsByEmailAsync(string email)
+    public async Task<bool> ExistsByEmailAsync(Guid orgId, string email, CancellationToken cancellationToken = default)
     {
-        return await context.Guests.AnyAsync(g => g.Email.ToLower() == email.ToLower());
+        var normalized = email.Trim().ToLower();
+        return await context.Guests.AnyAsync(
+            g => g.OrgId == orgId && g.Email.ToLower() == normalized,
+            cancellationToken);
+    }
+
+    public async Task<GuestUsage> GetUsageAsync(Guid guestId, DateTime today, CancellationToken cancellationToken = default)
+    {
+        // IgnoreQueryFilters: the Restrict FKs count every referencing row, whatever its org.
+        var bookings = context.Bookings.IgnoreQueryFilters().AsNoTracking().Where(b => b.GuestId == guestId);
+
+        var hasOpenBookings = await bookings.AnyAsync(
+            b => OpenBookingStatuses.Contains(b.Status) && b.CheckOutDate >= today,
+            cancellationToken);
+        var hasReferences = hasOpenBookings
+            || await bookings.AnyAsync(cancellationToken)
+            || await context.AlloggiatiWebReports.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(r => r.GuestId == guestId, cancellationToken);
+
+        return new GuestUsage(hasReferences, hasOpenBookings);
     }
 }
