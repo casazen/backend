@@ -1,6 +1,7 @@
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -10,6 +11,7 @@ public class GdprDataRetentionJob(
     IGdprService gdprService,
     ILogger<GdprDataRetentionJob> logger)
 {
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         // System job: no tenant filter, every org's guests. Each guest is anonymized within its own org (TN-1).

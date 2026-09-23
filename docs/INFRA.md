@@ -37,6 +37,9 @@ Alternative for truly $0: **Render** free tier (same DX, but the service sleeps 
 ```
 
 Two Supabase schemas (`casazen_test`, `casazen_prod`) in one free project — saves the free-tier limit.
+Hangfire (background jobs) gets its own schema per environment too (`hangfire_casazen_test`, `hangfire_casazen_prod`),
+so test and production never share queue, recurring jobs or servers: see [`docs/runbooks/hangfire.md`](runbooks/hangfire.md)
+(variables, one-time switch from the old shared `hangfire` schema, check on `hangfire.server`, separate DB users).
 
 ---
 
@@ -129,7 +132,7 @@ Do these once per project. Tick in order.
 - [ ] **test**: trigger deploy on push to branch **`develop`**
 - [ ] **production**: trigger deploy on push to branch **`main`** (disable autodeploy from `develop`)
 - [ ] (Recommended) Enable **PR deployments** if you want a backend URL per PR; otherwise use shared test URL after merge
-- [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath`
+- [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath` and `Hangfire__Schema` (different per environment, see [`runbooks/hangfire.md`](runbooks/hangfire.md))
 - [ ] Enable **Public networking**; copy each environment’s HTTPS URL
 - [ ] First deploy green in Railway dashboard
 
@@ -377,6 +380,8 @@ Email__SmtpPassword=[16-char-app-password]
 Email__FromAddress=noreply@casazen.app
 App__PublicSiteBaseUrl=https://casazen-app.vercel.app
 Hangfire__DashboardEnabled=false
+# Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
+Hangfire__Schema=hangfire_casazen_test
 Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
 # AI supplier discovery (DeepSeek) — replaces Google Places
 Ai__Provider=DeepSeek

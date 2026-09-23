@@ -15,7 +15,12 @@ public class PublicOrgDto
     public string? PublicThemeId { get; set; }
     public bool ShowPoweredBy { get; set; }
 
-    public static PublicOrgDto FromOrg(Org org) => new()
+    /// <param name="org">The public org.</param>
+    /// <param name="effectiveTier">
+    /// The org's effective tier (<c>IEntitlementService.ResolveEffectiveTier</c>), never the stored one: a canceled
+    /// or unpaid plan must show "Powered by" again (A3-37).
+    /// </param>
+    public static PublicOrgDto FromOrg(Org org, PlanTier effectiveTier) => new()
     {
         Slug = org.Slug,
         DisplayName = org.DisplayName,
@@ -25,6 +30,6 @@ public class PublicOrgDto
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
         PublicThemeId = org.PublicThemeId,
-        ShowPoweredBy = org.PlanTier == PlanTier.Starter,
+        ShowPoweredBy = effectiveTier == PlanTier.Starter,
     };
 }

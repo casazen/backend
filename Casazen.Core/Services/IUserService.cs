@@ -41,7 +41,6 @@ public interface IUserService
     Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
-        PlanTier planTier,
         string email,
         string firstName,
         string lastName);

@@ -18,9 +18,9 @@ public class OrgServiceTests
     }
 
     [Fact]
-    public async Task EnsureOrgForUserAsync_CreatesOrgWithSelectedPlanTier()
+    public async Task EnsureOrgForUserAsync_NewOrg_StartsOnStarterWithoutSubscription()
     {
-        await using var db = CreateDb(nameof(EnsureOrgForUserAsync_CreatesOrgWithSelectedPlanTier));
+        await using var db = CreateDb(nameof(EnsureOrgForUserAsync_NewOrg_StartsOnStarterWithoutSubscription));
         var userId = "auth0|new-user";
         db.Users.Add(new User
         {
@@ -34,10 +34,12 @@ public class OrgServiceTests
         await db.SaveChangesAsync();
 
         var service = new OrgService(db);
-        var org = await service.EnsureOrgForUserAsync(
-            userId, "owner@example.com", "Mario Rossi", PlanTier.Pro);
+        var org = await service.EnsureOrgForUserAsync(userId, "owner@example.com", "Mario Rossi");
 
-        Assert.Equal(PlanTier.Pro, org.PlanTier);
+        // Paid tiers come only from a Stripe subscription (#274): a new org is always Starter.
+        Assert.Equal(PlanTier.Starter, org.PlanTier);
+        Assert.Equal(SubscriptionStatus.None, org.SubscriptionStatus);
+        Assert.Null(org.SubscriptionId);
         var user = await db.Users.SingleAsync(u => u.Id == userId);
         Assert.Equal(org.Id, user.OrgId);
     }
@@ -71,8 +73,7 @@ public class OrgServiceTests
         await db.SaveChangesAsync();
 
         var service = new OrgService(db);
-        var org = await service.EnsureOrgForUserAsync(
-            userId, "x@y.it", "A B", PlanTier.Scale);
+        var org = await service.EnsureOrgForUserAsync(userId, "x@y.it", "A B");
 
         Assert.Equal(orgId, org.Id);
         Assert.Equal(PlanTier.Starter, org.PlanTier);

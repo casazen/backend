@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 
@@ -41,8 +40,7 @@ public sealed class OrgContextResolver(
             return linked;
 
         logger.LogInformation("Auto-provisioning Starter org for user {UserId}", sub);
-        var org = await orgService.EnsureOrgForUserAsync(
-            sub, email, displayName, PlanTier.Starter, cancellationToken);
+        var org = await orgService.EnsureOrgForUserAsync(sub, email, displayName, cancellationToken);
         return org.Id;
     }
 

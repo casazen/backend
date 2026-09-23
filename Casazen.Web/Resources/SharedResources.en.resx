@@ -114,6 +114,9 @@
   <data name="ManagedByStripe" xml:space="preserve">
     <value>Plan managed by Stripe. Use the billing portal.</value>
   </data>
+  <data name="SubscriptionRequired" xml:space="preserve">
+    <value>A paid plan requires an active subscription: start one from the billing page.</value>
+  </data>
   <data name="BillingNotAvailable" xml:space="preserve">
     <value>Billing not yet available</value>
   </data>

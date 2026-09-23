@@ -10,6 +10,7 @@ public class LeaseSignStatusPollingJob(
     ILogger<LeaseSignStatusPollingJob> logger)
 {
     [AutomaticRetry(Attempts = 3)]
+    [DisableConcurrentExecution(JobLockTimeouts.FrequentSeconds)]
     public async Task ExecuteAsync()
     {
         var pendingLeases = await leaseRepository.GetByStatusAsync(LeaseStatus.AwaitingSignature);
