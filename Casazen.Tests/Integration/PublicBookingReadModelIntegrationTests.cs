@@ -23,7 +23,7 @@ public class PublicBookingReadModelIntegrationTests : IClassFixture<CasazenWebAp
     public async Task AC2_Search_ReturnsPublicPropertyDto_WithoutAuth()
     {
         var city = $"SearchCity-{Guid.NewGuid():N}";
-        var active = await SeedPropertyAsync(isActive: true, city: city, cinCode: "IT-12345-0123456789");
+        var active = await SeedPropertyAsync(isActive: true, city: city, cinCode: "IT058091C27G5FFZDZ");
         await SeedPropertyAsync(isActive: false, city: city);
 
         var client = _factory.CreateClient();
@@ -153,7 +153,7 @@ public class PublicBookingReadModelIntegrationTests : IClassFixture<CasazenWebAp
         bool isActive = true,
         string name = "Public Search Villa",
         string city = "Rome",
-        string? cinCode = "IT-12345-0123456789",
+        string? cinCode = "IT058091C27G5FFZDZ",
         string houseRules = "",
         Guid? cancellationPolicyId = null)
     {

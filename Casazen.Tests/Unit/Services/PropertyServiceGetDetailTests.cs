@@ -40,7 +40,7 @@ public class PropertyServiceGetDetailTests
             NightlyRate = 150m,
             CleaningFee = 50m,
             DamageDeposit = 200m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             CreatedAt = now.AddDays(-30),
             UpdatedAt = now
@@ -235,7 +235,7 @@ public class PropertyServiceGetDetailTests
             Name = "Test Property",
             Address = "Via Test 1",
             City = "Rome",
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow

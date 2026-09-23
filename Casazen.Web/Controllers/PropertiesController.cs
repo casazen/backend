@@ -293,19 +293,10 @@ public class PropertiesController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        try
-        {
-            await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
-            return NoContent();
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
+        // Invalid format (422 invalid_cin_format) and CIN already used by another property (409 duplicate_cin)
+        // are domain exceptions turned into ProblemDetails by the error middleware.
+        await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
+        return NoContent();
     }
 
     [HttpDelete("{id}")]

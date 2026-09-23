@@ -191,7 +191,7 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
             NightlyRate = 150m,
             CleaningFee = 50m,
             DamageDeposit = 200m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             HouseRules = houseRules,
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,

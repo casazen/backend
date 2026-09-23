@@ -195,4 +195,10 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
+  <data name="CinInvalidFormat" xml:space="preserve">
+    <value>The CIN is not in the official format: IT, the 6-digit ISTAT code of the municipality, a 2-character category and up to 8 alphanumeric characters (e.g. IT015146C2ABCDEFGH). Spaces and hyphens are ignored.</value>
+  </data>
+  <data name="CinAlreadyAssigned" xml:space="preserve">
+    <value>This CIN is already assigned to another property.</value>
+  </data>
 </root>

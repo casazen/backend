@@ -195,4 +195,10 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
+  <data name="CinInvalidFormat" xml:space="preserve">
+    <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
+  </data>
+  <data name="CinAlreadyAssigned" xml:space="preserve">
+    <value>Questo CIN è già associato a un altro immobile.</value>
+  </data>
 </root>

@@ -37,10 +37,11 @@ public class MigrationSqlTests
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        Assert.EndsWith("AddLongRentPropertyPermissions", keys[^1]);
-        Assert.EndsWith("AddLeaseRegistrationAuthorization", keys[^2]);
-        Assert.EndsWith("AddTerritorialRentAgreements", keys[^3]);
-        Assert.EndsWith("AddStrFiscalRegime2026", keys[^4]);
+        Assert.EndsWith("NormalizeCinCodes", keys[^1]);
+        Assert.EndsWith("AddLongRentPropertyPermissions", keys[^2]);
+        Assert.EndsWith("AddLeaseRegistrationAuthorization", keys[^3]);
+        Assert.EndsWith("AddTerritorialRentAgreements", keys[^4]);
+        Assert.EndsWith("AddStrFiscalRegime2026", keys[^5]);
         Assert.Contains(keys, k => k.EndsWith("AddLongRentPropertyPermissions", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddLeaseRegistrationAuthorization", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("RestrictCustomDomainUniquenessToVerified", StringComparison.Ordinal));

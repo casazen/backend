@@ -224,7 +224,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
             NightlyRate = 120m,
             CleaningFee = 40m,
             DamageDeposit = 100m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,
             CreatedAt = DateTime.UtcNow,
