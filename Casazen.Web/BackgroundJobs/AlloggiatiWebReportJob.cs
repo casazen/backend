@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -10,12 +11,14 @@ public class AlloggiatiWebReportJob(
     AppDbContext context,
     ILogger<AlloggiatiWebReportJob> logger)
 {
+    [DisableConcurrentExecution("AlloggiatiWebReportJob.ReportGuestAsync:{1}", JobLockTimeouts.DefaultSeconds)] // one submission per booking at a time
     public async Task ReportGuestAsync(Guid guestId, Guid bookingId)
     {
         logger.LogInformation("Processing Alloggiati Web report for booking {BookingId}", bookingId);
         await alloggiatiWebService.ReportGuestAsync(guestId, bookingId);
     }
 
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task RetryFailedReportsAsync()
     {
         const int maxRetries = 3;

@@ -7,7 +7,7 @@ namespace Casazen.Infrastructure.Services;
 public class GuestAccessService(AppDbContext dbContext) : IGuestAccessService
 {
     public Task<bool> IsGuestAccessibleAsync(Guid guestId, Guid orgId, CancellationToken cancellationToken = default) =>
-        dbContext.Bookings
+        dbContext.Guests
             .AsNoTracking()
-            .AnyAsync(b => b.GuestId == guestId && b.OrgId == orgId, cancellationToken);
+            .AnyAsync(g => g.Id == guestId && g.OrgId == orgId, cancellationToken);
 }

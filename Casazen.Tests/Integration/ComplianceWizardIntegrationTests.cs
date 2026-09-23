@@ -164,6 +164,7 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
 
         var guest = new Guest
         {
+            OrgId = orgId,
             FirstName = "Luigi",
             LastName = "Verdi",
             Email = $"guest-{Guid.NewGuid():N}@test.com",

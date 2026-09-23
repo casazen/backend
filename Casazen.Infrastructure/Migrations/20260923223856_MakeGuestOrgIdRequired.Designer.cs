@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260923230539_NormalizeCinCodes")]
-    partial class NormalizeCinCodes
+    [Migration("20260923223856_MakeGuestOrgIdRequired")]
+    partial class MakeGuestOrgIdRequired
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -574,6 +574,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -595,6 +598,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Email");
+
+                    b.HasIndex("OrgId");
 
                     b.ToTable("Guests");
                 });
@@ -2836,6 +2841,17 @@ namespace Casazen.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Org");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.Guest", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Org");

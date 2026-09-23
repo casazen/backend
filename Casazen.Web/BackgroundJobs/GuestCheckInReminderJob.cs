@@ -1,8 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -20,6 +22,7 @@ public class GuestCheckInReminderJob(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var now = _clock.GetUtcNow().UtcDateTime;
@@ -66,14 +69,25 @@ public class GuestCheckInReminderJob(
                     continue;
                 }
 
-                var subject = $"Check-in incompleto — {booking.Property.Name} ({booking.CheckInDate:dd/MM/yyyy})";
-                var html = BuildReminderHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
+                var email = EmailTemplates.GuestCheckInIncomplete(
+                    EmailTemplates.DefaultCulture,
+                    booking.Guest.FirstName,
+                    booking.Property.Name,
+                    booking.CheckInDate);
 
-                await emailService.SendEmailAsync(hostEmail, subject, html);
-
-                logger.LogInformation(
-                    "Sent incomplete check-in reminder for booking {BookingId} to host {Email}",
-                    booking.Id, hostEmail);
+                // Already inside a Hangfire job: sent directly.
+                var result = await emailService.SendEmailAsync(hostEmail, email.Subject, email.HtmlBody);
+                if (result.Success)
+                {
+                    logger.LogInformation("Sent incomplete check-in reminder for booking {BookingId} to the host", booking.Id);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "Incomplete check-in reminder for booking {BookingId} not sent: {ErrorDetail}",
+                        booking.Id,
+                        result.ErrorDetail);
+                }
             }
             catch (Exception ex)
             {
@@ -81,11 +95,4 @@ public class GuestCheckInReminderJob(
             }
         }
     }
-
-    private static string BuildReminderHtml(string propertyName, DateTime checkInDate, string guestName) =>
-        $"""
-        <p>Attenzione: il check-in per l'ospite <strong>{guestName}</strong> presso <strong>{propertyName}</strong>
-        è previsto per <strong>{checkInDate:dd/MM/yyyy}</strong> e non è ancora stato completato.</p>
-        <p>Contatta l'ospite o inserisci manualmente i dati dal gestionale.</p>
-        """;
 }

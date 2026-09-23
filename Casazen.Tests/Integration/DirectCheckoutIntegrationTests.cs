@@ -98,6 +98,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
             var existingGuest = new Guest
             {
+                OrgId = property.OrgId,
                 FirstName = "Original",
                 LastName = "Guest",
                 Email = email,

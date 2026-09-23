@@ -234,6 +234,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var guest = new Guest
         {
+            OrgId = orgId,
             FirstName = "PLG",
             LastName = "Guest",
             Email = $"plg-guest-{Guid.NewGuid():N}@example.com",
