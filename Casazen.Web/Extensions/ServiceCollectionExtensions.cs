@@ -189,6 +189,7 @@ public static class ServiceCollectionExtensions
             ],
             ["long-rent"] =
             [
+                "property.read", "property.write",
                 "lease.read", "lease.create", "lease.sign", "lease.register",
                 "rent.read", "rent.manage",
             ],

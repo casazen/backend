@@ -79,6 +79,18 @@ public class ComuneImuNotificationServiceTests
     }
 
     [Fact]
+    public async Task ExportAsync_RegisteredCanoneConcordatoWithoutUsableAgreement_ThrowsNotReadyWithoutEvent()
+    {
+        var (sut, events) = CreateSut(
+            BuildLease("Monza", LeaseStatus.Registered),
+            BuildAgreement("Monza", DataCompleteness.Missing, includeBand: false));
+
+        await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
+            () => sut.ExportAsync(Guid.NewGuid(), OwnerId));
+        events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ExportAsync_OtherOwner_ReturnsNull()
     {
         var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Registered));
@@ -144,6 +156,18 @@ public class ComuneImuNotificationServiceTests
             "Seveso",
             LeaseStatus.Registered,
             FiscalRegime.RegimeOrdinario));
+
+        await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
+            () => sut.MarkSentAsync(Guid.NewGuid(), OwnerId));
+        events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MarkSentAsync_RegisteredCanoneConcordatoWithoutUsableAgreement_ThrowsAndDoesNotEmit()
+    {
+        var (sut, events) = CreateSut(
+            BuildLease("Monza", LeaseStatus.Registered),
+            BuildAgreement("Monza", DataCompleteness.Missing, includeBand: false));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
             () => sut.MarkSentAsync(Guid.NewGuid(), OwnerId));
@@ -217,13 +241,19 @@ public class ComuneImuNotificationServiceTests
         Assert.Equal("%PDF", Encoding.ASCII.GetString(file.FileContents, 0, 4));
     }
 
-    private static (ComuneImuNotificationService Sut, Mock<ILeaseEventRepository> Events) CreateSut(LeaseContract lease)
+    private static (ComuneImuNotificationService Sut, Mock<ILeaseEventRepository> Events) CreateSut(
+        LeaseContract lease,
+        TerritorialRentAgreement? agreement = null)
     {
         var leases = new Mock<ILeaseContractRepository>();
         leases.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<Guid>())).ReturnsAsync(lease);
         var events = new Mock<ILeaseEventRepository>();
         events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
-        return (new ComuneImuNotificationService(leases.Object, events.Object), events);
+        var territorialAgreements = new Mock<ITerritorialRentAgreementRepository>();
+        territorialAgreements
+            .Setup(r => r.GetByComuneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(agreement ?? BuildAgreement(lease.Property.City));
+        return (new ComuneImuNotificationService(leases.Object, events.Object, territorialAgreements.Object), events);
     }
 
     private static LeasesController CreateController(IComuneImuNotificationService imu)
@@ -258,5 +288,17 @@ public class ComuneImuNotificationServiceTests
             EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent = 400m,
             Property = new Property { OwnerId = OwnerId, City = city, Name = "Alloggio" },
+        };
+
+    private static TerritorialRentAgreement BuildAgreement(
+        string comune,
+        DataCompleteness completeness = DataCompleteness.Partial,
+        bool includeBand = true) => new()
+        {
+            Comune = comune,
+            DataCompleteness = completeness,
+            Bands = includeBand
+                ? [new ConcordatoRentBand { ZoneName = "Unica", MinSqm = 0 }]
+                : [],
         };
 }

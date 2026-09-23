@@ -8,7 +8,8 @@ namespace Casazen.Infrastructure.Services;
 
 public class ComuneImuNotificationService(
     ILeaseContractRepository leases,
-    ILeaseEventRepository events) : IComuneImuNotificationService
+    ILeaseEventRepository events,
+    ITerritorialRentAgreementRepository territorialAgreements) : IComuneImuNotificationService
 {
     public async Task<ImuNotificationExportResult?> ExportAsync(
         Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
@@ -16,7 +17,7 @@ public class ComuneImuNotificationService(
         var lease = await LoadOwnedLeaseAsync(leaseId, ownerId);
         if (lease is null)
             return null;
-        if (!IsReadyForImuNotification(lease))
+        if (!await IsReadyForImuNotificationAsync(lease, cancellationToken))
             throw new ImuNotificationNotReadyException();
 
         var city = lease.Property.City;
@@ -39,7 +40,7 @@ public class ComuneImuNotificationService(
         var lease = await LoadOwnedLeaseAsync(leaseId, ownerId);
         if (lease is null)
             return null;
-        if (!IsReadyForImuNotification(lease))
+        if (!await IsReadyForImuNotificationAsync(lease, cancellationToken))
             throw new ImuNotificationNotReadyException();
 
         await events.AddAsync(new LeaseEvent
@@ -58,9 +59,15 @@ public class ComuneImuNotificationService(
         return lease;
     }
 
-    private static bool IsReadyForImuNotification(LeaseContract lease) =>
-        lease.Status == LeaseStatus.Registered &&
-        lease.FiscalRegime == FiscalRegime.CanoneConcordato;
+    private async Task<bool> IsReadyForImuNotificationAsync(LeaseContract lease, CancellationToken cancellationToken)
+    {
+        if (lease.Status != LeaseStatus.Registered ||
+            lease.FiscalRegime != FiscalRegime.CanoneConcordato)
+            return false;
+
+        var agreement = await territorialAgreements.GetByComuneAsync(lease.Property.City, cancellationToken);
+        return agreement is { DataCompleteness: not DataCompleteness.Missing } && agreement.Bands.Count > 0;
+    }
 
     private static string BuildBody(LeaseContract lease, string city)
     {

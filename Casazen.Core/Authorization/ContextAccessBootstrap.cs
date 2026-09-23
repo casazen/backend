@@ -33,6 +33,8 @@ public static class ContextAccessBootstrap
             DefaultRoute: "/app/long-rent/leases",
             Permissions:
             [
+                "property.read",
+                "property.write",
                 "lease.read",
                 "lease.create",
                 "lease.sign",

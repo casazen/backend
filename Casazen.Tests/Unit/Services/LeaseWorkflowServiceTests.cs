@@ -23,6 +23,7 @@ public class LeaseWorkflowServiceTests
     private readonly Mock<IPropertyRepository> _propertyRepo = new();
     private readonly Mock<ILeaseRegistrationAuthorizationRepository> _authRepo = new();
     private readonly Mock<IApeComplianceService> _apeCompliance = new();
+    private readonly Mock<ICanoneConcordatoEligibilityService> _canoneEligibility = new();
     private readonly LeaseWorkflowService _sut;
 
     private static readonly string OwnerId = "auth0|owner123";
@@ -34,6 +35,8 @@ public class LeaseWorkflowServiceTests
     {
         _authRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()))
             .ReturnsAsync((LeaseRegistrationAuthorization a) => a);
+        _regRepo.Setup(r => r.TryReserveSubmissionAsync(It.IsAny<LeaseRegistration>()))
+            .ReturnsAsync(true);
         _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>()))
             .Returns(Task.CompletedTask);
         _sut = new LeaseWorkflowService(
@@ -46,7 +49,8 @@ public class LeaseWorkflowServiceTests
             _propertyRepo.Object,
             _authRepo.Object,
             _apeCompliance.Object,
-            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
+            _canoneEligibility.Object,
+            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", FilingEnabled = true }),
             new Mock<ILogger<LeaseWorkflowService>>().Object);
     }
 
@@ -210,6 +214,40 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task InitiateSigningAsync_WhenApeWasDeletedAfterDraft_BlocksBeforeCreatingSigningSession()
+    {
+        var lease = BuildLease(LeaseStatus.Draft);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(lease.PropertyId))
+            .ThrowsAsync(ApeComplianceException.Required());
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
+            _sut.InitiateSigningAsync(lease.Id, OwnerId));
+
+        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
+        _templateService.Verify(s => s.GeneratePdfAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _eSignService.Verify(s => s.InitiateSigningAsync(It.IsAny<LeaseContract>(), It.IsAny<byte[]>()), Times.Never);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task InitiateSigningAsync_CanoneConcordatoShorterThanThreeYears_ThrowsBeforeGeneratingPdf()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Draft);
+        lease.FiscalRegime = FiscalRegime.CanoneConcordato;
+        lease.StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.EndDate = new DateTime(2027, 8, 31, 0, 0, 0, DateTimeKind.Utc);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.InitiateSigningAsync(lease.Id, OwnerId));
+        Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
+        _templateService.Verify(s => s.GeneratePdfAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
     public async Task TriggerRegistrationAsync_WhenStatusIsSigned_SubmitsAndTransitionsStatus()
     {
         // Arrange
@@ -218,7 +256,7 @@ public class LeaseWorkflowServiceTests
         _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
             .ReturnsAsync((LeaseContract l) => l);
         _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-        _regRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistration>()))
+        _regRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
             .ReturnsAsync((LeaseRegistration r) => r);
         _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
             .ReturnsAsync((LeaseEvent e) => e);
@@ -235,6 +273,25 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task TriggerRegistrationAsync_WhenReservationAlreadyClaimed_ThrowsBeforeProviderCall()
+    {
+        var lease = BuildLease(LeaseStatus.Signed);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+        _regRepo.Setup(r => r.TryReserveSubmissionAsync(It.Is<LeaseRegistration>(registration =>
+                registration.LeaseContractId == lease.Id
+                && registration.Status == RegistrationStatus.Pending)))
+            .ReturnsAsync(false);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+
+        Assert.Equal("Registration has already been submitted for this lease.", ex.Message);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _regRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+    }
+
+    [Fact]
     public async Task TriggerRegistrationAsync_WhenStatusIsNotSigned_ThrowsInvalidOperationException()
     {
         // Arrange
@@ -244,6 +301,60 @@ public class LeaseWorkflowServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenApeWasDeletedAfterSigning_BlocksBeforeAuthorizationAndFiling()
+    {
+        var lease = BuildLease(LeaseStatus.Signed);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(lease.PropertyId))
+            .ThrowsAsync(ApeComplianceException.Required());
+
+        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+
+        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
+        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _regRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenSignedPdfMissing_ThrowsBeforeSubmitting()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Signed);
+        lease.SignedPdfStoragePath = null;
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+        Assert.Equal("Signed lease PDF must be stored before registration.", ex.Message);
+        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_CanoneConcordatoShorterThanThreeYears_ThrowsBeforeSubmitting()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Signed);
+        lease.FiscalRegime = FiscalRegime.CanoneConcordato;
+        lease.StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.EndDate = new DateTime(2027, 8, 31, 0, 0, 0, DateTimeKind.Utc);
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+        Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
     }
 
     [Fact]
@@ -296,6 +407,78 @@ public class LeaseWorkflowServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenPreviousRegistrationFailed_ReusesRowForRetry()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.Signed);
+        var failedRegistration = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Failed,
+            ExternalRegistrationId = "RLI-OLD",
+            RegistrationCode = "OLD-CODE",
+            ReceiptStoragePath = "/old-receipt.pdf",
+            SubmittedAt = DateTime.UtcNow.AddDays(-1),
+            ConfirmedAt = DateTime.UtcNow.AddDays(-1),
+        };
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(failedRegistration);
+        _regRepo.Setup(r => r.TryReserveRetryAsync(failedRegistration)).ReturnsAsync(true);
+        _regRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
+            .ReturnsAsync((LeaseRegistration r) => r);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+        _regService.Setup(s => s.SubmitRegistrationAsync(lease))
+            .ReturnsAsync("RLI-RETRY-001");
+
+        // Act
+        var registration = await _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth);
+
+        // Assert
+        Assert.Same(failedRegistration, registration);
+        Assert.Equal(RegistrationStatus.SentToProvider, registration.Status);
+        Assert.Equal("RLI-RETRY-001", registration.ExternalRegistrationId);
+        Assert.Null(registration.RegistrationCode);
+        Assert.Null(registration.ReceiptStoragePath);
+        Assert.Null(registration.ConfirmedAt);
+        Assert.NotNull(registration.SubmittedAt);
+        Assert.Equal(LeaseStatus.SentToProvider, lease.Status);
+        _regRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+        _regRepo.Verify(r => r.TryReserveSubmissionAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+        _regRepo.Verify(r => r.TryReserveRetryAsync(failedRegistration), Times.Once);
+        _regRepo.Verify(r => r.UpdateAsync(failedRegistration), Times.Once);
+    }
+
+    [Fact]
+    public async Task TriggerRegistrationAsync_WhenFailedRegistrationRetryAlreadyClaimed_ThrowsBeforeProviderCall()
+    {
+        // Arrange: a concurrent retry already moved the Failed row back to Pending.
+        var lease = BuildLease(LeaseStatus.Signed);
+        var failedRegistration = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Failed,
+            ExternalRegistrationId = "RLI-OLD",
+        };
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(failedRegistration);
+        _regRepo.Setup(r => r.TryReserveRetryAsync(failedRegistration)).ReturnsAsync(false);
+
+        // Act
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
+
+        // Assert
+        Assert.Equal("Registration has already been submitted for this lease.", ex.Message);
+        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
+        _regRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()), Times.Never);
+        Assert.Equal(LeaseStatus.Signed, lease.Status);
     }
 
     [Fact]
@@ -385,6 +568,27 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task HandleESignEventAsync_WhenAllSignedMissingSignedPdf_DoesNotMarkSigned()
+    {
+        // Arrange
+        var lease = BuildLease(LeaseStatus.AwaitingSignature);
+        lease.ExternalSigningSessionId = "session-xyz";
+        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, null);
+        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
+        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
+
+        // Act
+        await _sut.HandleESignEventAsync("payload");
+
+        // Assert
+        Assert.Equal(LeaseStatus.AwaitingSignature, lease.Status);
+        Assert.Null(lease.SignedPdfStoragePath);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
+            e.EventType == LeaseEventType.AllPartiesSigned)), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_ThrowsInvalidOperationException()
     {
         // Arrange
@@ -408,6 +612,75 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoShorterThanThreeYears_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+
+        var request = BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato,
+            monthlyRent: 400m,
+            canoneConcordatoCharacteristics: new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null)) with
+        {
+            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2027, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+        };
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
+        Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoThreeYearInitialTerm_PersistsLease()
+    {
+        // Arrange
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+        _canoneEligibility
+            .Setup(s => s.CalculateAsync(PropertyId, OwnerId, characteristics, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
+                true,
+                null,
+                "Seveso",
+                "Unica",
+                2,
+                3445m,
+                5525m,
+                287.08m,
+                460.42m,
+                DataCompleteness.Partial,
+                true,
+                false,
+                true,
+                CanoneConcordatoCopy.Disclaimer));
+
+        var request = BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato,
+            monthlyRent: 400m,
+            canoneConcordatoCharacteristics: characteristics) with
+        {
+            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+        };
+
+        // Act
+        var result = await _sut.CreateDraftAsync(PropertyId, OwnerId, request);
+
+        // Assert
+        Assert.Equal(LeaseStatus.Draft, result.Status);
+        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
+    }
+
+    [Fact]
     public async Task CreateDraftAsync_WhenNoTenant_ThrowsInvalidOperationException()
     {
         // Arrange
@@ -426,6 +699,95 @@ public class LeaseWorkflowServiceTests
             _sut.CreateDraftAsync(PropertyId, OwnerId, request));
     }
 
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoWithoutCharacteristics_ThrowsInvalidOperationException()
+    {
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+
+        var request = BuildCreateRequest(fiscalRegime: FiscalRegime.CanoneConcordato);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
+
+        Assert.Equal("Canone concordato characteristics are required for canone concordato leases.", ex.Message);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoOutsideCalculatedRange_ThrowsInvalidOperationException()
+    {
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+        _canoneEligibility
+            .Setup(s => s.CalculateAsync(PropertyId, OwnerId, characteristics, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
+                true,
+                null,
+                "Seveso",
+                "Unica",
+                2,
+                3445m,
+                5525m,
+                287.08m,
+                460.42m,
+                DataCompleteness.Partial,
+                true,
+                false,
+                true,
+                CanoneConcordatoCopy.Disclaimer));
+
+        var request = BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato,
+            monthlyRent: 900m,
+            canoneConcordatoCharacteristics: characteristics);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
+
+        Assert.Equal("Monthly rent must be within the calculated canone concordato range.", ex.Message);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoWithinCalculatedRange_PersistsLease()
+    {
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+        _canoneEligibility
+            .Setup(s => s.CalculateAsync(PropertyId, OwnerId, characteristics, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
+                true,
+                null,
+                "Seveso",
+                "Unica",
+                2,
+                3445m,
+                5525m,
+                287.08m,
+                460.42m,
+                DataCompleteness.Partial,
+                true,
+                false,
+                true,
+                CanoneConcordatoCopy.Disclaimer));
+
+        var result = await _sut.CreateDraftAsync(PropertyId, OwnerId, BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato,
+            monthlyRent: 400m,
+            canoneConcordatoCharacteristics: characteristics));
+
+        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
+        Assert.Equal(400m, result.MonthlyRent);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Once);
+    }
+
     // Helpers
 
     private static Property BuildProperty(bool hasApe, string? ownerId = null) => new()
@@ -438,16 +800,21 @@ public class LeaseWorkflowServiceTests
             : []
     };
 
-    private static CreateLeaseRequest BuildCreateRequest(string tenantCitizenship = "IT") => new(
-        FiscalRegime: FiscalRegime.CedolareSecca,
+    private static CreateLeaseRequest BuildCreateRequest(
+        string tenantCitizenship = "IT",
+        FiscalRegime fiscalRegime = FiscalRegime.CedolareSecca,
+        decimal monthlyRent = 1200.00m,
+        RentBandCharacteristics? canoneConcordatoCharacteristics = null) => new(
+        FiscalRegime: fiscalRegime,
         StartDate: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         EndDate: new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
-        MonthlyRent: 1200.00m,
+        MonthlyRent: monthlyRent,
         Parties:
         [
             new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com"),
             new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123X", tenantCitizenship, "john@example.com")
-        ]);
+        ],
+        CanoneConcordatoCharacteristics: canoneConcordatoCharacteristics);
 
     private static LeaseContract BuildLease(LeaseStatus status)
     {
@@ -459,6 +826,7 @@ public class LeaseWorkflowServiceTests
             Property = property,
             OrgId = Guid.NewGuid(),
             Status = status,
+            SignedPdfStoragePath = status == LeaseStatus.Signed ? "/path/signed.pdf" : null,
             FiscalRegime = FiscalRegime.CedolareSecca,
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
