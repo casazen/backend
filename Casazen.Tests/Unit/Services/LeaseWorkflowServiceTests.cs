@@ -23,6 +23,7 @@ public class LeaseWorkflowServiceTests
     private readonly Mock<IPropertyRepository> _propertyRepo = new();
     private readonly Mock<ILeaseRegistrationAuthorizationRepository> _authRepo = new();
     private readonly Mock<IApeComplianceService> _apeCompliance = new();
+    private readonly Mock<ICanoneConcordatoEligibilityService> _canoneEligibility = new();
     private readonly LeaseWorkflowService _sut;
 
     private static readonly string OwnerId = "auth0|owner123";
@@ -46,7 +47,8 @@ public class LeaseWorkflowServiceTests
             _propertyRepo.Object,
             _authRepo.Object,
             _apeCompliance.Object,
-            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza" }),
+            _canoneEligibility.Object,
+            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", FilingEnabled = true }),
             new Mock<ILogger<LeaseWorkflowService>>().Object);
     }
 
@@ -404,6 +406,95 @@ public class LeaseWorkflowServiceTests
             _sut.CreateDraftAsync(PropertyId, OwnerId, request));
     }
 
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoWithoutCharacteristics_ThrowsInvalidOperationException()
+    {
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+
+        var request = BuildCreateRequest(fiscalRegime: FiscalRegime.CanoneConcordato);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
+
+        Assert.Equal("Canone concordato characteristics are required for canone concordato leases.", ex.Message);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoOutsideCalculatedRange_ThrowsInvalidOperationException()
+    {
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+        _canoneEligibility
+            .Setup(s => s.CalculateAsync(PropertyId, OwnerId, characteristics, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
+                true,
+                null,
+                "Seveso",
+                "Unica",
+                2,
+                3445m,
+                5525m,
+                287.08m,
+                460.42m,
+                DataCompleteness.Partial,
+                true,
+                false,
+                true,
+                CanoneConcordatoCopy.Disclaimer));
+
+        var request = BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato,
+            monthlyRent: 900m,
+            canoneConcordatoCharacteristics: characteristics);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.CreateDraftAsync(PropertyId, OwnerId, request));
+
+        Assert.Equal("Monthly rent must be within the calculated canone concordato range.", ex.Message);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_CanoneConcordatoWithinCalculatedRange_PersistsLease()
+    {
+        var property = BuildProperty(hasApe: true);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
+        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
+            .ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
+            .ReturnsAsync((LeaseEvent e) => e);
+        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+        _canoneEligibility
+            .Setup(s => s.CalculateAsync(PropertyId, OwnerId, characteristics, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
+                true,
+                null,
+                "Seveso",
+                "Unica",
+                2,
+                3445m,
+                5525m,
+                287.08m,
+                460.42m,
+                DataCompleteness.Partial,
+                true,
+                false,
+                true,
+                CanoneConcordatoCopy.Disclaimer));
+
+        var result = await _sut.CreateDraftAsync(PropertyId, OwnerId, BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato,
+            monthlyRent: 400m,
+            canoneConcordatoCharacteristics: characteristics));
+
+        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
+        Assert.Equal(400m, result.MonthlyRent);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Once);
+    }
+
     // Helpers
 
     private static Property BuildProperty(bool hasApe, string? ownerId = null) => new()
@@ -416,16 +507,21 @@ public class LeaseWorkflowServiceTests
             : []
     };
 
-    private static CreateLeaseRequest BuildCreateRequest(string tenantCitizenship = "IT") => new(
-        FiscalRegime: FiscalRegime.CedolareSecca,
+    private static CreateLeaseRequest BuildCreateRequest(
+        string tenantCitizenship = "IT",
+        FiscalRegime fiscalRegime = FiscalRegime.CedolareSecca,
+        decimal monthlyRent = 1200.00m,
+        RentBandCharacteristics? canoneConcordatoCharacteristics = null) => new(
+        FiscalRegime: fiscalRegime,
         StartDate: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         EndDate: new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
-        MonthlyRent: 1200.00m,
+        MonthlyRent: monthlyRent,
         Parties:
         [
             new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com"),
             new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123X", tenantCitizenship, "john@example.com")
-        ]);
+        ],
+        CanoneConcordatoCharacteristics: canoneConcordatoCharacteristics);
 
     private static LeaseContract BuildLease(LeaseStatus status)
     {
