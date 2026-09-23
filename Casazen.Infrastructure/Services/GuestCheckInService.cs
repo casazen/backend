@@ -12,6 +12,10 @@ public class GuestCheckInService(
     AppDbContext db,
     ILogger<GuestCheckInService> logger) : IGuestCheckInService
 {
+    private const string DocumentNumberMask = "*****";
+    private const int DocumentNumberVisibleChars = 3;
+    private const int DocumentNumberMinLengthForVisibleChars = 6;
+
     private static readonly GuestCheckInSessionStatus[] OpenLinkStatuses =
     [
         GuestCheckInSessionStatus.Inviato,
@@ -59,11 +63,65 @@ public class GuestCheckInService(
         if (session is null)
             return null;
 
-        if (session.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato)
+        if (IsCompleted(session.Status))
             return null;
 
         return session;
     }
+
+    public async Task<GuestCheckInPublicView?> GetPublicViewAsync(string token)
+    {
+        var session = await GetUsableSessionByTokenAsync(token);
+        if (session is null)
+            return null;
+
+        // After submission the link (possibly forwarded) shows only that the check-in is done (A5-28).
+        if (IsCompleted(session.Status))
+            return new GuestCheckInPublicView { Status = session.Status, IsCompleted = true };
+
+        var booking = session.Booking;
+        var guest = booking.Guest;
+        return new GuestCheckInPublicView
+        {
+            Status = session.Status,
+            SessionId = session.Id,
+            PropertyName = booking.Property.Name,
+            CheckInDate = booking.CheckInDate,
+            CheckOutDate = booking.CheckOutDate,
+            GuestPrefill = new GuestCheckInPrefill
+            {
+                FirstName = guest.FirstName,
+                LastName = guest.LastName,
+                Email = guest.Email,
+                DateOfBirth = guest.DateOfBirth,
+                Nationality = guest.Nationality,
+                Gender = guest.Gender,
+                DocumentNumberMasked = MaskDocumentNumber(guest.DocumentNumber),
+                DocumentIssuingCountry = guest.DocumentIssuingCountry,
+                PlaceOfBirth = guest.PlaceOfBirth,
+            },
+        };
+    }
+
+    /// <summary>
+    /// Masks a document number for the public prefill: only the last <see cref="DocumentNumberVisibleChars"/>
+    /// characters stay visible, and only when the number is long enough that they do not reveal most of it.
+    /// The number of hidden characters is fixed, so the mask does not leak the length. Null when there is none.
+    /// </summary>
+    public static string? MaskDocumentNumber(string? documentNumber)
+    {
+        var value = documentNumber?.Trim();
+        if (string.IsNullOrEmpty(value))
+            return null;
+
+        var visible = value.Length >= DocumentNumberMinLengthForVisibleChars
+            ? value[^DocumentNumberVisibleChars..]
+            : string.Empty;
+        return DocumentNumberMask + visible;
+    }
+
+    private static bool IsCompleted(GuestCheckInSessionStatus status) =>
+        status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato;
 
     private async Task<GuestCheckInSession?> GetUsableSessionByTokenAsync(string token)
     {
@@ -109,17 +167,18 @@ public class GuestCheckInService(
         if (session is null)
             return new GuestCheckInSubmitResult { Success = false };
 
-        if (session.Status == GuestCheckInSessionStatus.Completo ||
-            session.Status == GuestCheckInSessionStatus.AlloggiatiInviato)
-        {
+        if (IsCompleted(session.Status))
             return new GuestCheckInSubmitResult { Success = false, Duplicate = true, SessionId = session.Id };
+
+        if (!TryValidateRequest(request, out var documentType, out var invalidField, out var errorKey))
+        {
+            return new GuestCheckInSubmitResult
+            {
+                Success = false,
+                ValidationField = invalidField,
+                ValidationErrorKey = errorKey,
+            };
         }
-
-        if (!request.GdprConsent)
-            return new GuestCheckInSubmitResult { Success = false };
-
-        if (!TryValidateRequest(request, out var documentType, out var validationError))
-            return new GuestCheckInSubmitResult { Success = false, ValidationError = validationError };
 
         var now = DateTime.UtcNow;
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
@@ -254,41 +313,59 @@ public class GuestCheckInService(
     private static bool IsBookingEligibleForPublicCheckIn(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
+    /// <summary>
+    /// Service-level check of the data Alloggiati Web needs (the API validates the same fields first). On failure
+    /// returns the <see cref="GuestCheckInSubmitRequest"/> property at fault and the SharedResources message key.
+    /// </summary>
     private static bool TryValidateRequest(
         GuestCheckInSubmitRequest request,
         out GuestDocumentType documentType,
-        out string? validationError)
+        out string? invalidField,
+        out string? errorKey)
     {
         documentType = default;
-        validationError = null;
+        invalidField = null;
+        errorKey = null;
 
-        if (string.IsNullOrWhiteSpace(request.FirstName)
-            || string.IsNullOrWhiteSpace(request.LastName)
-            || !request.DateOfBirth.HasValue
-            || string.IsNullOrWhiteSpace(request.Nationality)
-            || !request.Gender.HasValue
-            || string.IsNullOrWhiteSpace(request.DocumentNumber)
-            || string.IsNullOrWhiteSpace(request.DocumentIssuingCountry)
-            || string.IsNullOrWhiteSpace(request.PlaceOfBirth))
-        {
-            validationError = "Required Alloggiati Web guest fields are missing.";
-            return false;
-        }
+        if (!request.GdprConsent)
+            return Invalid(nameof(request.GdprConsent), CheckInValidationKeys.GdprConsentRequired, out invalidField, out errorKey);
 
-        if (!Enum.IsDefined(typeof(Gender), request.Gender.Value))
-        {
-            validationError = "Gender is not valid.";
-            return false;
-        }
+        var missingField = FirstMissingRequiredField(request);
+        if (missingField is not null)
+            return Invalid(missingField, CheckInValidationKeys.FieldRequired, out invalidField, out errorKey);
+
+        // Alloggiati Web accepts only 1 = male and 2 = female (tracciato record, field "Sesso").
+        if (request.Gender is not (Gender.Male or Gender.Female))
+            return Invalid(nameof(request.Gender), CheckInValidationKeys.GenderInvalid, out invalidField, out errorKey);
 
         if (!Enum.TryParse(request.DocumentType, ignoreCase: true, out documentType)
             || !Enum.IsDefined(typeof(GuestDocumentType), documentType))
         {
-            validationError = "DocumentType is not valid.";
-            return false;
+            return Invalid(nameof(request.DocumentType), CheckInValidationKeys.DocumentTypeInvalid, out invalidField, out errorKey);
         }
 
         return true;
+    }
+
+    private static string? FirstMissingRequiredField(GuestCheckInSubmitRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.FirstName)) return nameof(request.FirstName);
+        if (string.IsNullOrWhiteSpace(request.LastName)) return nameof(request.LastName);
+        if (!request.DateOfBirth.HasValue) return nameof(request.DateOfBirth);
+        if (string.IsNullOrWhiteSpace(request.PlaceOfBirth)) return nameof(request.PlaceOfBirth);
+        if (string.IsNullOrWhiteSpace(request.Nationality)) return nameof(request.Nationality);
+        if (!request.Gender.HasValue) return nameof(request.Gender);
+        if (string.IsNullOrWhiteSpace(request.DocumentType)) return nameof(request.DocumentType);
+        if (string.IsNullOrWhiteSpace(request.DocumentNumber)) return nameof(request.DocumentNumber);
+        if (string.IsNullOrWhiteSpace(request.DocumentIssuingCountry)) return nameof(request.DocumentIssuingCountry);
+        return null;
+    }
+
+    private static bool Invalid(string field, string key, out string? invalidField, out string? errorKey)
+    {
+        invalidField = field;
+        errorKey = key;
+        return false;
     }
 
     private async Task<Guest> EnsureBookingOwnsMutableGuestAsync(GuestCheckInSession session, DateTime now)

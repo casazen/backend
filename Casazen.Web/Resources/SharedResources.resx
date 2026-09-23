@@ -195,4 +195,22 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
+  <data name="CheckInFieldRequired" xml:space="preserve">
+    <value>Campo obbligatorio.</value>
+  </data>
+  <data name="CheckInFieldMaxLength" xml:space="preserve">
+    <value>Inserisci al massimo {1} caratteri.</value>
+  </data>
+  <data name="CheckInGenderInvalid" xml:space="preserve">
+    <value>Seleziona maschio o femmina: sono gli unici valori accettati da Alloggiati Web.</value>
+  </data>
+  <data name="CheckInDocumentTypeInvalid" xml:space="preserve">
+    <value>Tipo di documento non valido.</value>
+  </data>
+  <data name="CheckInGdprConsentRequired" xml:space="preserve">
+    <value>Per completare il check-in devi acconsentire al trattamento dei dati.</value>
+  </data>
+  <data name="CheckInAlreadySubmitted" xml:space="preserve">
+    <value>Il check-in è già stato completato.</value>
+  </data>
 </root>

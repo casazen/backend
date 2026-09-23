@@ -1,0 +1,13 @@
+{
+  "firstName": "Giulia",
+  "lastName": "Bianchi",
+  "dateOfBirth": "1992-03-08",
+  "placeOfBirth": "Firenze",
+  "nationality": "Italiana",
+  "gender": "Female",
+  "documentType": "IdentityCard",
+  "documentNumber": "CA12345AB",
+  "documentIssuingCountry": "Italia",
+  "gdprConsent": true,
+  "marketingConsent": false
+}
