@@ -384,6 +384,18 @@ Ai__ApiKey=sk-...
 Ai__Model=deepseek-v4-flash
 Ai__AnthropicBaseUrl=https://api.deepseek.com/anthropic
 Ai__OpenAiBaseUrl=https://api.deepseek.com
+# Object storage — Supabase Storage (S3 API), REQUIRED: the API does not start without it (docs/runbooks/storage.md)
+Storage__Provider=S3
+Storage__PublicBaseUrl=https://YOUR_REF.supabase.co/storage/v1/object/public/casazen-<env>-public
+Storage__S3__ServiceUrl=https://YOUR_REF.storage.supabase.co/storage/v1/s3
+Storage__S3__Region=[region shown in Supabase]
+Storage__S3__AccessKeyId=[S3 access key id]
+Storage__S3__SecretAccessKey=[S3 secret access key]
+Storage__S3__PublicBucket=casazen-<env>-public
+Storage__S3__PrivateBucket=casazen-<env>-private
+# Data Protection key-ring encryption (recommended, docs/runbooks/storage.md §4)
+DataProtection__CertificatePfxBase64=[base64 .pfx]
+DataProtection__CertificatePassword=[pfx password]
 ```
 
 `App__PublicSiteBaseUrl` is required for **supplier invite emails** (`POST /api/admin/suppliers/invite`): the signup link is built as `{PublicSiteBaseUrl}/login?inviteToken=…&email=…&comune=…`. Use the Vercel URL for the matching environment (test → preview/staging FE, production → `https://casazen.app` or production Vercel URL).

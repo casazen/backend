@@ -319,8 +319,14 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         FileName = d.FileName,
         FileType = ResolveFileType(d),
         UploadedAt = d.UploadedAt,
-        DownloadUrl = d.StorageUrl
+        // Documents live in the private bucket: the only way to read one is the authenticated
+        // download endpoint (bearer token + tenant/ownership check), never the storage reference.
+        DownloadUrl = DocumentDownloadPath(d.PropertyId, d.Id)
     };
+
+    /// <summary>API path (relative to the API base URL) of the authenticated document download.</summary>
+    public static string DocumentDownloadPath(Guid propertyId, Guid documentId) =>
+        $"/api/properties/{propertyId}/documents/{documentId}/download";
 
     private static string ResolveFileType(PropertyDocument document)
     {

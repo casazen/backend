@@ -1511,6 +1511,163 @@ public class PropertiesControllerTests
         Assert.IsType<NotFoundResult>(result);
     }
 
+    // ─── DownloadDocument / GetDocumentSignedUrl (FD-07) ─────────────────────────
+
+    [Fact]
+    public async Task DownloadDocument_AsOwner_ReturnsFileAsAttachmentWithoutCaching()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "Certificato CIN.pdf");
+        var bytes = new byte[] { 1, 2, 3, 4 };
+        _mockDocumentService.Setup(x => x.OpenContentAsync(document)).ReturnsAsync(new MemoryStream(bytes));
+
+        var result = await _controller.DownloadDocument(propertyId, document.Id);
+
+        var file = Assert.IsType<FileStreamResult>(result);
+        Assert.Equal("application/pdf", file.ContentType);
+        Assert.Equal("Certificato CIN.pdf", file.FileDownloadName);
+        Assert.Equal("private, no-store", _controller.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task DownloadDocument_AsNonOwner_ReturnsForbiddenWithoutReadingFile()
+    {
+        SetupUserClaims("auth0|attacker");
+        var (propertyId, document) = SetupDocument("auth0|owner", "doc.pdf");
+
+        var result = await _controller.DownloadDocument(propertyId, document.Id);
+
+        Assert.IsType<ForbidResult>(result);
+        _mockDocumentService.Verify(x => x.OpenContentAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DownloadDocument_PropertyNotVisible_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|other_org_user");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var result = await _controller.DownloadDocument(propertyId, Guid.NewGuid());
+
+        Assert.IsType<NotFoundResult>(result);
+        _mockDocumentService.Verify(x => x.OpenContentAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DownloadDocument_DocumentOfAnotherProperty_ReturnsNotFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var propertyId = Guid.NewGuid();
+        var docId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(docId))
+            .ReturnsAsync(new PropertyDocument { Id = docId, PropertyId = Guid.NewGuid(), FileName = "x.pdf" });
+
+        var result = await _controller.DownloadDocument(propertyId, docId);
+
+        Assert.IsType<NotFoundResult>(result);
+        _mockDocumentService.Verify(x => x.OpenContentAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DownloadDocument_FileMissingFromStorage_ReturnsNotFoundWithCode()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "doc.pdf");
+        _mockDocumentService.Setup(x => x.OpenContentAsync(document)).ReturnsAsync((Stream?)null);
+
+        var result = await _controller.DownloadDocument(propertyId, document.Id);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Contains("document_file_missing", JsonSerializer.Serialize(notFound.Value));
+    }
+
+    [Fact]
+    public async Task DownloadDocument_AsAdminCrossOwner_LogsPrivilegedAccess()
+    {
+        var adminId = "auth0|admin_user";
+        SetupUserClaims(adminId, ["Admin"]);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument("auth0|owner", "doc.pdf");
+        _mockDocumentService.Setup(x => x.OpenContentAsync(document)).ReturnsAsync(new MemoryStream([1]));
+
+        await _controller.DownloadDocument(propertyId, document.Id);
+
+        _mockAuditService.Verify(
+            x => x.LogPrivilegedPropertyAccessAsync(adminId, propertyId, "auth0|owner", "PropertyDocument.Download", default),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDocumentSignedUrl_AsOwner_ReturnsUrlAndExpiry()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "doc.pdf");
+        var expiresAt = DateTime.UtcNow.AddMinutes(5);
+        _mockDocumentService.Setup(x => x.GetSignedDownloadUrlAsync(document))
+            .ReturnsAsync(new SignedFileUrl(new Uri("https://storage.test/private/doc.pdf?X-Amz-Signature=s"), expiresAt));
+
+        var result = await _controller.GetDocumentSignedUrl(propertyId, document.Id);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<SignedDocumentUrlResponse>(ok.Value);
+        Assert.Equal("https://storage.test/private/doc.pdf?X-Amz-Signature=s", body.Url);
+        Assert.Equal(expiresAt, body.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task GetDocumentSignedUrl_ProviderCannotSign_Returns501()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "doc.pdf");
+        _mockDocumentService.Setup(x => x.GetSignedDownloadUrlAsync(document)).ReturnsAsync((SignedFileUrl?)null);
+
+        var result = await _controller.GetDocumentSignedUrl(propertyId, document.Id);
+
+        var status = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status501NotImplemented, status.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetDocumentSignedUrl_AsNonOwner_ReturnsForbidden()
+    {
+        SetupUserClaims("auth0|attacker");
+        var (propertyId, document) = SetupDocument("auth0|owner", "doc.pdf");
+
+        var result = await _controller.GetDocumentSignedUrl(propertyId, document.Id);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockDocumentService.Verify(x => x.GetSignedDownloadUrlAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    private (Guid PropertyId, PropertyDocument Document) SetupDocument(string ownerId, string fileName)
+    {
+        var propertyId = Guid.NewGuid();
+        var document = new PropertyDocument
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId,
+            FileName = fileName,
+            StorageUrl = $"properties/{propertyId}/documents/{Guid.NewGuid()}.pdf",
+        };
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = ownerId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(document.Id)).ReturnsAsync(document);
+        return (propertyId, document);
+    }
+
     [Fact]
     public async Task GetDetail_AsAdminCrossOwner_LogsPrivilegedAccess()
     {

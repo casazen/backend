@@ -32,15 +32,17 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastFive()
+    public void Migrations_RecentOnes_LandInOrder()
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        int IndexOf(string name) => keys.FindIndex(k => k.EndsWith(name, StringComparison.Ordinal));
 
-        Assert.EndsWith("AddLongRentPropertyPermissions", keys[^1]);
-        Assert.EndsWith("AddLeaseRegistrationAuthorization", keys[^2]);
-        Assert.EndsWith("AddTerritorialRentAgreements", keys[^3]);
-        Assert.EndsWith("AddStrFiscalRegime2026", keys[^4]);
+        // Relative order only: later migrations (e.g. AddDataProtectionKeys, FD-07) may follow them.
+        Assert.True(IndexOf("AddStrFiscalRegime2026") < IndexOf("AddTerritorialRentAgreements"));
+        Assert.True(IndexOf("AddTerritorialRentAgreements") < IndexOf("AddLeaseRegistrationAuthorization"));
+        Assert.True(IndexOf("AddLeaseRegistrationAuthorization") < IndexOf("AddLongRentPropertyPermissions"));
+        Assert.True(IndexOf("AddLongRentPropertyPermissions") < IndexOf("AddDataProtectionKeys"));
         Assert.Contains(keys, k => k.EndsWith("AddLongRentPropertyPermissions", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddLeaseRegistrationAuthorization", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("RestrictCustomDomainUniquenessToVerified", StringComparison.Ordinal));
