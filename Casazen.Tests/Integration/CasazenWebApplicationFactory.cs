@@ -4,6 +4,8 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Tests.Integration.Postgres;
+using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
@@ -13,18 +15,40 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Npgsql;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// WebApplicationFactory for integration tests — in-memory EF, test auth, mocked Hangfire.
+/// WebApplicationFactory for integration tests — real PostgreSQL, test auth, mocked Hangfire.
+/// Each factory instance gets its own database (<c>it_&lt;guid&gt;</c>) on the server resolved by
+/// <see cref="PostgresTestServer"/>, with every EF migration applied through <c>Database.Migrate()</c>;
+/// the database is dropped when the factory is disposed. Only when no PostgreSQL is available on a
+/// local run does it fall back to EF InMemory, with a warning (never on CI). See FD-04 / A9-11.
 /// </summary>
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
+    private static int _inMemoryWarningWritten;
+
+    private readonly object _databaseLock = new();
+    private PostgresTestDatabase? _database;
+
+    public CasazenWebApplicationFactory()
+    {
+        UsesPostgreSql = ResolveUsesPostgreSql();
+    }
+
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
+
+    /// <summary>True when the app runs on a dedicated PostgreSQL database; false only for the local InMemory fallback.</summary>
+    public bool UsesPostgreSql { get; }
+
+    /// <summary>Name of the dedicated PostgreSQL database, once the host has been created.</summary>
+    public string? DatabaseName => _database?.DatabaseName;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -92,6 +116,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            if (UsesPostgreSql)
+                UseDedicatedPostgresDatabase(services);
+
             RemoveService<IPublicHolidayService>(services);
             var holidayMock = new Mock<IPublicHolidayService>();
             holidayMock.Setup(h => h.IsPublicHolidayAsync(It.IsAny<DateTime>())).ReturnsAsync(false);
@@ -206,7 +233,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         {
             await db.SaveChangesAsync();
         }
-        catch (ArgumentException ex) when (ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (IsDuplicateKey(ex))
         {
             // Parallel test already seeded the same user/org — re-query for committed values
             db.ChangeTracker.Clear();
@@ -218,6 +245,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
         return org;
     }
+
+    // InMemory reports a duplicate key as ArgumentException; PostgreSQL as a unique violation (23505).
+    private static bool IsDuplicateKey(Exception ex) =>
+        (ex is ArgumentException && ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
+        || ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } };
 
     private static async Task<OrgEntity> EnsureOrgAsync(AppDbContext db, string ownerId)
     {
@@ -280,6 +312,65 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         }
 
         await db.SaveChangesAsync();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+
+        PostgresTestDatabase? database;
+        lock (_databaseLock)
+            database = _database;
+
+        if (database is not null)
+            await database.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Replaces the app's DbContext registration (InMemory, because the test host runs without a
+    /// connection string so Hangfire and startup migration stay off) with the same Npgsql setup the
+    /// app uses in production, pointed at this factory's migrated database.
+    /// </summary>
+    private void UseDedicatedPostgresDatabase(IServiceCollection services)
+    {
+        var database = EnsureDatabase();
+
+        RemoveAllOf<DbContextOptions<AppDbContext>>(services);
+        RemoveAllOf<IDbContextOptionsConfiguration<AppDbContext>>(services);
+        services.AddCasazenDatabase(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = database.ConnectionString,
+            })
+            .Build());
+    }
+
+    private PostgresTestDatabase EnsureDatabase()
+    {
+        lock (_databaseLock)
+            return _database ??= PostgresTestDatabase.CreateMigrated();
+    }
+
+    private static bool ResolveUsesPostgreSql()
+    {
+        if (PostgresTestServer.UnavailableReason is not { } reason)
+            return true;
+
+        if (PostgresTestServer.IsContinuousIntegration)
+        {
+            throw new InvalidOperationException(
+                $"Integration tests must run on PostgreSQL in CI: {reason}. Set {PostgresTestServer.ConnectionVariable}.");
+        }
+
+        if (Interlocked.Exchange(ref _inMemoryWarningWritten, 1) == 0)
+        {
+            Console.Error.WriteLine(
+                $"WARNING: integration tests are falling back to EF InMemory ({reason}). " +
+                "InMemory does not enforce FKs, unique indexes, timestamptz or transactions: " +
+                $"set {PostgresTestServer.ConnectionVariable} or start Docker to run them on PostgreSQL.");
+        }
+
+        return false;
     }
 
     protected static void RemoveService<T>(IServiceCollection services)

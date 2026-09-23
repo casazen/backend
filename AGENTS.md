@@ -53,6 +53,6 @@ dotnet format --verify-no-changes
 ### Gotchas
 
 - Use local PostgreSQL or Supabase per `docs/INFRA.md`. There is no root `docker-compose.yml`.
-- Integration tests that need a live DB are excluded in CI via `--filter` (see `ci-cd.yml`).
+- Integration tests run on real PostgreSQL: export `TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=dev"` (each web factory creates, migrates and drops its own `it_<guid>` database). CI uses a `postgres:16` service (see `ci-cd.yml`); without the variable Testcontainers is used, and InMemory only as a local fallback with a warning (`docs/TECHNICAL.md` § Testing).
 - `dotnet ef` global tool must be installed once: `dotnet tool install --global dotnet-ef --version 10.0.0`
 - Auth0/Stripe/SendGrid keys in `appsettings.Development.json` are placeholders; external services are optional for local API smoke tests.

@@ -1,5 +1,6 @@
 ﻿using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
@@ -362,7 +363,7 @@ public class BookingService(
         if (!validationResult.IsValid)
         {
             logger.LogWarning("Booking update validation failed: {Errors}", validationResult.ErrorMessage);
-            throw new InvalidOperationException($"Booking update validation failed: {validationResult.ErrorMessage}");
+            throw new DomainRuleException("booking_update_invalid", "BookingUpdateInvalid");
         }
 
         var datesUnchanged = booking.CheckInDate == existingBooking.CheckInDate &&
@@ -373,11 +374,19 @@ public class BookingService(
         if (!bookingValidation.IsValid)
         {
             logger.LogWarning("Booking validation failed: {Errors}", bookingValidation.ErrorMessage);
-            throw new InvalidOperationException($"Booking validation failed: {bookingValidation.ErrorMessage}");
+            throw new DomainRuleException("booking_update_invalid", "BookingUpdateInvalid");
         }
 
         logger.LogInformation("Updating booking {Id}", booking.Id);
-        return await repository.UpdateAsync(booking);
+        try
+        {
+            return await repository.UpdateAsync(booking);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainConflictException("booking_dates_unavailable", "BookingDatesUnavailable");
+        }
     }
 
     public async Task<bool> CancelBookingAsync(Guid bookingId)
