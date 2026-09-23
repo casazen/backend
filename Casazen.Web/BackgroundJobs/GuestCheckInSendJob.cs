@@ -1,6 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -16,11 +18,18 @@ public class GuestCheckInSendJob(
     AppDbContext db,
     IGuestCheckInService checkInService,
     IEmailService emailService,
+    PublicSiteLinks publicSiteLinks,
     IConfiguration configuration,
     ILogger<GuestCheckInSendJob> logger)
 {
     public async Task ExecuteAsync()
     {
+        if (!publicSiteLinks.IsConfigured)
+        {
+            logger.LogError("Guest check-in links not sent: App:PublicSiteBaseUrl is missing or invalid");
+            return;
+        }
+
         var sendWindowDays = configuration.GetValue("CheckIn:SendWindowDays", 3);
         var now = DateTime.UtcNow;
         var windowEnd = now.AddDays(sendWindowDays);
@@ -65,8 +74,6 @@ public class GuestCheckInSendJob(
                 !completedReportBookingIds.Contains(b.Id))
             .ToList();
 
-        var baseUrl = configuration["App:PublicSiteBaseUrl"] ?? "https://casazen-app.vercel.app";
-
         foreach (var booking in pending)
         {
             string? token = null;
@@ -74,11 +81,15 @@ public class GuestCheckInSendJob(
             try
             {
                 token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
-                var link = $"{baseUrl}/checkin/{token}";
-                var subject = $"Completa il check-in per il tuo soggiorno — {booking.Property.Name}";
-                var html = BuildEmailHtml(booking.Guest.FirstName, booking.Property.Name, booking.CheckInDate, link);
+                var email = EmailTemplates.GuestCheckInLink(
+                    EmailTemplates.DefaultCulture,
+                    booking.Guest.FirstName,
+                    booking.Property.Name,
+                    booking.CheckInDate,
+                    publicSiteLinks.GuestCheckIn(token));
 
-                var result = await emailService.SendEmailAsync(booking.Guest.Email, subject, html);
+                // Already inside a Hangfire job: sent directly, so a failure can expire the unused token.
+                var result = await emailService.SendEmailAsync(booking.Guest.Email, email.Subject, email.HtmlBody);
                 if (!result.Success)
                 {
                     await ExpireUndeliveredTokenAsync(token, booking.Id);
@@ -114,13 +125,4 @@ public class GuestCheckInSendJob(
             logger.LogError(ex, "Failed to expire undelivered check-in token for booking {BookingId}", bookingId);
         }
     }
-
-    private static string BuildEmailHtml(string guestName, string propertyName, DateTime checkInDate, string link) =>
-        $"""
-        <p>Gentile {guestName},</p>
-        <p>Il tuo soggiorno presso <strong>{propertyName}</strong> inizia il <strong>{checkInDate:dd/MM/yyyy}</strong>.</p>
-        <p>Completa il check-in in anticipo cliccando il link qui sotto:</p>
-        <p><a href="{link}">Completa il check-in</a></p>
-        <p>Il link è valido per 7 giorni.</p>
-        """;
 }

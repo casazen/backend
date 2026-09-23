@@ -1,11 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -169,26 +168,8 @@ public class SupplierServiceRegistrationTests
         Assert.Contains(await db.SupplierProfiles.Select(sp => sp.OrgId).ToListAsync(), id => id == secondOrg.Id);
     }
 
-    private static SupplierService CreateService(AppDbContext db)
-    {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
-                ["Email:SendGridApiKey"] = string.Empty,
-            })
-            .Build();
-
-        var env = new Mock<IHostEnvironment>();
-        env.SetupGet(e => e.EnvironmentName).Returns("Testing");
-
-        return new SupplierService(
-            db,
-            Mock.Of<IEmailService>(),
-            config,
-            env.Object,
-            NullLogger<SupplierService>.Instance);
-    }
+    private static SupplierService CreateService(AppDbContext db) =>
+        new(db, Mock.Of<IEmailQueue>(), EmailTestHelpers.Links(), NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()
     {
