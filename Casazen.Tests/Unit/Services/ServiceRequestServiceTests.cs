@@ -60,6 +60,51 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WhenSameOrgUserCannotAccessProperty_ThrowsUnauthorized()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId,
+                "auth0|other-org-member",
+                propertyId,
+                null,
+                supplierOrgId,
+                "cleaning",
+                ServiceRequestUrgency.Normal,
+                null,
+                false,
+                UserRoles: [])));
+
+        Assert.Empty(db.ServiceRequests);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenPropertyManagerAccessesProperty_CreatesRichiesto()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var result = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId,
+            "auth0|manager",
+            propertyId,
+            null,
+            supplierOrgId,
+            "cleaning",
+            ServiceRequestUrgency.Normal,
+            null,
+            false,
+            UserRoles: ["PropertyManager"]));
+
+        Assert.Equal(ServiceRequestStatus.Richiesto, result.Status);
+    }
+
+    [Fact]
     public async Task CreateAsync_InactiveSupplier_Throws()
     {
         await using var db = CreateDb();
