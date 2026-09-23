@@ -122,6 +122,15 @@ public class LeaseWorkflowService(
 
         if (esignEvent.AllSigned)
         {
+            if (string.IsNullOrWhiteSpace(esignEvent.SignedDocumentPath))
+            {
+                logger.LogWarning(
+                    "ESign all-signed webhook missing signed document path. LeaseId={LeaseId} SessionId={SessionId}",
+                    lease.Id,
+                    esignEvent.ExternalSessionId);
+                return;
+            }
+
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = esignEvent.SignedDocumentPath;
             await leaseRepository.UpdateAsync(lease);
@@ -154,6 +163,9 @@ public class LeaseWorkflowService(
 
         if (lease.Status != LeaseStatus.Signed)
             throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
+
+        if (string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath))
+            throw new InvalidOperationException("Signed lease PDF must be stored before registration.");
 
         var expectedTos = rliOptions.Value.TosVersion;
         if (!authorization.AttestationAccepted
