@@ -18,9 +18,9 @@ Il canone concordato è un regime **alternativo** al canone libero (4+4), dispon
 | Agevolazione | Requisito territoriale |
 |---|---|
 | **IMU −25%** | **Nessuno — nazionale**, si applica ovunque il contratto sia genuinamente concordato |
-| Cedolare secca **10%** (anziché 21%) | Solo se il Comune è "**ad alta tensione abitativa**" (elenco CIPE 13/11/2003 — mai formalmente aggiornato) |
+| Cedolare secca **10%** (anziché 21%) | Solo se il Comune è "**ad alta tensione abitativa**": comuni del D.L. 551/1988 art. 1 c. 1 lett. a-b (Bari, Bologna, Catania, Firenze, Genova, Milano, Napoli, Palermo, Roma, Torino, Venezia, comuni confinanti, altri capoluoghi di provincia) più quelli individuati dal CIPE (delibera 13/11/2003, mai formalmente aggiornata). Anche nei comuni con stato di emergenza per calamità deliberato nei 5 anni precedenti il 28/5/2014 (D.L. 47/2014 art. 9 c. 2-bis; nessun elenco ufficiale). Vedi `fiscale.md` L11-L12 |
 | Riduzione IRPEF **−30%** (regime ordinario) | Idem — solo comuni ATA |
-| Riduzione imposta di registro **−30%** (base al 70%, aliquota 2%) | Idem — solo comuni ATA |
+| Riduzione imposta di registro **−30%** (base al 70%, aliquota 2%, **minimo 67 € sulla prima annualità**) | Idem — solo comuni ATA (art. 8 L. 431/1998). Vedi `fiscale.md` L5-L8 |
 
 **Attenzione**: la lista "comuni ATA" (nazionale, cedolare/IRPEF/registro) è **distinta** dalla lista "comuni ad alta densità abitativa" usata da un singolo accordo territoriale per definire la propria copertura — si sovrappongono spesso ma non sono la stessa cosa. Non trattarle come intercambiabili in un calcolatore.
 
@@ -28,10 +28,23 @@ Il canone concordato è un regime **alternativo** al canone libero (4+4), dispon
 
 Obbligatoria per contratti **non assistiti** stipulati dopo il 30/03/2017 (Risoluzione AdE 31/E/2018). Rilasciata da **almeno una** organizzazione firmataria dell'accordo territoriale (proprietà o inquilini). Senza di essa: decadenza retroattiva di tutte le agevolazioni + sanzioni 90–180%. **CasaZen non può rilasciarla** — solo indirizzare verso l'associazione competente.
 
-### Doppio adempimento post-registrazione (spesso non colto)
+### Adempimenti separati dopo la stipula (spesso non colti)
 
-1. **Registrazione RLI** (Agenzia delle Entrate, 30 giorni) → vedi `spec-ltr-rli-registration.md` per il flusso assistito già speccato.
+1. **Registrazione RLI** (Agenzia delle Entrate, entro 30 giorni dalla **stipula o dalla decorrenza, se anteriore**: `fiscale.md` L1) → vedi `spec-ltr-rli-registration.md` per il flusso assistito già speccato.
 2. **Comunicazione IMU al Comune** — **separata**, quasi mai automatica: ogni Comune ha una propria procedura (modulo, email, PEC) per applicare lo sconto IMU. La sola registrazione RLI/cedolare secca **non** attiva lo sconto IMU.
+3. **Comunicazione alla Questura per conduttori extra-UE** (art. 7 D.Lgs. 286/1998), entro 48 ore dalla consegna dell'immobile. **Non è sostituita dalla registrazione RLI**: la registrazione assorbe solo la generica comunicazione di cessione di fabbricato (art. 12 D.L. 59/1978). Vedi `fiscale.md` L13-L15.
+
+### Regole verificate (2026-09)
+
+Verificate da RS-5 il 2026-09-23 per LT-04 e LT-08. Il dettaglio, con URL e classificazione U/D/T, è in `fiscale.md` → "Regole verificate (2026-09)" → LT-04 / LT-08. In sintesi:
+
+- **Termine RLI**: `min(stipula, decorrenza) + 30 giorni` (U, AdE).
+- **Registro (ordinario)**: 2% del canone annuo, **minimo 67 € sulla prima annualità** (U, AdE). Nel concordato in comune ATA la base è il **70%** del canone (U, AdE; art. 8 L. 431/1998). Annualità successive entro 30 giorni dalla scadenza della precedente (U).
+- **Bollo**: 16 € ogni 4 facciate scritte, e comunque ogni 100 righe, per ciascuna copia (U, AdE). Registro e bollo non dovuti con la cedolare secca (U).
+- **Cedolare 10%**: solo concordato **e** comune ATA (o stato di emergenza, D.L. 47/2014), altrimenti 21% (U, AdE).
+- **Questura extra-UE**: 48 ore, obbligo autonomo rispetto alla RLI; sanzione 160-1.100 € (U, Polizia di Stato).
+- **Da confermare con il commercialista**: cedolare 10% per contratti transitori e per studenti in comune ATA; sanzioni per tardiva registrazione con opzione cedolare.
+- **Dal 1/1/2027** si applicano il TU registro (D.Lgs. 123/2025) e il nuovo TUIR (D.Lgs. 117/2026, cedolare artt. 203-206): i riferimenti normativi mostrati in UI e PDF vanno tenuti in configurazione.
 
 ## Impatto su CasaZen
 
@@ -61,4 +74,4 @@ Obbligatoria per contratti **non assistiti** stipulati dopo il 30/03/2017 (Risol
 
 Ricerca completa con tabelle ufficiali, contatti e gap espliciti: `Sessions/research-canone-concordato-mb.md`. Business analysis: `Sessions/business-analysis-canone-concordato.md`. Spec tecnica: `Sessions/specs/spec-ltr-canone-concordato-calculator.md`.
 
-**Data consultazione ricerca sottostante**: 2026-08-16
+**Data consultazione ricerca sottostante**: 2026-08-16 · **Verifica RS-5 su fonti ufficiali**: 2026-09-23 (vedi `fiscale.md`)
