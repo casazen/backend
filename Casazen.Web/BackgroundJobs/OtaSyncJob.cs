@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
@@ -21,6 +22,7 @@ public class OtaSyncJob
     /// Synchronizes all platforms for a specific property
     /// </summary>
     /// <param name="propertyId">Property ID to sync</param>
+    [DisableConcurrentExecution("OtaSyncJob.ExecuteAsync:{0}", JobLockTimeouts.DefaultSeconds)] // one sync per property at a time
     public async Task ExecuteAsync(Guid propertyId)
     {
         try

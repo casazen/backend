@@ -1,5 +1,6 @@
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -11,6 +12,7 @@ public class CinDeadlineAlertJob(
 {
     private const int AlertWindowDays = 7;
 
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var daysUntilDeadline = CinComplianceRules.DaysUntilDeadline();

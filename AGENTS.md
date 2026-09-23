@@ -10,7 +10,7 @@ This repository is the **CasaZen backend API** (.NET 10 + PostgreSQL). The React
 |---|---|---|
 | PostgreSQL 16 | Yes | Local DB `casazen_dev` on port 5432 (`postgres` / `dev`) — see `Casazen.Web/appsettings.Development.json` |
 | CasaZen API (`Casazen.Web`) | Yes | HTTP `http://localhost:5000`, HTTPS `https://localhost:5001` |
-| Hangfire | Bundled | Uses PostgreSQL schema `hangfire`; dashboard at `/hangfire` when DB is configured |
+| Hangfire | Bundled | Uses a PostgreSQL schema per environment (`Hangfire:Schema`, default `hangfire_<SearchPath>`; see `docs/runbooks/hangfire.md`); dashboard at `/hangfire` when DB is configured |
 
 ### Environment variables / shell
 
