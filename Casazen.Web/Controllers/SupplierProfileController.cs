@@ -293,7 +293,7 @@ public class SupplierProfileController(
 
             try
             {
-                var url = await imageStorageService.UploadImageAsync(photo, orgId.Value);
+                var url = await imageStorageService.UploadSupplierPhotoAsync(photo, orgId.Value);
                 uploadedUrls.Add(url);
             }
             catch (Exception ex)

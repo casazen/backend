@@ -1,8 +1,8 @@
-﻿using System.Text.RegularExpressions;
-using Casazen.Core.DTOs;
+﻿using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -31,6 +31,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     public async Task<Property> CreatePropertyAsync(Property property)
     {
         logger.LogInformation("Creating property: {Name}", property.Name);
+        property.CinCode = CinFormat.Normalize(property.CinCode);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         return await repository.AddAsync(property);
     }
@@ -38,6 +39,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     public async Task<Property> UpdatePropertyAsync(Property property)
     {
         logger.LogInformation("Updating property: {Id}", property.Id);
+        property.CinCode = CinFormat.Normalize(property.CinCode);
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -320,8 +322,14 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         FileName = d.FileName,
         FileType = ResolveFileType(d),
         UploadedAt = d.UploadedAt,
-        DownloadUrl = d.StorageUrl
+        // Documents live in the private bucket: the only way to read one is the authenticated
+        // download endpoint (bearer token + tenant/ownership check), never the storage reference.
+        DownloadUrl = DocumentDownloadPath(d.PropertyId, d.Id)
     };
+
+    /// <summary>API path (relative to the API base URL) of the authenticated document download.</summary>
+    public static string DocumentDownloadPath(Guid propertyId, Guid documentId) =>
+        $"/api/properties/{propertyId}/documents/{documentId}/download";
 
     private static string ResolveFileType(PropertyDocument document)
     {
@@ -334,13 +342,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return document.DocumentType.ToString();
     }
 
-    private static readonly Regex CinRegex = new(@"^IT-\d{5}-\d{10}$", RegexOptions.Compiled);
-
-    internal static CinStatus ResolveCinStatus(string? cinCode)
-    {
-        if (string.IsNullOrWhiteSpace(cinCode)) return CinStatus.Missing;
-        return CinRegex.IsMatch(cinCode) ? CinStatus.Valid : CinStatus.Invalid;
-    }
+    internal static CinStatus ResolveCinStatus(string? cinCode) => CinFormat.GetStatus(cinCode);
 
     public async Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(
         string ownerId, string? cinStatus, int page, int pageSize)
@@ -390,20 +392,15 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         var property = await repository.GetByIdAsync(propertyId)
             ?? throw new KeyNotFoundException($"Property {propertyId} not found");
 
-        var normalized = string.IsNullOrWhiteSpace(cinCode) ? null : cinCode.Trim();
+        var normalized = CinFormat.Normalize(cinCode);
 
         if (normalized != null)
         {
-            if (!CinRegex.IsMatch(normalized))
-            {
-                throw new ArgumentException(
-                    "CIN code must match format IT-XXXXX-XXXXXXXXXX (e.g., IT-12345-0123456789).");
-            }
+            if (!CinFormat.IsValid(normalized))
+                throw new DomainRuleException(CinFormat.InvalidFormatCode, CinFormat.InvalidFormatMessageKey);
 
             if (await repository.CinCodeExistsOnOtherPropertyAsync(normalized, propertyId))
-            {
-                throw new InvalidOperationException("CIN code is already assigned to another property.");
-            }
+                throw new DomainConflictException("duplicate_cin", "CinAlreadyAssigned");
         }
 
         property.CinCode = normalized;

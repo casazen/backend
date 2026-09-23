@@ -385,11 +385,25 @@ Ai__ApiKey=sk-...
 Ai__Model=deepseek-v4-flash
 Ai__AnthropicBaseUrl=https://api.deepseek.com/anthropic
 Ai__OpenAiBaseUrl=https://api.deepseek.com
+# Object storage — Supabase Storage (S3 API), REQUIRED: the API does not start without it (docs/runbooks/storage.md)
+Storage__Provider=S3
+Storage__PublicBaseUrl=https://YOUR_REF.supabase.co/storage/v1/object/public/casazen-<env>-public
+Storage__S3__ServiceUrl=https://YOUR_REF.storage.supabase.co/storage/v1/s3
+Storage__S3__Region=[region shown in Supabase]
+Storage__S3__AccessKeyId=[S3 access key id]
+Storage__S3__SecretAccessKey=[S3 secret access key]
+Storage__S3__PublicBucket=casazen-<env>-public
+Storage__S3__PrivateBucket=casazen-<env>-private
+# Data Protection key-ring encryption (recommended, docs/runbooks/storage.md §4)
+DataProtection__CertificatePfxBase64=[base64 .pfx]
+DataProtection__CertificatePassword=[pfx password]
 ```
 
 `App__PublicSiteBaseUrl` is the base of **every link in emails** (supplier invite `/register?inviteToken=…`, supplier inbox, guest check-in `/checkin/{token}`): there is no fallback domain in code. Use the web app URL of the matching environment. Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
 Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
+
+Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
 
 ### Get service URLs → GitHub Variables
 

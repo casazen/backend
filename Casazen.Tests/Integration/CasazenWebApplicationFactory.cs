@@ -50,6 +50,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     /// <summary>Name of the dedicated PostgreSQL database, once the host has been created.</summary>
     public string? DatabaseName => _database?.DatabaseName;
 
+    /// <summary>
+    /// Root of the filesystem storage provider used by the Testing host (FD-07): a throw-away temp
+    /// folder per factory, deleted on dispose, instead of the Web project's App_Data.
+    /// </summary>
+    public string StorageRoot { get; } = Path.Combine(Path.GetTempPath(), "casazen-it-storage", Guid.NewGuid().ToString("N"));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", string.Empty);
@@ -69,6 +75,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["DirectBooking:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "1000",
+                // Requests without a test peer share one partition: keep the per-IP limits out of the way (FD-10).
+                ["RateLimiting:PublicRead:PermitLimit"] = "1000",
+                ["RateLimiting:PublicBookingLookup:PermitLimit"] = "1000",
+                ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
+                ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
+                ["RateLimiting:PublicSupplierCheckIn:PermitLimit"] = "1000",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
@@ -79,6 +91,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
                 ["App:ApiBaseUrl"] = "https://casazen-api-test.up.railway.app",
+                ["Storage:Provider"] = "FileSystem",
+                ["Storage:FileSystem:RootPath"] = StorageRoot,
                 ["Legal:Documents:Tos:Version"] = "2026-06-v1",
                 ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
                 ["Legal:Documents:Dpa:Version"] = "2026-06-v1",
@@ -317,6 +331,16 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+
+        try
+        {
+            if (Directory.Exists(StorageRoot))
+                Directory.Delete(StorageRoot, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best effort: a leftover temp folder must not fail the test run.
+        }
 
         PostgresTestDatabase? database;
         lock (_databaseLock)

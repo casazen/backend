@@ -34,7 +34,7 @@ public class PublicGuestCheckInController(
     /// returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28).
     /// </summary>
     [HttpGet("{token}")]
-    [EnableRateLimiting("GuestCheckIn")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
     public async Task<ActionResult<PublicCheckInContextResponse>> GetContext(string token)
     {
         var view = await checkInService.GetPublicViewAsync(token);
@@ -76,7 +76,7 @@ public class PublicGuestCheckInController(
     /// duplicate submission → 409 <c>checkin_already_submitted</c>.
     /// </summary>
     [HttpPost("{token}")]
-    [EnableRateLimiting("GuestCheckInSubmit")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
     public async Task<IActionResult> Submit(string token, [FromBody] PublicCheckInSubmitRequest request)
     {
         if (!request.GdprConsent)
@@ -85,7 +85,7 @@ public class PublicGuestCheckInController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+        var ip = ClientIp.GetString(HttpContext) ?? string.Empty;
 
         var submitRequest = new GuestCheckInSubmitRequest
         {

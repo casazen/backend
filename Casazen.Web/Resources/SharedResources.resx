@@ -63,6 +63,9 @@
   <data name="TooManyRequestsDetail" xml:space="preserve">
     <value>Troppe richieste in poco tempo. Riprova tra qualche istante.</value>
   </data>
+  <data name="RateLimitedDetail" xml:space="preserve">
+    <value>Troppe richieste in poco tempo. Riprova tra {0} secondi.</value>
+  </data>
   <data name="ServiceUnavailable" xml:space="preserve">
     <value>Servizio non disponibile</value>
   </data>
@@ -219,10 +222,22 @@
   <data name="CheckInAlreadySubmitted" xml:space="preserve">
     <value>Il check-in è già stato completato.</value>
   </data>
+  <data name="DocumentFileMissing" xml:space="preserve">
+    <value>Il file di questo documento non è più disponibile: caricalo di nuovo.</value>
+  </data>
+  <data name="SignedUrlUnavailable" xml:space="preserve">
+    <value>Lo storage configurato non genera link firmati: scarica il documento dall'applicazione.</value>
+  </data>
   <data name="CheckInLinkEmailQueued" xml:space="preserve">
     <value>Link check-in rigenerato: l'email all'ospite è in coda di invio.</value>
   </data>
   <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
     <value>Link check-in pronto, ma l'email all'ospite non è stata inviata: copia il link e invialo all'ospite.</value>
+  </data>
+  <data name="CinInvalidFormat" xml:space="preserve">
+    <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
+  </data>
+  <data name="CinAlreadyAssigned" xml:space="preserve">
+    <value>Questo CIN è già associato a un altro immobile.</value>
   </data>
 </root>

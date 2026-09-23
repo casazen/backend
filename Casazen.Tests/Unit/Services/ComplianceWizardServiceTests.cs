@@ -63,7 +63,7 @@ public class ComplianceWizardServiceTests
     public async Task Activation_CinValid_MarksCinComplete()
     {
         await using var db = CreateDb(nameof(Activation_CinValid_MarksCinComplete));
-        var property = await SeedPropertyAsync(db, cinCode: "IT-12345-0123456789");
+        var property = await SeedPropertyAsync(db, cinCode: "IT058091C27G5FFZDZ");
 
         var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
 
@@ -249,7 +249,7 @@ public class ComplianceWizardServiceTests
     private static async Task<Property> SeedPropertyAsync(
         AppDbContext db,
         Guid? orgId = null,
-        string? cinCode = "IT-12345-0123456789",
+        string? cinCode = "IT058091C27G5FFZDZ",
         PropertyComplianceStatus complianceStatus = PropertyComplianceStatus.Pending)
     {
         var org = orgId.HasValue
@@ -303,7 +303,7 @@ public class ComplianceWizardServiceTests
 
     private static async Task<Property> SeedFullyCompliantPropertyAsync(AppDbContext db, Guid? orgId = null)
     {
-        var property = await SeedPropertyAsync(db, orgId, cinCode: "IT-12345-0123456789");
+        var property = await SeedPropertyAsync(db, orgId, cinCode: "IT058091C27G5FFZDZ");
 
         db.TouristTaxRates.Add(new TouristTaxRate
         {

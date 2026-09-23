@@ -8,9 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="Auth0.ManagementApi" Version="7.30.0" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="Hangfire.Core" Version="1.8.17" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />

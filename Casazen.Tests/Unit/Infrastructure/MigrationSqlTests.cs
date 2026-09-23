@@ -32,7 +32,7 @@ public class MigrationSqlTests
     }
 
     [Fact]
-    public void Migrations_LandInOrder_AsTheLastFive()
+    public void Migrations_RecentOnes_LandInOrder()
     {
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
@@ -42,6 +42,8 @@ public class MigrationSqlTests
         {
             "AddStrFiscalRegime2026", "AddTerritorialRentAgreements", "AddLeaseRegistrationAuthorization",
             "AddLongRentPropertyPermissions", "AddGuestOrgIdNullable", "BackfillGuestOrgIds", "MakeGuestOrgIdRequired",
+            "AddDataProtectionKeys",
+            "NormalizeCinCodes",
         }.Select(name => keys.FindIndex(k => k.EndsWith(name, StringComparison.Ordinal))).ToList();
         Assert.All(ordered, index => Assert.True(index >= 0));
         Assert.Equal(ordered.Order(), ordered);

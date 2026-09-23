@@ -40,7 +40,7 @@ public class PropertyServiceGetDetailTests
             NightlyRate = 150m,
             CleaningFee = 50m,
             DamageDeposit = 200m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             CreatedAt = now.AddDays(-30),
             UpdatedAt = now
@@ -131,9 +131,10 @@ public class PropertyServiceGetDetailTests
     }
 
     [Fact]
-    public async Task GetPropertyDetailAsync_MapsDocumentsWithDownloadUrlAndFileType()
+    public async Task GetPropertyDetailAsync_MapsDocumentsWithAuthenticatedDownloadPathAndFileType()
     {
         var propertyId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
         var property = new Property
         {
             Id = propertyId,
@@ -148,10 +149,10 @@ public class PropertyServiceGetDetailTests
 
         property.PropertyDocuments.Add(new PropertyDocument
         {
-            Id = Guid.NewGuid(),
+            Id = documentId,
             PropertyId = propertyId,
             FileName = "cin-cert.pdf",
-            StorageUrl = "/uploads/properties/cin-cert.pdf",
+            StorageUrl = $"properties/{propertyId}/documents/cin-cert.pdf",
             DocumentType = DocumentType.CinCertificate,
             UploadedAt = DateTime.UtcNow
         });
@@ -160,9 +161,10 @@ public class PropertyServiceGetDetailTests
 
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
+        // FD-07 / A2-31: the DTO never exposes the storage reference, only the authenticated download.
         var doc = Assert.Single(result.Documents);
         Assert.Equal("pdf", doc.FileType);
-        Assert.Equal("/uploads/properties/cin-cert.pdf", doc.DownloadUrl);
+        Assert.Equal($"/api/properties/{propertyId}/documents/{documentId}/download", doc.DownloadUrl);
     }
 
     [Fact]
@@ -235,7 +237,7 @@ public class PropertyServiceGetDetailTests
             Name = "Test Property",
             Address = "Via Test 1",
             City = "Rome",
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow

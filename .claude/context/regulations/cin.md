@@ -136,6 +136,14 @@ Versione con gruppi, per il controllo ISTAT (.NET):
 - La vecchia regex `^IT-\d{5}-\d{10}$` (5 punti nel codice, vedi A5-05) è **errata**: rifiuta tutti i CIN reali.
 - Il fallback D13 (`^IT\d{6}[A-Z0-9]{10}$`) **non serve**, perché la composizione ufficiale è stata trovata. Accetterebbe i CIN a 18 caratteri, ma rifiuterebbe quelli con parte casuale più corta, che il testo ufficiale ammette.
 
+### Implementazione nel codice (CO-01, 2026-09-23)
+
+- Unica fonte di verità: `Casazen.Core/Regulatory/CinFormat.cs` (backend) e `src/lib/cin-format.ts` (frontend, stessa regola).
+- Regex applicata dopo la normalizzazione: `^IT\d{6}[A-Z0-9]{2}[A-Z0-9]{1,8}$` (solo cifre ASCII). Per scelta del piano di risanamento la categoria accetta qualsiasi coppia alfanumerica, perché il testo ufficiale dice solo "2 caratteri".
+- Con `[A-Z0-9]{2}` il vecchio formato inventato normalizzato (`IT` + 15 cifre) passerebbe, quindi `CinFormat` lo rifiuta con una regola esplicita: `^IT\d{15}$`.
+- La migrazione `NormalizeCinCodes` salva in forma normalizzata i CIN già presenti. Quelli che restano fuori formato non vengono cancellati: lo stato calcolato li mostra come "non valido". Dettagli in `docs/runbooks/cin-format.md`.
+- Controllo ISTAT: predisposto (`CinFormat.HasIstatComuneMismatch`, solo avviso) ma non ancora collegato, perché la property ha solo la città in testo libero. Si collega quando arriva l'anagrafica ISTAT (SU-04).
+
 ### Normalizzazione (prima di validare e salvare)
 
 1. `null`, stringa vuota o solo spazi: nessun CIN, non è un CIN invalido.

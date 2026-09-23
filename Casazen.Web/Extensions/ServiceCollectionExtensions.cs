@@ -303,7 +303,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
-        services.AddScoped<IImageStorageService, LocalImageStorageService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
 
