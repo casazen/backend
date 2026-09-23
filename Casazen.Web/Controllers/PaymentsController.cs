@@ -90,6 +90,7 @@ public class PaymentsController(
     }
 
     [HttpPost("{id}/process")]
+    [Authorize(Policy = "RequireContext:short-rent:payment.write")]
     public async Task<IActionResult> Process(Guid id)
     {
         logger.LogInformation("Processing payment: {PaymentId}", id);
@@ -121,6 +122,7 @@ public class PaymentsController(
     }
 
     [HttpPost("{id}/refund")]
+    [Authorize(Policy = "RequireContext:short-rent:payment.write")]
     public async Task<IActionResult> Refund(Guid id, [FromQuery] decimal? amount = null)
     {
         try

@@ -12,7 +12,8 @@ public record CreateServiceRequestCommand(
     string Category,
     ServiceRequestUrgency Urgency,
     string? Notes,
-    bool ChargeToGuest);
+    bool ChargeToGuest,
+    IEnumerable<string>? UserRoles = null);
 
 public interface IServiceRequestService
 {

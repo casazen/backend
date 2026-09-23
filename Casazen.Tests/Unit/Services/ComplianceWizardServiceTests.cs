@@ -89,6 +89,23 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
+    public async Task CompleteActivation_TosOmitted_DoesNotActivateProperty()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_TosOmitted_DoesNotActivateProperty));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(db).CompleteActivationAsync(
+            property.Id,
+            property.OwnerId,
+            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
+            tosAccepted: null));
+
+        var reloaded = await db.Properties.FindAsync(property.Id);
+        Assert.Equal(PropertyComplianceStatus.Pending, reloaded!.ComplianceStatus);
+        Assert.Null(reloaded.ComplianceCompletedAt);
+    }
+
+    [Fact]
     public async Task CompleteActivation_BlockersRemaining_StaysPending()
     {
         await using var db = CreateDb(nameof(CompleteActivation_BlockersRemaining_StaysPending));

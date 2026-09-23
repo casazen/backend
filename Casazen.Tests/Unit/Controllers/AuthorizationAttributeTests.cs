@@ -69,4 +69,27 @@ public class AuthorizationAttributeTests
 
         Assert.Null(authorizeAttr);
     }
+
+    [Theory]
+    [InlineData(typeof(GdprController), nameof(GdprController.ExportGuestData), "RequireContext:short-rent:guest.read")]
+    [InlineData(typeof(GdprController), nameof(GdprController.DeleteGuestData), "RequireContext:short-rent:guest.write")]
+    [InlineData(typeof(GdprController), nameof(GdprController.AnonymizeGuestData), "RequireContext:short-rent:guest.write")]
+    [InlineData(typeof(GdprController), nameof(GdprController.UpdateConsent), "RequireContext:short-rent:guest.write")]
+    [InlineData(typeof(PaymentsController), nameof(PaymentsController.Process), "RequireContext:short-rent:payment.write")]
+    [InlineData(typeof(PaymentsController), nameof(PaymentsController.Refund), "RequireContext:short-rent:payment.write")]
+    public void SensitiveAction_MustRequireExpectedContextPolicy(
+        Type controllerType,
+        string actionName,
+        string expectedPolicy)
+    {
+        var action = controllerType.GetMethod(actionName);
+
+        Assert.NotNull(action);
+        var authorizeAttr = action
+            .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
+            .Cast<AuthorizeAttribute>()
+            .FirstOrDefault(attr => attr.Policy == expectedPolicy);
+
+        Assert.NotNull(authorizeAttr);
+    }
 }
