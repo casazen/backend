@@ -222,14 +222,14 @@ public class LeasesController(
 
 public record CreateLeaseDto(
     [param: Required] Guid PropertyId,
-    [param: Required] FiscalRegime FiscalRegime,
+    [param: Required, EnumDataType(typeof(FiscalRegime))] FiscalRegime FiscalRegime,
     [param: Required] DateTime StartDate,
     [param: Required] DateTime EndDate,
     [param: Range(0.01, 1_000_000.0)] decimal MonthlyRent,
     [param: Required, MinLength(1)] IEnumerable<CreatePartyDto> Parties);
 
 public record CreatePartyDto(
-    [param: Required] PartyRole Role,
+    [param: Required, EnumDataType(typeof(PartyRole))] PartyRole Role,
     [param: Required, MaxLength(100), MinLength(1)] string FirstName,
     [param: Required, MaxLength(100), MinLength(1)] string LastName,
     [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
