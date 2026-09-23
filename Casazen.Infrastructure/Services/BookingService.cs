@@ -365,7 +365,11 @@ public class BookingService(
             throw new InvalidOperationException($"Booking update validation failed: {validationResult.ErrorMessage}");
         }
 
-        var bookingValidation = BookingValidator.ValidateBooking(booking);
+        var datesUnchanged = booking.CheckInDate == existingBooking.CheckInDate &&
+            booking.CheckOutDate == existingBooking.CheckOutDate;
+        var bookingValidation = BookingValidator.ValidateBooking(
+            booking,
+            allowPastCheckIn: datesUnchanged);
         if (!bookingValidation.IsValid)
         {
             logger.LogWarning("Booking validation failed: {Errors}", bookingValidation.ErrorMessage);
