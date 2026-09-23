@@ -1,5 +1,6 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -53,7 +54,7 @@ public class PublicContentController(
     }
 
     [HttpPost("tourist-tax/calculate")]
-    [EnableRateLimiting("PublicTouristTaxCalc")]
+    [EnableRateLimiting(RateLimitPolicies.PublicTouristTaxCalc)]
     [ProducesResponseType(typeof(PublicTouristTaxCalculateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

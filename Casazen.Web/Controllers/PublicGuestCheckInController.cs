@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs.CheckIn;
+using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +26,7 @@ public class PublicGuestCheckInController(
     /// Returns booking context for the guest form. Transitions session Inviato→InCompilazione on first open.
     /// </summary>
     [HttpGet("{token}")]
-    [EnableRateLimiting("GuestCheckIn")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
     public async Task<ActionResult<PublicCheckInContextResponse>> GetContext(string token)
     {
         var session = await checkInService.GetSessionByTokenAsync(token);
@@ -64,7 +65,7 @@ public class PublicGuestCheckInController(
     /// Returns 409 on duplicate submission.
     /// </summary>
     [HttpPost("{token}")]
-    [EnableRateLimiting("GuestCheckInSubmit")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
     public async Task<IActionResult> Submit(string token, [FromBody] PublicCheckInSubmitRequest request)
     {
         if (!ModelState.IsValid)
@@ -73,7 +74,7 @@ public class PublicGuestCheckInController(
         if (!request.GdprConsent)
             return BadRequest(new { error = "GdprConsentRequired", message = "GDPR consent is required." });
 
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+        var ip = ClientIp.GetString(HttpContext) ?? string.Empty;
 
         var submitRequest = new GuestCheckInSubmitRequest
         {

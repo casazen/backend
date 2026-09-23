@@ -1,14 +1,17 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.DTOs;
 using Casazen.Core.Services;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/public/orgs")]
 [AllowAnonymous]
+[EnableRateLimiting(RateLimitPolicies.PublicRead)]
 public class PublicOrgController(
     IOrgService orgService,
     IPropertyService propertyService,

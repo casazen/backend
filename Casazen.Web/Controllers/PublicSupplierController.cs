@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
@@ -10,6 +12,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/public/suppliers")]
 [AllowAnonymous]
+[EnableRateLimiting(RateLimitPolicies.PublicRead)]
 public class PublicSupplierController : ControllerBase
 {
     private readonly AppDbContext _db;

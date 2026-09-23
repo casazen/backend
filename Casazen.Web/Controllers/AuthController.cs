@@ -1,6 +1,8 @@
 ﻿using Casazen.Core.Services;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
@@ -12,6 +14,7 @@ public class AuthController(
 {
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRegistration)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         try

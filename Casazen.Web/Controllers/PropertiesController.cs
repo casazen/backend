@@ -11,6 +11,7 @@ using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
@@ -326,6 +327,7 @@ public class PropertiesController(
 
     [HttpGet("search")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> Search(
         [FromQuery] string? city,
         [FromQuery] int? bedrooms,
@@ -337,6 +339,7 @@ public class PropertiesController(
 
     [HttpGet("{id}/public")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<PublicPropertyDetailDto>> GetPublic(Guid id)
     {
         var property = await propertyService.GetPublicPropertyAsync(id);

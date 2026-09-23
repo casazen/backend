@@ -75,6 +75,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["DirectBooking:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "1000",
+                // Requests without a test peer share one partition: keep the per-IP limits out of the way (FD-10).
+                ["RateLimiting:PublicRead:PermitLimit"] = "1000",
+                ["RateLimiting:PublicBookingLookup:PermitLimit"] = "1000",
+                ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
+                ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
+                ["RateLimiting:PublicSupplierCheckIn:PermitLimit"] = "1000",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
