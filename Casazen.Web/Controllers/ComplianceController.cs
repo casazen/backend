@@ -17,6 +17,7 @@ public class ComplianceController(
     IOrgContextResolver orgContextResolver) : ControllerBase
 {
     [HttpGet("summary")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.read")]
     [ProducesResponseType(typeof(ComplianceSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ComplianceSummaryDto>> GetSummary(CancellationToken cancellationToken)

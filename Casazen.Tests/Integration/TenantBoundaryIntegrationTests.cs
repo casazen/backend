@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Core.Entities;
+using Casazen.Infrastructure.Data;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -124,6 +127,76 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
         using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
         var ids = doc.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetGuid());
         Assert.Contains(property.Id, ids);
+    }
+
+    [Fact]
+    public async Task CreateBooking_WithExistingGuestEmail_DoesNotGrantAccessToOtherOrgGuest()
+    {
+        var ownerA = NewOwner();
+        var ownerB = NewOwner();
+        var propertyA = await _factory.SeedPropertyAsync(ownerId: ownerA);
+        var propertyB = await _factory.SeedPropertyAsync(ownerId: ownerB);
+
+        var existingGuest = new Guest
+        {
+            FirstName = "Alice",
+            LastName = "Private",
+            Email = "shared-guest@example.com",
+            PhoneNumber = "+391111111111",
+            Country = "France",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Guests.Add(existingGuest);
+            db.Bookings.Add(new Booking
+            {
+                PropertyId = propertyA.Id,
+                OrgId = propertyA.OrgId,
+                GuestId = existingGuest.Id,
+                CheckInDate = DateTime.UtcNow.Date.AddDays(1),
+                CheckOutDate = DateTime.UtcNow.Date.AddDays(3),
+                NumberOfGuests = 2,
+                Status = BookingStatus.Confirmed,
+                Source = BookingSource.Direct,
+                BasePrice = 200m,
+                TotalPrice = 200m,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var clientB = _factory.CreateAuthenticatedClient(userId: ownerB, roles: "PropertyOwner");
+        var create = await clientB.PostAsJsonAsync("/api/bookings", new
+        {
+            propertyId = propertyB.Id,
+            checkInDate = DateTime.UtcNow.Date.AddDays(10),
+            checkOutDate = DateTime.UtcNow.Date.AddDays(12),
+            numberOfGuests = 2,
+            guest = new
+            {
+                firstName = "Mario",
+                lastName = "Rossi",
+                email = existingGuest.Email,
+                phone = "+393331234567",
+                country = "Italia",
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using (var createdDoc = JsonDocument.Parse(await create.Content.ReadAsStringAsync()))
+        {
+            var createdGuest = createdDoc.RootElement.GetProperty("guest");
+            Assert.Equal("Mario", createdGuest.GetProperty("firstName").GetString());
+            Assert.Equal("+393331234567", createdGuest.GetProperty("phone").GetString());
+        }
+
+        var leakedGuest = await clientB.GetAsync($"/api/guests/{existingGuest.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, leakedGuest.StatusCode);
     }
 
     [Fact]

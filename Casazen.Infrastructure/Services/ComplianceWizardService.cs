@@ -52,7 +52,7 @@ public class ComplianceWizardService(
             property.UpdatedAt = DateTime.UtcNow;
         }
 
-        if (tosAccepted == false)
+        if (tosAccepted != true)
             throw new InvalidOperationException("Devi accettare i termini di servizio");
 
         var steps = await BuildActivationStepsAsync(property, cancellationToken);
@@ -174,6 +174,7 @@ public class ComplianceWizardService(
     public async Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
+        IEnumerable<string> userRoles,
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default)
     {
@@ -201,7 +202,8 @@ public class ComplianceWizardService(
                 input.ServiceCategory ?? "cleaning",
                 ServiceRequestUrgency.Normal,
                 input.ServiceNotes,
-                ChargeToGuest: false), cancellationToken);
+                ChargeToGuest: false,
+                UserRoles: userRoles), cancellationToken);
         }
 
         booking.Status = BookingStatus.CheckedOut;
