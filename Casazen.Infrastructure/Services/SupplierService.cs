@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
@@ -497,7 +498,7 @@ public class SupplierService(
             return new SupplierDashboard(0, "Unknown", 0, 0, 0, 0, "None", null, null, null, DateTime.UtcNow);
 
         var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(now);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
 
         // Profile completion: 5 dimensions — identity(=1) + categories + comuni + bio + tos
         var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];

@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
@@ -12,14 +13,17 @@ public class DirectBookingChargeJob(
     IPaymentRepository paymentRepository,
     IStripeService stripeService,
     IOrgService orgService,
-    ILogger<DirectBookingChargeJob> logger)
+    ILogger<DirectBookingChargeJob> logger,
+    TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private const string DeadlineChargeDescription = "Direct checkout - deferred payment (charged at deadline)";
     private const string LegacyDeadlineChargeDescription = "Direct booking - charged at deadline";
 
     public async Task ExecuteAsync()
     {
-        var today = DateTime.UtcNow.Date;
+        var today = _clock.TodayInRome();
 
         var pendingBookings = await context.Bookings
             .Where(b => b.PaymentOption == PaymentOption.OnCancellationDeadline &&

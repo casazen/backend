@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
 
@@ -19,7 +20,7 @@ public static class CinComplianceRules
 
     public static int DaysUntilDeadline(DateOnly? today = null)
     {
-        var reference = today ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var reference = today ?? TimeProvider.System.TodayInRomeAsDateOnly();
         return Math.Max(0, RegulatoryDeadline.DayNumber - reference.DayNumber);
     }
 }

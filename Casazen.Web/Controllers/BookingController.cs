@@ -36,8 +36,11 @@ public class BookingsController(
     IOptions<ComplianceOptions> complianceOptions,
     IConfiguration configuration,
     IEmailService emailService,
-    ILogger<BookingsController> logger) : ControllerBase
+    ILogger<BookingsController> logger,
+    TimeProvider? timeProvider = null) : ControllerBase
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId = null, [FromQuery] Guid? guestId = null)
     {
@@ -348,7 +351,7 @@ public class BookingsController(
             });
         }
 
-        if (booking.CheckInDate.Date > DateTime.UtcNow.Date)
+        if (booking.CheckInDate.Date > _clock.TodayInRome())
         {
             return BadRequest(new
             {
@@ -499,7 +502,7 @@ public class BookingsController(
         }
 
         // Validate date
-        if (booking.CheckOutDate.Date > DateTime.UtcNow.Date)
+        if (booking.CheckOutDate.Date > _clock.TodayInRome())
         {
             return BadRequest(new
             {

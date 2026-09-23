@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
@@ -17,12 +18,16 @@ public class GuestCheckInSendJob(
     IGuestCheckInService checkInService,
     IEmailService emailService,
     IConfiguration configuration,
-    ILogger<GuestCheckInSendJob> logger)
+    ILogger<GuestCheckInSendJob> logger,
+    TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     public async Task ExecuteAsync()
     {
         var sendWindowDays = configuration.GetValue("CheckIn:SendWindowDays", 3);
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var today = _clock.TodayInRome();
         var windowEnd = now.AddDays(sendWindowDays);
 
         var bookings = await db.Bookings
@@ -32,10 +37,10 @@ public class GuestCheckInSendJob(
             .Include(b => b.Org)
             .Where(b =>
                 (b.Status == BookingStatus.Confirmed &&
-                 b.CheckInDate >= now.Date &&
+                 b.CheckInDate >= today &&
                  b.CheckInDate <= windowEnd) ||
                 (b.Status == BookingStatus.CheckedIn &&
-                 b.CheckOutDate >= now.Date))
+                 b.CheckOutDate >= today))
             .ToListAsync();
 
         if (bookings.Count == 0)

@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -9,8 +10,11 @@ public class PricingAdapterService(
     IPricingAdapterConfigRepository configRepository,
     IPricingHistoryRepository historyRepository,
     IPublicHolidayService publicHolidayService,
-    ILogger<PricingAdapterService> logger) : IPricingAdapterService
+    ILogger<PricingAdapterService> logger,
+    TimeProvider? timeProvider = null) : IPricingAdapterService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     public async Task<decimal> CalculatePricingMultiplierAsync(
         DateTime date,
         bool includeSeasonality,
@@ -109,7 +113,7 @@ public class PricingAdapterService(
         Guid propertyId, decimal basePrice, PricingAdapterConfig config)
     {
         var results = new List<(DateTime, decimal, decimal, string)>();
-        var today = DateTime.UtcNow.Date;
+        var today = _clock.TodayInRome();
 
         for (var i = 0; i < 90; i++)
         {
