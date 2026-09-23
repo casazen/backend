@@ -6,10 +6,9 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -18,10 +17,9 @@ public class ServiceRequestService(
     AppDbContext db,
     IServiceRequestRepository repository,
     IPropertyAuthorizationService propertyAuthorization,
-    IEmailService emailService,
+    IEmailQueue emailQueue,
+    PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotificationService,
-    IConfiguration configuration,
-    IHostEnvironment hostEnvironment,
     ILogger<ServiceRequestService> logger) : IServiceRequestService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -81,9 +79,18 @@ public class ServiceRequestService(
             Status = ServiceRequestStatus.Richiesto,
         };
 
+        // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not a wrong link.
+        var supplierEmail = EmailTemplates.ServiceRequestCreated(
+            EmailTemplates.DefaultCulture,
+            supplier.LegalName,
+            request.Category,
+            property.Name,
+            request.Notes,
+            publicSiteLinks.SupplierInbox());
+
         await repository.AddAsync(request, cancellationToken);
 
-        await SendSupplierNewRequestEmailAsync(supplier, property, request, cancellationToken);
+        emailQueue.Enqueue(supplier.Email, supplierEmail, EmailTemplates.Names.ServiceRequestCreated);
 
         logger.LogInformation(
             "ServiceRequest {Id} created for property {PropertyId} supplier {SupplierOrgId}",
@@ -109,8 +116,7 @@ public class ServiceRequestService(
         request.UpdatedAt = DateTime.UtcNow;
 
         await repository.SaveChangesAsync(cancellationToken);
-        await SendHostStatusEmailAsync(request, "presa in carico", cancellationToken);
-        await pushNotificationService.SendServiceRequestUpdateAsync(request.Id, "presa in carico", cancellationToken);
+        await NotifyHostAsync(request, "presa in carico", cancellationToken);
 
         return request;
     }
@@ -134,8 +140,7 @@ public class ServiceRequestService(
         request.UpdatedAt = DateTime.UtcNow;
 
         await repository.SaveChangesAsync(cancellationToken);
-        await SendHostStatusEmailAsync(request, "completata", cancellationToken);
-        await pushNotificationService.SendServiceRequestUpdateAsync(request.Id, "completata", cancellationToken);
+        await NotifyHostAsync(request, "completata", cancellationToken);
 
         return request;
     }
@@ -156,6 +161,7 @@ public class ServiceRequestService(
         request.UpdatedAt = DateTime.UtcNow;
 
         await repository.SaveChangesAsync(cancellationToken);
+        await QueueHostStatusEmailAsync(request, cancellationToken);
         return request;
     }
 
@@ -296,58 +302,46 @@ public class ServiceRequestService(
         return (items, total);
     }
 
-    private async Task SendSupplierNewRequestEmailAsync(
-        SupplierProfile supplier,
-        Property property,
-        ServiceRequest request,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Host notifications after a supplier status change. The status is already saved, so a failure here is logged and
+    /// never turned into an error for the supplier (A4-20); the email itself is sent by a Hangfire job.
+    /// </summary>
+    private async Task NotifyHostAsync(ServiceRequest request, string pushStatusLabel, CancellationToken cancellationToken)
     {
-        if (!ShouldSendEmail())
-            return;
+        await QueueHostStatusEmailAsync(request, cancellationToken);
 
-        var consoleUrl = configuration["App:FrontendBaseUrl"]?.TrimEnd('/') ?? "https://app.casazen.it";
-        var subject = $"Nuova richiesta di servizio — {property.Name}";
-        var html = $"""
-            <p>Ciao {supplier.LegalName},</p>
-            <p>Hai ricevuto una nuova richiesta di <strong>{request.Category}</strong> per la proprietà <strong>{property.Name}</strong>.</p>
-            <p>{(string.IsNullOrWhiteSpace(request.Notes) ? "" : $"Note: {request.Notes}<br/>")}</p>
-            <p><a href="{consoleUrl}/app/supplier/inbox">Apri la console fornitore</a></p>
-            """;
-
-        var result = await emailService.SendEmailAsync(supplier.Email, subject, html);
-        if (!result.Success)
-            logger.LogWarning("Failed to send supplier notification for request {Id}: {Error}", request.Id, result.ErrorDetail);
+        try
+        {
+            await pushNotificationService.SendServiceRequestUpdateAsync(request.Id, pushStatusLabel, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Push notification for service request {Id} ({Status}) failed", request.Id, request.Status);
+        }
     }
 
-    private async Task SendHostStatusEmailAsync(
-        ServiceRequest request,
-        string statusLabel,
-        CancellationToken cancellationToken)
+    private async Task QueueHostStatusEmailAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
-        if (!ShouldSendEmail())
-            return;
+        try
+        {
+            var hostEmail = await db.Orgs
+                .AsNoTracking()
+                .Where(o => o.Id == request.OrgId)
+                .Select(o => o.ContactEmail)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == request.OrgId, cancellationToken);
-        if (org?.ContactEmail is null)
-            return;
+            var email = EmailTemplates.ServiceRequestStatusChanged(
+                EmailTemplates.DefaultCulture,
+                request.Status,
+                request.Category,
+                request.Property.Name,
+                request.RejectionReason);
 
-        var property = request.Property;
-        var subject = $"Richiesta fornitore {statusLabel} — {property.Name}";
-        var html = $"""
-            <p>La richiesta di <strong>{request.Category}</strong> per <strong>{property.Name}</strong> è stata <strong>{statusLabel}</strong>.</p>
-            """;
-
-        var result = await emailService.SendEmailAsync(org.ContactEmail, subject, html);
-        if (!result.Success)
-            logger.LogWarning("Failed to send host notification for request {Id}: {Error}", request.Id, result.ErrorDetail);
-    }
-
-    private bool ShouldSendEmail()
-    {
-        if (hostEnvironment.IsEnvironment("Testing"))
-            return false;
-
-        var apiKey = configuration["SendGrid:ApiKey"] ?? configuration["Email:ApiKey"];
-        return !string.IsNullOrWhiteSpace(apiKey) || !hostEnvironment.IsProduction();
+            emailQueue.Enqueue(hostEmail, email, EmailTemplates.Names.ServiceRequestStatusChanged);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Host email for service request {Id} ({Status}) could not be queued", request.Id, request.Status);
+        }
     }
 }

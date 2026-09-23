@@ -4,13 +4,13 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -272,21 +272,145 @@ public class ServiceRequestServiceTests
         Assert.Equal("Non disponibile", rejected.RejectionReason);
     }
 
-    private static ServiceRequestService CreateService(AppDbContext db)
+    // ─── FD-13: notifications rendered from templates, links from config, queued outside the request ───
+
+    [Fact]
+    public async Task CreateAsync_ValidRequest_QueuesSupplierEmailWithInboxLinkFromPublicSiteBaseUrl()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, "Turnover", false));
+
+        var (to, content, template) = Assert.Single(queue.Queued);
+        Assert.Equal("supplier@test.com", to);
+        Assert.Equal(EmailTemplates.Names.ServiceRequestCreated, template);
+        Assert.Equal("Nuova richiesta di servizio — Test Property", content.Subject);
+        Assert.Contains($"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/app/supplier/inbox\"", content.HtmlBody);
+        Assert.Contains("Turnover", content.HtmlBody);
+        Assert.DoesNotContain("casazen.it", content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NotesAndCategoryWithMarkup_AreHtmlEncodedInSupplierEmail()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning<script>alert(1)</script>", ServiceRequestUrgency.Normal,
+            "<a href=\"https://phish.example\">Conferma IBAN</a>", false));
+
+        var html = Assert.Single(queue.Queued).Content.HtmlBody;
+        Assert.DoesNotContain("<a href=\"https://phish.example\"", html);
+        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("&lt;a href=&quot;https://phish.example&quot;&gt;Conferma IBAN&lt;/a&gt;", html);
+        Assert.Contains("cleaning&lt;script&gt;", html);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PublicSiteBaseUrlMissing_ThrowsConfigurationErrorWithoutCreatingRequest()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue, publicSiteBaseUrl: null);
+
+        await Assert.ThrowsAsync<EmailConfigurationException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Empty(db.ServiceRequests);
+        Assert.Empty(queue.Queued);
+    }
+
+    [Theory]
+    [InlineData(ServiceRequestStatus.PresoInCarico, "Richiesta fornitore presa in carico — Test Property")]
+    [InlineData(ServiceRequestStatus.Completato, "Richiesta fornitore completata — Test Property")]
+    [InlineData(ServiceRequestStatus.Rifiutato, "Richiesta fornitore rifiutata — Test Property")]
+    public async Task SupplierStatusChange_ValidTransition_QueuesHostEmail(ServiceRequestStatus target, string expectedSubject)
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        queue.Queued.Clear();
+
+        switch (target)
+        {
+            case ServiceRequestStatus.PresoInCarico:
+                await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+                break;
+            case ServiceRequestStatus.Completato:
+                await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+                queue.Queued.Clear();
+                await service.CompleteAsync(created.Id, supplierOrgId, null);
+                break;
+            default:
+                await service.RejectAsync(created.Id, supplierOrgId, "<b>Non disponibile</b>");
+                break;
+        }
+
+        var (to, content, template) = Assert.Single(queue.Queued);
+        Assert.Equal("host@test.com", to);
+        Assert.Equal(EmailTemplates.Names.ServiceRequestStatusChanged, template);
+        Assert.Equal(expectedSubject, content.Subject);
+        if (target == ServiceRequestStatus.Rifiutato)
+            Assert.Contains("&lt;b&gt;Non disponibile&lt;/b&gt;", content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task TakeAsync_PushAndEmailQueueThrow_ReturnsTakenRequestWithStatusSaved()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var created = await CreateService(db).CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        var queue = new Mock<IEmailQueue>();
+        queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
+            .Throws(new InvalidOperationException("storage down"));
+        var push = new Mock<IPushNotificationService>();
+        push.Setup(p => p.SendServiceRequestUpdateAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("push provider timeout"));
+        var service = CreateService(db, queue.Object, push: push.Object);
+
+        var taken = await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
+        var saved = await db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, saved.Status);
+        push.Verify(p => p.SendServiceRequestUpdateAsync(created.Id, "presa in carico", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static ServiceRequestService CreateService(
+        AppDbContext db,
+        IEmailQueue? queue = null,
+        string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl,
+        IPushNotificationService? push = null)
     {
         var repo = new ServiceRequestRepository(db);
         var propertyAuth = new PropertyAuthorizationService(new PropertyRepository(db));
-        var email = new Mock<IEmailService>();
-        email.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new EmailSendResult(true));
-
-        var config = new ConfigurationBuilder().Build();
-        var env = new Mock<IHostEnvironment>();
-        env.Setup(e => e.EnvironmentName).Returns("Testing");
-        var push = new Mock<IPushNotificationService>();
 
         return new ServiceRequestService(
-            db, repo, propertyAuth, email.Object, push.Object, config, env.Object, NullLogger<ServiceRequestService>.Instance);
+            db,
+            repo,
+            propertyAuth,
+            queue ?? new RecordingEmailQueue(),
+            EmailTestHelpers.Links(publicSiteBaseUrl),
+            push ?? Mock.Of<IPushNotificationService>(),
+            NullLogger<ServiceRequestService>.Instance);
     }
 
     private static AppDbContext CreateDb()

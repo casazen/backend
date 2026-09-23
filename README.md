@@ -96,63 +96,24 @@ JWT tokens automatically validated on /api endpoints
 
 Webhooks handled automatically
 
-## 📮 Email (SMTP via MailKit)
+## 📮 Email (Resend)
 
-CasaZen uses **MailKit** to send transactional emails via any SMTP server.  
-Two configuration modes are supported:
+Transactional emails go through a single `IEmailService` (Resend HTTP API) configured with typed `EmailOptions`,
+rendered from localized IT/EN templates (`Casazen.Infrastructure/Email/Templates`, every dynamic value HTML-encoded)
+and delivered by a Hangfire job, never inside the request.
 
-### Mode 1 — Direct SMTP (recommended for zero-cost start)
-
-Use any free SMTP provider. **Gmail SMTP** is the simplest free option:
-
-| Config key | Example value |
+| Config key | Value |
 |---|---|
-| `Email__SmtpHost` | `smtp.gmail.com` |
-| `Email__SmtpPort` | `587` |
-| `Email__SmtpUsername` | `casazen@gmail.com` |
-| `Email__SmtpPassword` | 16-char app password (see below) |
-| `Email__FromAddress` | `noreply@casazen.app` |
+| `Email__Provider` | `Resend` |
+| `Email__ApiKey` | Resend API key (`re_...`) |
+| `Email__FromAddress` | sender on the domain verified on Resend (no default in code) |
+| `Email__FromName` | `CasaZen` |
+| `App__PublicSiteBaseUrl` | public URL of the web app, base of every email link |
 
-**Gmail setup (free, 500 emails/day):**
-1. Create a Gmail account (or use an existing one)
-2. Enable 2-Step Verification at https://myaccount.google.com/security
-3. Generate an **App Password** at https://myaccount.google.com/apppasswords
-4. Use the 16-character app password as `Email__SmtpPassword`
+Outside Development and Testing a missing or invalid value stops the app at startup. Domain verification (SPF/DKIM),
+Railway variables and send test: [`docs/runbooks/email.md`](docs/runbooks/email.md).
 
-### Mode 2 — SendGrid SMTP relay (100 emails/day free)
-
-If you already have a SendGrid account, the SMTP relay still works:
-
-| Config key | Example value |
-|---|---|
-| `Email__SendGridApiKey` | `SG.xxxxxxxxxxxxxx` |
-
-When only `Email__SendGridApiKey` is set (no `Email__SmtpHost`), the service auto‑connects to `smtp.sendgrid.net:587` using `"apikey"` as the username.
-
-### Other free SMTP providers
-
-| Provider | Free tier | SMTP host |
-|---|---|---|
-| **Brevo** (ex Sendinblue) | 300 emails/day | `smtp-relay.brevo.com` |
-| **Mailgun** | 100 emails/day (requires card) | `smtp.mailgun.org` |
-| **Ethereal** | Fake SMTP for dev/testing only | `smtp.ethereal.email` |
-
-### Configuration in `appsettings.json`
-
-```json
-{
-  "Email": {
-    "SmtpHost": "smtp.gmail.com",
-    "SmtpPort": "587",
-    "SmtpUsername": "casazen@gmail.com",
-    "SmtpPassword": "",
-    "SendGridApiKey": "",
-    "FromAddress": "noreply@casazen.app"
-  }
-}
-```
-
-> ⚠️ **Never commit** real credentials. Set them via **Railway environment variables** (`Email__SmtpHost`, etc.) or `appsettings.Development.json` (gitignored).
+> ⚠️ **Never commit** real credentials. Set them via **Railway environment variables** or `appsettings.Development.json` (gitignored).
 
 ## 🌐 OTA Integrations
 **Supported Platforms:**

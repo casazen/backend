@@ -16,7 +16,6 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Casazen.Web.Resources;
 using Hangfire;
-using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,22 +36,9 @@ builder.Services.AddCasazenDatabase(builder.Configuration);
 var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
     builder.Configuration.GetConnectionString("DefaultConnection"));
 
-// Hangfire Configuration (skipped when no connection string, e.g. in CI/test)
-if (!string.IsNullOrEmpty(connectionString))
-{
-    builder.Services.AddHangfire(configuration => configuration
-        .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-        .UseSimpleAssemblyNameTypeSerializer()
-        .UseRecommendedSerializerSettings()
-        .UsePostgreSqlStorage(
-            options => options.UseNpgsqlConnection(connectionString),
-            new PostgreSqlStorageOptions
-            {
-                SchemaName = "hangfire",
-            }));
-
-    builder.Services.AddHangfireServer();
-}
+// Hangfire (skipped when no connection string, e.g. in CI/test), in a schema dedicated to this environment:
+// test and production share the database, never the queue (FD-11, docs/runbooks/hangfire.md).
+var hangfireStorage = builder.Services.AddCasazenHangfire(builder.Configuration, builder.Environment, connectionString);
 
 // Repositories
 builder.Services.AddCasazenRepositories();
@@ -89,7 +75,7 @@ builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
-builder.Services.AddScoped<IEmailService, ResendEmailService>();
+builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
 builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
@@ -151,7 +137,6 @@ builder.Services.AddCasazenRateLimiting();
 builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
 builder.Services.AddScoped<DynamicPricingJob>();
-builder.Services.AddScoped<EmailQueueProcessor>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
 builder.Services.AddScoped<AlloggiatiDeadlineAlertJob>();
@@ -303,7 +288,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 // Hangfire Dashboard and recurring jobs (only when Hangfire is configured)
-if (!string.IsNullOrEmpty(connectionString))
+if (hangfireStorage is not null)
 {
     var hangfireDashboardEnabled = builder.Configuration.GetValue(
         "Hangfire:DashboardEnabled",
@@ -313,15 +298,18 @@ if (!string.IsNullOrEmpty(connectionString))
     {
         app.UseHangfireDashboard("/hangfire", new DashboardOptions
         {
+            DashboardTitle = $"CasaZen jobs ({hangfireStorage.Schema})",
             Authorization = new[] { new HangfireAuthorizationFilter(app.Configuration) }
         });
     }
 
     app.Lifetime.ApplicationStarted.Register(() =>
     {
+        app.Services.GetRequiredService<ILogger<Program>>()
+            .LogInformation("Hangfire storage schema: {HangfireSchema}", hangfireStorage.Schema);
         using var scope = app.Services.CreateScope();
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-        ConfigureRecurringJobs(recurringJobManager);
+        RecurringJobsRegistration.Configure(recurringJobManager);
     });
 }
 
@@ -348,7 +336,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     var hangfireDashboardEnabled = app.Configuration.GetValue(
         "Hangfire:DashboardEnabled",
         app.Environment.IsDevelopment());
-    if (!string.IsNullOrEmpty(connectionString) && hangfireDashboardEnabled)
+    if (hangfireStorage is not null && hangfireDashboardEnabled)
     {
         logger.LogInformation("📊 Hangfire Dashboard:");
         logger.LogInformation("   → http://localhost:5000/hangfire");
@@ -358,98 +346,5 @@ app.Lifetime.ApplicationStarted.Register(() =>
 });
 
 app.Run();
-
-void ConfigureRecurringJobs(IRecurringJobManager recurringJobManager)
-{
-    recurringJobManager.AddOrUpdate<OtaSyncJob>(
-        "ota-sync-all",
-        job => job.ExecuteAsync(Guid.Empty),
-        Cron.Hourly,
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<BookingPullJob>(
-        "booking-pull-all",
-        job => job.ExecuteAsync(Guid.Empty),
-        "*/15 * * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<DynamicPricingJob>(
-        "dynamic-pricing-adaptation",
-        job => job.ExecuteAsync(),
-        "0 2 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<GdprDataRetentionJob>(
-        "gdpr-data-retention",
-        job => job.ExecuteAsync(),
-        "0 3 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<AlloggiatiDeadlineAlertJob>(
-        "alloggiati-deadline-alert",
-        job => job.ExecuteAsync(),
-        Cron.Hourly,
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
-        "cin-deadline-alert",
-        job => job.ExecuteAsync(),
-        "0 8 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<LeaseSignStatusPollingJob>(
-        "lease-sign-status-poll",
-        job => job.ExecuteAsync(),
-        "*/10 * * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<LeaseRegistrationStatusPollingJob>(
-        "lease-registration-status-poll",
-        job => job.ExecuteAsync(),
-        "*/5 * * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
-        "rli-deadline-reminder",
-        job => job.ExecuteAsync(),
-        "0 8 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<SeoContentRefreshJob>(
-        "seo-content-refresh",
-        job => job.ExecuteAsync(),
-        "0 4 1 * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<DirectBookingChargeJob>(
-        "direct-booking-charge",
-        job => job.ExecuteAsync(),
-        "0 6 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<IcalSupplierSyncJob>(
-        "ical-supplier-sync",
-        job => job.ExecuteAsync(),
-        "*/15 * * * *",  // Every 15 minutes
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<PropertyICalSyncJob>(
-        "property-ical-sync",
-        job => job.ExecuteAsync(),
-        "*/15 * * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<GuestCheckInSendJob>(
-        "guest-checkin-send",
-        job => job.ExecuteAsync(),
-        "0 8 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobManager.AddOrUpdate<GuestCheckInReminderJob>(
-        "guest-checkin-reminder",
-        job => job.ExecuteAsync(),
-        "0 10 * * *",
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-}
 
 public partial class Program { }

@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
@@ -21,6 +22,7 @@ public class BookingPullJob
     /// Pulls new bookings for a specific property from all integrated platforms
     /// </summary>
     /// <param name="propertyId">Property ID to pull bookings for</param>
+    [DisableConcurrentExecution("BookingPullJob.ExecuteAsync:{0}", JobLockTimeouts.FrequentSeconds)] // one pull per property at a time
     public async Task ExecuteAsync(Guid propertyId)
     {
         try

@@ -18,11 +18,11 @@ public class GdprController(
     [Authorize(Policy = "RequireContext:short-rent:guest.read")]
     public async Task<IActionResult> ExportGuestData(Guid id)
     {
-        if (!await EnsureGuestAccessibleAsync(id))
+        if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
 
         logger.LogInformation("GDPR data export requested for guest {GuestId}", id);
-        var data = await gdprService.ExportGuestDataAsync(id);
+        var data = await gdprService.ExportGuestDataAsync(orgId, id);
         return Ok(data);
     }
 
@@ -30,11 +30,11 @@ public class GdprController(
     [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> DeleteGuestData(Guid id, [FromQuery] string reason = "User request")
     {
-        if (!await EnsureGuestAccessibleAsync(id))
+        if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
 
         logger.LogInformation("GDPR deletion requested for guest {GuestId}", id);
-        await gdprService.DeleteGuestDataAsync(id, reason);
+        await gdprService.DeleteGuestDataAsync(orgId, id, reason);
         return NoContent();
     }
 
@@ -42,11 +42,11 @@ public class GdprController(
     [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> AnonymizeGuestData(Guid id)
     {
-        if (!await EnsureGuestAccessibleAsync(id))
+        if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
 
         logger.LogInformation("GDPR anonymization requested for guest {GuestId}", id);
-        await gdprService.AnonymizeGuestDataAsync(id);
+        await gdprService.AnonymizeGuestDataAsync(orgId, id);
         return NoContent();
     }
 
@@ -54,10 +54,10 @@ public class GdprController(
     [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> UpdateConsent(Guid id, [FromBody] UpdateConsentRequest request)
     {
-        if (!await EnsureGuestAccessibleAsync(id))
+        if (await ResolveGuestOrgAsync(id) is not { } orgId)
             return NotFound();
 
-        await gdprService.UpdateConsentAsync(id, request.MarketingConsent);
+        await gdprService.UpdateConsentAsync(orgId, id, request.MarketingConsent);
         return NoContent();
     }
 
@@ -83,13 +83,16 @@ public class GdprController(
         return NoContent();
     }
 
-    private async Task<bool> EnsureGuestAccessibleAsync(Guid guestId)
+    /// <summary>The caller's org when the guest belongs to it (TN-1); null otherwise (answered as 404).</summary>
+    private async Task<Guid?> ResolveGuestOrgAsync(Guid guestId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
-            return false;
+            return null;
 
-        return await guestAccessService.IsGuestAccessibleAsync(guestId, orgId.Value, HttpContext.RequestAborted);
+        return await guestAccessService.IsGuestAccessibleAsync(guestId, orgId.Value, HttpContext.RequestAborted)
+            ? orgId
+            : null;
     }
 }
 

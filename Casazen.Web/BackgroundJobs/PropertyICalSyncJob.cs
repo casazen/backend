@@ -1,4 +1,5 @@
 using Casazen.Infrastructure.Services;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
@@ -13,6 +14,7 @@ public class PropertyICalSyncJob
         _logger = logger;
     }
 
+    [DisableConcurrentExecution(JobLockTimeouts.FrequentSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting scheduled property iCal sync");

@@ -37,10 +37,14 @@ public class MigrationSqlTests
         using var db = NewNpgsqlContext();
         var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
 
-        Assert.EndsWith("AddLongRentPropertyPermissions", keys[^1]);
-        Assert.EndsWith("AddLeaseRegistrationAuthorization", keys[^2]);
-        Assert.EndsWith("AddTerritorialRentAgreements", keys[^3]);
-        Assert.EndsWith("AddStrFiscalRegime2026", keys[^4]);
+        // Relative order only: later tasks append their own migrations after these.
+        var ordered = new[]
+        {
+            "AddStrFiscalRegime2026", "AddTerritorialRentAgreements", "AddLeaseRegistrationAuthorization",
+            "AddLongRentPropertyPermissions", "AddGuestOrgIdNullable", "BackfillGuestOrgIds", "MakeGuestOrgIdRequired",
+        }.Select(name => keys.FindIndex(k => k.EndsWith(name, StringComparison.Ordinal))).ToList();
+        Assert.All(ordered, index => Assert.True(index >= 0));
+        Assert.Equal(ordered.Order(), ordered);
         Assert.Contains(keys, k => k.EndsWith("AddLongRentPropertyPermissions", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("AddLeaseRegistrationAuthorization", StringComparison.Ordinal));
         Assert.Contains(keys, k => k.EndsWith("RestrictCustomDomainUniquenessToVerified", StringComparison.Ordinal));
@@ -208,5 +212,35 @@ public class MigrationSqlTests
 
         Assert.Contains("DROP CONSTRAINT \"FK_Properties_Orgs_OrgId\"", down);
         Assert.Contains("DROP NOT NULL", down);
+    }
+
+    [Fact]
+    public void GuestOrgMigrations_AddNullableThenBackfillThenGuardBeforeNotNullAndRestrictFk() // TN-1
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var addNullable = keys.Single(k => k.EndsWith("AddGuestOrgIdNullable", StringComparison.Ordinal));
+        var backfill = keys.Single(k => k.EndsWith("BackfillGuestOrgIds", StringComparison.Ordinal));
+        var makeRequired = keys.Single(k => k.EndsWith("MakeGuestOrgIdRequired", StringComparison.Ordinal));
+        var migrator = db.GetService<IMigrator>();
+        var previous = keys[keys.IndexOf(addNullable) - 1];
+
+        var step1 = migrator.GenerateScript(fromMigration: previous, toMigration: addNullable);
+        var step2 = migrator.GenerateScript(fromMigration: addNullable, toMigration: backfill);
+        var step3 = migrator.GenerateScript(fromMigration: backfill, toMigration: makeRequired);
+
+        Assert.Contains("ALTER TABLE \"Guests\" ADD \"OrgId\" uuid;", step1);
+        Assert.DoesNotContain("SET NOT NULL", step1);
+
+        Assert.Contains("UPDATE \"Bookings\" b", step2);
+        Assert.Contains("UPDATE \"AlloggiatiWebReports\" r", step2);
+        Assert.Contains("casazen-unassigned", step2);
+        Assert.Contains("RAISE NOTICE 'BackfillGuestOrgIds", step2);
+
+        var guard = step3.IndexOf("Pre-flight failed", StringComparison.Ordinal);
+        var notNull = step3.IndexOf("ALTER COLUMN \"OrgId\" SET NOT NULL", StringComparison.Ordinal);
+        Assert.True(guard >= 0 && notNull > guard, "The pre-flight guard must precede the NOT NULL flip");
+        Assert.Contains("FK_Guests_Orgs_OrgId", step3);
+        Assert.Contains("ON DELETE RESTRICT", step3);
     }
 }
