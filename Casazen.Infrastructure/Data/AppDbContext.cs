@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
@@ -12,11 +13,17 @@ namespace Casazen.Infrastructure.Data;
 public class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ITenantContext? tenantContext = null,
-    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options)
+    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options), IDataProtectionKeyContext
 {
     // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
     // no-op (filter disabled) for design-time, background jobs, and unit tests.
     private readonly ITenantContext _tenant = tenantContext ?? NullTenantContext.Instance;
+
+    /// <summary>
+    /// ASP.NET Core Data Protection key ring (FD-07, A9-04): persisted here instead of the container
+    /// filesystem so encrypted secrets stay readable after a redeploy. Not tenant data.
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;

@@ -42,6 +42,8 @@ logs/
 
 ## Uploaded files
 wwwroot/uploads/
+# Local filesystem storage provider (Development/Testing only, FD-07)
+App_Data/
 
 ## OS
 .DS_Store

@@ -678,6 +678,95 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Downloads a property document. Documents live in the private bucket: this authenticated endpoint
+    /// (tenant filter + ownership) is the only way to read them (FD-07, A2-03/A2-31).
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <param name="docId">The unique identifier of the document.</param>
+    /// <response code="200">The file, as an attachment.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">Property or document not found (also for another org's property), or file missing from the storage.</response>
+    [HttpGet("{id:guid}/documents/{docId:guid}/download")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadDocument(Guid id, Guid docId)
+    {
+        var access = await AuthorizeDocumentAccessAsync(id, docId, "PropertyDocument.Download");
+        if (access.Denied is not null)
+            return access.Denied;
+
+        var content = await documentService.OpenContentAsync(access.Document!);
+        if (content is null)
+        {
+            logger.LogWarning("Stored file missing for document {DocumentId} of property {PropertyId}", docId, id);
+            return this.ApiProblem(StatusCodes.Status404NotFound, StorageProblemCodes.DocumentFileMissing, "DocumentFileMissing");
+        }
+
+        Response.Headers.CacheControl = "private, no-store";
+        return File(content, StorageKeys.ContentTypeFor(access.Document!.FileName), access.Document.FileName);
+    }
+
+    /// <summary>
+    /// Returns a short-lived signed URL of a property document (private bucket), for clients that
+    /// download directly from the storage. Same authorization as <see cref="DownloadDocument"/>.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property.</param>
+    /// <param name="docId">The unique identifier of the document.</param>
+    /// <response code="200"><c>{ url, expiresAt }</c>.</response>
+    /// <response code="403">The caller does not own this property.</response>
+    /// <response code="404">Property or document not found (also for another org's property).</response>
+    /// <response code="501">The configured storage cannot sign URLs (filesystem provider in Development): use the download endpoint.</response>
+    [HttpGet("{id:guid}/documents/{docId:guid}/signed-url")]
+    [ProducesResponseType(typeof(SignedDocumentUrlResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status501NotImplemented)]
+    public async Task<ActionResult<SignedDocumentUrlResponse>> GetDocumentSignedUrl(Guid id, Guid docId)
+    {
+        var access = await AuthorizeDocumentAccessAsync(id, docId, "PropertyDocument.SignedUrl");
+        if (access.Denied is not null)
+            return access.Denied;
+
+        var signed = await documentService.GetSignedDownloadUrlAsync(access.Document!);
+        if (signed is null)
+        {
+            return this.ApiProblem(StatusCodes.Status501NotImplemented, StorageProblemCodes.SignedUrlUnavailable, "SignedUrlUnavailable");
+        }
+
+        return Ok(new SignedDocumentUrlResponse(signed.Url.ToString(), signed.ExpiresAtUtc));
+    }
+
+    private async Task<(PropertyDocument? Document, ActionResult? Denied)> AuthorizeDocumentAccessAsync(
+        Guid propertyId, Guid documentId, string auditAction)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return (null, Unauthorized());
+
+        // Tenant query filter: another org's property is invisible here → 404, never its file.
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null)
+            return (null, NotFound());
+
+        var roles = GetUserRoles();
+        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        {
+            logger.LogWarning("User {UserId} denied access to document {DocumentId} of property {PropertyId}",
+                userId, documentId, propertyId);
+            return (null, Forbid());
+        }
+
+        var document = await documentService.GetDocumentAsync(documentId);
+        if (document == null || document.PropertyId != propertyId)
+            return (null, NotFound());
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, propertyId, property.OwnerId, roles, auditAction);
+        return (document, null);
+    }
+
     private static PropertyDocumentDto ToDocumentDto(PropertyDocument d) =>
         Casazen.Infrastructure.Services.PropertyService.MapDocument(d);
 

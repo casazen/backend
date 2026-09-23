@@ -16,7 +16,6 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Casazen.Web.Resources;
 using Hangfire;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -28,8 +27,8 @@ using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDataProtection()
-    .SetApplicationName("Casazen");
+// Data Protection keys persisted in the database (not the ephemeral container disk): FD-07 / A9-04.
+builder.Services.AddCasazenDataProtection(builder.Configuration);
 
 // Database
 builder.Services.AddCasazenDatabase(builder.Configuration);
@@ -76,8 +75,8 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
-builder.Services.AddScoped<IImageStorageService, LocalImageStorageService>();
-builder.Services.AddScoped<IGuestDocumentStorage, LocalGuestDocumentStorageService>();
+// Object storage (Supabase Storage via S3; filesystem only in Development/Testing): FD-07.
+builder.Services.AddCasazenFileStorage(builder.Configuration);
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
@@ -252,6 +251,15 @@ if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("T
     db.Database.Migrate();
 }
 
+// One-off command: `dotnet Casazen.Web.dll storage:migrate-legacy [--dry-run]` (docs/runbooks/storage.md).
+if (StorageExtensions.IsLegacyFileMigrationCommand(args))
+{
+    Environment.ExitCode = await app.RunLegacyFileMigrationAsync(args);
+    return;
+}
+
+app.LogDataProtectionKeyProtection();
+
 // Swagger (must be before Authentication to allow anonymous access to swagger.json)
 if (app.Environment.IsDevelopment())
 {
@@ -267,8 +275,8 @@ if (app.Environment.IsDevelopment())
     logger.LogInformation("====================================================");
 }
 
-// Static files (for serving uploaded images)
-app.UseStaticFiles();
+// Static files (wwwroot test feeds; never the legacy /uploads folder). Uploads live in object storage.
+app.UseCasazenStaticFiles();
 
 // Security headers — early in pipeline
 app.UseSecurityHeaders();
