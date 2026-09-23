@@ -189,4 +189,7 @@
   <data name="BookingDatesUnavailable" xml:space="preserve">
     <value>L'immobile non è disponibile nelle date selezionate.</value>
   </data>
+  <data name="Auth0RoleSyncFailed" xml:space="preserve">
+    <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
+  </data>
 </root>

@@ -5,6 +5,7 @@ using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Mapping;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -147,12 +148,10 @@ public class UsersController(
         {
             // The CasaZen role is unchanged: Auth0 is the source of the JWT roles, so a role change
             // that cannot reach it must not be reported as done. Retrying is safe (idempotent).
-            // TODO(FD-05): localized message via IStringLocalizer once SharedResources lookup works.
-            return StatusCode(StatusCodes.Status502BadGateway, new
-            {
-                code = sync.ErrorCode,
-                error = "Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.",
-            });
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
         }
 
         return Ok(new { id, role = newRole.ToString(), rolesSynced = true });

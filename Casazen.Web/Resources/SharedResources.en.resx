@@ -189,4 +189,7 @@
   <data name="BookingDatesUnavailable" xml:space="preserve">
     <value>The property is not available for the selected dates.</value>
   </data>
+  <data name="Auth0RoleSyncFailed" xml:space="preserve">
+    <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
+  </data>
 </root>

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -92,8 +93,10 @@ public class Auth0RoleSyncCallersTests
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
-        var code = objectResult.Value!.GetType().GetProperty("code")!.GetValue(objectResult.Value);
-        Assert.Equal(Auth0SyncResult.RateLimitedCode, code);
+        var problem = Assert.IsAssignableFrom<ProblemDetails>(objectResult.Value);
+        Assert.Equal(Auth0SyncResult.RateLimitedCode, problem.Extensions["code"]);
+        Assert.False(string.IsNullOrWhiteSpace(problem.Detail));
+        Assert.NotEqual("Auth0RoleSyncFailed", problem.Detail);
     }
 
     [Fact]
@@ -172,6 +175,7 @@ public class Auth0RoleSyncCallersTests
                 {
                     User = new ClaimsPrincipal(new ClaimsIdentity(
                         [new Claim("sub", adminSub), new Claim(ClaimTypes.Role, "Admin")], "TestAuth")),
+                    RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
                 },
             },
         };
