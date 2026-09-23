@@ -186,6 +186,7 @@ public class BookingsController(
         booking.Id = id;
         booking.PropertyId = existing.PropertyId;
         booking.OrgId = existing.OrgId;
+        booking.Status = existing.Status;
         await bookingService.UpdateBookingAsync(booking);
         return NoContent();
     }

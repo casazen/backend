@@ -342,6 +342,53 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task Update_WhenPayloadChangesStatus_PreservesExistingStatus()
+    {
+        SetUser(OwnerId);
+        var bookingId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var existing = new Booking
+        {
+            Id = bookingId,
+            PropertyId = PropertyId,
+            OrgId = OrgId,
+            GuestId = guestId,
+            Status = BookingStatus.Pending,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(5),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(7),
+            NumberOfGuests = 2,
+            Source = BookingSource.Direct,
+        };
+        var payload = new Booking
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = Guid.NewGuid(),
+            OrgId = Guid.NewGuid(),
+            GuestId = guestId,
+            Status = BookingStatus.CheckedOut,
+            CheckInDate = existing.CheckInDate,
+            CheckOutDate = existing.CheckOutDate,
+            NumberOfGuests = existing.NumberOfGuests,
+            Source = BookingSource.Direct,
+        };
+
+        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(existing);
+        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(true);
+        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
+            .ReturnsAsync((Booking b) => b);
+
+        var result = await _controller.Update(bookingId, payload);
+
+        Assert.IsType<NoContentResult>(result);
+        _mockBookingService.Verify(b => b.UpdateBookingAsync(It.Is<Booking>(updated =>
+            updated.Id == bookingId &&
+            updated.PropertyId == existing.PropertyId &&
+            updated.OrgId == existing.OrgId &&
+            updated.Status == BookingStatus.Pending)), Times.Once);
+    }
+
+    [Fact]
     public async Task CheckIn_PendingBooking_ReturnsBadRequestWithoutMutating()
     {
         SetUser(OwnerId);

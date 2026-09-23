@@ -157,9 +157,7 @@ public class ComplianceWizardService(
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
             ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
 
-        var today = DateTime.UtcNow.Date;
-        if (booking.Status != BookingStatus.CheckedIn &&
-            !(booking.Status == BookingStatus.Confirmed && booking.CheckOutDate.Date <= today))
+        if (!CanCompleteCheckout(booking))
         {
             throw new InvalidOperationException(
                 $"Il check-out richiede una prenotazione in check-in. Stato attuale: {booking.Status}.");
@@ -188,7 +186,7 @@ public class ComplianceWizardService(
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
             ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
 
-        if (booking.Status != BookingStatus.CheckedIn)
+        if (!CanCompleteCheckout(booking))
             throw new InvalidOperationException(
                 $"Il check-out richiede una prenotazione in check-in. Stato attuale: {booking.Status}.");
 
@@ -338,6 +336,13 @@ public class ComplianceWizardService(
                 booking.Status == BookingStatus.CheckedOut ? "complete" : "pending",
                 true),
         ];
+    }
+
+    private static bool CanCompleteCheckout(Booking booking)
+    {
+        var today = DateTime.UtcNow.Date;
+        return booking.Status == BookingStatus.CheckedIn
+            || (booking.Status == BookingStatus.Confirmed && booking.CheckOutDate.Date <= today);
     }
 
     private IReadOnlyList<string> ResolveRequiredDocuments(Property property)
