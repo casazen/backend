@@ -162,7 +162,7 @@ public class LeaseWorkflowService(
         var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
 
         var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
-        if (existing is not null)
+        if (existing is not null && existing.Status != RegistrationStatus.Failed)
             throw new InvalidOperationException("Registration has already been submitted for this lease.");
 
         if (lease.Status != LeaseStatus.Signed)
@@ -187,13 +187,26 @@ public class LeaseWorkflowService(
 
         await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
 
-        var registration = new LeaseRegistration
+        // Reserve the single per-lease registration row before calling the external provider so that
+        // concurrent requests cannot both submit. A row left Failed by the provider is claimed atomically
+        // (Failed -> Pending) and reused, keeping the one-registration-per-lease invariant.
+        LeaseRegistration registration;
+        if (existing is null)
         {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.Pending
-        };
-        if (!await registrationRepository.TryReserveSubmissionAsync(registration))
-            throw new InvalidOperationException("Registration has already been submitted for this lease.");
+            registration = new LeaseRegistration
+            {
+                LeaseContractId = lease.Id,
+                Status = RegistrationStatus.Pending
+            };
+            if (!await registrationRepository.TryReserveSubmissionAsync(registration))
+                throw new InvalidOperationException("Registration has already been submitted for this lease.");
+        }
+        else
+        {
+            registration = existing;
+            if (!await registrationRepository.TryReserveRetryAsync(registration))
+                throw new InvalidOperationException("Registration has already been submitted for this lease.");
+        }
 
         await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
         {
@@ -212,10 +225,14 @@ public class LeaseWorkflowService(
         });
 
         var externalId = await registrationService.SubmitRegistrationAsync(lease);
+        var submittedAt = DateTime.UtcNow;
 
         registration.Status = RegistrationStatus.SentToProvider;
         registration.ExternalRegistrationId = externalId;
-        registration.SubmittedAt = DateTime.UtcNow;
+        registration.RegistrationCode = null;
+        registration.ReceiptStoragePath = null;
+        registration.SubmittedAt = submittedAt;
+        registration.ConfirmedAt = null;
         await registrationRepository.UpdateAsync(registration);
 
         lease.Status = LeaseStatus.SentToProvider;

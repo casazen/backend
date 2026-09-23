@@ -35,6 +35,19 @@ public class LeaseRegistrationRepository(AppDbContext context) : ILeaseRegistrat
         }
     }
 
+    public async Task<bool> TryReserveRetryAsync(LeaseRegistration failedRegistration)
+    {
+        var claimed = await context.LeaseRegistrations
+            .Where(r => r.Id == failedRegistration.Id && r.Status == RegistrationStatus.Failed)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, RegistrationStatus.Pending));
+
+        if (claimed == 0)
+            return false;
+
+        failedRegistration.Status = RegistrationStatus.Pending;
+        return true;
+    }
+
     public async Task<LeaseRegistration> AddAsync(LeaseRegistration registration)
     {
         context.LeaseRegistrations.Add(registration);

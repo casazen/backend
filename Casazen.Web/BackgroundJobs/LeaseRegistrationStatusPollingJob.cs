@@ -29,7 +29,35 @@ public class LeaseRegistrationStatusPollingJob(
 
                 var statusResult = await registrationService.PollStatusAsync(registration.ExternalRegistrationId);
 
-                if (!statusResult.IsConfirmed) continue;
+                if (!statusResult.IsConfirmed)
+                {
+                    if (!IsTerminalFailure(statusResult.Status))
+                        continue;
+
+                    var failedLease = await leaseRepository.GetByIdAsync(registration.LeaseContractId);
+                    if (failedLease is not null)
+                    {
+                        failedLease.Status = LeaseStatus.Signed;
+                        await leaseRepository.UpdateAsync(failedLease);
+                    }
+
+                    registration.Status = RegistrationStatus.Failed;
+                    await registrationRepository.UpdateAsync(registration);
+
+                    if (failedLease is not null)
+                    {
+                        await eventRepository.AddAsync(new LeaseEvent
+                        {
+                            LeaseContractId = failedLease.Id,
+                            EventType = LeaseEventType.RegistrationFailed,
+                            Payload = statusResult.Status
+                        });
+                    }
+
+                    logger.LogWarning("Registration failed. LeaseId={LeaseId} Status={Status}",
+                        registration.LeaseContractId, statusResult.Status);
+                    continue;
+                }
 
                 var lease = await leaseRepository.GetByIdAsync(registration.LeaseContractId);
                 if (lease is not null)
@@ -69,4 +97,11 @@ public class LeaseRegistrationStatusPollingJob(
             }
         }
     }
+
+    private static bool IsTerminalFailure(string status) =>
+        status.Equals("Failed", StringComparison.OrdinalIgnoreCase)
+        || status.Equals("Rejected", StringComparison.OrdinalIgnoreCase)
+        || status.Equals("Canceled", StringComparison.OrdinalIgnoreCase)
+        || status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+        || status.Equals("Error", StringComparison.OrdinalIgnoreCase);
 }
