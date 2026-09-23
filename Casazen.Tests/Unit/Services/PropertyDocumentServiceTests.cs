@@ -153,18 +153,18 @@ public class PropertyDocumentServiceTests
             Id = documentId,
             PropertyId = Guid.NewGuid(),
             FileName = "doc.pdf",
-            StorageUrl = "/uploads/properties/doc.pdf"
+            StorageUrl = "properties/p/documents/doc.pdf"
         };
 
         _mockDocumentRepository.Setup(x => x.GetByIdAsync(documentId)).ReturnsAsync(document);
-        _mockStorageService.Setup(x => x.DeleteImageAsync(document.StorageUrl)).Returns(Task.CompletedTask);
+        _mockStorageService.Setup(x => x.DeleteDocumentAsync(document.StorageUrl)).Returns(Task.CompletedTask);
         _mockDocumentRepository.Setup(x => x.DeleteAsync(documentId)).Returns(Task.CompletedTask);
 
         // Act
         await _service.DeleteDocumentAsync(documentId);
 
         // Assert
-        _mockStorageService.Verify(x => x.DeleteImageAsync(document.StorageUrl), Times.Once);
+        _mockStorageService.Verify(x => x.DeleteDocumentAsync(document.StorageUrl), Times.Once);
         _mockDocumentRepository.Verify(x => x.DeleteAsync(documentId), Times.Once);
     }
 
@@ -179,7 +179,7 @@ public class PropertyDocumentServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.DeleteDocumentAsync(documentId));
 
-        _mockStorageService.Verify(x => x.DeleteImageAsync(It.IsAny<string>()), Times.Never);
+        _mockStorageService.Verify(x => x.DeleteDocumentAsync(It.IsAny<string>()), Times.Never);
         _mockDocumentRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
     }
 

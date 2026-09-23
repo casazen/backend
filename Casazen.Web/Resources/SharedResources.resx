@@ -201,6 +201,12 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
+  <data name="DocumentFileMissing" xml:space="preserve">
+    <value>Il file di questo documento non è più disponibile: caricalo di nuovo.</value>
+  </data>
+  <data name="SignedUrlUnavailable" xml:space="preserve">
+    <value>Lo storage configurato non genera link firmati: scarica il documento dall'applicazione.</value>
+  </data>
   <data name="CheckInLinkEmailQueued" xml:space="preserve">
     <value>Link check-in rigenerato: l'email all'ospite è in coda di invio.</value>
   </data>
