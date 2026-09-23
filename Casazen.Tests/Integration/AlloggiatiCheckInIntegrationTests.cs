@@ -324,6 +324,7 @@ public static class AlloggiatiTestSeedExtensions
         var guest = new Guest
         {
             Id = guestId,
+            OrgId = property.OrgId,
             FirstName = "Luigi",
             LastName = "Verdi",
             Email = $"guest-{guestId:N}@example.com",

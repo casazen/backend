@@ -7,6 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// Guests of the caller's org (TN-1). Every action is scoped to the caller's org: a guest of another
+/// org answers 404, exactly like a missing one. Responses are DTOs, never the entity.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
@@ -14,76 +18,81 @@ namespace Casazen.Web.Controllers;
 public class GuestsController(
     IGuestService guestService,
     IOrgContextResolver orgContextResolver,
-    IGuestAccessService guestAccessService,
     ILogger<GuestsController> logger) : ControllerBase
 {
+    public const int DefaultPageSize = 20;
+    public const int MaxPageSize = 100;
+
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Guest>>> GetAll([FromQuery] string? search)
+    public async Task<ActionResult<PagedResultDto<GuestSummaryDto>>> GetAll(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize)
     {
         logger.LogInformation("Retrieving guests with search term: {HasSearch}", !string.IsNullOrWhiteSpace(search));
 
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        var orgId = await ResolveOrgIdAsync();
         if (orgId is null)
             return Forbid();
 
-        var guests = string.IsNullOrWhiteSpace(search)
-            ? await guestService.GetAllGuestsAsync()
-            : await guestService.SearchGuestsAsync(search);
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
 
-        var accessible = new List<Guest>();
-        foreach (var guest in guests)
+        var (guests, total) = await guestService.GetGuestsPageAsync(
+            orgId.Value, search, page, pageSize, HttpContext.RequestAborted);
+
+        return Ok(new PagedResultDto<GuestSummaryDto>
         {
-            if (await guestAccessService.IsGuestAccessibleAsync(guest.Id, orgId.Value, HttpContext.RequestAborted))
-                accessible.Add(guest);
-        }
-
-        return Ok(accessible);
+            Items = guests.Select(GuestDtoMapper.ToSummary).ToList(),
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize,
+        });
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Guest>> GetById(Guid id)
+    public async Task<ActionResult<GuestDto>> GetById(Guid id)
     {
         logger.LogInformation("Retrieving guest: {GuestId}", id);
 
-        if (!await EnsureGuestAccessibleAsync(id))
-            return NotFound(new { message = $"Guest with ID {id} not found" });
+        var guest = await FindGuestInOrgAsync(id);
+        if (guest is null)
+            return GuestNotFound();
 
-        var guest = await guestService.GetGuestAsync(id);
-        if (guest == null)
-        {
-            logger.LogWarning("Guest not found: {GuestId}", id);
-            return NotFound(new { message = $"Guest with ID {id} not found" });
-        }
-
-        return Ok(guest);
+        return Ok(GuestDtoMapper.ToDto(guest));
     }
 
     [HttpGet("email/{email}")]
-    public async Task<ActionResult<Guest>> GetByEmail(string email)
+    public async Task<ActionResult<GuestDto>> GetByEmail(string email)
     {
         logger.LogInformation("Retrieving guest by email lookup");
 
-        var guest = await guestService.GetGuestByEmailAsync(email);
-        if (guest == null)
+        var orgId = await ResolveOrgIdAsync();
+        if (orgId is null)
+            return GuestNotFound();
+
+        var guest = await guestService.GetGuestByEmailAsync(orgId.Value, email, HttpContext.RequestAborted);
+        if (guest is null)
         {
             logger.LogWarning("Guest not found for email lookup");
-            return NotFound(new { message = "Guest not found" });
+            return GuestNotFound();
         }
 
-        if (!await EnsureGuestAccessibleAsync(guest.Id))
-            return NotFound(new { message = "Guest not found" });
-
-        return Ok(guest);
+        return Ok(GuestDtoMapper.ToDto(guest));
     }
 
     [HttpPost]
     [Authorize(Policy = "RequireContext:short-rent:guest.write")]
-    public async Task<ActionResult<Guest>> Create([FromBody] CreateGuestRequest request)
+    public async Task<ActionResult<GuestDto>> Create([FromBody] CreateGuestRequest request)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
         logger.LogInformation("Creating guest");
+
+        var orgId = await ResolveOrgIdAsync();
+        if (orgId is null)
+            return Forbid();
 
         var guest = new Guest
         {
@@ -100,36 +109,27 @@ public class GuestsController(
             UpdatedAt = DateTime.UtcNow
         };
 
-        try
-        {
-            var created = await guestService.CreateGuestAsync(guest);
-            logger.LogInformation("Guest created: {GuestId}", created.Id);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning("Failed to create guest: {Message}", ex.Message);
-            return Conflict(new { message = ex.Message });
-        }
+        // A duplicate e-mail in the same org raises DomainConflictException (409 guest_email_exists);
+        // the same e-mail in another org is a different guest and never surfaces here.
+        var created = await guestService.CreateGuestAsync(orgId.Value, guest, HttpContext.RequestAborted);
+        logger.LogInformation("Guest created: {GuestId}", created.Id);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, GuestDtoMapper.ToDto(created));
     }
 
     [HttpPut("{id}")]
     [Authorize(Policy = "RequireContext:short-rent:guest.write")]
-    public async Task<ActionResult<Guest>> Update(Guid id, [FromBody] UpdateGuestRequest request)
+    public async Task<ActionResult<GuestDto>> Update(Guid id, [FromBody] UpdateGuestRequest request)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
         logger.LogInformation("Updating guest: {GuestId}", id);
 
-        if (!await EnsureGuestAccessibleAsync(id))
-            return NotFound(new { message = $"Guest with ID {id} not found" });
-
-        var existing = await guestService.GetGuestAsync(id);
-        if (existing == null)
+        var existing = await FindGuestInOrgAsync(id);
+        if (existing is null)
         {
             logger.LogWarning("Guest not found: {GuestId}", id);
-            return NotFound(new { message = $"Guest with ID {id} not found" });
+            return GuestNotFound();
         }
 
         existing.FirstName = request.FirstName;
@@ -142,45 +142,43 @@ public class GuestsController(
         existing.Country = request.Country ?? string.Empty;
         existing.Notes = request.Notes ?? string.Empty;
 
-        try
-        {
-            var updated = await guestService.UpdateGuestAsync(existing);
-            logger.LogInformation("Guest updated: {GuestId}", updated.Id);
-            return Ok(updated);
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning("Failed to update guest: {Message}", ex.Message);
-            return BadRequest(new { message = ex.Message });
-        }
+        var updated = await guestService.UpdateGuestAsync(existing);
+        logger.LogInformation("Guest updated: {GuestId}", updated.Id);
+        return Ok(GuestDtoMapper.ToDto(updated));
     }
 
+    /// <summary>
+    /// Deletes a guest of the caller's org. Without bookings the row is removed; with past bookings it is
+    /// kept (Restrict FK) but marked deleted and anonymized; with an open booking the answer is
+    /// 409 <c>guest_has_open_bookings</c>. Never a 500 for the foreign key (A9-11).
+    /// </summary>
     [HttpDelete("{id}")]
     [Authorize(Policy = "RequireContext:short-rent:guest.write")]
     public async Task<IActionResult> Delete(Guid id)
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
 
-        if (!await EnsureGuestAccessibleAsync(id))
-            return NotFound(new { message = $"Guest with ID {id} not found" });
+        var orgId = await ResolveOrgIdAsync();
+        if (orgId is null)
+            return GuestNotFound();
 
-        var result = await guestService.DeleteGuestAsync(id);
-        if (!result)
-        {
-            logger.LogWarning("Guest not found: {GuestId}", id);
-            return NotFound(new { message = $"Guest with ID {id} not found" });
-        }
-
-        logger.LogInformation("Guest deleted: {GuestId}", id);
+        var result = await guestService.DeleteGuestAsync(orgId.Value, id, HttpContext.RequestAborted);
+        logger.LogInformation("Guest {GuestId} deletion completed: {Result}", id, result);
         return NoContent();
     }
 
-    private async Task<bool> EnsureGuestAccessibleAsync(Guid guestId)
-    {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
-            return false;
+    private Task<Guid?> ResolveOrgIdAsync() =>
+        orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
 
-        return await guestAccessService.IsGuestAccessibleAsync(guestId, orgId.Value, HttpContext.RequestAborted);
+    private async Task<Guest?> FindGuestInOrgAsync(Guid guestId)
+    {
+        var orgId = await ResolveOrgIdAsync();
+        if (orgId is null)
+            return null;
+
+        return await guestService.GetGuestAsync(orgId.Value, guestId, HttpContext.RequestAborted);
     }
+
+    private ObjectResult GuestNotFound() =>
+        this.ApiProblem(StatusCodes.Status404NotFound, "guest_not_found", "GuestNotFound");
 }

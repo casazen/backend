@@ -1,18 +1,17 @@
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-public class LocalGuestDocumentStorageService(
-    IConfiguration configuration,
-    ILogger<LocalGuestDocumentStorageService> logger) : IGuestDocumentStorage
+/// <summary>
+/// Guest ID document scans on the PRIVATE bucket of <see cref="IFileStorage"/> (FD-07). The value
+/// returned (and stored in <c>Guest.DocumentScanUrl</c>) is the storage key, never a public URL.
+/// </summary>
+public class GuestDocumentStorageService(
+    IFileStorage storage,
+    ILogger<GuestDocumentStorageService> logger) : IGuestDocumentStorage
 {
-    private readonly string _storagePath = configuration["GuestDocumentStorage:LocalPath"]
-        ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads", "guest-documents");
-    private readonly string _baseUrl = configuration["GuestDocumentStorage:BaseUrl"]
-        ?? "/uploads/guest-documents";
     private const long MaxFileSizeBytes = 5 * 1024 * 1024;
     private static readonly string[] AllowedExtensions = [".jpg", ".jpeg", ".png", ".pdf"];
     private static readonly string[] AllowedMimeTypes =
@@ -27,17 +26,11 @@ public class LocalGuestDocumentStorageService(
         if (!ValidateDocument(file))
             throw new InvalidOperationException("Invalid document file");
 
-        var guestDir = Path.Combine(_storagePath, orgId.ToString(), guestId.ToString());
-        Directory.CreateDirectory(guestDir);
-
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-        var fileName = $"{Guid.NewGuid()}{extension}";
-        var filePath = Path.Combine(guestDir, fileName);
-
+        var key = StorageKeys.GuestDocument(orgId, guestId, StorageKeys.NewFileName(file.FileName));
         try
         {
-            await using var stream = new FileStream(filePath, FileMode.Create);
-            await file.CopyToAsync(stream);
+            await using var content = file.OpenReadStream();
+            await storage.PutAsync(StorageBucket.Private, key, content, file.ContentType);
             logger.LogInformation(
                 "Guest document uploaded for org {OrgId}, guest {GuestId}",
                 orgId, guestId);
@@ -48,7 +41,7 @@ public class LocalGuestDocumentStorageService(
             throw;
         }
 
-        return $"{_baseUrl}/{orgId}/{guestId}/{fileName}";
+        return key;
     }
 
     public bool ValidateDocument(IFormFile file)

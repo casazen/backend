@@ -8,6 +8,10 @@ namespace Casazen.Tests.Unit.Repositories;
 
 public class GuestRepositoryTests
 {
+    private static readonly Guid OrgA = Guid.NewGuid();
+    private static readonly Guid OrgB = Guid.NewGuid();
+    private static readonly DateTime Today = new(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc);
+
     private readonly AppDbContext _context;
     private readonly GuestRepository _repository;
 
@@ -79,18 +83,40 @@ public class GuestRepositoryTests
     }
 
     [Fact]
+    public async Task GetByIdInOrgAsync_GuestOfSameOrg_ReturnsGuest()
+    {
+        // Arrange
+        var guest = await _repository.AddAsync(NewGuest("Jane", "Smith", "jane.smith@example.com", OrgA));
+
+        // Act
+        var result = await _repository.GetByIdInOrgAsync(OrgA, guest.Id);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(guest.Id, result.Id);
+    }
+
+    [Fact]
+    public async Task GetByIdInOrgAsync_GuestOfOtherOrg_ReturnsNull()
+    {
+        // Arrange
+        var guest = await _repository.AddAsync(NewGuest("Jane", "Smith", "jane.smith@example.com", OrgA));
+
+        // Act
+        var result = await _repository.GetByIdInOrgAsync(OrgB, guest.Id);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task GetByEmailAsync_WithExistingEmail_ReturnsGuest()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Alice",
-            LastName = "Johnson",
-            Email = "alice.johnson@example.com"
-        });
+        await _repository.AddAsync(NewGuest("Alice", "Johnson", "alice.johnson@example.com", OrgA));
 
         // Act
-        var result = await _repository.GetByEmailAsync("alice.johnson@example.com");
+        var result = await _repository.GetByEmailAsync(OrgA, "alice.johnson@example.com");
 
         // Assert
         Assert.NotNull(result);
@@ -101,11 +127,8 @@ public class GuestRepositoryTests
     [Fact]
     public async Task GetByEmailAsync_WithNonExistentEmail_ReturnsNull()
     {
-        // Arrange
-        var nonExistentEmail = "nonexistent@example.com";
-
         // Act
-        var result = await _repository.GetByEmailAsync(nonExistentEmail);
+        var result = await _repository.GetByEmailAsync(OrgA, "nonexistent@example.com");
 
         // Assert
         Assert.Null(result);
@@ -115,15 +138,10 @@ public class GuestRepositoryTests
     public async Task GetByEmailAsync_IsCaseInsensitive()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Bob",
-            LastName = "Wilson",
-            Email = "Bob.Wilson@Example.COM"
-        });
+        await _repository.AddAsync(NewGuest("Bob", "Wilson", "Bob.Wilson@Example.COM", OrgA));
 
         // Act
-        var result = await _repository.GetByEmailAsync("bob.wilson@example.com");
+        var result = await _repository.GetByEmailAsync(OrgA, "bob.wilson@example.com");
 
         // Assert
         Assert.NotNull(result);
@@ -131,201 +149,106 @@ public class GuestRepositoryTests
     }
 
     [Fact]
-    public async Task GetAllAsync_ReturnsAllGuests()
+    public async Task GetByEmailAsync_SameEmailOnlyInOtherOrg_ReturnsNull()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Guest1",
-            LastName = "Test",
-            Email = "guest1@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Guest2",
-            LastName = "Test",
-            Email = "guest2@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Guest3",
-            LastName = "Test",
-            Email = "guest3@example.com"
-        });
+        await _repository.AddAsync(NewGuest("Mario", "Rossi", "mario@example.com", OrgA));
 
         // Act
-        var result = await _repository.GetAllAsync();
+        var result = await _repository.GetByEmailAsync(OrgB, "mario@example.com");
 
         // Assert
-        Assert.Equal(3, result.Count());
+        Assert.Null(result);
     }
 
     [Fact]
-    public async Task GetAllAsync_WithNoGuests_ReturnsEmpty()
+    public async Task GetPageAsync_GuestsOfTwoOrgs_ReturnsOnlyRequestedOrg()
     {
+        // Arrange
+        await _repository.AddAsync(NewGuest("Guest1", "Test", "guest1@example.com", OrgA));
+        await _repository.AddAsync(NewGuest("Guest2", "Test", "guest2@example.com", OrgA));
+        await _repository.AddAsync(NewGuest("Other", "Test", "guest1@example.com", OrgB));
+
         // Act
-        var result = await _repository.GetAllAsync();
+        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
 
         // Assert
-        Assert.Empty(result);
+        Assert.Equal(2, total);
+        Assert.All(items, g => Assert.Equal(OrgA, g.OrgId));
     }
 
     [Fact]
-    public async Task SearchAsync_WithFirstNameMatch_ReturnsMatchingGuests()
+    public async Task GetPageAsync_WithNoGuests_ReturnsEmpty()
     {
-        // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Jane",
-            LastName = "Smith",
-            Email = "jane.smith@example.com"
-        });
-
         // Act
-        var result = await _repository.SearchAsync("John");
+        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
 
         // Assert
-        Assert.Single(result);
-        Assert.Equal("John", result.First().FirstName);
+        Assert.Empty(items);
+        Assert.Equal(0, total);
     }
 
     [Fact]
-    public async Task SearchAsync_WithLastNameMatch_ReturnsMatchingGuests()
+    public async Task GetPageAsync_DeletedGuest_IsExcluded()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Jane",
-            LastName = "Doe",
-            Email = "jane.doe@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Bob",
-            LastName = "Smith",
-            Email = "bob.smith@example.com"
-        });
+        await _repository.AddAsync(NewGuest("Kept", "Test", "kept@example.com", OrgA));
+        var deleted = NewGuest("Deleted", "Test", "deleted@example.com", OrgA);
+        deleted.IsDeleted = true;
+        await _repository.AddAsync(deleted);
 
         // Act
-        var result = await _repository.SearchAsync("Doe");
+        var (items, total) = await _repository.GetPageAsync(OrgA, null, 1, 20);
 
         // Assert
-        Assert.Equal(2, result.Count());
-        Assert.All(result, g => Assert.Equal("Doe", g.LastName));
+        Assert.Equal(1, total);
+        Assert.Equal("Kept", Assert.Single(items).FirstName);
     }
 
     [Fact]
-    public async Task SearchAsync_WithEmailMatch_ReturnsMatchingGuests()
+    public async Task GetPageAsync_SecondPage_ReturnsRemainingGuestsNewestFirst()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 5; i++)
         {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Jane",
-            LastName = "Smith",
-            Email = "jane.smith@test.com"
-        });
+            var guest = NewGuest($"Guest{i}", "Test", $"guest{i}@example.com", OrgA);
+            guest.CreatedAt = now.AddMinutes(i);
+            await _repository.AddAsync(guest);
+        }
 
         // Act
-        var result = await _repository.SearchAsync("example.com");
+        var (items, total) = await _repository.GetPageAsync(OrgA, null, 2, 2);
 
         // Assert
-        Assert.Single(result);
-        Assert.Contains("example.com", result.First().Email);
+        Assert.Equal(5, total);
+        Assert.Equal(["Guest2", "Guest1"], items.Select(g => g.FirstName));
     }
 
-    [Fact]
-    public async Task SearchAsync_WithPhoneMatch_ReturnsMatchingGuests()
+    [Theory]
+    [InlineData("John", "John")]
+    [InlineData("doe", "John")]
+    [InlineData("EXAMPLE.com", "John")]
+    [InlineData("123456", "John")]
+    public async Task GetPageAsync_WithSearchTerm_ReturnsMatchingGuestsOfOrg(string searchTerm, string expectedFirstName)
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com",
-            PhoneNumber = "+39 123456789"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Jane",
-            LastName = "Smith",
-            Email = "jane.smith@example.com",
-            PhoneNumber = "+39 987654321"
-        });
+        var john = NewGuest("John", "Doe", "john.doe@example.com", OrgA);
+        john.PhoneNumber = "+39 123456789";
+        await _repository.AddAsync(john);
+        await _repository.AddAsync(NewGuest("Jane", "Smith", "jane.smith@test.com", OrgA));
+        var otherOrgJohn = NewGuest("John", "Doe", "john.doe@example.com", OrgB);
+        otherOrgJohn.PhoneNumber = "+39 123456789";
+        await _repository.AddAsync(otherOrgJohn);
 
         // Act
-        var result = await _repository.SearchAsync("123456");
+        var (items, total) = await _repository.GetPageAsync(OrgA, searchTerm, 1, 20);
 
         // Assert
-        Assert.Single(result);
-        Assert.Contains("123456", result.First().PhoneNumber);
-    }
-
-    [Fact]
-    public async Task SearchAsync_WithNullSearchTerm_ReturnsAllGuests()
-    {
-        // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        });
-
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "Jane",
-            LastName = "Smith",
-            Email = "jane.smith@example.com"
-        });
-
-        // Act
-        var result = await _repository.SearchAsync(null);
-
-        // Assert
-        Assert.Equal(2, result.Count());
-    }
-
-    [Fact]
-    public async Task SearchAsync_WithEmptySearchTerm_ReturnsAllGuests()
-    {
-        // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        });
-
-        // Act
-        var result = await _repository.SearchAsync("");
-
-        // Assert
-        Assert.Single(result);
+        Assert.Equal(1, total);
+        var match = Assert.Single(items);
+        Assert.Equal(expectedFirstName, match.FirstName);
+        Assert.Equal(OrgA, match.OrgId);
     }
 
     [Fact]
@@ -440,15 +363,10 @@ public class GuestRepositoryTests
     public async Task ExistsByEmailAsync_WithExistingEmail_ReturnsTrue()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        });
+        await _repository.AddAsync(NewGuest("John", "Doe", "john.doe@example.com", OrgA));
 
         // Act
-        var result = await _repository.ExistsByEmailAsync("john.doe@example.com");
+        var result = await _repository.ExistsByEmailAsync(OrgA, "john.doe@example.com");
 
         // Assert
         Assert.True(result);
@@ -458,7 +376,7 @@ public class GuestRepositoryTests
     public async Task ExistsByEmailAsync_WithNonExistentEmail_ReturnsFalse()
     {
         // Act
-        var result = await _repository.ExistsByEmailAsync("nonexistent@example.com");
+        var result = await _repository.ExistsByEmailAsync(OrgA, "nonexistent@example.com");
 
         // Assert
         Assert.False(result);
@@ -468,17 +386,78 @@ public class GuestRepositoryTests
     public async Task ExistsByEmailAsync_IsCaseInsensitive()
     {
         // Arrange
-        await _repository.AddAsync(new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "John.Doe@Example.COM"
-        });
+        await _repository.AddAsync(NewGuest("John", "Doe", "John.Doe@Example.COM", OrgA));
 
         // Act
-        var result = await _repository.ExistsByEmailAsync("john.doe@example.com");
+        var result = await _repository.ExistsByEmailAsync(OrgA, "john.doe@example.com");
 
         // Assert
         Assert.True(result);
     }
+
+    [Fact]
+    public async Task ExistsByEmailAsync_EmailOnlyInOtherOrg_ReturnsFalse()
+    {
+        // Arrange
+        await _repository.AddAsync(NewGuest("John", "Doe", "john.doe@example.com", OrgA));
+
+        // Act
+        var result = await _repository.ExistsByEmailAsync(OrgB, "john.doe@example.com");
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_GuestWithoutBookings_HasNoReferences()
+    {
+        // Arrange
+        var guest = await _repository.AddAsync(NewGuest("John", "Doe", "john.doe@example.com", OrgA));
+
+        // Act
+        var usage = await _repository.GetUsageAsync(guest.Id, Today);
+
+        // Assert
+        Assert.False(usage.HasReferences);
+        Assert.False(usage.HasOpenBookings);
+    }
+
+    [Theory]
+    [InlineData(BookingStatus.CheckedOut, -5, false)]
+    [InlineData(BookingStatus.Cancelled, 10, false)]
+    [InlineData(BookingStatus.Confirmed, -1, false)]
+    [InlineData(BookingStatus.Confirmed, 0, true)]
+    [InlineData(BookingStatus.Pending, 10, true)]
+    [InlineData(BookingStatus.CheckedIn, 2, true)]
+    public async Task GetUsageAsync_GuestWithBooking_ReportsReferenceAndOpenState(
+        BookingStatus status, int checkOutOffsetDays, bool expectedOpen)
+    {
+        // Arrange
+        var guest = await _repository.AddAsync(NewGuest("John", "Doe", "john.doe@example.com", OrgA));
+        _context.Bookings.Add(new Booking
+        {
+            PropertyId = Guid.NewGuid(),
+            OrgId = OrgA,
+            GuestId = guest.Id,
+            CheckInDate = Today.AddDays(checkOutOffsetDays - 2),
+            CheckOutDate = Today.AddDays(checkOutOffsetDays),
+            Status = status,
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var usage = await _repository.GetUsageAsync(guest.Id, Today);
+
+        // Assert
+        Assert.True(usage.HasReferences);
+        Assert.Equal(expectedOpen, usage.HasOpenBookings);
+    }
+
+    private static Guest NewGuest(string firstName, string lastName, string email, Guid orgId) => new()
+    {
+        OrgId = orgId,
+        FirstName = firstName,
+        LastName = lastName,
+        Email = email,
+    };
 }

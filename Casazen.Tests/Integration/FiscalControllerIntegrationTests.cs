@@ -78,6 +78,7 @@ public class FiscalControllerIntegrationTests : IClassFixture<CasazenWebApplicat
 
             var guest = new Guest
             {
+                OrgId = property.OrgId,
                 FirstName = "Inactive",
                 LastName = "Guest",
                 Email = $"inactive-{Guid.NewGuid():N}@example.com",

@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
@@ -12,11 +13,17 @@ namespace Casazen.Infrastructure.Data;
 public class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ITenantContext? tenantContext = null,
-    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options)
+    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options), IDataProtectionKeyContext
 {
     // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
     // no-op (filter disabled) for design-time, background jobs, and unit tests.
     private readonly ITenantContext _tenant = tenantContext ?? NullTenantContext.Instance;
+
+    /// <summary>
+    /// ASP.NET Core Data Protection key ring (FD-07, A9-04): persisted here instead of the container
+    /// filesystem so encrypted secrets stay readable after a redeploy. Not tenant data.
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
@@ -427,6 +434,7 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.OrgId);
         modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
         modelBuilder.Entity<User>().HasIndex(u => u.OrgId);
+        modelBuilder.Entity<Guest>().HasIndex(g => g.OrgId);
 
         // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
         // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
@@ -465,6 +473,12 @@ public class AppDbContext(
         modelBuilder.Entity<User>()
             .HasOne(u => u.Org).WithMany().HasForeignKey(u => u.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
+        // TN-1: a guest belongs to exactly one org. No unique (OrgId, lower(Email)) index: host and
+        // direct bookings store one guest snapshot per booking (#431), so one org legitimately holds
+        // several rows with the same e-mail.
+        modelBuilder.Entity<Guest>()
+            .HasOne(g => g.Org).WithMany().HasForeignKey(g => g.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Global tenant query filter (AC7): every read of a tenant-scoped table is scoped
         // to the caller's OrgId. Fail-closed when the caller has no org; disabled for
@@ -476,6 +490,7 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyFiscalYear>().HasQueryFilter(y => !_tenant.FilterEnabled || y.OrgId == _tenant.OrgId);
         modelBuilder.Entity<RentSchedule>().HasQueryFilter(s => !_tenant.FilterEnabled || s.OrgId == _tenant.OrgId);
         modelBuilder.Entity<RentLedgerEntry>().HasQueryFilter(e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<Guest>().HasQueryFilter(g => !_tenant.FilterEnabled || g.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>()
             .HasKey(c => c.Key);
