@@ -75,7 +75,7 @@ public class BookingsControllerTests
         _controller = CreateController(EmailTestHelpers.Links("https://public.test"));
     }
 
-    private BookingsController CreateController(PublicSiteLinks publicSiteLinks) =>
+    private BookingsController CreateController(PublicSiteLinks publicSiteLinks, TimeProvider? timeProvider = null) =>
         new(
             _mockBookingService.Object,
             _mockTaxService.Object,
@@ -92,7 +92,8 @@ public class BookingsControllerTests
             _mockEmailQueue.Object,
             publicSiteLinks,
             CreateLocalizer(),
-            _mockLogger.Object);
+            _mockLogger.Object,
+            timeProvider);
 
     private static IStringLocalizer<SharedResources> CreateLocalizer() =>
         new StringLocalizer<SharedResources>(new ResourceManagerStringLocalizerFactory(
@@ -118,23 +119,7 @@ public class BookingsControllerTests
 
     private BookingsController CreateControllerAt(DateTimeOffset utcNow)
     {
-        var controller = new BookingsController(
-            _mockBookingService.Object,
-            _mockTaxService.Object,
-            _mockAlloggiatiService.Object,
-            _mockPropertyService.Object,
-            _mockAuthz.Object,
-            CreatePropertyICalSyncService(),
-            _mockGuestService.Object,
-            _mockBackgroundJobClient.Object,
-            _mockGuestCheckInService.Object,
-            _mockComplianceWizardService.Object,
-            _mockCheckoutReminderScheduler.Object,
-            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
-            _configuration,
-            _mockEmailService.Object,
-            _mockLogger.Object,
-            new FixedTimeProvider(utcNow));
+        var controller = CreateController(EmailTestHelpers.Links("https://public.test"), new FixedTimeProvider(utcNow));
         var identity = new ClaimsIdentity(new[] { new Claim("sub", OwnerId) }, "TestAuth");
         controller.ControllerContext = new ControllerContext
         {
