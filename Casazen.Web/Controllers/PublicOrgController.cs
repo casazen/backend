@@ -9,7 +9,10 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/public/orgs")]
 [AllowAnonymous]
-public class PublicOrgController(IOrgService orgService, IPropertyService propertyService) : ControllerBase
+public class PublicOrgController(
+    IOrgService orgService,
+    IPropertyService propertyService,
+    IEntitlementService entitlementService) : ControllerBase
 {
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
@@ -22,7 +25,7 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
         if (org is null)
             return NotFound();
 
-        return Ok(PublicOrgDto.FromOrg(org));
+        return Ok(PublicOrgDto.FromOrg(org, entitlementService.ResolveEffectiveTier(org)));
     }
 
     [HttpGet("{slug}/properties")]

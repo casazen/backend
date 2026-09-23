@@ -53,6 +53,24 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task SetCustomDomain_StoredProWithoutSubscription_Returns403()
+    {
+        // A3-07 / A3-37: the custom-domain gate follows the effective tier, and a Pro tier nobody pays for is Starter.
+        var ownerId = $"auth0|unpaid-pro-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(org.Id, PlanTier.Pro, withActiveSubscription: false);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync($"/api/orgs/{org.Id}/domain", new
+        {
+            hostMode = PublicHostMode.CustomDomain,
+            customDomain = "www.unpaid-pro-host.it",
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task SetCustomDomain_WhenOtherOrgClaimIsPending_AllowsOwnerToConfigureSameDomain()
     {
         var squatterId = $"auth0|domain-pending-{Guid.NewGuid():N}";
@@ -191,6 +209,28 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(org.Id, json.GetProperty("orgId").GetGuid());
         Assert.Equal("CustomDomain", json.GetProperty("publicHostMode").GetString());
         Assert.Equal(org.Slug, json.GetProperty("slug").GetString());
+        Assert.Equal("Pro", json.GetProperty("planTier").GetString());
+        Assert.False(json.GetProperty("branding").GetProperty("showPoweredBy").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ResolveHost_SubdomainOfStoredProWithoutSubscription_UsesEffectiveStarterTier()
+    {
+        // A3-37: resolve-host branding and tier use the effective tier, not the stored one.
+        var ownerId = $"auth0|resolve-unpaid-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanTierAsync(org.Id, PlanTier.Pro, withActiveSubscription: false);
+        var slug = $"unpaid-pro-{Guid.NewGuid():N}"[..30];
+        await SetSlugAsync(org.Id, slug);
+
+        using var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/public/resolve-host?host={slug}.casazen.it");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(org.Id, json.GetProperty("orgId").GetGuid());
+        Assert.Equal("Starter", json.GetProperty("planTier").GetString());
+        Assert.True(json.GetProperty("branding").GetProperty("showPoweredBy").GetBoolean());
     }
 
     [Fact]
@@ -238,12 +278,19 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(orgB.Id, resolvedJson.GetProperty("orgId").GetGuid());
     }
 
-    private async Task SetPlanTierAsync(Guid orgId, PlanTier tier)
+    /// <summary>
+    /// Pro/Scale take effect only while a subscription pays for them (#274): a paid tier is seeded with an active
+    /// Stripe subscription unless <paramref name="withActiveSubscription"/> is false.
+    /// </summary>
+    private async Task SetPlanTierAsync(Guid orgId, PlanTier tier, bool withActiveSubscription = true)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.FindAsync(orgId);
+        var paid = tier != PlanTier.Starter && withActiveSubscription;
         org!.PlanTier = tier;
+        org.SubscriptionId = paid ? $"sub_test_{orgId:N}" : null;
+        org.SubscriptionStatus = paid ? SubscriptionStatus.Active : SubscriptionStatus.None;
         await db.SaveChangesAsync();
     }
 

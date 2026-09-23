@@ -2,6 +2,7 @@ using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Admin;
 using Casazen.Web.DTOs.Orgs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -103,8 +104,17 @@ public class AdminController(
         }));
     }
 
-    /// <summary>Updates an org's plan tier. Admin only (MVP until Stripe billing).</summary>
+    /// <summary>
+    /// Updates an org's plan tier. Admin only. A plan driven by a live Stripe subscription is never overwritten
+    /// (409 <c>managed_by_stripe</c>: the next webhook would silently undo it, A1-41), and without a subscription a
+    /// paid tier would not take effect (<see cref="IEntitlementService.ResolveEffectiveTier"/>), so an upgrade is
+    /// refused with 409 <c>subscription_required</c> instead of reporting a change that does nothing (#274).
+    /// </summary>
     [HttpPatch("orgs/{orgId:guid}/plan")]
+    [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<EntitlementDto>> UpdateOrgPlan(
         Guid orgId,
         [FromBody] UpdateOrgPlanDto dto,
@@ -115,9 +125,23 @@ public class AdminController(
 
         logger.LogInformation("Admin plan change requested for org {OrgId} -> {PlanTier}", orgId, planTier);
 
+        var org = await orgService.GetByIdAsync(orgId, cancellationToken);
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        var outcome = PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolveEffectiveTier(org), planTier);
+        if (outcome != ManualPlanChangeOutcome.Allowed)
+        {
+            logger.LogWarning(
+                "Admin plan change for org {OrgId} -> {PlanTier} refused: {Outcome}", orgId, planTier, outcome);
+            return outcome == ManualPlanChangeOutcome.ManagedByStripe
+                ? this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.ManagedByStripe, "ManagedByStripe")
+                : this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.SubscriptionRequired, "SubscriptionRequired");
+        }
+
         var updated = await orgService.UpdatePlanTierAsync(orgId, planTier, cancellationToken);
         if (updated is null)
-            return NotFound(new { error = "Organization not found" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
         var entitlement = await entitlementService.GetEntitlementAsync(orgId, cancellationToken);
         return Ok(new EntitlementDto

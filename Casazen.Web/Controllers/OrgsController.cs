@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Org surfaces for the caller's organization (US-004). MVP plan catalogue and tier changes
-/// live here until <c>spec-saas-billing</c> adds Stripe Checkout for paid upgrades.
+/// Org surfaces for the caller's organization (US-004): plan catalogue, entitlement and downgrades.
+/// Paid upgrades go through Stripe Checkout (<see cref="BillingController"/>), never through this controller (#274).
 /// </summary>
 [ApiController]
 [Route("api/orgs")]
@@ -60,15 +60,20 @@ public class OrgsController(
     }
 
     /// <summary>
-    /// Updates the caller's org plan tier (MVP self-serve change before Stripe billing).
+    /// Moves the caller's org to a lower plan tier, or back to Starter (#274). Paid tiers are granted only by a
+    /// Stripe subscription (checkout + webhooks): an upgrade without one is refused with 403
+    /// <c>subscription_required</c>, and a plan driven by a live subscription is refused with 409
+    /// <c>managed_by_stripe</c> (use the billing portal). Only the org's billing admin may call it.
     /// Downgrades are allowed even when usage exceeds the new limit; existing properties remain,
     /// but new creates are blocked until usage is under the limit.
     /// </summary>
     [HttpPut("me/plan")]
-    [Authorize]
+    [Authorize(Policy = "RequireOrgBillingAdmin")]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<EntitlementDto>> UpdateMyPlan(
         [FromBody] UpdateOrgPlanDto dto,
         CancellationToken cancellationToken)
@@ -78,21 +83,23 @@ public class OrgsController(
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned to the current user" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var org = await orgService.GetByIdAsync(orgId.Value, cancellationToken);
-        if (org is not null && !string.IsNullOrEmpty(org.SubscriptionId))
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        switch (PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolveEffectiveTier(org), planTier))
         {
-            return Conflict(new
-            {
-                error = "Il piano è gestito da Stripe. Usa il portale di fatturazione.",
-                code = "managed_by_stripe",
-            });
+            case ManualPlanChangeOutcome.ManagedByStripe:
+                return this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.ManagedByStripe, "ManagedByStripe");
+            case ManualPlanChangeOutcome.SubscriptionRequired:
+                return this.ApiProblem(StatusCodes.Status403Forbidden, PlanProblemCodes.SubscriptionRequired, "SubscriptionRequired");
         }
 
         var updated = await orgService.UpdatePlanTierAsync(orgId.Value, planTier, cancellationToken);
         if (updated is null)
-            return NotFound(new { error = "Organization not found" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
         var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);

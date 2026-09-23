@@ -10,6 +10,6 @@ public class OrgSummaryDto
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
 
-    /// <summary>Plan tier name: <c>Starter</c> | <c>Pro</c> | <c>Scale</c>.</summary>
+    /// <summary>Effective plan tier name (<c>Starter</c> | <c>Pro</c> | <c>Scale</c>): Starter unless a subscription pays for it.</summary>
     public string PlanTier { get; set; } = string.Empty;
 }
