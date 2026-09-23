@@ -18,11 +18,15 @@ public class PublicOrgControllerTests
 {
     private readonly Mock<IOrgService> _orgService = new();
     private readonly Mock<IPropertyService> _propertyService = new();
+    private readonly Mock<IEntitlementService> _entitlementService = new();
     private readonly PublicOrgController _controller;
 
     public PublicOrgControllerTests()
     {
-        _controller = new PublicOrgController(_orgService.Object, _propertyService.Object);
+        // Default: the stored tier is paid for (the effective-tier rules are covered by EntitlementServiceTests).
+        _entitlementService.Setup(s => s.ResolveEffectiveTier(It.IsAny<OrgEntity>()))
+            .Returns((OrgEntity o) => o.PlanTier);
+        _controller = new PublicOrgController(_orgService.Object, _propertyService.Object, _entitlementService.Object);
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────
@@ -68,6 +72,23 @@ public class PublicOrgControllerTests
         Assert.Equal("https://cdn.example.com/hero.webp", dto.HeroImageUrl);
         Assert.Equal("Il tuo rifugio", dto.Tagline);
         Assert.Equal("mare", dto.PublicThemeId);
+    }
+
+    [Fact]
+    public async Task GetOrg_StoredProWithoutPaidSubscription_ShowPoweredByTrue()
+    {
+        // A3-37: "Powered by" follows the effective tier, not the stored one (canceled / unpaid / never paid).
+        var org = BuildOrg("lapsed-pro-org");
+        _orgService.Setup(s => s.GetPublicBySlugAsync("lapsed-pro-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+        _entitlementService.Setup(s => s.ResolveEffectiveTier(org)).Returns(PlanTier.Starter);
+
+        var result = await _controller.GetOrg("lapsed-pro-org", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PublicOrgDto>(ok.Value);
+        Assert.Equal(PlanTier.Pro, org.PlanTier);
+        Assert.True(dto.ShowPoweredBy);
     }
 
     [Fact]

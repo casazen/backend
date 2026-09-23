@@ -79,14 +79,18 @@ public class PublicHostResolver(
         return BuildResponse(subdomainOrg, PublicHostMode.CasazenSubdomain);
     }
 
-    private static ResolveHostResponseDto BuildResponse(Org org, PublicHostMode publicHostMode) => new()
+    private ResolveHostResponseDto BuildResponse(Org org, PublicHostMode publicHostMode)
     {
-        OrgId = org.Id,
-        Slug = org.Slug,
-        PublicHostMode = publicHostMode,
-        PlanTier = org.PlanTier.ToString(),
-        Branding = ResolveHostBrandingDto.FromOrg(org),
-    };
+        var effectiveTier = entitlementService.ResolveEffectiveTier(org);
+        return new ResolveHostResponseDto
+        {
+            OrgId = org.Id,
+            Slug = org.Slug,
+            PublicHostMode = publicHostMode,
+            PlanTier = effectiveTier.ToString(),
+            Branding = ResolveHostBrandingDto.FromOrg(org, effectiveTier),
+        };
+    }
 
     private static string Normalize(string host)
     {

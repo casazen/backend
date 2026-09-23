@@ -93,7 +93,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships` |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
 | `GET` | `/api/orgs/me/entitlement` | short-rent property.read | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
-| `PUT` | `/api/orgs/me/plan` | JWT | Self-serve plan change (409 if Stripe-managed) |
+| `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
 | `POST` | `/api/orgs/{orgId}/domain/verify` | JWT | Verify DNS / domain ownership |
@@ -302,7 +302,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/admin/stats` | Admin | Platform KPI dashboard stats |
 | `GET` | `/api/admin/cin-compliance` | Admin | Paginated CIN compliance report |
 | `GET` | `/api/admin/jobs` | Admin | Hangfire recurring job statuses |
-| `PATCH` | `/api/admin/orgs/{orgId}/plan` | Admin | Override org plan tier |
+| `PATCH` | `/api/admin/orgs/{orgId}/plan` | Admin | Change org plan tier: 409 `managed_by_stripe` with an active subscription, 409 `subscription_required` for an upgrade without one |
 | `GET` | `/api/admin/seo/pages` | Admin | SEO pages list / filter |
 | `GET` | `/api/admin/seo/comuni` | Admin | Comuni catalogue for SEO |
 | `POST` | `/api/admin/seo/approve-all-drafts` | Admin | Approve all draft SEO pages |
