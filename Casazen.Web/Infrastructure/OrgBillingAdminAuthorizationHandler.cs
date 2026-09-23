@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 
 namespace Casazen.Web.Infrastructure;
@@ -7,8 +8,16 @@ namespace Casazen.Web.Infrastructure;
 public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 
 public class OrgBillingAdminAuthorizationHandler(
-    IOrgContextResolver orgContextResolver) : AuthorizationHandler<OrgBillingAdminRequirement>
+    IOrgContextResolver orgContextResolver,
+    IUserAuthorizationSnapshotStore snapshotStore) : AuthorizationHandler<OrgBillingAdminRequirement>
 {
+    /// <summary>DB context memberships that grant billing administration without relying on JWT roles.</summary>
+    private static readonly HashSet<string> AllowedMembershipContexts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "short-rent",
+        "admin",
+    };
+
     private static readonly HashSet<string> AllowedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "PropertyOwner",
@@ -32,7 +41,7 @@ public class OrgBillingAdminAuthorizationHandler(
         if (HasDeniedRole(context.User))
             return;
 
-        if (!HasAllowedRole(context.User))
+        if (!HasAllowedRole(context.User) && !await HasAllowedMembershipAsync(context.User))
             return;
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync();
@@ -40,6 +49,22 @@ public class OrgBillingAdminAuthorizationHandler(
             return;
 
         context.Succeed(requirement);
+    }
+
+    /// <summary>
+    /// Falls back to the DB memberships written at onboarding / role change, so a JWT issued while
+    /// the Auth0 role sync was failing does not lock the host out of billing (A1-02).
+    /// </summary>
+    private async Task<bool> HasAllowedMembershipAsync(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue("sub")
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return false;
+
+        var snapshot = await snapshotStore.GetAsync(userId);
+        return snapshot is { Exists: true, IsActive: true } &&
+               snapshot.Memberships.Any(m => AllowedMembershipContexts.Contains(m.ContextKey));
     }
 
     private static bool HasAllowedRole(ClaimsPrincipal user) =>
