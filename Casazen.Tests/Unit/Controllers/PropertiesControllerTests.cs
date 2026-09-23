@@ -1097,11 +1097,16 @@ public class PropertiesControllerTests
     public async Task GetImages_WithValidProperty_ReturnsImages()
     {
         // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
         var propertyId = Guid.NewGuid();
         var property = new Property
         {
             Id = propertyId,
             Name = "Test Property",
+            OwnerId = userId,
             PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg" }
         };
 
@@ -1114,6 +1119,46 @@ public class PropertiesControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var urls = Assert.IsAssignableFrom<List<string>>(okResult.Value);
         Assert.Equal(2, urls.Count);
+    }
+
+    [Fact]
+    public async Task GetImages_AsNonOwner_ReturnsForbidden()
+    {
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property
+            {
+                Id = propertyId,
+                Name = "Private Property",
+                OwnerId = ownerId,
+                PhotoUrls = new List<string> { "/uploads/private.jpg" }
+            });
+        _mockAuthz
+            .Setup(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()))
+            .Returns(false);
+
+        var result = await _controller.GetImages(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockAuthz.Verify(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetImages_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) }
+        };
+
+        var result = await _controller.GetImages(Guid.NewGuid());
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     // ─── GetDetail ───────────────────────────────────────────────────────────────

@@ -59,6 +59,39 @@ public class FiscalRegimeServiceTests
     }
 
     [Fact]
+    public async Task AssignRegime_Cedolare26_WhenNoPrimaryCedolare21_Throws()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var first = SeedProperty(db, orgId, "Casa Uno");
+        SeedProperty(db, orgId, "Casa Due");
+        await db.SaveChangesAsync();
+        var sut = new FiscalService(db);
+
+        await Assert.ThrowsAsync<FiscalValidationException>(() =>
+            sut.AssignRegimeAsync(orgId, first.Id, 2026, StrFiscalRegime.CedolareSecca26, false));
+    }
+
+    [Fact]
+    public async Task AssignRegime_Cedolare26_WhenOtherPropertyIsPrimaryCedolare21_Succeeds()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var primary = SeedProperty(db, orgId, "Casa Uno");
+        var secondary = SeedProperty(db, orgId, "Casa Due");
+        await db.SaveChangesAsync();
+        var sut = new FiscalService(db);
+
+        await sut.AssignRegimeAsync(orgId, primary.Id, 2026, StrFiscalRegime.CedolareSecca21, true);
+        var result = await sut.AssignRegimeAsync(orgId, secondary.Id, 2026, StrFiscalRegime.CedolareSecca26, false);
+
+        Assert.Equal(StrFiscalRegime.CedolareSecca26, result.AssignedRegime);
+        Assert.False(result.IsPrimaryForCedolare);
+    }
+
+    [Fact]
     public async Task AssignRegime_Cedolare_WhenThreeProperties_Conflicts()
     {
         var orgId = Guid.NewGuid();

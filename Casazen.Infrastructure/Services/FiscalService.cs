@@ -67,6 +67,18 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
         if (regime == StrFiscalRegime.CedolareSecca26 && count == 1)
             throw new FiscalValidationException("Cedolare 26% applies only to the second STR property.");
 
+        if (regime == StrFiscalRegime.CedolareSecca26 && count == 2)
+        {
+            var primaryPropertyId = counted.Single(p => p.Id != propertyId).Id;
+            var primaryAssignment = await db.PropertyFiscalYears.AsNoTracking()
+                .FirstOrDefaultAsync(y => y.PropertyId == primaryPropertyId && y.TaxYear == taxYear, cancellationToken);
+            if (primaryAssignment?.Regime != StrFiscalRegime.CedolareSecca21 ||
+                primaryAssignment.IsPrimaryForCedolare != true)
+            {
+                throw new FiscalValidationException("Assign another STR property as primary Cedolare 21% before assigning Cedolare 26%.");
+            }
+        }
+
         if (regime is StrFiscalRegime.RegimeOrdinario or StrFiscalRegime.RegimeForfettario && !org.HasPartitaIva)
             throw new FiscalValidationException("Partita IVA must be recorded before assigning an impresa regime.");
 
