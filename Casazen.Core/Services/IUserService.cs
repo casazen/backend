@@ -25,15 +25,22 @@ public interface IUserService
     /// </summary>
     Task EnrichUsersFromAuth0Async(IList<User> users);
 
-    Task ChangeRoleAsync(string id, UserRole newRole, string adminSub);
+    /// <summary>
+    /// Admin role change: adds <paramref name="newRole"/> and removes only the previous primary role,
+    /// in Auth0 first and then in the DB (role + context memberships). When Auth0 fails nothing is
+    /// changed in the DB and the failed result is returned, so the admin can retry.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">The user does not exist.</exception>
+    Task<Auth0SyncResult> ChangeRoleAsync(string id, UserRole newRole, string adminSub);
 
     /// <summary>
-    /// Completes or updates onboarding: persists rental type, syncs Auth0 onboarding roles.
+    /// Completes or updates onboarding: persists rental type, writes the context memberships of every
+    /// selected role and syncs the Auth0 onboarding roles. <c>RoleSync</c> reports the Auth0 outcome;
+    /// the DB changes are kept even when Auth0 fails.
     /// </summary>
-    Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
+    Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
-        PlanTier planTier,
         string email,
         string firstName,
         string lastName);

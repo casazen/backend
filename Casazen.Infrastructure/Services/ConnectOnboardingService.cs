@@ -19,7 +19,7 @@ public class ConnectOnboardingService(
         CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
-            ?? throw new InvalidOperationException($"Org {orgId} not found");
+            ?? throw OrgNotFound(orgId);
 
         if (refreshFromStripe && !string.IsNullOrWhiteSpace(org.StripeConnectedAccountId))
         {
@@ -33,7 +33,7 @@ public class ConnectOnboardingService(
     public async Task<ConnectStatus> EnsureExpressAccountAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
-            ?? throw new InvalidOperationException($"Org {orgId} not found");
+            ?? throw OrgNotFound(orgId);
 
         if (!string.IsNullOrWhiteSpace(org.StripeConnectedAccountId))
         {
@@ -140,6 +140,9 @@ public class ConnectOnboardingService(
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    private static NotFoundException OrgNotFound(Guid orgId) =>
+        new($"Org {orgId} not found") { Code = "org_not_found", MessageKey = "OrganizationNotFound" };
 
     private static ConnectStatus MapStatus(Org org)
     {

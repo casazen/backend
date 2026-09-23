@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
@@ -13,6 +14,9 @@ namespace Casazen.Tests.Unit.Jobs;
 
 public class RliDeadlineReminderJobTests
 {
+    // 00:30 on 24/09/2026 in Rome, still 23/09 in UTC: deadlines are counted on the Rome calendar.
+    private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 9, 23, 22, 30, 0, TimeSpan.Zero));
+
     [Fact]
     public async Task ExecuteAsync_T15_SendsOnce_SecondRunIdempotent()
     {
@@ -22,7 +26,7 @@ public class RliDeadlineReminderJobTests
         var email = new Mock<IEmailService>();
         email.Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new EmailSendResult(true));
-        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>());
+        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>(), Clock);
 
         await job.ExecuteAsync();
         await job.ExecuteAsync();
@@ -35,6 +39,24 @@ public class RliDeadlineReminderJobTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_AfterMidnightInRome_CountsDaysFromRomeCalendarDay()
+    {
+        await using var db = CreateDb();
+        var lease = SeedSignedLease(db, daysUntilDeadline: 7, extraEu: false, landlordEmail: "host@example.com");
+        // 01/10 is 7 days after the Rome date (24/09), but 8 after the UTC date (23/09).
+        Assert.Equal(new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), lease.RegistrationDeadline);
+        await db.SaveChangesAsync();
+        var email = new Mock<IEmailService>();
+        email.Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new EmailSendResult(true));
+        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>(), Clock);
+
+        await job.ExecuteAsync();
+
+        Assert.Contains(db.LeaseEvents, e => e.LeaseContractId == lease.Id && e.Payload == "t-7");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ExtraEu_SendsDistinctReminder()
     {
         await using var db = CreateDb();
@@ -43,7 +65,7 @@ public class RliDeadlineReminderJobTests
         var email = new Mock<IEmailService>();
         email.Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new EmailSendResult(true));
-        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>());
+        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>(), Clock);
 
         await job.ExecuteAsync();
 
@@ -63,7 +85,7 @@ public class RliDeadlineReminderJobTests
         var email = new Mock<IEmailService>();
         email.Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new EmailSendResult(true));
-        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>());
+        var job = new RliDeadlineReminderJob(db, email.Object, Mock.Of<ILogger<RliDeadlineReminderJob>>(), Clock);
 
         await job.ExecuteAsync();
 
@@ -100,10 +122,10 @@ public class RliDeadlineReminderJobTests
             Property = property,
             Status = LeaseStatus.Signed,
             FiscalRegime = FiscalRegime.CedolareSecca,
-            StartDate = DateTime.UtcNow.Date,
-            EndDate = DateTime.UtcNow.Date.AddYears(4),
+            StartDate = Clock.TodayInRome(),
+            EndDate = Clock.TodayInRome().AddYears(4),
             MonthlyRent = 1000m,
-            RegistrationDeadline = DateTime.UtcNow.Date.AddDays(daysUntilDeadline),
+            RegistrationDeadline = Clock.TodayInRome().AddDays(daysUntilDeadline),
         };
         lease.Parties.Add(new Party
         {

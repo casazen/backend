@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Supplier;
@@ -187,7 +188,7 @@ public class SupplierProfileController(
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
-        var rangeFrom = from ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var rangeFrom = from ?? TimeProvider.System.TodayInRomeAsDateOnly();
         var rangeTo = to ?? rangeFrom.AddDays(13);
 
         if (rangeTo < rangeFrom)

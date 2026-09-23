@@ -2,6 +2,15 @@
 
 > **Data ricerca**: 16 agosto 2026. **Metodo**: 7 agenti di ricerca web su fonti istituzionali (Agenzia delle Entrate, Normattiva, Gazzetta Ufficiale, MIT, Comuni, Portale del Federalismo Fiscale) integrate da fonti tecnico-professionali dove il testo primario non era estraibile (alcuni PDF di Gazzetta Ufficiale/CIPE sono scansioni non OCR-abili con gli strumenti disponibili).
 >
+> **Verifica RS-8 (2026-09-23)** sul testo ufficiale dell'accordo MB pubblicato dal Comune di Seveso: vedi `.claude/context/regulations/canone_concordato.md`, sezione "Accordi verificati (2026-09)". Le tabelle di Seveso e Cesano Maderno (§3, §4) sono confermate. Correzioni a questo documento:
+> - §2 e §11 n. 14: i Comuni sono **55**, compreso Misinto.
+> - §2.1: la sede di SUNIA nell'accordo è via Premuda 17, Monza. L'art. 14 indica come capofila Biassono, non Carate Brianza (la pagina delle firme dice il contrario: incoerenza interna).
+> - §2.4: la regola delle stufe ha un'eccezione (non scendono in sub-fascia 1 per le stufe gli immobili con almeno 4 elementi B). Le parti possono scegliere una sub-fascia inferiore; il limite invalicabile è il minimo della sub-fascia 1.
+> - §2.5: la maggiorazione del 10% vale per superfici **oltre 50 e sotto 60 mq** (estremi esclusi). Tetti e minimi si applicano ai mq, non al canone unitario.
+> - §7 e §11 n. 9: nei contratti non assistiti l'attestazione vale solo se rilasciata **congiuntamente** da un'organizzazione della proprietà e da una degli inquilini (art. 12 dell'accordo).
+> - §11 n. 4: dopo i 18 mesi l'accordo resta in vigore fino al nuovo accordo, e le fasce si possono aggiornare con l'intera variazione ISTAT FOI (art. 14).
+> - §5: il prospetto IMU 2025 di Seveso riporta lo 0,76% per il concordato art. 2 c. 3 (conduttore con abitazione principale); il modulo del Comune chiede il 5,7‰.
+>
 > **⚠️ Disclaimer**: questo documento è materiale informativo di supporto, **non consulenza legale o fiscale**. Diversi punti sono segnalati esplicitamente come "dato non confermato" o "[DA VERIFICARE]" perché la fonte primaria non è stata raggiunta o perché fonti secondarie sono discordanti. Prima di stipulare un contratto reale o di fare affidamento su un'aliquota, **verificare con l'ufficio tributi del Comune competente, un'associazione di categoria (es. ASPPI, Confedilizia, SUNIA) o un commercialista**. Vedi §11 per l'elenco completo dei gap.
 
 ---

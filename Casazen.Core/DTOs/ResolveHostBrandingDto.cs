@@ -19,7 +19,11 @@ public class ResolveHostBrandingDto
     public string Slug { get; set; } = string.Empty;
     public bool ShowPoweredBy { get; set; }
 
-    public static ResolveHostBrandingDto FromOrg(Org org) => new()
+    /// <param name="org">The resolved org.</param>
+    /// <param name="effectiveTier">
+    /// The org's effective tier (<c>IEntitlementService.ResolveEffectiveTier</c>), never the stored one (A3-37).
+    /// </param>
+    public static ResolveHostBrandingDto FromOrg(Org org, PlanTier effectiveTier) => new()
     {
         LogoUrl = org.LogoUrl,
         PrimaryColor = org.ThemeColor,
@@ -28,6 +32,6 @@ public class ResolveHostBrandingDto
         Tagline = org.Tagline,
         DisplayName = org.DisplayName,
         Slug = org.Slug,
-        ShowPoweredBy = org.PlanTier == PlanTier.Starter,
+        ShowPoweredBy = effectiveTier == PlanTier.Starter,
     };
 }

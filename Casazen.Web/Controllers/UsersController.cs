@@ -5,6 +5,7 @@ using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Mapping;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +19,8 @@ public class UsersController(
     IUserService userService,
     IOrgService orgService,
     IOnboardingService onboardingService,
-    ILogger<UsersController> logger) : ControllerBase
+    ILogger<UsersController> logger,
+    IEntitlementService entitlementService) : ControllerBase
 {
     // ─── Admin endpoints ────────────────────────────────────────────────────
 
@@ -133,16 +135,27 @@ public class UsersController(
         if (adminSub == null)
             return Unauthorized();
 
+        Auth0SyncResult sync;
         try
         {
-            await userService.ChangeRoleAsync(id, newRole, adminSub);
+            sync = await userService.ChangeRoleAsync(id, newRole, adminSub);
         }
         catch (KeyNotFoundException)
         {
             return NotFound();
         }
 
-        return Ok(new { id, role = dto.Role });
+        if (!sync.Succeeded)
+        {
+            // The CasaZen role is unchanged: Auth0 is the source of the JWT roles, so a role change
+            // that cannot reach it must not be reported as done. Retrying is safe (idempotent).
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
+        }
+
+        return Ok(new { id, role = newRole.ToString(), rolesSynced = true });
     }
 
     /// <summary>Soft-deletes a user (sets IsActive = false). Admin only. Cannot self-delete.</summary>
@@ -171,12 +184,9 @@ public class UsersController(
         if (!Enum.TryParse<RentalType>(dto.RentalType, ignoreCase: true, out var rentalType))
             return BadRequest(new { error = $"Unknown rentalType: {dto.RentalType}" });
 
-        var planTier = PlanTier.Starter;
-        if (!string.IsNullOrWhiteSpace(dto.PlanTier))
-        {
-            if (!PlanCatalog.TryParseTier(dto.PlanTier, out planTier))
-                return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
-        }
+        // The requested plan is only validated: the org starts on Starter, paid tiers come from Stripe (#274).
+        if (!string.IsNullOrWhiteSpace(dto.PlanTier) && !PlanCatalog.TryParseTier(dto.PlanTier, out _))
+            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
 
         var sub = GetSub();
         if (sub == null)
@@ -202,8 +212,8 @@ public class UsersController(
         if (!requireConsents && !hadOrg)
             return BadRequest(new { error = "Initial onboarding must be completed with required consents." });
 
-        var (user, rolesAssigned) = await userService.CompleteOnboardingAsync(
-            sub, rentalType, planTier, email, firstName, lastName);
+        var (user, rolesAssigned, roleSync) = await userService.CompleteOnboardingAsync(
+            sub, rentalType, email, firstName, lastName);
 
         if (user.OrgId is not Guid orgId)
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Org provisioning failed." });
@@ -226,6 +236,8 @@ public class UsersController(
             OrgId = orgId,
             OrgProvisioned = !hadOrg,
             ConsentsRecorded = consentsRecorded,
+            RolesSynced = roleSync.Succeeded,
+            RolesSyncError = roleSync.Succeeded ? null : roleSync.ErrorCode,
         });
     }
 
@@ -257,7 +269,7 @@ public class UsersController(
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-    private static UserSummaryDto ToSummary(User u, Org? org = null) => new()
+    private UserSummaryDto ToSummary(User u, Org? org = null) => new()
     {
         Id = u.Id,
         Email = u.Email,
@@ -269,13 +281,13 @@ public class UsersController(
         CreatedAt = u.CreatedAt,
         OrgId = u.OrgId,
         OrgName = org?.Name,
-        PlanTier = org?.PlanTier.ToString(),
+        PlanTier = org is null ? null : entitlementService.ResolveEffectiveTier(org).ToString(),
     };
 
     private async Task<Org?> ResolveOrgAsync(User user) =>
         user.OrgId.HasValue ? await orgService.GetByIdAsync(user.OrgId.Value) : null;
 
-    private static UserDetailDto ToDetail(User u, Org? org = null) => new()
+    private UserDetailDto ToDetail(User u, Org? org = null) => new()
     {
         Id = u.Id,
         Email = u.Email,
@@ -296,7 +308,7 @@ public class UsersController(
                 Id = org.Id,
                 Name = org.Name,
                 Slug = org.Slug,
-                PlanTier = org.PlanTier.ToString()
+                PlanTier = entitlementService.ResolveEffectiveTier(org).ToString()
             }
     };
 }

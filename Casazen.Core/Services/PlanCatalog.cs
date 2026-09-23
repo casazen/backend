@@ -27,6 +27,9 @@ public static class PlanCatalog
     public static int MaxPropertiesFor(PlanTier tier) =>
         Entries.First(e => e.Tier == tier).MaxProperties;
 
+    /// <summary>Position of the tier in the catalogue, lowest first: moving to a higher rank is an upgrade.</summary>
+    public static int Rank(PlanTier tier) => Array.FindIndex(Entries, e => e.Tier == tier);
+
     public static bool TryParseTier(string? value, out PlanTier tier)
     {
         tier = default;

@@ -59,9 +59,8 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal(2.5m, rate.GetProperty("ratePerPersonPerNight").GetDecimal());
     }
 
-    // On PostgreSQL the endpoint answers 500: the "yyyy-MM-dd" dates bind as DateTimeKind.Unspecified and
-    // Npgsql refuses them for timestamptz (R-01 / A9-12). The product fix belongs to FD-06; remove the Skip then.
-    [Fact(Skip = "FD-06: DateTime Kind")]
+    // "yyyy-MM-dd" dates in the body: on PostgreSQL this returned 500 before FD-06 (R-01 / A9-12).
+    [Fact]
     public async Task AC12_CalculateTouristTax_UsesTouristTaxRateEntity_NotHardcoded()
     {
         await SeedTouristTaxRateAsync("Como", 2.5m, maxNights: 4);

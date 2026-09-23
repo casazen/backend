@@ -11,8 +11,17 @@ public class UserService(
     IUserRepository repository,
     IAuth0ManagementService auth0Management,
     IOrgService orgService,
+    IUserContextMembershipService membershipService,
+    IUserAuthorizationCache authorizationCache,
     ILogger<UserService> logger) : IUserService
 {
+    /// <summary>Roles driven by the onboarding rental-type choice. Other roles (Admin, Supplier…) are never touched.</summary>
+    private static readonly UserRole[] OnboardingRoles =
+    [
+        UserRole.PropertyOwner,
+        UserRole.LongTermLandlord,
+    ];
+
     public async Task<User?> GetUserAsync(string id)
     {
         return await repository.GetByIdAsync(id);
@@ -66,6 +75,7 @@ public class UserService(
             throw new KeyNotFoundException($"User {user.Id} not found");
 
         await repository.UpdateAsync(user);
+        authorizationCache.Invalidate(user.Id);
         logger.LogInformation("User updated: {UserId}", user.Id);
         return user;
     }
@@ -77,6 +87,7 @@ public class UserService(
             return false;
 
         await repository.DeleteAsync(id); // now soft-delete
+        authorizationCache.Invalidate(id);
         logger.LogInformation("User deactivated: {UserId}", id);
         return true;
     }
@@ -137,6 +148,7 @@ public class UserService(
         };
 
         await repository.AddAsync(user);
+        authorizationCache.Invalidate(user.Id);
         logger.LogInformation("User auto-created on first login: {UserId}", user.Id);
         return user;
     }
@@ -193,27 +205,47 @@ public class UserService(
     }
 
     /// <inheritdoc />
-    public async Task ChangeRoleAsync(string id, UserRole newRole, string adminSub)
+    public async Task<Auth0SyncResult> ChangeRoleAsync(string id, UserRole newRole, string adminSub)
     {
         var user = await repository.GetByIdAsync(id)
             ?? throw new KeyNotFoundException($"User {id} not found");
 
+        var oldRole = user.Role;
+
+        // Auth0 first: if it fails nothing changes in the DB and the admin can simply retry.
+        // Only the previous primary role is removed; any other role (Supplier, LongTermLandlord…) is kept.
+        var sync = await auth0Management.AssignRoleAsync(id, newRole);
+        if (sync.Succeeded && oldRole != newRole)
+            sync = await auth0Management.RemoveRoleAsync(id, oldRole);
+
+        if (!sync.Succeeded)
+        {
+            logger.LogWarning(
+                "Role change not applied, Auth0 sync failed ({ErrorCode}): userId={UserId} oldRole={OldRole} newRole={NewRole} changedBy={AdminId}",
+                sync.ErrorCode, id, oldRole, newRole, adminSub);
+            return sync;
+        }
+
         user.Role = newRole;
+        user.UpdatedAt = DateTime.UtcNow;
         await repository.UpdateAsync(user);
 
-        // Sync role on Auth0 (best-effort — service handles errors gracefully)
-        await auth0Management.AssignRoleAsync(id, newRole);
+        if (oldRole != newRole)
+            await membershipService.RevokeAsync(id, [oldRole]);
+        await membershipService.GrantAsync(id, [newRole]);
+        authorizationCache.Invalidate(id);
 
         logger.LogInformation(
-            "Role changed: userId={UserId} newRole={Role} changedBy={AdminId}",
-            id, newRole, adminSub);
+            "Role changed: userId={UserId} oldRole={OldRole} newRole={NewRole} changedBy={AdminId}",
+            id, oldRole, newRole, adminSub);
+
+        return sync;
     }
 
     /// <inheritdoc />
-    public async Task<(User User, IReadOnlyList<string> RolesAssigned)> CompleteOnboardingAsync(
+    public async Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
-        PlanTier planTier,
         string email,
         string firstName,
         string lastName)
@@ -237,18 +269,37 @@ public class UserService(
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = email;
 
-        await orgService.EnsureOrgForUserAsync(sub, email, displayName, planTier);
+        await orgService.EnsureOrgForUserAsync(sub, email, displayName);
 
         user = await repository.GetByIdAsync(sub) ?? user;
 
-        await auth0Management.AssignOnboardingRolesAsync(sub, roles);
+        // The rental-type choice defines the onboarding roles exactly: unselected ones are revoked
+        // (DB membership and Auth0 role), selected ones are granted. Non-onboarding roles are untouched.
+        var unselected = OnboardingRoles.Except(roles).ToArray();
+
+        // DB memberships for ALL selected roles, so backend authorization does not depend on the JWT.
+        await membershipService.RevokeAsync(sub, unselected);
+        await membershipService.GrantAsync(sub, roles);
+
+        var roleSync = await auth0Management.AssignRolesAsync(sub, roles);
+        roleSync = roleSync.Combine(await auth0Management.RemoveRolesAsync(sub, unselected));
+        authorizationCache.Invalidate(sub);
 
         var assigned = roles.Select(r => r.ToString()).ToArray();
-        logger.LogInformation(
-            "Onboarding completed: userId={UserId} rentalType={RentalType} planTier={PlanTier} roles=[{Roles}]",
-            sub, rentalType, planTier, string.Join(", ", assigned));
+        if (roleSync.Succeeded)
+        {
+            logger.LogInformation(
+                "Onboarding completed: userId={UserId} rentalType={RentalType} roles=[{Roles}]",
+                sub, rentalType, string.Join(", ", assigned));
+        }
+        else
+        {
+            logger.LogWarning(
+                "Onboarding completed but Auth0 roles not synced ({ErrorCode}): userId={UserId} rentalType={RentalType} roles=[{Roles}]",
+                roleSync.ErrorCode, sub, rentalType, string.Join(", ", assigned));
+        }
 
-        return (user, assigned);
+        return (user, assigned, roleSync);
     }
 
     private static IReadOnlyList<UserRole> MapRentalTypeToRoles(RentalType rentalType) =>

@@ -1,7 +1,9 @@
 ﻿using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Configuration;
@@ -21,8 +23,11 @@ public class BookingService(
     IPaymentRepository paymentRepository,
     PropertyICalSyncService propertyICalSyncService,
     IConfiguration configuration,
-    ILogger<BookingService> logger) : IBookingService
+    ILogger<BookingService> logger,
+    TimeProvider? timeProvider = null) : IBookingService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     public async Task<Booking?> GetBookingAsync(Guid id)
     {
         return await repository.GetByIdAsync(id);
@@ -54,7 +59,7 @@ public class BookingService(
 
     public async Task<Booking> CreateBookingAsync(Booking booking)
     {
-        var validationResult = BookingValidator.ValidateBooking(booking);
+        var validationResult = BookingValidator.ValidateBooking(booking, today: _clock.TodayInRome());
         if (!validationResult.IsValid)
         {
             logger.LogWarning("Booking validation failed: {Errors}", validationResult.ErrorMessage);
@@ -170,7 +175,7 @@ public class BookingService(
             UpdatedAt = DateTime.UtcNow,
         };
 
-        var validationResult = BookingValidator.ValidateBooking(booking);
+        var validationResult = BookingValidator.ValidateBooking(booking, today: _clock.TodayInRome());
         if (!validationResult.IsValid)
         {
             throw new DirectBookingException(
@@ -362,22 +367,31 @@ public class BookingService(
         if (!validationResult.IsValid)
         {
             logger.LogWarning("Booking update validation failed: {Errors}", validationResult.ErrorMessage);
-            throw new InvalidOperationException($"Booking update validation failed: {validationResult.ErrorMessage}");
+            throw new DomainRuleException("booking_update_invalid", "BookingUpdateInvalid");
         }
 
         var datesUnchanged = booking.CheckInDate == existingBooking.CheckInDate &&
             booking.CheckOutDate == existingBooking.CheckOutDate;
         var bookingValidation = BookingValidator.ValidateBooking(
             booking,
-            allowPastCheckIn: datesUnchanged);
+            allowPastCheckIn: datesUnchanged,
+            today: _clock.TodayInRome());
         if (!bookingValidation.IsValid)
         {
             logger.LogWarning("Booking validation failed: {Errors}", bookingValidation.ErrorMessage);
-            throw new InvalidOperationException($"Booking validation failed: {bookingValidation.ErrorMessage}");
+            throw new DomainRuleException("booking_update_invalid", "BookingUpdateInvalid");
         }
 
         logger.LogInformation("Updating booking {Id}", booking.Id);
-        return await repository.UpdateAsync(booking);
+        try
+        {
+            return await repository.UpdateAsync(booking);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainConflictException("booking_dates_unavailable", "BookingDatesUnavailable");
+        }
     }
 
     public async Task<bool> CancelBookingAsync(Guid bookingId)

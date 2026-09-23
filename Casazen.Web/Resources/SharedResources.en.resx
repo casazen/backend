@@ -13,13 +13,13 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Unauthorized" xml:space="preserve">
-    <value>Unauthorized</value>
+    <value>Authentication required</value>
   </data>
   <data name="UnauthorizedDetail" xml:space="preserve">
     <value>Authentication is required. Provide a valid Bearer token in the Authorization header.</value>
   </data>
   <data name="Forbidden" xml:space="preserve">
-    <value>Forbidden</value>
+    <value>Access denied</value>
   </data>
   <data name="ForbiddenDetail" xml:space="preserve">
     <value>You do not have permission to access this resource.</value>
@@ -36,14 +36,47 @@
   <data name="ValidationError" xml:space="preserve">
     <value>One or more validation errors occurred.</value>
   </data>
-  <data name="PaymentProcessingError" xml:space="preserve">
-    <value>Payment Processing Error</value>
+  <data name="BadRequest" xml:space="preserve">
+    <value>Bad request</value>
   </data>
-  <data name="StripeIntegrationError" xml:space="preserve">
-    <value>Stripe Integration Error</value>
+  <data name="BadRequestDetail" xml:space="preserve">
+    <value>The request is not valid. Check the data you sent and try again.</value>
   </data>
-  <data name="OperationFailed" xml:space="preserve">
-    <value>Operation Failed</value>
+  <data name="NotFoundDetail" xml:space="preserve">
+    <value>The requested resource does not exist or is not accessible.</value>
+  </data>
+  <data name="Conflict" xml:space="preserve">
+    <value>Data conflict</value>
+  </data>
+  <data name="ConflictDetail" xml:space="preserve">
+    <value>The operation conflicts with the current state of the data. Refresh the page and try again.</value>
+  </data>
+  <data name="BusinessRuleViolation" xml:space="preserve">
+    <value>Operation not allowed</value>
+  </data>
+  <data name="BusinessRuleViolationDetail" xml:space="preserve">
+    <value>The operation is not allowed in the current state.</value>
+  </data>
+  <data name="TooManyRequests" xml:space="preserve">
+    <value>Too many requests</value>
+  </data>
+  <data name="TooManyRequestsDetail" xml:space="preserve">
+    <value>Too many requests in a short time. Try again in a moment.</value>
+  </data>
+  <data name="ServiceUnavailable" xml:space="preserve">
+    <value>Service unavailable</value>
+  </data>
+  <data name="ServiceUnavailableDetail" xml:space="preserve">
+    <value>The service is temporarily unavailable. Please try again later.</value>
+  </data>
+  <data name="PaymentProviderUnavailableDetail" xml:space="preserve">
+    <value>The payment service did not respond correctly. Please try again later.</value>
+  </data>
+  <data name="RequestFailed" xml:space="preserve">
+    <value>Request failed</value>
+  </data>
+  <data name="RequestFailedDetail" xml:space="preserve">
+    <value>The request cannot be processed.</value>
   </data>
   <data name="OrganizationNotFound" xml:space="preserve">
     <value>Organization not found</value>
@@ -74,6 +107,9 @@
   </data>
   <data name="ManagedByStripe" xml:space="preserve">
     <value>Plan managed by Stripe. Use the billing portal.</value>
+  </data>
+  <data name="SubscriptionRequired" xml:space="preserve">
+    <value>A paid plan requires an active subscription: start one from the billing page.</value>
   </data>
   <data name="BillingNotAvailable" xml:space="preserve">
     <value>Billing not yet available</value>
@@ -140,5 +176,23 @@
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>The uploaded file is not a valid APE (energy performance certificate). The PDF content does not match an official attestato di prestazione energetica. Upload a valid official APE and try again.</value>
+  </data>
+  <data name="LeaseNotFound" xml:space="preserve">
+    <value>Lease not found</value>
+  </data>
+  <data name="ServiceRequestNotFound" xml:space="preserve">
+    <value>Service request not found</value>
+  </data>
+  <data name="PropertySlugTaken" xml:space="preserve">
+    <value>This web address (slug) is already used by another property in your organization.</value>
+  </data>
+  <data name="BookingUpdateInvalid" xml:space="preserve">
+    <value>The booking cannot be changed this way: check the dates, the number of guests and the booking status.</value>
+  </data>
+  <data name="BookingDatesUnavailable" xml:space="preserve">
+    <value>The property is not available for the selected dates.</value>
+  </data>
+  <data name="Auth0RoleSyncFailed" xml:space="preserve">
+    <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
 </root>
