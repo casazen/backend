@@ -42,6 +42,8 @@ public class LeaseWorkflowService(
         if (request.EndDate <= request.StartDate)
             throw new InvalidOperationException("Lease end date must be after start date.");
 
+        EnsureCanoneConcordatoMinimumTerm(request.FiscalRegime, request.StartDate, request.EndDate);
+
         if (request.FiscalRegime == FiscalRegime.CanoneConcordato)
             await EnsureCanoneConcordatoRentIsValidAsync(propertyId, ownerId, request);
 
@@ -90,6 +92,8 @@ public class LeaseWorkflowService(
 
         if (lease.Status != LeaseStatus.Draft)
             throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
+
+        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
 
         await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
 
@@ -166,6 +170,8 @@ public class LeaseWorkflowService(
 
         if (string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath))
             throw new InvalidOperationException("Signed lease PDF must be stored before registration.");
+
+        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
 
         var expectedTos = rliOptions.Value.TosVersion;
         if (!authorization.AttestationAccepted
@@ -288,6 +294,22 @@ public class LeaseWorkflowService(
         {
             throw new InvalidOperationException(
                 "Monthly rent must be within the calculated canone concordato range.");
+        }
+    }
+
+    private static void EnsureCanoneConcordatoMinimumTerm(
+        FiscalRegime fiscalRegime,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        if (fiscalRegime != FiscalRegime.CanoneConcordato)
+            return;
+
+        var minimumEndDate = startDate.Date.AddYears(3).AddDays(-1);
+        if (endDate.Date < minimumEndDate)
+        {
+            throw new InvalidOperationException(
+                "Canone concordato leases must cover at least the initial 3-year term required for contratto tipo 3+2.");
         }
     }
 }
