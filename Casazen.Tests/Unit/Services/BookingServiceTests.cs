@@ -79,8 +79,9 @@ public class BookingServiceTests
         Assert.NotNull(result);
         Assert.Equal(booking.PropertyId, result.PropertyId);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Once);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(booking.PropertyId, 15), Times.Once);
         _mockRepository.Verify(x => x.IsAvailableAsync(
-            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, null), Times.Once);
+            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, 15), Times.Once);
     }
 
     [Fact]
@@ -89,11 +90,28 @@ public class BookingServiceTests
         var propertyId = Guid.NewGuid();
         var checkIn = DateTime.Now.AddDays(10);
         var checkOut = DateTime.Now.AddDays(15);
-        _mockRepository.Setup(x => x.IsAvailableAsync(propertyId, checkIn, checkOut, null)).ReturnsAsync(true);
+        _mockRepository.Setup(x => x.IsAvailableAsync(propertyId, checkIn, checkOut, 15)).ReturnsAsync(true);
 
         var result = await _service.IsPropertyAvailableAsync(propertyId, checkIn, checkOut);
 
         Assert.True(result);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(propertyId, 15), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCalendarAsync_CancelsExpiredPendingDirectBookingsBeforeLoadingCalendar()
+    {
+        var propertyId = Guid.NewGuid();
+        var start = DateTime.UtcNow.Date;
+        var end = start.AddDays(30);
+        _mockRepository.Setup(x => x.GetByDateRangeAsync(propertyId, start, end))
+            .ReturnsAsync([]);
+
+        var result = await _service.GetCalendarAsync(propertyId, start, end);
+
+        Assert.Empty(result);
+        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(propertyId, 15), Times.Once);
+        _mockRepository.Verify(x => x.GetByDateRangeAsync(propertyId, start, end), Times.Once);
     }
 
     [Fact]
