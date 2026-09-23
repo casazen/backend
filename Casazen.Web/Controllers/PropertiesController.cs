@@ -699,7 +699,7 @@ public class PropertiesController(
         if (content is null)
         {
             logger.LogWarning("Stored file missing for document {DocumentId} of property {PropertyId}", docId, id);
-            return NotFound(new { error = "Il file del documento non è disponibile.", code = "document_file_missing" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, StorageProblemCodes.DocumentFileMissing, "DocumentFileMissing");
         }
 
         Response.Headers.CacheControl = "private, no-store";
@@ -730,11 +730,7 @@ public class PropertiesController(
         var signed = await documentService.GetSignedDownloadUrlAsync(access.Document!);
         if (signed is null)
         {
-            return StatusCode(StatusCodes.Status501NotImplemented, new
-            {
-                error = "Lo storage configurato non genera URL firmati: usa il download autenticato.",
-                code = "signed_url_unavailable",
-            });
+            return this.ApiProblem(StatusCodes.Status501NotImplemented, StorageProblemCodes.SignedUrlUnavailable, "SignedUrlUnavailable");
         }
 
         return Ok(new SignedDocumentUrlResponse(signed.Url.ToString(), signed.ExpiresAtUtc));

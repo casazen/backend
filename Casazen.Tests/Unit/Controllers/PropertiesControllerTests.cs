@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -1586,8 +1587,11 @@ public class PropertiesControllerTests
 
         var result = await _controller.DownloadDocument(propertyId, document.Id);
 
-        var notFound = Assert.IsType<NotFoundObjectResult>(result);
-        Assert.Contains("document_file_missing", JsonSerializer.Serialize(notFound.Value));
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        var details = Assert.IsType<ProblemDetails>(problem.Value);
+        Assert.Equal("document_file_missing", details.Extensions["code"]);
+        Assert.False(string.IsNullOrWhiteSpace(details.Detail));
     }
 
     [Fact]
@@ -1638,6 +1642,7 @@ public class PropertiesControllerTests
 
         var status = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status501NotImplemented, status.StatusCode);
+        Assert.Equal("signed_url_unavailable", Assert.IsType<ProblemDetails>(status.Value).Extensions["code"]);
     }
 
     [Fact]
@@ -1746,7 +1751,12 @@ public class PropertiesControllerTests
 
         _controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+            HttpContext = new DefaultHttpContext
+            {
+                User = claimsPrincipal,
+                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+            }
         };
     }
 
