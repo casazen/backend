@@ -27,7 +27,7 @@ API errors:
 
 ## Data migration `NormalizeCinCodes`
 
-EF migration `20260923230539_NormalizeCinCodes`, data only (no schema change). It runs with the other migrations
+EF migration `20260923233621_NormalizeCinCodes`, data only (no schema change). It runs with the other migrations
 when the backend starts on Railway; no manual step is needed.
 
 - Every non-null `Properties.CinCode` is rewritten in normalized form; a value that becomes empty (`'  '`, `'-'`) becomes `NULL`.
