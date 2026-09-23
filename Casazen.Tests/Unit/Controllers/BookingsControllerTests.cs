@@ -268,7 +268,7 @@ public class BookingsControllerTests
                 BasePrice = 450m,
                 TouristTax = 12m,
                 TotalPrice = 462m,
-                Status = BookingStatus.Pending,
+                Status = BookingStatus.Confirmed,
                 Source = BookingSource.Direct,
             });
 
@@ -278,7 +278,10 @@ public class BookingsControllerTests
         var booking = Assert.IsType<BookingResponseDto>(created.Value);
         Assert.Equal(PropertyId, booking.PropertyId);
         Assert.Equal(462m, booking.TotalPrice);
+        Assert.Equal("Confirmed", booking.Status);
         Assert.Equal("mario.rossi@example.com", booking.Guest.Email);
+        _mockBookingService.Verify(b => b.CreateBookingAsync(
+            It.Is<Booking>(created => created.Status == BookingStatus.Confirmed)), Times.Once);
     }
 
     [Fact]

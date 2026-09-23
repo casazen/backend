@@ -636,6 +636,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
+            new RolePermission { RoleId = 2, PermissionKey = "property.read" },
+            new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.create" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.sign" },

@@ -9,6 +9,7 @@ namespace Casazen.Infrastructure.Services;
 
 public class CedolareAdvisoryService(
     ILeaseContractRepository leases,
+    IHighTensionAreaComuneRepository ataComuni,
     IOptions<CedolareAdvisoryOptions> options) : ICedolareAdvisoryService
 {
     public async Task<CedolareAdvisoryResult?> EvaluateAsync(
@@ -20,9 +21,7 @@ public class CedolareAdvisoryService(
 
         var cfg = options.Value;
         var annual = lease.MonthlyRent * 12m;
-        var cedolareRate = lease.FiscalRegime == FiscalRegime.CanoneConcordato
-            ? cfg.CanoneConcordatoRate
-            : cfg.CedolareSeccaRate;
+        var cedolareRate = await SelectCedolareRateAsync(lease, cfg, cancellationToken);
 
         return new CedolareAdvisoryResult(
             lease.FiscalRegime,
@@ -34,5 +33,19 @@ public class CedolareAdvisoryService(
             cfg.BolloEur,
             cfg.OrdinaryIrpefNote,
             cfg.Disclaimer);
+    }
+
+    private async Task<decimal> SelectCedolareRateAsync(
+        LeaseContract lease,
+        CedolareAdvisoryOptions cfg,
+        CancellationToken cancellationToken)
+    {
+        if (lease.FiscalRegime != FiscalRegime.CanoneConcordato)
+            return cfg.CedolareSeccaRate;
+
+        var ata = await ataComuni.GetByComuneAsync(lease.Property.City, cancellationToken);
+        return ata is { VerifiedDirectly: true }
+            ? cfg.CanoneConcordatoRate
+            : cfg.CedolareSeccaRate;
     }
 }

@@ -26,7 +26,7 @@ public class CedolareAdvisoryServiceTests
             OrdinaryIrpefNote = "IRPEF note",
         });
         var lease = Lease(FiscalRegime.CedolareSecca, 1000m);
-        var sut = new CedolareAdvisoryService(Repo(lease), options);
+        var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(), options);
 
         var result = await sut.EvaluateAsync(lease.Id, OwnerId);
 
@@ -39,7 +39,7 @@ public class CedolareAdvisoryServiceTests
     }
 
     [Fact]
-    public async Task Evaluate_CanoneConcordato_UsesReducedRateFromConfig()
+    public async Task Evaluate_CanoneConcordato_WhenAtaVerified_UsesReducedRateFromConfig()
     {
         var options = Options.Create(new CedolareAdvisoryOptions
         {
@@ -50,13 +50,34 @@ public class CedolareAdvisoryServiceTests
             Disclaimer = "Informativa, non consulenza fiscale.",
         });
         var lease = Lease(FiscalRegime.CanoneConcordato, 500m);
-        var sut = new CedolareAdvisoryService(Repo(lease), options);
+        var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(verifiedDirectly: true), options);
 
         var result = await sut.EvaluateAsync(lease.Id, OwnerId);
 
         Assert.NotNull(result);
         Assert.Equal(0.10m, result.CedolareRate);
         Assert.Equal(600.00m, result.CedolareEstimateEur);
+    }
+
+    [Fact]
+    public async Task Evaluate_CanoneConcordato_WhenAtaNotVerified_UsesStandardCedolareRate()
+    {
+        var options = Options.Create(new CedolareAdvisoryOptions
+        {
+            CedolareSeccaRate = 0.21m,
+            CanoneConcordatoRate = 0.10m,
+            RegistroRate = 0.02m,
+            BolloEur = 16m,
+            Disclaimer = "Informativa, non consulenza fiscale.",
+        });
+        var lease = Lease(FiscalRegime.CanoneConcordato, 500m);
+        var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(verifiedDirectly: false), options);
+
+        var result = await sut.EvaluateAsync(lease.Id, OwnerId);
+
+        Assert.NotNull(result);
+        Assert.Equal(0.21m, result.CedolareRate);
+        Assert.Equal(1260.00m, result.CedolareEstimateEur);
     }
 
     [Fact]
@@ -72,7 +93,7 @@ public class CedolareAdvisoryServiceTests
             OrdinaryIrpefNote = "IRPEF a scaglioni",
         });
         var lease = Lease(FiscalRegime.RegimeOrdinario, 800m);
-        var sut = new CedolareAdvisoryService(Repo(lease), options);
+        var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(), options);
 
         var result = await sut.EvaluateAsync(lease.Id, OwnerId);
 
@@ -89,7 +110,7 @@ public class CedolareAdvisoryServiceTests
     {
         var lease = Lease(FiscalRegime.CedolareSecca, 1000m);
         var sut = new CedolareAdvisoryService(
-            Repo(lease), Options.Create(new CedolareAdvisoryOptions()));
+            Repo(lease), AtaRepo(), Options.Create(new CedolareAdvisoryOptions()));
 
         Assert.Null(await sut.EvaluateAsync(lease.Id, "auth0|other"));
     }
@@ -98,6 +119,24 @@ public class CedolareAdvisoryServiceTests
     {
         var mock = new Mock<ILeaseContractRepository>();
         mock.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        return mock.Object;
+    }
+
+    private static IHighTensionAreaComuneRepository AtaRepo(bool? verifiedDirectly = null)
+    {
+        var mock = new Mock<IHighTensionAreaComuneRepository>();
+        if (verifiedDirectly.HasValue)
+        {
+            mock.Setup(r => r.GetByComuneAsync("Milano", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new HighTensionAreaComune
+                {
+                    Comune = "Milano",
+                    Region = "Lombardia",
+                    SourceReference = "test",
+                    VerifiedDirectly = verifiedDirectly.Value,
+                });
+        }
+
         return mock.Object;
     }
 

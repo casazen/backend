@@ -1999,6 +1999,16 @@ namespace Casazen.Infrastructure.Migrations
                         new
                         {
                             RoleId = 2,
+                            PermissionKey = "property.read"
+                        },
+                        new
+                        {
+                            RoleId = 2,
+                            PermissionKey = "property.write"
+                        },
+                        new
+                        {
+                            RoleId = 2,
                             PermissionKey = "lease.read"
                         },
                         new

@@ -142,7 +142,7 @@ public class BookingsController(
             CheckOutDate = checkOut,
             NumberOfGuests = request.NumberOfGuests,
             SpecialRequests = request.SpecialRequests ?? string.Empty,
-            Status = BookingStatus.Pending,
+            Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
             BasePrice = basePrice,
             CreatedAt = DateTime.UtcNow,
