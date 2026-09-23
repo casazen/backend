@@ -36,6 +36,14 @@ public interface IEntitlementService
     Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Effective plan tier of an already loaded org, the one every gate and public flag must use (#274):
+    /// the stored tier only while a Stripe subscription pays for it (active, trialing, or past due within
+    /// the grace period); Starter otherwise. Fail-closed: no subscription, canceled, past due beyond grace,
+    /// and Stripe states the platform does not map (incomplete, paused…) all resolve to Starter.
+    /// </summary>
+    PlanTier ResolveEffectiveTier(Org org);
+
+    /// <summary>
     /// <c>true</c> when the org's effective plan tier (Pro or Scale) unlocks custom-domain
     /// booking sites (#298 / US-024). Starter — and Pro/Scale downgraded to Starter by
     /// <c>ResolveEffectiveTier</c> past-due logic — return <c>false</c>.

@@ -30,16 +30,18 @@ public interface IOrgService
 
     /// <summary>
     /// Ensures the user belongs to an org, creating one on first onboarding if needed.
+    /// A new org always starts on Starter: paid tiers are granted only by a Stripe subscription (#274).
     /// Idempotent: existing orgs are returned unchanged (plan tier is not overwritten).
     /// </summary>
     Task<Org> EnsureOrgForUserAsync(
         string userId,
         string email,
         string displayName,
-        PlanTier planTier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Updates the org plan tier (MVP internal change until Stripe billing ships).</summary>
+    /// <summary>
+    /// Writes the stored plan tier. No entitlement check: callers apply <see cref="PlanChangePolicy"/> first.
+    /// </summary>
     Task<Org?> UpdatePlanTierAsync(
         Guid orgId,
         PlanTier planTier,

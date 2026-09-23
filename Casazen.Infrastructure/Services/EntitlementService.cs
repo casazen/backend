@@ -1,4 +1,5 @@
 using System.Data;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -94,14 +95,20 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         return effectiveTier is PlanTier.Pro or PlanTier.Scale;
     }
 
+    public PlanTier ResolveEffectiveTier(Org org) =>
+        ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
+
+    /// <summary>
+    /// A paid tier needs a subscription paying for it (#274). <see cref="SubscriptionStatus.None"/> covers orgs
+    /// that never subscribed and Stripe states that are not mapped (incomplete, incomplete_expired, paused):
+    /// like canceled, past due beyond grace and any unknown value they fail closed to Starter.
+    /// </summary>
     internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
         status switch
         {
-            SubscriptionStatus.None => storedTier,
             SubscriptionStatus.Active or SubscriptionStatus.Trialing => storedTier,
             SubscriptionStatus.PastDue when !IsPastDueGraceExpired(pastDueSince) => storedTier,
-            SubscriptionStatus.PastDue or SubscriptionStatus.Canceled => PlanTier.Starter,
-            _ => storedTier,
+            _ => PlanTier.Starter,
         };
 
     private bool IsPastDueGraceExpired(DateTime? pastDueSince)

@@ -194,11 +194,11 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
-                sub, "a@b.com", "A B", PlanTier.Pro, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Pro, Name = "A B" });
+                sub, "a@b.com", "A B", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "A B" });
 
         var (result, roles, roleSync) = await _service.CompleteOnboardingAsync(
-            sub, RentalType.ShortTerm, PlanTier.Pro, "a@b.com", "A", "B");
+            sub, RentalType.ShortTerm, "a@b.com", "A", "B");
 
         Assert.Equal(RentalType.ShortTerm, result.RentalType);
         Assert.Equal(UserRole.PropertyOwner, result.Role);
@@ -228,11 +228,11 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
-                sub, It.IsAny<string>(), It.IsAny<string>(), PlanTier.Starter, It.IsAny<CancellationToken>()))
+                sub, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "Bo Th" });
 
         var (_, roles, _) = await _service.CompleteOnboardingAsync(
-            sub, RentalType.Both, PlanTier.Starter, "both@b.com", "Bo", "Th");
+            sub, RentalType.Both, "both@b.com", "Bo", "Th");
 
         Assert.Equal(["PropertyOwner", "LongTermLandlord"], roles);
         _membershipMock.Verify(m => m.GrantAsync(
@@ -264,10 +264,10 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
-                sub, It.IsAny<string>(), It.IsAny<string>(), PlanTier.Starter, It.IsAny<CancellationToken>()))
+                sub, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "Sw" });
 
-        await _service.CompleteOnboardingAsync(sub, RentalType.LongTerm, PlanTier.Starter, "switch@b.com", "Sw", "Itch");
+        await _service.CompleteOnboardingAsync(sub, RentalType.LongTerm, "switch@b.com", "Sw", "Itch");
 
         _membershipMock.Verify(m => m.RevokeAsync(
             sub,
@@ -288,13 +288,13 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
-                sub, It.IsAny<string>(), It.IsAny<string>(), PlanTier.Starter, It.IsAny<CancellationToken>()))
+                sub, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "Do" });
         _auth0Mock.Setup(a => a.AssignRolesAsync(sub, It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode));
 
         var (result, _, roleSync) = await _service.CompleteOnboardingAsync(
-            sub, RentalType.ShortTerm, PlanTier.Starter, "down@b.com", "Do", "Wn");
+            sub, RentalType.ShortTerm, "down@b.com", "Do", "Wn");
 
         Assert.False(roleSync.Succeeded);
         Assert.Equal(Auth0SyncResult.TokenFailedCode, roleSync.ErrorCode);
@@ -320,12 +320,12 @@ public class UserServiceTests
             .Callback<User>(u => { /* capture updated user */ })
             .Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
-                sub, "c@d.com", "C D", PlanTier.Starter, It.IsAny<CancellationToken>()))
+                sub, "c@d.com", "C D", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "C D" });
 
         // Act
         var (result, _, _) = await _service.CompleteOnboardingAsync(
-            sub, RentalType.ShortTerm, PlanTier.Starter, "c@d.com", "C", "D");
+            sub, RentalType.ShortTerm, "c@d.com", "C", "D");
 
         var afterCall = DateTime.UtcNow;
 
@@ -346,12 +346,12 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
-                sub, "e@f.com", "E F", PlanTier.Starter, It.IsAny<CancellationToken>()))
+                sub, "e@f.com", "E F", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "E F" });
 
         // Act
         var (result, _, _) = await _service.CompleteOnboardingAsync(
-            sub, RentalType.ShortTerm, PlanTier.Starter, "e@f.com", "E", "F");
+            sub, RentalType.ShortTerm, "e@f.com", "E", "F");
 
         // Assert
         Assert.Equal(existingTimestamp, result.OnboardingCompletedAt);
