@@ -354,7 +354,9 @@ public class BookingsControllerTests
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
         _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
-        _mockGuestService.Setup(g => g.GetGuestByEmailAsync(existingGuest.Email)).ReturnsAsync(existingGuest);
+        _mockGuestService
+            .Setup(g => g.GetGuestByEmailAsync(It.IsAny<Guid>(), existingGuest.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingGuest);
         _mockGuestService.Setup(g => g.CreateGuestSnapshotAsync(It.IsAny<Guest>())).ReturnsAsync(snapshotGuest);
         _mockBookingService.Setup(b => b.IsPropertyAvailableAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(true);
@@ -383,9 +385,11 @@ public class BookingsControllerTests
         Assert.Equal("Mario", booking.Guest.FirstName);
         Assert.Equal("+393331234567", booking.Guest.Phone);
         Assert.Equal("Italia", booking.Guest.Country);
-        _mockGuestService.Verify(g => g.GetGuestByEmailAsync(It.IsAny<string>()), Times.Never);
+        _mockGuestService.Verify(
+            g => g.GetGuestByEmailAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         _mockGuestService.Verify(g => g.CreateGuestSnapshotAsync(
-            It.Is<Guest>(guest => guest.Email == existingGuest.Email && guest.FirstName == "Mario")),
+            It.Is<Guest>(guest => guest.Email == existingGuest.Email && guest.FirstName == "Mario" && guest.OrgId == OrgId)),
             Times.Once);
     }
 

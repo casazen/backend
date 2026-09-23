@@ -96,6 +96,12 @@
   <data name="GuestNotFound" xml:space="preserve">
     <value>Ospite non trovato</value>
   </data>
+  <data name="GuestEmailAlreadyExists" xml:space="preserve">
+    <value>Esiste già un ospite con questa email.</value>
+  </data>
+  <data name="GuestHasOpenBookings" xml:space="preserve">
+    <value>L'ospite ha prenotazioni in corso o future: non può essere eliminato finché non sono concluse o annullate.</value>
+  </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Profilo fornitore non trovato</value>
   </data>

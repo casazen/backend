@@ -10,6 +10,13 @@ public class Guest
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// Tenant key (TN-1). A guest record belongs to exactly one org: the org of the booking it was
+    /// created for, or the org that created it from the guest list. Never client-supplied.
+    /// </summary>
+    public Guid OrgId { get; set; }
+    public virtual Org Org { get; set; } = null!;
+
     [Required, MaxLength(100)]
     public string FirstName { get; set; } = string.Empty;
 
@@ -123,8 +130,10 @@ public class Guest
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
 
+    /// <summary>Copy of this guest for another booking of the same org (the copy keeps <see cref="OrgId"/>).</summary>
     public Guest CreateSnapshot(DateTime now) => new()
     {
+        OrgId = OrgId,
         FirstName = FirstName,
         LastName = LastName,
         Email = Email,

@@ -179,6 +179,7 @@ public sealed class LegacyFileMigrationServiceTests : IAsyncLifetime
         };
         var guest = new Guest
         {
+            OrgId = org.Id,
             FirstName = "Mario",
             LastName = "Rossi",
             Email = $"{Guid.NewGuid():N}@example.com",

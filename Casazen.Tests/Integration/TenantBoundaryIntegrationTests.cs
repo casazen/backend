@@ -141,6 +141,7 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         var existingGuest = new Guest
         {
+            OrgId = propertyA.OrgId,
             FirstName = "Alice",
             LastName = "Private",
             Email = "shared-guest@example.com",

@@ -434,6 +434,7 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.OrgId);
         modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
         modelBuilder.Entity<User>().HasIndex(u => u.OrgId);
+        modelBuilder.Entity<Guest>().HasIndex(g => g.OrgId);
 
         // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
         // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
@@ -472,6 +473,12 @@ public class AppDbContext(
         modelBuilder.Entity<User>()
             .HasOne(u => u.Org).WithMany().HasForeignKey(u => u.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
+        // TN-1: a guest belongs to exactly one org. No unique (OrgId, lower(Email)) index: host and
+        // direct bookings store one guest snapshot per booking (#431), so one org legitimately holds
+        // several rows with the same e-mail.
+        modelBuilder.Entity<Guest>()
+            .HasOne(g => g.Org).WithMany().HasForeignKey(g => g.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Global tenant query filter (AC7): every read of a tenant-scoped table is scoped
         // to the caller's OrgId. Fail-closed when the caller has no org; disabled for
@@ -483,6 +490,7 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyFiscalYear>().HasQueryFilter(y => !_tenant.FilterEnabled || y.OrgId == _tenant.OrgId);
         modelBuilder.Entity<RentSchedule>().HasQueryFilter(s => !_tenant.FilterEnabled || s.OrgId == _tenant.OrgId);
         modelBuilder.Entity<RentLedgerEntry>().HasQueryFilter(e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
+        modelBuilder.Entity<Guest>().HasQueryFilter(g => !_tenant.FilterEnabled || g.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>()
             .HasKey(c => c.Key);
