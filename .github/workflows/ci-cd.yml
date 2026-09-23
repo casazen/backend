@@ -11,6 +11,26 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
 
+    # Integration tests run on real PostgreSQL (FD-04): each WebApplicationFactory creates its own
+    # it_<guid> database on this service, applies every EF migration and drops it afterwards.
+    # Throw-away service container: the password below is not a secret.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Username=postgres;Password=postgres;Include Error Detail=true
+
     steps:
       - uses: actions/checkout@v4
 

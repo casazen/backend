@@ -2,60 +2,38 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
+using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// RLI registration reservation semantics on real PostgreSQL (unique index + conditional claim).
-/// Uses TEST_POSTGRES_CONNECTION when set (a throw-away database is created and dropped),
-/// otherwise a Testcontainers PostgreSQL instance.
+/// Runs on a throw-away, fully migrated database from <see cref="PostgresTestServer"/>
+/// (<c>TEST_POSTGRES_CONNECTION</c> or Testcontainers); skipped with a reason only when no
+/// PostgreSQL is available on a local run.
 /// </summary>
 public class LeaseRegistrationRepositoryPostgresTests : IAsyncLifetime
 {
-    private PostgreSqlContainer? _container;
-    private string _connectionString = string.Empty;
+    private PostgresTestDatabase? _database;
 
     public async Task InitializeAsync()
     {
-        var baseConnection = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(baseConnection))
-        {
-            _container = new PostgreSqlBuilder().WithImage("postgres:16-alpine").Build();
-            await _container.StartAsync();
-            _connectionString = _container.GetConnectionString();
-        }
-        else
-        {
-            _connectionString = new NpgsqlConnectionStringBuilder(baseConnection)
-            {
-                Database = $"wt_lease_reg_{Guid.NewGuid():N}",
-            }.ConnectionString;
-        }
-
+        _database = await PostgresTestDatabase.CreateAsync();
         await using var db = NewContext();
-        await db.Database.EnsureCreatedAsync();
+        await db.Database.MigrateAsync();
     }
 
     public async Task DisposeAsync()
     {
-        if (_container is not null)
-        {
-            await _container.DisposeAsync();
-            return;
-        }
-
-        await using var db = NewContext();
-        await db.Database.EnsureDeletedAsync();
+        if (_database is not null)
+            await _database.DisposeAsync();
     }
 
-    private AppDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
+    private AppDbContext NewContext() => _database!.CreateContext();
 
-    [Fact]
+    [PostgresFact]
     public async Task TryReserveSubmissionAsync_WhenLeaseAlreadyHasRegistration_ReturnsFalse()
     {
         var leaseId = await SeedSignedLeaseAsync();
@@ -75,7 +53,7 @@ public class LeaseRegistrationRepositoryPostgresTests : IAsyncLifetime
         Assert.Equal(1, await second.LeaseRegistrations.CountAsync(r => r.LeaseContractId == leaseId));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task TryReserveRetryAsync_WhenTwoRequestsRetrySameFailedRegistration_OnlyOneClaims()
     {
         var leaseId = await SeedSignedLeaseAsync();

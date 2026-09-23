@@ -38,7 +38,7 @@ graph TD
 |---|---|---|---|
 | Language | C# | 13 | Nullable reference types enabled |
 | Framework | ASP.NET Core | 10.0 | Minimal hosting model in `Program.cs` |
-| Database | PostgreSQL (Supabase) | — | Npgsql EF Core; in-memory DB used in CI / tests |
+| Database | PostgreSQL (Supabase) | — | Npgsql EF Core; integration tests run on real PostgreSQL (see Testing) |
 | ORM | Entity Framework Core | 10.x | Code-first, migrations in `Casazen.Infrastructure/Migrations/` |
 | Authentication | Auth0 + JWT Bearer | — | `sub` claim used as user ID |
 | Background jobs | Hangfire | 1.8.x | PostgreSQL storage; dashboard at `/hangfire` |
@@ -470,7 +470,7 @@ erDiagram
 ## Infrastructure
 
 ### Database
-- **Type**: PostgreSQL via Supabase / Npgsql (in-memory fallback for tests / CI when no connection string)
+- **Type**: PostgreSQL via Supabase / Npgsql (the app falls back to EF InMemory only when no connection string is set)
 - **Connection**: Connection string key `DefaultConnection` in `appsettings.json`
 - **Migrations**: EF Core code-first migrations in `Casazen.Infrastructure/Migrations/`; apply with `dotnet ef database update`
 
@@ -516,10 +516,23 @@ erDiagram
 | Unit tests | xUnit | `Casazen.Tests/Unit/` | 80% for services, 100% for critical paths |
 | Integration tests | xUnit | `Casazen.Tests/Integration/` | Critical API paths |
 
+### Integration test database
+
+Integration tests run on **real PostgreSQL**, so FKs, unique indexes, `timestamptz` and transactions behave as in production.
+
+- `CasazenWebApplicationFactory` (and derived factories such as `LeaseFlowWebApplicationFactory`) creates a dedicated database `it_<guid>` per factory instance, applies **all** EF migrations with `Database.Migrate()` and drops it on dispose. Test classes sharing a class fixture share that database: seed data idempotently or with unique keys.
+- Server resolution (`Casazen.Tests/Integration/Postgres/PostgresTestServer.cs`):
+  1. `TEST_POSTGRES_CONNECTION` (e.g. `Host=localhost;Port=5432;Username=postgres;Password=<local password>`), used by CI with a `postgres:16` service;
+  2. otherwise a Testcontainers `postgres:16-alpine` container, when Docker is reachable;
+  3. otherwise, on a local run only, EF InMemory with a warning on stderr, and tests marked `[PostgresFact]` (migrations, backfill, RLI reservation) are skipped with the reason. On CI (`CI`/`GITHUB_ACTIONS` set) a missing PostgreSQL fails the run.
+- `PostgresMigrationTests` applies every migration to an empty database and asserts `HasPendingModelChanges() == false`: add a migration whenever the model changes.
+- A test that fails because of a known product bug owned by another task is marked `Skip = "<task id>: <reason>"`.
+
 ### Running tests
 
 ```bash
-# Run all tests
+# Run all tests (integration tests on a local PostgreSQL)
+export TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=<local password>"
 dotnet test
 
 # Run specific test class
