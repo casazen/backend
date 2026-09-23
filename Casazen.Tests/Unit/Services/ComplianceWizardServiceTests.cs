@@ -164,6 +164,56 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
+    public async Task CompleteCheckoutWizard_WhenConfirmedBookingReachedCheckoutDay_CompletesBooking()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_WhenConfirmedBookingReachedCheckoutDay_CompletesBooking));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        property.ComplianceStatus = PropertyComplianceStatus.Active;
+        var guest = new Guest
+        {
+            FirstName = "Luigi",
+            LastName = "Verdi",
+            Email = $"luigi-{Guid.NewGuid():N}@test.com",
+            // Retention is only ever extended (#429): start below checkout + 7y so the wizard's
+            // checkout-anchored horizon is observable regardless of the entity's UtcNow default.
+            DataRetentionUntil = DateTime.UtcNow.Date.AddYears(1),
+        };
+        db.Guests.Add(guest);
+
+        var booking = new Booking
+        {
+            PropertyId = property.Id,
+            OrgId = property.OrgId,
+            GuestId = guest.Id,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
+            CheckOutDate = DateTime.UtcNow.Date,
+            Status = BookingStatus.Confirmed,
+            NumberOfGuests = 2,
+            BasePrice = 100,
+            TouristTax = 0,
+            TotalPrice = 100,
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        await service.StartCheckoutWizardAsync(booking.Id);
+        var (updated, propertyReady) = await service.CompleteCheckoutWizardAsync(
+            booking.Id,
+            property.OwnerId,
+            ["PropertyOwner"],
+            new CompleteCheckoutWizardInput(
+                ConfirmDeparture: true,
+                SupplierOrgId: null,
+                ServiceNotes: null,
+                ServiceCategory: null));
+
+        Assert.True(propertyReady);
+        Assert.Equal(BookingStatus.CheckedOut, updated.Status);
+        Assert.Equal(booking.CheckOutDate.AddYears(7), updated.Guest.DataRetentionUntil);
+    }
+
+    [Fact]
     public async Task CompleteCheckoutWizard_SharedGuest_KeepsRetentionForLatestBooking()
     {
         await using var db = CreateDb(nameof(CompleteCheckoutWizard_SharedGuest_KeepsRetentionForLatestBooking));
