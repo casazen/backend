@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -208,6 +209,20 @@ public class ServiceRequestServiceTests
 
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.NotNull(paid.PaidAt);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_UnknownRequest_ThrowsNotFoundExceptionWithCode()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, _, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.MarkPaidAsync(Guid.NewGuid(), hostOrgId, TestAuthHandler.DefaultUserId));
+
+        Assert.Equal("service_request_not_found", ex.Code);
+        Assert.Equal("ServiceRequestNotFound", ex.MessageKey);
     }
 
     [Fact]

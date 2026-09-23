@@ -2,6 +2,7 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -41,7 +42,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
             if (await repository.SlugExistsInOrgAsync(property.OrgId, property.Slug, property.Id))
-                throw new InvalidOperationException("Slug already in use within this organization.");
+                throw new DomainConflictException("duplicate_property_slug", "PropertySlugTaken");
         }
 
         return await repository.UpdateAsync(property);
