@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -58,51 +59,6 @@ public class ServiceRequestServiceTests
 
         Assert.Equal(ServiceRequestStatus.Richiesto, result.Status);
         Assert.Equal("cleaning", result.Category);
-    }
-
-    [Fact]
-    public async Task CreateAsync_WhenSameOrgUserCannotAccessProperty_ThrowsUnauthorized()
-    {
-        await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
-        var service = CreateService(db);
-
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId,
-                "auth0|other-org-member",
-                propertyId,
-                null,
-                supplierOrgId,
-                "cleaning",
-                ServiceRequestUrgency.Normal,
-                null,
-                false,
-                UserRoles: [])));
-
-        Assert.Empty(db.ServiceRequests);
-    }
-
-    [Fact]
-    public async Task CreateAsync_WhenPropertyManagerAccessesProperty_CreatesRichiesto()
-    {
-        await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
-        var service = CreateService(db);
-
-        var result = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId,
-            "auth0|manager",
-            propertyId,
-            null,
-            supplierOrgId,
-            "cleaning",
-            ServiceRequestUrgency.Normal,
-            null,
-            false,
-            UserRoles: ["PropertyManager"]));
-
-        Assert.Equal(ServiceRequestStatus.Richiesto, result.Status);
     }
 
     [Fact]
@@ -205,7 +161,7 @@ public class ServiceRequestServiceTests
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
         await service.CompleteAsync(created.Id, supplierOrgId, null);
 
-        var paid = await service.MarkPaidAsync(created.Id, hostOrgId, TestAuthHandler.DefaultUserId);
+        var paid = await service.MarkPaidAsync(created.Id, hostOrgId);
 
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.NotNull(paid.PaidAt);
@@ -219,10 +175,72 @@ public class ServiceRequestServiceTests
         var service = CreateService(db);
 
         var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
-            service.MarkPaidAsync(Guid.NewGuid(), hostOrgId, TestAuthHandler.DefaultUserId));
+            service.MarkPaidAsync(Guid.NewGuid(), hostOrgId));
 
         Assert.Equal("service_request_not_found", ex.Code);
         Assert.Equal("ServiceRequestNotFound", ex.MessageKey);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_RequestOfAnotherOrg_ThrowsNotFoundAndLeavesItUnpaid()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+        await service.CompleteAsync(created.Id, supplierOrgId, null);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => service.MarkPaidAsync(created.Id, Guid.NewGuid()));
+
+        Assert.Equal(ServiceRequestStatus.Completato, (await db.ServiceRequests.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task ListForHostAsync_OwnerScope_ReturnsOnlyRequestsOnOwnedProperties()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var otherProperty = new Property
+        {
+            OwnerId = "auth0|colleague",
+            OrgId = hostOrgId,
+            Name = "Colleague Property",
+            Address = "Via Test 2",
+            City = "H501",
+            PostalCode = "00100",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 80m,
+            CinCode = "IT058091C27G5FFZDZ",
+        };
+        db.Properties.Add(otherProperty);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var own = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        var colleagues = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, "auth0|colleague", otherProperty.Id, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+
+        var (ownerItems, ownerTotal) = await service.ListForHostAsync(
+            new HostScope(hostOrgId, TestAuthHandler.DefaultUserId), null, null, null, 1, 20);
+        var (orgItems, orgTotal) = await service.ListForHostAsync(
+            new HostScope(hostOrgId, null), null, null, null, 1, 20);
+        var (otherOrgItems, _) = await service.ListForHostAsync(
+            new HostScope(Guid.NewGuid(), null), null, null, null, 1, 20);
+
+        Assert.Equal(own.Id, Assert.Single(ownerItems).Id);
+        Assert.Equal(1, ownerTotal);
+        Assert.Equal(2, orgTotal);
+        Assert.Contains(orgItems, r => r.Id == colleagues.Id);
+        Assert.Empty(otherOrgItems);
+        Assert.Null(await service.GetByIdForHostAsync(colleagues.Id, new HostScope(hostOrgId, TestAuthHandler.DefaultUserId)));
+        Assert.NotNull(await service.GetByIdForHostAsync(colleagues.Id, new HostScope(hostOrgId, null)));
     }
 
     [Fact]
@@ -243,9 +261,7 @@ public class ServiceRequestServiceTests
         await db.SaveChangesAsync();
 
         var (items, total) = await service.ListForHostAsync(
-            hostOrgId,
-            TestAuthHandler.DefaultUserId,
-            ["PropertyOwner"],
+            new HostScope(hostOrgId, TestAuthHandler.DefaultUserId),
             status: null,
             propertyId: null,
             bookingId,
@@ -401,12 +417,10 @@ public class ServiceRequestServiceTests
         IPushNotificationService? push = null)
     {
         var repo = new ServiceRequestRepository(db);
-        var propertyAuth = new PropertyAuthorizationService(new PropertyRepository(db));
 
         return new ServiceRequestService(
             db,
             repo,
-            propertyAuth,
             queue ?? new RecordingEmailQueue(),
             EmailTestHelpers.Links(publicSiteBaseUrl),
             push ?? Mock.Of<IPushNotificationService>(),

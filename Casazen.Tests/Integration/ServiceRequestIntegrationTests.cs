@@ -135,7 +135,8 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
             category = "cleaning",
         });
 
-        Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.BadRequest);
+        // TN-3: another org's property is not visible to the caller (tenant filter), so it answers 404.
+        Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound);
     }
 
     [Fact]

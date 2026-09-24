@@ -64,6 +64,33 @@ Anonymous / public (non-exhaustive highlights):
 - All `/api/public/*`, `/api/checkin/*`, `/api/legal/*`, `/sitemap-compliance.xml`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
+### Authorization (TN-3)
+
+Every action is either `[AllowAnonymous]` or protected by a policy from `Casazen.Web/Authorization/CasazenPolicies.cs`
+(the complete set registered at startup; `EndpointAuthorizationArchitectureTests` fails for a policy used but not
+registered, registered but unused, or an action with neither).
+
+| Policy (constant) | Who passes |
+|---|---|
+| `Authenticated` | any signed-in user, suppliers included: only user-scoped endpoints, each listed with its reason in the test allow-list |
+| `AdminOnly` | JWT role `Admin` |
+| `Supplier` (`RequireSupplier`) | JWT role `Supplier` (backfilled from the DB supplier link) |
+| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator: plan, billing, domain |
+| `PropertyRead` / `PropertyWrite` | host of either rental context (`property.*` is shared by short-rent and long-rent) |
+| `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
+| `LeaseRead/Create/Sign/Register` | long-rent context permission |
+
+Context permissions come from the DB memberships (`UserContextMemberships` → `Roles` → `RolePermissions`) with the JWT
+roles as fallback (`ContextAuthorizationService`). The class carries the read permission, writing actions add the write one.
+
+The policy says what kind of operation a user may do; the row itself is checked with
+`IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `BookingOperations`,
+`GuestOperations`, `PaymentOperations`, `OtaOperations`): `HostResourceAuthorizationHandler` grants it only when the row
+is in the caller's org, the caller holds the permission and, for property-bound rows, owns the property or has an
+org-wide role (`HostRoles.OrgWide`: `PropertyManager`, `Admin`). Lists use `User.GetHostScope(orgId)` → `HostScope`,
+filtered in SQL. Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
+the caller's org answers 404; a visible row the caller may not use answers 403.
+
 There are **41** controller source files under `Casazen.Web/Controllers/` (plus nested `PublicCheckInController` in `SupplierJobController.cs`).
 
 ### Endpoints

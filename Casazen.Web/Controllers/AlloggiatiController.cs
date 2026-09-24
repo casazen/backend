@@ -9,7 +9,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/alloggiati")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class AlloggiatiController(
     IAlloggiatiWebService alloggiatiWebService,
     IBookingService bookingService,

@@ -36,10 +36,13 @@ public interface IComplianceWizardService
         Guid bookingId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Completes the checkout of a booking the caller has already been authorized on (TN-3); the optional
+    /// service request is created on behalf of <paramref name="userId"/> without further role checks.
+    /// </summary>
     Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
-        IEnumerable<string> userRoles,
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default);
 }

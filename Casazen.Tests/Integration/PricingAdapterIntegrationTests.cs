@@ -179,11 +179,14 @@ public class PricingAdapterIntegrationTests : IClassFixture<CasazenWebApplicatio
     public async Task AC8_CrossOrgUser_OnAllEndpoints_ReturnsNotFound()
     {
         // After US-004 (#202) the EF global tenant filter scopes property reads to the caller's
-        // org. A user from another org (here: one with no org at all) cannot see the property,
-        // so every property-scoped endpoint returns 404 — never another org's row, and never 403
-        // (which would leak the property's existence). This is the tenant-isolation contract.
+        // org. A host of another org cannot see the property, so every property-scoped endpoint
+        // returns 404 — never another org's row, and never 403 (which would leak the property's
+        // existence). This is the tenant-isolation contract. A caller without any host context is
+        // stopped earlier by the property.* policy (403, independent of the property: TN-3).
         var property = await _factory.SeedPropertyAsync(ownerId: TestAuthHandler.DefaultUserId);
-        var otherClient = _factory.CreateAuthenticatedClient(userId: "auth0|other-user-456");
+        var otherHost = $"auth0|other-host-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(otherHost);
+        var otherClient = _factory.CreateAuthenticatedClient(userId: otherHost, roles: "PropertyOwner");
         var propertyId = property.Id;
 
         var save = await otherClient.PostAsJsonAsync($"/api/pricing-adapter/config/{propertyId}", ConfigRequest());

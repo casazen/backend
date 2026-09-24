@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
@@ -24,7 +26,7 @@ public class SuppliersController(
     IUserAuthorizationCache authorizationCache,
     AppDbContext db,
     IOrgContextResolver orgContextResolver,
-    IPropertyAuthorizationService propertyAuthorization,
+    IAuthorizationService authorizationService,
     ILogger<SuppliersController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -47,9 +49,7 @@ public class SuppliersController(
             // [AllowAnonymous] but the JWT may be valid if the user logged in via Auth0
             // before submitting the registration form). Linking User.OrgId at registration
             // time prevents duplicate auto-provisioning on first supplier endpoint access.
-            var userId = User.FindFirstValue("sub")
-                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+            var userId = User.GetUserId();
 
             if (userId is not null)
             {
@@ -109,10 +109,11 @@ public class SuppliersController(
             StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Returns <c>Active</c> suppliers for a comune or property. Available to hosts (PropertyOwner role).
+    /// Returns <c>Active</c> suppliers for a comune or property. Hosts only (<c>property.read</c>, TN-3); with
+    /// <c>propertyId</c> the property is authorized as a <see cref="HostResource"/>.
     /// </summary>
     [HttpGet]
-    [Authorize]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(PagedResultDto<SupplierPickerDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -127,8 +128,7 @@ public class SuppliersController(
         if (query.PropertyId is Guid pid)
         {
             var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-            var userId = GetUserId();
-            if (orgId is null || userId is null)
+            if (orgId is null)
                 return Unauthorized();
 
             var property = await db.Properties
@@ -138,8 +138,7 @@ public class SuppliersController(
             if (property is null)
                 return NotFound(new { error = "Proprietà non trovata." });
 
-            if (!await propertyAuthorization.CanAccessPropertyAsync(
-                    userId, pid, ["PropertyOwner", "Admin", "PropertyManager"]))
+            if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
                 return Forbid();
 
             resolvedComune = property.City;
@@ -170,9 +169,4 @@ public class SuppliersController(
             PageSize = suppliers.Count,
         });
     }
-
-    private string? GetUserId() =>
-        User.FindFirstValue("sub")
-        ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
 }
