@@ -129,8 +129,9 @@ Set per environment (Railway → environment → service → **Variables**):
 - The values equal the names derived from the SearchPath, so setting them moves nothing; they make the choice
   visible and keep it stable if the connection string changes.
 - Never use the same value in two environments, and never `hangfire` with a SearchPath (startup refuses it).
-- Both environments run with `ASPNETCORE_ENVIRONMENT=Production`: without a SearchPath and without
-  `Hangfire__Schema` the service does not start (`Hangfire schema is ambiguous…`).
+- Production runs with `ASPNETCORE_ENVIRONMENT=Production`: without a SearchPath and without `Hangfire__Schema` the
+  service does not start (`Hangfire schema is ambiguous…`). The test environment runs as `Staging` (PL-11): there the
+  fallback would be `hangfire_staging`, so keep `Hangfire__Schema=hangfire_casazen_test` set.
 - **Railway PR environments** copy the variables of their base environment. If they are enabled, give them their
   own `Hangfire__Schema` (e.g. `hangfire_casazen_pr`) — better, their own database — otherwise an unreviewed PR
   build consumes the test queue.

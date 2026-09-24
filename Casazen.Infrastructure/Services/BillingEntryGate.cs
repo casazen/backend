@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Payments;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -16,12 +17,11 @@ public class BillingEntryGate(
         if (environment.IsDevelopment() || environment.IsEnvironment("Testing"))
             return Task.CompletedTask;
 
-        var secretKey = configuration["Stripe:SecretKey"];
-        if (!string.IsNullOrWhiteSpace(secretKey) &&
-            secretKey.StartsWith("sk_test", StringComparison.OrdinalIgnoreCase))
+        // Test-mode keys (sk_test_ / rk_test_) charge nobody: the Railway test environment runs as Staging and tests the
+        // billing without the invoicing prerequisites (PL-11, A1-31). A test key never reaches Production (the startup
+        // refuses it, BillingConfiguration): the gate stays closed there anyway.
+        if (StripeKeyModes.Of(configuration["Stripe:SecretKey"]) == StripeKeyMode.Test)
         {
-            // Fail-closed in production: a test key in a non-dev environment means
-            // SDI/VAT prerequisites cannot have been met with a real Stripe account.
             if (environment.IsProduction())
                 throw new BillingGateClosedException();
 

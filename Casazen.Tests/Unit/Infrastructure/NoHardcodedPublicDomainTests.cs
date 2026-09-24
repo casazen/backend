@@ -25,19 +25,10 @@ public class NoHardcodedPublicDomainTests
 
     /// <summary>
     /// Occurrences owned by another task of the plan, each with the task that removes them. When that task removes the
-    /// occurrence the entry becomes stale and the test fails until it is deleted here.
+    /// occurrence the entry becomes stale and the test fails until it is deleted here. Empty since PL-11 (A1-31): the
+    /// Stripe Checkout and portal return URLs are built from <c>App:PublicSiteBaseUrl</c>.
     /// </summary>
-    private static readonly (string File, string Fragment, string Reason)[] PendingElsewhere =
-    [
-        ("Casazen.Web/Controllers/BillingController.cs", "https://app.casazen.app/settings/billing?checkout=success",
-            "PL-11 (A1-31): default Stripe Checkout return URLs, route and allow-list decided there."),
-        ("Casazen.Web/Controllers/BillingController.cs", "https://app.casazen.app/settings/billing/plans?checkout=cancel",
-            "PL-11 (A1-31): default Stripe Checkout return URLs."),
-        ("Casazen.Infrastructure/Services/StripeBillingService.cs", "https://app.casazen.app/settings/billing",
-            "PL-11 (A1-31): Stripe customer portal return URL."),
-        ("Casazen.Web/appsettings.json", "https://app.casazen.app/settings/billing",
-            "PL-11 (A1-31): Billing:PortalReturnUrl."),
-    ];
+    private static readonly (string File, string Fragment, string Reason)[] PendingElsewhere = [];
 
     private static readonly string[] ScannedExtensions = [".cs", ".json", ".resx", ".html", ".cshtml", ".txt"];
 
