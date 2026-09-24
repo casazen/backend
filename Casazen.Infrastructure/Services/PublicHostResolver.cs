@@ -102,7 +102,10 @@ public class PublicHostResolver(
 
     private string? TryExtractSubdomainLabel(string host)
     {
-        var baseDomain = options.Value.BaseDomain.Trim().ToLowerInvariant();
+        // D3: no default base domain; without PublicHost:BaseDomain no host is an org subdomain.
+        if (options.Value.NormalizedBaseDomain is not { } baseDomain)
+            return null;
+
         var suffix = $".{baseDomain}";
         if (!host.EndsWith(suffix, StringComparison.Ordinal))
             return null;

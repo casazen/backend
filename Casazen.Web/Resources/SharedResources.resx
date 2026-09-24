@@ -285,6 +285,21 @@
   <data name="OnboardingConsentsRequired" xml:space="preserve">
     <value>Per creare la tua organizzazione devi accettare i documenti legali obbligatori.</value>
   </data>
+  <data name="SignupAttributionTooLong" xml:space="preserve">
+    <value>Il campo {0} può contenere al massimo {1} caratteri.</value>
+  </data>
+  <data name="SignupAttributionInvalidCharacters" xml:space="preserve">
+    <value>Il campo {0} contiene caratteri non ammessi.</value>
+  </data>
+  <data name="SignupAttributionUnknownComune" xml:space="preserve">
+    <value>Il comune indicato non è tra quelli gestiti da CasaZen.</value>
+  </data>
+  <data name="SignupAttributionOnboardingRequired" xml:space="preserve">
+    <value>L'origine dell'iscrizione si registra solo dopo aver completato l'onboarding.</value>
+  </data>
+  <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
+    <value>I sottodomini CasaZen non sono ancora disponibili: usa il percorso CasaZen o un dominio personalizzato.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
   </data>
