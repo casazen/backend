@@ -465,7 +465,7 @@ Stripe Dashboard → Developers → Webhooks (Workbench → Event destinations) 
 | Events from | **Your account** | **Connected accounts** |
 | URL | `https://<Railway URL of the environment>/webhooks/stripe` | `https://<Railway URL of the environment>/webhooks/stripe/connect` |
 | API version | `2025-12-15.clover` | `2025-12-15.clover` |
-| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded` |
+| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed` |
 | Signing secret (`whsec_…`, "Reveal") | `Stripe__WebhookSecret` | `Stripe__ConnectWebhookSecret` |
 
 The event lists are the ones handled by `Casazen.Infrastructure/External/StripeWebhookHandler.cs`; other events are acknowledged and ignored. Same result with the API (the `secret` is returned only in the creation response), once per endpoint and mode:
@@ -479,7 +479,11 @@ curl https://api.stripe.com/v1/webhook_endpoints -u "<secret key of the mode>:" 
   -d "enabled_events[]=payment_intent.succeeded" \
   -d "enabled_events[]=payment_intent.payment_failed" \
   -d "enabled_events[]=payment_intent.canceled" \
-  -d "enabled_events[]=setup_intent.succeeded"
+  -d "enabled_events[]=setup_intent.succeeded" \
+  -d "enabled_events[]=charge.refunded" \
+  -d "enabled_events[]=refund.created" \
+  -d "enabled_events[]=refund.updated" \
+  -d "enabled_events[]=refund.failed"
 # platform endpoint: url …/webhooks/stripe, no connect=true, platform event list
 ```
 
@@ -489,7 +493,7 @@ Check after setting the variables and redeploying:
 2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret or API version; 500 = secret not set on Railway.
 3. Upgrading Stripe.net changes the pinned API version: create both endpoints again with the new version (new secrets), update the two Railway variables, then delete the old endpoints.
 
-Webhook idempotency, subscription states, checkout guard, restricted-key permissions and the Customer portal settings: `docs/runbooks/stripe.md`.
+Webhook idempotency, subscription states, checkout guard, restricted-key permissions, the Customer portal settings and booking refunds on Connect (BK-02): `docs/runbooks/stripe.md`.
 
 ### Get service URLs → GitHub Variables
 

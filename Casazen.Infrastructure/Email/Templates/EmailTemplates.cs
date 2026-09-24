@@ -22,6 +22,10 @@ public static class EmailTemplates
         public const string GuestCheckInLink = "guest-checkin-link";
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
+        public const string GuestRefundConfirmed = "guest-refund-confirmed";
+        public const string RliDeadlineReminder = "rli-deadline-reminder";
+        public const string RliDeadlineOverdue = "rli-deadline-overdue";
+        public const string RliExtraEuNotice = "rli-extra-eu-notice";
     }
 
     /// <summary>EmailTexts key of the label of a <see cref="ServiceCategories"/> code.</summary>
@@ -135,4 +139,46 @@ public static class EmailTemplates
             .Paragraph("AlloggiatiDeadline_Body", guestName, propertyName, checkInDate)
             .Paragraph("AlloggiatiDeadline_Action")
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
+
+    /// <summary>A refund confirmed by Stripe, to the guest (BK-02). <paramref name="amountEur"/> is in euro.</summary>
+    public static EmailContent GuestRefundConfirmed(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        decimal amountEur) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("GuestRefundConfirmed_Greeting", guestName)
+            .Paragraph("GuestRefundConfirmed_Body", amountEur.ToString("N2", culture), propertyName, checkInDate)
+            .Paragraph("GuestRefundConfirmed_Method")
+            .Muted("GuestRefundConfirmed_Timing")
+            .Build("GuestRefundConfirmed_Subject", propertyName);
+
+    /// <summary>RLI registration deadline approaching, to the landlord (LT-11, A7-26).</summary>
+    public static EmailContent RliDeadlineReminder(
+        CultureInfo culture,
+        string propertyName,
+        DateTime registrationDeadline,
+        int daysRemaining) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineReminder_Body", propertyName, registrationDeadline, daysRemaining)
+            .Paragraph("RliDeadline_Responsibility")
+            .Build("RliDeadlineReminder_Subject", propertyName, registrationDeadline);
+
+    /// <summary>RLI registration deadline passed without a completed registration, to the landlord.</summary>
+    public static EmailContent RliDeadlineOverdue(
+        CultureInfo culture,
+        string propertyName,
+        DateTime registrationDeadline) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineOverdue_Body", propertyName, registrationDeadline)
+            .Paragraph("RliDeadline_Responsibility")
+            .Build("RliDeadlineOverdue_Subject", propertyName);
+
+    /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
+    public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliExtraEuNotice_Body", propertyName)
+            .Paragraph("RliExtraEuNotice_Disclaimer")
+            .Build("RliExtraEuNotice_Subject", propertyName);
 }

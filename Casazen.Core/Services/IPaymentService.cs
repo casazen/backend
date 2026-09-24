@@ -11,7 +11,5 @@ public interface IPaymentService
     Task<IEnumerable<Payment>> GetPropertyPaymentsAsync(Guid propertyId);
     Task<IEnumerable<Payment>> GetBookingPaymentsAsync(Guid bookingId);
     Task<Payment> CreatePaymentAsync(Payment payment);
-    Task<Payment> ProcessPaymentAsync(Guid paymentId);
-    Task<Payment> RefundPaymentAsync(Guid paymentId, decimal? amount = null);
     Task<decimal> GetTotalRevenueAsync(Guid propertyId, DateTime startDate, DateTime endDate);
 }

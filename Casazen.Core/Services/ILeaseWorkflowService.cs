@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
@@ -10,10 +12,16 @@ public interface ILeaseWorkflowService
     Task HandleESignEventAsync(string providerPayload);
     Task<LeaseRegistration> TriggerRegistrationAsync(
         Guid leaseId, string ownerId, RegistrationAuthorizationRequest authorization);
-    Task<LeaseRegistration?> GetRegistrationAsync(Guid leaseId, string ownerId);
     Task<Stream> GetRegistrationReceiptAsync(Guid leaseId, string ownerId);
-    Task<IEnumerable<LeaseContract>> GetOwnerLeasesAsync(string ownerId, Guid? propertyId = null);
-    Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId, string ownerId);
+
+    /// <summary>Lease list of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
+    Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null);
+
+    /// <summary>
+    /// The lease with property, parties, registration and events, or <c>null</c> when it does not exist in the
+    /// caller's org (tenant filter). No ownership check: the caller authorizes the returned row (TN-3).
+    /// </summary>
+    Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId);
 }
 
 public record CreateLeaseRequest(

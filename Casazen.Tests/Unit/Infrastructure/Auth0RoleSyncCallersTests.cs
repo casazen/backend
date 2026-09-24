@@ -167,6 +167,7 @@ public class Auth0RoleSyncCallersTests
             userService,
             Mock.Of<IOrgService>(),
             Mock.Of<IOnboardingService>(),
+            Mock.Of<IRequestTenantContext>(),
             NullLogger<UsersController>.Instance,
             Mock.Of<IEntitlementService>())
         {

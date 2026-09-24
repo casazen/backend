@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -23,9 +24,39 @@ public sealed class UserContextMembershipService(
         var roleRows = await db.Roles
             .AsNoTracking()
             .Where(r => contextKeys.Contains(r.ContextKey))
-            .Select(r => new { r.Id, r.ContextKey, r.RoleKey })
+            .Select(r => new RoleRow(r.Id, r.ContextKey, r.RoleKey))
             .ToListAsync(cancellationToken);
 
+        try
+        {
+            await ApplyGrantsAsync(userId, targets, contextKeys, roleRows, cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // A parallel request of the same user (e.g. the onboarding submitted twice) inserted a membership first.
+            // TN-4: drop the rejected inserts, re-read and apply again; the second pass only updates existing rows.
+            foreach (var pending in db.ChangeTracker.Entries<UserContextMembership>()
+                         .Where(e => e.State == EntityState.Added)
+                         .ToList())
+            {
+                pending.State = EntityState.Detached;
+            }
+
+            logger.LogInformation(
+                "Context membership of user {UserId} inserted by a parallel request, re-applying the grant", userId);
+            await ApplyGrantsAsync(userId, targets, contextKeys, roleRows, cancellationToken);
+        }
+
+        authorizationCache.Invalidate(userId);
+    }
+
+    private async Task ApplyGrantsAsync(
+        string userId,
+        IReadOnlyList<BootstrapContextMembership> targets,
+        List<string> contextKeys,
+        List<RoleRow> roleRows,
+        CancellationToken cancellationToken)
+    {
         var existing = await db.UserContextMemberships
             .Where(m => m.UserId == userId && contextKeys.Contains(m.ContextKey))
             .ToListAsync(cancellationToken);
@@ -71,8 +102,6 @@ public sealed class UserContextMembershipService(
                 "Context memberships granted for user {UserId}: [{Contexts}]",
                 userId, string.Join(", ", contextKeys));
         }
-
-        authorizationCache.Invalidate(userId);
     }
 
     public async Task RevokeAsync(string userId, IEnumerable<UserRole> roles, CancellationToken cancellationToken = default)
@@ -99,6 +128,8 @@ public sealed class UserContextMembershipService(
 
         authorizationCache.Invalidate(userId);
     }
+
+    private sealed record RoleRow(int Id, string ContextKey, string RoleKey);
 
     private static IReadOnlyList<BootstrapContextMembership> MapToContexts(IEnumerable<UserRole> roles) =>
         ContextAccessBootstrap.DeriveContextsFromJwtRoles(roles.Distinct().Select(r => r.ToString()));

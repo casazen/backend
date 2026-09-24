@@ -257,7 +257,10 @@ public class UserService(
         var user = await GetCurrentUserAsync(sub, email, firstName, lastName);
 
         user.RentalType = rentalType;
-        user.Role = roles[0];
+        // A platform admin who also sets up a host org stays Admin: the admin role is changed only from the
+        // admin console, never by the onboarding choice (A1-01).
+        if (user.Role != UserRole.Admin)
+            user.Role = roles[0];
         user.UpdatedAt = DateTime.UtcNow;
 
         // Set the onboarding completion timestamp (immutable once set)

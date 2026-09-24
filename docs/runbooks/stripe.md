@@ -56,6 +56,94 @@ Stripe Dashboard labels may differ slightly between versions.
 3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there.
 4. **Failed payments** (Settings → Billing → Subscriptions and emails → manage failed payments): at the end of the retries the subscription may be canceled or marked unpaid; both end paid access (Canceled / Unpaid).
 
+## Refunds and booking cancellations on Stripe Connect (BK-02)
+
+Task BK-02 (audit defects A3-05 P0, A9-15 payments part; issue #51). Before it, "Rimborsa" only changed the database,
+`POST /api/payments/{id}/process` marked a payment Completed without Stripe, and cancelling a paid booking kept the money.
+
+### Charge model (verified in the code)
+
+The checkout creates the guest's PaymentIntent **on the host's connected account** (`StripeService.CreateConnectedAccountPaymentIntentAsync`
+and, for the deferred option, `ChargePaymentMethodAsync`, both with the `Stripe-Account` header and `application_fee_amount = 0`):
+**direct charges**. Consequences for refunds:
+
+| Parameter | Value | Why |
+|---|---|---|
+| `Stripe-Account` header | the connected account of the payment (`Payments.StripeAccountId`; older rows: the org's `StripeConnectedAccountId`) | the PaymentIntent exists only on that account: without the header Stripe answers `No such payment_intent` |
+| `Idempotency-Key` | `payment-refund:{PaymentRefunds.Id}` | the refund row is written before the call; a retry (timeout, 5xx) sends the same key and gets the same refund |
+| `amount` | the amount chosen by the host, in cents | partial refunds are allowed; the backend never lets the total of succeeded + in-progress refunds exceed the payment |
+| `reverse_transfer` | not sent | only for destination charges / transfers: a direct charge has no transfer to reverse |
+| `refund_application_fee` | not sent | the checkout takes no application fee. If a platform fee is introduced, decide whether a refund gives it back (product decision) |
+
+The refund is paid from the **connected account's balance**. With an insufficient balance Stripe may leave the refund
+pending or fail it (the host sees the status); for Express accounts the platform is liable for a negative balance.
+
+### Status: never "Rimborsato" before Stripe confirms
+
+| Stripe refund status | `PaymentRefunds.Status` | Effect on the payment |
+|---|---|---|
+| `succeeded` (response or webhook) | Succeeded | counted in `RefundedAmount`; payment `PartiallyRefunded` or `Refunded`; guest email "Rimborso confermato" (once) |
+| `pending`, `requires_action` | Pending / RequiresAction | amount reserved, payment unchanged |
+| `failed`, `canceled` | Failed / Canceled | amount released, payment unchanged (a refund that fails after succeeding moves the payment back) |
+| no answer (timeout, 429, 5xx) | Pending | Hangfire job `PaymentRefundSubmitJob` resends it with the same idempotency key (10 attempts) |
+| 4xx (e.g. `charge_disputed`) | Failed, with the Stripe error code | nothing was created on Stripe; the host can retry |
+
+Refunds made **outside CasaZen** (Stripe Dashboard, API) are recorded from the webhooks with origin `Stripe`, so the
+payment shows them too.
+
+### Booking cancellation (`POST /api/bookings/{id}/cancel`)
+
+Replaces `DELETE /api/bookings/{id}`, which only changed the status. The dialog first reads `GET /api/bookings/{id}/cancellation`.
+
+1. **Not paid yet**: the PaymentIntent (immediate payment) is canceled on the connected account; the SetupIntent (deferred
+   payment) is canceled, or, when the card is already saved, the card is detached so the deadline charge can never run.
+   If the guest's payment is succeeding at that moment the API answers **409** `booking_payment_in_progress`: retry once the
+   payment shows as completed, then cancel with a refund.
+2. **Paid through Stripe**: the host chooses the refund (`refundAmount`, from 0 to what was paid and not refunded yet).
+   The minimum comes only from rules already in the model:
+   - until the **free cancellation deadline** of the booking (`FreeRefundDeadline`, check-in − 7 days, shown to the guest
+     as "Cancellazione gratuita fino a …"), Europe/Rome day included: full refund;
+   - the property's **cancellation policy** (`CancellationPolicies`, semantics of issue #51: 100% at least `FullRefundHours`
+     before the start of the check-in day, `PartialRefundPercent` at least `PartialRefundHours` before, otherwise 0%);
+   - otherwise no minimum: the host decides. No other policy exists in the code (see open questions of BK-02).
+3. **Paid outside Stripe** (cash, bank transfer recorded by the host): shown in the quote, never refunded by CasaZen.
+
+Authorization (TN-3): `booking.write` on the booking; when the cancellation moves money (refund or intent to cancel) also
+`payment.write`, so only the owning host or an org member with payment write. `POST /api/payments/{id}/refund` needs
+`payment.write`.
+
+### Stripe settings to check (product owner)
+
+1. **Connect webhook endpoint** (`/webhooks/stripe/connect`, "Connected accounts"): add `charge.refunded`,
+   `refund.created`, `refund.updated`, `refund.failed` (and `charge.refund.updated` if the Dashboard still offers it) to the
+   events of `docs/INFRA.md`. Refunds of direct charges are events of the connected account: without them a refund that
+   is `pending` never becomes Rimborsato in CasaZen, and a Dashboard refund is never seen.
+2. **Platform endpoint**: `charge.refunded` stays; platform refund events concern only PaymentIntents of the platform
+   account (none for bookings today).
+3. **Restricted key** (only with an `rk_…` key): **Refunds: Write**, **PaymentIntents: Write** (read and cancel),
+   **SetupIntents: Write** (read and cancel), **PaymentMethods: Write** (detach), and the key must be allowed to act on
+   connected accounts (Connect permissions of the key). With the standard secret key nothing to do.
+4. **Customer emails** (Settings → Customer emails): Stripe's own refund receipt is independent from the CasaZen email;
+   keep one of the two if guests should get a single message.
+
+### Data written before BK-02
+
+Payments marked Refunded / PartiallyRefunded by the old endpoint were **never refunded on Stripe**. Find them with
+`SELECT "Id", "Amount", "RefundedAmount" FROM "Payments" p WHERE "RefundedAmount" > 0 AND NOT EXISTS (SELECT 1 FROM "PaymentRefunds" r WHERE r."PaymentId" = p."Id");`
+and check each one in the Stripe Dashboard (Payments → search the `pi_…`) before refunding it from CasaZen.
+
+### Verification
+
+1. Automated: `StripeServiceRefundTests` (mocked `IStripeClient`: `Stripe-Account`, idempotency key, amount, cancel paths),
+   `PaymentRefundServiceTests`, `BookingCancellationServiceTests`, `CancellationRefundPolicyTests`,
+   `StripeRefundPostgresTests` (Connect `charge.refunded` / `refund.*` on PostgreSQL, parallel double click),
+   `BookingRefundIntegrationTests` (HTTP pipeline).
+2. Test mode, with a connected test account: book with card `4242 4242 4242 4242`, then "Rimborsa" 10 € from the payment
+   page: the dialog shows "Rimborso confermato", Stripe Dashboard → connected account → Payments shows the partial refund.
+3. Test mode: refund part of a payment from the Stripe Dashboard: after the webhook the payment page lists it with origin
+   Stripe and the payment is "Parzialmente rimborsato".
+4. Test mode: cancel a booking not paid yet (checkout left open): the PaymentIntent is `canceled` on the connected account.
+
 ## Operations
 
 | Situation | What to do |

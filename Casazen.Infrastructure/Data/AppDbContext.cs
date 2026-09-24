@@ -32,6 +32,7 @@ public class AppDbContext(
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
+    public DbSet<PaymentRefund> PaymentRefunds { get; set; } = null!;
     public DbSet<PropertyFiscalYear> PropertyFiscalYears { get; set; } = null!;
     public DbSet<OtaIntegration> OtaIntegrations { get; set; } = null!;
     public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
@@ -186,6 +187,21 @@ public class AppDbContext(
         modelBuilder.Entity<Booking>().HasIndex(b => b.CheckInDate);
         modelBuilder.Entity<Booking>().HasIndex(b => b.Status);
         modelBuilder.Entity<Payment>().HasIndex(p => p.BookingId);
+
+        // Refunds on Stripe (BK-02): one row per Stripe refund, one Stripe request per row (idempotency key).
+        modelBuilder.Entity<PaymentRefund>(refund =>
+        {
+            refund.HasIndex(r => r.PaymentId);
+            refund.HasIndex(r => r.OrgId);
+            refund.HasIndex(r => r.StripeRefundId)
+                .IsUnique()
+                .HasFilter("\"StripeRefundId\" IS NOT NULL");
+            refund.HasIndex(r => r.IdempotencyKey).IsUnique();
+            refund.HasOne(r => r.Payment)
+                .WithMany()
+                .HasForeignKey(r => r.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
 
         if (dataProtectionProvider is not null)

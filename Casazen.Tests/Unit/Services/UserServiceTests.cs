@@ -296,6 +296,30 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task CompleteOnboardingAsync_PlatformAdminSetsUpHostOrg_KeepsAdminRoleAndAddsHostRole()
+    {
+        var sub = "auth0|onboard-admin";
+        var user = new User { Id = sub, Email = "admin@b.com", FirstName = "Ad", LastName = "Min", Role = UserRole.Admin };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+        _orgMock.Setup(o => o.EnsureOrgForUserAsync(
+                sub, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "Ad Min" });
+
+        var (result, roles, _) = await _service.CompleteOnboardingAsync(
+            sub, RentalType.ShortTerm, "admin@b.com", "Ad", "Min");
+
+        Assert.Equal(UserRole.Admin, result.Role);
+        Assert.Equal(RentalType.ShortTerm, result.RentalType);
+        Assert.Equal(["PropertyOwner"], roles);
+        _auth0Mock.Verify(a => a.RemoveRolesAsync(
+            sub,
+            It.Is<IReadOnlyCollection<UserRole>>(list => !list.Contains(UserRole.Admin)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CompleteOnboardingAsync_Auth0Fails_ReturnsFailedRoleSyncAndKeepsDbChanges()
     {
         var sub = "auth0|onboard-auth0-down";
