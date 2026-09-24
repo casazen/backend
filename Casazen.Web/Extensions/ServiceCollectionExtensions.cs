@@ -307,6 +307,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
+        services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
         services.AddScoped<IVatCalculationService, VatCalculationService>();
         services.AddScoped<IViesService, ViesService>();
         services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();

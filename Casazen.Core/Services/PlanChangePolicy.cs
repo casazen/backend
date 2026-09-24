@@ -25,8 +25,8 @@ public static class PlanChangePolicy
 {
     /// <summary>
     /// <c>true</c> when a Stripe subscription currently drives the org's plan (active, trialing or past due).
-    /// Canceled subscriptions and incomplete or unknown Stripe states (stored as <see cref="SubscriptionStatus.None"/>)
-    /// do not count.
+    /// Canceled, incomplete, unpaid and unknown Stripe states do not count: they give no paid access, so only a
+    /// move to Starter is possible and the next webhook sets the tier again.
     /// </summary>
     public static bool HasActiveSubscription(Org org) =>
         !string.IsNullOrWhiteSpace(org.SubscriptionId) &&

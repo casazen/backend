@@ -54,6 +54,22 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
         Assert.StartsWith("https://checkout.stripe.test/", body.GetProperty("checkoutUrl").GetString());
     }
 
+    [Theory]
+    [InlineData("Platinum", "IT")]
+    [InlineData("Pro", "ITA")]
+    public async Task CreateCheckoutSession_InvalidRequest_Returns400ValidationProblem(string planTier, string billingCountry)
+    {
+        await _factory.SeedOrgForOwnerAsync();
+        using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
+
+        var response = await client.PostAsJsonAsync("/api/billing/checkout-session", new { planTier, billingCountry });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation_error", problem.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
+    }
+
     [Fact]
     public async Task GetSubscription_ReturnsNoneForNewOrg()
     {
