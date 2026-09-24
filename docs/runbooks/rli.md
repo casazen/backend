@@ -168,7 +168,9 @@ offers self-serve: the provider path exists in the code but stays **off, with no
    contract, only from a complete, lawyer-approved template with every datum known (LT-03). Otherwise 422
    `contract_template_not_approved` / `contract_data_missing` and the UI offers only the preview
    `GET /api/leases/{id}/contract/preview`, marked BOZZA and not valid for signature. 409 `lease_already_signed` once
-   every party signed. The canone concordato minimum term and the APE are checked as for the provider path.
+   every party signed. The term of the contract type (LT-10: libero at least 4 years, concordato at least 3,
+   transitorio 1-18 months; 422 `lease_term_too_short` / `lease_term_too_long`) and the APE are checked as for the
+   provider path.
 2. The parties sign **outside CasaZen**: by hand on paper, or each with their own digital signature or FEA. CasaZen does
    not verify the signatures of the uploaded file (the UI says so).
 3. `POST /api/leases/{id}/signed-document` (multipart: `signedContract`, `stipulaDate`), policy `lease.sign` on the

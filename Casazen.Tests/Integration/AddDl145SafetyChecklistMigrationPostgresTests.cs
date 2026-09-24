@@ -111,9 +111,8 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs are written through the model. Properties are inserted with SQL, only with columns that exist before the
-    /// migration (later migrations add columns the model would write, e.g. CO-18 AddPropertyTaxpayerFiscalCode); the old
-    /// JSON column is written with SQL too.
+    /// Orgs are written through the model; Properties and the old JSON column with SQL (later migrations add columns to
+    /// the current Property entity).
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -127,26 +126,23 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
             IsActive = true,
         };
         db.Orgs.Add(org);
+
         await db.SaveChangesAsync();
 
-        async Task<Property> NewPropertyAsync(string name)
+        // Property rows in SQL: the current Property entity has columns that later migrations add (LT-10).
+        async Task<Guid> NewPropertyAsync(string name)
         {
-            var property = new Property
-            {
-                OwnerId = "auth0|co07",
-                OrgId = org.Id,
-                Name = name,
-                Description = "Casa",
-                Address = $"Via Roma {Guid.NewGuid():N}",
-                City = "Roma",
-                PostalCode = "00100",
-                MaxGuests = 4,
-                NightlyRate = 100m,
-                IsActive = true,
-                ComplianceStatus = PropertyComplianceStatus.Active,
-            };
-            await PreviousSchemaSeed.InsertPropertyAsync(db, property);
-            return property;
+            var id = Guid.NewGuid();
+            var address = $"Via Roma {Guid.NewGuid():N}";
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO "Properties" (
+                    "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
+                    "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
+                    "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "ComplianceStatus", "CreatedAt", "UpdatedAt")
+                VALUES ({id}, 'auth0|co07', {org.Id}, {name}, 'Casa', {address}, 'Roma', '00100', 0, 0, 0, 0, 4, 100, 0, 0,
+                    ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, {(int)PropertyComplianceStatus.Active}, now(), now());
+                """);
+            return id;
         }
 
         var full = await NewPropertyAsync("Full");
@@ -154,10 +150,10 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
         var malformed = await NewPropertyAsync("Malformed");
         var without = await NewPropertyAsync("Without");
 
-        await SetLegacyJsonAsync(db, full.Id, FullLegacyJson);
-        await SetLegacyJsonAsync(db, partial.Id, PartialLegacyJson);
-        await SetLegacyJsonAsync(db, malformed.Id, MalformedLegacyJson);
-        return new Seed(org.Id, full.Id, partial.Id, malformed.Id, without.Id);
+        await SetLegacyJsonAsync(db, full, FullLegacyJson);
+        await SetLegacyJsonAsync(db, partial, PartialLegacyJson);
+        await SetLegacyJsonAsync(db, malformed, MalformedLegacyJson);
+        return new Seed(org.Id, full, partial, malformed, without);
     }
 
     private static Task SetLegacyJsonAsync(AppDbContext db, Guid propertyId, string json) =>

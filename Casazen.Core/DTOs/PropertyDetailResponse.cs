@@ -43,6 +43,12 @@ public class PropertyDocumentDto
     public DocumentType DocumentType { get; set; }
     public DateTime UploadedAt { get; set; }
 
+    /// <summary>Code printed on the APE (only for <c>Ape</c> documents, LT-10); null until the landlord enters it.</summary>
+    public string? ApeCode { get; set; }
+
+    /// <summary>Energy class printed on the APE (only for <c>Ape</c> documents, LT-10).</summary>
+    public string? ApeEnergyClass { get; set; }
+
     /// <summary>
     /// API path of the authenticated download (<c>GET /api/properties/{id}/documents/{docId}/download</c>):
     /// call it with the bearer token; it is not a public link.

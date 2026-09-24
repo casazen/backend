@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924203614_LeaseContractTypeAndConcordatoRules")]
+    partial class LeaseContractTypeAndConcordatoRules
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -376,9 +379,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<Guid?>("FeedId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("LastSyncedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -402,9 +402,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId");
 
-                    b.HasIndex("PropertyId");
-
-                    b.HasIndex("FeedId", "ExternalUid")
+                    b.HasIndex("PropertyId", "ExternalUid")
                         .IsUnique();
 
                     b.ToTable("CalendarBlocks");
@@ -1935,10 +1933,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string>("TaxpayerFiscalCode")
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -2051,43 +2045,14 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId");
 
-                    b.HasIndex("OrgId", "TaxYear");
+                    b.HasIndex("OrgId", "TaxYear")
+                        .IsUnique()
+                        .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
 
                     b.HasIndex("PropertyId", "TaxYear")
                         .IsUnique();
 
                     b.ToTable("PropertyFiscalYears");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.PropertyICalExport", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ExportToken")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PropertyId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExportToken")
-                        .IsUnique();
-
-                    b.HasIndex("OrgId");
-
-                    b.HasIndex("PropertyId")
-                        .IsUnique();
-
-                    b.ToTable("PropertyICalExports");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyICalFeed", b =>
@@ -2096,19 +2061,12 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Channel")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid>("ExportToken")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ImportUrl")
-                        .HasMaxLength(4096)
-                        .HasColumnType("character varying(4096)");
-
-                    b.Property<string>("Label")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)");
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(1000)
@@ -2128,9 +2086,13 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExportToken")
+                        .IsUnique();
+
                     b.HasIndex("OrgId");
 
-                    b.HasIndex("PropertyId");
+                    b.HasIndex("PropertyId")
+                        .IsUnique();
 
                     b.ToTable("PropertyICalFeeds");
                 });
@@ -2769,12 +2731,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Urgency")
                         .HasColumnType("integer");
-
-                    b.Property<uint>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -3668,11 +3624,6 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.CalendarBlock", b =>
                 {
-                    b.HasOne("Casazen.Core.Entities.PropertyICalFeed", "Feed")
-                        .WithMany()
-                        .HasForeignKey("FeedId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
                         .WithMany()
                         .HasForeignKey("OrgId")
@@ -3684,8 +3635,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Feed");
 
                     b.Navigation("Org");
 
@@ -4085,25 +4034,6 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyFiscalYear", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Org", "Org")
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Casazen.Core.Entities.Property", "Property")
-                        .WithMany()
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Org");
-
-                    b.Navigation("Property");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.PropertyICalExport", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
                         .WithMany()

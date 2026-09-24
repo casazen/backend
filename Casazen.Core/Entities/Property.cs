@@ -79,6 +79,38 @@ public class Property : ITenantOwned
     [CinCode]
     public string? CinCode { get; set; } // Normalized CIN, e.g. IT058091C27G5FFZDZ (see CinFormat)
 
+    // Cadastral identification of the unit (catasto fabbricati), used by the lease contract (LT-03, LT-10). Free text
+    // within a length: the formats are not validated beyond that (no invented patterns).
+
+    /// <summary>Foglio: also finds the canone concordato zone of comuni zoned by sheet (LT-10).</summary>
+    [MaxLength(PropertyCadastralLimits.SheetMaxLength)]
+    public string? CadastralSheet { get; set; }
+
+    /// <summary>Particella (mappale).</summary>
+    [MaxLength(PropertyCadastralLimits.ParcelMaxLength)]
+    public string? CadastralParcel { get; set; }
+
+    /// <summary>Subalterno; some units have none.</summary>
+    [MaxLength(PropertyCadastralLimits.SubalternMaxLength)]
+    public string? CadastralSubaltern { get; set; }
+
+    /// <summary>Categoria catastale as written in the visura (e.g. "A/2").</summary>
+    [MaxLength(PropertyCadastralLimits.CategoryMaxLength)]
+    public string? CadastralCategory { get; set; }
+
+    /// <summary>Rendita catastale in euros.</summary>
+    [Precision(12, 2)]
+    public decimal? CadastralIncome { get; set; }
+
+    /// <summary>
+    /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
+    /// </summary>
+    public bool HasCadastralData =>
+        !string.IsNullOrWhiteSpace(CadastralSheet)
+        && !string.IsNullOrWhiteSpace(CadastralParcel)
+        && !string.IsNullOrWhiteSpace(CadastralCategory)
+        && CadastralIncome is not null;
+
     // Timezone for booking date handling (IANA timezone ID)
     [MaxLength(50)]
     public string Timezone { get; set; } = "Europe/Rome"; // Default for Italian properties
@@ -113,4 +145,14 @@ public class Property : ITenantOwned
     public virtual ICollection<OtaIntegration> OtaIntegrations { get; set; } = new List<OtaIntegration>();
     public virtual ICollection<PropertyDocument> PropertyDocuments { get; set; } = new List<PropertyDocument>();
     public virtual PricingAdapterConfig? PricingAdapterConfig { get; set; }
+}
+
+/// <summary>Lengths of the cadastral fields of <see cref="Property"/> (LT-10).</summary>
+public static class PropertyCadastralLimits
+{
+    public const int SheetMaxLength = 10;
+    public const int ParcelMaxLength = 20;
+    public const int SubalternMaxLength = 10;
+    public const int CategoryMaxLength = 10;
+    public const double IncomeMax = 10_000_000;
 }

@@ -19,17 +19,17 @@ public static class LeaseContractPlaceholders
 
     public const string PropertyComune = "immobile_comune";
 
-    /// <summary>Cadastral identification of the unit. Not in the data model yet: always missing.</summary>
+    /// <summary>Cadastral identification of the unit, from the property (sheet, parcel, subaltern, category, income; LT-10).</summary>
     public const string CadastralData = "dati_catastali";
 
-    /// <summary>Identification of the APE (code, energy class, date). Not in the data model yet: always missing.</summary>
+    /// <summary>Identification of the APE (code and energy class), from the latest APE document of the property (LT-10).</summary>
     public const string ApeData = "ape_estremi";
 
     public const string MonthlyRent = "canone_mensile";
 
     public const string AnnualRent = "canone_annuo";
 
-    /// <summary>Security deposit of the lease. Not in the data model yet: always missing.</summary>
+    /// <summary>Security deposit of the lease (LT-10).</summary>
     public const string SecurityDeposit = "deposito_cauzionale";
 
     public const string StartDate = "data_decorrenza";

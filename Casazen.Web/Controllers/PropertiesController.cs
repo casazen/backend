@@ -329,6 +329,36 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Cadastral identification of the unit (LT-10): sheet (foglio), parcel (particella), subaltern, category and income
+    /// (rendita). Used by the lease contract and, for the sheet, to find the canone concordato zone. Shared by
+    /// short-rent hosts and long-term landlords. Only lengths are validated.
+    /// </summary>
+    /// <response code="204">Saved.</response>
+    /// <response code="403">The caller may not edit this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpPut("{id:guid}/cadastral")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    public async Task<IActionResult> UpdateCadastral(Guid id, [FromBody] UpdatePropertyCadastralRequest request)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyAsync(id);
+        if (existing == null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
+            return Forbid();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, GetUserRoles(), "Property.UpdateCadastral");
+
+        await propertyService.UpdateCadastralDataAsync(id, new PropertyCadastralData(
+            request.Sheet, request.Parcel, request.Subaltern, request.Category, request.Income));
+        return NoContent();
+    }
+
     [HttpDelete("{id}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<IActionResult> Delete(Guid id)
@@ -695,6 +725,40 @@ public class PropertiesController(
 
         await documentService.DeleteDocumentAsync(docId);
         return NoContent();
+    }
+
+    /// <summary>
+    /// Code and energy class printed on an APE document (LT-10): the lease contract states them (template data). 422
+    /// <c>document_not_ape</c> for another document type, <c>ape_identification_invalid</c> for an empty code or a class
+    /// that is not 1-3 letters, digits or "+".
+    /// </summary>
+    /// <response code="200">The updated document.</response>
+    /// <response code="403">The caller may not edit this property.</response>
+    /// <response code="404">Property or document not found.</response>
+    [HttpPut("{id:guid}/documents/{docId:guid}/ape")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    public async Task<ActionResult<PropertyDocumentDto>> UpdateApeIdentification(
+        Guid id, Guid docId, [FromBody] UpdateApeIdentificationRequest request)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
+            return Forbid();
+
+        var document = await documentService.GetDocumentAsync(docId);
+        if (document == null || document.PropertyId != id)
+            return NotFound();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.UpdateApe");
+
+        var updated = await documentService.UpdateApeIdentificationAsync(document, request.Code, request.EnergyClass);
+        return Ok(ToDocumentDto(updated));
     }
 
     /// <summary>
