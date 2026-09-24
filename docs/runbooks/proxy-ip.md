@@ -109,7 +109,8 @@ Notes:
 - Many users behind one address (hotel Wi-Fi, mobile carrier NAT) share a bucket: raise the limit of the
   affected policy rather than removing it. `Retry-After` tells the client when to retry.
 - Deliberately without a limiter: `webhooks/*` (signed; Stripe and the e-sign provider send from shared IPs),
-  `api/health`, `api/legal/*`, `api/orgs/plans`, SEO pages and `sitemap-compliance.xml` (search engine crawlers).
+  `api/health`, `api/legal/*`, `api/orgs/plans`, SEO pages, the SEO hub `api/public/content` and `api/public/sitemap.xml` (search engine crawlers; the web app serves
+  the sitemap through a CDN-cached Vercel function, see [`seo-domain.md`](seo-domain.md)).
 
 ## 5. Checks after a deploy
 
