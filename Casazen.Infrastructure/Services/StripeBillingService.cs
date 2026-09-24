@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Stripe.Checkout;
@@ -48,8 +49,9 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     {
         ConfigureStripeApiKey();
 
-        var priceId = configuration[$"Billing:Prices:{planTier}"]
-            ?? throw new InvalidOperationException($"Billing price not configured for tier {planTier}");
+        // The controller refuses the tier first (PL-11); this guard keeps a missing id a 422, never a Stripe call.
+        var priceId = BillingPrices.Resolve(configuration, planTier)
+            ?? throw new DomainRuleException(BillingPrices.PlanUnavailableCode, BillingPrices.PlanUnavailableMessageKey);
 
         var metadata = new Dictionary<string, string>
         {
@@ -125,15 +127,17 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         return subscriptions;
     }
 
-    public async Task<string> CreatePortalSessionAsync(Org org, CancellationToken cancellationToken = default)
+    public async Task<string> CreatePortalSessionAsync(
+        Org org,
+        string returnUrl,
+        CancellationToken cancellationToken = default)
     {
         ConfigureStripeApiKey();
 
         if (string.IsNullOrWhiteSpace(org.StripeCustomerId))
             throw new InvalidOperationException("Org has no Stripe customer id");
 
-        var returnUrl = configuration["Billing:PortalReturnUrl"]
-            ?? "https://app.casazen.app/settings/billing";
+        ArgumentException.ThrowIfNullOrWhiteSpace(returnUrl);
 
         var service = new Stripe.BillingPortal.SessionService();
         var session = await service.CreateAsync(new Stripe.BillingPortal.SessionCreateOptions
@@ -145,23 +149,7 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         return session.Url ?? throw new InvalidOperationException("Stripe portal session URL missing");
     }
 
-    public PlanTier? MapPriceIdToTier(string? priceId)
-    {
-        if (string.IsNullOrWhiteSpace(priceId))
-            return null;
-
-        foreach (PlanTier tier in Enum.GetValues<PlanTier>())
-        {
-            var configured = configuration[$"Billing:Prices:{tier}"];
-            if (!string.IsNullOrEmpty(configured) &&
-                string.Equals(configured, priceId, StringComparison.Ordinal))
-            {
-                return tier;
-            }
-        }
-
-        return null;
-    }
+    public PlanTier? MapPriceIdToTier(string? priceId) => BillingPrices.TierOf(configuration, priceId);
 
     private static string ShortHash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16];

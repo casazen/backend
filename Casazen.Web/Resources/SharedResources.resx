@@ -159,6 +159,15 @@
   <data name="BillingVatIdInvalid" xml:space="preserve">
     <value>Partita IVA non valida.</value>
   </data>
+  <data name="BillingReturnUrlNotAllowed" xml:space="preserve">
+    <value>L'indirizzo di ritorno del pagamento deve essere una pagina di questo sito.</value>
+  </data>
+  <data name="BillingReturnUrlNotConfigured" xml:space="preserve">
+    <value>Il pagamento dei piani non è ancora configurato in questo ambiente.</value>
+  </data>
+  <data name="BillingPlanUnavailable" xml:space="preserve">
+    <value>Questo piano non è ancora acquistabile. Riprova più tardi o contatta l'assistenza.</value>
+  </data>
   <data name="StripeWebhookSignatureInvalid" xml:space="preserve">
     <value>Firma del webhook Stripe non valida.</value>
   </data>

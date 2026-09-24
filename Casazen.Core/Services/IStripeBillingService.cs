@@ -28,7 +28,12 @@ public interface IStripeBillingService
     /// <summary>Subscriptions of the customer in every status, read from Stripe (the source of truth).</summary>
     Task<IReadOnlyList<StripeSubscriptionSummary>> ListSubscriptionsAsync(string customerId, CancellationToken cancellationToken = default);
 
-    Task<string> CreatePortalSessionAsync(Org org, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Billing portal session of the org's Stripe customer. <paramref name="returnUrl"/> is the page of the public web
+    /// app the portal links back to (built from <c>App:PublicSiteBaseUrl</c>, PL-11).
+    /// </summary>
+    Task<string> CreatePortalSessionAsync(Org org, string returnUrl, CancellationToken cancellationToken = default);
 
+    /// <summary>Plan tier whose configured Stripe Price id (<c>Billing:Prices:&lt;Tier&gt;</c>) is <paramref name="priceId"/>.</summary>
     PlanTier? MapPriceIdToTier(string? priceId);
 }

@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -6,8 +7,10 @@ namespace Casazen.Web.HealthChecks;
 /// <summary>
 /// Stripe keys (A3-24). Payments are optional, so an incomplete configuration is <c>degraded</c>, never a startup
 /// failure. Without <c>Stripe__ConnectWebhookSecret</c> the Connect webhook rejects every event and no direct booking
-/// is ever confirmed; without <c>Stripe__PublishableKey</c> the checkout cannot load Stripe. Setup: <c>docs/INFRA.md</c>
-/// § Stripe. The description names variables, never values.
+/// is ever confirmed; without <c>Stripe__PublishableKey</c> the checkout cannot load Stripe. With a secret key, a plan
+/// without its Stripe Price id (<c>Billing__Prices__&lt;Tier&gt;</c>, PL-11) cannot be bought: degraded outside Production,
+/// where the startup already refuses it (<see cref="BillingConfiguration"/>). Setup: <c>docs/INFRA.md</c> § Stripe. The
+/// description names variables, never values.
 /// </summary>
 public sealed class StripeConfigurationHealthCheck(IConfiguration configuration) : IHealthCheck
 {
@@ -52,6 +55,9 @@ public sealed class StripeConfigurationHealthCheck(IConfiguration configuration)
             problems.Add(
                 $"Stripe__SecretKey ({secretMode}) and Stripe__PublishableKey ({publishableMode}) belong to different modes.");
         }
+
+        if (!missing.Contains("Stripe__SecretKey"))
+            problems.AddRange(BillingPrices.GetProblems(configuration).Select(p => "Plans: " + p));
 
         return problems;
     }
