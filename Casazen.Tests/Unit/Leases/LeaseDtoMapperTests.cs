@@ -28,7 +28,7 @@ public class LeaseDtoMapperTests
     [
         "ownerId", "orgId", "safetyChecklistJson", "fiscalCode", "contactEmail", "citizenship", "payload",
         "signedPdfStoragePath", "externalSigningSessionId", "externalRegistrationId", "receiptStoragePath",
-        "dataRetentionUntil", "erasureRequested", "leaseContract",
+        "declaredByUserId", "requestedAt", "dataRetentionUntil", "erasureRequested", "leaseContract",
     ];
 
     [Fact]
@@ -65,6 +65,49 @@ public class LeaseDtoMapperTests
         Assert.Contains("\"registrationCode\":\"RLI-2026-1\"", json, StringComparison.Ordinal);
         AssertNoForbiddenFields(json);
         Assert.DoesNotContain("provider-123", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToRegistration_ManualWithReceipt_ExposesChannelDateAndHasReceiptOnly()
+    {
+        // LT-01: the client learns that a receipt exists, never where it is stored nor who declared it.
+        var registration = new LeaseRegistration
+        {
+            LeaseContractId = Guid.NewGuid(),
+            Status = RegistrationStatus.Registered,
+            Channel = RegistrationChannel.Manual,
+            RegistrationCode = "24091234567890123-000001",
+            RegistrationDate = new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc),
+            ReceiptStoragePath = "leases/org/lease/registration/receipt.pdf",
+            DeclaredByUserId = "auth0|declarer",
+            FailureCode = "provider_error",
+        };
+
+        var dto = LeaseDtoMapper.ToRegistration(registration);
+        var json = JsonSerializer.Serialize(dto, ApiJson);
+
+        Assert.True(dto.HasReceipt);
+        Assert.Equal(RegistrationChannel.Manual, dto.Channel);
+        Assert.Equal(registration.RegistrationDate, dto.RegistrationDate);
+        // A failure code only describes a Failed registration.
+        Assert.Null(dto.FailureCode);
+        AssertNoForbiddenFields(json);
+        Assert.DoesNotContain("auth0|declarer", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("leases/", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToRegistration_Failed_ExposesFailureCodeAndNoReceipt()
+    {
+        var dto = LeaseDtoMapper.ToRegistration(new LeaseRegistration
+        {
+            LeaseContractId = Guid.NewGuid(),
+            Status = RegistrationStatus.Failed,
+            FailureCode = "provider_error",
+        });
+
+        Assert.Equal("provider_error", dto.FailureCode);
+        Assert.False(dto.HasReceipt);
     }
 
     [Theory]

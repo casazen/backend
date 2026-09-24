@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -51,25 +52,122 @@ public class RliChecklistServiceTests
         Assert.False(result.Items.Single(i => i.Key == RliChecklistKeys.RliRegistered).Done);
     }
 
-    private static RliChecklistService CreateSut(LeaseContract lease)
+    [Theory]
+    [InlineData(LeaseStatus.RegistrationPending, RegistrationStatus.Pending)]
+    [InlineData(LeaseStatus.SentToProvider, RegistrationStatus.SentToProvider)]
+    public async Task GetAsync_ProviderSubmissionInProgress_RegistrationItemNotTicked(
+        LeaseStatus leaseStatus, RegistrationStatus registrationStatus)
+    {
+        // A7-01: "sent to the filing channel" was ticked as if the contract were registered.
+        var lease = BuildLease(extraEu: false, leaseStatus);
+        lease.Registration = new LeaseRegistration { LeaseContractId = lease.Id, Status = registrationStatus };
+        var sut = CreateSut(lease, providerAvailable: true);
+
+        var result = await sut.GetAsync(lease);
+
+        var registered = result.Items.Single(i => i.Key == RliChecklistKeys.RliRegistered);
+        Assert.False(registered.Done);
+        Assert.False(registered.Failed);
+        Assert.DoesNotContain(result.Items, i => i.Key == "rli_submitted");
+    }
+
+    [Fact]
+    public async Task GetAsync_RegistrationFailed_ItemFailedAndNotTicked()
+    {
+        var lease = BuildLease(extraEu: false);
+        lease.Registration = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Failed,
+            FailureCode = RliRegistrationFailureCodes.ProviderError,
+        };
+        var sut = CreateSut(lease, providerAvailable: true);
+
+        var result = await sut.GetAsync(lease);
+
+        var registered = result.Items.Single(i => i.Key == RliChecklistKeys.RliRegistered);
+        Assert.False(registered.Done);
+        Assert.True(registered.Failed);
+    }
+
+    [Fact]
+    public async Task GetAsync_RegisteredWithReceipt_ItemTicked()
+    {
+        var lease = BuildLease(extraEu: false, LeaseStatus.Registered);
+        lease.Registration = new LeaseRegistration
+        {
+            LeaseContractId = lease.Id,
+            Status = RegistrationStatus.Registered,
+            Channel = RegistrationChannel.Manual,
+            ReceiptStoragePath = "leases/org/lease/registration/receipt.pdf",
+        };
+        var sut = CreateSut(lease);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.True(result.Items.Single(i => i.Key == RliChecklistKeys.RliRegistered).Done);
+    }
+
+    [Fact]
+    public async Task GetAsync_ProviderPathUnavailable_NoDelegaItemAndFlagFalse()
+    {
+        var lease = BuildLease(extraEu: false);
+        var sut = CreateSut(lease, providerAvailable: false);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.False(result.ProviderFilingAvailable);
+        Assert.DoesNotContain(result.Items, i => i.Key == RliChecklistKeys.DelegaCaptured);
+    }
+
+    [Fact]
+    public async Task GetAsync_ProviderPathAvailable_ListsDelegaItem()
+    {
+        var lease = BuildLease(extraEu: false);
+        var sut = CreateSut(lease, providerAvailable: true);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.True(result.ProviderFilingAvailable);
+        Assert.False(result.Items.Single(i => i.Key == RliChecklistKeys.DelegaCaptured).Done);
+    }
+
+    [Fact]
+    public async Task GetAsync_FlagOnButProviderNotConfigured_ProviderPathUnavailable()
+    {
+        var lease = BuildLease(extraEu: false);
+        var sut = CreateSut(lease, providerAvailable: false, flagOn: true);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.False(result.ProviderFilingAvailable);
+    }
+
+    private static RliChecklistService CreateSut(LeaseContract lease, bool providerAvailable = false, bool? flagOn = null)
     {
         var auths = new Mock<ILeaseRegistrationAuthorizationRepository>();
         auths.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistrationAuthorization?)null);
         var events = new Mock<ILeaseEventRepository>();
         events.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync([]);
+        var flags = new Mock<IFeatureFlags>();
+        flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(flagOn ?? providerAvailable);
+        var provider = new Mock<ILeaseRegistrationProvider>();
+        provider.SetupGet(p => p.IsConfigured).Returns(providerAvailable);
         return new RliChecklistService(
             auths.Object,
             events.Object,
-            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", AttestationText = "bozza" }));
+            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", AttestationText = "bozza" }),
+            flags.Object,
+            provider.Object);
     }
 
-    private static LeaseContract BuildLease(bool extraEu)
+    private static LeaseContract BuildLease(bool extraEu, LeaseStatus status = LeaseStatus.Signed)
     {
         var property = new Property { OwnerId = OwnerId, City = "Milano", Name = "X" };
         return new LeaseContract
         {
             Id = Guid.NewGuid(),
-            Status = LeaseStatus.Signed,
+            Status = status,
             FiscalRegime = FiscalRegime.CedolareSecca,
             RegistrationDeadline = DateTime.UtcNow.Date.AddDays(20),
             Property = property,

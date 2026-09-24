@@ -199,7 +199,7 @@
     <value>Landlord delega and attestation are required before submitting the RLI.</value>
   </data>
   <data name="RliRegistrationAccepted" xml:space="preserve">
-    <value>Registration submitted. Check GET /api/leases/{id}/registration for status.</value>
+    <value>Filing sent to the provider: the contract is not registered yet. The status updates when the receipt of the Agenzia delle Entrate arrives.</value>
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>The uploaded file is not a valid APE (energy performance certificate). The PDF content does not match an official attestato di prestazione energetica. Upload a valid official APE and try again.</value>
@@ -222,14 +222,41 @@
   <data name="RliChecklist_rli_exported" xml:space="preserve">
     <value>RLI dataset exported for review</value>
   </data>
-  <data name="RliChecklist_rli_submitted" xml:space="preserve">
-    <value>RLI sent to the filing channel</value>
-  </data>
   <data name="RliChecklist_rli_registered" xml:space="preserve">
-    <value>Registration receipt available</value>
+    <value>Contract registered: Agenzia delle Entrate registration details and receipt on file</value>
   </data>
   <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
     <value>Questura notice (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Draft wording pending counsel.</value>
+  </data>
+  <data name="RliProviderUnavailable" xml:space="preserve">
+    <value>RLI filing through a provider is not available. Register the contract on the official channel of the Agenzia delle Entrate and enter the registration number, date and receipt here.</value>
+  </data>
+  <data name="RliProviderFailed" xml:space="preserve">
+    <value>The provider did not accept the filing: the contract is NOT registered. You can retry later or register it yourself on the official channel and enter the details.</value>
+  </data>
+  <data name="RliLeaseNotSigned" xml:space="preserve">
+    <value>The contract must be signed by all parties before it can be registered.</value>
+  </data>
+  <data name="RliSignedPdfMissing" xml:space="preserve">
+    <value>Filing through the provider needs the PDF of the signed contract.</value>
+  </data>
+  <data name="RliAlreadyRegistered" xml:space="preserve">
+    <value>This contract is already registered.</value>
+  </data>
+  <data name="RliRegistrationInProgress" xml:space="preserve">
+    <value>A provider registration is in progress for this contract: wait for its outcome before going on.</value>
+  </data>
+  <data name="RliReceiptInvalid" xml:space="preserve">
+    <value>The receipt must be a PDF file of at most {0} MB.</value>
+  </data>
+  <data name="RliRegistrationCodeInvalid" xml:space="preserve">
+    <value>Enter the registration number or protocol (at most {0} characters).</value>
+  </data>
+  <data name="RliRegistrationDateInFuture" xml:space="preserve">
+    <value>The registration date cannot be later than today.</value>
+  </data>
+  <data name="RliReceiptNotAvailable" xml:space="preserve">
+    <value>The registration receipt is not available: the contract is not registered yet.</value>
   </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Service request not found</value>

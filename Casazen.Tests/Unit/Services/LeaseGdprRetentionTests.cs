@@ -1,11 +1,9 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -32,16 +30,12 @@ public class LeaseGdprRetentionTests
 
         var sut = new LeaseWorkflowService(
             leases.Object,
-            Mock.Of<ILeaseRegistrationRepository>(),
             events.Object,
             Mock.Of<ILeaseTemplateService>(),
             Mock.Of<ILeaseESignService>(),
-            Mock.Of<ILeaseRegistrationService>(),
             properties.Object,
-            Mock.Of<ILeaseRegistrationAuthorizationRepository>(),
             ape.Object,
             Mock.Of<ICanoneConcordatoEligibilityService>(),
-            Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
 
         var result = await sut.CreateDraftAsync(PropertyId, new CreateLeaseRequest(
