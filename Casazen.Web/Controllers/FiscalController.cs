@@ -8,7 +8,6 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/fiscal")]
-[Authorize(Policy = "PropertyOwner")]
 [Authorize(Policy = "RequireContext:short-rent:property.read")]
 public class FiscalController(
     IFiscalRegimeService fiscalRegime,

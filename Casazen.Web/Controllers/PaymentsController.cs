@@ -1,78 +1,70 @@
-﻿using System.Security.Claims;
+﻿using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// Payments of the caller's org (TN-3, A3-38). Reads need <c>payment.read</c>, every change <c>payment.write</c>; each
+/// payment is then authorized as a <see cref="HostResource"/> of its booking's property (org, permission, ownership).
+/// A payment the caller may not see answers 404, like a missing one.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = CasazenPolicies.PaymentRead)]
 public class PaymentsController(
     IPaymentService paymentService,
     IBookingService bookingService,
-    IPropertyAuthorizationService authorizationService,
+    IHostResourceLookup hostResources,
+    IAuthorizationService authorizationService,
+    IOrgContextResolver orgContextResolver,
     IFiscalRegimeService fiscalRegimeService,
     ILogger<PaymentsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Payment>>> GetAll([FromQuery] Guid? propertyId)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        logger.LogInformation("Getting all payments");
-        IEnumerable<Payment> payments;
+        logger.LogInformation("Getting payments (property filter: {HasProperty})", propertyId.HasValue);
 
         if (propertyId.HasValue)
         {
-            if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId.Value, GetUserRoles()))
+            if (!await CanOnPropertyAsync(propertyId.Value, PaymentOperations.Read))
                 return NotFound();
 
-            payments = await paymentService.GetPropertyPaymentsAsync(propertyId.Value);
-        }
-        else
-        {
-            payments = await paymentService.GetAllPaymentsAsync();
-            payments = await FilterAccessiblePaymentsAsync(payments, userId);
+            return Ok(await paymentService.GetPropertyPaymentsAsync(propertyId.Value));
         }
 
-        return Ok(payments);
+        // Org (and ownership) filter applied in SQL: never the whole platform filtered in memory (A3-38).
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+            return Unauthorized();
+
+        return Ok(await paymentService.GetPaymentsAsync(scope));
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<Payment>> GetById(Guid id)
     {
         var payment = await paymentService.GetPaymentAsync(id);
-        if (payment == null)
-            return NotFound();
-
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        if (!await CanAccessPaymentAsync(payment, userId))
+        if (payment == null || !await CanOnPaymentAsync(payment, PaymentOperations.Read))
             return NotFound();
 
         return Ok(payment);
     }
 
     [HttpPost]
-    [Authorize(Policy = "RequireContext:short-rent:payment.write")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     public async Task<ActionResult<Payment>> Create([FromBody] CreatePaymentRequest request)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
         var booking = await bookingService.GetBookingAsync(request.BookingId);
         if (booking == null)
             return NotFound("Booking not found");
 
-        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
+        if (!await CanOnPropertyAsync(booking.PropertyId, PaymentOperations.Write, booking.OrgId))
             return NotFound();
 
         var payment = new Payment
@@ -90,21 +82,14 @@ public class PaymentsController(
     }
 
     [HttpPost("{id}/process")]
-    [Authorize(Policy = "RequireContext:short-rent:payment.write")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     public async Task<IActionResult> Process(Guid id)
     {
         logger.LogInformation("Processing payment: {PaymentId}", id);
         try
         {
             var existing = await paymentService.GetPaymentAsync(id);
-            if (existing == null)
-                return NotFound($"Payment {id} not found");
-
-            var userId = GetAuthenticatedUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-
-            if (!await CanAccessPaymentAsync(existing, userId))
+            if (existing == null || !await CanOnPaymentAsync(existing, PaymentOperations.Write))
                 return NotFound();
 
             var payment = await paymentService.ProcessPaymentAsync(id);
@@ -122,20 +107,13 @@ public class PaymentsController(
     }
 
     [HttpPost("{id}/refund")]
-    [Authorize(Policy = "RequireContext:short-rent:payment.write")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     public async Task<IActionResult> Refund(Guid id, [FromQuery] decimal? amount = null)
     {
         try
         {
             var existing = await paymentService.GetPaymentAsync(id);
-            if (existing == null)
-                return NotFound($"Payment {id} not found");
-
-            var userId = GetAuthenticatedUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-
-            if (!await CanAccessPaymentAsync(existing, userId))
+            if (existing == null || !await CanOnPaymentAsync(existing, PaymentOperations.Write))
                 return NotFound();
 
             var payment = await paymentService.RefundPaymentAsync(id, amount);
@@ -158,58 +136,30 @@ public class PaymentsController(
         [FromQuery] DateTime startDate,
         [FromQuery] DateTime endDate)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId, GetUserRoles()))
+        if (!await CanOnPropertyAsync(propertyId, PaymentOperations.Read))
             return NotFound();
 
         var revenue = await paymentService.GetTotalRevenueAsync(propertyId, startDate, endDate);
         return Ok(new { propertyId, startDate, endDate, revenue });
     }
 
-    private string? GetAuthenticatedUserId() =>
-        User.FindFirst("sub")?.Value
-        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-        ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+    private Task<bool> CanOnPaymentAsync(Payment payment, HostOperationRequirement operation) =>
+        payment.Booking is null
+            ? Task.FromResult(false)
+            : CanOnPropertyAsync(payment.Booking.PropertyId, operation, payment.OrgId);
 
-    private IReadOnlyList<string> GetUserRoles()
+    /// <summary>
+    /// Authorizes <paramref name="operation"/> on a row bound to <paramref name="propertyId"/>. When the row carries
+    /// its own org (<paramref name="rowOrgId"/>), that org is the one checked, with the property's owner.
+    /// </summary>
+    private async Task<bool> CanOnPropertyAsync(Guid propertyId, HostOperationRequirement operation, Guid? rowOrgId = null)
     {
-        var auth0Roles = Auth0RolesClaimParser.Parse(
-            User.FindAll("https://casazen.app/roles").Select(c => c.Value));
-        if (auth0Roles.Count > 0)
-            return auth0Roles;
-
-        return User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
-    }
-
-    private async Task<bool> CanAccessPaymentAsync(Payment payment, string userId)
-    {
-        if (payment.Booking is null)
+        var property = await hostResources.ForPropertyAsync(propertyId, HttpContext.RequestAborted);
+        if (property is null)
             return false;
 
-        return await authorizationService.CanAccessPropertyAsync(
-            userId,
-            payment.Booking.PropertyId,
-            GetUserRoles());
-    }
-
-    private async Task<IReadOnlyList<Payment>> FilterAccessiblePaymentsAsync(IEnumerable<Payment> payments, string userId)
-    {
-        var roles = GetUserRoles();
-        var visible = new List<Payment>();
-
-        foreach (var payment in payments)
-        {
-            if (payment.Booking is not null &&
-                await authorizationService.CanAccessPropertyAsync(userId, payment.Booking.PropertyId, roles))
-            {
-                visible.Add(payment);
-            }
-        }
-
-        return visible;
+        var resource = rowOrgId is Guid orgId ? property with { OrgId = orgId } : property;
+        return await authorizationService.IsAuthorizedAsync(User, resource, operation);
     }
 }
 

@@ -7,7 +7,6 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/properties/{propertyId:guid}/canone-concordato")]
-[Authorize(Policy = "LongTermLandlord")]
 [Authorize(Policy = "RequireContext:long-rent:lease.read")]
 public class CanoneConcordatoController(
     ICanoneConcordatoEligibilityService eligibility,

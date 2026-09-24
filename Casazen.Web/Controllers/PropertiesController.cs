@@ -20,7 +20,6 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
 [Authorize(Policy = "RequireContext:short-rent:property.read")]
 public class PropertiesController(
     IPropertyService propertyService,
@@ -780,7 +779,7 @@ public class PropertiesController(
         if (userId == ownerId)
             return;
 
-        if (!roles.Any(r => r is "PropertyManager" or "Admin"))
+        if (!roles.Any(Casazen.Core.Authorization.HostRoles.OrgWide.Contains))
             return;
 
         await adminAccessAuditService.LogPrivilegedPropertyAccessAsync(userId, propertyId, ownerId, action);
