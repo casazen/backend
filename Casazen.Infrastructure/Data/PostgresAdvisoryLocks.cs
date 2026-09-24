@@ -34,6 +34,12 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Stripe Checkout of one org's plan: at most one subscription per org (A1-10).</summary>
         OrgBillingCheckout = 1_004,
+
+        /// <summary>Refunds of one payment: the refundable amount is checked and reserved one request at a time (BK-02).</summary>
+        PaymentRefund = 1_005,
+
+        /// <summary>Cancellation of one booking: a double click cancels and refunds once (BK-02).</summary>
+        BookingCancellation = 1_006,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
