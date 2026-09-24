@@ -23,7 +23,8 @@ public class EmailTemplatesTests
     public static TheoryData<string> TemplateNames => new()
     {
         "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
-        "rli-reminder", "rli-overdue", "rli-extra-eu",
+        "rli-reminder", "rli-overdue", "rli-extra-eu", "onsite-received", "onsite-to-host", "onsite-accepted",
+        "onsite-declined", "onsite-expired",
     };
 
     [Theory]
@@ -204,6 +205,48 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void OnSiteRequestReceived_Italian_SaysNotConfirmedYetAndGivesLinkAndDeadlineInItalianTime()
+    {
+        const string confirmUrl = "https://casazen-app.test/book/villa/requests/1/confirm?token=abc";
+        var content = EmailTemplates.OnSiteRequestReceived(
+            EmailTemplates.DefaultCulture,
+            "Ada",
+            "Villa Rosa",
+            CheckIn,
+            CheckIn.AddDays(3),
+            1234.5m,
+            confirmUrl,
+            new DateTime(2026, 6, 27, 12, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal("Conferma la tua richiesta di prenotazione - Villa Rosa", content.Subject);
+        Assert.Contains("dal <strong>05/10/2026</strong> al <strong>08/10/2026</strong>", content.HtmlBody);
+        Assert.Contains("<strong>1.234,50 €</strong> in struttura", content.HtmlBody);
+        Assert.Contains("entro il <strong>27/06/2026 14:00</strong> (ora italiana)", content.HtmlBody);
+        Assert.Contains($"href=\"{confirmUrl.Replace("&", "&amp;", StringComparison.Ordinal)}\"", content.HtmlBody);
+        Assert.Contains("non è ancora confermata", content.HtmlBody);
+    }
+
+    [Fact]
+    public void OnSiteRequestToHost_English_AsksToAnswerByDeadlineAndLinksTheConsole()
+    {
+        var content = EmailTemplates.OnSiteRequestToHost(
+            CultureInfo.GetCultureInfo("en"),
+            "Ada Lovelace",
+            "Villa Rosa",
+            CheckIn,
+            CheckIn.AddDays(3),
+            2,
+            450m,
+            new DateTime(2026, 12, 1, 23, 30, 0, DateTimeKind.Utc),
+            Link);
+
+        Assert.Equal("New booking request to approve - Villa Rosa", content.Subject);
+        Assert.Contains("<strong>Ada Lovelace</strong> asks to book <strong>Villa Rosa</strong>", content.HtmlBody);
+        Assert.Contains("by <strong>2 December 2026, 00:30</strong> (Italian time)", content.HtmlBody);
+        Assert.Contains($"href=\"{Link}\"", content.HtmlBody);
+    }
+
+    [Fact]
     public void RliDeadlineReminder_Italian_ShowsPropertyDeadlineAndDaysWithoutTechnicalCodes()
     {
         var content = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
@@ -284,6 +327,13 @@ public class EmailTemplatesTests
             "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
             "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
             "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),
+            "onsite-received" => EmailTemplates.OnSiteRequestReceived(
+                culture, value, value, CheckIn, CheckIn.AddDays(3), 450m, Link, DateTime.UtcNow),
+            "onsite-to-host" => EmailTemplates.OnSiteRequestToHost(
+                culture, value, value, CheckIn, CheckIn.AddDays(3), 2, 450m, DateTime.UtcNow, Link),
+            "onsite-accepted" => EmailTemplates.OnSiteRequestAccepted(culture, value, value, CheckIn, CheckIn.AddDays(3), 450m, value),
+            "onsite-declined" => EmailTemplates.OnSiteRequestDeclined(culture, value, value, CheckIn, CheckIn.AddDays(3), value),
+            "onsite-expired" => EmailTemplates.OnSiteRequestExpired(culture, value, value, CheckIn, CheckIn.AddDays(3)),
             _ => throw new ArgumentOutOfRangeException(nameof(template)),
         };
     }

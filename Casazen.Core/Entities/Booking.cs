@@ -112,6 +112,27 @@ public class Booking : ITenantOwned
     /// </summary>
     public BookingCancellationReason? CancellationReason { get; set; }
 
+    /// <summary>
+    /// "Pay at the property" requests only (<see cref="PaymentOption.OnSite"/>, decision D5, BK-06): when the guest
+    /// confirmed the email address through the link of the "request received" email. Until then the request is not
+    /// sent to the host and holds its dates only for <c>DirectBooking:OnSiteEmailVerificationMinutes</c>.
+    /// </summary>
+    public DateTime? GuestEmailVerifiedAt { get; set; }
+
+    /// <summary>
+    /// SHA-256 (hex) of the email confirmation token of a "pay at the property" request; the raw token is only in the
+    /// link sent to the guest.
+    /// </summary>
+    [MaxLength(64)]
+    public string? GuestEmailVerificationTokenHash { get; set; }
+
+    /// <summary>
+    /// "Pay at the property" requests only: until when the pending request holds its dates. First the end of the email
+    /// confirmation window, then, once the email is confirmed, the host's answer deadline
+    /// (<c>DirectBooking:OnSiteApprovalHours</c>). Past it the <c>checkout-hold-expiry</c> job cancels the request.
+    /// </summary>
+    public DateTime? RequestExpiresAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -155,6 +176,18 @@ public enum BookingCancellationReason
     /// SetupIntent was cancelled on Stripe and the dates released (BK-21, A3-13).
     /// </summary>
     CheckoutHoldExpired = 1,
+
+    /// <summary>"Pay at the property" request declined by the host (BK-06, D5).</summary>
+    OnSiteRequestDeclined = 2,
+
+    /// <summary>"Pay at the property" request not answered by the host within <c>DirectBooking:OnSiteApprovalHours</c> (BK-06).</summary>
+    OnSiteRequestExpired = 3,
+
+    /// <summary>
+    /// "Pay at the property" request whose guest did not confirm the email address within
+    /// <c>DirectBooking:OnSiteEmailVerificationMinutes</c>: never sent to the host (BK-06, A3-06).
+    /// </summary>
+    OnSiteEmailNotConfirmed = 4,
 }
 
 public enum PaymentOption
@@ -165,6 +198,10 @@ public enum PaymentOption
     /// <summary>Pay on the free cancellation deadline (7 days before check-in) via Stripe SetupIntent + deferred charge.</summary>
     OnCancellationDeadline,
 
-    /// <summary>Pay on-site with no online payment (booking confirmed immediately).</summary>
+    /// <summary>
+    /// Pay at the property, no online payment. Never confirmed at once (decision D5, BK-06): the booking stays
+    /// <see cref="BookingStatus.Pending"/> as a request that the guest confirms by email and the host accepts or
+    /// declines (<see cref="Services.OnSiteRequests"/>).
+    /// </summary>
     OnSite
 }

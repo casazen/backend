@@ -33,6 +33,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/register?inviteToken={Uri.EscapeDataString(inviteToken)}");
     }
 
+    /// <summary>
+    /// Page of the booking site where the guest confirms the email of a "pay at the property" request (BK-06). Only the
+    /// booking id and the random token are in the link, no personal data.
+    /// </summary>
+    public string OnSiteRequestConfirmation(string orgSlug, Guid bookingId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/requests/{bookingId:D}/confirm?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>Host console: the "pay at the property" requests to accept or decline (BK-06).</summary>
+    public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
+
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
     private string BaseUrl()

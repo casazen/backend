@@ -43,7 +43,7 @@ and production never block each other.
 | `rli-deadline-reminder` | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
-| `checkout-hold-expiry` (BK-21, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
+| `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
 | `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
@@ -271,8 +271,14 @@ calendar and in the iCal export (so on Airbnb/Booking) until someone tried to bo
 
 **What counts as an expired hold** — one definition, `Casazen.Core/Services/CheckoutHolds.cs`, used by the job, by
 the cleanup before a new booking, by public availability, by the host calendar, by the iCal export and by the overlap
-checks: `Pending` + source `Direct` + payment option not `OnSite` + a PaymentIntent or SetupIntent + no payment
-`Processing`/`Completed` + created more than the TTL ago.
+checks: `Pending` + source `Direct` and either
+- a **payment hold**: payment option not `OnSite` + a PaymentIntent or SetupIntent + no payment
+  `Processing`/`Completed` + created more than the TTL ago;
+- or a **"pay at the property" request** (`OnSite`, BK-06, decision D5) past its own deadline `RequestExpiresAt`: the
+  email confirmation window (`DirectBooking:OnSiteEmailVerificationMinutes`, default the checkout TTL), then, once the
+  guest has confirmed the email, the host's answer deadline (`DirectBooking:OnSiteApprovalHours`, **provisional**
+  default 24). A request created before BK-06 without a deadline expires with the checkout TTL. Details:
+  [direct-booking.md](direct-booking.md).
 
 - **Reads** (availability, calendar, iCal export) leave expired holds out at once, before the job runs. They never
   cancel anything.
@@ -288,7 +294,11 @@ checks: `Pending` + source `Direct` + payment option not `OnSite` + a PaymentInt
      `checkout-hold-expiry:<bookingId>:<intentId>:<status>:<latest attempt>`), then sets the booking `Cancelled`
      with `CancellationReason = CheckoutHoldExpired` (1) and its uncollected payment rows `Canceled`, as a host
      cancellation does (BK-02).
-     Log: `Checkout hold {BookingId} expired: intent cancelled on Stripe, dates released`;
+     Log: `Checkout hold {BookingId} expired: intent cancelled on Stripe, dates released`.
+     A "pay at the property" request has no intent: it is cancelled with `CancellationReason = OnSiteRequestExpired`
+     (3, the host did not answer; the guest gets the "request expired" email, queued after the commit) or
+     `OnSiteEmailNotConfirmed` (4, the guest never confirmed the email; no email).
+     Log: `On-site request {BookingId} expired (<reason>): dates released`;
   4. a Stripe error leaves the hold untouched; the next run retries it (log `could not be expired`). An intent that is
      not found on that account (`resource_missing`), or no connected account at all, releases the dates with a
      warning.
@@ -296,11 +306,15 @@ checks: `Pending` + source `Direct` + payment option not `OnSite` + a PaymentInt
   overlapping expired holds only: a late payment keeps the dates (the new request gets 409), otherwise the hold is
   cancelled with its intent.
 - **Never touched**: host bookings (`Manual`), OTA bookings, every status other than `Pending`, and "pay at the
-  property" (`OnSite`) requests: under decision D5 they wait for the host's approval with their own waiting time
-  (BK-06), never the checkout TTL. `Pending` bookings without a Stripe intent are not holds either.
+  property" (`OnSite`) requests before their own deadline, whatever their age: under decision D5 they wait for the
+  host's approval, never the checkout TTL (BK-06). `Pending` payment bookings without a Stripe intent are not holds
+  either (legacy host bookings created as `Direct` before PC-01).
+- The host's accept / decline of a request (BK-06) lock the booking row (`FOR UPDATE`): a run finding it locked skips
+  it (`SKIP LOCKED`), and a run holding it makes the answer wait and then answer 409.
 
 Nothing to configure on Railway: the job is registered at startup like the others. To change the TTL set
-`DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure).
+`DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure). The "pay at the
+property" deadlines are in [direct-booking.md §2](direct-booking.md#2-configuration-railway-variables-per-environment).
 
 **Checks** (SQL editor, replace the schema):
 

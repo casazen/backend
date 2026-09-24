@@ -32,7 +32,8 @@ public record DirectBookingCreateResult(
     decimal BasePrice,
     string? SetupIntentClientSecret = null,
     DateTime? FreeRefundDeadline = null,
-    PaymentOption PaymentOption = PaymentOption.Immediate);
+    PaymentOption PaymentOption = PaymentOption.Immediate,
+    DateTime? OnSiteRequestExpiresAt = null);
 
 public class DirectBookingException(string message, string ErrorCode) : Exception(message)
 {

@@ -444,4 +444,52 @@
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>La registrazione autonoma non è disponibile per questo comune: scegli uno dei comuni dell'elenco o chiedi un invito.</value>
   </data>
+  <data name="OnSiteRequestTooManyNights" xml:space="preserve">
+    <value>Con il pagamento in struttura puoi richiedere al massimo {0} notti.</value>
+  </data>
+  <data name="OnSiteRequestLinkInvalid" xml:space="preserve">
+    <value>Link di conferma non valido: apri il link ricevuto via email.</value>
+  </data>
+  <data name="OnSiteRequestLinkExpired" xml:space="preserve">
+    <value>Il tempo per confermare la richiesta è scaduto e le date sono tornate disponibili: invia una nuova richiesta dal sito.</value>
+  </data>
+  <data name="OnSiteRequestExpired" xml:space="preserve">
+    <value>La richiesta è scaduta: le date sono tornate disponibili.</value>
+  </data>
+  <data name="OnSiteRequestNotPending" xml:space="preserve">
+    <value>La richiesta non è più in attesa: è già stata accettata, rifiutata o annullata.</value>
+  </data>
+  <data name="OnSiteRequestEmailNotConfirmed" xml:space="preserve">
+    <value>L'ospite non ha ancora confermato il suo indirizzo email: la richiesta non può ancora essere accettata o rifiutata.</value>
+  </data>
+  <data name="BookingNotOnSiteRequest" xml:space="preserve">
+    <value>Questa prenotazione non è una richiesta con pagamento in struttura.</value>
+  </data>
+  <data name="OnSiteRequestDatesBlocked" xml:space="preserve">
+    <value>Le date si sovrappongono ora a un blocco del calendario importato da un portale (es. Airbnb, Booking.com): la richiesta non può essere accettata, rifiutala.</value>
+  </data>
+  <data name="OnSiteRequestTokenRequired" xml:space="preserve">
+    <value>Il link di conferma è incompleto: apri il link ricevuto via email.</value>
+  </data>
+  <data name="OnSiteRequestDeclineMessageTooLong" xml:space="preserve">
+    <value>Il messaggio all'ospite può contenere al massimo 500 caratteri.</value>
+  </data>
+  <data name="DirectBookingPaymentsNotReady" xml:space="preserve">
+    <value>Questa struttura non accetta ancora prenotazioni online. Contatta direttamente l'host.</value>
+  </data>
+  <data name="DirectBookingTooManyGuests" xml:space="preserve">
+    <value>Il numero di ospiti supera la capienza della struttura.</value>
+  </data>
+  <data name="DirectBookingInvalidStay" xml:space="preserve">
+    <value>Date del soggiorno non valide: l'arrivo non può essere nel passato e la partenza deve essere successiva all'arrivo.</value>
+  </data>
+  <data name="DirectBookingConsentRequired" xml:space="preserve">
+    <value>Per prenotare devi acconsentire al trattamento dei dati personali.</value>
+  </data>
+  <data name="DirectBookingConsentOutdated" xml:space="preserve">
+    <value>L'informativa sul trattamento dei dati è stata aggiornata: ricarica la pagina e acconsenti di nuovo.</value>
+  </data>
+  <data name="DirectBookingInvalidPaymentOption" xml:space="preserve">
+    <value>Metodo di pagamento non valido.</value>
+  </data>
 </root>

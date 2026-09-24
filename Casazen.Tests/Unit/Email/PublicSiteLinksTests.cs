@@ -34,6 +34,28 @@ public class PublicSiteLinksTests
         Assert.Equal($"https://app.example.org/register?inviteToken={token}", url);
     }
 
+    [Fact]
+    public void OnSiteRequestConfirmation_SlugAndToken_PointToBookingSitePageWithIdAndTokenOnly()
+    {
+        var links = EmailTestHelpers.Links("https://app.example.org");
+        var bookingId = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e");
+
+        var url = links.OnSiteRequestConfirmation("villa rosa", bookingId, "t0k_en-1");
+
+        // BK-06: the page of the org's booking site; no personal data in the URL.
+        Assert.Equal(
+            "https://app.example.org/book/villa%20rosa/requests/0f8fad5b-d9cb-469f-a165-70867728950e/confirm?token=t0k_en-1",
+            url);
+    }
+
+    [Fact]
+    public void HostBookingRequests_PointsToConsoleRequestsView()
+    {
+        var links = EmailTestHelpers.Links("https://app.example.org/");
+
+        Assert.Equal("https://app.example.org/app/short-rent/bookings?view=requests", links.HostBookingRequests());
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

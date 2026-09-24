@@ -226,12 +226,15 @@ public class PropertyICalSyncService
         var feed = await GetFeedByExportTokenAsync(exportToken, ct)
             ?? throw new InvalidOperationException("Export token not found");
 
-        // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21).
-        var expiredHoldCutoff = CheckoutHolds.ExpiryCutoffUtc(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(_configuration));
+        // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21). A pending
+        // "pay at the property" request is left out until the host accepts it: an anonymous request must not block the
+        // OTAs (BK-06, A3-06); the approval checks the imported OTA blocks again.
+        var expiredHoldCutoff = CheckoutHolds.CutoffAt(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(_configuration));
         var bookings = await _db.Bookings
             .IgnoreQueryFilters()
             .Where(b => b.PropertyId == feed.PropertyId)
             .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoff))
+            .Where(OnSiteRequests.IsExportedToOtas())
             .ToListAsync(ct);
 
         var blocks = await _db.CalendarBlocks
