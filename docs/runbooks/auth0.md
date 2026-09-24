@@ -1,7 +1,8 @@
 # Runbook: Auth0 (tenants, Management API, Action, mobile client)
 
 Task FD-14 (audit defects A1-02, A4-01, A1-29, A4-30, A9-31); section 7 (mobile Native application):
-task MO-01 (A6-01, A6-21, A6-31). The code is in place; the product owner applies the Auth0, Railway,
+task MO-01 (A6-01, A6-21, A6-31); sections 7.4 and 7.9 (refresh token, logout, 401 vs 403 in the app): task MO-05
+(A6-14, A6-15, A1-33). The code is in place; the product owner applies the Auth0, Railway,
 Vercel and EAS steps below, once per tenant.
 
 The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SETUP.md`](../AUTH0_SETUP.md).
@@ -186,8 +187,10 @@ Rules:
   (`expo.ios.bundleIdentifier`, `expo.android.package`) changes the redirect URI: update this list first.
 - No wildcard, no `casazen://` alone (the old value): Auth0 compares the full URL.
 - Development builds (Metro) print the URI in the log: `[auth] Auth0 redirect URI: casazen://...`.
-- Logout URLs: the app does not log out at Auth0 yet (task MO-05); registering the same two URLs now lets
-  MO-05 use them as `returnTo` without another change in the tenant.
+- Logout URLs: the app logs out at Auth0 with `https://<domain>/v2/logout?client_id=<Native client id>&returnTo=<redirect
+  URI of the build>` (MO-05, section 7.9). Auth0 accepts the `returnTo` only if it is in **Allowed Logout URLs** of
+  this application: without the two URLs the logout page shows an Auth0 error (the app itself is already signed out,
+  but the Auth0 browser session is not ended).
 
 ### 7.3 Credentials and grant types
 
@@ -201,15 +204,39 @@ Rules:
 
 ### 7.4 Refresh tokens
 
-The app requests the scopes `openid profile email offline_access` and receives a refresh token (it is
-stored in SecureStore; the refresh flow itself is task MO-05).
+The app requests the scopes `openid profile email offline_access` and receives a refresh token, kept only in
+SecureStore (Keychain / Keystore). It uses it to renew the access token (grant `refresh_token` on
+`https://<domain>/oauth/token`, `client_id` of this Native application, no secret: public client, MO-05):
 
-- API from section 2 → Settings → **Allow Offline Access**: on (without it Auth0 issues no refresh token).
+- when an API call answers **401**, then it sends that call again, **once**;
+- shortly before the access token expires (60 s before `expires_in`), before sending the next call;
+- **one refresh at a time**: calls that need a new token while a refresh is running wait for it and reuse its
+  token. With rotation a refresh token used twice is treated as stolen and Auth0 revokes the whole family, so two
+  parallel refreshes would sign the user out.
+
+Tenant settings:
+
+- API from section 2 → Settings → **Allow Offline Access**: on (without it Auth0 issues no refresh token, and the
+  app asks for a new login each time the access token expires).
 - Application → Settings → **Refresh Token Rotation**: **Allow Refresh Token Rotation** on. Each refresh
-  returns a new refresh token and invalidates the previous one; a reused token revokes the whole family.
+  returns a new refresh token and invalidates the previous one (the app stores the new one); a reused token revokes
+  the whole family. **Rotation Overlap Period** (reuse interval): `0` is the strictest; a few seconds tolerate a
+  refresh answer lost on a bad network (the app then retries with the previous token instead of asking for a new
+  login). The app never reuses a token on purpose.
 - **Refresh Token Expiration**: set both the absolute (maximum) lifetime and the inactivity (idle) lifetime;
   do not leave "never expire". The values are a product decision (how long a host stays logged in on the
-  phone), still open.
+  phone), still open. When the refresh token expires the app shows the login with "La sessione è scaduta".
+- Access token lifetime: API from section 2 → Settings → **Maximum Access Token Lifetime** (default 86400 s). The app
+  renews it silently, so the value only bounds how long an access token stays usable after a logout or a
+  deactivation (the API refuses deactivated users anyway, section 10).
+
+What the app does with the Auth0 answer of a refresh:
+
+| Auth0 answer | Meaning | App |
+|---|---|---|
+| New tokens | Session renewed | Stores the new access and refresh token, sends the call again |
+| `invalid_grant` (and any other OAuth error below) | Refresh token expired, revoked, reused, or user blocked (section 10) | Ends the session: cache and SecureStore cleared, login screen with "La sessione è scaduta"; after the login it reopens the screen the user was on |
+| `server_error`, `temporarily_unavailable`, `too_many_requests`, network error | Auth0 not reachable | Keeps the session; the call fails like any network error and the next call tries again |
 
 ### 7.5 Connections and access to the API
 
@@ -242,9 +269,8 @@ These steps need a real device or emulator; they were not run when the code was 
 2. Log in with a test user (test tenant only): the app returns to the calendar and loads data from the
    matching backend (API answers 200, not 401). A user who has not completed the web onboarding with the legal
    consents sees "Completa l'attivazione sul sito" instead (PL-02, [`onboarding-consents.md`](onboarding-consents.md)).
-3. On a fresh install (or after clearing the app data: the app has no logout button yet), tap
-   **Continua con Auth0** and close the browser without logging in: the app stays on the login screen, no
-   error.
+3. On a fresh install (or after **Profilo → Esci**), tap **Continua con Auth0** and close the browser without
+   logging in: the app stays on the login screen, no error.
 4. Auth0 → Monitoring → Logs, filtered on `CasaZen Host (mobile)`: `Success Login`, then
    `Success Exchange` (*Authorization Code for Access Token*). Decode the access token (jwt.io, test tenant
    only): `aud` contains the API identifier, `azp` is the Native client id, `scope` contains `offline_access`.
@@ -273,6 +299,68 @@ web onboarding once with it (rental type and legal consents: the role alone open
 seed its host data on the test backend. Credentials are passed to Maestro at run time
 (`maestro test -e E2E_AUTH0_EMAIL=... -e E2E_AUTH0_PASSWORD=...`), never committed: `mobile/README.md`,
 section "Maestro E2E". The automated login flow belongs to task FN-04.
+
+### 7.9 Session and logout in the app (MO-05)
+
+**401 and 403 are different** (backend contract FD-05, PL-02, PL-03):
+
+| API answer | Meaning | App |
+|---|---|---|
+| 401 | Access token missing, expired or invalid | Refresh (section 7.4), call sent again once; logout only if Auth0 refuses the refresh token |
+| 403 `forbidden` | Valid session, action not allowed (also every `UnauthorizedAccessException` of the backend) | No logout: the error goes to the screen |
+| 403 `onboarding_required` | Host activation or legal consents missing (PL-02) | No logout: "Completa l'attivazione sul sito" |
+| 403 `account_inactive` | Account deactivated by an admin (PL-03, section 10) | No logout by itself: "Account disattivato" with the **Esci** button |
+
+**Logout** (tab **Profilo → Esci**, also on the "Account disattivato" and activation screens), in this order:
+
+1. `DELETE /api/devices/{deviceId}` with the current session: this phone stops receiving the user's pushes. The id is
+   the one the app registered with `POST /api/devices` (kept in SecureStore). The backend removes only the caller's
+   own registration (404 for any other user).
+2. `POST https://<domain>/oauth/revoke` with the refresh token and the Native `client_id` (public client, no
+   secret): the refresh token can no longer be exchanged for access tokens.
+3. React Query cache cleared (`queryClient.clear()`), then every value in SecureStore removed (tokens, expiry,
+   device id). A refresh still running cannot store its tokens any more.
+4. `https://<domain>/v2/logout?client_id=…&returnTo=<redirect URI>` in the system browser: ends the Auth0 session of
+   the browser, otherwise the next **Continua con Auth0** would sign the previous user in without asking for the
+   password. On iOS the system asks "CasaZen wants to use auth0.com to sign in" (standard for the authentication
+   browser): answering *Annulla* only skips this step.
+
+Steps 1 and 2 are best effort with a 5 s limit each: offline, the user still gets out, with these consequences:
+
+- device not removed: until another user registers the same push token (the backend then drops the previous
+  owner's row), this phone may still receive notifications of the previous user; the host can remove the app's
+  notification permission, or log in and out again when online;
+- refresh token not revoked: it is no longer on the phone, and it expires with the Refresh Token Expiration of section
+  7.4.
+
+Access tokens are not revocable in Auth0: an access token copied before the logout stays valid until it expires
+(Maximum Access Token Lifetime), which is why the app never logs or exports it.
+
+When the session **expires** (Auth0 refuses the refresh token), the app cannot call the backend or Auth0 any more:
+it clears the cache and SecureStore only. The device registration stays until the same push token is registered by
+the next user, or until the same user logs in again (update of the same row).
+
+Check on a device (test tenant, test users only):
+
+1. Log in, open a booking, then in Auth0 → Monitoring → Logs, filtered on `CasaZen Host (mobile)`, wait for the
+   access token to expire (or lower Maximum Access Token Lifetime of the test API to a few minutes, and set it back
+   afterwards): the next action works without a login, and the logs show *Success Exchange* (Refresh Token for
+   Access Token, `sertft`).
+2. Revoke the test user's refresh tokens (Auth0 → User Management → Users → the user → **Devices**, or the
+   Management API `DELETE /api/v2/device-credentials/{id}`), then use the app: it goes back to the login with "La sessione è scaduta"; after the login it reopens the booking.
+3. **Profilo → Esci**: the logs show *Success Revocation* (`srrt`) and *Success Logout* (`slo`); on the test database
+   the device row of that user is gone (`SELECT count(*) FROM "DeviceRegistrations" WHERE "UserId" = '<sub>'`).
+   **Continua con Auth0** now asks for the credentials: log in with a second test user and check that no data of
+   the first one appears and that the first user's pushes (e.g. a check-out reminder) no longer reach the phone.
+4. Deactivate the test host (section 10) while the app is open: the next screen shows "Account disattivato";
+   **Esci** returns to the login and Auth0 refuses the login ("user is blocked").
+
+| Symptom | Cause | Action |
+|---|---|---|
+| Auth0 error page at logout mentioning `returnTo` / Allowed Logout URLs | The redirect URI of the build is not in Allowed Logout URLs | Section 7.2 |
+| After **Esci**, **Continua con Auth0** signs the previous user in without the password | The Auth0 logout page was not completed (cancelled on iOS, or the logout URL was refused) | Check Allowed Logout URLs, then **Esci** again and let the page complete |
+| The app asks for a login every day | No refresh token (Allow Offline Access or grant Refresh Token off), or the refresh is refused | Sections 7.3 and 7.4; Auth0 logs *Failed Exchange* (`fertft`) with the reason |
+| Logins requested after a bad connection, logs say the refresh token was reused | Rotation reuse detection after a lost refresh answer | Section 7.4, Rotation Overlap Period |
 
 ## 8. Web SPA (reminder)
 
@@ -304,7 +392,8 @@ What happens when an admin deactivates a user from the admin console (`DELETE /a
 1. **CasaZen (always)**: `Users.IsActive = false`. From the next request, on every API instance, every authenticated
    call of that user answers **403 `account_inactive`**: admin, host, supplier and self-service endpoints alike
    (`/api/users/me` included), whatever the roles still in its access token. The web app shows the page
-   "Account disattivato" with the support contact and a logout button, instead of a UI full of errors.
+   "Account disattivato" with the support contact and a logout button, instead of a UI full of errors; the mobile
+   app shows the same screen with **Esci** (MO-05, section 7.9).
 2. **Auth0 (best effort, reported)**: the account is **blocked** (`blocked: true`: no login, no new token, refresh
    tokens included), then its CasaZen roles are read, stored in `Users.SuspendedAuth0Roles` and **removed**. Roles of
    other applications of the tenant are not touched. Access tokens issued before the deactivation stay valid until
