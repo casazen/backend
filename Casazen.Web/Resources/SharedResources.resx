@@ -219,6 +219,15 @@
   <data name="BookingDatesUnavailable" xml:space="preserve">
     <value>L'immobile non è disponibile nelle date selezionate.</value>
   </data>
+  <data name="BookingCreateInvalid" xml:space="preserve">
+    <value>La prenotazione non può essere creata: il check-in non può essere nel passato, il check-out deve seguire il check-in e serve almeno un ospite.</value>
+  </data>
+  <data name="BookingInvalidDates" xml:space="preserve">
+    <value>La data di check-out deve essere successiva alla data di check-in.</value>
+  </data>
+  <data name="BookingTooManyGuests" xml:space="preserve">
+    <value>Questo immobile accoglie al massimo {0} ospiti.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
