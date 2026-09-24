@@ -98,6 +98,9 @@ public class UserServiceTests
         Assert.Equal("new@example.com", result.Email);
         Assert.Equal("Luigi", result.FirstName);
         Assert.True(result.IsActive);
+        // PL-02 (A1-05): no host role before the onboarding and its consents.
+        Assert.Equal(UserRole.None, result.Role);
+        Assert.Null(result.OnboardingCompletedAt);
         _repoMock.Verify(r => r.AddIfAbsentAsync(It.Is<User>(u => u.Id == sub)), Times.Once);
         _cacheMock.Verify(c => c.Invalidate(sub), Times.Once);
     }

@@ -14,8 +14,14 @@ namespace Casazen.Infrastructure.Services;
 /// a request evaluating several context policies reads the DB at most once (and not at all while the
 /// short-lived cache is warm).
 /// </summary>
+/// <remarks>
+/// The host contexts (short-rent, long-rent) are withheld until the host onboarding is complete, whatever the JWT
+/// roles, the memberships or the DB role say (PL-02, A1-05, <see cref="HostOnboarding"/>): a user registered on Auth0
+/// who never went through the onboarding and its consents gets no host permission, from the web, the app or the API.
+/// </remarks>
 public class ContextAuthorizationService(
     IUserAuthorizationSnapshotStore snapshotStore,
+    ILegalDocumentService legalDocuments,
     IHttpContextAccessor httpContextAccessor,
     ILogger<ContextAuthorizationService> logger) : IContextAuthorizationService
 {
@@ -35,6 +41,16 @@ public class ContextAuthorizationService(
     }
 
     private IReadOnlyList<ContextAccess> BuildContexts(UserAuthorizationSnapshot snapshot)
+    {
+        var contexts = MergeContexts(snapshot);
+        if (HostOnboardingGate.Evaluate(snapshot, legalDocuments).IsComplete)
+            return contexts;
+
+        // PL-02: no host context before the onboarding and the current consents. Admin and supplier stay.
+        return contexts.Where(c => !HostOnboarding.IsHostContext(c.ContextKey)).ToList();
+    }
+
+    private IReadOnlyList<ContextAccess> MergeContexts(UserAuthorizationSnapshot snapshot)
     {
         var memberships = snapshot.Memberships;
         var jwtRoles = ResolveJwtRoles();
@@ -82,7 +98,7 @@ public class ContextAuthorizationService(
             if (context is null)
             {
                 logger.LogDebug(
-                    "Permission denied: user {UserId} has no context {ContextKey}",
+                    "Permission denied: user {UserId} has no context {ContextKey} (host contexts wait for the onboarding)",
                     userId, contextKey);
                 return false;
             }

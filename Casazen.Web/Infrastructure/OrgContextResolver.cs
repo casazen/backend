@@ -4,9 +4,14 @@ using Casazen.Core.Services;
 namespace Casazen.Web.Infrastructure;
 
 /// <summary>
-/// Resolves the caller's organization id, auto-provisioning a Starter org when the user
-/// has roles but never completed onboarding (production backfill for #217).
+/// Resolves the caller's organization id.
 /// </summary>
+/// <remarks>
+/// It no longer creates an org (PL-02, A1-05): the first org of a user is created only by the onboarding, together
+/// with the legal consents. A caller without an org gets <c>null</c>; the host endpoints never get that far, since
+/// their policies already answer 403 <c>onboarding_required</c> to a user without a completed onboarding. The name is
+/// kept for the existing callers.
+/// </remarks>
 public interface IOrgContextResolver
 {
     Task<Guid?> GetOrProvisionOrgIdAsync(CancellationToken cancellationToken = default);
@@ -16,7 +21,6 @@ public sealed class OrgContextResolver(
     IRequestTenantContext tenantContext,
     IHttpContextAccessor httpContextAccessor,
     IUserService userService,
-    IOrgService orgService,
     ILogger<OrgContextResolver> logger) : IOrgContextResolver
 {
     public async Task<Guid?> GetOrProvisionOrgIdAsync(CancellationToken cancellationToken = default)
@@ -29,11 +33,7 @@ public sealed class OrgContextResolver(
             return null;
 
         var (email, firstName, lastName) = ResolveProfileClaims();
-        var displayName = $"{firstName} {lastName}".Trim();
-        if (string.IsNullOrWhiteSpace(displayName))
-            displayName = string.IsNullOrWhiteSpace(email) ? "La mia organizzazione" : email;
 
-        // Upsert user row first — EnsureOrgForUserAsync requires the User to exist (#217).
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         if (user.OrgId is Guid linked)
         {
@@ -42,11 +42,9 @@ public sealed class OrgContextResolver(
             return linked;
         }
 
-        logger.LogInformation("Auto-provisioning Starter org for user {UserId}", sub);
-        var org = await orgService.EnsureOrgForUserAsync(sub, email, displayName, cancellationToken);
-        // A1-20: the next queries of this request (tenant filter, resource checks) see the new org.
-        tenantContext.SetOrgId(org.Id);
-        return org.Id;
+        // PL-02 (A1-05): no org without the onboarding and its consents (POST/PUT /api/users/onboarding).
+        logger.LogInformation("User {UserId} has no org yet: the onboarding creates it", sub);
+        return null;
     }
 
     private string? ResolveSub()

@@ -147,6 +147,8 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         var supplierEmail = await GetSupplierEmailAsync(supplierOrgId);
         var attackerId = $"auth0|email-shadow-{Guid.NewGuid():N}";
         await SeedUnlinkedUserAsync(attackerId, supplierEmail);
+        // A real host of another org (onboarding completed, PL-02), not a user stopped by the onboarding gate.
+        await _factory.SeedOrgForOwnerAsync(attackerId);
 
         using var attackerClient = _factory.CreateAuthenticatedClient(
             attackerId,

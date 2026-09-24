@@ -11,6 +11,7 @@ namespace Casazen.Infrastructure.Services;
 public class OnboardingService(
     AppDbContext db,
     ILegalDocumentService legalDocumentService,
+    IUserAuthorizationCache authorizationCache,
     PublicSiteLinks publicSiteLinks) : IOnboardingService
 {
     public (bool Success, ConsentValidationError? Error) ValidateConsents(
@@ -74,6 +75,8 @@ public class OnboardingService(
 
         db.ConsentRecords.AddRange(records);
         await db.SaveChangesAsync(cancellationToken);
+        // The host onboarding gate reads the consents from the cached authorization snapshot (PL-02).
+        authorizationCache.Invalidate(userId);
         return (true, null, true);
     }
 

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -374,7 +375,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Users.Add(new User
+        var user = new User
         {
             Id = userId,
             Email = $"{Guid.NewGuid():N}@example.com",
@@ -382,7 +383,10 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
             LastName = "Host",
             OrgId = orgId,
             IsActive = true,
-        });
+        };
+        db.Users.Add(user);
+        // A colleague who completed the onboarding for the org (PL-02): the checks below are about permissions and ownership.
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, orgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 

@@ -58,7 +58,8 @@ public class UserService(
             Email = email.ToLowerInvariant(),
             FirstName = firstName,
             LastName = lastName,
-            Role = UserRole.PropertyOwner,
+            // PL-02: no host role before the onboarding and its consents.
+            Role = UserRole.None,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -225,7 +226,9 @@ public class UserService(
             Email = email.ToLowerInvariant(),
             FirstName = firstName,
             LastName = lastName,
-            Role = UserRole.PropertyOwner,
+            // PL-02 (A1-05): a user registered on Auth0 has no host role, hence no host context, until the onboarding
+            // sets it together with the legal consents (CompleteOnboardingAsync).
+            Role = UserRole.None,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
