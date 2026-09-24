@@ -1,17 +1,22 @@
-# Runbook: encryption at rest of guest documents and Questura credentials
+# Runbook: encrypted database columns (guest documents, Questura credentials, secrets)
 
-Task CO-14. Audit defect: A5-30. Related: FD-07 (Data Protection key ring in the database), FD-20 (OTA secrets),
-PC-11 (iCal import URLs), CO-09 (audited reveal of document numbers), TN-1/TN-3 (tenant and authorization).
+Tasks CO-14 (audit defect A5-30) and PC-11 (A2-20). Related: FD-07 (Data Protection key ring in the database), FD-20
+(OTA secrets), CO-09 (audited reveal of document numbers), TN-1/TN-3 (tenant and authorization). The iCal specifics
+(masking of the import URL, "key ring lost" for the feeds) are in [`ical.md`](ical.md).
 
 ## 1. What is encrypted
 
-Every encrypted column is declared in **one place**, `Casazen.Infrastructure/Data/Encryption/EncryptedColumns.cs`.
-`AppDbContext` gives each of them the EF value converter `EncryptedStringConverter`: code reads and writes the clear
-value through EF, the database only ever holds the encrypted payload.
+**One mechanism**: the EF value converter `EncryptedStringConverter` (ASP.NET Core Data Protection, one purpose per
+column family) and the EF model cached per Data Protection provider (`DataProtectionModelCacheKeyFactory`), both in
+`Casazen.Infrastructure/Data/Encryption`. Every encrypted column is declared in **one place**,
+`EncryptedColumns.cs`: `AppDbContext` gives each of them its converter (the `if (EncryptionProvider is not null)` block
+of `OnModelCreating`), and one startup step encrypts the values still stored in clear. Code reads and writes the clear
+value through EF; the database only ever holds the encrypted payload.
 
 | Table.column | Purpose (never change it) | Since |
 |---|---|---|
 | `OtaIntegrations.ApiKey`, `ApiSecret` | `Casazen.OtaIntegration.Secrets` | FD-07 |
+| `PropertyICalFeeds.ImportUrl` | `Casazen.PropertyICalFeed.ImportUrl` | PC-11 |
 | `Guests.DocumentNumber`, `Guests.DocumentIssuingCountry` | `Casazen.Guest.Document` | CO-14 |
 | `StayGuests.DocumentNumber`, `StayGuests.DocumentIssuePlaceName` | `Casazen.Guest.Document` | CO-14 |
 | `PropertyQuesturaCredentials.Username`, `Password`, `WsKey` | `Casazen.PropertyQuesturaCredentials` | CO-14 |
@@ -42,10 +47,13 @@ secret that is not in the database; never compare payloads (the same value encry
   environment**, which comes from Railway variables (section 3). A new data key is created automatically every 90
   days; old keys stay in the ring to decrypt old values.
 - **Model cache**: EF caches the model of `AppDbContext` per Data Protection provider
-  (`DataProtectionModelCacheKeyFactory`). Before, the first context of the process fixed the provider for every later
-  context (the limit noted by FD-20). Production has one provider, hence one model.
-- **Column type**: the encrypted columns are `text` (a payload is about 4/3 of the value plus ~90 characters). The
-  plain-text limits are checked on input: document number 20 characters (Alloggiati record), place of issue 100,
+  (`DataProtectionModelCacheKeyFactory`, PC-11). Before, the first context of the process fixed the provider for every
+  later context (the limit noted by FD-20). Production has one provider, hence one model; the test hosts share one
+  (`CasazenWebApplicationFactory.SharedDataProtectionProvider`). A context built without provider (design time, some
+  unit tests) has its own model without converters: it reads the stored text.
+- **Column type**: wide enough for the payload (about 4/3 of the value plus ~90 characters): `text` for the CO-14
+  columns, `varchar(1000)` for the OTA secrets, `varchar(4096)` for the iCal URLs. The plain-text limits are checked on
+  input: document number 20 characters (Alloggiati record), place of issue 100,
   Questura username 100, password 200, WSKey 200.
 
 ## 3. Setup on Railway (test and production) — before deploying CO-14
@@ -61,8 +69,9 @@ next to the data they protect.
    DataProtection__CertificatePassword=<password of the .pfx>
    ```
 2. Store the `.pfx` and its password in the password manager. **If the certificate is lost, the keys are lost, and
-   with them every encrypted value** (guest document numbers, Questura credentials, OTA secrets): the guests' document
-   data must be collected again and the credentials entered again.
+   with them every encrypted value** (guest document numbers, Questura credentials, iCal import links, OTA secrets):
+   the guests' document data must be collected again, the credentials entered again and the calendars linked again
+   ([`ical.md`](ical.md) "Key ring lost").
 3. Deploy. The startup applies the EF migrations and then encrypts the values still stored in clear (section 4).
 4. Check the logs: `Data Protection keys: persisted in the database, encrypted with the configured certificate.` and,
    at the first start only, `Encrypted <n> Guest rows stored in clear` (and `StayGuest`).
@@ -79,8 +88,8 @@ their tenant (`OrgId`, from the property) and their "configured on" date. SQL ha
 The encryption of existing values is done by the application: `EncryptedColumns.EncryptLegacyPlaintextAsync`, called
 in `Program.cs` right after `Database.Migrate()` at **every startup**.
 
-- It finds the rows with a column neither empty nor a payload (`NOT LIKE 'CfDJ8%'`) and rewrites only those columns
-  through EF. `UpdatedAt` is not touched.
+- It finds the rows with a column neither empty nor a payload (`NOT LIKE 'CfDJ8%'`; for the iCal URLs, a value
+  starting with `http://` or `https://`) and rewrites only those columns through EF. `UpdatedAt` is not touched.
 - **Idempotent**: once done it finds nothing and writes nothing. Two instances starting together are harmless (a
   value is never encrypted twice: EF reads the clear value in both cases).
 - Until a row is rewritten its clear value is still readable (the converter accepts a value without the `CfDJ8`
@@ -97,6 +106,8 @@ SELECT count(*) FROM "StayGuests"
     OR ("DocumentIssuePlaceName" <> '' AND "DocumentIssuePlaceName" NOT LIKE 'CfDJ8%');
 SELECT count(*) FROM "PropertyQuesturaCredentials"
  WHERE "Username" NOT LIKE 'CfDJ8%' OR "Password" NOT LIKE 'CfDJ8%' OR "WsKey" NOT LIKE 'CfDJ8%';
+SELECT count(*) FROM "PropertyICalFeeds"
+ WHERE "ImportUrl" ILIKE 'https://%' OR "ImportUrl" ILIKE 'http://%';
 ```
 
 If the count is not 0 after a restart, restart once more; if it stays, look for `Encrypted ... rows` or an exception
@@ -147,9 +158,12 @@ an org-wide role — otherwise 403):
 ## 8. Adding an encrypted column
 
 1. Add the entity and property to `EncryptedColumns` (existing purpose if the values are of the same family, otherwise
-   a new constant; never rename a purpose).
-2. Make the column `text` (remove `[MaxLength]`) and check the length on input; generate the EF migration.
-3. Values already stored in clear are encrypted by the startup step with no extra code.
+   a new constant; never rename a purpose). No other `HasConversion` with a protector anywhere.
+2. Make the column wide enough for the payload (`text`, or about 4/3 of the clear text plus ~90 characters) and check
+   the length on input; generate the EF migration.
+3. Values already stored in clear are encrypted by the startup step with no extra code. By default a stored value
+   without the `CfDJ8` prefix is taken as clear text; a column whose clear values are recognizable can pass its own
+   test (as the iCal URLs do: `PropertyICalFeedUrlEncryption.IsLegacyPlaintext` plus the same test for SQL).
 4. Never read or write the column with raw SQL expecting the clear value, and never filter on it in a query.
 5. Update the list in `EncryptedColumnsTests` and this runbook.
 

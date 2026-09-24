@@ -34,7 +34,7 @@ public class PropertyICalSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncPropertyFeedAsync_CreatesBlocksFromParsedEvents()
+    public async Task SyncFeedAsync_CreatesBlocksFromParsedEvents()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -51,10 +51,10 @@ public class PropertyICalSyncServiceTests
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
 
         var service = CreateService(db, ics);
-        await service.SyncPropertyFeedAsync(propertyId);
+        await service.SyncFeedAsync(feedId);
 
         var blocks = await db.CalendarBlocks.Where(b => b.PropertyId == propertyId).ToListAsync();
         Assert.Single(blocks);
@@ -66,7 +66,7 @@ public class PropertyICalSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncPropertyFeedAsync_IsIdempotent()
+    public async Task SyncFeedAsync_IsIdempotent()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -83,17 +83,17 @@ public class PropertyICalSyncServiceTests
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
 
         var service = CreateService(db, ics);
-        await service.SyncPropertyFeedAsync(propertyId);
-        await service.SyncPropertyFeedAsync(propertyId);
+        await service.SyncFeedAsync(feedId);
+        await service.SyncFeedAsync(feedId);
 
         Assert.Equal(1, await db.CalendarBlocks.CountAsync(b => b.PropertyId == propertyId));
     }
 
     [Fact]
-    public async Task SyncPropertyFeedAsync_RemovesOrphanBlocks()
+    public async Task SyncFeedAsync_RemovesOrphanBlocks()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -110,11 +110,12 @@ public class PropertyICalSyncServiceTests
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
         db.CalendarBlocks.Add(new CalendarBlock
         {
             PropertyId = propertyId,
             OrgId = orgId,
+            FeedId = feedId,
             Source = CalendarBlockSource.ICalImport,
             ExternalUid = "orphan",
             StartUtc = DateTime.UtcNow,
@@ -123,7 +124,7 @@ public class PropertyICalSyncServiceTests
         await db.SaveChangesAsync();
 
         var service = CreateService(db, ics);
-        await service.SyncPropertyFeedAsync(propertyId);
+        await service.SyncFeedAsync(feedId);
 
         var uids = await db.CalendarBlocks
             .Where(b => b.PropertyId == propertyId)
@@ -134,15 +135,15 @@ public class PropertyICalSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncPropertyFeedAsync_OnFetchFailure_SetsFailureStatus()
+    public async Task SyncFeedAsync_OnFetchFailure_SetsFailureStatus()
     {
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
 
         var service = CreateService(db, icsContent: null, failure: ExternalFetchFailure.Unreachable);
-        await service.SyncPropertyFeedAsync(propertyId);
+        await service.SyncFeedAsync(feedId);
 
         var feed = await db.PropertyICalFeeds.FirstAsync();
         Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
@@ -155,16 +156,16 @@ public class PropertyICalSyncServiceTests
     [InlineData(ExternalFetchFailure.Timeout, ICalErrorCodes.Unreachable)]
     [InlineData(ExternalFetchFailure.TooLarge, ICalErrorCodes.TooLarge)]
     [InlineData(ExternalFetchFailure.InvalidUrl, ICalErrorCodes.InvalidUrl)]
-    public async Task SyncPropertyFeedAsync_OnFetchFailure_StoresStableCodeNotExceptionMessage(
+    public async Task SyncFeedAsync_OnFetchFailure_StoresStableCodeNotExceptionMessage(
         ExternalFetchFailure failure,
         string expectedCode)
     {
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
-        SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
 
         var service = CreateService(db, icsContent: null, failure: failure);
-        await service.SyncPropertyFeedAsync(propertyId);
+        await service.SyncFeedAsync(feedId);
 
         var feed = await db.PropertyICalFeeds.FirstAsync();
         Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
@@ -172,20 +173,39 @@ public class PropertyICalSyncServiceTests
         Assert.DoesNotContain(FakeExternalHttpClient.ExceptionMessage, feed.LastError);
     }
 
+    // PC-11: a feed is added without downloading it (FD-16: the first sync is a background job).
     [Fact]
-    public async Task SetImportUrlAsync_ValidUrl_SavesUrlAndMarksSyncingWithoutDownloading()
+    public async Task AddFeedAsync_ValidUrl_SavesTrimmedFeedMarkedSyncingWithoutDownloading()
     {
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var client = new FakeExternalHttpClient("BEGIN:VCALENDAR");
 
-        var service = CreateService(db, client);
-        var feed = await service.SetImportUrlAsync(propertyId, Guid.NewGuid(), " https://www.airbnb.it/calendar/ical/1.ics?s=abc ");
+        var feed = await CreateService(db, client).AddFeedAsync(
+            propertyId, Guid.NewGuid(), channel: null, label: "  Camera 2  ", " https://www.airbnb.it/calendar/ical/1.ics?s=abc ");
 
         Assert.Equal("https://www.airbnb.it/calendar/ical/1.ics?s=abc", feed.ImportUrl);
+        Assert.Equal(ICalFeedChannel.Airbnb, feed.Channel);
+        Assert.Equal("Camera 2", feed.Label);
         Assert.Equal(PropertyICalImportStatus.Syncing, feed.LastImportStatus);
         Assert.Null(feed.LastError);
         Assert.Equal(0, client.Downloads);
+        Assert.Equal(feed.Id, (await db.PropertyICalFeeds.SingleAsync()).Id);
+    }
+
+    // PC-11 (A2-11): the host links Airbnb and Booking.com to the same property.
+    [Fact]
+    public async Task AddFeedAsync_SecondChannelOnTheSameProperty_KeepsBothFeeds()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var service = CreateService(db);
+
+        await service.AddFeedAsync(propertyId, Guid.NewGuid(), null, null, "https://www.airbnb.it/calendar/ical/1.ics?s=abc");
+        await service.AddFeedAsync(propertyId, Guid.NewGuid(), null, null, "https://admin.booking.com/hotel/hoteladmin/ical.html?t=xyz");
+
+        var channels = await db.PropertyICalFeeds.Where(f => f.PropertyId == propertyId).Select(f => f.Channel).ToListAsync();
+        Assert.Equal([ICalFeedChannel.Airbnb, ICalFeedChannel.BookingCom], channels.Order());
     }
 
     [Theory]
@@ -197,23 +217,187 @@ public class PropertyICalSyncServiceTests
     [InlineData("https://localhost/cal.ics")]
     [InlineData("https://example.com:8443/cal.ics")]
     [InlineData("")]
-    public async Task SetImportUrlAsync_NotAnExternalHttpsUrl_ThrowsInvalidUrlAndSavesNothing(string url)
+    public async Task AddFeedAsync_NotAnExternalHttpsUrl_ThrowsInvalidUrlAndSavesNothing(string url)
     {
         await using var db = CreateDb();
         var service = CreateService(db);
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(
-            () => service.SetImportUrlAsync(Guid.NewGuid(), Guid.NewGuid(), url));
+            () => service.AddFeedAsync(Guid.NewGuid(), Guid.NewGuid(), ICalFeedChannel.Other, null, url));
 
         Assert.Equal(ICalErrorCodes.InvalidUrl, ex.Code);
         Assert.Equal("ICalInvalidUrl", ex.MessageKey);
         Assert.Empty(db.PropertyICalFeeds);
     }
 
+    // Longer URLs would not fit the encrypted column (varchar 4096).
+    [Fact]
+    public async Task AddFeedAsync_UrlLongerThanTheLimit_ThrowsInvalidUrl()
+    {
+        await using var db = CreateDb();
+        var url = "https://example.com/" + new string('a', PropertyICalFeed.ImportUrlMaxLength);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => CreateService(db).AddFeedAsync(Guid.NewGuid(), Guid.NewGuid(), null, null, url));
+
+        Assert.Equal(ICalErrorCodes.InvalidUrl, ex.Code);
+        Assert.Empty(db.PropertyICalFeeds);
+    }
+
+    [Fact]
+    public async Task AddFeedAsync_SameUrlTwice_ThrowsDuplicate()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var service = CreateService(db);
+        await service.AddFeedAsync(propertyId, Guid.NewGuid(), null, null, "https://www.airbnb.it/calendar/ical/1.ics?s=abc");
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(
+            () => service.AddFeedAsync(propertyId, Guid.NewGuid(), null, "copy", "https://WWW.AIRBNB.IT/calendar/ical/1.ics?s=abc"));
+
+        Assert.Equal(ICalFeedErrorCodes.Duplicate, ex.Code);
+        Assert.Single(db.PropertyICalFeeds);
+    }
+
+    [Fact]
+    public async Task AddFeedAsync_LimitReached_ThrowsLimitWithTheMaximum()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var service = ICalTestServices.PropertySync(
+            db, new FakeExternalHttpClient(null), new ConfigurationBuilder().Build(),
+            importOptions: new ICalImportOptions { MaxFeedsPerProperty = 2 });
+        await service.AddFeedAsync(propertyId, Guid.NewGuid(), null, null, "https://a.example.com/1.ics");
+        await service.AddFeedAsync(propertyId, Guid.NewGuid(), null, null, "https://b.example.com/2.ics");
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.AddFeedAsync(propertyId, Guid.NewGuid(), null, null, "https://c.example.com/3.ics"));
+
+        Assert.Equal(ICalFeedErrorCodes.LimitReached, ex.Code);
+        Assert.Equal(2, Assert.Single(ex.MessageArgs));
+        Assert.Equal(2, await db.PropertyICalFeeds.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("Airbnb\nBooking")]
+    [InlineData("tab\there")]
+    public async Task AddFeedAsync_LabelWithControlCharacters_ThrowsInvalidLabel(string label)
+    {
+        await using var db = CreateDb();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => CreateService(db).AddFeedAsync(Guid.NewGuid(), Guid.NewGuid(), null, label, "https://example.com/cal.ics"));
+
+        Assert.Equal(ICalFeedErrorCodes.InvalidLabel, ex.Code);
+        Assert.Empty(db.PropertyICalFeeds);
+    }
+
+    [Theory]
+    [InlineData("https://www.airbnb.it/calendar/ical/1.ics?s=a", ICalFeedChannel.Airbnb)]
+    [InlineData("https://airbnb.com/calendar/ical/1.ics", ICalFeedChannel.Airbnb)]
+    [InlineData("https://www.airbnb.co.uk/calendar/ical/1.ics", ICalFeedChannel.Airbnb)]
+    [InlineData("https://admin.booking.com/hotel/hoteladmin/ical.html?t=x", ICalFeedChannel.BookingCom)]
+    [InlineData("https://ical.booking.com/v1/export?t=x", ICalFeedChannel.BookingCom)]
+    [InlineData("https://notairbnb.example.com/cal.ics", ICalFeedChannel.Other)]
+    [InlineData("https://booking.com.example.org/cal.ics", ICalFeedChannel.Other)]
+    [InlineData("https://calendar.google.com/calendar/ical/x/basic.ics", ICalFeedChannel.Other)]
+    public void InferChannel_KnownOtaHosts_MapToTheirChannel(string url, ICalFeedChannel expected) =>
+        Assert.Equal(expected, PropertyICalSyncService.InferChannel(new Uri(url)));
+
+    // PC-11: removing a feed deletes its blocks and only those: the other feed and the manual block stay.
+    [Fact]
+    public async Task RemoveFeedAsync_TwoFeeds_DeletesOnlyTheBlocksOfTheRemovedFeed()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var airbnb = SeedFeed(db, propertyId, orgId, "https://www.airbnb.it/calendar/ical/1.ics", channel: ICalFeedChannel.Airbnb);
+        var booking = SeedFeed(db, propertyId, orgId, "https://admin.booking.com/ical.html?t=1", channel: ICalFeedChannel.BookingCom);
+        SeedBlock(db, propertyId, orgId, "airbnb-1", feedId: airbnb);
+        SeedBlock(db, propertyId, orgId, "booking-1", feedId: booking);
+        SeedBlock(db, propertyId, orgId, "owner-stay", CalendarBlockSource.Manual);
+
+        var removed = await CreateService(db).RemoveFeedAsync(propertyId, airbnb);
+
+        Assert.Equal(1, removed);
+        Assert.Equal(booking, (await db.PropertyICalFeeds.SingleAsync()).Id);
+        Assert.Equal(["booking-1", "owner-stay"], await db.CalendarBlocks.OrderBy(b => b.ExternalUid).Select(b => b.ExternalUid).ToListAsync());
+    }
+
+    [Fact]
+    public async Task RemoveFeedAsync_FeedOfAnotherProperty_ThrowsFeedNotFoundAndKeepsIt()
+    {
+        await using var db = CreateDb();
+        var feedId = SeedFeed(db, Guid.NewGuid(), Guid.NewGuid(), "https://example.com/cal.ics");
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() => CreateService(db).RemoveFeedAsync(Guid.NewGuid(), feedId));
+
+        Assert.Equal(ICalFeedErrorCodes.NotFound, ex.Code);
+        Assert.Single(db.PropertyICalFeeds);
+    }
+
+    // "Sync now" twice: the second click queues nothing while the first sync is pending.
+    [Fact]
+    public async Task RequestSyncAsync_FeedAlreadySyncing_DoesNotQueueAgain()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var feedId = SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics", lastError: ICalErrorCodes.Unreachable);
+        var service = CreateService(db);
+
+        var first = await service.RequestSyncAsync(propertyId, feedId);
+        var second = await service.RequestSyncAsync(propertyId, feedId);
+
+        Assert.True(first.Queue);
+        Assert.False(second.Queue);
+        Assert.Equal(PropertyICalImportStatus.Syncing, (await db.PropertyICalFeeds.SingleAsync()).LastImportStatus);
+    }
+
+    // PC-11 (A2-11): an empty Booking.com feed frees its own dates, never those imported from Airbnb.
+    [Fact]
+    public async Task SyncFeedAsync_TwoFeedsOfTheSameProperty_ReplacesOnlyItsOwnBlocks()
+    {
+        const string emptyFeed = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            END:VCALENDAR
+            """;
+
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var airbnb = SeedFeed(db, propertyId, orgId, "https://www.airbnb.it/calendar/ical/1.ics", channel: ICalFeedChannel.Airbnb);
+        var booking = SeedFeed(db, propertyId, orgId, "https://admin.booking.com/ical.html?t=1", channel: ICalFeedChannel.BookingCom);
+        SeedBlock(db, propertyId, orgId, "same-uid", feedId: airbnb);
+        SeedBlock(db, propertyId, orgId, "same-uid", feedId: booking);
+
+        await CreateService(db, emptyFeed).SyncFeedAsync(booking);
+
+        var remaining = await db.CalendarBlocks.SingleAsync();
+        Assert.Equal(airbnb, remaining.FeedId);
+        Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.SingleAsync(f => f.Id == booking)).LastImportStatus);
+        Assert.Null((await db.PropertyICalFeeds.SingleAsync(f => f.Id == airbnb)).LastImportStatus);
+    }
+
+    // A job queued before PC-11 carries a property id: it finds no feed and does nothing.
+    [Fact]
+    public async Task SyncFeedAsync_UnknownId_DoesNothing()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
+        var client = new FakeExternalHttpClient("BEGIN:VCALENDAR");
+
+        await CreateService(db, client).SyncFeedAsync(propertyId);
+
+        Assert.Equal(0, client.Downloads);
+        Assert.Null((await db.PropertyICalFeeds.SingleAsync()).LastImportStatus);
+    }
+
     // PC-10 (A2-10, A9-13): the OTA cancels the only reservation and the feed comes back empty. It is a valid feed:
     // the imported blocks are removed and the status is Success (the old test expected Failure and kept them).
     [Fact]
-    public async Task SyncPropertyFeedAsync_ValidFeedWithoutEvents_RemovesImportedBlocksAndSetsSuccess()
+    public async Task SyncFeedAsync_ValidFeedWithoutEvents_RemovesImportedBlocksAndSetsSuccess()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -225,12 +409,12 @@ public class PropertyICalSyncServiceTests
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics", lastError: ICalErrorCodes.InvalidFormat);
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics", lastError: ICalErrorCodes.InvalidFormat);
         SeedBlock(db, propertyId, orgId, "cancelled-reservation");
         SeedBlock(db, propertyId, orgId, "manual-block", CalendarBlockSource.Manual);
 
         var service = CreateService(db, ics);
-        await service.SyncPropertyFeedAsync(propertyId);
+        await service.SyncFeedAsync(feedId);
 
         var feed = await db.PropertyICalFeeds.FirstAsync();
         Assert.Equal(PropertyICalImportStatus.Success, feed.LastImportStatus);
@@ -241,7 +425,7 @@ public class PropertyICalSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncPropertyFeedAsync_FeedWithOnlyCancelledEvents_RemovesTheirBlocks()
+    public async Task SyncFeedAsync_FeedWithOnlyCancelledEvents_RemovesTheirBlocks()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -258,10 +442,10 @@ public class PropertyICalSyncServiceTests
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
         SeedBlock(db, propertyId, orgId, "reservation-1");
 
-        await CreateService(db, ics).SyncPropertyFeedAsync(propertyId);
+        await CreateService(db, ics).SyncFeedAsync(feedId);
 
         Assert.Empty(await db.CalendarBlocks.Where(b => b.PropertyId == propertyId).ToListAsync());
         Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
@@ -272,15 +456,15 @@ public class PropertyICalSyncServiceTests
     [InlineData("<!DOCTYPE html><html><body>Accedi per continuare</body></html>")]
     [InlineData("")]
     [InlineData("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:cut\nDTSTART:20261010T100000Z\n")]
-    public async Task SyncPropertyFeedAsync_NotAReadableCalendar_KeepsBlocksAndStoresInvalidFormat(string content)
+    public async Task SyncFeedAsync_NotAReadableCalendar_KeepsBlocksAndStoresInvalidFormat(string content)
     {
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
         SeedBlock(db, propertyId, orgId, "existing-block");
 
-        await CreateService(db, content).SyncPropertyFeedAsync(propertyId);
+        await CreateService(db, content).SyncFeedAsync(feedId);
 
         var feed = await db.PropertyICalFeeds.FirstAsync();
         Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
@@ -290,7 +474,7 @@ public class PropertyICalSyncServiceTests
 
     // An event that cannot be read (end before start) is skipped: it does not fail the feed or the other events.
     [Fact]
-    public async Task SyncPropertyFeedAsync_UnreadableEvent_IsSkippedAndTheOthersAreImported()
+    public async Task SyncFeedAsync_UnreadableEvent_IsSkippedAndTheOthersAreImported()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -311,9 +495,9 @@ public class PropertyICalSyncServiceTests
 
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
-        SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
 
-        await CreateService(db, ics).SyncPropertyFeedAsync(propertyId);
+        await CreateService(db, ics).SyncFeedAsync(feedId);
 
         var feed = await db.PropertyICalFeeds.FirstAsync();
         Assert.Equal(PropertyICalImportStatus.Success, feed.LastImportStatus);
@@ -323,7 +507,7 @@ public class PropertyICalSyncServiceTests
     // An event still in the feed but unreadable is not proof that its reservation is gone: its block stays, while the
     // blocks of events that left the feed are removed.
     [Fact]
-    public async Task SyncPropertyFeedAsync_UnreadableEventOfAnImportedBlock_KeepsThatBlock()
+    public async Task SyncFeedAsync_UnreadableEventOfAnImportedBlock_KeepsThatBlock()
     {
         const string ics = """
             BEGIN:VCALENDAR
@@ -339,11 +523,11 @@ public class PropertyICalSyncServiceTests
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
-        SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
         SeedBlock(db, propertyId, orgId, "existing-block");
         SeedBlock(db, propertyId, orgId, "gone-block");
 
-        await CreateService(db, ics).SyncPropertyFeedAsync(propertyId);
+        await CreateService(db, ics).SyncFeedAsync(feedId);
 
         Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
         Assert.Equal("existing-block", Assert.Single(await db.CalendarBlocks.ToListAsync()).ExternalUid);
@@ -351,7 +535,7 @@ public class PropertyICalSyncServiceTests
 
     // A2-12: a 2000-character SUMMARY and a UID repeated in the feed no longer break the save.
     [Fact]
-    public async Task SyncPropertyFeedAsync_LongSummaryAndRepeatedUid_StoresFittingUniqueBlocks()
+    public async Task SyncFeedAsync_LongSummaryAndRepeatedUid_StoresFittingUniqueBlocks()
     {
         var ics = $"""
             BEGIN:VCALENDAR
@@ -378,9 +562,9 @@ public class PropertyICalSyncServiceTests
 
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
-        SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
 
-        await CreateService(db, ics).SyncPropertyFeedAsync(propertyId);
+        await CreateService(db, ics).SyncFeedAsync(feedId);
 
         var blocks = await db.CalendarBlocks.OrderBy(b => b.StartUtc).ToListAsync();
         Assert.Equal(["repeated#20261010", "repeated#20261101"], blocks.Select(b => b.ExternalUid));
@@ -388,15 +572,15 @@ public class PropertyICalSyncServiceTests
         Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
     }
 
-    // A new URL saved while the old one was downloading: the old result is dropped, the new URL's job syncs.
+    // The feed is removed while it downloads: its result is dropped, no block comes back.
     [Fact]
-    public async Task SyncPropertyFeedAsync_UrlReplacedDuringTheDownload_WritesNothing()
+    public async Task SyncFeedAsync_FeedRemovedDuringTheDownload_WritesNothing()
     {
         const string ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
             BEGIN:VEVENT
-            UID:old-feed-block
+            UID:removed-feed-block
             DTSTART;VALUE=DATE:20261010
             DTEND;VALUE=DATE:20261012
             END:VEVENT
@@ -405,23 +589,21 @@ public class PropertyICalSyncServiceTests
 
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
-        SeedFeed(db, propertyId, Guid.NewGuid(), "https://old.example.com/cal.ics");
+        var feedId = SeedFeed(db, propertyId, Guid.NewGuid(), "https://old.example.com/cal.ics");
         var client = new FakeExternalHttpClient(ics)
         {
             OnDownload = () =>
             {
-                var feed = db.PropertyICalFeeds.Single();
-                feed.ImportUrl = "https://new.example.com/cal.ics";
-                feed.LastImportStatus = PropertyICalImportStatus.Syncing;
+                db.PropertyICalFeeds.Remove(db.PropertyICalFeeds.Single());
                 db.SaveChanges();
                 db.ChangeTracker.Clear();
             },
         };
 
-        await CreateService(db, client).SyncPropertyFeedAsync(propertyId);
+        await CreateService(db, client).SyncFeedAsync(feedId);
 
         Assert.Empty(await db.CalendarBlocks.ToListAsync());
-        Assert.Equal(PropertyICalImportStatus.Syncing, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
+        Assert.Empty(await db.PropertyICalFeeds.ToListAsync());
     }
 
     // A2-12: every feed has its own scope, try/catch and error state; an unexpected failure is stored on that feed and
@@ -509,38 +691,46 @@ public class PropertyICalSyncServiceTests
             .Options);
     }
 
-    private static void SeedFeed(
+    private static Guid SeedFeed(
         AppDbContext db,
         Guid propertyId,
         Guid orgId,
         string importUrl,
         string? lastError = null,
-        DateTime? lastImportAt = null)
+        DateTime? lastImportAt = null,
+        ICalFeedChannel channel = ICalFeedChannel.Other)
     {
-        db.PropertyICalFeeds.Add(new PropertyICalFeed
+        var feed = new PropertyICalFeed
         {
             PropertyId = propertyId,
             OrgId = orgId,
+            Channel = channel,
             ImportUrl = importUrl,
-            ExportToken = Guid.NewGuid(),
             LastError = lastError,
             LastImportAt = lastImportAt,
             LastImportStatus = lastError is null ? null : PropertyICalImportStatus.Failure,
-        });
+        };
+        db.PropertyICalFeeds.Add(feed);
         db.SaveChanges();
+        return feed.Id;
     }
 
+    // An imported block belongs to a feed: feedId, or the first feed of the property.
     private static void SeedBlock(
         AppDbContext db,
         Guid propertyId,
         Guid orgId,
         string externalUid,
-        CalendarBlockSource source = CalendarBlockSource.ICalImport)
+        CalendarBlockSource source = CalendarBlockSource.ICalImport,
+        Guid? feedId = null)
     {
         db.CalendarBlocks.Add(new CalendarBlock
         {
             PropertyId = propertyId,
             OrgId = orgId,
+            FeedId = source == CalendarBlockSource.ICalImport
+                ? feedId ?? db.PropertyICalFeeds.Where(f => f.PropertyId == propertyId).Select(f => (Guid?)f.Id).First()
+                : null,
             Source = source,
             ExternalUid = externalUid,
             StartUtc = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc),

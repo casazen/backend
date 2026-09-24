@@ -8,11 +8,13 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Data.Encryption;
 
 /// <summary>
-/// The one field-encryption mechanism of the application (CO-14, A5-30): every column encrypted at rest is declared
-/// here, with its Data Protection purpose, and nowhere else. <see cref="AppDbContext"/> gives each of them an
-/// <see cref="EncryptedStringConverter"/> built from its own provider (the model is cached per provider,
-/// <see cref="DataProtectionModelCacheKeyFactory"/>), so code reads and writes the clear value through EF and the
-/// database only ever holds the payload. Runbook: <c>docs/runbooks/encryption.md</c>.
+/// The list of the columns encrypted at rest (CO-14, A5-30), on the one mechanism introduced by FD-07 and PC-11: the
+/// Data Protection value converter <see cref="EncryptedStringConverter"/> (one purpose per column family, values stored
+/// in clear before the encryption still readable) and the EF model cached per provider
+/// (<see cref="DataProtectionModelCacheKeyFactory"/>). Every encrypted column is declared here and nowhere else:
+/// <see cref="AppDbContext"/> gives each one its converter, <see cref="EncryptLegacyPlaintextAsync"/> rewrites the values
+/// still in clear at startup. Code reads and writes the clear value through EF; the database only holds the payload.
+/// Runbook: <c>docs/runbooks/encryption.md</c>.
 /// </summary>
 /// <remarks>
 /// A Data Protection payload carries the id of the key that produced it: after a key rotation (automatic every 90 days,
@@ -41,12 +43,22 @@ public static class EncryptedColumns
 
     private const int BatchSize = 200;
 
+    /// <summary>SQL-translatable twin of <see cref="IsLegacyPlaintext"/>: <c>col NOT LIKE 'CfDJ8%'</c>.</summary>
+    private static readonly Expression<Func<string, bool>> NotAPayload =
+        stored => !stored.StartsWith(ProtectedPayloadPrefix);
+
     private static readonly IEncryptedEntity[] Entities =
     [
         new EncryptedEntity<OtaIntegration>(
             OtaSecretsPurpose,
             nameof(OtaIntegration.ApiKey),
             nameof(OtaIntegration.ApiSecret)),
+        // iCal import URLs (PC-11, A2-20): only a URL is accepted as a value stored in clear.
+        new EncryptedEntity<PropertyICalFeed>(
+            PropertyICalFeedUrlEncryption.Purpose,
+            PropertyICalFeedUrlEncryption.IsLegacyPlaintext,
+            stored => stored.ToLower().StartsWith("https://") || stored.ToLower().StartsWith("http://"),
+            nameof(PropertyICalFeed.ImportUrl)),
         new EncryptedEntity<Guest>(
             GuestDocumentPurpose,
             nameof(Guest.DocumentNumber),
@@ -136,9 +148,23 @@ public static class EncryptedColumns
         Task<int> EncryptLegacyPlaintextAsync(AppDbContext stored, AppDbContext db, CancellationToken ct);
     }
 
-    private sealed class EncryptedEntity<TEntity>(string purpose, params string[] properties) : IEncryptedEntity
+    /// <param name="purpose">Data Protection purpose of the columns.</param>
+    /// <param name="isLegacyPlaintext">Stored values read back as they are (written in clear before the encryption).</param>
+    /// <param name="storedInClear">The same test, translatable to SQL, to find the rows to rewrite.</param>
+    /// <param name="properties">Encrypted string properties of the entity.</param>
+    private sealed class EncryptedEntity<TEntity>(
+        string purpose,
+        Func<string, bool> isLegacyPlaintext,
+        Expression<Func<string, bool>> storedInClear,
+        params string[] properties) : IEncryptedEntity
         where TEntity : class
     {
+        /// <summary>Columns whose values stored in clear are the ones without the payload prefix.</summary>
+        public EncryptedEntity(string purpose, params string[] properties)
+            : this(purpose, IsLegacyPlaintext, NotAPayload, properties)
+        {
+        }
+
         public Type EntityType => typeof(TEntity);
 
         public string Purpose => purpose;
@@ -147,7 +173,7 @@ public static class EncryptedColumns
 
         public void Configure(ModelBuilder modelBuilder, IDataProtectionProvider provider)
         {
-            var converter = new EncryptedStringConverter(provider, purpose, IsLegacyPlaintext);
+            var converter = new EncryptedStringConverter(provider, purpose, isLegacyPlaintext);
             foreach (var property in properties)
                 modelBuilder.Entity<TEntity>().Property<string>(property).HasConversion(converter);
         }
@@ -183,13 +209,12 @@ public static class EncryptedColumns
         }
 
         /// <summary>
-        /// At least one column neither empty nor a payload:
-        /// <c>(col IS NOT NULL AND col &lt;&gt; '' AND col NOT LIKE 'CfDJ8%') OR …</c>.
+        /// At least one column neither empty nor encrypted:
+        /// <c>(col IS NOT NULL AND col &lt;&gt; '' AND &lt;storedInClear(col)&gt;) OR …</c>.
         /// </summary>
         private Expression<Func<TEntity, bool>> StoredInClear()
         {
             var entity = Expression.Parameter(typeof(TEntity), "e");
-            var startsWith = typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string)])!;
             Expression? body = null;
             foreach (var property in properties)
             {
@@ -199,12 +224,18 @@ public static class EncryptedColumns
                     Expression.AndAlso(
                         Expression.NotEqual(column, Expression.Constant(null, typeof(string))),
                         Expression.NotEqual(column, Expression.Constant(string.Empty))),
-                    Expression.Not(Expression.Call(column, startsWith, Expression.Constant(ProtectedPayloadPrefix))));
+                    new ReplaceParameter(storedInClear.Parameters[0], column).Visit(storedInClear.Body));
                 body = body is null ? inClear : Expression.OrElse(body, inClear);
             }
 
             return Expression.Lambda<Func<TEntity, bool>>(body!, entity);
         }
+    }
+
+    private sealed class ReplaceParameter(ParameterExpression parameter, Expression replacement) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == parameter ? replacement : base.VisitParameter(node);
     }
 }
 

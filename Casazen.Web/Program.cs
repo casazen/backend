@@ -261,8 +261,9 @@ if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("T
     var db = migrateScope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 
-    // Values stored in clear before their column was encrypted (guest documents, CO-14) are rewritten encrypted; a
-    // no-op once done. Stops the startup when Data Protection is missing (docs/runbooks/encryption.md).
+    // Values stored in clear before their column was encrypted (iCal import URLs PC-11, guest documents CO-14) are
+    // rewritten encrypted; a no-op once done. Stops the startup when Data Protection is missing
+    // (docs/runbooks/encryption.md).
     await EncryptedColumns.EncryptLegacyPlaintextAsync(
         db, migrateScope.ServiceProvider.GetRequiredService<ILogger<Program>>());
 }

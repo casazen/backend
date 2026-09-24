@@ -9,7 +9,7 @@ Task FD-07. Audit defects: A2-03, A2-31, A9-04. Product decision D8: Supabase St
 | Property photos, supplier photos | Container disk (`wwwroot/uploads/properties`), relative URL `/uploads/...` | **Public** bucket, absolute URL `{Storage:PublicBaseUrl}/{key}` |
 | Property documents (APE, CIN certificate, …) | Container disk under `wwwroot`, **downloadable anonymously** | **Private** bucket. The database stores the object key. Read only through `GET /api/properties/{id}/documents/{docId}/download` (JWT, tenant filter, ownership) or a 5-minute signed URL from `GET /api/properties/{id}/documents/{docId}/signed-url` |
 | Guest ID scans (check-in) | Container disk (`uploads/guest-documents`) | **Private** bucket. `Guest.DocumentScanUrl` holds the object key |
-| Data Protection keys (encrypt `OtaIntegration.ApiKey/ApiSecret`) | Container disk, lost on every deploy | Table `DataProtectionKeys` (EF migration `AddDataProtectionKeys`), optionally encrypted with a certificate |
+| Data Protection keys (encrypt `OtaIntegration.ApiKey/ApiSecret` and, since PC-11, the iCal import URLs `PropertyICalFeeds.ImportUrl`) | Container disk, lost on every deploy | Table `DataProtectionKeys` (EF migration `AddDataProtectionKeys`), optionally encrypted with a certificate |
 
 Object keys:
 
@@ -100,7 +100,7 @@ DataProtection__CertificatePfxBase64=<content of dp-$ENV.pfx.b64>
 DataProtection__CertificatePassword=<strong password>
 ```
 
-Store the `.pfx` file and its password in the password manager, then delete the local files. **If the certificate is lost, every key it protects is lost too**, and the OTA secrets must be entered again.
+Store the `.pfx` file and its password in the password manager, then delete the local files. **If the certificate is lost, every key it protects is lost too**, and the OTA secrets and the iCal import links must be entered again (docs/runbooks/ical.md, "Key ring lost").
 
 Certificate rotation:
 
@@ -112,6 +112,13 @@ Certificate rotation:
 Adding the certificate later is safe: keys already stored in clear text stay readable, and new keys are encrypted.
 
 Note: OTA secrets encrypted **before** FD-07 used keys that were lost with the old containers, so they cannot be recovered. Those integrations must be configured again (the OTA partner APIs are hidden behind a feature flag anyway, decision D10).
+
+### Encrypted database columns
+
+Moved to [`encryption.md`](encryption.md): the list of the encrypted columns (OTA secrets, iCal import URLs, guest
+identity documents, Questura credentials), the one mechanism (`EncryptedStringConverter`,
+`DataProtectionModelCacheKeyFactory`, `EncryptedColumns`), the startup encryption of values stored in clear, key
+rotation and how to add a column.
 
 ## 5. Migrating files from the old local storage (optional)
 

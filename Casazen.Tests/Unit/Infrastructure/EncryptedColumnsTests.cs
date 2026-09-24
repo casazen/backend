@@ -10,7 +10,7 @@ namespace Casazen.Tests.Unit.Infrastructure;
 public class EncryptedColumnsTests
 {
     [Fact]
-    public void All_DeclaresTheSecretsGuestDocumentsAndQuesturaCredentials()
+    public void All_DeclaresTheSecretsICalUrlsGuestDocumentsAndQuesturaCredentials()
     {
         var columns = EncryptedColumns.All.Select(c => $"{c.EntityType.Name}.{c.Property}:{c.Purpose}").Order().ToArray();
 
@@ -21,6 +21,7 @@ public class EncryptedColumnsTests
                 "Guest.DocumentNumber:Casazen.Guest.Document",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
+                "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",
