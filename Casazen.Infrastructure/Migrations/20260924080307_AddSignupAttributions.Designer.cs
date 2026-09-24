@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924083728_AssignNoneRoleToUsersWithoutOnboarding")]
-    partial class AssignNoneRoleToUsersWithoutOnboarding
+    [Migration("20260924080307_AddSignupAttributions")]
+    partial class AddSignupAttributions
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -253,13 +253,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FreeRefundDeadline")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("GuestEmailVerificationTokenHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime?>("GuestEmailVerifiedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uuid");
 
@@ -280,9 +273,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RequestExpiresAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Source")
                         .HasColumnType("integer");
@@ -2487,6 +2477,62 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ServiceRequests");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SignupAttribution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ComuneCode")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
+                    b.Property<string>("LandingPath")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReferrerHost")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)");
+
+                    b.Property<string>("UtmCampaign")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UtmContent")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UtmMedium")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UtmSource")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UtmTerm")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SignupAttributions_OrgId");
+
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("IX_SignupAttributions_RecordedAt");
+
+                    b.ToTable("SignupAttributions");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.StayGuest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3652,6 +3698,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
 
                     b.Navigation("SupplierOrg");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SignupAttribution", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.StayGuest", b =>

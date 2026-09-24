@@ -83,6 +83,28 @@ public class PublicHostResolverTests
         Assert.Equal("Villa Mare", result.Branding.DisplayName);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task ResolveAsync_BaseDomainNotConfigured_NoHostIsAnOrgSubdomain(string? baseDomain)
+    {
+        // D3 (SE-03): PublicHost:BaseDomain has no default; without it there are no org subdomains to resolve.
+        _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("villa-mare.casazen.it", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgEntity?)null);
+        var resolver = new PublicHostResolver(
+            _orgService.Object,
+            _entitlementService.Object,
+            Options.Create(new PublicHostOptions { BaseDomain = baseDomain }),
+            new MemoryCache(new MemoryCacheOptions()));
+
+        var result = await resolver.ResolveAsync("villa-mare.casazen.it", CancellationToken.None);
+
+        Assert.Null(result);
+        _orgService.Verify(
+            s => s.GetBySubdomainOrSlugAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     [Fact]
     public async Task ResolveAsync_UnverifiedCustomDomain_ReturnsNull()
     {

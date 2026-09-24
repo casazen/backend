@@ -4,7 +4,12 @@ using Casazen.Core.TouristTax;
 namespace Casazen.Core.Services;
 
 public record SeoDisclaimersDto(string LastUpdated, string NotLegalAdvice, string AiGenerated);
-public record SeoCtaDto(string ComplianceCheckerUrl, string SignupUrl);
+/// <summary>
+/// Call to action of a public SEO page (SE-03): <c>SignupUrl</c> is the web app route <c>/signup</c> with the comune and
+/// the default UTM parameters, on <c>App:PublicSiteBaseUrl</c> (relative only when that is not configured, in
+/// Development/Testing). There is no compliance checker tool: its CTA was removed until a spec exists.
+/// </summary>
+public record SeoCtaDto(string SignupUrl);
 /// <summary>A tourist tax rate of the comune in force today, as shown on the public page (one per category or season).</summary>
 public record PublicTouristTaxRateSummaryDto(
     string City,

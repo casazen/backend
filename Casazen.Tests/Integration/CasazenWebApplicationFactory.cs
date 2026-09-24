@@ -90,6 +90,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
                 ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
+                // Base domain of the org subdomains: no default in code (D3, SE-03), the tests configure one.
+                ["PublicHost:BaseDomain"] = "casazen.it",
                 ["App:ApiBaseUrl"] = "https://casazen-api-test.up.railway.app",
                 ["Storage:Provider"] = "FileSystem",
                 ["Storage:FileSystem:RootPath"] = StorageRoot,
