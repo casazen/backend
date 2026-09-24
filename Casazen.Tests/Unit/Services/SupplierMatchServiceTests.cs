@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
@@ -50,6 +51,7 @@ public class SupplierMatchServiceTests
             db,
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
             Mock.Of<ILogger<SupplierService>>());
 
         var auth = new Mock<IPropertyAuthorizationService>();
@@ -106,6 +108,7 @@ public class SupplierMatchServiceTests
             db,
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
             Mock.Of<ILogger<SupplierService>>());
 
         var auth = new Mock<IPropertyAuthorizationService>();

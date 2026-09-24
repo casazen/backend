@@ -1,11 +1,19 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Resources;
+using Hangfire.Common;
+using Hangfire.States;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -74,6 +82,111 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
             new { importUrl = "http://insecure.example.com/cal.ics" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(ICalErrorCodes.InvalidUrl, body.GetProperty("code").GetString());
+    }
+
+    // FD-16 (A2-21, A9-32): no internal destination can be saved as an import URL.
+    [Theory]
+    [InlineData("https://127.0.0.1/cal.ics")]
+    [InlineData("https://10.0.0.8/cal.ics")]
+    [InlineData("https://169.254.169.254/latest/meta-data/")]
+    [InlineData("https://[::1]/cal.ics")]
+    [InlineData("https://postgres.railway.internal/cal.ics")]
+    [InlineData("https://localhost/cal.ics")]
+    public async Task ImportUrl_PrivateLoopbackOrMetadataAddress_Returns400WithCodeAndSavesNothing(string url)
+    {
+        var ownerId = $"auth0|host-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(ownerId);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync(
+            $"/api/properties/{property.Id}/ical/import-url",
+            new { importUrl = url });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(ICalErrorCodes.InvalidUrl, body.GetProperty("code").GetString());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.PropertyICalFeeds.AnyAsync(f => f.PropertyId == property.Id && f.ImportUrl != null));
+        VerifyFirstSyncQueued(property.Id, Times.Never());
+    }
+
+    // FD-16 (A2-21): saving the URL answers at once and leaves the download to a Hangfire job.
+    [Fact]
+    public async Task ImportUrl_PublicHttpsUrl_Returns202SyncingAndQueuesFirstSync()
+    {
+        var ownerId = $"auth0|host-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(ownerId);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsJsonAsync(
+            $"/api/properties/{property.Id}/ical/import-url",
+            new { importUrl = "https://www.airbnb.it/calendar/ical/12345.ics?s=secret" });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Syncing", body.GetProperty("lastImportStatus").GetString());
+        Assert.Equal("https://www.airbnb.it/calendar/ical/12345.ics?s=secret", body.GetProperty("importUrl").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("lastErrorCode").ValueKind);
+        VerifyFirstSyncQueued(property.Id, Times.Once());
+    }
+
+    // FD-16 (A2-21): a stored error is shown as a code plus localized text, never as the exception message.
+    [Fact]
+    public async Task GetStatus_WithStoredErrorCode_ReturnsCodeAndLocalizedMessage()
+    {
+        var (ownerId, propertyId, _) = await SeedFeedWithBlockAsync(lastError: ICalErrorCodes.TooLarge);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        var response = await client.GetAsync($"/api/properties/{propertyId}/ical/status");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(ICalErrorCodes.TooLarge, body.GetProperty("lastErrorCode").GetString());
+        Assert.Equal("The calendar is too large to be imported.", body.GetProperty("lastError").GetString());
+    }
+
+    [Fact]
+    public async Task GetStatus_WithLegacyExceptionMessage_ReturnsGenericCodeWithoutTheMessage()
+    {
+        const string leakedMessage = "Connection refused (10.0.0.5:443)";
+        var (ownerId, propertyId, _) = await SeedFeedWithBlockAsync(lastError: leakedMessage);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.GetAsync($"/api/properties/{propertyId}/ical/status");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("10.0.0.5", raw);
+        var body = JsonDocument.Parse(raw).RootElement;
+        Assert.Equal(ICalErrorCodes.SyncFailed, body.GetProperty("lastErrorCode").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("lastError").GetString()));
+    }
+
+    [Theory]
+    [InlineData("it")]
+    [InlineData("en")]
+    public void ErrorCodes_EveryCode_HasLocalizedMessage(string culture)
+    {
+        var localizer = _factory.Services.GetRequiredService<IStringLocalizer<SharedResources>>();
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo(culture);
+            Assert.All(ICalErrorCodes.All, code =>
+            {
+                var message = localizer[ICalErrorCodes.MessageKey(code)];
+                Assert.False(message.ResourceNotFound, $"No {culture} message for {code}");
+            });
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
     }
 
     [Fact]
@@ -84,7 +197,16 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private async Task<(string OwnerId, Guid PropertyId, Guid ExportToken)> SeedFeedWithBlockAsync()
+    private void VerifyFirstSyncQueued(Guid propertyId, Times times) =>
+        _factory.BackgroundJobClientMock.Verify(
+            c => c.Create(
+                It.Is<Job>(job => job.Type == typeof(PropertyICalSyncJob)
+                    && job.Method.Name == nameof(PropertyICalSyncJob.SyncFeedAsync)
+                    && (Guid)job.Args[0] == propertyId),
+                It.IsAny<IState>()),
+            times);
+
+    private async Task<(string OwnerId, Guid PropertyId, Guid ExportToken)> SeedFeedWithBlockAsync(string? lastError = null)
     {
         var ownerId = $"auth0|host-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(ownerId);
@@ -99,6 +221,8 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
             OrgId = property.OrgId,
             ImportUrl = "https://example.com/cal.ics",
             ExportToken = exportToken,
+            LastError = lastError,
+            LastImportStatus = lastError is null ? null : PropertyICalImportStatus.Failure,
         });
         db.CalendarBlocks.Add(new CalendarBlock
         {

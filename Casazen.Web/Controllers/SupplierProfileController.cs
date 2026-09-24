@@ -1,14 +1,17 @@
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -233,13 +236,16 @@ public class SupplierProfileController(
     [HttpGet("dashboard")]
     [ProducesResponseType(typeof(SupplierDashboardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<SupplierDashboardDto>> GetDashboard(CancellationToken cancellationToken)
+    public async Task<ActionResult<SupplierDashboardDto>> GetDashboard(
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var stats = await supplierService.GetDashboardStatsAsync(orgId.Value, cancellationToken);
         if (stats is null) return NotFound(new { error = "Supplier profile not found" });
+        var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(stats.CalendarSyncError, localizer);
 
         return Ok(new SupplierDashboardDto
         {
@@ -254,7 +260,8 @@ public class SupplierProfileController(
                 CalendarSyncType = stats.CalendarSyncType,
                 IcalFeedUrl = stats.IcalFeedUrl,
                 CalendarLastSyncAt = stats.CalendarLastSyncAt,
-                CalendarSyncError = stats.CalendarSyncError,
+                CalendarSyncErrorCode = syncErrorCode,
+                CalendarSyncError = syncErrorMessage,
             },
             LastUpdated = stats.LastUpdated,
         });
@@ -320,20 +327,24 @@ public class SupplierProfileController(
     [HttpGet("calendar/status")]
     [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<CalendarSyncStatusDto>> GetCalendarStatus(CancellationToken cancellationToken)
+    public async Task<ActionResult<CalendarSyncStatusDto>> GetCalendarStatus(
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+        var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(profile.CalendarSyncError, localizer);
 
         return Ok(new CalendarSyncStatusDto
         {
             CalendarSyncType = profile.CalendarSyncType.ToString(),
             IcalFeedUrl = profile.IcalFeedUrl,
             CalendarLastSyncAt = profile.CalendarLastSyncAt,
-            CalendarSyncError = profile.CalendarSyncError,
+            CalendarSyncErrorCode = syncErrorCode,
+            CalendarSyncError = syncErrorMessage,
         });
     }
 
@@ -349,12 +360,21 @@ public class SupplierProfileController(
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
-        var profile = await supplierService.UpdateCalendarSyncAsync(
-            orgId.Value,
-            CalendarSyncType.ICalFeed,
-            request.IcalFeedUrl,
-            calendarSyncError: null,
-            cancellationToken);
+        Casazen.Core.Entities.SupplierProfile? profile;
+        try
+        {
+            profile = await supplierService.UpdateCalendarSyncAsync(
+                orgId.Value,
+                CalendarSyncType.ICalFeed,
+                request.IcalFeedUrl,
+                calendarSyncError: null,
+                cancellationToken);
+        }
+        catch (DomainRuleException ex) when (ex.Code == ICalErrorCodes.InvalidUrl)
+        {
+            // Only an external https URL: the server downloads it (FD-16, A4-10).
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey);
+        }
 
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 

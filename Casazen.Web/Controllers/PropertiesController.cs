@@ -3,16 +3,21 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -784,11 +789,20 @@ public class PropertiesController(
         await adminAccessAuditService.LogPrivilegedPropertyAccessAsync(userId, propertyId, ownerId, action);
     }
 
+    /// <summary>
+    /// Saves the iCal import URL and queues its first sync (FD-16, A2-21): the feed is downloaded by a Hangfire
+    /// job, never inside this request. Answers 202 with status <c>Syncing</c>; 400 <c>ical_invalid_url</c> when the
+    /// URL is not an external https URL.
+    /// </summary>
     [HttpPost("{id:guid}/ical/import-url")]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [ProducesResponseType(typeof(PropertyIcalStatusDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PropertyIcalStatusDto>> SetIcalImportUrl(
         Guid id,
         [FromBody] PropertyIcalImportUrlRequest request,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
@@ -805,19 +819,32 @@ public class PropertiesController(
 
         try
         {
-            await propertyICalSyncService.SetImportUrlAndSyncAsync(id, property.OrgId, request.ImportUrl, cancellationToken);
+            await propertyICalSyncService.SetImportUrlAsync(id, property.OrgId, request.ImportUrl, cancellationToken);
         }
-        catch (ArgumentException ex)
+        catch (DomainRuleException ex) when (ex.Code == ICalErrorCodes.InvalidUrl)
         {
-            return BadRequest(new { error = ex.Message });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey);
         }
 
-        return Ok(await BuildIcalStatusAsync(id, cancellationToken));
+        try
+        {
+            backgroundJobClient.Enqueue<PropertyICalSyncJob>(job => job.SyncFeedAsync(id, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            // The URL is saved: the recurring property-ical-sync job (every 15 minutes) syncs it anyway.
+            logger.LogError(ex, "Could not queue the first iCal sync of property {PropertyId}", id);
+        }
+
+        return Accepted(await BuildIcalStatusAsync(id, localizer, cancellationToken));
     }
 
     [HttpGet("{id:guid}/ical/status")]
     [Authorize(Policy = "RequireContext:short-rent:property.read")]
-    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(
+        Guid id,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
@@ -831,7 +858,7 @@ public class PropertiesController(
         if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
             return Forbid();
 
-        return Ok(await BuildIcalStatusAsync(id, cancellationToken));
+        return Ok(await BuildIcalStatusAsync(id, localizer, cancellationToken));
     }
 
     [HttpGet("{id:guid}/ical/export-url")]
@@ -857,13 +884,17 @@ public class PropertiesController(
         });
     }
 
-    private async Task<PropertyIcalStatusDto> BuildIcalStatusAsync(Guid propertyId, CancellationToken cancellationToken)
+    private async Task<PropertyIcalStatusDto> BuildIcalStatusAsync(
+        Guid propertyId,
+        IStringLocalizer localizer,
+        CancellationToken cancellationToken)
     {
         var property = await propertyService.GetPropertyAsync(propertyId);
         var feed = property is null
             ? null
             : await propertyICalSyncService.GetFeedAsync(propertyId, cancellationToken)
               ?? await propertyICalSyncService.GetOrCreateFeedAsync(propertyId, property.OrgId, cancellationToken);
+        var (lastErrorCode, lastErrorMessage) = ICalErrorMessages.Describe(feed?.LastError, localizer);
 
         return new PropertyIcalStatusDto
         {
@@ -871,7 +902,8 @@ public class PropertiesController(
             ExportUrl = feed is null ? string.Empty : propertyICalSyncService.BuildExportUrl(feed.ExportToken),
             LastImportAt = feed?.LastImportAt,
             LastImportStatus = feed?.LastImportStatus?.ToString(),
-            LastError = feed?.LastError,
+            LastErrorCode = lastErrorCode,
+            LastError = lastErrorMessage,
             BlockCount = await propertyICalSyncService.GetBlockCountAsync(propertyId, cancellationToken),
         };
     }
