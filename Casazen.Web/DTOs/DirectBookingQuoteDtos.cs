@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
+using Casazen.Core.Utilities;
 using Casazen.Web.Resources;
 using Microsoft.Extensions.Localization;
 
@@ -55,6 +56,9 @@ public class DirectBookingQuoteResponse
 
     public string Currency { get; set; } = "EUR";
 
+    /// <summary>What the checkout may offer and promise for this stay (A3-16).</summary>
+    public DirectBookingPaymentOptionsDto PaymentOptions { get; set; } = new();
+
     public static DirectBookingQuoteResponse From(DirectBookingQuote quote) => new()
     {
         PropertyId = quote.PropertyId,
@@ -68,6 +72,30 @@ public class DirectBookingQuoteResponse
         TouristTax = TouristTaxQuoteDto.From(quote.TouristTax),
         TotalPrice = quote.TotalPrice,
         Currency = quote.Currency,
+        PaymentOptions = DirectBookingPaymentOptionsDto.From(quote.PaymentOptions),
+    };
+}
+
+/// <summary>Payment options of a stay (BK-07, A3-16): the checkout shows only what applies.</summary>
+public class DirectBookingPaymentOptionsDto
+{
+    /// <summary>"Paga alla scadenza" can be chosen: the charge day is after today in Europe/Rome.</summary>
+    public bool DeferredPaymentAvailable { get; set; }
+
+    /// <summary>Day the saved card is charged (Europe/Rome date); null when the deferred payment is not available.</summary>
+    public DateOnly? DeferredChargeDate { get; set; }
+
+    /// <summary>
+    /// Last day the guest can cancel for free by themselves. Always null today: the guest has no self-service
+    /// cancellation (only the host cancels, BK-02), so the checkout must not promise one.
+    /// </summary>
+    public DateOnly? FreeCancellationUntil { get; set; }
+
+    public static DirectBookingPaymentOptionsDto From(DirectBookingPaymentOptions options) => new()
+    {
+        DeferredPaymentAvailable = options.DeferredPaymentAvailable,
+        DeferredChargeDate = options.DeferredChargeDate is { } charge ? RomeCalendar.DateInRome(charge) : null,
+        FreeCancellationUntil = options.FreeCancellationUntil is { } until ? RomeCalendar.DateInRome(until) : null,
     };
 }
 

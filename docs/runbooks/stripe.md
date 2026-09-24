@@ -101,8 +101,9 @@ Replaces `DELETE /api/bookings/{id}`, which only changed the status. The dialog 
    payment shows as completed, then cancel with a refund.
 2. **Paid through Stripe**: the host chooses the refund (`refundAmount`, from 0 to what was paid and not refunded yet).
    The minimum comes only from rules already in the model:
-   - until the **free cancellation deadline** of the booking (`FreeRefundDeadline`, check-in − 7 days, shown to the guest
-     as "Cancellazione gratuita fino a …"), Europe/Rome day included: full refund;
+   - until the **free refund deadline** of the booking (`FreeRefundDeadline`: check-in − 7 days, or the last day of the full
+     refund of the property's cancellation policy for bookings made after BK-07; no longer shown to the guest as a free
+     cancellation, see [direct-booking.md](direct-booking.md) § 7.5), Europe/Rome day included: full refund;
    - the property's **cancellation policy** (`CancellationPolicies`, semantics of issue #51: 100% at least `FullRefundHours`
      before the start of the check-in day, `PartialRefundPercent` at least `PartialRefundHours` before, otherwise 0%);
    - otherwise no minimum: the host decides. No other policy exists in the code (see open questions of BK-02).

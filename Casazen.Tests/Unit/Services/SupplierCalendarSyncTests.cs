@@ -70,8 +70,7 @@ public class SupplierCalendarSyncTests
     {
         await using var db = CreateDb();
         var orgId = await SeedProfileAsync(db, "http://169.254.169.254/latest/meta-data/");
-        var service = new CalendarSyncService(
-            db, new FakeExternalHttpClient(null, failure), NullLogger<CalendarSyncService>.Instance);
+        var service = CreateCalendarSyncService(db, new FakeExternalHttpClient(null, failure));
 
         await service.SyncIcalFeedAsync(orgId);
 
@@ -85,8 +84,7 @@ public class SupplierCalendarSyncTests
     {
         await using var db = CreateDb();
         var orgId = await SeedProfileAsync(db, "https://feeds.example.com/cal.ics");
-        var service = new CalendarSyncService(
-            db, new FakeExternalHttpClient("<html>login</html>"), NullLogger<CalendarSyncService>.Instance);
+        var service = CreateCalendarSyncService(db, new FakeExternalHttpClient("<html>login</html>"));
 
         await service.SyncIcalFeedAsync(orgId);
 
@@ -110,7 +108,7 @@ public class SupplierCalendarSyncTests
             """;
         await using var db = CreateDb();
         var orgId = await SeedProfileAsync(db, "https://feeds.example.com/cal.ics", previousError: ICalErrorCodes.Unreachable);
-        var service = new CalendarSyncService(db, new FakeExternalHttpClient(ics), NullLogger<CalendarSyncService>.Instance);
+        var service = CreateCalendarSyncService(db, new FakeExternalHttpClient(ics));
 
         await service.SyncIcalFeedAsync(orgId);
 
@@ -118,6 +116,61 @@ public class SupplierCalendarSyncTests
         Assert.Null(profile.CalendarSyncError);
         Assert.Contains(await db.SupplierAvailability.ToListAsync(), a => a.Date == new DateOnly(2026, 7, 10) && !a.Available);
     }
+
+    // PC-10 (A9-13): a valid calendar without events is a successful sync, not "invalid feed".
+    [Fact]
+    public async Task SyncIcalFeedAsync_ValidFeedWithoutEvents_ClearsErrorAndSetsLastSync()
+    {
+        const string ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Google Inc//Google Calendar 70.9054//EN
+            END:VCALENDAR
+            """;
+        await using var db = CreateDb();
+        var orgId = await SeedProfileAsync(db, "https://feeds.example.com/cal.ics", previousError: ICalErrorCodes.InvalidFormat);
+        var service = CreateCalendarSyncService(db, new FakeExternalHttpClient(ics));
+
+        await service.SyncIcalFeedAsync(orgId);
+
+        var profile = await db.SupplierProfiles.SingleAsync();
+        Assert.Null(profile.CalendarSyncError);
+        Assert.NotNull(profile.CalendarLastSyncAt);
+        Assert.Empty(await db.SupplierAvailability.ToListAsync());
+    }
+
+    // PC-10 (A2-23): an all-day event blocks its days only (DTEND is exclusive), a cancelled one blocks nothing.
+    [Fact]
+    public async Task SyncIcalFeedAsync_AllDayAndCancelledEvents_MarksOnlyTheActiveDays()
+    {
+        const string ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:busy-all-day
+            DTSTART;VALUE=DATE:20261010
+            DTEND;VALUE=DATE:20261012
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:cancelled
+            DTSTART;VALUE=DATE:20261020
+            DTEND;VALUE=DATE:20261021
+            STATUS:CANCELLED
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        await using var db = CreateDb();
+        var orgId = await SeedProfileAsync(db, "https://feeds.example.com/cal.ics");
+        var service = CreateCalendarSyncService(db, new FakeExternalHttpClient(ics));
+
+        await service.SyncIcalFeedAsync(orgId);
+
+        var busy = (await db.SupplierAvailability.Where(a => !a.Available).ToListAsync()).Select(a => a.Date).Order().ToList();
+        Assert.Equal([new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 11)], busy);
+    }
+
+    private static CalendarSyncService CreateCalendarSyncService(AppDbContext db, ISafeExternalHttpClient externalHttpClient) =>
+        new(db, externalHttpClient, ICalTestServices.ImportService(), NullLogger<CalendarSyncService>.Instance);
 
     private static SupplierService CreateSupplierService(AppDbContext db) =>
         new(
