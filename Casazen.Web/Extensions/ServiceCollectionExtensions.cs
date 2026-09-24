@@ -273,6 +273,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CheckoutPaymentSettlementService>();
         // Booking confirmation (guest + host) and cancellation emails (BK-10, docs/runbooks/email.md).
         services.AddScoped<BookingNotifier>();
+        // Deferred charge of "Paga alla scadenza" bookings: job and webhooks (BK-08, docs/runbooks/direct-booking.md § 9).
+        services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();

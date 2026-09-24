@@ -90,6 +90,18 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             : Build($"{path}?code={Uri.EscapeDataString(bookingCode)}");
     }
 
+    /// <summary>
+    /// Checkout outcome page of the booking site (BK-07) with a checkout token: the guest of a failed deferred charge pays
+    /// there (BK-08). Only the booking id and the random token are in the link, no personal data.
+    /// </summary>
+    public string CheckoutOutcome(string orgSlug, Guid bookingId, string checkoutToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkoutToken);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}?token={Uri.EscapeDataString(checkoutToken)}");
+    }
+
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 

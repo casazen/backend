@@ -220,6 +220,7 @@ public class StripeRefundPostgresTests : IAsyncLifetime
             Mock.Of<IRentBillingService>(),
             RefundService(db),
             TestCheckoutPaymentSettlement.Create(db, stripe: _stripe.Object, emails: _emails.Object),
+            TestDeferredCharges.Create(db, stripe: _stripe.Object, emails: _emails.Object),
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }

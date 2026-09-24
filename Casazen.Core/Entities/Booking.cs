@@ -112,6 +112,23 @@ public class Booking : ITenantOwned
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
 
+    /// <summary>
+    /// "Paga alla scadenza" (BK-08): off-session charges of the saved payment method attempted by the deadline charge job,
+    /// at most one per Europe/Rome day and <c>DirectBooking:DeferredChargeMaxAttempts</c> in total
+    /// (<see cref="Services.DeferredCharges"/>).
+    /// </summary>
+    public int DeferredChargeAttempts { get; set; }
+
+    /// <summary>Europe/Rome day (midnight UTC, date-only convention) of the last deferred charge attempt of the job.</summary>
+    public DateTime? DeferredChargeLastAttemptOn { get; set; }
+
+    /// <summary>
+    /// When the deferred charge failed in a way the guest must fix (authentication required, card declined): the guest
+    /// and the host were emailed once, the guest with a link to pay on the outcome page. The automatic cancellation counts
+    /// <c>DirectBooking:DeferredChargeCancelAfterDays</c> from this instant's Rome day. Cleared when the payment succeeds.
+    /// </summary>
+    public DateTime? DeferredChargeFailedAt { get; set; }
+
     public DateTime? CheckoutWizardStartedAt { get; set; }
 
     /// <summary>
@@ -228,6 +245,12 @@ public enum BookingCancellationReason
     /// <c>DirectBooking:OnSiteEmailVerificationMinutes</c>: never sent to the host (BK-06, A3-06).
     /// </summary>
     OnSiteEmailNotConfirmed = 5,
+
+    /// <summary>
+    /// "Paga alla scadenza": the deferred charge failed and the guest did not complete the payment within
+    /// <c>DirectBooking:DeferredChargeCancelAfterDays</c> days; nothing was collected, the dates were released (BK-08, A3-14).
+    /// </summary>
+    DeferredPaymentNotCompleted = 6,
 }
 
 public enum PaymentOption
