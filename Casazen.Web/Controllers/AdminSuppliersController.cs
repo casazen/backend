@@ -24,6 +24,7 @@ public class AdminSuppliersController(
     [ProducesResponseType(typeof(AdminInviteResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<AdminInviteResponse>> InviteSupplier(
         [FromBody] AdminInviteSupplierRequest request,
         CancellationToken cancellationToken)
@@ -75,6 +76,29 @@ public class AdminSuppliersController(
             EmptyOrgsDeleted = report.EmptyOrgsDeleted,
             OrphansSkipped = report.OrphansSkipped,
             Details = report.Details,
+        });
+    }
+
+    /// <summary>
+    /// Stored service categories that are not canonical codes (SU-03): values the migration
+    /// <c>NormalizeServiceCategories</c> could not map are kept and listed here, so an admin can fix them
+    /// (runbook <c>docs/runbooks/service-categories.md</c>).
+    /// </summary>
+    [HttpGet("unmapped-categories")]
+    [ProducesResponseType(typeof(UnmappedServiceCategoriesResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<UnmappedServiceCategoriesResponse>> GetUnmappedCategories(CancellationToken cancellationToken)
+    {
+        var unmapped = await supplierService.GetUnmappedCategoriesAsync(cancellationToken);
+
+        if (unmapped.Count > 0)
+            logger.LogWarning("Admin report: {Count} stored service categories are not canonical codes", unmapped.Count);
+
+        return Ok(new UnmappedServiceCategoriesResponse
+        {
+            Items = unmapped
+                .Select(u => new UnmappedServiceCategoryDto { Source = u.Source, Id = u.Id, Value = u.Value })
+                .ToList(),
+            Total = unmapped.Count,
         });
     }
 }

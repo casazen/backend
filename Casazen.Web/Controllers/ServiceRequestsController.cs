@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Web.Infrastructure;
@@ -66,6 +67,7 @@ public class ServiceRequestsController(
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Create(
         [FromBody] CreateServiceRequestRequest request,
         CancellationToken cancellationToken)

@@ -40,6 +40,7 @@ public class EndpointAuthorizationArchitectureTests
         ["TouristTaxRatesController.GetById"] = "Platform reference data, see GetAll.",
         ["TouristTaxRatesController.GetByCity"] = "Platform reference data, see GetAll.",
         ["TouristTaxRatesController.Calculate"] = "Computation on platform reference data only; stores nothing.",
+        ["ServiceCategoriesController.GetAll"] = "Fixed catalog of service category codes (SU-03) used by suppliers, hosts and admins alike; no tenant data.",
 
         // Endpoints shared by two roles: the action evaluates the policy of the branch it takes.
         ["ServiceRequestsController.List"] = "Host list (PropertyRead + HostScope) or supplier inbox with view=supplier (RequireSupplier), each checked with IAuthorizationService inside the action.",

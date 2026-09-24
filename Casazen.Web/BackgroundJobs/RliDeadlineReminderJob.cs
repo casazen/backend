@@ -2,6 +2,8 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +25,7 @@ public class RliDeadlineReminderJob(
     {
         var today = _clock.TodayInRome();
         var leases = await db.LeaseContracts
+            .Include(l => l.Property)
             .Include(l => l.Parties)
             .Include(l => l.Events)
             .Include(l => l.Registration)
@@ -46,11 +49,20 @@ public class RliDeadlineReminderJob(
                     _ => null,
                 };
 
+                var propertyName = lease.Property?.Name ?? string.Empty;
                 if (milestone is not null)
-                    await SendOnceAsync(lease, milestone, BuildDeadlineSubject(lease, milestone), BuildDeadlineHtml(lease, milestone));
+                {
+                    // Localized templates (FD-13), not inline HTML: the reminder no longer shows a technical
+                    // milestone code or the lease id (A7-26).
+                    var content = milestone == "overdue"
+                        ? EmailTemplates.RliDeadlineOverdue(EmailTemplates.DefaultCulture, propertyName, lease.RegistrationDeadline)
+                        : EmailTemplates.RliDeadlineReminder(
+                            EmailTemplates.DefaultCulture, propertyName, lease.RegistrationDeadline, days);
+                    await SendOnceAsync(lease, milestone, content);
+                }
 
                 if (lease.HasExtraEUTenant)
-                    await SendOnceAsync(lease, "extra-eu", BuildExtraEuSubject(lease), BuildExtraEuHtml(lease));
+                    await SendOnceAsync(lease, "extra-eu", EmailTemplates.RliExtraEuNotice(EmailTemplates.DefaultCulture, propertyName));
             }
             catch (Exception ex)
             {
@@ -59,7 +71,7 @@ public class RliDeadlineReminderJob(
         }
     }
 
-    private async Task SendOnceAsync(LeaseContract lease, string payload, string subject, string html)
+    private async Task SendOnceAsync(LeaseContract lease, string payload, EmailContent content)
     {
         if (lease.Events.Any(e => e.EventType == LeaseEventType.DeadlineReminderSent && e.Payload == payload))
             return;
@@ -71,7 +83,7 @@ public class RliDeadlineReminderJob(
             return;
         }
 
-        await emailService.SendEmailAsync(to, subject, html);
+        await emailService.SendEmailAsync(to, content.Subject, content.HtmlBody);
         db.LeaseEvents.Add(new LeaseEvent
         {
             LeaseContractId = lease.Id,
@@ -81,20 +93,4 @@ public class RliDeadlineReminderJob(
         await db.SaveChangesAsync();
         logger.LogInformation("Sent RLI reminder {Payload} for LeaseId={LeaseId}", payload, lease.Id);
     }
-
-    private static string BuildDeadlineSubject(LeaseContract lease, string milestone) =>
-        milestone == "overdue"
-            ? $"RLI scaduta — contratto {lease.Id:N}"
-            : $"Promemoria RLI ({milestone}) — scadenza {lease.RegistrationDeadline:dd/MM/yyyy}";
-
-    private static string BuildDeadlineHtml(LeaseContract lease, string milestone) =>
-        $"<p>Promemoria registrazione RLI (scadenza {lease.RegistrationDeadline:dd/MM/yyyy}, milestone {milestone}).</p>" +
-        "<p>CasaZen non deposita in automatico. La responsabilita del filing resta al locatore / intermediario abilitato. Bozza da confermare con legale.</p>";
-
-    private static string BuildExtraEuSubject(LeaseContract lease) =>
-        $"Questura / cessione di fabbricato — contratto {lease.Id:N}";
-
-    private static string BuildExtraEuHtml(LeaseContract lease) =>
-        "<p>Il contratto include un conduttore extra-UE. Verificare la comunicazione in Questura (Art. 7 D.Lgs 286/1998).</p>" +
-        "<p>Testo bozza da confermare con legale. CasaZen non invia la comunicazione.</p>";
 }
