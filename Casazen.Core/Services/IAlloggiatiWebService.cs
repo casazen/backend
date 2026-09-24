@@ -10,8 +10,15 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IAlloggiatiWebService
 {
-    /// <summary>True when the guest has every field the Alloggiati record needs.</summary>
+    /// <summary>True when the booker's guest record has every field (legacy <c>/api/checkin</c> portal only).</summary>
     Task<bool> ValidateGuestDataAsync(Guid guestId);
+
+    /// <summary>
+    /// True when every guest of the stay has every field of the Alloggiati record and the order of the guests (head of
+    /// family or group before its members) is valid (CO-12). Official codes are not required: they block only the export.
+    /// False for an unknown booking.
+    /// </summary>
+    Task<bool> IsStayDataCompleteAsync(Guid bookingId);
 
     /// <summary>Status of the communication of a booking. Throws <c>NotFoundException</c> for an unknown booking.</summary>
     Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId);

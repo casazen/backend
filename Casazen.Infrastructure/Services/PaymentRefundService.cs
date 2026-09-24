@@ -41,6 +41,15 @@ public sealed class PaymentRefundService(
 
     internal const string RefundKind = "booking-refund";
 
+    /// <summary>
+    /// Idempotency key prefix of the automatic refund of a payment that arrived when its booking could no longer be
+    /// confirmed (BK-04): one key per PaymentIntent, unique in <c>PaymentRefunds</c> and sent to Stripe.
+    /// </summary>
+    internal const string LatePaymentRefundKeyPrefix = "late-payment-refund:";
+
+    /// <summary>Idempotency key of the automatic late-payment refund of <paramref name="paymentIntentId"/>.</summary>
+    internal static string LatePaymentRefundKey(string paymentIntentId) => LatePaymentRefundKeyPrefix + paymentIntentId;
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
@@ -174,7 +183,9 @@ public sealed class PaymentRefundService(
                 .Select(r => new
                 {
                     r.Amount,
+                    r.IdempotencyKey,
                     r.Payment.Booking.CheckInDate,
+                    r.Payment.Booking.CheckOutDate,
                     GuestFirstName = r.Payment.Booking.Guest.FirstName,
                     GuestEmail = r.Payment.Booking.Guest.Email,
                     PropertyName = r.Payment.Booking.Property.Name,
@@ -184,14 +195,27 @@ public sealed class PaymentRefundService(
             if (details is null)
                 return;
 
-            var email = EmailTemplates.GuestRefundConfirmed(
-                EmailTemplates.DefaultCulture,
-                details.GuestFirstName,
-                details.PropertyName,
-                details.CheckInDate,
-                details.Amount);
+            // The automatic refund of a late payment tells the guest why the booking was not confirmed (BK-04).
+            var latePayment = details.IdempotencyKey.StartsWith(LatePaymentRefundKeyPrefix, StringComparison.Ordinal);
+            var email = latePayment
+                ? EmailTemplates.GuestPaymentRefundedDatesUnavailable(
+                    EmailTemplates.DefaultCulture,
+                    details.GuestFirstName,
+                    details.PropertyName,
+                    details.CheckInDate,
+                    details.CheckOutDate,
+                    details.Amount)
+                : EmailTemplates.GuestRefundConfirmed(
+                    EmailTemplates.DefaultCulture,
+                    details.GuestFirstName,
+                    details.PropertyName,
+                    details.CheckInDate,
+                    details.Amount);
+            var template = latePayment
+                ? EmailTemplates.Names.GuestPaymentRefundedDatesUnavailable
+                : EmailTemplates.Names.GuestRefundConfirmed;
 
-            if (!emailQueue.Enqueue(details.GuestEmail, email, EmailTemplates.Names.GuestRefundConfirmed))
+            if (!emailQueue.Enqueue(details.GuestEmail, email, template))
                 logger.LogWarning("Refund {RefundId} succeeded but the guest email was not queued", refundId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -202,7 +226,9 @@ public sealed class PaymentRefundService(
 
     /// <summary>
     /// Checks the refund against the payment and writes it as pending (the caller holds the payment's advisory lock
-    /// and commits). Everything still refundable when <paramref name="amount"/> is null.
+    /// and commits). Everything still refundable when <paramref name="amount"/> is null. The Stripe idempotency key is
+    /// <c>payment-refund:{Id}</c> unless <paramref name="idempotencyKey"/> gives one (the late-payment refund keys it
+    /// to its PaymentIntent, BK-04).
     /// </summary>
     internal async Task<PaymentRefund> ReserveAsync(
         Payment payment,
@@ -210,7 +236,8 @@ public sealed class PaymentRefundService(
         PaymentRefundOrigin origin,
         string? reason,
         string? requestedByUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null)
     {
         if (payment.Status == PaymentStatus.Refunded)
             throw new DomainRuleException("payment_nothing_to_refund", "PaymentNothingToRefund");
@@ -221,7 +248,7 @@ public sealed class PaymentRefundService(
         if (PaymentIntentIdOf(payment) is null)
             throw new DomainRuleException("payment_refund_offline", "PaymentRefundOffline");
 
-        if (await ResolveAccountAsync(payment, cancellationToken) is null)
+        if (!payment.StripeIntentOnPlatform && await ResolveAccountAsync(payment, cancellationToken) is null)
             throw new DomainRuleException("payment_refund_account_missing", "PaymentRefundAccountMissing");
 
         var summary = Summarize(payment, await LoadRefundsAsync(payment.Id, cancellationToken));
@@ -253,7 +280,7 @@ public sealed class PaymentRefundService(
             CreatedAt = now,
             UpdatedAt = now,
         };
-        refund.IdempotencyKey = $"payment-refund:{refund.Id:N}";
+        refund.IdempotencyKey = idempotencyKey ?? $"payment-refund:{refund.Id:N}";
         db.PaymentRefunds.Add(refund);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -357,9 +384,15 @@ public sealed class PaymentRefundService(
         return payment.TransactionId.StartsWith("pi_", StringComparison.Ordinal) ? payment.TransactionId : null;
     }
 
-    /// <summary>The connected account of the payment's intent: the stored one, else the org's current account.</summary>
+    /// <summary>
+    /// The connected account of the payment's intent: the stored one, else the org's current account; null for a
+    /// PaymentIntent of the platform account (<see cref="Payment.StripeIntentOnPlatform"/>, no <c>Stripe-Account</c>).
+    /// </summary>
     internal async Task<string?> ResolveAccountAsync(Payment payment, CancellationToken cancellationToken)
     {
+        if (payment.StripeIntentOnPlatform)
+            return null;
+
         if (!string.IsNullOrWhiteSpace(payment.StripeAccountId))
             return payment.StripeAccountId;
 
@@ -421,7 +454,7 @@ public sealed class PaymentRefundService(
     };
 
     /// <summary>Refunded amount and status of the payment from its succeeded refunds only.</summary>
-    private async Task RecomputePaymentAsync(Payment payment, CancellationToken cancellationToken)
+    internal async Task RecomputePaymentAsync(Payment payment, CancellationToken cancellationToken)
     {
         var refunds = await LoadRefundsAsync(payment.Id, cancellationToken);
         var refunded = refunds.Where(r => r.Status == PaymentRefundStatus.Succeeded).Sum(r => r.Amount);
@@ -491,7 +524,8 @@ public sealed class PaymentRefundService(
             if (string.IsNullOrWhiteSpace(payment.StripeAccountId))
                 return payment;
         }
-        else if (expectedAccount is null || string.Equals(expectedAccount, connectedAccountId, StringComparison.Ordinal))
+        else if (!payment.StripeIntentOnPlatform &&
+                 (expectedAccount is null || string.Equals(expectedAccount, connectedAccountId, StringComparison.Ordinal)))
         {
             payment.StripeAccountId ??= connectedAccountId;
             return payment;

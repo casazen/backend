@@ -199,7 +199,7 @@
     <value>Serve la delega e l'attestazione del locatore prima di inviare la RLI.</value>
   </data>
   <data name="RliRegistrationAccepted" xml:space="preserve">
-    <value>Registrazione inviata. Controlla lo stato in GET /api/leases/{id}/registration.</value>
+    <value>Pratica inviata al provider: il contratto non è ancora registrato. Lo stato si aggiorna quando arriva la ricevuta dell'Agenzia delle Entrate.</value>
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
@@ -222,14 +222,41 @@
   <data name="RliChecklist_rli_exported" xml:space="preserve">
     <value>Dataset RLI esportato per revisione</value>
   </data>
-  <data name="RliChecklist_rli_submitted" xml:space="preserve">
-    <value>RLI inviato al canale di filing</value>
-  </data>
   <data name="RliChecklist_rli_registered" xml:space="preserve">
-    <value>Ricevuta di registrazione disponibile</value>
+    <value>Contratto registrato: estremi e ricevuta dell'Agenzia delle Entrate inseriti</value>
   </data>
   <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
     <value>Comunicazione Questura (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Bozza da confermare con legale.</value>
+  </data>
+  <data name="RliProviderUnavailable" xml:space="preserve">
+    <value>L'invio della RLI tramite provider non è disponibile. Registra il contratto sul canale ufficiale dell'Agenzia delle Entrate e inserisci qui numero, data e ricevuta della registrazione.</value>
+  </data>
+  <data name="RliProviderFailed" xml:space="preserve">
+    <value>Il provider non ha accettato la pratica: il contratto NON è registrato. Puoi riprovare più tardi oppure registrarlo tu sul canale ufficiale e inserire gli estremi.</value>
+  </data>
+  <data name="RliLeaseNotSigned" xml:space="preserve">
+    <value>Il contratto deve essere firmato da tutte le parti prima della registrazione.</value>
+  </data>
+  <data name="RliSignedPdfMissing" xml:space="preserve">
+    <value>Per l'invio tramite provider serve il PDF del contratto firmato.</value>
+  </data>
+  <data name="RliAlreadyRegistered" xml:space="preserve">
+    <value>Questo contratto risulta già registrato.</value>
+  </data>
+  <data name="RliRegistrationInProgress" xml:space="preserve">
+    <value>È in corso una registrazione tramite provider per questo contratto: attendi l'esito prima di procedere.</value>
+  </data>
+  <data name="RliReceiptInvalid" xml:space="preserve">
+    <value>La ricevuta deve essere un file PDF di al massimo {0} MB.</value>
+  </data>
+  <data name="RliRegistrationCodeInvalid" xml:space="preserve">
+    <value>Inserisci il numero o il protocollo di registrazione (al massimo {0} caratteri).</value>
+  </data>
+  <data name="RliRegistrationDateInFuture" xml:space="preserve">
+    <value>La data di registrazione non può essere successiva a oggi.</value>
+  </data>
+  <data name="RliReceiptNotAvailable" xml:space="preserve">
+    <value>La ricevuta di registrazione non è disponibile: il contratto non risulta ancora registrato.</value>
   </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Richiesta di servizio non trovata</value>
@@ -497,5 +524,40 @@
   </data>
   <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
     <value>I sottodomini CasaZen non sono ancora disponibili: usa il percorso CasaZen o un dominio personalizzato.</value>
+  <data name="CheckInGuestsCount" xml:space="preserve">
+    <value>Inserisci da 1 a {0} ospiti.</value>
+  </data>
+  <data name="CheckInGuestTypeInvalid" xml:space="preserve">
+    <value>Tipo di ospite non valido.</value>
+  </data>
+  <data name="CheckInMemberWithoutHead" xml:space="preserve">
+    <value>Un familiare o un membro del gruppo va inserito dopo il proprio capofamiglia o capogruppo.</value>
+  </data>
+  <data name="CheckInHeadWithoutMembers" xml:space="preserve">
+    <value>Un capofamiglia o capogruppo deve avere almeno un familiare o un membro del gruppo: altrimenti scegli «Ospite singolo».</value>
+  </data>
+  <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
+    <value>La data di nascita non può essere nel futuro.</value>
+  </data>
+  <data name="CheckInProvinceInvalid" xml:space="preserve">
+    <value>Inserisci la sigla della provincia di due lettere (es. RM).</value>
+  </data>
+  <data name="CheckInCodeInvalid" xml:space="preserve">
+    <value>Codice non valido per Alloggiati Web.</value>
+  </data>
+  <data name="CheckInCodeUnknown" xml:space="preserve">
+    <value>Codice non presente nella tabella ufficiale Alloggiati: selezionalo dall'elenco.</value>
+  </data>
+  <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
+    <value>Il numero del documento può contenere solo lettere e cifre, al massimo {0}.</value>
+  </data>
+  <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
+    <value>Elenco di codici sconosciuto: usa comuni, stati, documenti o luoghi.</value>
+  </data>
+  <data name="AlloggiatiCodeTableUnknown" xml:space="preserve">
+    <value>Tabella sconosciuta: usa Comuni, Stati, Documenti o TipiAlloggiato.</value>
+  </data>
+  <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
+    <value>Il file non è valido e nessun codice è stato importato: correggi le righe indicate e riprova.</value>
   </data>
 </root>

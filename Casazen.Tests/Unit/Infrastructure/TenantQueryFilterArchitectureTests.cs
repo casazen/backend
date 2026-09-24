@@ -41,6 +41,8 @@ public class TenantQueryFilterArchitectureTests
         [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
+        [typeof(AlloggiatiCodeEntry)] = "Platform reference data: official Alloggiati Web code tables (comuni, stati, documents), imported by admins and read by every org and by the anonymous guest portal (CO-12).",
+        [typeof(AlloggiatiCodeTableImport)] = "Platform reference data: log of the admin imports of the official Alloggiati code tables, not tenant data (CO-12).",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId. A host-org filter would hide the request from the supplier who takes, completes or rejects it, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository).",
@@ -56,7 +58,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(OtaSyncLog)] = "No reader or writer outside its unused repository (OTA partner APIs frozen, D10). Must become ITenantOwned before an endpoint exposes it.",
         [typeof(PropertyQuesturaCredentials)] = "No reader or writer yet. Must become ITenantOwned when the credentials UI is added (CO-14).",
         [typeof(Party)] = "Reached only through its LeaseContract (tenant-filtered and owner-verified by LeaseWorkflowService); no endpoint addresses a party by its own id.",
-        [typeof(LeaseRegistration)] = "Reached only through its LeaseContract (tenant-filtered and owner-verified by LeaseWorkflowService); the status polling job runs without tenant.",
+        [typeof(LeaseRegistration)] = "Reached only through its LeaseContract (tenant-filtered, then authorized by the controller and RliRegistrationService); the provider polling job runs without tenant.",
         [typeof(LeaseEvent)] = "Append-only log reached only through its LeaseContract (tenant-filtered and owner-verified); written by services and jobs for an already verified lease.",
     };
 

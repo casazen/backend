@@ -253,7 +253,20 @@ public class PropertyICalSyncService
                         b.EndUtc > startUtc)
             .ToListAsync(ct);
 
-    public async Task<bool> HasOverlappingBlockAsync(
+    public Task<bool> HasOverlappingBlockAsync(
+        Guid propertyId,
+        DateTime checkIn,
+        DateTime checkOut,
+        CancellationToken ct = default) =>
+        HasOverlappingBlockAsync(_db, propertyId, checkIn, checkOut, ct);
+
+    /// <summary>
+    /// True when a calendar block (iCal import) of the property overlaps [<paramref name="checkIn"/>,
+    /// <paramref name="checkOut"/>): the single rule of the booking checks, also used by the late-payment
+    /// reconfirmation of the payment webhook (BK-04).
+    /// </summary>
+    internal static async Task<bool> HasOverlappingBlockAsync(
+        AppDbContext db,
         Guid propertyId,
         DateTime checkIn,
         DateTime checkOut,
@@ -262,7 +275,7 @@ public class PropertyICalSyncService
         var checkInDate = checkIn.Date;
         var checkOutDate = checkOut.Date;
 
-        return await _db.CalendarBlocks.AnyAsync(
+        return await db.CalendarBlocks.AnyAsync(
             b => b.PropertyId == propertyId &&
                  b.StartUtc.Date < checkOutDate &&
                  b.EndUtc.Date > checkInDate,

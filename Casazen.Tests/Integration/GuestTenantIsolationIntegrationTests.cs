@@ -216,13 +216,14 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         using var anonymous = _factory.CreateClient();
         using var doc = await ReadJsonAsync(await anonymous.GetAsync($"/api/public/checkin/{token}"));
 
-        var prefill = doc.RootElement.GetProperty("guestPrefill");
+        // CO-12: the prefill is the list of the stay's guests; before any registration, the booking's own booker.
+        var prefill = Assert.Single(doc.RootElement.GetProperty("guests").EnumerateArray());
         Assert.Equal("Mario", prefill.GetProperty("firstName").GetString());
         Assert.Equal("Bianchi", prefill.GetProperty("lastName").GetString());
         Assert.Equal(JsonValueKind.Null, prefill.GetProperty("dateOfBirth").ValueKind);
         Assert.False(prefill.TryGetProperty("documentNumber", out _));
         Assert.Equal(JsonValueKind.Null, prefill.GetProperty("documentNumberMasked").ValueKind);
-        Assert.Equal(string.Empty, prefill.GetProperty("placeOfBirth").GetString());
+        Assert.Equal(string.Empty, prefill.GetProperty("birthComuneName").GetString());
     }
 
     [Fact]

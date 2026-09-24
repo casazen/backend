@@ -19,6 +19,7 @@ Object keys:
 | public | `suppliers/{supplierOrgId}/photos/{random}.{ext}` |
 | private | `properties/{propertyId}/documents/{random}.{ext}` |
 | private | `guest-documents/{orgId}/{guestId}/{random}.{ext}` |
+| private | `leases/{orgId}/{leaseId}/registration/{random}.pdf` (RLI receipts, LT-01: only through `GET /api/leases/{id}/registration/receipt`) |
 
 Lease contract PDFs (manual signing flow, D15) must use the private bucket through `IFileStorage` too. There is no local contract upload yet: a signed PDF only arrives from the e-sign provider as an external path.
 

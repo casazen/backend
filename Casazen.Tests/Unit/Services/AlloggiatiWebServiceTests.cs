@@ -437,7 +437,7 @@ public class AlloggiatiWebServiceTests
     }
 
     [Fact]
-    public async Task GetGuestSummary_CompleteSingleGuest_ReturnsTheRecordFieldsAsStoredText()
+    public async Task GetGuestSummary_RegisteredSingleGuest_ReturnsTheRecordFieldsAndCodesToComplete()
     {
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db, numberOfGuests: 1);
@@ -449,23 +449,36 @@ public class AlloggiatiWebServiceTests
         Assert.False(summary.StayExceedsMaxDays);
         Assert.Equal(1, summary.DeclaredGuests);
         var row = Assert.Single(summary.Guests);
-        Assert.Equal(AlloggiatiGuestKind.SingleGuest, row.Kind);
+        Assert.NotNull(row.StayGuestId);
+        Assert.Equal(StayGuestType.SingleGuest, row.Type);
+        Assert.False(row.IsMinor);
         Assert.Equal(CheckIn, row.ArrivalDate);
         Assert.Equal(3, row.StayDays);
         Assert.Equal("Rossi", row.LastName);
         Assert.Equal("Mario", row.FirstName);
         Assert.Equal(Gender.Male, row.Gender);
         Assert.Equal(Utc(1980, 4, 2), row.DateOfBirth);
-        Assert.Equal("Milano (MI)", row.PlaceOfBirth);
-        Assert.Equal("Italiana", row.Citizenship);
+        Assert.True(row.BornInItaly);
+        Assert.Equal("Milano", row.BirthComune);
+        Assert.Equal("MI", row.BirthProvince);
+        Assert.Equal("Italia", row.Citizenship);
+        Assert.True(row.RequiresDocument);
         Assert.Equal(GuestDocumentType.IdentityCard, row.DocumentType);
         Assert.Equal("CA12345AB", row.DocumentNumber);
-        Assert.Equal("Comune di Milano", row.DocumentIssuePlace);
+        Assert.Equal("Milano", row.DocumentIssuePlace);
         Assert.Empty(row.MissingFields);
+        Assert.Null(row.CompositionIssue);
+        // No official table imported: every code is to complete, the data is complete but cannot be exported.
+        Assert.Equal(
+            new[] { "type", "birthComune", "birthCountry", "citizenship", "documentType", "documentIssuePlace" },
+            row.CodesToComplete);
+        Assert.True(summary.DataComplete);
+        Assert.False(summary.ExportReady);
+        Assert.Equal(Enum.GetValues<AlloggiatiCodeTable>(), summary.MissingCodeTables);
     }
 
     [Fact]
-    public async Task GetGuestSummary_IncompleteGuestWithCompanions_ListsMissingFieldsAndHeadOfGroup()
+    public async Task GetGuestSummary_NoGuestRegisteredAndCompanionsDeclared_ReturnsBookerAsHeadOfFamilyWithMissingFields()
     {
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db, numberOfGuests: 3, completeGuest: false);
@@ -474,10 +487,39 @@ public class AlloggiatiWebServiceTests
 
         Assert.Equal(3, summary.DeclaredGuests);
         var row = Assert.Single(summary.Guests);
-        Assert.Equal(AlloggiatiGuestKind.HeadOfFamilyOrGroup, row.Kind);
+        Assert.Null(row.StayGuestId);
+        Assert.Equal(StayGuestType.HeadOfFamily, row.Type);
         Assert.Equal(
-            new[] { "gender", "dateOfBirth", "placeOfBirth", "citizenship", "documentType", "documentNumber", "documentIssuePlace" },
+            new[] { "gender", "dateOfBirth", "bornInItaly", "citizenship", "documentType", "documentNumber", "documentIssuePlace" },
             row.MissingFields);
+        // A head of family needs the lines of the family members.
+        Assert.Equal("head_without_members", row.CompositionIssue);
+        Assert.False(summary.DataComplete);
+        Assert.False(summary.ExportReady);
+    }
+
+    [Fact]
+    public async Task IsStayDataComplete_EveryGuestOfTheStay_IsChecked()
+    {
+        await using var db = CreateDb();
+        var complete = await SeedBookingAsync(db);
+        var bookerOnly = await SeedBookingAsync(db, numberOfGuests: 3, completeGuest: false);
+        var service = CreateService(db, CheckIn.AddDays(-1));
+
+        Assert.True(await service.IsStayDataCompleteAsync(complete.Id));
+        Assert.False(await service.IsStayDataCompleteAsync(bookerOnly.Id));
+        Assert.False(await service.IsStayDataCompleteAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task GetStatus_RegisteredCompleteGuest_IsDataComplete()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+
+        var status = await CreateService(db, CheckIn.AddDays(-1)).GetStatusAsync(booking.Id);
+
+        Assert.True(status.DataComplete);
     }
 
     [Fact]
@@ -568,6 +610,30 @@ public class AlloggiatiWebServiceTests
         db.Guests.Add(guest);
         db.Properties.Add(property);
         db.Bookings.Add(booking);
+        if (completeGuest)
+        {
+            // CO-12: the stay's guest line, as registered by the guest portal.
+            db.StayGuests.Add(new StayGuest
+            {
+                BookingId = booking.Id,
+                OrgId = orgId,
+                GuestId = guest.Id,
+                Position = 0,
+                Type = StayGuestType.SingleGuest,
+                FirstName = "Mario",
+                LastName = "Rossi",
+                Gender = Gender.Male,
+                DateOfBirth = Utc(1980, 4, 2),
+                BornInItaly = true,
+                BirthComuneName = "Milano",
+                BirthProvince = "MI",
+                CitizenshipName = "Italia",
+                DocumentType = GuestDocumentType.IdentityCard,
+                DocumentNumber = "CA12345AB",
+                DocumentIssuePlaceName = "Milano",
+            });
+        }
+
         await db.SaveChangesAsync();
         return booking;
     }

@@ -221,7 +221,7 @@ public class PropertiesController(
         var leases = await leaseContractRepository.GetByPropertyAsync(propertyId);
         return leases.Any(lease =>
             lease.FiscalRegime == FiscalRegime.CanoneConcordato &&
-            lease.Status is LeaseStatus.SentToProvider or LeaseStatus.Registered);
+            lease.Status is LeaseStatus.RegistrationPending or LeaseStatus.SentToProvider or LeaseStatus.Registered);
     }
 
     private static bool IsCityChange(string currentCity, string requestedCity) =>

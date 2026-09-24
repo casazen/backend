@@ -260,6 +260,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
+        // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
+        services.AddScoped<CheckoutPaymentSettlementService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
@@ -298,6 +300,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
+        // Guests of a stay and official Alloggiati code tables (CO-12).
+        services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
+        services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
@@ -306,6 +311,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
+        // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
+        // provider path stays unavailable even with Features:RliProvider on.
+        services.AddScoped<IRliRegistrationService, RliRegistrationService>();
+        services.AddSingleton<ILeaseRegistrationProvider, UnconfiguredLeaseRegistrationProvider>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
