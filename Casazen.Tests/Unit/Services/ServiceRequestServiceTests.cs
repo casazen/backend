@@ -21,29 +21,168 @@ namespace Casazen.Tests.Unit.Services;
 
 public class ServiceRequestServiceTests
 {
+    // ─── D2 (SU-07): short-rent requests are for a stay, long-rent requests for the property ───
+
     [Fact]
-    public async Task CreateAsync_WithInvalidBookingId_Throws()
+    public async Task CreateAsync_ShortRentWithoutBooking_ThrowsBookingRequiredWithoutCreatingOrEmailing()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.ShortRent)));
+
+        Assert.Equal(ServiceRequestErrorCodes.BookingRequired, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.BookingRequiredMessageKey, ex.MessageKey);
+        Assert.Empty(db.ServiceRequests);
+        Assert.Empty(queue.Queued);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShortRentWithUnknownBooking_ThrowsBookingMismatch()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
                 hostOrgId, TestAuthHandler.DefaultUserId, propertyId, Guid.NewGuid(), supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.BookingMismatch, ex.Code);
+        Assert.Empty(db.ServiceRequests);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShortRentWithBookingOfAnotherProperty_ThrowsBookingMismatch()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var otherProperty = NewProperty(hostOrgId, "Other Property");
+        db.Properties.Add(otherProperty);
+        var otherStay = NewBooking(hostOrgId, otherProperty.Id);
+        db.Bookings.Add(otherStay);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, otherStay.Id, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.BookingMismatch, ex.Code);
+        Assert.Empty(db.ServiceRequests);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShortRentWithBookingOfAnotherOrgOnSameProperty_ThrowsBookingMismatch()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        // A row that claims the property but belongs to another org is never accepted as a stay of this host.
+        var foreignStay = NewBooking(Guid.NewGuid(), propertyId);
+        db.Bookings.Add(foreignStay);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, foreignStay.Id, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.BookingMismatch, ex.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShortRentWithStayOfTheProperty_StoresBookingAndShortRent()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+
+        var saved = await db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        Assert.Equal(bookingId, saved.BookingId);
+        Assert.Equal(ServiceRequestRentalContext.ShortRent, saved.RentalContext);
+    }
+
+    [Fact]
+    public async Task CreateAsync_LongRentForProperty_StoresLongRentWithoutBooking()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "plumbing", ServiceRequestUrgency.High, "Perdita in cucina", false, ServiceRequestRentalContext.LongRent));
+
+        var saved = await db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        Assert.Null(saved.BookingId);
+        Assert.Equal(ServiceRequestRentalContext.LongRent, saved.RentalContext);
+        Assert.Equal(ServiceRequestStatus.Richiesto, saved.Status);
+        Assert.Single(queue.Queued);
+    }
+
+    [Fact]
+    public async Task CreateAsync_LongRentWithBooking_ThrowsBookingNotAllowed()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.LongRent)));
+
+        Assert.Equal(ServiceRequestErrorCodes.BookingNotAllowed, ex.Code);
+        Assert.Empty(db.ServiceRequests);
+    }
+
+    [Fact]
+    public async Task ListAndGetForHost_EachRentalContext_ReachesOnlyItsOwnRequests()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var stay = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        var lease = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "plumbing", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.LongRent));
+        var scope = new HostScope(hostOrgId, null);
+
+        var (shortItems, _) = await service.ListForHostAsync(scope, ServiceRequestRentalContext.ShortRent, null, propertyId, null, 1, 20);
+        var (longItems, _) = await service.ListForHostAsync(scope, ServiceRequestRentalContext.LongRent, null, propertyId, null, 1, 20);
+
+        Assert.Equal(stay.Id, Assert.Single(shortItems).Id);
+        Assert.Equal(lease.Id, Assert.Single(longItems).Id);
+        Assert.Null(await service.GetByIdForHostAsync(lease.Id, scope, ServiceRequestRentalContext.ShortRent));
+        Assert.Null(await service.GetByIdForHostAsync(stay.Id, scope, ServiceRequestRentalContext.LongRent));
+        Assert.NotNull(await service.GetByIdForHostAsync(lease.Id, scope, ServiceRequestRentalContext.LongRent));
     }
 
     [Fact]
     public async Task CreateAsync_ChargeToGuest_Throws()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, true)));
     }
 
@@ -51,11 +190,11 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_ValidRequest_CreatesRichiesto()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
 
         var result = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, "Turnover", false));
 
         Assert.Equal(ServiceRequestStatus.Richiesto, result.Status);
@@ -66,12 +205,12 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_InactiveSupplier_Throws()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Pending);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Pending);
         var service = CreateService(db);
 
         await Assert.ThrowsAsync<ServiceRequestStateException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, false)));
     }
 
@@ -79,12 +218,12 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_SupplierOutsideComune_Throws()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active, supplierComune: "F205");
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active, supplierComune: "F205");
         var service = CreateService(db);
 
         await Assert.ThrowsAsync<ServiceRequestStateException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, false)));
     }
 
@@ -92,10 +231,10 @@ public class ServiceRequestServiceTests
     public async Task TakeAsync_ValidTransition_SetsPresoInCarico()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
 
         var taken = await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
@@ -108,10 +247,10 @@ public class ServiceRequestServiceTests
     public async Task TakeAsync_WrongSupplier_Throws()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
@@ -122,10 +261,10 @@ public class ServiceRequestServiceTests
     public async Task TakeAsync_InvalidState_Throws()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
 
@@ -137,10 +276,10 @@ public class ServiceRequestServiceTests
     public async Task CompleteAsync_FromPresoInCarico_SetsCompletato()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
 
@@ -154,10 +293,10 @@ public class ServiceRequestServiceTests
     public async Task MarkPaidAsync_FromCompletato_SetsPagato()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
         await service.CompleteAsync(created.Id, supplierOrgId, null);
@@ -172,7 +311,7 @@ public class ServiceRequestServiceTests
     public async Task MarkPaidAsync_UnknownRequest_ThrowsNotFoundExceptionWithCode()
     {
         await using var db = CreateDb();
-        var (hostOrgId, _, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, _, _, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
 
         var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
@@ -186,10 +325,10 @@ public class ServiceRequestServiceTests
     public async Task MarkPaidAsync_RequestOfAnotherOrg_ThrowsNotFoundAndLeavesItUnpaid()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
         await service.CompleteAsync(created.Id, supplierOrgId, null);
@@ -203,7 +342,7 @@ public class ServiceRequestServiceTests
     public async Task ListForHostAsync_OwnerScope_ReturnsOnlyRequestsOnOwnedProperties()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var otherProperty = new Property
         {
             OwnerId = "auth0|colleague",
@@ -222,65 +361,69 @@ public class ServiceRequestServiceTests
         await db.SaveChangesAsync();
         var service = CreateService(db);
         var own = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
+        var colleaguesStay = NewBooking(hostOrgId, otherProperty.Id);
+        db.Bookings.Add(colleaguesStay);
+        await db.SaveChangesAsync();
         var colleagues = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, "auth0|colleague", otherProperty.Id, null, supplierOrgId,
+            hostOrgId, "auth0|colleague", otherProperty.Id, colleaguesStay.Id, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
 
         var (ownerItems, ownerTotal) = await service.ListForHostAsync(
-            new HostScope(hostOrgId, TestAuthHandler.DefaultUserId), null, null, null, 1, 20);
+            new HostScope(hostOrgId, TestAuthHandler.DefaultUserId), ServiceRequestRentalContext.ShortRent, null, null, null, 1, 20);
         var (orgItems, orgTotal) = await service.ListForHostAsync(
-            new HostScope(hostOrgId, null), null, null, null, 1, 20);
+            new HostScope(hostOrgId, null), ServiceRequestRentalContext.ShortRent, null, null, null, 1, 20);
         var (otherOrgItems, _) = await service.ListForHostAsync(
-            new HostScope(Guid.NewGuid(), null), null, null, null, 1, 20);
+            new HostScope(Guid.NewGuid(), null), ServiceRequestRentalContext.ShortRent, null, null, null, 1, 20);
 
         Assert.Equal(own.Id, Assert.Single(ownerItems).Id);
         Assert.Equal(1, ownerTotal);
         Assert.Equal(2, orgTotal);
         Assert.Contains(orgItems, r => r.Id == colleagues.Id);
         Assert.Empty(otherOrgItems);
-        Assert.Null(await service.GetByIdForHostAsync(colleagues.Id, new HostScope(hostOrgId, TestAuthHandler.DefaultUserId)));
-        Assert.NotNull(await service.GetByIdForHostAsync(colleagues.Id, new HostScope(hostOrgId, null)));
+        Assert.Null(await service.GetByIdForHostAsync(
+            colleagues.Id, new HostScope(hostOrgId, TestAuthHandler.DefaultUserId), ServiceRequestRentalContext.ShortRent));
+        Assert.NotNull(await service.GetByIdForHostAsync(
+            colleagues.Id, new HostScope(hostOrgId, null), ServiceRequestRentalContext.ShortRent));
     }
 
     [Fact]
-    public async Task ListForHostAsync_WhenBookingIdProvided_ReturnsOnlyMatchingRequests()
+    public async Task ListForHostAsync_WhenBookingIdProvided_ReturnsOnlyThatStaysRequests()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var nextStay = NewBooking(hostOrgId, propertyId);
+        db.Bookings.Add(nextStay);
+        await db.SaveChangesAsync();
         var service = CreateService(db);
         var matched = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, "matched", false));
-        await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+        var other = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, nextStay.Id, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, "other", false));
-
-        var bookingId = Guid.NewGuid();
-        matched.BookingId = bookingId;
-        await db.SaveChangesAsync();
+        var scope = new HostScope(hostOrgId, TestAuthHandler.DefaultUserId);
 
         var (items, total) = await service.ListForHostAsync(
-            new HostScope(hostOrgId, TestAuthHandler.DefaultUserId),
-            status: null,
-            propertyId: null,
-            bookingId,
-            page: 1,
-            pageSize: 20);
+            scope, ServiceRequestRentalContext.ShortRent, status: null, propertyId: null, bookingId, page: 1, pageSize: 20);
+        var (propertyItems, propertyTotal) = await service.ListForHostAsync(
+            scope, ServiceRequestRentalContext.ShortRent, status: null, propertyId, bookingId: null, page: 1, pageSize: 20);
 
         Assert.Equal(1, total);
         Assert.Equal(matched.Id, Assert.Single(items).Id);
+        Assert.Equal(2, propertyTotal);
+        Assert.Equal(new[] { matched.Id, other.Id }.Order(), propertyItems.Select(r => r.Id).Order());
     }
 
     [Fact]
     public async Task RejectAsync_FromRichiesto_SetsRifiutato()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
 
         var rejected = await service.RejectAsync(created.Id, supplierOrgId, "Non disponibile");
@@ -295,12 +438,12 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_ValidRequest_QueuesSupplierEmailWithInboxLinkFromPublicSiteBaseUrl()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var queue = new RecordingEmailQueue();
         var service = CreateService(db, queue);
 
         await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, "Turnover", false));
 
         var (to, content, template) = Assert.Single(queue.Queued);
@@ -316,12 +459,12 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_NotesWithMarkup_AreHtmlEncodedInSupplierEmail()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var queue = new RecordingEmailQueue();
         var service = CreateService(db, queue);
 
         await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal,
             "<a href=\"https://phish.example\">Conferma IBAN</a><script>alert(1)</script>", false));
 
@@ -339,12 +482,12 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_CategoryNotACode_ThrowsInvalidServiceCategoryWithoutCreatingOrEmailing(string category)
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var queue = new RecordingEmailQueue();
         var service = CreateService(db, queue);
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             category, ServiceRequestUrgency.Normal, null, false)));
 
         Assert.Equal(ServiceCategories.InvalidCategoryCode, ex.Code);
@@ -356,11 +499,11 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_CodeWithDifferentCase_StoresNormalizedCode()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var service = CreateService(db);
 
         var result = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             " Linen ", ServiceRequestUrgency.Normal, null, false));
 
         Assert.Equal(ServiceCategories.Linen, result.Category);
@@ -370,13 +513,13 @@ public class ServiceRequestServiceTests
     public async Task CreateAsync_PublicSiteBaseUrlMissing_ThrowsConfigurationErrorWithoutCreatingRequest()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var queue = new RecordingEmailQueue();
         var service = CreateService(db, queue, publicSiteBaseUrl: null);
 
         await Assert.ThrowsAsync<EmailConfigurationException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, false)));
 
         Assert.Empty(db.ServiceRequests);
@@ -390,11 +533,11 @@ public class ServiceRequestServiceTests
     public async Task SupplierStatusChange_ValidTransition_QueuesHostEmail(ServiceRequestStatus target, string expectedSubject)
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var queue = new RecordingEmailQueue();
         var service = CreateService(db, queue);
         var created = await service.CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         queue.Queued.Clear();
 
@@ -425,9 +568,9 @@ public class ServiceRequestServiceTests
     public async Task TakeAsync_PushAndEmailQueueThrow_ReturnsTakenRequestWithStatusSaved()
     {
         await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         var created = await CreateService(db).CreateAsync(new CreateServiceRequestCommand(
-            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         var queue = new Mock<IEmailQueue>();
         queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
@@ -470,7 +613,7 @@ public class ServiceRequestServiceTests
         return new AppDbContext(options);
     }
 
-    private static async Task<(Guid HostOrgId, Guid PropertyId, Guid SupplierOrgId)> SeedHostAndSupplierAsync(
+    private static async Task<(Guid HostOrgId, Guid PropertyId, Guid SupplierOrgId, Guid BookingId)> SeedHostAndSupplierAsync(
         AppDbContext db,
         string propertyCity,
         SupplierStatus supplierStatus,
@@ -486,21 +629,12 @@ public class ServiceRequestServiceTests
         };
         db.Orgs.Add(hostOrg);
 
-        var property = new Property
-        {
-            OwnerId = TestAuthHandler.DefaultUserId,
-            OrgId = hostOrg.Id,
-            Name = "Test Property",
-            Address = "Via Test 1",
-            City = propertyCity,
-            PostalCode = "00100",
-            Bedrooms = 2,
-            Bathrooms = 1,
-            MaxGuests = 4,
-            NightlyRate = 100m,
-            CinCode = "IT-ABC123-DEF456",
-        };
+        var property = NewProperty(hostOrg.Id, "Test Property", propertyCity);
         db.Properties.Add(property);
+
+        // The stay short-rent requests are for (D2).
+        var booking = NewBooking(hostOrg.Id, property.Id);
+        db.Bookings.Add(booking);
 
         var supplierOrg = new Casazen.Core.Entities.Org
         {
@@ -525,6 +659,32 @@ public class ServiceRequestServiceTests
         });
 
         await db.SaveChangesAsync();
-        return (hostOrg.Id, property.Id, supplierOrg.Id);
+        return (hostOrg.Id, property.Id, supplierOrg.Id, booking.Id);
     }
+
+    private static Property NewProperty(Guid orgId, string name, string city = "H501") => new()
+    {
+        OwnerId = TestAuthHandler.DefaultUserId,
+        OrgId = orgId,
+        Name = name,
+        Address = "Via Test 1",
+        City = city,
+        PostalCode = "00100",
+        Bedrooms = 2,
+        Bathrooms = 1,
+        MaxGuests = 4,
+        NightlyRate = 100m,
+        CinCode = "IT058091C27G5FFZDZ",
+    };
+
+    private static Booking NewBooking(Guid orgId, Guid propertyId) => new()
+    {
+        OrgId = orgId,
+        PropertyId = propertyId,
+        GuestId = Guid.NewGuid(),
+        CheckInDate = DateTime.UtcNow.Date.AddDays(3),
+        CheckOutDate = DateTime.UtcNow.Date.AddDays(5),
+        NumberOfGuests = 2,
+        Status = BookingStatus.Confirmed,
+    };
 }

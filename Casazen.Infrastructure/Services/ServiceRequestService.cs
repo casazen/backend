@@ -37,17 +37,6 @@ public class ServiceRequestService(
         // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
 
-        if (command.BookingId is { } bookingId)
-        {
-            var booking = await db.Bookings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(b => b.Id == bookingId && b.PropertyId == command.PropertyId, cancellationToken)
-                ?? throw new InvalidOperationException("Prenotazione non valida per la proprietà indicata.");
-        }
-
-        if (command.ChargeToGuest)
-            throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
-
         // IgnoreQueryFilters: scoped by the explicit OrgId check below. command.OrgId comes from
         // OrgContextResolver, which may provision the org after the tenant filter cached a null org.
         var property = await db.Properties
@@ -58,6 +47,11 @@ public class ServiceRequestService(
 
         if (property.OrgId != command.OrgId)
             throw new InvalidOperationException("Proprietà non appartiene all'organizzazione.");
+
+        await EnsureBookingRuleAsync(command, cancellationToken);
+
+        if (command.ChargeToGuest)
+            throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
 
         var supplier = await db.SupplierProfiles
             .Include(sp => sp.Org)
@@ -77,6 +71,7 @@ public class ServiceRequestService(
         {
             OrgId = command.OrgId,
             BookingId = command.BookingId,
+            RentalContext = command.RentalContext,
             PropertyId = command.PropertyId,
             SupplierOrgId = command.SupplierOrgId,
             Category = category,
@@ -100,10 +95,48 @@ public class ServiceRequestService(
         emailQueue.Enqueue(supplier.Email, supplierEmail, EmailTemplates.Names.ServiceRequestCreated);
 
         logger.LogInformation(
-            "ServiceRequest {Id} created by {UserId} for property {PropertyId} supplier {SupplierOrgId}",
-            request.Id, command.UserId, request.PropertyId, request.SupplierOrgId);
+            "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
+            request.Id, request.RentalContext, command.UserId, request.PropertyId, request.BookingId, request.SupplierOrgId);
 
         return (await repository.GetByIdAsync(request.Id, cancellationToken))!;
+    }
+
+    /// <summary>
+    /// D2 (SU-07): a short-rent request is for one stay, a booking of the request's property in the host's org; a
+    /// long-rent request is for the property and takes no booking. 422 with the codes of
+    /// <see cref="ServiceRequestErrorCodes"/>; a booking of another property or org answers like a missing one.
+    /// </summary>
+    private async Task EnsureBookingRuleAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken)
+    {
+        if (command.RentalContext == ServiceRequestRentalContext.LongRent)
+        {
+            if (command.BookingId is not null)
+            {
+                throw new DomainRuleException(
+                    ServiceRequestErrorCodes.BookingNotAllowed, ServiceRequestErrorCodes.BookingNotAllowedMessageKey);
+            }
+
+            return;
+        }
+
+        if (command.BookingId is not { } bookingId)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.BookingRequired, ServiceRequestErrorCodes.BookingRequiredMessageKey);
+        }
+
+        // IgnoreQueryFilters: scoped by the explicit OrgId predicate (same reason as the property lookup above).
+        var belongsToProperty = await db.Bookings
+            .IgnoreQueryFilters()
+            .AnyAsync(
+                b => b.Id == bookingId && b.PropertyId == command.PropertyId && b.OrgId == command.OrgId,
+                cancellationToken);
+
+        if (!belongsToProperty)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.BookingMismatch, ServiceRequestErrorCodes.BookingMismatchMessageKey);
+        }
     }
 
     public async Task<ServiceRequest> TakeAsync(
@@ -203,6 +236,7 @@ public class ServiceRequestService(
     public Task<ServiceRequest?> GetByIdForHostAsync(
         Guid id,
         HostScope scope,
+        ServiceRequestRentalContext rentalContext,
         CancellationToken cancellationToken = default)
     {
         // ServiceRequest is not tenant-filtered (two parties, see the TN-2 allow-list); host and supplier
@@ -212,7 +246,7 @@ public class ServiceRequestService(
                 .IgnoreQueryFilters()
                 .Include(r => r.Property)
                 .Include(r => r.SupplierOrg)
-                .Where(r => r.Id == id),
+                .Where(r => r.Id == id && r.RentalContext == rentalContext),
             scope);
 
         return query.FirstOrDefaultAsync(cancellationToken);
@@ -229,6 +263,7 @@ public class ServiceRequestService(
 
     public Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         HostScope scope,
+        ServiceRequestRentalContext rentalContext,
         ServiceRequestStatus? status,
         Guid? propertyId,
         Guid? bookingId,
@@ -241,7 +276,8 @@ public class ServiceRequestService(
             db.ServiceRequests
                 .IgnoreQueryFilters()
                 .Include(r => r.Property)
-                .Include(r => r.SupplierOrg),
+                .Include(r => r.SupplierOrg)
+                .Where(r => r.RentalContext == rentalContext),
             scope);
 
         if (status is not null)
