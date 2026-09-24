@@ -38,6 +38,11 @@ public class AppDbContext(
     public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
+
+    // Guests of a stay and official Alloggiati code tables (CO-12)
+    public DbSet<StayGuest> StayGuests { get; set; } = null!;
+    public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
+    public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
     public DbSet<TaxRate> TaxRates { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
@@ -141,6 +146,29 @@ public class AppDbContext(
             .ToTable(t => t.HasCheckConstraint(
                 "CK_AlloggiatiWebReports_SentRequiresReceipt",
                 $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
+
+        // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
+        modelBuilder.Entity<StayGuest>(entity =>
+        {
+            entity.HasOne(s => s.Booking)
+                .WithMany(b => b.StayGuests)
+                .HasForeignKey(s => s.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(s => s.Guest)
+                .WithMany()
+                .HasForeignKey(s => s.GuestId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(s => s.OrgId);
+            entity.HasIndex(s => s.GuestId);
+        });
+
+        modelBuilder.Entity<AlloggiatiCodeEntry>()
+            .HasOne(e => e.Import)
+            .WithMany()
+            .HasForeignKey(e => e.ImportId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PropertyQuesturaCredentials>()
             .HasOne(c => c.Property)

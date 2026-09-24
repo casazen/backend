@@ -111,6 +111,9 @@ public class Booking : ITenantOwned
 
     public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
+
+    /// <summary>Guests staying, one per line of the Alloggiati communication (CO-12), ordered by <see cref="StayGuest.Position"/>.</summary>
+    public virtual ICollection<StayGuest> StayGuests { get; set; } = new List<StayGuest>();
 }
 
 public enum BookingStatus

@@ -4,8 +4,10 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Casazen.Infrastructure.External;
 
@@ -17,13 +19,16 @@ namespace Casazen.Infrastructure.External;
 /// per-guest summary, then declares it with <see cref="MarkSentManuallyAsync"/>.
 /// </summary>
 /// <remarks>
-/// With one guest per booking (CO-12 adds the others) the reports of a booking describe one guest "slot": a report
-/// whose guest was replaced by a snapshot of the same guest is moved to the new guest record, never duplicated.
+/// The report is per booking: one communication with a line per guest of the stay (<see cref="StayGuest"/>, CO-12). It is
+/// keyed by the booker's guest record (the "slot"): a report whose booker was replaced by a snapshot of the same guest
+/// is moved to the new guest record, never duplicated.
 /// </remarks>
 public class AlloggiatiWebService(
     AppDbContext context,
     ILogger<AlloggiatiWebService> logger,
-    TimeProvider? timeProvider = null) : IAlloggiatiWebService
+    TimeProvider? timeProvider = null,
+    IStayGuestService? stayGuestService = null,
+    IAlloggiatiCodeTableService? codeTableService = null) : IAlloggiatiWebService
 {
     /// <summary>Error code of a sent date before the check-in date.</summary>
     public const string ManualDateBeforeArrivalCode = "alloggiati_manual_date_before_arrival";
@@ -49,17 +54,29 @@ public class AlloggiatiWebService(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
+    private readonly IAlloggiatiCodeTableService _codeTables =
+        codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance);
+
+    private readonly IStayGuestService _stayGuests = stayGuestService
+        ?? new StayGuestService(context, codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance), timeProvider);
+
     public async Task<bool> ValidateGuestDataAsync(Guid guestId)
     {
         var guest = await context.Guests.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guestId);
         return guest is not null && MissingFields(guest).Count == 0;
     }
 
+    public async Task<bool> IsStayDataCompleteAsync(Guid bookingId)
+    {
+        var booking = await context.Bookings.AsNoTracking().Include(b => b.Guest).FirstOrDefaultAsync(b => b.Id == bookingId);
+        return booking is not null && await IsDataCompleteAsync(booking);
+    }
+
     public async Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId)
     {
         var booking = await LoadBookingAsync(bookingId, tracking: false);
         var report = SlotReport(await ReportsOfAsync(bookingId, tracking: false), booking.GuestId);
-        return BuildStatusInfo(booking, report, MissingFields(booking.Guest).Count == 0);
+        return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 
     public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid orgId, Guid? propertyId)
@@ -84,6 +101,7 @@ public class AlloggiatiWebService(
                 .ToListAsync())
             .ToLookup(r => r.BookingId);
 
+        var guests = await _stayGuests.GetForBookingsAsync(bookings);
         var now = UtcNow();
         var today = _clock.TodayInRome();
         return bookings
@@ -98,7 +116,7 @@ public class AlloggiatiWebService(
                     booking.Property.Name,
                     booking.CheckInDate,
                     status,
-                    MissingFields(booking.Guest).Count == 0,
+                    AlloggiatiRecordRules.IsDataComplete(guests[booking.Id]),
                     IsOverdue(deadline, status, now),
                     HoursUntil(deadline, now),
                     deadline,
@@ -113,25 +131,19 @@ public class AlloggiatiWebService(
         var report = SlotReport(await ReportsOfAsync(bookingId, tracking: false), booking.GuestId);
         var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
         var stayDays = AlloggiatiTerms.StayDays(booking.CheckInDate, booking.CheckOutDate);
-        var guest = booking.Guest;
 
-        // Only the booking's guest is registered in CasaZen: with more guests declared, that guest heads the
-        // family or group and the others are added on the portal (CO-12 models them).
-        var row = new AlloggiatiGuestRow(
-            guest.Id,
-            booking.NumberOfGuests > 1 ? AlloggiatiGuestKind.HeadOfFamilyOrGroup : AlloggiatiGuestKind.SingleGuest,
-            booking.CheckInDate,
-            stayDays,
-            guest.LastName,
-            guest.FirstName,
-            guest.Gender,
-            guest.DateOfBirth,
-            guest.PlaceOfBirth,
-            guest.Nationality,
-            guest.DocumentType,
-            guest.DocumentNumber,
-            guest.DocumentIssuingCountry,
-            MissingFields(guest));
+        // One line per guest of the stay, in record order: a head of family or group before its members (CO-12).
+        var guests = await _stayGuests.GetForBookingAsync(booking);
+        var codeBook = await _codeTables.LoadCodeBookAsync(guests);
+        var compositionIssues = AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList())
+            .GroupBy(e => e.Index)
+            .ToDictionary(g => g.Key, g => AlloggiatiRecordRules.CompositionIssueCode(g.First().Kind));
+
+        var rows = guests
+            .Select((guest, index) => BuildRow(guest, booking, stayDays, codeBook.ResolveGuest(guest), compositionIssues.GetValueOrDefault(index)))
+            .ToList();
+        var dataComplete = AlloggiatiRecordRules.IsDataComplete(guests);
+        var missingTables = Enum.GetValues<AlloggiatiCodeTable>().Where(t => !codeBook.IsLoaded(t)).ToList();
 
         return new AlloggiatiGuestSummaryInfo(
             booking.Id,
@@ -140,7 +152,51 @@ public class AlloggiatiWebService(
             stayDays,
             stayDays > AlloggiatiTerms.MaxStayDaysPerSchedina,
             Math.Max(1, booking.NumberOfGuests),
-            [row]);
+            rows,
+            dataComplete,
+            dataComplete && rows.All(r => r.CodesToComplete.Count == 0),
+            missingTables);
+    }
+
+    private static AlloggiatiGuestRow BuildRow(
+        StayGuest guest,
+        Booking booking,
+        int stayDays,
+        StayGuestCodes codes,
+        string? compositionIssue)
+    {
+        var requiresDocument = AlloggiatiRecordRules.RequiresDocument(guest.Type);
+        return new AlloggiatiGuestRow(
+            guest.Id == Guid.Empty ? null : guest.Id,
+            guest.Position,
+            guest.Type,
+            AlloggiatiRecordRules.IsMinor(guest.DateOfBirth, booking.CheckInDate),
+            booking.CheckInDate,
+            stayDays,
+            guest.LastName,
+            guest.FirstName,
+            guest.Gender,
+            guest.DateOfBirth,
+            guest.BornInItaly,
+            guest.BornInItaly == true ? guest.BirthComuneName : guest.BornInItaly is null ? guest.BirthComuneName : string.Empty,
+            guest.BornInItaly == true ? guest.BirthProvince : null,
+            guest.BornInItaly == false ? guest.BirthCountryName : string.Empty,
+            guest.CitizenshipName,
+            requiresDocument,
+            requiresDocument ? guest.DocumentType : null,
+            requiresDocument ? guest.DocumentNumber : string.Empty,
+            requiresDocument ? guest.DocumentIssuePlaceName : string.Empty,
+            new AlloggiatiRowCodes(
+                codes.Type.Code,
+                codes.BirthComune.Code,
+                codes.BirthCountry.Code,
+                codes.Citizenship.Code,
+                codes.DocumentType.Code,
+                codes.DocumentType.Description,
+                codes.DocumentIssuePlace.Code),
+            AlloggiatiRecordRules.MissingFields(guest),
+            codes.CodesToComplete,
+            compositionIssue);
     }
 
     public async Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId)
@@ -278,14 +334,15 @@ public class AlloggiatiWebService(
         await context.SaveChangesAsync();
 
         logger.LogInformation("Alloggiati report of booking {BookingId} declared sent manually by the host", bookingId);
-        return BuildStatusInfo(booking, report, MissingFields(booking.Guest).Count == 0);
+        return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 
     public bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus) =>
         IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
 
     /// <summary>
-    /// Fields of the Alloggiati record the guest lacks, as camelCase names of <see cref="AlloggiatiGuestRow"/>.
+    /// Fields of the Alloggiati record the booker's guest record lacks (legacy <c>/api/checkin</c> portal only; the
+    /// communication uses the guests of the stay, <see cref="AlloggiatiRecordRules.MissingFields"/>).
     /// Sex must be male or female: the only values the record accepts.
     /// </summary>
     public static IReadOnlyList<string> MissingFields(Guest guest)
@@ -333,6 +390,9 @@ public class AlloggiatiWebService(
         || scheduledFor > runAt // the check-in date moved earlier
         || scheduledFor < arrivalDayStart // the check-in date moved later: the job would run too early
         || scheduledFor < now - LostJobGrace; // the job never ran
+
+    private async Task<bool> IsDataCompleteAsync(Booking booking) =>
+        AlloggiatiRecordRules.IsDataComplete(await _stayGuests.GetForBookingAsync(booking));
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId, bool tracking)
     {

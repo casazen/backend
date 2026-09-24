@@ -72,7 +72,7 @@ public class AlloggiatiDeadlineAlertJobTests
 
         var notificationMock = new Mock<INotificationService>();
         var alloggiatiMock = new Mock<IAlloggiatiWebService>();
-        alloggiatiMock.Setup(s => s.ValidateGuestDataAsync(guestId)).ReturnsAsync(false);
+        alloggiatiMock.Setup(s => s.IsStayDataCompleteAsync(bookingId)).ReturnsAsync(false);
         alloggiatiMock
             .Setup(s => s.IsOverdue(It.IsAny<Booking>(), It.IsAny<AlloggiatiWebStatus?>()))
             .Returns(false);
@@ -120,7 +120,7 @@ public class AlloggiatiDeadlineAlertJobTests
 
         var notificationMock = new Mock<INotificationService>();
         var alloggiatiMock = new Mock<IAlloggiatiWebService>();
-        alloggiatiMock.Setup(s => s.ValidateGuestDataAsync(guestId)).ReturnsAsync(false);
+        alloggiatiMock.Setup(s => s.IsStayDataCompleteAsync(bookingId)).ReturnsAsync(false);
         alloggiatiMock.Setup(s => s.IsOverdue(It.IsAny<Booking>(), It.IsAny<AlloggiatiWebStatus?>())).Returns(true);
 
         var job = new AlloggiatiDeadlineAlertJob(

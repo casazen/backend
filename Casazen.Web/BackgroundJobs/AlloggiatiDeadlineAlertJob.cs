@@ -39,7 +39,8 @@ public class AlloggiatiDeadlineAlertJob(
 
         foreach (var booking in candidates)
         {
-            var dataComplete = await alloggiatiWebService.ValidateGuestDataAsync(booking.GuestId);
+            // Every guest of the stay, not only the booker (CO-12).
+            var dataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
             reports.TryGetValue(booking.Id, out var report);
             var reportStatus = report?.Status;
 

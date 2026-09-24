@@ -36,7 +36,7 @@ public class ComplianceWizardServiceTests
     private static ComplianceWizardService CreateService(AppDbContext db, TimeProvider? timeProvider = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
-        alloggiati.Setup(a => a.ValidateGuestDataAsync(It.IsAny<Guid>())).ReturnsAsync(false);
+        alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
 
         return new ComplianceWizardService(
             db,
