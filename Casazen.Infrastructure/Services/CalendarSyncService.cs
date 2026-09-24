@@ -2,7 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
-using Casazen.Infrastructure.ICalSpike;
+using Casazen.Infrastructure.Services.ICal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -12,18 +12,25 @@ public class CalendarSyncService
 {
     private readonly AppDbContext _db;
     private readonly ISafeExternalHttpClient _externalHttpClient;
+    private readonly ICalImportService _importService;
     private readonly ILogger<CalendarSyncService> _logger;
 
     public CalendarSyncService(
         AppDbContext db,
         ISafeExternalHttpClient externalHttpClient,
+        ICalImportService importService,
         ILogger<CalendarSyncService> logger)
     {
         _db = db;
         _externalHttpClient = externalHttpClient;
+        _importService = importService;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Marks unavailable the days of the supplier's iCal feed. A valid calendar without events is a success (A9-13);
+    /// only a failed download, a document that is not a readable iCalendar or a database failure store an error code.
+    /// </summary>
     public async Task SyncIcalFeedAsync(Guid orgId, CancellationToken ct = default)
     {
         var profile = await _db.SupplierProfiles
@@ -41,39 +48,38 @@ public class CalendarSyncService
         catch (ExternalFetchException ex)
         {
             _logger.LogWarning(ex, "iCal download failed for supplier {OrgId} ({Failure})", orgId, ex.Failure);
-            await SaveFailureAsync(profile, ICalErrorCodes.FromFetchFailure(ex.Failure), ct);
+            await SaveFailureAsync(orgId, ICalErrorCodes.FromFetchFailure(ex.Failure), ct);
             return;
         }
 
-        IReadOnlyList<CalendarBlockSlice> blocks;
+        IReadOnlySet<DateOnly> dateRange;
         try
         {
-            if (!ICalImportSpike.IsValidExportFeed(icsContent))
+            var parsed = _importService.Parse(icsContent);
+            dateRange = ICalImportService.ToBusyDays(parsed.Occurrences);
+            if (parsed.SkippedEvents > 0)
             {
-                _logger.LogWarning("Invalid iCal feed for supplier {OrgId}", orgId);
-                await SaveFailureAsync(profile, ICalErrorCodes.InvalidFormat, ct);
-                return;
+                _logger.LogWarning(
+                    "iCal feed of supplier {OrgId}: {Skipped} events skipped (first: {FirstError})",
+                    orgId, parsed.SkippedEvents, parsed.FirstUnreadableError);
             }
-
-            blocks = ICalImportSpike.ParseImport(icsContent);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (ICalFormatException ex)
         {
-            _logger.LogWarning(ex, "Unparsable iCal feed for supplier {OrgId}", orgId);
-            await SaveFailureAsync(profile, ICalErrorCodes.InvalidFormat, ct);
+            // Type only: the parser's message can quote the downloaded document.
+            _logger.LogWarning(
+                "iCal feed of supplier {OrgId} is not a readable iCalendar ({Failure}, {ErrorType})",
+                orgId, ex.Failure, ex.InnerException?.GetType().Name);
+            await SaveFailureAsync(orgId, ICalErrorCodes.InvalidFormat, ct);
             return;
         }
 
         try
         {
-            // Convert busy blocks to SupplierAvailability (mark as unavailable)
-            var dateRange = blocks
-                .SelectMany(b => EnumerateDates(b.StartUtc, b.EndUtc))
-                .Distinct()
-                .ToHashSet();
-
+            // Busy days of the external calendar → SupplierAvailability marked unavailable
+            var busyDates = dateRange.ToArray();
             var existing = await _db.SupplierAvailability
-                .Where(sa => sa.OrgId == orgId && dateRange.Contains(sa.Date))
+                .Where(sa => sa.OrgId == orgId && busyDates.Contains(sa.Date))
                 .ToListAsync(ct);
 
             foreach (var date in dateRange)
@@ -99,52 +105,54 @@ public class CalendarSyncService
             await _db.SaveChangesAsync(ct);
 
             _logger.LogInformation(
-                "iCal sync completed for supplier {OrgId}: {BlockCount} blocks → {DateCount} dates",
-                orgId, blocks.Count, dateRange.Count);
+                "iCal sync completed for supplier {OrgId}: {DateCount} busy dates", orgId, dateRange.Count);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogError(ex, "iCal sync failed for supplier {OrgId}", orgId);
-            await SaveFailureAsync(profile, ICalErrorCodes.SyncFailed, ct);
+            _db.ChangeTracker.Clear(); // never save the rejected changes a second time (A2-12)
+            await SaveFailureAsync(orgId, ICalErrorCodes.SyncFailed, ct);
         }
     }
 
     // Stores the stable error code, never the exception message (FD-16, A4-10: the message told the supplier
     // what the server could reach).
-    private async Task SaveFailureAsync(SupplierProfile profile, string errorCode, CancellationToken ct)
+    private async Task SaveFailureAsync(Guid orgId, string errorCode, CancellationToken ct)
     {
+        var profile = await _db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, ct);
+        if (profile is null)
+            return;
+
         profile.CalendarSyncError = errorCode;
         profile.CalendarLastSyncAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Syncs every active supplier feed; a supplier whose sync fails does not stop the others.</summary>
     public async Task SyncAllIcalFeedsAsync(CancellationToken ct = default)
     {
-        var profiles = await _db.SupplierProfiles
+        var orgIds = await _db.SupplierProfiles
+            .AsNoTracking()
             .Where(sp => sp.Status == SupplierStatus.Active
                       && sp.CalendarSyncType == CalendarSyncType.ICalFeed
                       && !string.IsNullOrWhiteSpace(sp.IcalFeedUrl))
+            .Select(sp => sp.OrgId)
             .ToListAsync(ct);
 
-        foreach (var profile in profiles)
+        foreach (var orgId in orgIds)
         {
-            await SyncIcalFeedAsync(profile.OrgId, ct);
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                await SyncIcalFeedAsync(orgId, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "iCal sync of supplier {OrgId} failed; continuing with the next supplier", orgId);
+                _db.ChangeTracker.Clear();
+            }
         }
 
-        _logger.LogInformation("Batch iCal sync completed for {Count} suppliers", profiles.Count);
-    }
-
-    private const int MaxDatesPerSync = 366; // 1 year max per supplier per sync
-
-    private static IEnumerable<DateOnly> EnumerateDates(DateTime start, DateTime end)
-    {
-        var d = DateOnly.FromDateTime(start.Date);
-        var last = DateOnly.FromDateTime(end.Date);
-        var count = 0;
-        while (d <= last && count++ < MaxDatesPerSync)
-        {
-            yield return d;
-            d = d.AddDays(1);
-        }
+        _logger.LogInformation("Batch iCal sync completed for {Count} suppliers", orgIds.Count);
     }
 }

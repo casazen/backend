@@ -46,6 +46,12 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Claim of one supplier profile (key: supplier org id): at most one account is linked (SU-02).</summary>
         SupplierClaim = 1_008,
+
+        /// <summary>
+        /// Import of the iCal feed of one property (key: property id): two sync runs (the 15-minute job and the first
+        /// sync of a new URL) never write the same blocks at once (PC-10, A2-12).
+        /// </summary>
+        PropertyICalSync = 1_010,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

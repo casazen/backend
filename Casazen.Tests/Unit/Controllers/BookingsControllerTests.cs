@@ -112,13 +112,7 @@ public class BookingsControllerTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["App:ApiBaseUrl"] = "https://api.test" })
             .Build();
-        return new PropertyICalSyncService(
-            db,
-            Mock.Of<ISafeExternalHttpClient>(),
-            new ICalImportService(),
-            new ICalExportService(),
-            configuration,
-            Mock.Of<ILogger<PropertyICalSyncService>>());
+        return ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration);
     }
 
     private BookingsController CreateControllerAt(DateTimeOffset utcNow)

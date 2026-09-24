@@ -19,7 +19,7 @@ public static class ICalErrorCodes
     /// <summary>The feed is larger than the download limit.</summary>
     public const string TooLarge = "ical_too_large";
 
-    /// <summary>The downloaded content is not a usable iCalendar feed.</summary>
+    /// <summary>The downloaded content is not a readable iCalendar document (a valid calendar without events is not an error, PC-10).</summary>
     public const string InvalidFormat = "ical_invalid_format";
 
     /// <summary>The feed was downloaded but the calendar could not be updated (or a legacy error without code).</summary>
