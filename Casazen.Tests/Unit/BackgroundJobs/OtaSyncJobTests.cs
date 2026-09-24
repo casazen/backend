@@ -91,43 +91,4 @@ public class OtaSyncJobTests
         var exception = await Assert.ThrowsAsync<Exception>(() => _job.ExecuteAsync(propertyId));
         Assert.Equal(expectedException.Message, exception.Message);
     }
-
-    [Fact]
-    public async Task ExecutePlatformSyncAsync_ValidPlatform_CallsOtaManager()
-    {
-        // Arrange
-        var platform = "airbnb";
-        var externalId = "ext-123";
-        _otaManagerMock.Setup(m => m.SyncPlatformAsync(platform, externalId))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecutePlatformSyncAsync(platform, externalId);
-
-        // Assert
-        _otaManagerMock.Verify(m => m.SyncPlatformAsync(platform, externalId), Times.Once);
-    }
-
-    [Fact]
-    public async Task ExecutePlatformSyncAsync_SuccessfulSync_LogsInformation()
-    {
-        // Arrange
-        var platform = "booking";
-        var externalId = "ext-456";
-        _otaManagerMock.Setup(m => m.SyncPlatformAsync(platform, externalId))
-            .ReturnsAsync(true);
-
-        // Act
-        await _job.ExecutePlatformSyncAsync(platform, externalId);
-
-        // Assert
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Information,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("completed successfully")),
-                null,
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
-    }
 }

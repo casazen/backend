@@ -46,33 +46,4 @@ public class OtaSyncJob
             throw; // Re-throw to let Hangfire handle retry logic
         }
     }
-
-    /// <summary>
-    /// Synchronizes a specific platform for a property
-    /// </summary>
-    /// <param name="platform">Platform name (e.g., "airbnb", "booking")</param>
-    /// <param name="externalId">External property ID on the platform</param>
-    public async Task ExecutePlatformSyncAsync(string platform, string externalId)
-    {
-        try
-        {
-            _logger.LogInformation("Starting {Platform} sync for external ID {ExternalId}", platform, externalId);
-
-            var success = await _otaManager.SyncPlatformAsync(platform, externalId);
-
-            if (success)
-            {
-                _logger.LogInformation("{Platform} sync completed successfully for {ExternalId}", platform, externalId);
-            }
-            else
-            {
-                _logger.LogWarning("{Platform} sync completed with errors for {ExternalId}", platform, externalId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "{Platform} sync failed for {ExternalId}", platform, externalId);
-            throw;
-        }
-    }
 }

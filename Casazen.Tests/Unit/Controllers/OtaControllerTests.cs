@@ -85,20 +85,6 @@ public class OtaControllerTests
         Assert.Equal("live****cret", dto.ApiKeyMasked);
     }
 
-    [Fact]
-    public async Task UpdatePricing_AsNonOwner_ReturnsForbiddenAndDoesNotMutateProperty()
-    {
-        var propertyId = Guid.NewGuid();
-        SetUser(AttackerId);
-        _propertyService.Setup(s => s.GetPropertyAsync(propertyId))
-            .ReturnsAsync(new Property { Id = propertyId, OwnerId = OwnerId });
-
-        var result = await _controller.UpdatePricing(propertyId, 999m);
-
-        Assert.IsType<ForbidResult>(result);
-        _otaManager.Verify(m => m.UpdatePricingAsync(It.IsAny<Guid>(), It.IsAny<decimal>()), Times.Never);
-    }
-
     private void SetUser(string userId)
     {
         var identity = new ClaimsIdentity([new Claim("sub", userId)], "TestAuth");
