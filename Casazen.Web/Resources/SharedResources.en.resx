@@ -309,6 +309,21 @@
   <data name="OnboardingConsentsRequired" xml:space="preserve">
     <value>To create your organization you must accept the required legal documents.</value>
   </data>
+  <data name="SignupAttributionTooLong" xml:space="preserve">
+    <value>The field {0} can contain at most {1} characters.</value>
+  </data>
+  <data name="SignupAttributionInvalidCharacters" xml:space="preserve">
+    <value>The field {0} contains characters that are not allowed.</value>
+  </data>
+  <data name="SignupAttributionUnknownComune" xml:space="preserve">
+    <value>The given comune (municipality) is not one CasaZen manages.</value>
+  </data>
+  <data name="SignupAttributionOnboardingRequired" xml:space="preserve">
+    <value>The signup source can be recorded only after completing the onboarding.</value>
+  </data>
+  <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
+    <value>CasaZen subdomains are not available yet: use the CasaZen path or a custom domain.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
   </data>
@@ -533,6 +548,51 @@
   </data>
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>Self-registration is not available for this municipality: choose one from the list or ask for an invitation.</value>
+  </data>
+  <data name="OnSiteRequestTooManyNights" xml:space="preserve">
+    <value>With payment at the property you can request at most {0} nights.</value>
+  </data>
+  <data name="OnSiteRequestLinkInvalid" xml:space="preserve">
+    <value>Invalid confirmation link: open the link you received by email.</value>
+  </data>
+  <data name="OnSiteRequestLinkExpired" xml:space="preserve">
+    <value>The time to confirm the request has passed and the dates are available again: send a new request from the website.</value>
+  </data>
+  <data name="OnSiteRequestExpired" xml:space="preserve">
+    <value>The request has expired: the dates are available again.</value>
+  </data>
+  <data name="OnSiteRequestNotPending" xml:space="preserve">
+    <value>The request is no longer pending: it has already been accepted, declined or cancelled.</value>
+  </data>
+  <data name="OnSiteRequestEmailNotConfirmed" xml:space="preserve">
+    <value>The guest has not confirmed their email address yet: the request cannot be accepted or declined yet.</value>
+  </data>
+  <data name="BookingNotOnSiteRequest" xml:space="preserve">
+    <value>This booking is not a request with payment at the property.</value>
+  </data>
+  <data name="OnSiteRequestDatesBlocked" xml:space="preserve">
+    <value>The dates now overlap a calendar block imported from a portal (e.g. Airbnb, Booking.com): the request cannot be accepted, decline it.</value>
+  </data>
+  <data name="OnSiteRequestTokenRequired" xml:space="preserve">
+    <value>The confirmation link is incomplete: open the link you received by email.</value>
+  </data>
+  <data name="OnSiteRequestDeclineMessageTooLong" xml:space="preserve">
+    <value>The message to the guest can be at most 500 characters long.</value>
+  </data>
+  <data name="DirectBookingPaymentsNotReady" xml:space="preserve">
+    <value>This property does not accept online bookings yet. Please contact the host directly.</value>
+  </data>
+  <data name="DirectBookingInvalidStay" xml:space="preserve">
+    <value>Invalid stay dates: the arrival cannot be in the past and the departure must be after the arrival.</value>
+  </data>
+  <data name="DirectBookingConsentRequired" xml:space="preserve">
+    <value>To book you must consent to the processing of your personal data.</value>
+  </data>
+  <data name="DirectBookingConsentOutdated" xml:space="preserve">
+    <value>The privacy notice has been updated: reload the page and give your consent again.</value>
+  </data>
+  <data name="DirectBookingInvalidPaymentOption" xml:space="preserve">
+    <value>Invalid payment method.</value>
   </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>The link is not valid: register your business again or sign in with the account already linked.</value>

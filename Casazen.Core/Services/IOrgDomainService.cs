@@ -34,6 +34,9 @@ public enum SetOrgDomainOutcome
     PlanRequired,
     Conflict,
     ValidationError,
+
+    /// <summary>Subdomain mode requested but <c>PublicHost:BaseDomain</c> is not configured — controller maps to 422.</summary>
+    SubdomainsNotConfigured,
 }
 
 public sealed record SetOrgDomainResult(

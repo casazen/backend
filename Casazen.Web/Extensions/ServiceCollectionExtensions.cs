@@ -319,6 +319,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
+        services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
@@ -334,6 +335,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();
         services.AddScoped<ICheckoutHoldExpiryService, CheckoutHoldExpiryService>();
+        // "Pay at the property" requests approved by the host (BK-06, D5, docs/runbooks/direct-booking.md).
+        services.AddScoped<OnSiteRequestNotifier>();
+        services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();

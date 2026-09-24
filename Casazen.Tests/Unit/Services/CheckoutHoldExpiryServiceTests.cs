@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -26,6 +27,7 @@ public class CheckoutHoldExpiryServiceTests
         .Options);
 
     private readonly Mock<IStripeService> _stripe = new();
+    private readonly RecordingEmailQueue _emails = new();
     private readonly Guid _propertyId = Guid.NewGuid();
     private readonly OrgEntity _org;
 
@@ -189,7 +191,7 @@ public class CheckoutHoldExpiryServiceTests
     }
 
     [Fact]
-    public async Task ExpireDueHoldsAsync_HostBookingsOnSiteRequestsAndPendingWithoutIntent_AreNeverTouched()
+    public async Task ExpireDueHoldsAsync_HostBookingsOnSiteRequestsWithinDeadlineAndPendingWithoutIntent_AreNeverTouched()
     {
         var manual = await SeedHoldAsync(minutesAgo: 600, paymentIntentId: "pi_manual", configure: b =>
         {
@@ -198,9 +200,13 @@ public class CheckoutHoldExpiryServiceTests
         });
         var confirmedDirect = await SeedHoldAsync(minutesAgo: 600, paymentIntentId: "pi_confirmed",
             configure: b => b.Status = BookingStatus.Confirmed);
-        // D5: a "pay at the property" request waits for the host, whatever the checkout TTL (BK-06).
-        var onSite = await SeedHoldAsync(minutesAgo: 600, setupIntentId: "seti_onsite",
-            configure: b => b.PaymentOption = PaymentOption.OnSite);
+        // D5: a "pay at the property" request waits for the host until its own deadline, whatever the checkout TTL (BK-06).
+        var onSite = await SeedHoldAsync(minutesAgo: 600, setupIntentId: "seti_onsite", configure: b =>
+        {
+            b.PaymentOption = PaymentOption.OnSite;
+            b.GuestEmailVerifiedAt = DateTime.UtcNow.AddMinutes(-590);
+            b.RequestExpiresAt = DateTime.UtcNow.AddHours(1);
+        });
         var withoutIntent = await SeedHoldAsync(minutesAgo: 600);
 
         var run = await Service().ExpireDueHoldsAsync();
@@ -211,6 +217,53 @@ public class CheckoutHoldExpiryServiceTests
         Assert.Equal(BookingStatus.Confirmed, (await ReloadAsync(confirmedDirect.Id)).Status);
         Assert.Equal(BookingStatus.Pending, (await ReloadAsync(onSite.Id)).Status);
         Assert.Equal(BookingStatus.Pending, (await ReloadAsync(withoutIntent.Id)).Status);
+    }
+
+    [Fact]
+    public async Task ExpireDueHoldsAsync_OnSiteRequestPastHostDeadline_CancelsItReleasesDatesAndEmailsTheGuest()
+    {
+        // BK-06: the host did not answer within DirectBooking:OnSiteApprovalHours.
+        var request = await SeedOnSiteRequestAsync(emailConfirmed: true, expiresInMinutes: -1);
+
+        var run = await Service().ExpireDueHoldsAsync();
+
+        Assert.Equal(1, run.Expired);
+        _stripe.VerifyNoOtherCalls();
+        var stored = await ReloadAsync(request.Id);
+        Assert.Equal(BookingStatus.Cancelled, stored.Status);
+        Assert.Equal(BookingCancellationReason.OnSiteRequestExpired, stored.CancellationReason);
+        Assert.Equal(PaymentStatus.Canceled, Assert.Single(stored.Payments).Status);
+        var email = Assert.Single(_emails.Queued);
+        Assert.Equal("onsite-request-expired", email.Template);
+        Assert.Equal("guest@example.com", email.To);
+    }
+
+    [Fact]
+    public async Task ExpireDueHoldsAsync_OnSiteRequestEmailNeverConfirmed_CancelsItWithoutEmail()
+    {
+        // A3-06: an unconfirmed request (possibly a fake address) holds its dates only for the confirmation window and
+        // never reaches the host; nobody is emailed when it expires.
+        var request = await SeedOnSiteRequestAsync(emailConfirmed: false, expiresInMinutes: -1);
+
+        var run = await Service().ExpireDueHoldsAsync();
+
+        Assert.Equal(1, run.Expired);
+        var stored = await ReloadAsync(request.Id);
+        Assert.Equal(BookingStatus.Cancelled, stored.Status);
+        Assert.Equal(BookingCancellationReason.OnSiteEmailNotConfirmed, stored.CancellationReason);
+        Assert.Empty(_emails.Queued);
+    }
+
+    [Fact]
+    public async Task ExpireDueHoldsAsync_OnSiteRequestWithinDeadline_IsNotTouchedWhateverItsAge()
+    {
+        var request = await SeedOnSiteRequestAsync(emailConfirmed: true, expiresInMinutes: 30, minutesAgo: 600);
+
+        var run = await Service().ExpireDueHoldsAsync();
+
+        Assert.Equal(CheckoutHoldExpiryRun.Empty, run);
+        Assert.Equal(BookingStatus.Pending, (await ReloadAsync(request.Id)).Status);
+        Assert.Empty(_emails.Queued);
     }
 
     [Fact]
@@ -247,6 +300,7 @@ public class CheckoutHoldExpiryServiceTests
     private CheckoutHoldExpiryService Service() => new(
         _db,
         _stripe.Object,
+        new OnSiteRequestNotifier(_db, _emails, EmailTestHelpers.Links(), NullLogger<OnSiteRequestNotifier>.Instance),
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["DirectBooking:PendingTtlMinutes"] = "15" })
             .Build(),
@@ -295,6 +349,47 @@ public class CheckoutHoldExpiryServiceTests
             });
         }
 
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        return booking;
+    }
+
+    /// <summary>A "pay at the property" request with its guest, property and cash payment row (read by the notifier).</summary>
+    private async Task<Booking> SeedOnSiteRequestAsync(bool emailConfirmed, int expiresInMinutes, int minutesAgo = 20)
+    {
+        var createdAt = DateTime.UtcNow.AddMinutes(-minutesAgo);
+        if (!await _db.Properties.AnyAsync(p => p.Id == _propertyId))
+            _db.Properties.Add(new Property { Id = _propertyId, OrgId = _org.Id, Name = "Villa Rosa", OwnerId = "auth0|host" });
+        var guest = new Guest { OrgId = _org.Id, FirstName = "Ada", LastName = "Lovelace", Email = "guest@example.com" };
+        _db.Guests.Add(guest);
+        var start = new DateTime(2026, 12, 1).AddDays(_db.Bookings.Count() * 10);
+        var booking = new Booking
+        {
+            PropertyId = _propertyId,
+            OrgId = _org.Id,
+            GuestId = guest.Id,
+            CheckInDate = start,
+            CheckOutDate = start.AddDays(3),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            PaymentOption = PaymentOption.OnSite,
+            GuestEmailVerifiedAt = emailConfirmed ? createdAt.AddMinutes(1) : null,
+            RequestExpiresAt = DateTime.UtcNow.AddMinutes(expiresInMinutes),
+            TotalPrice = 300m,
+            CreatedAt = createdAt,
+            UpdatedAt = createdAt,
+        };
+        _db.Bookings.Add(booking);
+        _db.Payments.Add(new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = booking.TotalPrice,
+            Status = PaymentStatus.Pending,
+            Method = Core.Entities.PaymentMethod.CashOnArrival,
+            CreatedAt = createdAt,
+            UpdatedAt = createdAt,
+        });
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
         return booking;

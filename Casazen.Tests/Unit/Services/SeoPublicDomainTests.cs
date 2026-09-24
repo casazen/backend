@@ -102,6 +102,35 @@ public class SeoPublicDomainTests
         Assert.Null(dto!.CanonicalUrl);
     }
 
+    [Theory]
+    [InlineData(SeoPageType.ComplianceGuide, "compliance-guide")]
+    [InlineData(SeoPageType.TouristTaxCalc, "tourist-tax-calc")]
+    public async Task PublicPage_ConfiguredPublicSite_SignupCtaIsOnThatDomainWithComuneAndUtm(
+        SeoPageType pageType,
+        string utmContent)
+    {
+        // SE-03 (A8-03): the CTA opens /signup of the web app on the public domain, carrying the comune of the page.
+        var page = SetupPublicPage(pageType);
+
+        var dto = await GetPublicPageAsync(CreateService(PublicSite + "/"), page.PageType);
+
+        Assert.Equal(
+            $"{PublicSite}/signup?comune=como&utm_source=seo-compliance&utm_medium=cta&utm_content={utmContent}",
+            dto!.Cta.SignupUrl);
+    }
+
+    [Fact]
+    public async Task PublicPage_PublicSiteMissing_SignupCtaIsARelativePath()
+    {
+        var page = SetupPublicPage(SeoPageType.ComplianceGuide);
+
+        var dto = await GetPublicPageAsync(CreateService(null), page.PageType);
+
+        Assert.Equal(
+            "/signup?comune=como&utm_source=seo-compliance&utm_medium=cta&utm_content=compliance-guide",
+            dto!.Cta.SignupUrl);
+    }
+
     [Fact]
     public async Task GetPublishedPagesAsync_ReturnsTheSitemapPagesWithTheirRoutesAndTheHubCanonical()
     {

@@ -1,8 +1,12 @@
-# Runbook: public domain, canonical URLs, sitemap and robots.txt
+# Runbook: public domain, canonical URLs, sitemap, robots.txt and signup funnel
 
 Task SE-02, audit defect A8-02 (P0), decision D3: the public domain is configurable and **no domain is written in
 code** (no default in `appsettings.json`, `vercel.json` or the sources). The code is in place; the product owner
 chooses the domain, sets the variables of section 2 and follows sections 3 and 4.
+
+Task SE-03, audit defect A8-03 (P0): the CTA of the SEO pages leads to `/signup`, which opens the Auth0 **signup**
+screen in one click and records where the signup came from (UTM parameters, comune, landing page, referrer host).
+Section 6 describes the funnel, the Auth0 setting it needs and how to read the attributions.
 
 ## What the code does
 
@@ -19,6 +23,10 @@ chooses the domain, sets the variables of section 2 and follows sections 3 and 4
 | CORS | The origin of `App__PublicSiteBaseUrl` is always allowed; `Cors__AllowedOrigins` lists only the other origins | [`cors-security-headers.md`](cors-security-headers.md) |
 | CSP | Unchanged: the web app refers to its own origin only as `'self'`, so the policy follows any domain | frontend `vercel.json` |
 | Old sitemap | `/sitemap-compliance.xml` on the API host (URLs of another host, declared nowhere) is removed | — |
+| Other links of the backend (SE-03) | The booking-site link of the domain settings and of the activation status (`/book/{slug}`) and the supplier check-in QR use `App__PublicSiteBaseUrl` too; the `casazen.app` fallbacks are gone. A test fails if `casazen.app` is written again in the application code (`NoHardcodedPublicDomainTests`; the only exceptions are the Auth0 claim namespace `https://casazen.app/roles` / `…/email` and the Stripe return URLs owned by task PL-11) | `PublicSiteLinks`, `OnboardingService`, `OrgDomainService`, `QrCodeService` |
+| Org subdomains (SE-03) | `{label}.{PublicHost__BaseDomain}`: a **different** domain (wildcard DNS to the web app), with its own variable and **no default** (it was `casazen.it` in code). Unset: the "subdomain" publication mode answers 422 `subdomains_not_configured`, no host is resolved as an org subdomain, the settings page shows no subdomain URL | `PublicHostOptions`, `OrgDomainService`, `PublicHostResolver` |
+| Footer Privacy / Terms (SE-03) | The public footer links the CasaZen documents served by `GET /api/legal/privacy` and `/api/legal/tos` (`documentUrl`, variables `Legal__Documents__Privacy__DocumentUrl` and `Legal__Documents__Tos__DocumentUrl`, texts provided by the product owner, D14). Not configured: no link (before, they pointed to `https://casazen.app/privacy` and `/terms`, pages that do not exist) | frontend `Footer.tsx`, `usePlatformLegalLinks` |
+| Frontend (SE-03) | No `casazen.app` in the shipped frontend (test `src/test/no-hardcoded-domain.test.ts`, same claim exception). The web app's own hosts for the custom-host fallback are the host of `VITE_PUBLIC_SITE_URL`, `localhost` and `*.vercel.app` | frontend `src/config/public-site.ts`, `use-custom-host-redirect.ts` |
 
 ### Why a function for the sitemap and a build-time robots.txt
 
@@ -53,6 +61,13 @@ Railway (backend), per environment:
 | `App__PublicSiteBaseUrl` | `https://<web app URL of the develop deployment>` | `https://<public domain>` |
 | `Seo__PublicBaseUrl` | unset | unset (or exactly the same value as `App__PublicSiteBaseUrl`) |
 | `Cors__AllowedOrigins` | other web app origins of the environment, if any | other origins, if any (the public domain is already allowed) |
+
+Optional, Railway, per environment (SE-03):
+
+| Variable | When | Value |
+|---|---|---|
+| `PublicHost__BaseDomain` | only if hosts may publish their booking site on a CasaZen subdomain | the domain whose wildcard record `*.<domain>` points to the Vercel project (e.g. `sites.<your domain>`); no scheme, no dots at the ends. Unset = subdomain mode off |
+| `Legal__Documents__Privacy__DocumentUrl`, `Legal__Documents__Tos__DocumentUrl` | when the product owner publishes the CasaZen Privacy and Terms | absolute https URL of each document; the public footer links them |
 
 Vercel (frontend) → Settings → Environment Variables:
 
@@ -116,6 +131,84 @@ Deployment Protection is on, open the URL in a logged-in browser instead.
 | Production `robots.txt` says `Disallow: /` | the build did not see `VERCEL_ENV=production` | turn on "Automatically expose System Environment Variables", redeploy |
 | Sitemap with no `<url>` / hub empty | no reviewed page with content yet; calculators also need a tourist tax rate in force | publish pages from the SEO admin; rates: [`tourist-tax-rates.md`](tourist-tax-rates.md) |
 | The web app on the public domain gets CORS errors | the domain in the browser is not the one in `App__PublicSiteBaseUrl` (e.g. apex vs `www`) | redirect the other names to the chosen domain (section 1), or add the extra origin to `Cors__AllowedOrigins` |
+
+## 6. Signup funnel and attribution (SE-03)
+
+### How it works
+
+1. **Landing.** The first public page of a visit (`/p/…`, `/book/…`, `/search`, …) records in the tab's
+   `sessionStorage` its path, the host of the referrer (only the host is kept, never the full URL) and its UTM
+   parameters.
+2. **CTA.** Every SEO page shows "Pubblica la tua casa". The backend builds the link on `App__PublicSiteBaseUrl`:
+   `https://<public domain>/signup?comune=<slug>&utm_source=seo-compliance&utm_medium=cta&utm_content=<compliance-guide|tourist-tax-calc>`.
+   When the visit has UTM parameters of its own (e.g. a newsletter link to the guide), the web app replaces the whole
+   UTM set with them; the comune stays. It is a plain link: the public pages run without Auth0 and the browser loads
+   `/signup` with it. The "Verifica conformità" CTA is removed: `/tools/verifica-conformita` has no spec.
+3. **`/signup`.** Stores the attribution in `localStorage` (`cz-signup-attribution`, forgotten after 30 days) and calls
+   Auth0 `loginWithRedirect` with `screen_hint=signup`: the visitor lands on the Auth0 signup screen, no intermediate
+   login page. An account already signed in goes to its area and its attribution is forgotten. The button on the page
+   restarts the signup (browser Back, blocked redirect).
+4. **After the first onboarding** (the org is created) the web app sends
+   `POST /api/users/me/signup-attribution`. The backend stores **one row per org** (`SignupAttributions`, unique
+   `OrgId`): the first attribution wins, retries and parallel calls answer `recorded: false`. If the call fails with a
+   network or 5xx error the web app retries on the next page load; a 4xx is never retried. An account that was already
+   onboarded when it came through `/signup` (it signed in from the signup screen) sends nothing.
+
+Stored values (no personal data): `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` (max 100
+characters: letters, digits, space and `- _ . ~ + | : , / ( ) !`; never `@`), the ISTAT code of the comune (from the slug
+or code of a comune CasaZen knows), the landing **path** (max 200, no query string) and the referrer **host** (max 253).
+A value outside these rules is **refused, not truncated**: 400 `validation_error` (422
+`signup_attribution_unknown_comune` for an unknown comune) and nothing is stored; the web app drops such values already
+when it reads the URL, so a stray parameter does not cost the rest of the attribution. Before the onboarding the call
+answers 422 `signup_attribution_onboarding_required`.
+
+Anonymous visitors on public paths are never sent to the login: an unknown address shows the public 404 (it used to go
+to `/` and then to `/login`), and a link from a public page to a page that needs Auth0 (`/signup`, `/login`, the app)
+reloads that page with Auth0 instead of showing a login page that needed a second click.
+
+### Auth0 setting (product owner)
+
+`screen_hint=signup` opens the signup screen of **Universal Login** (the current experience). Auth0 Dashboard:
+
+1. **Branding → Universal Login**: the experience must be the current Universal Login (with the Classic experience and a
+   custom page the hint is ignored and the login screen is shown).
+2. **Authentication → Database → <connection of the app> → Settings**: "Disable Sign Ups" must be **off**.
+3. **Applications → <SPA> → Settings**: the "Allowed Callback URLs" already contain the web app origin (the signup
+   returns there like the login, see [`auth0.md`](auth0.md)).
+
+### Checks
+
+```bash
+SITE=https://<public domain>
+API=https://<railway url of the environment>
+
+# CTA of a published page: /signup on the public domain with the comune
+curl -sS "$API/api/public/content/affitti-brevi/<region>/<comune>" | grep -o '"signupUrl":"[^"]*"'
+# expected: "signupUrl":"https://<public domain>/signup?comune=<comune>&utm_source=seo-compliance&utm_medium=cta&utm_content=compliance-guide"
+
+# unknown address: the SPA answers (Vercel) and shows the public 404 in the browser, no redirect to /login
+curl -sS -o /dev/null -w "%{http_code}\n" "$SITE/pagina-che-non-esiste"   # 200 (index.html), page "Pagina non trovata"
+```
+
+In the browser (private window): open a guide, click "Pubblica la tua casa": the Auth0 **signup** form opens at once.
+Sign up with a test address, complete the onboarding, then, as platform admin:
+
+```bash
+curl -sS -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" "$API/api/admin/signup-attributions?days=1"
+# items[0]: orgId of the new org, utmSource "seo-compliance", comuneCode "<ISTAT code>", landingPath "/p/…"
+```
+
+`GET /api/admin/signup-attributions` (AdminOnly): newest first, `days` (default 30, max 3660), `comuneCode` (ISTAT),
+`page`, `pageSize` (max 100). The dashboard widget (top comuni) is task SE-04.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The CTA opens the Auth0 **login** form | Classic Universal Login, or sign-ups disabled on the connection | Auth0 setting above |
+| `signupUrl` is a relative `/signup?…` | `App__PublicSiteBaseUrl` not set (only possible outside Production) | section 2 |
+| No row after a test signup | the account already existed (it signed in from the signup screen), the storage of the browser is blocked, or the call failed: it is retried at the next page load | check the network tab for `POST /users/me/signup-attribution` |
+| Domain settings: "I sottodomini CasaZen non sono ancora disponibili" | `PublicHost__BaseDomain` not set | set it (section 2) and the wildcard DNS record, or use the path / custom domain |
 
 ## Out of scope
 
