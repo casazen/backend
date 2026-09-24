@@ -19,15 +19,14 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 /// <remarks>
 /// Each transition takes the advisory lock of the booking used by the cancellation and the host changes (BK-02,
-/// PC-07), reads the booking again under it, checks the rules and saves in the same transaction. Hangfire jobs are
-/// scheduled around it: the check-out reminder before the commit (deleted when the commit fails; the job skips a booking
-/// that is not checked in anyway), the Alloggiati job after it (idempotent per booking and guest, CO-11).
+/// PC-07), reads the booking again under it, checks the rules and saves in the same transaction. The Alloggiati job is
+/// scheduled after the commit (idempotent per booking and guest, CO-11). The check-out reminder is not scheduled here:
+/// the hourly stay-alerts job derives it from every confirmed or checked-in stay (CO-10).
 /// </remarks>
 public sealed class StayLifecycleService(
     AppDbContext db,
     IAlloggiatiWebService alloggiatiWebService,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
-    ICheckoutReminderScheduler checkoutReminderScheduler,
     IServiceRequestService serviceRequestService,
     IOptions<ComplianceOptions> complianceOptions,
     ILogger<StayLifecycleService> logger,
@@ -46,7 +45,7 @@ public sealed class StayLifecycleService(
                 throw error;
 
             MarkArrived(booking, today);
-            await SaveWithReminderAsync(booking, transaction, cancellationToken);
+            await SaveAsync(transaction, cancellationToken);
         }
 
         await ScheduleAlloggiatiAsync(booking.Id);
@@ -78,17 +77,7 @@ public sealed class StayLifecycleService(
 
             booking.CheckoutWizardStartedAt ??= UtcNow();
             booking.UpdatedAt = UtcNow();
-            if (arrivalRegistered)
-            {
-                // The host may leave the wizard here: the stay is checked in and gets its reminder like any other.
-                await SaveWithReminderAsync(booking, transaction, cancellationToken);
-            }
-            else
-            {
-                await db.SaveChangesAsync(cancellationToken);
-                if (transaction is not null)
-                    await transaction.CommitAsync(cancellationToken);
-            }
+            await SaveAsync(transaction, cancellationToken);
         }
 
         if (arrivalRegistered)
@@ -108,7 +97,6 @@ public sealed class StayLifecycleService(
         ArgumentNullException.ThrowIfNull(checkOut);
 
         Booking booking;
-        string? reminderJobId;
         bool arrivalRegistered;
         await using (var transaction = await LockBookingAsync(bookingId, cancellationToken))
         {
@@ -125,18 +113,13 @@ public sealed class StayLifecycleService(
             if (checkOut.Turnover is not null)
                 await CreateTurnoverRequestAsync(booking, checkOut.Turnover, cancellationToken);
 
-            reminderJobId = booking.CheckoutReminderJobId;
+            // Checked out: the stay-alerts job no longer reminds it (CO-10).
             booking.Status = BookingStatus.CheckedOut;
-            booking.CheckoutReminderJobId = null;
             booking.UpdatedAt = UtcNow();
             await ExtendGuestRetentionAsync(booking, cancellationToken);
-
-            await db.SaveChangesAsync(cancellationToken);
-            if (transaction is not null)
-                await transaction.CommitAsync(cancellationToken);
+            await SaveAsync(transaction, cancellationToken);
         }
 
-        checkoutReminderScheduler.CancelReminder(reminderJobId);
         logger.LogInformation(
             "Booking {BookingId} checked out by the host (arrival registered with the check-out: {ArrivalRegistered})",
             booking.Id,
@@ -157,41 +140,11 @@ public sealed class StayLifecycleService(
         booking.UpdatedAt = UtcNow();
     }
 
-    /// <summary>
-    /// Schedules the check-out reminder of a stay just checked in (at <c>Compliance:CheckoutReminderHourLocal</c> of
-    /// the check-out day, property time; in 5 minutes when that time has passed), then saves and commits. The job is
-    /// deleted when the save fails.
-    /// </summary>
-    private async Task SaveWithReminderAsync(
-        Booking booking,
-        IDbContextTransaction? transaction,
-        CancellationToken cancellationToken)
+    private async Task SaveAsync(IDbContextTransaction? transaction, CancellationToken cancellationToken)
     {
-        var jobId = checkoutReminderScheduler.ScheduleReminder(booking.Id, CheckoutReminderAt(booking));
-        booking.CheckoutReminderJobId = jobId;
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            if (transaction is not null)
-                await transaction.CommitAsync(cancellationToken);
-        }
-        catch
-        {
-            checkoutReminderScheduler.CancelReminder(jobId);
-            throw;
-        }
-    }
-
-    private DateTime CheckoutReminderAt(Booking booking)
-    {
-        var reminderAtLocal = booking.CheckOutDate.Date.AddHours(complianceOptions.Value.CheckoutReminderHourLocal);
-        var propertyZone = booking.Property.Timezone;
-        var zone = !string.IsNullOrWhiteSpace(propertyZone) && TimezoneHelper.IsValidTimezone(propertyZone)
-            ? propertyZone
-            : RomeCalendar.TimeZoneId;
-        var reminderAt = TimezoneHelper.ConvertLocalToUtc(reminderAtLocal, zone);
-        var now = UtcNow();
-        return reminderAt <= now ? now.AddMinutes(5) : reminderAt;
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
     }
 
     /// <summary>

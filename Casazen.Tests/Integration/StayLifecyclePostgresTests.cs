@@ -48,8 +48,7 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Equal(BookingStatus.CheckedIn, stored.Status);
         // Registered a day late: the real arrival time is unknown, the Alloggiati term runs from the check-in day.
         Assert.Null(stored.ArrivedAt);
-        Assert.NotNull(stored.CheckoutReminderJobId);
-        VerifyReminderScheduled(bookingId, Times.Once());
+        VerifyAlloggiatiScheduled(bookingId, Times.Once());
     }
 
     [PostgresFact]
@@ -79,7 +78,7 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Equal("booking_arrival_too_early", problem.GetProperty("code").GetString());
         Assert.Contains(Today.AddDays(1).ToString("dd/MM/yyyy"), problem.GetProperty("detail").GetString());
         Assert.Equal(BookingStatus.Confirmed, (await LoadAsync(bookingId)).Status);
-        VerifyReminderScheduled(bookingId, Times.Never());
+        VerifyAlloggiatiScheduled(bookingId, Times.Never());
     }
 
     [PostgresFact]
@@ -111,7 +110,8 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
         var conflict = Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
         Assert.Equal("booking_already_checked_in", (await conflict.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
-        VerifyReminderScheduled(bookingId, Times.Once());
+        Assert.Equal(BookingStatus.CheckedIn, (await LoadAsync(bookingId)).Status);
+        VerifyAlloggiatiScheduled(bookingId, Times.Once());
     }
 
     [PostgresFact]
@@ -133,9 +133,7 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.NotNull(afterStart.CheckoutWizardStartedAt);
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         Assert.Equal("CheckedOut", (await complete.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bookingStatus").GetString());
-        var stored = await LoadAsync(bookingId);
-        Assert.Equal(BookingStatus.CheckedOut, stored.Status);
-        Assert.Null(stored.CheckoutReminderJobId);
+        Assert.Equal(BookingStatus.CheckedOut, (await LoadAsync(bookingId)).Status);
     }
 
     [PostgresFact]
@@ -152,8 +150,6 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         var stored = await LoadAsync(bookingId);
         Assert.Equal(BookingStatus.CheckedOut, stored.Status);
         Assert.Null(stored.ArrivedAt);
-        // A stay closed at once never gets a check-out reminder.
-        VerifyReminderScheduled(bookingId, Times.Never());
     }
 
     [PostgresFact]
@@ -243,11 +239,12 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         Assert.Null(stored.CheckoutWizardStartedAt);
     }
 
-    private void VerifyReminderScheduled(Guid bookingId, Times times) =>
+    /// <summary>The Alloggiati job of the stay (CO-11), scheduled by the arrival: once, or never when it is refused.</summary>
+    private void VerifyAlloggiatiScheduled(Guid bookingId, Times times) =>
         _factory.BackgroundJobClientMock.Verify(
             c => c.Create(
-                It.Is<Job>(j => j.Type == typeof(CheckoutReminderJob) && j.Args.Count == 1 && (Guid)j.Args[0] == bookingId),
-                It.IsAny<ScheduledState>()),
+                It.Is<Job>(j => j.Type == typeof(AlloggiatiWebReportJob) && j.Args.Count == 2 && (Guid)j.Args[1] == bookingId),
+                It.IsAny<IState>()),
             times);
 
     private static async Task<JsonElement> ProblemAsync(HttpResponseMessage response, HttpStatusCode expected)

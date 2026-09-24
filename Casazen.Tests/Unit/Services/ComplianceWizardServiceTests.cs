@@ -47,7 +47,6 @@ public class ComplianceWizardServiceTests
             db,
             alloggiati.Object,
             Mock.Of<IAlloggiatiReportScheduler>(),
-            Mock.Of<ICheckoutReminderScheduler>(),
             Mock.Of<IServiceRequestService>(),
             Options.Create(new ComplianceOptions { GdprRetentionYears = 7 }),
             NullLogger<StayLifecycleService>.Instance,

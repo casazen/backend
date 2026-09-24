@@ -20,8 +20,8 @@ public interface IStayLifecycleService
     /// <summary>
     /// "Registra arrivo": a <see cref="BookingStatus.Confirmed"/> booking becomes <see cref="BookingStatus.CheckedIn"/>,
     /// from its check-in day to its check-out day (Europe/Rome). A late registration is not an error. The Alloggiati
-    /// communication and the check-out reminder are scheduled. Incomplete guest data never block the arrival: the result
-    /// says whether they are complete, so the host can be sent to complete them.
+    /// communication is scheduled (the check-out reminder comes from the stay-alerts job, CO-10). Incomplete guest data
+    /// never block the arrival: the result says whether they are complete, so the host can be sent to complete them.
     /// </summary>
     Task<StayArrivalResult> RegisterArrivalAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
@@ -34,7 +34,7 @@ public interface IStayLifecycleService
     Task<Booking> StartCheckOutAsync(Guid bookingId, bool registerArrival, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Check-out of the stay: <see cref="BookingStatus.CheckedOut"/>, check-out reminder cancelled, retention of the
+    /// Check-out of the stay: <see cref="BookingStatus.CheckedOut"/> (no more check-out reminder), retention of the
     /// guest data extended, optional turnover request to a supplier created in the same transaction. Same states as
     /// <see cref="StartCheckOutAsync"/>.
     /// </summary>

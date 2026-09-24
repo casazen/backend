@@ -274,6 +274,7 @@ public static class ServiceCollectionExtensions
         // Booking confirmation (guest + host) and cancellation emails (BK-10, docs/runbooks/email.md).
         services.AddScoped<BookingNotifier>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();

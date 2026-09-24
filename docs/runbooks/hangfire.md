@@ -36,7 +36,7 @@ and production never block each other.
 | `booking-pull-all` (only with `Features:OtaPartnerApi=true`, otherwise removed at startup) | `*/15` | `BookingPullJob.ExecuteAsync:<propertyId>` | 60 s |
 | `dynamic-pricing-adaptation` | 02:00 | `DynamicPricingJob` (shared with the per-property manual run) | 300 s |
 | `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
-| `alloggiati-deadline-alert` | hourly | `AlloggiatiDeadlineAlertJob.ExecuteAsync` | 300 s |
+| `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `cin-deadline-alert` | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` | 300 s |
 | `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
@@ -47,7 +47,6 @@ and production never block each other.
 | `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
-| `guest-checkin-reminder` | 10:00 | `GuestCheckInReminderJob.ExecuteAsync` | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once.
@@ -155,22 +154,19 @@ Set per environment (Railway → environment → service → **Variables**):
    | Job type | What to do |
    |---|---|
    | `StripeWebhookJob` | Stripe Dashboard → Developers → Events → the event → **Resend** to that environment's endpoint (processing is idempotent per event id) |
-   | `AlloggiatiWebReportJob` | Send the booking's report again; the hourly `alloggiati-deadline-alert` flags every booking still missing it |
-   | `CheckoutReminderJob` | Reminder lost; remind the host manually if still relevant (query below) |
+   | `AlloggiatiWebReportJob` | Send the booking's report again; the hourly `stay-alerts` job (CO-10) alerts the host of every communication still missing |
+   | `CheckoutReminderJob` | Nothing: since CO-10 the check-out reminder comes from the hourly `stay-alerts` job for every stay; the class no longer exists (delete the job) |
    | `ESignWebhookJob` | Ask the e-sign provider to resend the event, or check the lease status there |
    | `OtaSyncJob`, `DynamicPricingJob`, `SeoPageGenerationJob` | Trigger again from the app/admin if needed; periodic work is covered by the next recurring run |
    | `DirectBookingChargeJob` and other recurring jobs | Nothing: the next run in the new schema catches up (it charges every booking past its deadline without a completed charge) |
 
-   Bookings whose checkout reminder was scheduled in the old schema:
-
-   ```sql
-   SELECT "Id", "CheckOutDate", "CheckoutReminderJobId" FROM casazen_prod."Bookings"
-   WHERE "CheckoutReminderJobId" IS NOT NULL;   -- same for casazen_test
-   ```
+   Before CO-10, bookings stored the id of their checkout reminder job (`Bookings.CheckoutReminderJobId`); the
+   migration `AddStayAlertStates` drops the column, the reminder is no longer a job per booking.
 
 5. **Right after each environment's first start in its new schema**, move its job id sequence past the old ids.
-   Bookings store the Hangfire id of their checkout reminder, and ids restart from 1 in a new schema: without
-   this, cancelling an old reminder at checkout could delete an unrelated new job with the same number.
+   Alloggiati reports store the Hangfire id of their arrival-day job (`AlloggiatiWebReports.ScheduledJobId`, CO-11),
+   and ids restart from 1 in a new schema: without this, replacing an old job could delete an unrelated new job with
+   the same number.
 
    ```sql
    SELECT setval('hangfire_casazen_test.job_id_seq', (SELECT last_value FROM hangfire.job_id_seq) + 1000000);
@@ -241,7 +237,8 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 16 recurring jobs in each schema (14 with Features:OtaPartnerApi off)
+  -- 15 recurring jobs in each schema with every flag on (13 with Features:OtaPartnerApi off,
+  -- 12 with Features:RliProvider off too)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
@@ -366,3 +363,78 @@ SELECT "LeaseContractId", "Payload", "OccurredAt" FROM casazen_prod."LeaseEvents
 WHERE "EventType" = 12 AND "OccurredAt" >= date_trunc('day', now())
 ORDER BY "OccurredAt";
 ```
+
+## 9. Stay alerts (CO-10)
+
+Audit defects A5-11, A6-07 (P1) and A5-25. Until CO-10 the hourly `alloggiati-deadline-alert` and the daily
+`guest-checkin-reminder` sent the same "Check-in incompleto" push and email to every stay with incomplete guest data or
+a communication not sent, **every hour**, from 24 hours before arrival to 8 days after (also for a failed report). With
+no transmission to the Questura yet (CO-11) every stay qualified: the provider's daily quota ran out and the guests'
+check-in links stopped going out. The check-out reminder was a push-only job scheduled only by the host check-in.
+
+**What runs now**: one recurring job, `stay-alerts`, hourly (`0 * * * *` UTC): `StayAlertsJob` → `StayAlertService`.
+
+| Alert | When | To |
+|---|---|---|
+| Alloggiati Web sequence: guest data missing, deadline approaching, overdue, at most `MaxOverdueReminders` daily reminders; "invio fallito" for a failed or rejected communication | Stages and maximum per stay: [alloggiati.md § "Host alerts"](alloggiati.md#host-alerts-co-10) | Email to the org contact address + push to the property's hosts |
+| Check-out reminder | `Compliance:CheckoutReminderHourLocal` (default 20) of the check-out day, property time zone (Europe/Rome when the property has none); dropped if the job is more than 12 hours late | Same; push "Promemoria check-out" |
+
+- **Every confirmed stay** gets the check-out reminder, whether or not the host registered the arrival (A5-25). The job
+  reads the booking as it is at each run: moved dates move the reminder, a cancellation or the check-out drops it.
+  Nothing is scheduled per booking, so no stale job can fire on old dates.
+- **Once per stage**: table `StayAlertStates`, one row per booking and type (`Type` 1 Alloggiati deadline, 2 failed
+  communication, 3 check-out reminder; `ReferenceDate` = check-in or check-out date, `Stage`, `AlertCount`,
+  `LastAlertAt`). Before sending, the run moves the row forward with one conditional `UPDATE`; only the caller that moved
+  it sends. A retry, a manual trigger from the dashboard or a second server never sends a stage twice. When the booking's
+  date changes, the sequence starts again for the new date. A delivery that fails after the claim is logged
+  (`claimed but not delivered`) and not repeated: at most once. The email is queued on `EmailDeliveryJob` (5 attempts).
+- **One run at a time**: `[DisableConcurrentExecution]` plus a PostgreSQL session advisory lock
+  (`pg_try_advisory_lock(1011, …)`, `PostgresAdvisoryLocks.Scope.StayAlertsRun`); a run that finds it taken logs
+  `Stay alerts run skipped: another run is in progress` and does nothing.
+- **No backlog**: only the most advanced stage due is sent, so a run after an outage sends one message per stay; the last
+  Alloggiati stage is dropped a day after its time.
+- **Volume**: with the defaults a stay gets at most 5 Alloggiati messages, 1 "invio fallito" and 1 check-out reminder
+  per date (each one email + one push), instead of up to 24 emails a day.
+
+**Configuration** (Railway variables, optional; defaults in `appsettings.json`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `StayAlerts__GuestDataReminderHourLocal` | `10` | Hour (Europe/Rome) of the day before arrival for "guest data missing" |
+| `StayAlerts__DeadlineWarningHours` | `12` | Hours before the deadline for "deadline approaching" (never before the arrival day) |
+| `StayAlerts__MaxOverdueReminders` | `2` | Daily reminders after "overdue" (`0` = none); maximum per stay = 3 + this |
+| `StayAlerts__OverdueReminderHourLocal` | `9` | Hour (Europe/Rome) of the daily reminders |
+| `Compliance__CheckoutReminderHourLocal` | `20` | Hour (property time) of the check-out reminder |
+
+**At the first deploy of CO-10**:
+
+1. `RecurringJobsRegistration` removes `alloggiati-deadline-alert` and `guest-checkin-reminder` from the environment's
+   schema and registers `stay-alerts` (§5 counts the recurring jobs).
+2. Check-out reminder jobs scheduled before CO-10 (`CheckoutReminderJob.SendReminderAsync`, tab *Scheduled*) fail with a
+   type load error when they come due: delete them from the dashboard (*Scheduled* / *Failed* → select → *Delete*).
+   Their stays get the reminder from `stay-alerts` anyway. The migration `AddStayAlertStates` drops
+   `Bookings.CheckoutReminderJobId`.
+3. The first run sends at most one message per stay checked in within the last 5 days (or arriving tomorrow) whose
+   communication is neither sent nor declared sent: the most advanced stage due, then the sequence goes on normally.
+
+**Checks** (SQL editor, replace the schema):
+
+```sql
+-- Alerts of the last 7 days per stay and type: AlertCount at most 5 for type 1 with the defaults, 1 per date otherwise
+SELECT "BookingId", "Type", "ReferenceDate", "Stage", "AlertCount", "LastAlertAt"
+FROM casazen_prod."StayAlertStates"
+WHERE "LastAlertAt" > now() - interval '7 days'
+ORDER BY "LastAlertAt" DESC;
+
+-- Messages sent per day (one email + one push each)
+SELECT date_trunc('day', "LastAlertAt") AS day, count(*) FROM casazen_prod."StayAlertStates"
+WHERE "LastAlertAt" > now() - interval '7 days' GROUP BY 1 ORDER BY 1;
+
+-- Old check-out reminder jobs still in the schema (delete them from the dashboard)
+SELECT id, statename, createdat FROM hangfire_casazen_prod.job
+WHERE invocationdata ->> 'Type' LIKE 'Casazen.Web.BackgroundJobs.CheckoutReminderJob%'
+  AND statename IN ('Scheduled', 'Failed', 'Enqueued');
+```
+
+The second query counts the stays alerted per day (a row keeps only its last message): for exact volumes use the
+provider's dashboard (Resend → Emails, filter by subject).

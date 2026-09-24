@@ -24,17 +24,15 @@ public class StayLifecycleServiceTests
 
     private readonly Mock<IAlloggiatiWebService> _alloggiati = new();
     private readonly Mock<IAlloggiatiReportScheduler> _alloggiatiScheduler = new();
-    private readonly Mock<ICheckoutReminderScheduler> _reminders = new();
     private readonly Mock<IServiceRequestService> _serviceRequests = new();
 
     public StayLifecycleServiceTests()
     {
         _alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(true);
-        _reminders.Setup(r => r.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>())).Returns("reminder-1");
     }
 
     [Fact]
-    public async Task RegisterArrivalAsync_AfterMidnightInRomeOnTheCheckInDay_ChecksInWithTheArrivalTimeAndSchedulesTheJobs()
+    public async Task RegisterArrivalAsync_AfterMidnightInRomeOnTheCheckInDay_ChecksInWithTheArrivalTimeAndSchedulesAlloggiati()
     {
         // 22:30 UTC on 30/09 is 00:30 on 01/10 in Rome: the check-in day has started.
         var now = new DateTimeOffset(2026, 9, 30, 22, 30, 0, TimeSpan.Zero);
@@ -46,9 +44,6 @@ public class StayLifecycleServiceTests
         Assert.Equal(BookingStatus.CheckedIn, result.Booking.Status);
         Assert.True(result.GuestDataComplete);
         Assert.Equal(now.UtcDateTime, result.Booking.ArrivedAt);
-        Assert.Equal("reminder-1", result.Booking.CheckoutReminderJobId);
-        // 20:00 of the check-out day in Rome (CEST): 18:00 UTC.
-        _reminders.Verify(r => r.ScheduleReminder(booking.Id, new DateTime(2026, 10, 3, 18, 0, 0, DateTimeKind.Utc)), Times.Once);
         _alloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(booking.Id), Times.Once);
         Assert.Equal(BookingStatus.CheckedIn, (await ReloadAsync(db, booking.Id)).Status);
     }
@@ -66,14 +61,13 @@ public class StayLifecycleServiceTests
         Assert.Equal(BookingErrorCodes.ArrivalTooEarly, error.Code);
         Assert.Equal("01/10/2026", Assert.Single(error.MessageArgs));
         Assert.Equal(BookingStatus.Confirmed, (await ReloadAsync(db, booking.Id)).Status);
-        _reminders.Verify(r => r.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()), Times.Never);
         _alloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
-    public async Task RegisterArrivalAsync_OnTheCheckOutDay_ChecksInWithoutAnArrivalTimeAndRemindsSoon()
+    public async Task RegisterArrivalAsync_OnTheCheckOutDay_ChecksInWithoutAnArrivalTime()
     {
-        // 21:00 in Rome on the check-out day: the 20:00 reminder time has passed.
+        // 21:00 in Rome on the check-out day.
         var now = new DateTimeOffset(2026, 10, 3, 19, 0, 0, TimeSpan.Zero);
         await using var db = CreateDb();
         var booking = await SeedAsync(db, BookingStatus.Confirmed, October1, October3);
@@ -83,7 +77,7 @@ public class StayLifecycleServiceTests
         Assert.Equal(BookingStatus.CheckedIn, result.Booking.Status);
         // Registered late: the real arrival time is unknown, so none is invented.
         Assert.Null(result.Booking.ArrivedAt);
-        _reminders.Verify(r => r.ScheduleReminder(booking.Id, now.UtcDateTime.AddMinutes(5)), Times.Once);
+        _alloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(booking.Id), Times.Once);
     }
 
     [Fact]
@@ -113,7 +107,6 @@ public class StayLifecycleServiceTests
 
         Assert.Equal(code, error.Code);
         Assert.Equal(status, (await ReloadAsync(db, booking.Id)).Status);
-        _reminders.Verify(r => r.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()), Times.Never);
         _alloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(It.IsAny<Guid>()), Times.Never);
     }
 
@@ -143,18 +136,17 @@ public class StayLifecycleServiceTests
     }
 
     [Fact]
-    public async Task CheckOutAsync_CheckedInStay_ClosesItAndCancelsTheReminder()
+    public async Task CheckOutAsync_CheckedInStay_ClosesItAndExtendsTheGuestDataRetention()
     {
         await using var db = CreateDb();
-        var booking = await SeedAsync(db, BookingStatus.CheckedIn, October1, October3, reminderJobId: "reminder-0");
+        var booking = await SeedAsync(db, BookingStatus.CheckedIn, October1, October3);
 
         var closed = await CreateService(db, new DateTimeOffset(2026, 10, 3, 9, 0, 0, TimeSpan.Zero))
             .CheckOutAsync(booking.Id, new StayCheckOut(RegisterArrival: false));
 
         Assert.Equal(BookingStatus.CheckedOut, closed.Status);
-        Assert.Null(closed.CheckoutReminderJobId);
         Assert.Equal(October3.AddYears(7), closed.Guest.DataRetentionUntil);
-        _reminders.Verify(r => r.CancelReminder("reminder-0"), Times.Once);
+        Assert.Equal(BookingStatus.CheckedOut, (await ReloadAsync(db, booking.Id)).Status);
     }
 
     [Fact]
@@ -210,9 +202,8 @@ public class StayLifecycleServiceTests
             db,
             _alloggiati.Object,
             _alloggiatiScheduler.Object,
-            _reminders.Object,
             _serviceRequests.Object,
-            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20, GdprRetentionYears = 7 }),
+            Options.Create(new ComplianceOptions { GdprRetentionYears = 7 }),
             NullLogger<StayLifecycleService>.Instance,
             new FixedTimeProvider(utcNow));
 
@@ -223,8 +214,7 @@ public class StayLifecycleServiceTests
         AppDbContext db,
         BookingStatus status,
         DateTime checkIn,
-        DateTime checkOut,
-        string? reminderJobId = null)
+        DateTime checkOut)
     {
         var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}" };
         var property = new Property
@@ -254,7 +244,6 @@ public class StayLifecycleServiceTests
             NumberOfGuests = 1,
             Status = status,
             Source = BookingSource.Manual,
-            CheckoutReminderJobId = reminderJobId,
         };
         db.AddRange(org, property, guest, booking);
         await db.SaveChangesAsync();

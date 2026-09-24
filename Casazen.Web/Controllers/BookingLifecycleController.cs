@@ -106,7 +106,7 @@ public class BookingLifecycleController(
     /// <summary>
     /// "Registra arrivo": the host records that the guest arrived. A confirmed booking becomes checked in from its
     /// check-in day to its check-out day (Europe/Rome); a registration on a later day of the stay is not an error. The
-    /// Alloggiati communication and the check-out reminder are scheduled. Incomplete guest data do not block the arrival:
+    /// Alloggiati communication is scheduled. Incomplete guest data do not block the arrival:
     /// <c>guestDataComplete</c> tells the client to send the host to complete them.
     /// 409 <c>booking_already_checked_in</c> / <c>booking_not_confirmed</c>, 422 <c>booking_arrival_too_early</c> /
     /// <c>booking_arrival_after_departure</c>.
