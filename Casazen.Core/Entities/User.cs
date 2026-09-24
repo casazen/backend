@@ -40,7 +40,18 @@ public class User
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 
+    /// <summary>
+    /// False once an admin deactivated the account (PL-03, A1-04): every authenticated API request of the user is
+    /// refused with 403 <c>account_inactive</c>, whatever the roles in the token.
+    /// </summary>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Auth0 roles removed from the account when it was deactivated (role names such as <c>Admin</c>, <c>Supplier</c>),
+    /// given back by the reactivation. Null while the account is active, and when no role could be removed (Auth0
+    /// unreachable or not configured at deactivation time: the roles are then still in Auth0).
+    /// </summary>
+    public List<string>? SuspendedAuth0Roles { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

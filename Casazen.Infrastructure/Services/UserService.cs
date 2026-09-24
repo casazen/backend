@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
@@ -80,17 +81,100 @@ public class UserService(
         return user;
     }
 
-    public async Task<bool> DeleteUserAsync(string id)
+    /// <inheritdoc />
+    public async Task<UserActivationResult> DeactivateUserAsync(
+        string id,
+        string actorId,
+        CancellationToken cancellationToken = default)
     {
-        var user = await repository.GetByIdAsync(id);
-        if (user == null)
-            return false;
+        if (string.Equals(id, actorId, StringComparison.Ordinal))
+            throw new DomainRuleException(UserActivationErrors.CannotDeactivateSelf, "UserCannotDeactivateSelf");
 
-        await repository.DeleteAsync(id); // now soft-delete
+        var (outcome, user) = await repository.SetActiveAsync(id, isActive: false, actorId, cancellationToken);
+        if (outcome == UserActivationOutcome.NotFound || user is null)
+            throw new NotFoundException($"User {id} not found");
+
+        switch (outcome)
+        {
+            case UserActivationOutcome.ActorInactive:
+                // The acting admin was deactivated by a parallel request: its next request gets 403 account_inactive.
+                throw new UnauthorizedAccessException("The acting admin is no longer active.");
+            case UserActivationOutcome.LastActiveAdmin:
+                throw new DomainRuleException(UserActivationErrors.LastActiveAdmin, "UserLastActiveAdmin");
+        }
+
         authorizationCache.Invalidate(id);
-        logger.LogInformation("User deactivated: {UserId}", id);
-        return true;
+
+        // Block first: a blocked account gets no new token at all, refresh tokens included. Then remove the CasaZen roles,
+        // remembering them before the removal so that the reactivation gives back exactly those.
+        var sync = await auth0Management.SetBlockedAsync(id, blocked: true, cancellationToken);
+        var current = await auth0Management.GetUserRolesAsync(id, cancellationToken);
+        sync = sync.Combine(current.Sync);
+        if (current.Sync.Succeeded && current.Roles.Count > 0)
+        {
+            user.SuspendedAuth0Roles = (user.SuspendedAuth0Roles ?? [])
+                .Union(current.Roles.Select(r => r.ToString()), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            await repository.UpdateAsync(user);
+            sync = sync.Combine(await auth0Management.RemoveRolesAsync(id, current.Roles, cancellationToken));
+        }
+
+        // Audit (no audit log table yet): who deactivated whom and when, ids only.
+        logger.LogInformation(
+            "User deactivated: userId={UserId} by={ActorId} at={AtUtc:o} changed={Changed} auth0Synced={Auth0Synced} auth0Error={Auth0Error} rolesSuspended=[{Roles}]",
+            id, actorId, DateTime.UtcNow, outcome == UserActivationOutcome.Updated, sync.Succeeded, sync.ErrorCode,
+            string.Join(", ", user.SuspendedAuth0Roles ?? []));
+
+        return new UserActivationResult(user, outcome == UserActivationOutcome.Updated, sync, []);
     }
+
+    /// <inheritdoc />
+    public async Task<UserActivationResult> ReactivateUserAsync(
+        string id,
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        var (outcome, user) = await repository.SetActiveAsync(id, isActive: true, actorId, cancellationToken);
+        if (outcome == UserActivationOutcome.NotFound || user is null)
+            throw new NotFoundException($"User {id} not found");
+
+        authorizationCache.Invalidate(id);
+
+        // Roles back first, unblock only then: the first token after the reactivation already carries them. When the
+        // roles cannot be given back the account stays blocked and the admin retries.
+        var suspended = ParseRoles(user.SuspendedAuth0Roles);
+        var sync = Auth0SyncResult.Synced;
+        if (suspended.Count > 0)
+        {
+            sync = await auth0Management.AssignRolesAsync(id, suspended, cancellationToken);
+            if (sync.Succeeded)
+            {
+                user.SuspendedAuth0Roles = null;
+                await repository.UpdateAsync(user);
+            }
+        }
+
+        if (sync.Succeeded)
+            sync = await auth0Management.SetBlockedAsync(id, blocked: false, cancellationToken);
+
+        logger.LogInformation(
+            "User reactivated: userId={UserId} by={ActorId} at={AtUtc:o} changed={Changed} auth0Synced={Auth0Synced} auth0Error={Auth0Error} rolesRestored=[{Roles}]",
+            id, actorId, DateTime.UtcNow, outcome == UserActivationOutcome.Updated, sync.Succeeded, sync.ErrorCode,
+            sync.Succeeded ? string.Join(", ", suspended) : string.Empty);
+
+        return new UserActivationResult(
+            user,
+            outcome == UserActivationOutcome.Updated,
+            sync,
+            sync.Succeeded ? suspended : []);
+    }
+
+    private static IReadOnlyList<UserRole> ParseRoles(IEnumerable<string>? names) =>
+        (names ?? [])
+            .Select(n => Enum.TryParse<UserRole>(n, ignoreCase: true, out var role) ? role : (UserRole?)null)
+            .OfType<UserRole>()
+            .Distinct()
+            .ToList();
 
     public async Task<bool> ValidateCredentialsAsync(string email, string password)
     {
@@ -212,6 +296,11 @@ public class UserService(
     {
         var user = await repository.GetByIdAsync(id)
             ?? throw new KeyNotFoundException($"User {id} not found");
+
+        // The Auth0 roles of a deactivated user are suspended (PL-03): a change now would be undone, or doubled, by the
+        // reactivation that gives them back.
+        if (!user.IsActive)
+            throw new DomainRuleException(UserActivationErrors.UserInactive, "UserInactiveRoleChange");
 
         var oldRole = user.Role;
 

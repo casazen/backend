@@ -109,6 +109,34 @@ public class TenantContextTests
         Assert.Equal(orgId, seenByNext);
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ResolveAsync_UserRow_LoadsTheActiveFlagWithTheOrgInOneRead(bool isActive, bool expectedInactive)
+    {
+        var orgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserAsync(services, orgId, isActive);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.Equal(expectedInactive, tenant.IsCallerInactive);
+        Assert.Equal(orgId, tenant.OrgId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_FirstAccessWithoutUserRow_IsNotInactive()
+    {
+        var services = BuildServices();
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.False(tenant.IsCallerInactive);
+        Assert.Null(tenant.OrgId);
+    }
+
     private ServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
@@ -116,11 +144,19 @@ public class TenantContextTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task SeedUserAsync(ServiceProvider services, Guid? orgId)
+    private static async Task SeedUserAsync(ServiceProvider services, Guid? orgId, bool isActive = true)
     {
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Users.Add(new User { Id = Sub, Email = "tenant@example.com", FirstName = "T", LastName = "C", OrgId = orgId });
+        db.Users.Add(new User
+        {
+            Id = Sub,
+            Email = "tenant@example.com",
+            FirstName = "T",
+            LastName = "C",
+            OrgId = orgId,
+            IsActive = isActive,
+        });
         await db.SaveChangesAsync();
     }
 
