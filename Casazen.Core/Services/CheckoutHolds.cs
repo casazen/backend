@@ -19,7 +19,15 @@ namespace Casazen.Core.Services;
 public static class CheckoutHolds
 {
     public const string TtlMinutesSetting = "DirectBooking:PendingTtlMinutes";
-    public const int DefaultTtlMinutes = 15;
+
+    /// <summary>
+    /// 30 minutes (BK-04, A3-04). The checkout pays a PaymentIntent with the Stripe Payment Element: there is no Checkout
+    /// Session, no timer in the page and no expiry of the PaymentIntent on Stripe, so the hold is the only bound. 15 minutes
+    /// did not cover 3-D Secure plus a banking app; 30 minutes is also the shortest lifetime Stripe allows for its own
+    /// hosted Checkout Session (<c>expires_at</c>: 30 minutes to 24 hours). A payment that still arrives later is
+    /// reconfirmed or refunded by the payment webhook. See docs/runbooks/stripe.md "Late payments".
+    /// </summary>
+    public const int DefaultTtlMinutes = 30;
 
     /// <summary>The configured hold duration in minutes (at least 1).</summary>
     public static int GetTtlMinutes(IConfiguration configuration) =>

@@ -180,17 +180,23 @@ public enum BookingCancellationReason
     /// </summary>
     CheckoutHoldExpired = 1,
 
+    /// <summary>
+    /// The guest's payment succeeded when the dates were no longer free (the hold had expired and another booking or an
+    /// iCal block took them): the booking is cancelled and the payment refunded in full automatically (BK-04, A3-04).
+    /// </summary>
+    DatesUnavailableAtPayment = 2,
+
     /// <summary>"Pay at the property" request declined by the host (BK-06, D5).</summary>
-    OnSiteRequestDeclined = 2,
+    OnSiteRequestDeclined = 3,
 
     /// <summary>"Pay at the property" request not answered by the host within <c>DirectBooking:OnSiteApprovalHours</c> (BK-06).</summary>
-    OnSiteRequestExpired = 3,
+    OnSiteRequestExpired = 4,
 
     /// <summary>
     /// "Pay at the property" request whose guest did not confirm the email address within
     /// <c>DirectBooking:OnSiteEmailVerificationMinutes</c>: never sent to the host (BK-06, A3-06).
     /// </summary>
-    OnSiteEmailNotConfirmed = 4,
+    OnSiteEmailNotConfirmed = 5,
 }
 
 public enum PaymentOption

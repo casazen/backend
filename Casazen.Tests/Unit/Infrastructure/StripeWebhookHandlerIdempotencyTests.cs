@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stripe;
+using Casazen.Tests.Integration;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -161,6 +162,7 @@ public class StripeWebhookHandlerIdempotencyTests
             Mock.Of<ISdiEInvoiceService>(),
             Mock.Of<IRentBillingService>(),
             Mock.Of<IPaymentRefundService>(),
+            TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event DirectBookingSucceededEvent(string eventId, string paymentIntentId) =>

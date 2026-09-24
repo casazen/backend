@@ -11,8 +11,8 @@ accepted it is valid. The code is in place; the product owner decides the provis
 | Guest submits the checkout with "Paga in struttura" (`POST /api/public/bookings`) | `Pending`, `Source = Direct`, `PaymentOption = OnSite`, `RequestExpiresAt = now + email window`; a `Payments` row `CashOnArrival`, `Pending` | held on the booking site and in the host calendar (no double request) | **not exported** | guest: "request received" with the confirmation link (`/book/{orgSlug}/requests/{bookingId}/confirm?token=…`) |
 | Guest opens the link and clicks "Conferma e invia la richiesta" (`POST /api/public/bookings/{id}/confirm-email`) | `GuestEmailVerifiedAt` set, `RequestExpiresAt = now + OnSiteApprovalHours` | held | not exported | host (`Org.ContactEmail`): "new request to approve", with the link to the console (`/app/short-rent/bookings?view=requests`) |
 | Host accepts (`POST /api/bookings/{id}/approve`) | `Confirmed`, check-in token issued, `RequestExpiresAt` cleared | taken | **exported** like every confirmed booking | guest: "booking confirmed", pay at the property |
-| Host declines (`POST /api/bookings/{id}/decline`, optional `message`) | `Cancelled`, `CancellationReason = 2` (`OnSiteRequestDeclined`), payment row `Canceled` | released | — | guest: "request not accepted" with the host's message |
-| Nobody answers by `RequestExpiresAt` | job `checkout-hold-expiry` (every 5 min): `Cancelled`, reason `3` (`OnSiteRequestExpired`) or `4` (`OnSiteEmailNotConfirmed`) | released at the deadline (reads ignore it before the job runs) | — | guest: "request expired" (only when the email had been confirmed) |
+| Host declines (`POST /api/bookings/{id}/decline`, optional `message`) | `Cancelled`, `CancellationReason = 3` (`OnSiteRequestDeclined`), payment row `Canceled` | released | — | guest: "request not accepted" with the host's message |
+| Nobody answers by `RequestExpiresAt` | job `checkout-hold-expiry` (every 5 min): `Cancelled`, reason `4` (`OnSiteRequestExpired`) or `5` (`OnSiteEmailNotConfirmed`) | released at the deadline (reads ignore it before the job runs) | — | guest: "request expired" (only when the email had been confirmed) |
 
 - **The host never sees an unconfirmed request** in the requests list and cannot answer it (409
   `onsite_request_email_not_confirmed`): an address typed by someone else, or a fake one, never reaches the host and
@@ -39,9 +39,9 @@ panel "Richieste da approvare" and badges in the bookings list.
 | Variable | Meaning | Default | Status |
 |---|---|---|---|
 | `DirectBooking__OnSiteApprovalHours` | Hours the host has to accept or decline, from the guest's email confirmation | **24** | **PROVISIONAL technical default** so that no request holds dates forever. Not a product rule: the product owner decides it (DUBBI BK-06) |
-| `DirectBooking__OnSiteEmailVerificationMinutes` | Minutes the guest has to confirm the email; meanwhile the dates are held | the checkout TTL (`DirectBooking__PendingTtlMinutes`, 15) | Same time the guest has to pay online. Raise it if guests report expired links |
+| `DirectBooking__OnSiteEmailVerificationMinutes` | Minutes the guest has to confirm the email; meanwhile the dates are held | the checkout TTL (`DirectBooking__PendingTtlMinutes`, 30) | Same time the guest has to pay online. Raise it if guests report expired links |
 | `DirectBooking__OnSiteMaxNights` | Longest stay of a "pay at the property" request (anti-abuse, A3-06): longer requests get 422 `onsite_request_too_many_nights` | **30** | **PROVISIONAL**: no spec defines it; aligned with the "locazione breve" of art. 4 D.L. 50/2017 (contracts up to 30 days, `.claude/context/regulations/fiscale.md` C1). The product owner decides it |
-| `DirectBooking__PendingTtlMinutes` | Checkout hold of online payments (BK-21) | 15 | unchanged |
+| `DirectBooking__PendingTtlMinutes` | Checkout hold of online payments (BK-21, BK-04) | 30 | unchanged |
 | `RateLimiting__PublicBookingCreate__PermitLimit` | Checkouts per client IP per minute (FD-10) | 10 | applies to "pay at the property" too |
 | `RateLimiting__PublicBookingLookup__PermitLimit` | Includes `confirm-email` | 30 | |
 | `App__PublicSiteBaseUrl`, `Email__*` | Links and delivery of the emails | — | required, see [email.md](email.md) |
@@ -96,13 +96,13 @@ SELECT b."Id", b."RequestExpiresAt", now() - b."RequestExpiresAt" AS late
 FROM casazen_prod."Bookings" b
 WHERE b."Status" = 0 AND b."Source" = 0 AND b."PaymentOption" = 2 AND b."RequestExpiresAt" < now();
 
--- Outcomes of the last 30 days: 2 declined, 3 not answered by the host, 4 email never confirmed
+-- Outcomes of the last 30 days: 3 declined, 4 not answered by the host, 5 email never confirmed
 SELECT "CancellationReason", count(*) FROM casazen_prod."Bookings"
-WHERE "PaymentOption" = 2 AND "CancellationReason" IN (2, 3, 4) AND "UpdatedAt" > now() - interval '30 days'
+WHERE "PaymentOption" = 2 AND "CancellationReason" IN (3, 4, 5) AND "UpdatedAt" > now() - interval '30 days'
 GROUP BY 1;
 ```
 
-Many reason `4` rows from few addresses mean someone is holding dates with fake requests: lower
+Many reason `5` rows from few addresses mean someone is holding dates with fake requests: lower
 `RateLimiting__PublicBookingCreate__PermitLimit` or `DirectBooking__OnSiteEmailVerificationMinutes`.
 
 Logs (booking ids only, no personal data): `On-site request {BookingId} created`, `guest email confirmed, sent to the
