@@ -177,7 +177,9 @@ public class BookingsControllerTests
         var basePrice = property.NightlyRate * nights + property.CleaningFee;
         return new DirectBookingQuote(
             property.Id, checkIn.Date, checkOut.Date, nights, property.NightlyRate, property.CleaningFee, basePrice, tax,
-            basePrice + tax.AmountOrZero, "EUR");
+            basePrice + tax.AmountOrZero, "EUR",
+            DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy),
+            new DirectBookingPaymentOptions(DeferredPaymentAvailable: false, DeferredChargeDate: null, FreeCancellationUntil: null));
     }
 
     private static Property MakeProperty() => new()

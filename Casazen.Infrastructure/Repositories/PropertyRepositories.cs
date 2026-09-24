@@ -14,6 +14,8 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties
             .Include(p => p.Bookings)
             .Include(p => p.OtaIntegrations)
+            // The checkout derives the free refund deadline and the deferred payment from it (BK-07, A3-16).
+            .Include(p => p.CancellationPolicy)
             .FirstOrDefaultAsync(p => p.Id == id);
     }
 
