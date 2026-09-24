@@ -7,6 +7,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -22,7 +23,7 @@ public class PropertySafetyChecklistServiceTests
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(name).Options);
 
     private static PropertySafetyChecklistService CreateService(AppDbContext db) =>
-        new(db, NullLogger<PropertySafetyChecklistService>.Instance, RomeJustAfterMidnight);
+        new(db, Mock.Of<IPropertyComplianceStatusService>(), NullLogger<PropertySafetyChecklistService>.Instance, RomeJustAfterMidnight);
 
     [Fact]
     public async Task SaveAsync_AllElectricHome_StoresAnswersAndGasAndCoAreNotApplicable()
