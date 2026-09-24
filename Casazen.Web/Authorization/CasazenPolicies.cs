@@ -30,7 +30,11 @@ public static class CasazenPolicies
     /// <summary>Supplier console (JWT role <c>Supplier</c>, backfilled from the DB supplier link).</summary>
     public const string Supplier = "RequireSupplier";
 
-    /// <summary>Administrator of the caller's org: plan, billing, domain.</summary>
+    /// <summary>
+    /// Administrator of the caller's org, in whichever rental context it works (PL-16): plan, entitlement, billing,
+    /// domain. An org policy, not a context one: the org's owner (<c>PropertyOwner</c> or <c>LongTermLandlord</c>), a
+    /// <c>PropertyManager</c> or a platform admin; never a <c>Staff</c> collaborator (<c>OrgBillingAdminAuthorizationHandler</c>).
+    /// </summary>
     public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
 
     private const string ShortRent = "RequireContext:short-rent:";
@@ -52,9 +56,9 @@ public static class CasazenPolicies
     public const string PropertyWrite = ShortRent + "property.write";
 
     /// <summary>
-    /// Read the property core that both kinds of landlord need (A7-06): the property list and record, its documents
-    /// (APE) and the org plan entitlement. Passes with <c>property.read</c> in the short-rent <b>or</b> the long-rent
-    /// context; the row is checked with <see cref="SharedPropertyOperations"/>.
+    /// Read the property core that both kinds of landlord need (A7-06): the property list and record and its documents
+    /// (APE). Passes with <c>property.read</c> in the short-rent <b>or</b> the long-rent context; the row is checked with
+    /// <see cref="SharedPropertyOperations"/>. The org plan entitlement is an org matter: <see cref="OrgBillingAdmin"/>.
     /// </summary>
     public const string SharedPropertyRead = AnyRentalContext + "property.read";
 

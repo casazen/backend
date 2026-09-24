@@ -177,6 +177,9 @@
   <data name="BillingReturnUrlNotAllowed" xml:space="preserve">
     <value>L'indirizzo di ritorno del pagamento deve essere una pagina di questo sito.</value>
   </data>
+  <data name="BillingReturnPathNotAllowed" xml:space="preserve">
+    <value>La pagina di ritorno del pagamento deve essere la pagina del piano o della fatturazione di questo sito.</value>
+  </data>
   <data name="BillingReturnUrlNotConfigured" xml:space="preserve">
     <value>Il pagamento dei piani non è ancora configurato in questo ambiente.</value>
   </data>
