@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924051343_UnifyTouristTaxOnTouristTaxRates")]
+    [Migration("20260924052928_UnifyTouristTaxOnTouristTaxRates")]
     partial class UnifyTouristTaxOnTouristTaxRates
     {
         /// <inheritdoc />
@@ -134,6 +134,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("BasePrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<int?>("CancellationReason")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("CheckInDate")
                         .HasColumnType("timestamp with time zone");
