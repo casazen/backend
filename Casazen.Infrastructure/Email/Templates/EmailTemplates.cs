@@ -21,6 +21,7 @@ public static class EmailTemplates
         public const string GuestCheckInLink = "guest-checkin-link";
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
+        public const string GuestRefundConfirmed = "guest-refund-confirmed";
     }
 
     /// <summary>New service request, to the supplier.</summary>
@@ -118,4 +119,18 @@ public static class EmailTemplates
             .Paragraph("AlloggiatiDeadline_Body", guestName, propertyName, checkInDate)
             .Paragraph("AlloggiatiDeadline_Action")
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
+
+    /// <summary>A refund confirmed by Stripe, to the guest (BK-02). <paramref name="amountEur"/> is in euro.</summary>
+    public static EmailContent GuestRefundConfirmed(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        decimal amountEur) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("GuestRefundConfirmed_Greeting", guestName)
+            .Paragraph("GuestRefundConfirmed_Body", amountEur.ToString("N2", culture), propertyName, checkInDate)
+            .Paragraph("GuestRefundConfirmed_Method")
+            .Muted("GuestRefundConfirmed_Timing")
+            .Build("GuestRefundConfirmed_Subject", propertyName);
 }

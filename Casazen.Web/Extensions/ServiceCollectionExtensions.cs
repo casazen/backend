@@ -14,6 +14,7 @@ using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -250,6 +251,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
+        // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
+        services.AddScoped<PaymentRefundService>();
+        services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
+        services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+        services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
+        services.AddScoped<PaymentRefundSubmitJob>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");

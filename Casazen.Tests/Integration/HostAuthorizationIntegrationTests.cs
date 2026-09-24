@@ -25,8 +25,10 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
     {
         { "GET", "/api/payments" },
         { "GET", "/api/payments/{payment}" },
-        { "POST", "/api/payments/{payment}/process" },
         { "POST", "/api/payments/{payment}/refund" },
+        { "GET", "/api/payments/{payment}/refunds" },
+        { "GET", "/api/bookings/{booking}/cancellation" },
+        { "POST", "/api/bookings/{booking}/cancel" },
         { "GET", "/api/guests" },
         { "GET", "/api/guests/{guest}" },
         { "GET", "/api/gdpr/guests/{guest}/export" },
@@ -58,7 +60,6 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
     }
 
     [Theory]
-    [InlineData("process")]
     [InlineData("refund")]
     public async Task PaymentWrite_AsCollaboratorWithoutPaymentWrite_Returns403AndLeavesPaymentUnchanged(string operation)
     {
@@ -84,8 +85,10 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
     [Theory]
     [InlineData("GET", "/api/payments/{payment}")]
     [InlineData("GET", "/api/payments?propertyId={property}")]
-    [InlineData("POST", "/api/payments/{payment}/process")]
     [InlineData("POST", "/api/payments/{payment}/refund")]
+    [InlineData("GET", "/api/payments/{payment}/refunds")]
+    [InlineData("GET", "/api/bookings/{booking}/cancellation")]
+    [InlineData("POST", "/api/bookings/{booking}/cancel")]
     [InlineData("GET", "/api/pricing-adapter/config/{property}")]
     [InlineData("POST", "/api/pricing-adapter/config/{property}")]
     [InlineData("GET", "/api/service-requests/{request}")]
@@ -225,6 +228,10 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
 
         var payment = await db.Payments.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == scenario.PaymentId);
         Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.False(await db.PaymentRefunds.IgnoreQueryFilters().AnyAsync(r => r.PaymentId == scenario.PaymentId));
+
+        var booking = await db.Bookings.IgnoreQueryFilters().AsNoTracking().SingleAsync(b => b.Id == scenario.BookingId);
+        Assert.Equal(BookingStatus.Confirmed, booking.Status);
 
         var request = await db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == scenario.ServiceRequestId);
         Assert.Equal(ServiceRequestStatus.Completato, request.Status);
@@ -239,6 +246,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
         Guid PropertyId,
         Guid GuestId,
         Guid PaymentId,
+        Guid BookingId,
         Guid ServiceRequestId,
         Guid SupplierOrgId,
         string SupplierUserId)
@@ -247,6 +255,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
             .Replace("{property}", PropertyId.ToString())
             .Replace("{guest}", GuestId.ToString())
             .Replace("{payment}", PaymentId.ToString())
+            .Replace("{booking}", BookingId.ToString())
             .Replace("{request}", ServiceRequestId.ToString());
     }
 
@@ -354,7 +363,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplica
         await db.SaveChangesAsync();
 
         return new Scenario(
-            hostId, hostOrg.Id, property.Id, guest.Id, payment.Id, serviceRequest.Id, supplierOrg.Id, supplierUserId);
+            hostId, hostOrg.Id, property.Id, guest.Id, payment.Id, booking.Id, serviceRequest.Id, supplierOrg.Id, supplierUserId);
     }
 
     private async Task SeedUserInOrgAsync(string userId, Guid orgId)

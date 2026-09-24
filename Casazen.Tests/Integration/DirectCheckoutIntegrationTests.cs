@@ -616,8 +616,70 @@ internal sealed class FakeStripeService : IStripeService
     public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) =>
         Task.FromResult(new PaymentIntent { Id = paymentIntentId });
 
-    public Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null) =>
-        Task.FromResult(new Refund { Id = "re_test", PaymentIntentId = paymentIntentId });
+    /// <summary>Refund requests received, in order (BK-02): account, idempotency key and amount are asserted on them.</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<StripeRefundCreateRequest> RefundRequests { get; } = new();
+
+    /// <summary>Status Stripe answers to a refund request (<c>succeeded</c> for cards, <c>pending</c> for some methods).</summary>
+    public string RefundStatus { get; set; } = "succeeded";
+
+    /// <summary>Status of every PaymentIntent read by <see cref="GetPaymentIntentAsync"/>.</summary>
+    public string PaymentIntentStatus { get; set; } = "requires_payment_method";
+
+    public System.Collections.Concurrent.ConcurrentQueue<(string PaymentIntentId, string? AccountId)> CanceledPaymentIntents { get; } = new();
+
+    public Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        RefundRequests.Enqueue(request);
+        return Task.FromResult(new Refund
+        {
+            Id = $"re_test_{Guid.NewGuid():N}",
+            PaymentIntentId = request.PaymentIntentId,
+            Amount = request.AmountCents,
+            Status = RefundStatus,
+            Metadata = new Dictionary<string, string>(request.Metadata),
+        });
+    }
+
+    public Task<IReadOnlyList<Refund>> ListRefundsAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Refund>>([]);
+
+    public Task<PaymentIntent> GetPaymentIntentAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = PaymentIntentStatus });
+
+    public Task<PaymentIntent> CancelPaymentIntentAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        CanceledPaymentIntents.Enqueue((paymentIntentId, connectedAccountId));
+        return Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = "canceled" });
+    }
+
+    public Task<SetupIntent> GetSetupIntentAsync(
+        string setupIntentId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SetupIntent { Id = setupIntentId, Status = "requires_payment_method" });
+
+    public Task<SetupIntent> CancelSetupIntentAsync(
+        string setupIntentId,
+        string connectedAccountId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SetupIntent { Id = setupIntentId, Status = "canceled" });
+
+    public Task DetachPaymentMethodAsync(
+        string paymentMethodId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 
     public Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
         string connectedAccountId,

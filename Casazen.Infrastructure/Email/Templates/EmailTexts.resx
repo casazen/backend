@@ -117,4 +117,19 @@
   <data name="AlloggiatiDeadline_Action" xml:space="preserve">
     <value>Completa o correggi i dati dell'ospite e invia la comunicazione dal gestionale.</value>
   </data>
+  <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
+    <value>Rimborso confermato - {0}</value>
+  </data>
+  <data name="GuestRefundConfirmed_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestRefundConfirmed_Body" xml:space="preserve">
+    <value>abbiamo rimborsato &lt;strong&gt;{0} €&lt;/strong&gt; per la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Method" xml:space="preserve">
+    <value>L'importo torna sul metodo di pagamento usato per la prenotazione.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Timing" xml:space="preserve">
+    <value>Il tempo in cui l'accredito compare nel tuo estratto conto dipende dalla tua banca o dall'emittente della carta.</value>
+  </data>
 </root>
