@@ -231,7 +231,7 @@ public class StripeRefundPostgresTests : IAsyncLifetime
         NullLogger<PaymentRefundService>.Instance);
 
     private BookingCancellationService CancellationService(AppDbContext db) =>
-        new(db, RefundService(db), _stripe.Object, NullLogger<BookingCancellationService>.Instance);
+        new(db, RefundService(db), _stripe.Object, _emails.Object, NullLogger<BookingCancellationService>.Instance);
 
     private AppDbContext NewContext() => _database!.CreateContext();
 
