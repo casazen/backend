@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -231,8 +232,8 @@ public class PropertyRecordPostgresTests : IClassFixture<CasazenWebApplicationFa
             PropertyId = property.Id,
             OrgId = property.OrgId,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(12),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

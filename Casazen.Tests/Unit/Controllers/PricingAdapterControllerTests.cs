@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
@@ -456,7 +457,7 @@ public class PricingAdapterControllerTests
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId));
 
         var previewData = Enumerable.Range(0, 90).Select(i =>
-            (Date: DateTime.UtcNow.Date.AddDays(i), SuggestedPrice: 100m, BasePrice: 100m, Reason: "standard")).ToList();
+            (Date: TimeProvider.System.TodayInRome().AddDays(i), SuggestedPrice: 100m, BasePrice: 100m, Reason: "standard")).ToList();
         _mockPricingService.Setup(x => x.PreviewPricesAsync(propertyId, 100m, It.IsAny<PricingAdapterConfig>()))
             .ReturnsAsync(previewData);
 

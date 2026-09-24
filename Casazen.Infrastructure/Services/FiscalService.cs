@@ -4,13 +4,17 @@ using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer) : IFiscalRegimeService, IFiscalReportingService
+public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer, TimeProvider? timeProvider = null)
+    : IFiscalRegimeService, IFiscalReportingService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     public async Task<FiscalRegimeSnapshot> GetRegimeAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default)
     {
         ValidateTaxYear(taxYear);
@@ -164,7 +168,7 @@ public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer) : 
         }
 
         org.HasPartitaIva = hasPartitaIva;
-        org.FiscalDataRetentionUntil ??= new DateTime(DateTime.UtcNow.Year + 10, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        org.FiscalDataRetentionUntil ??= new DateTime(_clock.TodayInRome().Year + 10, 12, 31, 0, 0, 0, DateTimeKind.Utc);
         org.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return MapProfile(org);

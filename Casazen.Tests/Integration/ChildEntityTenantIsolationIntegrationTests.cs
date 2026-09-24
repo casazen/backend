@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.AspNetCore.DataProtection;
@@ -222,8 +223,8 @@ public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<OtaPartn
             PropertyId = propertyA.Id,
             OrgId = propertyA.OrgId,
             GuestId = guestA.Id,
-            CheckInDate = now.Date.AddDays(3),
-            CheckOutDate = now.Date.AddDays(5),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(5),
             NumberOfGuests = 1,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

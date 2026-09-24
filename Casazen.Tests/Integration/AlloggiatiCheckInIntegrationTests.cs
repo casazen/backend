@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
@@ -99,7 +100,7 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
-        var sentOn = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
+        var sentOn = TimeProvider.System.TodayInRome().ToString("yyyy-MM-dd");
 
         var response = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
         var second = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
@@ -125,7 +126,7 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
-        var sentOn = DateTime.UtcNow.Date.AddDays(3).ToString("yyyy-MM-dd");
+        var sentOn = TimeProvider.System.TodayInRome().AddDays(3).ToString("yyyy-MM-dd");
 
         var response = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
 
@@ -150,7 +151,7 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var intruder = _factory.CreateAuthenticatedClient($"auth0|intruder-{Guid.NewGuid():N}", roles: "PropertyOwner");
-        var sentOn = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
+        var sentOn = TimeProvider.System.TodayInRome().ToString("yyyy-MM-dd");
 
         var response = await intruder.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
 
@@ -466,8 +467,8 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
             PropertyId = property.Id,
             OrgId = property.OrgId,
             GuestId = guestId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(12),
             NumberOfGuests = 1,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
@@ -536,8 +537,8 @@ public static class AlloggiatiTestSeedExtensions
             PropertyId = property.Id,
             OrgId = property.OrgId,
             GuestId = guestId,
-            CheckInDate = DateTime.UtcNow.Date,
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(3),
+            CheckInDate = TimeProvider.System.TodayInRome(),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(3),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
@@ -581,7 +582,7 @@ public static class AlloggiatiTestSeedExtensions
                 FirstName = "Sofia",
                 LastName = "Verdi",
                 Gender = Gender.Female,
-                DateOfBirth = DateTime.UtcNow.Date.AddYears(-8),
+                DateOfBirth = TimeProvider.System.TodayInRome().AddYears(-8),
                 BornInItaly = true,
                 BirthComuneName = "Milano",
                 BirthProvince = "MI",
