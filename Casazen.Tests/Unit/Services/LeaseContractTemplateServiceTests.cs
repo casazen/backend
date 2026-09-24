@@ -114,7 +114,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
 
         var text = PdfText(await sut.GeneratePdfAsync(lease));
 
-                Assert.Contains("Titolo di prova", text, StringComparison.Ordinal);
+        Assert.Contains("Titolo di prova", text, StringComparison.Ordinal);
         Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
         Assert.Contains("Anna Bianchi", text, StringComparison.Ordinal);
         Assert.Contains("Luigi Verdi", text, StringComparison.Ordinal);
@@ -190,7 +190,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
 
         var text = PdfText(await sut.GeneratePreviewPdfAsync(lease));
 
-                Assert.Contains(LeaseContractDocument.DraftMarker, text, StringComparison.Ordinal);
+        Assert.Contains(LeaseContractDocument.DraftMarker, text, StringComparison.Ordinal);
         Assert.Contains("modello assente", text, StringComparison.Ordinal);
         Assert.Contains(LeaseContractDocument.MissingClauseMarker, text, StringComparison.Ordinal);
         Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
