@@ -53,7 +53,9 @@ public static class PublicListing
 {
     /// <summary>
     /// Published: active and with the compliance activated (<see cref="PropertyComplianceStatus.Active"/>). The public
-    /// search, the property page and the availability use this rule; the checkout checks the same condition.
+    /// search, the property page and the availability use this rule; the checkout checks the same condition. A
+    /// <see cref="PropertyComplianceStatus.Suspended"/> property (a requirement lost after the activation, CO-06) is not
+    /// published, like a pending one.
     /// </summary>
     public static Expression<Func<Property, bool>> IsPublished { get; } =
         p => p.IsActive && p.ComplianceStatus == PropertyComplianceStatus.Active;

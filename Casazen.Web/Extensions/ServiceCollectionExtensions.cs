@@ -324,6 +324,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
+        // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
+        services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.

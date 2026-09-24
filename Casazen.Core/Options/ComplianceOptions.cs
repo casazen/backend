@@ -25,4 +25,18 @@ public class ComplianceOptions
         ["LOM"] = ["CinCertificate", "Ape"],
         ["LAZ"] = ["CinCertificate", "PropertyLicense"],
     };
+
+    /// <summary>Re-evaluation of the published properties (CO-06, docs/runbooks/compliance.md).</summary>
+    public ComplianceStatusCheckOptions StatusCheck { get; set; } = new();
+}
+
+/// <summary>Section <c>Compliance:StatusCheck</c> (CO-06).</summary>
+public class ComplianceStatusCheckOptions
+{
+    /// <summary>
+    /// Email the host when the <b>first</b> evaluation of a property published before CO-06 suspends it (the recalculation
+    /// of the historic properties, A5-36). Off by default: the product owner warns the hosts first, then may turn it on.
+    /// Every later suspension (a CIN, document or checklist removed, the nightly check) always emails the host.
+    /// </summary>
+    public bool NotifyOnFirstCheck { get; set; }
 }

@@ -5,8 +5,10 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -56,13 +58,27 @@ public class ComplianceWizardServiceTests
 
         return new ComplianceWizardService(
             db,
-            configuration ?? CreateConfig(),
             alloggiati.Object,
             stayLifecycle,
             new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
+            CreateStatusService(db, configuration ?? CreateConfig(), timeProvider),
             Mock.Of<ILogger<ComplianceWizardService>>(),
             timeProvider);
     }
+
+    /// <summary>The real evaluation of the blockers (CO-06): the wizard has no copy of its own.</summary>
+    private static PropertyComplianceStatusService CreateStatusService(
+        AppDbContext db,
+        IConfiguration configuration,
+        TimeProvider? timeProvider) =>
+        new(
+            db,
+            configuration,
+            Mock.Of<IEmailQueue>(),
+            EmailTestHelpers.Links(),
+            Options.Create(new ComplianceOptions()),
+            NullLogger<PropertyComplianceStatusService>.Instance,
+            timeProvider);
 
     // 2026-09-24 00:30 in Rome is still 2026-09-23 in UTC: "today" must be the Rome date.
     private static readonly TimeProvider RomeJustAfterMidnight =
