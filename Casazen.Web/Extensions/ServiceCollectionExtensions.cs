@@ -320,6 +320,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();
+        services.AddScoped<ICheckoutHoldExpiryService, CheckoutHoldExpiryService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();

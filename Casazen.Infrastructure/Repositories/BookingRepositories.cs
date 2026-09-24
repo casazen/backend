@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -54,13 +55,17 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Booking>> GetByDateRangeAsync(Guid propertyId, DateTime startDate, DateTime endDate)
+    public async Task<IEnumerable<Booking>> GetByDateRangeAsync(
+        Guid propertyId,
+        DateTime startDate,
+        DateTime endDate,
+        int? directPendingTtlMinutes = null)
     {
         return await context.Bookings
             .Where(b => b.PropertyId == propertyId &&
                    b.CheckInDate <= endDate &&
-                   b.CheckOutDate >= startDate &&
-                   b.Status != BookingStatus.Cancelled)
+                   b.CheckOutDate >= startDate)
+            .Where(CheckoutHolds.OccupiesDates(ExpiredHoldCutoff(directPendingTtlMinutes)))
             .Include(b => b.Guest)
             .ToListAsync();
     }
@@ -75,52 +80,14 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         // A checkout on Apr 5 at 10:00 and a checkin on Apr 5 at 15:00 is a valid same-day turnover.
         var checkInDate = checkIn.Date;
         var checkOutDate = checkOut.Date;
-        var pendingCutoff = directPendingTtlMinutes.HasValue
-            ? DateTime.UtcNow.AddMinutes(-directPendingTtlMinutes.Value)
-            : (DateTime?)null;
 
         var conflicting = await HasActiveOverlapAsync(
             propertyId,
             checkInDate,
             checkOutDate,
-            pendingCutoff);
+            ExpiredHoldCutoff(directPendingTtlMinutes));
 
         return !conflicting;
-    }
-
-    public async Task<int> CancelExpiredPendingDirectBookingsAsync(
-        Guid propertyId,
-        DateTime checkIn,
-        DateTime checkOut,
-        int ttlMinutes)
-    {
-        var cutoff = DateTime.UtcNow.AddMinutes(-ttlMinutes);
-        var checkInDate = checkIn.Date;
-        var checkOutDate = checkOut.Date;
-
-        // Only the checkout holds that stand in the way of these dates: an abandoned hold of other dates is left to
-        // the expiry job (BK-21), and host bookings (Manual, or Direct without a Stripe intent) never match.
-        var expired = await context.Bookings
-            .Where(b => b.PropertyId == propertyId &&
-                        b.CheckInDate.Date < checkOutDate &&
-                        b.CheckOutDate.Date > checkInDate &&
-                        b.Status == BookingStatus.Pending &&
-                        b.Source == BookingSource.Direct &&
-                        (b.StripeSetupIntentId != null ||
-                         b.Payments.Any(p => p.StripePaymentIntentId != null)) &&
-                        b.CreatedAt < cutoff)
-            .ToListAsync();
-
-        foreach (var booking in expired)
-        {
-            booking.Status = BookingStatus.Cancelled;
-            booking.UpdatedAt = DateTime.UtcNow;
-        }
-
-        if (expired.Count > 0)
-            await context.SaveChangesAsync();
-
-        return expired.Count;
     }
 
     public async Task<Booking> AddAsync(Booking booking)
@@ -229,23 +196,25 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         DateTime? pendingCutoff = null,
         Guid? excludeBookingId = null)
     {
-        var query = context.Bookings.Where(b =>
-            b.PropertyId == propertyId &&
-            b.CheckInDate.Date < checkOutDate &&
-            b.CheckOutDate.Date > checkInDate &&
-            b.Status != BookingStatus.Cancelled &&
-            !(pendingCutoff.HasValue &&
-              b.Status == BookingStatus.Pending &&
-              b.Source == BookingSource.Direct &&
-              (b.StripeSetupIntentId != null ||
-               b.Payments.Any(p => p.StripePaymentIntentId != null)) &&
-              b.CreatedAt < pendingCutoff.Value));
+        // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
+        // property lock before an insert or update) every booking that is not cancelled does.
+        var query = context.Bookings
+            .Where(b =>
+                b.PropertyId == propertyId &&
+                b.CheckInDate.Date < checkOutDate &&
+                b.CheckOutDate.Date > checkInDate)
+            .Where(CheckoutHolds.OccupiesDates(pendingCutoff));
 
         if (excludeBookingId.HasValue)
             query = query.Where(b => b.Id != excludeBookingId.Value);
 
         return await query.AnyAsync();
     }
+
+    private static DateTime? ExpiredHoldCutoff(int? directPendingTtlMinutes) =>
+        directPendingTtlMinutes.HasValue
+            ? CheckoutHolds.ExpiryCutoffUtc(DateTime.UtcNow, directPendingTtlMinutes.Value)
+            : null;
 
     private async Task<IDbContextTransaction?> BeginPropertyGuardTransactionAsync(Guid propertyId)
     {
