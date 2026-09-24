@@ -14,8 +14,8 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Legacy static token | `Auth0:ManagementApiToken` is still read **only** when no M2M client is configured, with a `deprecated` warning in the logs. Static tokens expire (24 h by default) and cannot be renewed | same file |
 | Role assignment | **Additive only** (`POST /users/{id}/roles`): other roles are never removed. Role ids are cached for 1 h | `Casazen.Infrastructure/Services/Auth0ManagementService.cs` |
 | Role removal | Explicit, only the named roles (`DELETE /users/{id}/roles`): admin role change (previous role only) and onboarding (unselected `PropertyOwner` / `LongTermLandlord` only) | same file, `UserService.ChangeRoleAsync` / `CompleteOnboardingAsync` |
-| Supplier role | Assigned **once**, at supplier registration (`POST /api/suppliers/register`). No Management API call on `/api/supplier/*` requests | `SuppliersController.Register`, `SupplierOrgContextResolver` |
-| Outcome | Never swallowed. Onboarding: `rolesSynced` / `rolesSyncError` in the response (DB already updated). Supplier registration: same fields. Admin role change: **502** `{ code }` and no change applied | `UsersController`, `SuppliersController` |
+| Supplier role | Assigned when the account is linked to a supplier profile: signed-in registration or invite (`POST /api/suppliers/register`) and claim of an anonymous registration (`POST /api/suppliers/claim`, SU-02; each call retries it). No Management API call on `/api/supplier/*` requests | `SuppliersController.Register` / `Claim`, `SupplierOrgContextResolver` |
+| Outcome | Never swallowed. Onboarding: `rolesSynced` / `rolesSyncError` in the response (DB already updated). Supplier registration and claim: same fields. Admin role change: **502** `{ code }` and no change applied | `UsersController`, `SuppliersController` |
 | DB memberships | `UserContextMemberships` written for **every** onboarding role and revoked when a role is removed, so backend context authorization does not depend on the JWT | `UserContextMembershipService` |
 | Per-request DB reads | User flags, supplier link and memberships read once per request and cached 60 s per user (`Authorization:UserCacheSeconds`, `0` disables), invalidated on every role/membership/link change of this instance | `UserAuthorizationSnapshotStore` |
 
@@ -58,7 +58,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
 
    | Scope | Used for |
    |---|---|
-   | `read:users` | profile backfill (email/name) in admin listings and supplier email fallback |
+   | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims when the access token lacks the Action claims (SU-02) |
    | `update:users` | user updates such as blocking a deactivated user |
    | `read:roles` | resolving role ids (cached) |
    | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`) |
@@ -130,8 +130,11 @@ exports.onExecutePostLogin = async (event, api) => {
 Deploy it, then Actions → Flows → **Login** → drag it into the flow → **Apply** (replace the older
 `Add Roles to Token` Action if present: keep only one Action that writes `https://casazen.app/roles`).
 
-The backend code that **reads** `https://casazen.app/email`, `/name` and `/email_verified` belongs to task
-PL-04; adding the claims now is harmless.
+The backend reads `https://casazen.app/email` and `/email_verified` for supplier invites and claims (SU-01, SU-02:
+[`suppliers.md`](suppliers.md) §2): without `/email_verified` a supplier who lost the claim token of an anonymous
+registration cannot link the profile unless the Management API (§4, `read:users`) is configured. Reading `/name`
+belongs to task PL-04. The claims are copied at login: after verifying the email the client needs a new token
+(`getAccessTokenSilently({ cacheMode: 'off' })`, which the web claim page does on *Riprova*).
 
 Roles are copied into tokens at login: after a role change the client must get a new token
 (web: `getAccessTokenSilently({ cacheMode: 'off' })`; mobile: refresh-token grant). Backend authorization

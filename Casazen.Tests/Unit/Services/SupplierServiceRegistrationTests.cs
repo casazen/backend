@@ -54,7 +54,7 @@ public class SupplierServiceRegistrationTests
         });
         await db.SaveChangesAsync();
 
-        var (returnedOrg, returnedProfile) = await service.RegisterAsync(new SupplierRegistration(
+        var (returnedOrg, returnedProfile, claim) = await service.RegisterAsync(new SupplierRegistration(
             "new-registration@test.com",
             "New Supplier Srl",
             "+39 06 222222",
@@ -65,6 +65,7 @@ public class SupplierServiceRegistrationTests
 
         Assert.Equal(org.Id, returnedOrg.Id);
         Assert.Equal(org.Id, returnedProfile.OrgId);
+        Assert.Null(claim);
         Assert.Single(db.Orgs);
         Assert.Single(db.SupplierProfiles);
         Assert.Equal(org.Id, db.Users.Single(u => u.Id == userId).SupplierOrgId);

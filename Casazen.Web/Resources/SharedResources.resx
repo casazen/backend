@@ -555,6 +555,30 @@
   <data name="DirectBookingInvalidPaymentOption" xml:space="preserve">
     <value>Metodo di pagamento non valido.</value>
   </data>
+  <data name="SupplierClaimInvalid" xml:space="preserve">
+    <value>Il collegamento non è valido: registra di nuovo la tua attività o accedi con l'account già collegato.</value>
+  </data>
+  <data name="SupplierClaimExpired" xml:space="preserve">
+    <value>Il collegamento è scaduto: registra di nuovo la tua attività come fornitore.</value>
+  </data>
+  <data name="SupplierClaimUsed" xml:space="preserve">
+    <value>Questo profilo fornitore è già collegato a un account. Accedi con quell'account.</value>
+  </data>
+  <data name="SupplierClaimEmailMismatch" xml:space="preserve">
+    <value>Il profilo è stato registrato con un'altra email: accedi con l'account di quell'email.</value>
+  </data>
+  <data name="SupplierClaimEmailUnverified" xml:space="preserve">
+    <value>Per collegare il profilo senza il link della registrazione devi prima verificare la tua email.</value>
+  </data>
+  <data name="SupplierClaimNotFound" xml:space="preserve">
+    <value>Non c'è un profilo fornitore da collegare per la tua email: registra la tua attività.</value>
+  </data>
+  <data name="SupplierClaimAmbiguous" xml:space="preserve">
+    <value>Ci sono più profili fornitore con la tua email: contatta il supporto CasaZen per collegare quello giusto.</value>
+  </data>
+  <data name="SupplierAccountAlreadyLinked" xml:space="preserve">
+    <value>Il tuo account è già collegato a un altro profilo fornitore.</value>
+  </data>
   <data name="CheckInGuestsCount" xml:space="preserve">
     <value>Inserisci da 1 a {0} ospiti.</value>
   </data>

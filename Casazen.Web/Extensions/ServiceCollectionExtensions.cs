@@ -116,11 +116,11 @@ public static class ServiceCollectionExtensions
                                     role));
                             }
 
-                            // Backfill Supplier role from DB. Users who registered via the
-                            // backend-served page have SupplierOrgId set but no Supplier role
-                            // in their Auth0 JWT yet. Adding the claim here lets the
-                            // [Authorize(Policy="RequireSupplier")] filter pass on the first
-                            // request after Auth0 signup.
+                            // Backfill Supplier role from DB. A user just linked to a supplier
+                            // org (registration, invite or claim, SU-02) has SupplierOrgId set but
+                            // no Supplier role in the Auth0 JWT until a new token (or at all when
+                            // the role sync failed). Adding the claim here lets the
+                            // [Authorize(Policy="RequireSupplier")] filter pass right away.
                             var sub = context.Principal.FindFirstValue("sub")
                                 ?? context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 

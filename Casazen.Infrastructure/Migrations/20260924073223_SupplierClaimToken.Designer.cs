@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924073657_AddOnSiteRequestApproval")]
-    partial class AddOnSiteRequestApproval
+    [Migration("20260924073223_SupplierClaimToken")]
+    partial class SupplierClaimToken
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -253,13 +253,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FreeRefundDeadline")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("GuestEmailVerificationTokenHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime?>("GuestEmailVerifiedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uuid");
 
@@ -280,9 +273,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RequestExpiresAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Source")
                         .HasColumnType("integer");
@@ -2752,6 +2742,13 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTime?>("ClaimTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClaimTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ComuniJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -2804,6 +2801,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("OrgId");
+
+                    b.HasIndex("ClaimTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
                     b.HasIndex("Status");
 
