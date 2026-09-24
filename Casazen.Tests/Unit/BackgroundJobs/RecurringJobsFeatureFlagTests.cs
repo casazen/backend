@@ -53,13 +53,40 @@ public class RecurringJobsFeatureFlagTests
         RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: true));
 
         Assert.All(OtaJobIds, id => Assert.Contains(id, registered));
-        manager.Verify(m => m.RemoveIfExists(It.IsAny<string>()), Times.Never);
+        foreach (var id in OtaJobIds)
+            manager.Verify(m => m.RemoveIfExists(id), Times.Never);
     }
 
-    internal static IFeatureFlags Flags(bool otaPartnerApi)
+    [Fact]
+    public void Configure_RliProviderOff_DoesNotPollTheProviderAndRemovesTheOldSchedule()
+    {
+        // LT-01: with the provider path off every lease is registered manually; nothing to poll.
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
+
+        Assert.Equal("lease-registration-status-poll", LeaseRegistrationStatusPollingJob.RecurringJobId);
+        Assert.DoesNotContain(LeaseRegistrationStatusPollingJob.RecurringJobId, registered);
+        manager.Verify(m => m.RemoveIfExists(LeaseRegistrationStatusPollingJob.RecurringJobId), Times.Once);
+        Assert.Contains("rli-deadline-reminder", registered);
+    }
+
+    [Fact]
+    public void Configure_RliProviderOn_PollsTheProvider()
+    {
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false, rliProvider: true));
+
+        Assert.Contains(LeaseRegistrationStatusPollingJob.RecurringJobId, registered);
+        manager.Verify(m => m.RemoveIfExists(LeaseRegistrationStatusPollingJob.RecurringJobId), Times.Never);
+    }
+
+    internal static IFeatureFlags Flags(bool otaPartnerApi, bool rliProvider = false)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OtaPartnerApi)).Returns(otaPartnerApi);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(rliProvider);
         return flags.Object;
     }
 

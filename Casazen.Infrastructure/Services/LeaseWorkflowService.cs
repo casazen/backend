@@ -3,26 +3,23 @@ using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Lease drafting and signing. The RLI registration (provider or manual, LT-01) is <see cref="RliRegistrationService"/>.
+/// </summary>
 public class LeaseWorkflowService(
     ILeaseContractRepository leaseRepository,
-    ILeaseRegistrationRepository registrationRepository,
     ILeaseEventRepository eventRepository,
     ILeaseTemplateService templateService,
     ILeaseESignService eSignService,
-    ILeaseRegistrationService registrationService,
     IPropertyRepository propertyRepository,
-    ILeaseRegistrationAuthorizationRepository authorizationRepository,
     IApeComplianceService apeCompliance,
     ICanoneConcordatoEligibilityService canoneConcordatoEligibility,
-    IOptions<RliOptions> rliOptions,
     ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
 {
     private static readonly HashSet<string> EuCitizenships =
@@ -171,108 +168,6 @@ public class LeaseWorkflowService(
         }
     }
 
-    public async Task<LeaseRegistration> TriggerRegistrationAsync(
-        Guid leaseId, string ownerId, RegistrationAuthorizationRequest authorization)
-    {
-        var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
-
-        var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
-        if (existing is not null && existing.Status != RegistrationStatus.Failed)
-            throw new InvalidOperationException("Registration has already been submitted for this lease.");
-
-        if (lease.Status != LeaseStatus.Signed)
-            throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
-
-        if (string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath))
-            throw new InvalidOperationException("Signed lease PDF must be stored before registration.");
-
-        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
-
-        var expectedTos = rliOptions.Value.TosVersion;
-        if (!authorization.AttestationAccepted
-            || string.IsNullOrWhiteSpace(authorization.TosVersion)
-            || !string.Equals(authorization.TosVersion, expectedTos, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "Landlord authorization (delega) is required before RLI submission.");
-        }
-
-        if (!rliOptions.Value.FilingEnabled)
-            throw new InvalidOperationException("RLI filing is currently disabled.");
-
-        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
-
-        // Reserve the single per-lease registration row before calling the external provider so that
-        // concurrent requests cannot both submit. A row left Failed by the provider is claimed atomically
-        // (Failed -> Pending) and reused, keeping the one-registration-per-lease invariant.
-        LeaseRegistration registration;
-        if (existing is null)
-        {
-            registration = new LeaseRegistration
-            {
-                LeaseContractId = lease.Id,
-                Status = RegistrationStatus.Pending
-            };
-            if (!await registrationRepository.TryReserveSubmissionAsync(registration))
-                throw new InvalidOperationException("Registration has already been submitted for this lease.");
-        }
-        else
-        {
-            registration = existing;
-            if (!await registrationRepository.TryReserveRetryAsync(registration))
-                throw new InvalidOperationException("Registration has already been submitted for this lease.");
-        }
-
-        await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
-        {
-            OrgId = lease.OrgId,
-            LeaseContractId = lease.Id,
-            AuthorizerUserId = ownerId,
-            TosVersion = authorization.TosVersion,
-            AttestationAccepted = true,
-            Scope = "rli-filing",
-        });
-        await eventRepository.AddAsync(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.RegistrationAuthorized,
-            Payload = authorization.TosVersion,
-        });
-
-        var externalId = await registrationService.SubmitRegistrationAsync(lease);
-        var submittedAt = DateTime.UtcNow;
-
-        registration.Status = RegistrationStatus.SentToProvider;
-        registration.ExternalRegistrationId = externalId;
-        registration.RegistrationCode = null;
-        registration.ReceiptStoragePath = null;
-        registration.SubmittedAt = submittedAt;
-        registration.ConfirmedAt = null;
-        await registrationRepository.UpdateAsync(registration);
-
-        lease.Status = LeaseStatus.SentToProvider;
-        await leaseRepository.UpdateAsync(lease);
-        await eventRepository.AddAsync(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.RegistrationSubmitted
-        });
-
-        logger.LogInformation("Registration submitted. LeaseId={LeaseId} ExternalId={ExternalId}", leaseId, externalId);
-        return registration;
-    }
-
-    public async Task<Stream> GetRegistrationReceiptAsync(Guid leaseId)
-    {
-        var registration = await registrationRepository.GetByLeaseIdAsync(leaseId)
-            ?? throw new InvalidOperationException("No registration found for this lease.");
-
-        if (registration.Status != RegistrationStatus.Registered || registration.ExternalRegistrationId is null)
-            throw new InvalidOperationException("Receipt is not available yet.");
-
-        return await registrationService.DownloadReceiptAsync(registration.ExternalRegistrationId);
-    }
-
     public Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
         => leaseRepository.GetSummariesAsync(scope, propertyId);
 
@@ -323,7 +218,8 @@ public class LeaseWorkflowService(
         }
     }
 
-    private static void EnsureCanoneConcordatoMinimumTerm(
+    /// <summary>Canone concordato leases cover at least the initial 3-year term (contratto tipo 3+2).</summary>
+    internal static void EnsureCanoneConcordatoMinimumTerm(
         FiscalRegime fiscalRegime,
         DateTime startDate,
         DateTime endDate)

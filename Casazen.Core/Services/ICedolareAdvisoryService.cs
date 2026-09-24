@@ -40,14 +40,24 @@ public interface IRliChecklistService
     Task<RliChecklistResult> GetAsync(LeaseContract lease, CancellationToken cancellationToken = default);
 }
 
+/// <param name="ProviderFilingAvailable">
+/// The provider path exists (<c>Features:RliProvider</c> on and a configured provider): only then the delega item is
+/// listed and the frontend offers "submit through the provider". Otherwise the landlord registers manually (LT-01).
+/// </param>
 public record RliChecklistResult(
     DateTime RegistrationDeadline,
     int DaysRemaining,
     string TosVersion,
     string AttestationText,
+    bool ProviderFilingAvailable,
     IReadOnlyList<RliChecklistItem> Items);
 
-public record RliChecklistItem(string Key, bool Done);
+/// <summary>
+/// A checklist item. <paramref name="Done"/> is true only when the step really happened (LT-01: the registration item
+/// only with the registration recorded and its receipt); <paramref name="Failed"/> marks a step whose last attempt
+/// failed, so the UI shows the error and the way forward instead of a tick.
+/// </summary>
+public record RliChecklistItem(string Key, bool Done, bool Failed = false);
 
 /// <summary>Stable keys of the RLI checklist items (labels: <c>RliChecklist_{key}</c> in the API resources).</summary>
 public static class RliChecklistKeys
@@ -55,12 +65,11 @@ public static class RliChecklistKeys
     public const string ContractSigned = "contract_signed";
     public const string DelegaCaptured = "delega_captured";
     public const string RliExported = "rli_exported";
-    public const string RliSubmitted = "rli_submitted";
     public const string RliRegistered = "rli_registered";
     public const string QuesturaExtraEu = "questura_extra_eu";
 
     public static IReadOnlyList<string> All { get; } =
-        [ContractSigned, DelegaCaptured, RliExported, RliSubmitted, RliRegistered, QuesturaExtraEu];
+        [ContractSigned, DelegaCaptured, RliExported, RliRegistered, QuesturaExtraEu];
 }
 
 public record RegistrationAuthorizationRequest(string TosVersion, bool AttestationAccepted);

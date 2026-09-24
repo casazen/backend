@@ -48,11 +48,7 @@ public static class RecurringJobsRegistration
             "*/10 * * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        recurringJobManager.AddOrUpdate<LeaseRegistrationStatusPollingJob>(
-            "lease-registration-status-poll",
-            job => job.ExecuteAsync(),
-            "*/5 * * * *",
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));
 
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
@@ -100,6 +96,25 @@ public static class RecurringJobsRegistration
             "guest-checkin-reminder",
             job => job.ExecuteAsync(),
             "0 10 * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// RLI provider polling (LT-01): only with <see cref="FeatureFlags.RliProvider"/> on. With the flag off every lease is
+    /// registered manually and there is nothing to poll; the schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureRliProviderJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(LeaseRegistrationStatusPollingJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<LeaseRegistrationStatusPollingJob>(
+            LeaseRegistrationStatusPollingJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "*/5 * * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

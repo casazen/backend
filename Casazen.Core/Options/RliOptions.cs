@@ -1,5 +1,9 @@
 namespace Casazen.Core.Options;
 
+/// <summary>
+/// Delega shown before a provider filing (LT-01). Whether the provider path exists is not an option here: it is the
+/// feature flag <c>Features:RliProvider</c> plus a configured provider (<c>RliProviderFiling</c>).
+/// </summary>
 public class RliOptions
 {
     public const string SectionName = "Rli";
@@ -8,8 +12,6 @@ public class RliOptions
 
     public string AttestationText { get; set; } =
         "Dichiaro di essere il locatore o un intermediario da me autorizzato e che la responsabilita del deposito RLI resta a me / al mio intermediario abilitato. CasaZen agisce solo come software di supporto. Testo bozza da confermare con legale.";
-
-    public bool FilingEnabled { get; set; }
 }
 
 public class CedolareAdvisoryOptions
