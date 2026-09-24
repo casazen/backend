@@ -524,6 +524,7 @@
   </data>
   <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
     <value>I sottodomini CasaZen non sono ancora disponibili: usa il percorso CasaZen o un dominio personalizzato.</value>
+  </data>
   <data name="CheckInGuestsCount" xml:space="preserve">
     <value>Inserisci da 1 a {0} ospiti.</value>
   </data>
