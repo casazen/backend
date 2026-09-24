@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;

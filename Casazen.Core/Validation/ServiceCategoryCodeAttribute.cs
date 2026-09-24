@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Validation;
 

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Xunit;

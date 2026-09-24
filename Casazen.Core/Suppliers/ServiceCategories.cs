@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using Casazen.Core.Exceptions;
 
-namespace Casazen.Core.Services;
+namespace Casazen.Core.Suppliers;
 
 /// <summary>
 /// Single source of truth for the service categories of the supplier marketplace (SU-03, A4-05 / A6-03): what a

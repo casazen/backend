@@ -38,7 +38,7 @@ public interface ISupplierMatchService
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
-    /// <see cref="Casazen.Core.Services.ServiceCategories"/> code.
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<SupplierMatchResult> MatchAsync(
         Guid orgId,

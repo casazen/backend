@@ -25,7 +25,7 @@ public interface ISupplierService
     /// <summary>Updates mutable profile fields. Returns the updated profile or null if not found.</summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
-    /// <see cref="Casazen.Core.Services.ServiceCategories"/> code.
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<SupplierProfile?> UpdateProfileAsync(
         Guid orgId,
@@ -74,14 +74,14 @@ public interface ISupplierService
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
-    /// <see cref="Casazen.Core.Services.ServiceCategories"/> code.
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default);
 
     /// <summary>Creates an admin invite record. Returns the generated invite id.</summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
-    /// <see cref="Casazen.Core.Services.ServiceCategories"/> code.
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<SupplierInvite> CreateInviteAsync(
         string email,
@@ -128,7 +128,7 @@ public interface ISupplierService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stored category values that are not <see cref="Casazen.Core.Services.ServiceCategories"/> codes, across every
+    /// Stored category values that are not <see cref="Casazen.Core.Suppliers.ServiceCategories"/> codes, across every
     /// org (platform admin report, SU-03): values the migration <c>NormalizeServiceCategories</c> could not map are
     /// kept, never deleted, and listed here until someone fixes them.
     /// </summary>

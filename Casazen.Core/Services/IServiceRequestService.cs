@@ -18,7 +18,7 @@ public record CreateServiceRequestCommand(
 public interface IServiceRequestService
 {
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
-    /// Code <c>invalid_service_category</c>: the category is not a <see cref="Casazen.Core.Services.ServiceCategories"/> code.
+    /// Code <c>invalid_service_category</c>: the category is not a <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<ServiceRequest> CreateAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken = default);
     Task<ServiceRequest> TakeAsync(Guid id, Guid supplierOrgId, string userId, CancellationToken cancellationToken = default);
