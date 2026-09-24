@@ -88,6 +88,40 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
+    /// <summary>
+    /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the page Stripe
+    /// Checkout and the billing portal return to (PL-11, A1-31).
+    /// </summary>
+    public const string BillingPagePath = "/app/short-rent/settings/plan";
+
+    /// <summary>Default return page of a paid Stripe Checkout: the plan page with <c>?checkout=success</c>.</summary>
+    public string BillingCheckoutSuccess() => Build(BillingPagePath + "?checkout=success");
+
+    /// <summary>Default return page of an abandoned Stripe Checkout: the plan page with <c>?checkout=cancel</c>.</summary>
+    public string BillingCheckoutCancel() => Build(BillingPagePath + "?checkout=cancel");
+
+    /// <summary>Return page of the Stripe billing portal: the plan page.</summary>
+    public string BillingPortalReturn() => Build(BillingPagePath);
+
+    /// <summary>
+    /// True when <paramref name="url"/> is an absolute URL of the public web app: same scheme, host and port as
+    /// <c>App:PublicSiteBaseUrl</c>, without user info. The allow-list of the return URLs a client may send to Stripe
+    /// (PL-11, A1-31): after the payment the browser never lands on another site. False when the public URL is not
+    /// configured.
+    /// </summary>
+    public bool IsOnPublicSite(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)
+            || !PublicSiteOptions.TryGetBaseUri(options.Value.PublicSiteBaseUrl, out var baseUri)
+            || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var candidate))
+            return false;
+
+        return string.Equals(candidate.Scheme, baseUri.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(candidate.IdnHost, baseUri.IdnHost, StringComparison.OrdinalIgnoreCase)
+            && candidate.Port == baseUri.Port
+            && string.IsNullOrEmpty(candidate.UserInfo);
+    }
+
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
     private string BaseUrl()
