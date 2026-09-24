@@ -240,10 +240,15 @@ public sealed class DeferredChargeService(
         deadline <= today &&
         booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut;
 
+    /// <summary>
+    /// Confirmed, unpaid, on or after its cancellation day and still before the check-in day (a run missed on the
+    /// cancellation day never cancels a stay that may have started).
+    /// </summary>
     private bool IsCancellationDue(Booking booking, DateTime today) =>
         booking.Status == BookingStatus.Confirmed &&
         DeferredCharges.CancellationDay(booking, DeferredCharges.GetCancelAfterDays(configuration)) is { } day &&
-        RomeCalendar.DateInRome(today) >= day;
+        RomeCalendar.DateInRome(today) >= day &&
+        RomeCalendar.DateInRome(today) < RomeCalendar.DateInRome(booking.CheckInDate);
 
     /// <summary>One off-session attempt, recorded with its result in the booking's transaction.</summary>
     private async Task<(Step, DeferredChargeNotice?)> AttemptAsync(

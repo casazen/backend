@@ -269,6 +269,30 @@ public class DirectBookingChargeJobTests
         Assert.Equal(PaymentStatus.Completed, (await context.Payments.SingleAsync(p => p.BookingId == booking.Id)).Status);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_CancellationDayMissedUntilTheCheckInDay_NeverCancelsTheStay()
+    {
+        await using var context = CreateContext();
+        // Failure on 1 October, cancellation day 4 October, check-in 6 October; no run between 2 and 5 October.
+        var booking = await SeedChargeableBookingAsync(context, checkIn: new DateTime(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc));
+        SetupCharge("requires_payment_method", "pi_missed_1");
+        await RunJobAsync(context, Day0);
+        _stripe
+            .Setup(s => s.GetPaymentIntentAsync("pi_missed_1", Account, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_missed_1", Status = "requires_payment_method" });
+        _stripe
+            .Setup(s => s.ConfirmPaymentIntentOffSessionAsync("pi_missed_1", Account, "pm_123", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_missed_1", Status = "requires_payment_method" });
+
+        await RunJobAsync(context, Day0.AddDays(5));
+
+        _stripe.Verify(s => s.CancelPaymentIntentAsync(
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        var stored = await context.Bookings.Include(b => b.Payments).SingleAsync(b => b.Id == booking.Id);
+        Assert.Equal(BookingStatus.Confirmed, stored.Status);
+        Assert.Equal(PaymentStatus.Failed, Assert.Single(stored.Payments).Status);
+    }
+
     private void SetupCharge(string status, string paymentIntentId) =>
         _stripe
             .Setup(s => s.ChargePaymentMethodAsync(
@@ -331,7 +355,8 @@ public class DirectBookingChargeJobTests
         PaymentStatus paymentStatus = PaymentStatus.Pending,
         string paymentDescription = DeferredCharges.PaymentDescription,
         string transactionId = "seti_pending",
-        DateTime? deadline = null)
+        DateTime? deadline = null,
+        DateTime? checkIn = null)
     {
         var org = new OrgEntity
         {
@@ -375,8 +400,8 @@ public class DirectBookingChargeJobTests
             Property = property,
             GuestId = guest.Id,
             Guest = guest,
-            CheckInDate = new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc),
-            CheckOutDate = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc),
+            CheckInDate = checkIn ?? new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc),
+            CheckOutDate = (checkIn ?? new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)).AddDays(3),
             NumberOfGuests = 2,
             Status = bookingStatus,
             Source = BookingSource.Direct,
