@@ -61,14 +61,7 @@ public class SuppliersController(
         string? accountEmail = null;
         if (userId is not null)
         {
-            // Access token claim first; without it (Auth0 Action not deployed yet) ask Auth0 itself, never trust a
-            // stored copy for a check that binds the invite to the account.
-            accountEmail = GetAccountEmail(User);
-            if (accountEmail is null)
-            {
-                var profile = await auth0Management.GetUserProfileAsync(userId);
-                accountEmail = string.IsNullOrWhiteSpace(profile?.Email) ? null : profile.Email.Trim();
-            }
+            (accountEmail, _) = await ResolveAccountEmailAsync(userId, needVerified: false);
 
             // The registration page is outside the app shell, so /api/users/me may not have run yet: create the
             // caller's User row now, otherwise the new org could not be linked to it.
@@ -76,7 +69,7 @@ public class SuppliersController(
                 await userService.GetCurrentUserAsync(userId, accountEmail, string.Empty, string.Empty);
         }
 
-        var (org, _) = await supplierService.RegisterAsync(
+        var registration = await supplierService.RegisterAsync(
             new SupplierRegistration(
                 request.Email,
                 request.LegalName,
@@ -86,6 +79,7 @@ public class SuppliersController(
                 userId,
                 accountEmail),
             cancellationToken);
+        var org = registration.Org;
 
         logger.LogInformation(
             "Supplier registered: {OrgId} for {MaskedEmail}", org.Id, LogRedaction.MaskEmail(request.Email));
@@ -106,8 +100,68 @@ public class SuppliersController(
             AuthRedirectUrl = "/supplier/activation",
             RolesSynced = roleSync?.Succeeded == true,
             RolesSyncError = roleSync is { Succeeded: false } ? roleSync.ErrorCode : null,
+            // Anonymous self-serve: the web app keeps it through the Auth0 signup and claims the profile (SU-02).
+            ClaimToken = registration.Claim?.Token,
+            ClaimExpiresAt = registration.Claim?.ExpiresAt,
         });
     }
+
+    /// <summary>
+    /// Links the signed-in account to a supplier profile registered anonymously (SU-02, A4-02), then assigns the Auth0
+    /// <c>Supplier</c> role (additive, FD-14). With <c>claimToken</c> (from the anonymous registration) the account email
+    /// must be the registered one; without it the account email must be verified by Auth0 and match exactly one
+    /// unclaimed profile. Never a link by an unverified email (A4-23, A1-13). Idempotent: a caller already linked gets
+    /// the same org and a new role-sync attempt. Errors: 422 and 409 with the codes of
+    /// <see cref="ISupplierService.ClaimAsync"/>.
+    /// </summary>
+    [HttpPost("claim")]
+    [Authorize(Policy = CasazenPolicies.Authenticated)]
+    [ProducesResponseType(typeof(SupplierClaimResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SupplierClaimResponse>> Claim(
+        [FromBody] SupplierClaimRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (userId is null)
+            return Unauthorized();
+
+        // The verified flag is needed only without a token: it may cost a Management API call.
+        var hasToken = !string.IsNullOrWhiteSpace(request.ClaimToken);
+        var (accountEmail, emailVerified) = await ResolveAccountEmailAsync(userId, needVerified: !hasToken);
+
+        // The claim page is outside the app shell: /api/users/me may not have run yet.
+        if (accountEmail is not null)
+            await userService.GetCurrentUserAsync(userId, accountEmail, string.Empty, string.Empty);
+
+        var result = await supplierService.ClaimAsync(
+            new SupplierClaim(userId, accountEmail, emailVerified, request.ClaimToken),
+            cancellationToken);
+
+        // Every call retries the role (additive, FD-14): the client repeats the claim when the sync failed.
+        authorizationCache.Invalidate(userId);
+        var roleSync = await auth0Management.AssignRoleAsync(userId, UserRole.Supplier, cancellationToken);
+        if (!roleSync.Succeeded)
+        {
+            logger.LogWarning(
+                "Supplier org {OrgId} claimed by {UserId} but the Auth0 Supplier role was not assigned ({ErrorCode})",
+                result.OrgId, userId, roleSync.ErrorCode);
+        }
+
+        return Ok(new SupplierClaimResponse
+        {
+            OrgId = result.OrgId,
+            RedirectUrl = SupplierActivationPath,
+            RolesSynced = roleSync.Succeeded,
+            RolesSyncError = roleSync.Succeeded ? null : roleSync.ErrorCode,
+        });
+    }
+
+    /// <summary>Activation wizard of the web supplier console, where a newly linked supplier continues.</summary>
+    private const string SupplierActivationPath = "/app/supplier/activation";
 
     /// <summary>
     /// The invite of a link token (email, comune, categories, expiry), to pre-fill and lock the registration page.
@@ -158,6 +212,29 @@ public class SuppliersController(
     }
 
     /// <summary>
+    /// Email of the signed-in account and whether Auth0 verified it. Access token claims first (Auth0 Action, runbook
+    /// auth0.md §6); what they lack (Action not deployed yet) comes from Auth0 itself through the Management API, never
+    /// from a stored copy, because these values bind invites and claims to the account. A verified flag read from Auth0
+    /// counts only when Auth0 reports the same email as the token.
+    /// </summary>
+    private async Task<(string? Email, bool EmailVerified)> ResolveAccountEmailAsync(string userId, bool needVerified)
+    {
+        var email = GetAccountEmail(User);
+        var verified = needVerified ? GetAccountEmailVerified(User) : null;
+        if (email is not null && (!needVerified || verified is not null))
+            return (email, verified == true);
+
+        var profile = await auth0Management.GetUserProfileAsync(userId);
+        var auth0Email = string.IsNullOrWhiteSpace(profile?.Email) ? null : profile.Email.Trim();
+        if (email is null)
+            email = auth0Email;
+        if (verified is null && auth0Email is not null && string.Equals(auth0Email, email, StringComparison.OrdinalIgnoreCase))
+            verified = profile!.EmailVerified;
+
+        return (email, verified == true);
+    }
+
+    /// <summary>
     /// Email of the signed-in account: the Auth0 Action claim (<c>https://casazen.app/email</c>, runbook auth0.md §6),
     /// else the standard claims.
     /// </summary>
@@ -167,7 +244,20 @@ public class SuppliersController(
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
             ?.Trim();
 
+    /// <summary>
+    /// Auth0 <c>email_verified</c> of the access token: the Action claim (<c>https://casazen.app/email_verified</c>), else
+    /// the standard one; null when the token carries neither (or an unreadable value).
+    /// </summary>
+    private static bool? GetAccountEmailVerified(ClaimsPrincipal user)
+    {
+        var value = new[] { AccountEmailVerifiedClaim, "email_verified" }
+            .Select(user.FindFirstValue)
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        return bool.TryParse(value?.Trim(), out var verified) ? verified : null;
+    }
+
     private const string AccountEmailClaim = "https://casazen.app/email";
+    private const string AccountEmailVerifiedClaim = "https://casazen.app/email_verified";
 
     /// <summary>
     /// Returns <c>Active</c> suppliers for a comune or property. Hosts only (<c>property.read</c>, TN-3); with

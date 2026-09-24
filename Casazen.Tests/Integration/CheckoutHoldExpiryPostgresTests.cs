@@ -125,9 +125,15 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         });
         var confirmed = await SeedHoldAsync(property, NextYear(10, 10), NextYear(10, 12), minutesAgo: 600, confirmedIntent,
             b => b.Status = BookingStatus.Confirmed);
-        // D5: a "pay at the property" request waits for the host's approval, never the checkout TTL (BK-06).
+        // D5: a "pay at the property" request waits for the host's approval until its own deadline, never the checkout
+        // TTL (BK-06).
         var onSite = await SeedHoldAsync(property, NextYear(10, 20), NextYear(10, 22), minutesAgo: 600, paymentIntentId: null,
-            b => b.PaymentOption = PaymentOption.OnSite);
+            b =>
+            {
+                b.PaymentOption = PaymentOption.OnSite;
+                b.GuestEmailVerifiedAt = DateTime.UtcNow.AddMinutes(-590);
+                b.RequestExpiresAt = DateTime.UtcNow.AddHours(1);
+            });
 
         await RunJobAsync();
 
@@ -240,6 +246,7 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         var expiry = new CheckoutHoldExpiryService(
             services.GetRequiredService<AppDbContext>(),
             _stripe.Object,
+            services.GetRequiredService<OnSiteRequestNotifier>(),
             services.GetRequiredService<IConfiguration>(),
             NullLogger<CheckoutHoldExpiryService>.Instance);
         await new CheckoutHoldExpiryJob(expiry, NullLogger<CheckoutHoldExpiryJob>.Instance)

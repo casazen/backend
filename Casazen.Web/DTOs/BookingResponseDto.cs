@@ -15,6 +15,19 @@ public class BookingResponseDto
     public string Status { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
     public string SpecialRequests { get; set; } = string.Empty;
+
+    /// <summary>Immediate, OnCancellationDeadline or OnSite.</summary>
+    public string PaymentOption { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Open "pay at the property" request (BK-06, D5): <c>AwaitingGuestEmail</c> or <c>AwaitingHostApproval</c>;
+    /// <c>null</c> for every other booking.
+    /// </summary>
+    public string? OnSiteRequestState { get; set; }
+
+    /// <summary>Deadline of an open "pay at the property" request (the host's answer once the email is confirmed).</summary>
+    public DateTime? RequestExpiresAt { get; set; }
+
     public BookingGuestDto Guest { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

@@ -31,6 +31,16 @@ public class SupplierInviteLookupRequest
     public string Token { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Body of <c>POST /api/suppliers/claim</c> (SU-02). <see cref="ClaimToken"/> is the token of an anonymous
+/// self-serve registration; without it the claim relies on the verified account email.
+/// </summary>
+public class SupplierClaimRequest
+{
+    [MaxLength(256)]
+    public string? ClaimToken { get; set; }
+}
+
 public class UpdateSupplierProfileRequest
 {
     [MaxLength(300)]
@@ -101,6 +111,33 @@ public class SupplierRegisterResponse
     public bool RolesSynced { get; set; }
 
     /// <summary>Stable error code of the failed Auth0 sync, null when synced or not attempted.</summary>
+    public string? RolesSyncError { get; set; }
+
+    /// <summary>
+    /// Anonymous self-serve registration only (SU-02): the secret that links the Auth0 account created afterwards to
+    /// this profile (<c>POST /api/suppliers/claim</c>). Returned once, never stored in clear; null otherwise.
+    /// </summary>
+    public string? ClaimToken { get; set; }
+
+    /// <summary>UTC expiry of <see cref="ClaimToken"/>.</summary>
+    public DateTime? ClaimExpiresAt { get; set; }
+}
+
+/// <summary>Outcome of <c>POST /api/suppliers/claim</c>: the caller is linked to <see cref="OrgId"/>.</summary>
+public class SupplierClaimResponse
+{
+    public Guid OrgId { get; set; }
+
+    /// <summary>Where the web app continues: the activation wizard of the supplier console.</summary>
+    public string RedirectUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when the Auth0 <c>Supplier</c> role was assigned (additive, FD-14). Supplier access already works through the
+    /// DB link; when false the role reaches the token only after a successful retry (the claim is idempotent).
+    /// </summary>
+    public bool RolesSynced { get; set; }
+
+    /// <summary>Stable error code of the failed Auth0 sync, null when synced.</summary>
     public string? RolesSyncError { get; set; }
 }
 

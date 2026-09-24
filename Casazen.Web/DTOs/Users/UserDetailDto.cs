@@ -12,6 +12,13 @@ public class UserDetailDto : UserSummaryDto
     public OrgSummaryDto? Org { get; set; }
 
     /// <summary>
+    /// The supplier org the user is linked to (invite, registration or claim), or <c>null</c>. For a supplier-only user
+    /// it is also <see cref="UserSummaryDto.OrgId"/>. The web app sends a linked supplier to the supplier console, never
+    /// to the host onboarding, even before the Auth0 <c>Supplier</c> role reaches the token (SU-02, A4-02).
+    /// </summary>
+    public Guid? SupplierOrgId { get; set; }
+
+    /// <summary>
     /// Own profile only (<c>GET/PUT /api/users/me</c>), <c>null</c> elsewhere: true while the host features are withheld
     /// (PL-02), i.e. the onboarding is not completed or the current Terms, Privacy notice and DPA are not accepted. The
     /// host endpoints then answer 403 <c>onboarding_required</c>. Platform admins and suppliers use their own areas

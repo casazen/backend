@@ -8,7 +8,8 @@ namespace Casazen.Web.Infrastructure;
 
 /// <summary>
 /// Resolves the supplier org for <c>/api/supplier/*</c> routes.
-/// Unlike <see cref="IOrgContextResolver"/>, never provisions a host org.
+/// Unlike <see cref="IOrgContextResolver"/>, never provisions a host org. The org comes only from the caller's own
+/// supplier link, never from its email (A4-23, A1-13): an existing profile is joined by invite or claim (SU-02).
 /// </summary>
 public interface ISupplierOrgContextResolver
 {
@@ -39,7 +40,8 @@ public sealed class SupplierOrgContextResolver(
         var (jwtEmail, firstName, lastName) = ResolveProfileClaims();
         var user = await userService.GetCurrentUserAsync(sub, jwtEmail, firstName, lastName);
 
-        // Resolve email: JWT claim → DB record → Auth0 Management API
+        // Resolve email: JWT claim → DB record → Auth0 Management API. It only fills the contact of a profile
+        // provisioned for a Supplier role without any link; it never selects an existing profile (A4-23).
         var email = ResolveEmail(jwtEmail, user);
         if (string.IsNullOrWhiteSpace(email) && user is not null)
         {
@@ -61,7 +63,7 @@ public sealed class SupplierOrgContextResolver(
             sub, email, firstName, lastName, cancellationToken);
 
         // No Auth0 call here: this runs on every /api/supplier/* request. The Supplier role is
-        // assigned once, when the supplier registers (SuppliersController.Register); callers that
+        // assigned when the account is linked (SuppliersController.Register / Claim); callers that
         // reach this resolver already hold it (RequireSupplier) or get it from the DB link.
         if (orgId is Guid linkedOrgId && previousSupplierOrgId != linkedOrgId)
         {

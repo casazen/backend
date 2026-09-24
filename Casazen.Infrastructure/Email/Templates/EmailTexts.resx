@@ -216,4 +216,73 @@
   <data name="ServiceCategory_excursions" xml:space="preserve">
     <value>Escursioni</value>
   </data>
+  <data name="OnSiteRequest_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="OnSiteRequest_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="OnSiteRequest_NoCharge" xml:space="preserve">
+    <value>Non ti è stato addebitato nulla. Se vuoi, puoi inviare una nuova richiesta dal sito della struttura.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Subject" xml:space="preserve">
+    <value>Conferma la tua richiesta di prenotazione - {0}</value>
+  </data>
+  <data name="OnSiteRequestReceived_Body" xml:space="preserve">
+    <value>abbiamo ricevuto la tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, con pagamento di &lt;strong&gt;{3} €&lt;/strong&gt; in struttura.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Action" xml:space="preserve">
+    <value>Conferma il tuo indirizzo email per inviare la richiesta all'host. Senza conferma entro il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana) la richiesta viene annullata e le date tornano disponibili.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Cta" xml:space="preserve">
+    <value>Conferma e invia la richiesta</value>
+  </data>
+  <data name="OnSiteRequestReceived_NotConfirmedYet" xml:space="preserve">
+    <value>La prenotazione non è ancora confermata: lo sarà solo quando l'host accetterà la richiesta. Riceverai un'email con la sua risposta.</value>
+  </data>
+  <data name="OnSiteRequestReceived_NotYou" xml:space="preserve">
+    <value>Se non hai inviato tu questa richiesta, ignora questa email: senza conferma verrà annullata.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Subject" xml:space="preserve">
+    <value>Nuova richiesta di prenotazione da approvare - {0}</value>
+  </data>
+  <data name="OnSiteRequestToHost_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; chiede di prenotare &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt; per {4} ospiti, con pagamento di &lt;strong&gt;{5} €&lt;/strong&gt; in struttura. L'ospite ha confermato il suo indirizzo email.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Action" xml:space="preserve">
+    <value>Accetta o rifiuta la richiesta entro il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana): dopo quella data la richiesta scade e le date tornano disponibili.</value>
+  </data>
+  <data name="OnSiteRequestToHost_NotConfirmedYet" xml:space="preserve">
+    <value>Finché non la accetti non è una prenotazione confermata e non viene inviata ai portali (Airbnb, Booking.com) tramite il calendario iCal.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Cta" xml:space="preserve">
+    <value>Apri le richieste</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Subject" xml:space="preserve">
+    <value>Prenotazione confermata - {0}</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Body" xml:space="preserve">
+    <value>l'host ha accettato la tua richiesta: la prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è confermata.</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Payment" xml:space="preserve">
+    <value>Pagherai &lt;strong&gt;{0} €&lt;/strong&gt; direttamente in struttura.</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Reference" xml:space="preserve">
+    <value>Codice prenotazione: {0}</value>
+  </data>
+  <data name="OnSiteRequestDeclined_Subject" xml:space="preserve">
+    <value>Richiesta di prenotazione non accettata - {0}</value>
+  </data>
+  <data name="OnSiteRequestDeclined_Body" xml:space="preserve">
+    <value>l'host non ha accettato la tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OnSiteRequestDeclined_MessageLabel" xml:space="preserve">
+    <value>Messaggio dell'host:</value>
+  </data>
+  <data name="OnSiteRequestExpired_Subject" xml:space="preserve">
+    <value>Richiesta di prenotazione scaduta - {0}</value>
+  </data>
+  <data name="OnSiteRequestExpired_Body" xml:space="preserve">
+    <value>l'host non ha risposto in tempo alla tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;: la richiesta è scaduta e le date sono tornate disponibili.</value>
+  </data>
 </root>

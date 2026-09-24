@@ -37,7 +37,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
-    public async Task AC1_InvalidDates_Returns400()
+    public async Task AC1_InvalidDates_Returns422WithStableCode()
     {
         var property = await SeedConnectReadyPropertyAsync();
         var client = _factory.CreateClient();
@@ -48,7 +48,10 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             checkOut: DateTime.UtcNow.Date.AddDays(5));
         var response = await PostDirectBookingAsync(client, payload);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // BK-06: a business rule of the checkout is a 422 ProblemDetails with a code the frontend translates.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("direct_booking_invalid_stay", problem.RootElement.GetProperty("code").GetString());
     }
 
     [Fact]
@@ -59,9 +62,11 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         var response = await PostDirectBookingAsync(client, BuildPayload(property.Id));
 
+        // R-11: stable code and localized message instead of an English text the frontend did not show.
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Complete Stripe onboarding", json, StringComparison.OrdinalIgnoreCase);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("direct_booking_payments_not_ready", problem.RootElement.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("detail").GetString()));
     }
 
     [Fact]

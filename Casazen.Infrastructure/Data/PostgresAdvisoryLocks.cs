@@ -43,6 +43,9 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Acceptance of one supplier invite (key: token hash): an invite is used at most once (SU-01).</summary>
         SupplierInvite = 1_007,
+
+        /// <summary>Claim of one supplier profile (key: supplier org id): at most one account is linked (SU-02).</summary>
+        SupplierClaim = 1_008,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

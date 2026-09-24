@@ -239,6 +239,7 @@ public class BookingRepositoryTests
         {
             b.PaymentOption = PaymentOption.OnSite;
             b.StripeSetupIntentId = "seti_onsite_guarantee";
+            b.RequestExpiresAt = DateTime.UtcNow.AddHours(1);
         });
         var manual = await AddBookingAsync(new DateTime(2026, 4, 13), new DateTime(2026, 4, 15), minutesAgo: 20, b =>
         {
@@ -262,6 +263,32 @@ public class BookingRepositoryTests
         Assert.Contains(onSiteRequest.Id, withTtl);
         Assert.Contains(manual.Id, withTtl);
         Assert.Equal(7, strict.Count);
+    }
+
+    [Fact]
+    public async Task IsAvailableAsync_OnSiteRequest_BlocksUntilItsOwnDeadlineWhateverTheCheckoutTtl()
+    {
+        // BK-06: a "pay at the property" request holds its dates until RequestExpiresAt (email confirmation, then the
+        // host's answer), not for the checkout TTL; past it the dates are free before the job cancels it.
+        await AddBookingAsync(new DateTime(2026, 6, 1), new DateTime(2026, 6, 5), minutesAgo: 600, b =>
+        {
+            b.PaymentOption = PaymentOption.OnSite;
+            b.GuestEmailVerifiedAt = DateTime.UtcNow.AddMinutes(-590);
+            b.RequestExpiresAt = DateTime.UtcNow.AddHours(2);
+        });
+        await AddBookingAsync(new DateTime(2026, 6, 10), new DateTime(2026, 6, 12), minutesAgo: 5, b =>
+        {
+            b.PaymentOption = PaymentOption.OnSite;
+            b.RequestExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+        });
+
+        Assert.False(await _repository.IsAvailableAsync(
+            _propertyId, new DateTime(2026, 6, 2), new DateTime(2026, 6, 4), directPendingTtlMinutes: 15));
+        Assert.True(await _repository.IsAvailableAsync(
+            _propertyId, new DateTime(2026, 6, 10), new DateTime(2026, 6, 12), directPendingTtlMinutes: 15));
+        // The final check before an insert stays strict until the job has cancelled it.
+        Assert.False(await _repository.IsAvailableAsync(
+            _propertyId, new DateTime(2026, 6, 10), new DateTime(2026, 6, 12)));
     }
 
     [Fact]
