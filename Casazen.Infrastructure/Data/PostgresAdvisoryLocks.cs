@@ -51,8 +51,9 @@ internal static class PostgresAdvisoryLocks
         UserDeactivation = 1_009,
 
         /// <summary>
-        /// Import of the iCal feed of one property (key: property id): two sync runs (the 15-minute job and the first
-        /// sync of a new URL) never write the same blocks at once (PC-10, A2-12).
+        /// iCal import feeds of one property (key: property id): two sync runs of a feed (the 15-minute job and a first
+        /// sync or "sync now") never write the same blocks at once (PC-10, A2-12); adding a feed (count and duplicate
+        /// check) and removing one never interleave with them (PC-11). Also taken to create the export link.
         /// </summary>
         PropertyICalSync = 1_010,
     }

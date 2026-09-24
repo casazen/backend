@@ -127,6 +127,7 @@ public class TenantQueryFilterArchitectureTests
     [InlineData(typeof(LeaseRegistrationAuthorization))]
     [InlineData(typeof(CalendarBlock))]
     [InlineData(typeof(PropertyICalFeed))]
+    [InlineData(typeof(PropertyICalExport))]
     [InlineData(typeof(PropertyDocument))]
     [InlineData(typeof(OtaIntegration))]
     [InlineData(typeof(PricingAdapterConfig))]

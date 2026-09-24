@@ -787,52 +787,40 @@ public class PropertiesController(
         await adminAccessAuditService.LogPrivilegedPropertyAccessAsync(userId, propertyId, ownerId, action);
     }
 
-    /// <summary>
-    /// Saves the iCal import URL and queues its first sync (FD-16, A2-21): the feed is downloaded by a Hangfire
-    /// job, never inside this request. Answers 202 with status <c>Syncing</c>; 400 <c>ical_invalid_url</c> when the
-    /// URL is not an external https URL.
-    /// </summary>
-    [HttpPost("{id:guid}/ical/import-url")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
-    [ProducesResponseType(typeof(PropertyIcalStatusDto), StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<PropertyIcalStatusDto>> SetIcalImportUrl(
+    // ─── iCal calendars (PC-11: many import feeds per property, URL encrypted) ─────
+    // TN-3 on every action: PropertyRead / PropertyWrite policies plus the resource check of the property (404 when
+    // it is not visible, e.g. another org; 403 when visible but the operation is not allowed).
+
+    /// <summary>Export link, block count and import feeds of the property.</summary>
+    [HttpGet("{id:guid}/ical/status")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyIcalStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(
         Guid id,
-        [FromBody] PropertyIcalImportUrlRequest request,
         [FromServices] IAuthorizationService hostAuthorization,
-        [FromServices] IBackgroundJobClient backgroundJobClient,
         [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
-        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Read, hostAuthorization);
         if (denied is not null)
             return denied;
 
-        try
+        var export = await propertyICalSyncService.GetOrCreateExportAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalStatusDto
         {
-            await propertyICalSyncService.SetImportUrlAsync(id, property.OrgId, request.ImportUrl, cancellationToken);
-        }
-        catch (DomainRuleException ex) when (ex.Code == ICalErrorCodes.InvalidUrl)
-        {
-            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey);
-        }
-
-        try
-        {
-            backgroundJobClient.Enqueue<PropertyICalSyncJob>(job => job.SyncFeedAsync(id, CancellationToken.None));
-        }
-        catch (Exception ex)
-        {
-            // The URL is saved: the recurring property-ical-sync job (every 15 minutes) syncs it anyway.
-            logger.LogError(ex, "Could not queue the first iCal sync of property {PropertyId}", id);
-        }
-
-        return Accepted(await BuildIcalStatusAsync(id, localizer, cancellationToken));
+            ExportUrl = propertyICalSyncService.BuildExportUrl(export.ExportToken),
+            BlockCount = await propertyICalSyncService.GetBlockCountAsync(id, cancellationToken),
+            Feeds = await BuildIcalFeedDtosAsync(id, localizer, cancellationToken),
+        });
     }
 
-    [HttpGet("{id:guid}/ical/status")]
+    /// <summary>Import feeds of the property, oldest first; each with its own sync state and a masked URL.</summary>
+    [HttpGet("{id:guid}/ical/feeds")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
-    public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(
+    [ProducesResponseType(typeof(IReadOnlyList<PropertyIcalFeedDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<PropertyIcalFeedDto>>> GetIcalFeeds(
         Guid id,
         [FromServices] IAuthorizationService hostAuthorization,
         [FromServices] IStringLocalizer<SharedResources> localizer,
@@ -842,11 +830,119 @@ public class PropertiesController(
         if (denied is not null)
             return denied;
 
-        return Ok(await BuildIcalStatusAsync(id, localizer, cancellationToken));
+        return Ok(await BuildIcalFeedDtosAsync(id, localizer, cancellationToken));
     }
 
-    // TN-3 resource-based check of the property for the iCal actions touched by FD-16: 404 when the property is not
-    // visible (other org), 403 when visible but the operation is not allowed.
+    /// <summary>
+    /// Adds an import feed (Airbnb, Booking.com, other) and queues its first sync (FD-16, A2-21): the download runs in
+    /// a Hangfire job, never in this request. 202 with status <c>Syncing</c>. 400 <c>ical_invalid_url</c> (not an
+    /// external https URL) or <c>ical_feed_invalid_label</c>; 409 <c>ical_feed_duplicate</c>; 422
+    /// <c>ical_feed_limit_reached</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/ical/feeds")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyIcalFeedDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<PropertyIcalFeedDto>> AddIcalFeed(
+        Guid id,
+        [FromBody] PropertyIcalFeedCreateRequest request,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        PropertyICalFeed feed;
+        try
+        {
+            feed = await propertyICalSyncService.AddFeedAsync(
+                id, property.OrgId, request.Channel, request.Label, request.ImportUrl, cancellationToken);
+        }
+        catch (DomainRuleException ex) when (ex.Code is ICalErrorCodes.InvalidUrl or ICalFeedErrorCodes.InvalidLabel)
+        {
+            // Malformed input, not a business rule: 400 like the other validation errors.
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
+        }
+
+        QueueIcalFeedSync(feed.Id, backgroundJobClient);
+        return Accepted(BuildIcalFeedDto(feed, blockCount: 0, localizer));
+    }
+
+    /// <summary>Removes an import feed and the blocks it imported (only those): 204; 404 <c>ical_feed_not_found</c>.</summary>
+    [HttpDelete("{id:guid}/ical/feeds/{feedId:guid}")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveIcalFeed(
+        Guid id,
+        Guid feedId,
+        [FromServices] IAuthorizationService hostAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        await propertyICalSyncService.RemoveFeedAsync(id, feedId, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// "Sync now" of one import feed: 202 with status <c>Syncing</c> and a queued job, or the current state when a sync
+    /// is already queued; 404 <c>ical_feed_not_found</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/ical/feeds/{feedId:guid}/sync")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyIcalFeedDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalFeedDto>> SyncIcalFeed(
+        Guid id,
+        Guid feedId,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        var (feed, queue) = await propertyICalSyncService.RequestSyncAsync(id, feedId, cancellationToken);
+        if (queue)
+            QueueIcalFeedSync(feed.Id, backgroundJobClient);
+
+        var counts = await propertyICalSyncService.GetBlockCountsByFeedAsync(id, cancellationToken);
+        return Accepted(BuildIcalFeedDto(feed, counts.GetValueOrDefault(feed.Id), localizer));
+    }
+
+    [HttpGet("{id:guid}/ical/export-url")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyIcalExportUrlDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalExportUrlDto>> GetIcalExportUrl(
+        Guid id,
+        [FromServices] IAuthorizationService hostAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Read, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        var export = await propertyICalSyncService.GetOrCreateExportAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalExportUrlDto
+        {
+            ExportUrl = propertyICalSyncService.BuildExportUrl(export.ExportToken),
+        });
+    }
+
+    // TN-3 resource-based check of the property for the iCal actions: 404 when the property is not visible (other
+    // org), 403 when visible but the operation is not allowed.
     private async Task<(Property Property, ActionResult? Denied)> AuthorizeIcalAsync(
         Guid propertyId,
         HostOperationRequirement operation,
@@ -867,50 +963,44 @@ public class PropertiesController(
         return (property, null);
     }
 
-    [HttpGet("{id:guid}/ical/export-url")]
-    [Authorize(Policy = CasazenPolicies.PropertyRead)]
-    public async Task<ActionResult<PropertyIcalExportUrlDto>> GetIcalExportUrl(Guid id, CancellationToken cancellationToken)
+    private void QueueIcalFeedSync(Guid feedId, IBackgroundJobClient backgroundJobClient)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
-            return Forbid();
-
-        var feed = await propertyICalSyncService.GetOrCreateFeedAsync(id, property.OrgId, cancellationToken);
-        return Ok(new PropertyIcalExportUrlDto
+        try
         {
-            ExportUrl = propertyICalSyncService.BuildExportUrl(feed.ExportToken),
-        });
+            backgroundJobClient.Enqueue<PropertyICalSyncJob>(job => job.SyncFeedAsync(feedId, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            // The feed is saved: the recurring property-ical-sync job (every 15 minutes) syncs it anyway.
+            logger.LogError(ex, "Could not queue the sync of iCal feed {FeedId}", feedId);
+        }
     }
 
-    private async Task<PropertyIcalStatusDto> BuildIcalStatusAsync(
+    private async Task<IReadOnlyList<PropertyIcalFeedDto>> BuildIcalFeedDtosAsync(
         Guid propertyId,
         IStringLocalizer localizer,
         CancellationToken cancellationToken)
     {
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        var feed = property is null
-            ? null
-            : await propertyICalSyncService.GetFeedAsync(propertyId, cancellationToken)
-              ?? await propertyICalSyncService.GetOrCreateFeedAsync(propertyId, property.OrgId, cancellationToken);
-        var (lastErrorCode, lastErrorMessage) = ICalErrorMessages.Describe(feed?.LastError, localizer);
+        var feeds = await propertyICalSyncService.ListFeedsAsync(propertyId, cancellationToken);
+        var counts = await propertyICalSyncService.GetBlockCountsByFeedAsync(propertyId, cancellationToken);
+        return feeds.Select(f => BuildIcalFeedDto(f, counts.GetValueOrDefault(f.Id), localizer)).ToList();
+    }
 
-        return new PropertyIcalStatusDto
+    private static PropertyIcalFeedDto BuildIcalFeedDto(PropertyICalFeed feed, int blockCount, IStringLocalizer localizer)
+    {
+        var (lastErrorCode, lastErrorMessage) = ICalErrorMessages.Describe(feed.LastError, localizer);
+        return new PropertyIcalFeedDto
         {
-            ImportUrl = feed?.ImportUrl,
-            ExportUrl = feed is null ? string.Empty : propertyICalSyncService.BuildExportUrl(feed.ExportToken),
-            LastImportAt = feed?.LastImportAt,
-            LastImportStatus = feed?.LastImportStatus?.ToString(),
+            Id = feed.Id,
+            Channel = feed.Channel.ToString(),
+            Label = feed.Label,
+            MaskedImportUrl = ICalFeedUrlMask.Mask(feed.ImportUrl),
+            CreatedAt = feed.CreatedAt,
+            LastImportAt = feed.LastImportAt,
+            LastImportStatus = feed.LastImportStatus?.ToString(),
             LastErrorCode = lastErrorCode,
             LastError = lastErrorMessage,
-            BlockCount = await propertyICalSyncService.GetBlockCountAsync(propertyId, cancellationToken),
+            BlockCount = blockCount,
         };
     }
 

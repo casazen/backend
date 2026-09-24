@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
 
@@ -65,6 +66,7 @@ public class AppDbContext(
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
+    public DbSet<PropertyICalExport> PropertyICalExports { get; set; } = null!;
 
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
@@ -245,6 +247,16 @@ public class AppDbContext(
             modelBuilder.Entity<OtaIntegration>()
                 .Property(o => o.ApiSecret)
                 .HasConversion(encryptedConverter);
+
+            // iCal import URLs carry the OTA's secret token (A2-20, PC-11). URLs saved in clear before PC-11 are read
+            // as they are until PropertyICalFeedUrlEncryption rewrites them at startup (a protected payload never
+            // starts with a URL scheme).
+            modelBuilder.Entity<PropertyICalFeed>()
+                .Property(f => f.ImportUrl)
+                .HasConversion((ValueConverter)new EncryptedStringConverter(
+                    dataProtectionProvider,
+                    PropertyICalFeedUrlEncryption.Purpose,
+                    PropertyICalFeedUrlEncryption.IsLegacyPlaintext));
         }
 
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
@@ -717,8 +729,16 @@ public class AppDbContext(
             .HasForeignKey(b => b.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Blocks belong to their import feed (PC-11, A2-11): a UID is unique within its feed, and removing the feed
+        // removes its blocks. Airbnb and Booking.com feeds of the same property never touch each other's blocks.
         modelBuilder.Entity<CalendarBlock>()
-            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
+            .HasOne(b => b.Feed)
+            .WithMany()
+            .HasForeignKey(b => b.FeedId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
 
         modelBuilder.Entity<PropertyICalFeed>()
@@ -734,11 +754,26 @@ public class AppDbContext(
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PropertyICalFeed>()
-            .HasIndex(f => f.PropertyId)
+            .HasIndex(f => f.PropertyId);
+
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasOne(e => e.Property)
+            .WithMany()
+            .HasForeignKey(e => e.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasOne(e => e.Org)
+            .WithMany()
+            .HasForeignKey(e => e.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasIndex(e => e.PropertyId)
             .IsUnique();
 
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasIndex(f => f.ExportToken)
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasIndex(e => e.ExportToken)
             .IsUnique();
 
         modelBuilder.Entity<AppContextEntity>().HasData(

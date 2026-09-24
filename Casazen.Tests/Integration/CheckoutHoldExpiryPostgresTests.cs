@@ -365,15 +365,15 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var feed = new PropertyICalFeed
+        var export = new PropertyICalExport
         {
             PropertyId = property.Id,
             OrgId = property.OrgId,
             ExportToken = Guid.NewGuid(),
         };
-        db.PropertyICalFeeds.Add(feed);
+        db.PropertyICalExports.Add(export);
         await db.SaveChangesAsync();
-        return feed.ExportToken;
+        return export.ExportToken;
     }
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId)

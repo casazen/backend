@@ -366,6 +366,18 @@
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>The calendar sync failed: it will be retried automatically.</value>
   </data>
+  <data name="ICalFeedNotFound" xml:space="preserve">
+    <value>Calendar not found: it may have been disconnected already.</value>
+  </data>
+  <data name="ICalFeedLimitReached" xml:space="preserve">
+    <value>This property already has the maximum number of linked calendars ({0}): disconnect one before adding another.</value>
+  </data>
+  <data name="ICalFeedDuplicate" xml:space="preserve">
+    <value>This calendar is already linked to the property.</value>
+  </data>
+  <data name="ICalFeedInvalidLabel" xml:space="preserve">
+    <value>The calendar label can have at most 60 characters, without line breaks.</value>
+  </data>
   <data name="CheckInLinkEmailQueued" xml:space="preserve">
     <value>Check-in link regenerated: the email to the guest is queued for delivery.</value>
   </data>

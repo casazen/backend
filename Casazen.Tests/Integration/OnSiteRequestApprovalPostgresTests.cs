@@ -442,10 +442,10 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var feed = new PropertyICalFeed { PropertyId = property.Id, OrgId = property.OrgId, ExportToken = Guid.NewGuid() };
-        db.PropertyICalFeeds.Add(feed);
+        var export = new PropertyICalExport { PropertyId = property.Id, OrgId = property.OrgId, ExportToken = Guid.NewGuid() };
+        db.PropertyICalExports.Add(export);
         await db.SaveChangesAsync();
-        return feed.ExportToken;
+        return export.ExportToken;
     }
 
     private async Task UpdateBookingAsync(Guid bookingId, Action<Booking> change)

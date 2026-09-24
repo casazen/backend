@@ -366,6 +366,18 @@
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>La sincronizzazione del calendario non è riuscita: verrà ritentata automaticamente.</value>
   </data>
+  <data name="ICalFeedNotFound" xml:space="preserve">
+    <value>Calendario non trovato: potrebbe essere già stato scollegato.</value>
+  </data>
+  <data name="ICalFeedLimitReached" xml:space="preserve">
+    <value>Hai già collegato il numero massimo di calendari per questa proprietà ({0}): scollegane uno prima di aggiungerne un altro.</value>
+  </data>
+  <data name="ICalFeedDuplicate" xml:space="preserve">
+    <value>Questo calendario è già collegato alla proprietà.</value>
+  </data>
+  <data name="ICalFeedInvalidLabel" xml:space="preserve">
+    <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
+  </data>
   <data name="CheckInLinkEmailQueued" xml:space="preserve">
     <value>Link check-in rigenerato: l'email all'ospite è in coda di invio.</value>
   </data>
