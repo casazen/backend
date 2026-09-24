@@ -1,6 +1,7 @@
 # Runbook: RLI registration of lease contracts
 
 Task **LT-01** (defects A7-01 and A7-21), decision **D15**, research **RS-4** (`docs/integrations/rli-esign.md`).
+Registration deadline and reminders: task **LT-04** (defect A7-04), rule verified by **RS-5**.
 
 Until LT-01 the "registration" was a stub: `POST /api/leases/{id}/registration` returned `RLI-STUB-{id}` without
 calling anyone, the lease went to `SentToProvider`, the checklist ticked "RLI sent", the toast said "Registration
@@ -25,7 +26,8 @@ receipt stored; a `Failed` registration shows the item as failed with a link to 
 `rli_submitted` ("RLI sent to the filing channel") is gone. `delega_captured` is listed only while the provider path is
 available (or once a delega was given).
 
-The deadline shown is `LeaseContract.RegistrationDeadline`, as computed by the API (task LT-04 owns the calculation).
+The deadline shown is computed by the API (task LT-04, see [Registration deadline](#registration-deadline-lt-04)):
+`min(stipula, start date) + 30` days, or "to be determined".
 
 ## Manual registration (default path)
 
@@ -144,6 +146,112 @@ SELECT count(*) FROM "LeaseRegistrations" WHERE "ExternalRegistrationId" LIKE 'R
 
 On the **test** environment the landlords who used the old "Authorize and submit" now see their lease as "Registration
 failed — the previous submission was only simulated": they must register the contract themselves.
+
+## Registration deadline (LT-04)
+
+Task **LT-04** (defect A7-04, P0). Until LT-04 the deadline was `StartDate + 30`: a contract signed on 1/8 starting on
+1/10 showed "deadline 31/10" and the reminders followed that date, while the legal deadline was 31/8. The job also
+reminded only on the exact days 15/7/1 (a skipped run lost the reminder), only for `Signed` / `RegistrationPending` /
+`SentToProvider`, and sent "overdue" already on the deadline day.
+
+### The rule
+
+Verified by RS-5 (`.claude/context/regulations/fiscale.md`, rule **L1**, Agenzia delle Entrate: "Registrazione di un
+nuovo contratto" and "Atti e contratti di locazione"): registration "entro 30 giorni dalla data di stipula o dalla
+data di decorrenza, se anteriore", so
+
+`RegistrationDeadline = min(StipulaDate, StartDate) + 30 days`
+
+- Single implementation: `Casazen.Core/Regulatory/RliRegistrationDeadline.cs`. Calendar days on the Europe/Rome
+  calendar; dates stored as midnight UTC of the Rome date (FD-06). Example: signed 1/8, start 1/10 → **31/8**; start
+  1/9, signed 20/9 → **1/10**.
+- **No shift for Saturdays or public holidays**: the verified sources do not say whether a deadline falling on a
+  non-working day moves to the next working day, so CasaZen shows the base date (the earlier, prudent one). Open point
+  for the product owner / accountant before changing it.
+
+### The stipula date
+
+`LeaseContract.StipulaDate` is the Europe/Rome day on which every party had signed. It is recorded only by
+`LeaseContract.RecordStipula(signedAt)`, which also fixes `RegistrationDeadline`:
+
+- e-sign: the `all_signed` webhook (`LeaseWorkflowService.HandleESignEventAsync`). The provider sends no signing time,
+  so the stipula is the day CasaZen processes the event, the same instant as the `AllPartiesSigned` event;
+- offline or declared signature (task LT-02, not built yet): the flow must call `RecordStipula` with the declared
+  signing date.
+
+### What the API shows
+
+`GET /api/leases`, `GET /api/leases/{id}` (`stipulaDate`, `registrationDeadline`) and `GET /api/leases/{id}/rli/checklist`
+(`registrationDeadline`, `daysRemaining`: 0 on the deadline day, negative after it) resolve the deadline on read:
+
+| Lease | Deadline |
+|---|---|
+| Stipula recorded | `min(stipula, start) + 30` (stored in `RegistrationDeadline`) |
+| Not signed by every party yet (`Draft`, `AwaitingSignature`, `PartiallySigned`), start date reached | `start + 30`: the stipula can only come today or later, so the start date is the earlier one |
+| Not signed yet, start date ahead | `null` = **to be determined** (at least 30 days away, depends on the signing day) |
+| Signed but no stipula recorded (older leases without a signing event) | `null` = **to be determined**, never guessed |
+
+The frontend shows "Da determinare" / "To be determined" and the rule; the RLI prefill PDF prints "Data di stipula" and
+"Scadenza registrazione: da determinare".
+
+### Reminders (`rli-deadline-reminder`, daily 08:00 UTC)
+
+`RliDeadlineReminderJob` runs on every lease not registered yet in any status before registration (`Draft` included;
+`Registered` and `Rejected` excluded) that has a deadline as above. It reasons on **thresholds**, not exact days:
+
+| Days to the deadline (Rome calendar) | Threshold sent |
+|---|---|
+| more than 15 | none |
+| 15 … 8 | `t-15` |
+| 7 … 2 | `t-7` |
+| 1 and 0 (the deadline day is **not** overdue) | `t-1` |
+| from −1 (the day after the deadline) | `overdue` |
+
+- Only the most urgent threshold reached today is sent, once per deadline: after a skipped run the next run sends it;
+  a first run 3 days before sends `t-7` only, not `t-15` too; two runs on the same day send once.
+- Each sent threshold is a `DeadlineReminderSent` lease event with payload `{threshold}:{deadline}` (e.g.
+  `t-7:2026-08-31`), written **only when the email was accepted**: a failed send is retried at the next run. A
+  deadline that changes (an earlier signing date declared later) starts its own thresholds.
+- Email to the landlord party (`IEmailService`, templates `RliDeadlineReminder` / `RliDeadlineOverdue`, IT/EN in
+  `EmailTexts*.resx`); for a lease not signed yet the email adds that the deadline counts from the start date.
+- A signed lease without a stipula date gets no reminder and logs a warning (`No RLI reminder for LeaseId=…`).
+- The extra-EU Questura notice is unchanged (signed leases, once, payload `extra-eu`; task LT-07).
+
+### Data migration `AddLeaseStipulaDate`
+
+Applied at startup with the other EF migrations:
+
+1. `StipulaDate` = Europe/Rome date of the first `AllPartiesSigned` event of each lease; none → `null`.
+2. Reminders already sent by the old job (payload `t-15`, `t-7`, `t-1`, `overdue`) get the deadline they were sent for
+   (`t-15:2026-10-31`): not repeated when the corrected deadline is the same date, sent again for the corrected one when
+   it differs. So after the deploy a landlord whose corrected deadline has already passed receives one "overdue" email:
+   it is the intended correction, the contract had to be registered by the earlier date.
+3. `RegistrationDeadline` = `min(stipula, start) + 30` days where the stipula is known, otherwise `null` (the old
+   `StartDate + 30` of unsigned leases is removed: the API resolves it on read).
+
+Checks after the deploy (test, then production; replace the schema):
+
+```sql
+-- Signed leases without a stipula date (deadline "to be determined", no reminders): expected 0
+SELECT l."Id", l."Status", l."StartDate"
+FROM casazen_prod."LeaseContracts" l
+WHERE l."Status" IN (3, 4, 5, 6) AND l."StipulaDate" IS NULL;
+
+-- Deadlines already passed for leases not registered yet
+SELECT l."Id", l."Status", l."StipulaDate", l."StartDate", l."RegistrationDeadline"
+FROM casazen_prod."LeaseContracts" l
+WHERE l."Status" NOT IN (6, 7) AND l."RegistrationDeadline" < now()
+ORDER BY l."RegistrationDeadline";
+
+-- Reminders sent in the last 7 days, per threshold
+SELECT split_part("Payload", ':', 1) AS threshold, count(*)
+FROM casazen_prod."LeaseEvents"
+WHERE "EventType" = 12 AND "OccurredAt" > now() - interval '7 days'
+GROUP BY 1;
+```
+
+A signed lease without a stipula date needs its signing date from the landlord: until the offline/declared signing of
+LT-02 exists, record it only after checking the signed contract (SQL, then `RegistrationDeadline` as in step 3).
 
 ## Product owner steps (Railway)
 
