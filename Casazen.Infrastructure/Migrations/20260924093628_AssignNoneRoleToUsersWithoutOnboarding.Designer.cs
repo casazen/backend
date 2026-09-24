@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924090103_AssignNoneRoleToUsersWithoutOnboarding")]
+    [Migration("20260924093628_AssignNoneRoleToUsersWithoutOnboarding")]
     partial class AssignNoneRoleToUsersWithoutOnboarding
     {
         /// <inheritdoc />
@@ -841,7 +841,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("RegistrationDeadline")
+                    b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SignedPdfStoragePath")
@@ -853,6 +853,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StipulaDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
