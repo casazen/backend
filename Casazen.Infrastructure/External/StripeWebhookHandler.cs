@@ -24,6 +24,7 @@ public class StripeWebhookHandler(
     ISdiEInvoiceService sdiEInvoiceService,
     IRentBillingService rentBillingService,
     IPaymentRefundService paymentRefundService,
+    CheckoutPaymentSettlementService checkoutPayments,
     ILogger<StripeWebhookHandler> logger)
 {
     private const string DirectBookingKind = "direct-booking";
@@ -67,12 +68,15 @@ public class StripeWebhookHandler(
 
         // Refunds that Stripe has just confirmed: the guest is emailed once the event is committed.
         IReadOnlyList<Guid> succeededRefunds = [];
+        // Booking payment confirmed again or refunded (BK-04): Stripe call and email once the event is committed.
+        CheckoutPaymentSettlement? checkoutSettlement = null;
         try
         {
             switch (stripeEvent.Type)
             {
                 case "payment_intent.succeeded":
-                    await HandlePaymentSucceededAsync(stripeEvent.Data.Object as PaymentIntent, source, stripeEvent.Account);
+                    checkoutSettlement = await HandlePaymentSucceededAsync(
+                        stripeEvent.Data.Object as PaymentIntent, source, stripeEvent.Account);
                     break;
                 case "payment_intent.payment_failed":
                 case "payment_intent.canceled":
@@ -141,6 +145,9 @@ public class StripeWebhookHandler(
 
         foreach (var refundId in succeededRefunds)
             await paymentRefundService.NotifyGuestAsync(refundId);
+
+        if (checkoutSettlement is not null)
+            await checkoutPayments.CompleteAsync(checkoutSettlement);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -523,38 +530,43 @@ public class StripeWebhookHandler(
         await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
     }
 
-    private async Task HandlePaymentSucceededAsync(PaymentIntent? paymentIntent, WebhookSource source, string? account)
+    /// <summary>
+    /// A PaymentIntent succeeded. Rent charges and deferred deadline charges have their own handlers; the checkout's
+    /// PaymentIntents (<c>direct-booking</c>) on the Connect endpoint, and every booking payment reported by the platform
+    /// endpoint, are settled by <see cref="CheckoutPaymentSettlementService"/>: the booking is confirmed, confirmed again
+    /// when the dates are still free, or refunded in full when they are not (BK-04, A3-04). Never "Completed" on a
+    /// cancelled booking without one of the two.
+    /// </summary>
+    private async Task<CheckoutPaymentSettlement?> HandlePaymentSucceededAsync(PaymentIntent? paymentIntent, WebhookSource source, string? account)
     {
         if (paymentIntent is null)
-            return;
+            return null;
 
-        if (TryGetMetadataKind(paymentIntent, out var kind))
+        TryGetMetadataKind(paymentIntent, out var kind);
+        if (string.Equals(kind, RentChargeKind, StringComparison.Ordinal))
         {
-            if (string.Equals(kind, RentChargeKind, StringComparison.Ordinal))
-            {
-                if (source == WebhookSource.Connected &&
-                    paymentIntent.Metadata.TryGetValue("rentLedgerEntryId", out var entryIdRaw) &&
-                    Guid.TryParse(entryIdRaw, out var entryId))
-                    await rentBillingService.HandleRentPaymentSucceededAsync(entryId);
-                return;
-            }
-            if (string.Equals(kind, DirectBookingKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
-            {
-                await HandleDirectBookingPaymentSucceededAsync(paymentIntent, account);
-                return;
-            }
-            if (string.Equals(kind, DirectBookingDeadlineChargeKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
-            {
-                await HandleDirectBookingDeadlineChargeSucceededAsync(paymentIntent, account);
-                return;
-            }
+            if (source == WebhookSource.Connected &&
+                paymentIntent.Metadata.TryGetValue("rentLedgerEntryId", out var entryIdRaw) &&
+                Guid.TryParse(entryIdRaw, out var entryId))
+                await rentBillingService.HandleRentPaymentSucceededAsync(entryId);
+            return null;
+        }
+        if (string.Equals(kind, DirectBookingDeadlineChargeKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
+        {
+            await HandleDirectBookingDeadlineChargeSucceededAsync(paymentIntent, account);
+            return null;
         }
 
-        if (source != WebhookSource.Platform)
-            return;
+        // On the Connect endpoint only the checkout's own PaymentIntents: the host's other charges are not CasaZen's.
+        if (source == WebhookSource.Connected && !string.Equals(kind, DirectBookingKind, StringComparison.Ordinal))
+            return null;
 
-        logger.LogInformation("Platform payment succeeded: {PaymentIntentId}", paymentIntent.Id);
-        await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Completed);
+        logger.LogInformation(
+            "Booking payment succeeded: {PaymentIntentId} (source={Source}, account={AccountId})",
+            paymentIntent.Id,
+            source,
+            account ?? "none");
+        return await checkoutPayments.SettleSucceededPaymentAsync(paymentIntent.Id, source, account);
     }
 
     private async Task HandleSetupIntentSucceededAsync(SetupIntent? setupIntent)
@@ -610,45 +622,6 @@ public class StripeWebhookHandler(
         await bookingRepository.UpdateAsync(booking);
 
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
-    }
-
-    private async Task HandleDirectBookingPaymentSucceededAsync(PaymentIntent paymentIntent, string? account)
-    {
-        logger.LogInformation("Direct booking payment succeeded: {PaymentIntentId}", paymentIntent.Id);
-
-        var payment = await paymentRepository.GetByTransactionIdAsync(paymentIntent.Id);
-        if (payment is null)
-        {
-            logger.LogWarning("No payment row for direct booking PI {PaymentIntentId}", paymentIntent.Id);
-            return;
-        }
-
-        if (payment.Status == PaymentStatus.Completed)
-            return;
-
-        payment.Status = PaymentStatus.Completed;
-        payment.StripeAccountId ??= account;
-        payment.ProcessedAt = DateTime.UtcNow;
-        payment.UpdatedAt = DateTime.UtcNow;
-        await paymentRepository.UpdateAsync(payment);
-
-        var booking = await bookingRepository.GetByIdAsync(payment.BookingId);
-        if (booking is null || booking.Status != BookingStatus.Pending)
-        {
-            if (booking is not null)
-            {
-                logger.LogWarning(
-                    "Payment intent {PaymentIntentId} completed for booking {BookingId} in status {Status}; booking was not confirmed",
-                    paymentIntent.Id,
-                    booking.Id,
-                    booking.Status);
-            }
-            return;
-        }
-
-        booking.Status = BookingStatus.Confirmed;
-        booking.UpdatedAt = DateTime.UtcNow;
-        await bookingRepository.UpdateAsync(booking);
     }
 
     private async Task HandleDirectBookingDeadlineChargeSucceededAsync(PaymentIntent paymentIntent, string? account)
