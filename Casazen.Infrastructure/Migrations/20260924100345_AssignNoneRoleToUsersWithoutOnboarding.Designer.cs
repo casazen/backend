@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924093628_AssignNoneRoleToUsersWithoutOnboarding")]
+    [Migration("20260924100345_AssignNoneRoleToUsersWithoutOnboarding")]
     partial class AssignNoneRoleToUsersWithoutOnboarding
     {
         /// <inheritdoc />
@@ -220,6 +220,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("CancellationNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int?>("CancellationReason")
                         .HasColumnType("integer");
 
@@ -241,6 +245,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime?>("CheckoutWizardStartedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("CleaningFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
