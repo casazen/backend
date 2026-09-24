@@ -29,6 +29,15 @@ public static class FeatureFlags
     /// </summary>
     public const string AiSupplierDiscovery = "AiSupplierDiscovery";
 
+    /// <summary>
+    /// D15 / LT-01: RLI filing through an external provider (Openapi DocuEngine, docs/integrations/rli-esign.md), off
+    /// until the legal opinion on the provider's filing professional and a real provider client exist. Off:
+    /// <c>POST api/leases/{id}/registration</c> answers 404, the <c>lease-registration-status-poll</c> job is not
+    /// registered and no call reaches the provider. The manual registration (the landlord files on the official
+    /// channel and records number, date and receipt) is not behind this flag and is the default path.
+    /// </summary>
+    public const string RliProvider = "RliProvider";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
-    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery];
+    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery, RliProvider];
 }

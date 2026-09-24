@@ -7,8 +7,15 @@
 
 | Task | Verdetto | In breve |
 |---|---|---|
-| **LT-01**: registrazione RLI via Openapi.it | **(a) fattibile con sandbox pubblica, con riserva** | L'API DocuEngine è documentata pubblicamente: specifica OpenAPI ufficiale, server di sandbox `test.docuengine.openapi.com`, autenticazione self-serve (email + API key, poi token Bearer), wallet prepagato. Dalle fonti pubbliche **non risulta che serva un contratto commerciale**. Restano tre riserve prima della produzione: (1) l'identificativo e i campi del servizio "Registrazione contratti di locazione" non sono nella specifica pubblica e si leggono solo con un account, tramite `GET /documents` (§1.7); (2) il deposito lo esegue un professionista per conto di Openapi, quindi servono il parere legale già aperto (`[COUNSEL_REQUIRED]` in `spec-ltr-rli-registration.md`) e `Rli:FilingEnabled=false` in produzione finché non arriva; (3) il costo per pratica, circa 12,90 €, va approvato. Il **percorso manuale** di A7-01 serve comunque come fallback. |
+| **LT-01**: registrazione RLI via Openapi.it | **(a) fattibile con sandbox pubblica, con riserva** | L'API DocuEngine è documentata pubblicamente: specifica OpenAPI ufficiale, server di sandbox `test.docuengine.openapi.com`, autenticazione self-serve (email + API key, poi token Bearer), wallet prepagato. Dalle fonti pubbliche **non risulta che serva un contratto commerciale**. Restano tre riserve prima della produzione: (1) l'identificativo e i campi del servizio "Registrazione contratti di locazione" non sono nella specifica pubblica e si leggono solo con un account, tramite `GET /documents` (§1.7); (2) il deposito lo esegue un professionista per conto di Openapi, quindi servono il parere legale già aperto (`[COUNSEL_REQUIRED]` in `spec-ltr-rli-registration.md`) e il percorso provider spento in produzione finché non arriva (`Features:RliProvider=false`, LT-01); (3) il costo per pratica, circa 12,90 €, va approvato. Il **percorso manuale** di A7-01 serve comunque come fallback. |
 | **LT-02**: firma elettronica | **Flusso manuale** adesso. Provider consigliato quando si sblocca: **Yousign (ora Youtrust), API v3 con firma avanzata (AES)** | Per un contratto di locazione abitativa serve almeno la **FEA** (firma elettronica avanzata) perché il documento informatico valga come forma scritta (§3.1). Nessun provider con sandbox gratuita offre la FEA verso firmatari terzi in modalità del tutto self-serve e con prezzo pubblico: su Youtrust la AES è un add-on dei soli piani **annuali**, su Docusign serve un add-on con verifica dell'identità, InfoCert espone le API solo in base al profilo acquistato, Openapi offre ai terzi solo firma **semplice** (SES) con OTP. Resta aperto il punto legale sugli obblighi di chi "eroga" la FEA (DPCM 22/02/2013, art. 57). Yousign/Youtrust è il candidato migliore per la fase 2: documentazione pubblica completa, sandbox gratuita, webhook firmati HMAC, prestatore qualificato (QTSP) eIDAS, AES e QES via API. L'alternativa italiana è Namirial eSignAnyWhere (§3.3). |
+
+### Stato dell'implementazione (LT-01, 2026-09-24)
+
+- **Registrazione manuale** come percorso predefinito: il locatore registra sul canale ufficiale (§2.1) e inserisce in CasaZen numero o protocollo, data e ricevuta PDF (bucket privato, download autenticato). Solo allora il contratto risulta "Registrato".
+- **Percorso provider** dietro il flag `Features:RliProvider` (**spento**) e con un provider configurato. Il client Openapi **non è stato scritto**: identificativo e campi del servizio di locazione non sono nella specifica pubblica (§1.3, §1.7) e scriverli a mano vorrebbe dire inventare il payload. Il provider registrato è `UnconfiguredLeaseRegistrationProvider`, che rifiuta ogni chiamata; lo stub `OpenapiLeaseRegistrationProvider` (`RLI-STUB-…`, `[RECEIPT PLACEHOLDER]`) è stato rimosso.
+- Atomicità (A7-21), stati, codici di errore, migrazione dei dati dello stub e passi per collegare un client reale: `docs/runbooks/rli.md`.
+- `Rli:FilingEnabled` e la sezione `Openapi` (`ClientId`/`ClientSecret`) non esistono più: il flag è `Features:RliProvider`, le chiavi Openapi restano quelle proposte al §1.9, da introdurre con il client.
 
 ---
 
@@ -28,7 +35,7 @@
 
 ## 1. Openapi.it: registrazione dei contratti di locazione (DocuEngine)
 
-L'adapter attuale è `Casazen.Infrastructure/External/OpenapiLeaseRegistrationProvider.cs`. È uno stub che restituisce `RLI-STUB-{id}` (A7-01). La configurazione `Openapi:{BaseUrl,ClientId,ClientSecret}` in `Casazen.Web/appsettings.json` **non corrisponde** al modello di autenticazione di Openapi (vedi §1.2).
+L'adapter al momento di RS-4 era `Casazen.Infrastructure/External/OpenapiLeaseRegistrationProvider.cs`, uno stub che restituiva `RLI-STUB-{id}` (A7-01), con una configurazione `Openapi:{BaseUrl,ClientId,ClientSecret}` che **non corrispondeva** al modello di autenticazione di Openapi (vedi §1.2). LT-01 li ha rimossi: l'interfaccia è `ILeaseRegistrationProvider` (`docs/runbooks/rli.md`).
 
 ### 1.1 Il servizio
 
@@ -110,13 +117,13 @@ Fonte: `knowledge/oas/docuengine.openapi.json` (DocuEngine 1.0.0), `knowledge/oa
 3. Capire se l'addebito avviene alla creazione `NEW` o al passaggio `SEARCH`. È rilevante per l'atomicità di A7-21: si potrebbe creare la richiesta `NEW` nella transazione e chiuderla con `PATCH` dopo il commit (D, da verificare).
 4. Verificare il formato del PDF accettato per il contratto (l'Agenzia vuole PDF/A o TIFF, vedi §2.1) e se la ricevuta finale include gli estremi di registrazione.
 
-### 1.8 Mappatura su `ILeaseRegistrationService` (indicazioni per LT-01)
+### 1.8 Mappatura su `ILeaseRegistrationProvider` (indicazioni per LT-01, già `ILeaseRegistrationService`)
 
 | Metodo attuale | Chiamata Openapi | Note |
 |---|---|---|
-| `SubmitRegistrationAsync` | `POST /requests` con `documentId` da configurazione, `search.fieldN` dal lease, `callback` (`method: "JSON"`, `headers` con segreto) | Restituisce `data.id`, che diventa l'`ExternalRegistrationId`. Gestire il 402 (credito) come errore esplicito, **mai come successo** |
-| `PollStatusAsync` | `GET /requests/{id}` | `WAIT` → in attesa. `DONE` → ricevuta disponibile. `CANCELLED` → `Failed` con `cancellationReason`. `RegistrationCode` resta `null` (§1.4) |
-| `DownloadReceiptAsync` | `GET /requests/{id}/documents` → `downloadUrl` | Scaricare entro `urlExpire` e salvare nello storage privato. Non servire più il segnaposto `[RECEIPT PLACEHOLDER]` |
+| `SubmitAsync` (era `SubmitRegistrationAsync`) | `POST /requests` con `documentId` da configurazione, `search.fieldN` dal lease, `callback` (`method: "JSON"`, `headers` con segreto) | Restituisce `data.id`, che diventa l'`ExternalRegistrationId`. Gestire il 402 (credito) come errore esplicito, **mai come successo** |
+| `GetStatusAsync` (era `PollStatusAsync`) | `GET /requests/{id}` | `WAIT` → in attesa. `DONE` → ricevuta disponibile. `CANCELLED` → `Failed` con `cancellationReason`. `RegistrationCode` resta `null` (§1.4) |
+| `DownloadReceiptAsync` | `GET /requests/{id}/documents` → `downloadUrl` | Scaricare entro `urlExpire`: `RliRegistrationService` copia il PDF nello storage privato prima di segnare il contratto come registrato |
 | Webhook (nuovo) | Callback DocuEngine | Controllare l'header segreto, poi rileggere lo stato con `GET /requests/{id}`. Risposta rapida e lavoro in un job in background (vedi `.claude/rules/gotchas.md`) |
 
 Il termine RLI è di **30 giorni** dalla stipula e Openapi dichiara fino a **36 ore lavorative** di lavorazione. L'invio va quindi fatto con margine e i promemoria di LT-04 restano necessari.
@@ -125,7 +132,7 @@ Il termine RLI è di **30 giorni** dalla stipula e Openapi dichiara fino a **36 
 
 | Chiave proposta | Valore | Note |
 |---|---|---|
-| `Rli__FilingEnabled` | `false` in produzione finché non arriva il parere legale | Oggi è letto solo in un log (A7-01) |
+| `Features__RliProvider` | `false` in produzione finché non arriva il parere legale | Sostituisce `Rli__FilingEnabled` (LT-01). Da solo non basta: serve anche un provider configurato (`docs/runbooks/rli.md`) |
 | `Openapi__BaseUrl` | `https://test.docuengine.openapi.com` (test), `https://docuengine.openapi.com` (produzione) | |
 | `Openapi__OAuthUrl` | `https://test.oauth.openapi.com`, `https://oauth.openapi.com` | Serve solo se il backend crea o rinnova i token da sé |
 | `Openapi__Email` + `Openapi__ApiKey` | Credenziali dell'account console | **Sostituiscono** `ClientId` e `ClientSecret`, che non esistono nel modello Openapi |
@@ -252,7 +259,7 @@ L'adapter attuale è `Casazen.Infrastructure/External/LeaseESignHttpAdapter.cs`:
 - **Tecnica**: API REST documentata (V). Sandbox ufficiale `test.docuengine.openapi.com`. Autenticazione, wallet e token self-serve. Nessun contratto commerciale richiesto secondo le fonti pubbliche (V/U).
 - **Riserve bloccanti per la produzione, non per lo sviluppo**:
   1. identificativo del servizio e campi da leggere con `GET /documents` su un account sandbox (§1.7);
-  2. parere legale sul ruolo del professionista del fornitore e sulla delega del locatore (`[COUNSEL_REQUIRED]` di `spec-ltr-rli-registration.md`); fino ad allora `Rli:FilingEnabled=false` in produzione;
+  2. parere legale sul ruolo del professionista del fornitore e sulla delega del locatore (`[COUNSEL_REQUIRED]` di `spec-ltr-rli-registration.md`); fino ad allora `Features:RliProvider=false` in produzione;
   3. approvazione del costo per pratica (circa 12,90 €).
 - **Da implementare in LT-01**, in ordine:
   1. correzione di A7-01: con il flag spento, 409 `RliFilingDisabled`, nessuna chiamata al provider e **percorso manuale** (`POST /{id}/registration/manual` con estremi e ricevuta caricata). Il percorso manuale resta il fallback anche con Openapi attivo;

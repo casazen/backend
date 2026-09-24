@@ -53,7 +53,6 @@ builder.Services.AddScoped<IPricingAdapterConfigRepository, PricingAdapterConfig
 builder.Services.AddScoped<IPricingHistoryRepository, PricingHistoryRepository>();
 // Lease repositories
 builder.Services.AddScoped<ILeaseContractRepository, LeaseContractRepository>();
-builder.Services.AddScoped<ILeaseRegistrationRepository, LeaseRegistrationRepository>();
 builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 
 // External Services
@@ -97,8 +96,6 @@ builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 // Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
 builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
 builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
-builder.Services.AddScoped<ILeaseRegistrationService, OpenapiLeaseRegistrationProvider>();
-builder.Services.AddHttpClient("Openapi");
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);

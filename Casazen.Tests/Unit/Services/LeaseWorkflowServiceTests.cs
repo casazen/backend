@@ -1,12 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
-using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -15,42 +13,29 @@ namespace Casazen.Tests.Unit.Services;
 public class LeaseWorkflowServiceTests
 {
     private readonly Mock<ILeaseContractRepository> _leaseRepo = new();
-    private readonly Mock<ILeaseRegistrationRepository> _regRepo = new();
     private readonly Mock<ILeaseEventRepository> _eventRepo = new();
     private readonly Mock<ILeaseTemplateService> _templateService = new();
     private readonly Mock<ILeaseESignService> _eSignService = new();
-    private readonly Mock<ILeaseRegistrationService> _regService = new();
     private readonly Mock<IPropertyRepository> _propertyRepo = new();
-    private readonly Mock<ILeaseRegistrationAuthorizationRepository> _authRepo = new();
     private readonly Mock<IApeComplianceService> _apeCompliance = new();
     private readonly Mock<ICanoneConcordatoEligibilityService> _canoneEligibility = new();
     private readonly LeaseWorkflowService _sut;
 
     private static readonly string OwnerId = "auth0|owner123";
     private static readonly Guid PropertyId = Guid.NewGuid();
-    private static readonly RegistrationAuthorizationRequest ValidAuth =
-        new("2026-08-rli-delega-bozza", true);
 
     public LeaseWorkflowServiceTests()
     {
-        _authRepo.Setup(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()))
-            .ReturnsAsync((LeaseRegistrationAuthorization a) => a);
-        _regRepo.Setup(r => r.TryReserveSubmissionAsync(It.IsAny<LeaseRegistration>()))
-            .ReturnsAsync(true);
         _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>()))
             .Returns(Task.CompletedTask);
         _sut = new LeaseWorkflowService(
             _leaseRepo.Object,
-            _regRepo.Object,
             _eventRepo.Object,
             _templateService.Object,
             _eSignService.Object,
-            _regService.Object,
             _propertyRepo.Object,
-            _authRepo.Object,
             _apeCompliance.Object,
             _canoneEligibility.Object,
-            Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", FilingEnabled = true }),
             new Mock<ILogger<LeaseWorkflowService>>().Object);
     }
 
@@ -252,240 +237,6 @@ public class LeaseWorkflowServiceTests
             _sut.InitiateSigningAsync(lease.Id, OwnerId));
         Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
         _templateService.Verify(s => s.GeneratePdfAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenStatusIsSigned_SubmitsAndTransitionsStatus()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Signed);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
-            .ReturnsAsync((LeaseContract l) => l);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-        _regRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
-            .ReturnsAsync((LeaseRegistration r) => r);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
-            .ReturnsAsync((LeaseEvent e) => e);
-        _regService.Setup(s => s.SubmitRegistrationAsync(lease))
-            .ReturnsAsync("RLI-EXTERNAL-001");
-
-        // Act
-        var registration = await _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth);
-
-        // Assert
-        Assert.Equal(RegistrationStatus.SentToProvider, registration.Status);
-        Assert.Equal("RLI-EXTERNAL-001", registration.ExternalRegistrationId);
-        Assert.NotNull(registration.SubmittedAt);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenReservationAlreadyClaimed_ThrowsBeforeProviderCall()
-    {
-        var lease = BuildLease(LeaseStatus.Signed);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-        _regRepo.Setup(r => r.TryReserveSubmissionAsync(It.Is<LeaseRegistration>(registration =>
-                registration.LeaseContractId == lease.Id
-                && registration.Status == RegistrationStatus.Pending)))
-            .ReturnsAsync(false);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-
-        Assert.Equal("Registration has already been submitted for this lease.", ex.Message);
-        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
-        _regRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenStatusIsNotSigned_ThrowsInvalidOperationException()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Draft);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenApeWasDeletedAfterSigning_BlocksBeforeAuthorizationAndFiling()
-    {
-        var lease = BuildLease(LeaseStatus.Signed);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(lease.PropertyId))
-            .ThrowsAsync(ApeComplianceException.Required());
-
-        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-
-        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
-        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
-        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
-        _regRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
-        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenSignedPdfMissing_ThrowsBeforeSubmitting()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Signed);
-        lease.SignedPdfStoragePath = null;
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-        Assert.Equal("Signed lease PDF must be stored before registration.", ex.Message);
-        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
-        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_CanoneConcordatoShorterThanThreeYears_ThrowsBeforeSubmitting()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Signed);
-        lease.FiscalRegime = FiscalRegime.CanoneConcordato;
-        lease.StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
-        lease.EndDate = new DateTime(2027, 8, 31, 0, 0, 0, DateTimeKind.Utc);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistration?)null);
-
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-        Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
-        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task GetRegistrationReceiptAsync_WhenNotRegistered_ThrowsReceiptNotAvailable()
-    {
-        var lease = BuildLease(LeaseStatus.SentToProvider);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(new LeaseRegistration
-        {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.SentToProvider,
-            ExternalRegistrationId = "RLI-WAIT",
-        });
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.GetRegistrationReceiptAsync(lease.Id));
-        Assert.Equal("Receipt is not available yet.", ex.Message);
-    }
-
-    [Fact]
-    public async Task GetRegistrationReceiptAsync_WhenRegistered_ReturnsProviderStream()
-    {
-        var lease = BuildLease(LeaseStatus.Registered);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(new LeaseRegistration
-        {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.Registered,
-            ExternalRegistrationId = "RLI-OK",
-            ReceiptStoragePath = "/receipts/ignored-by-stub.pdf",
-        });
-        _regService.Setup(s => s.DownloadReceiptAsync("RLI-OK"))
-            .ReturnsAsync(new MemoryStream("pdf"u8.ToArray()));
-
-        await using var stream = await _sut.GetRegistrationReceiptAsync(lease.Id);
-        using var reader = new StreamReader(stream);
-        Assert.Equal("pdf", await reader.ReadToEndAsync());
-        _regService.Verify(s => s.DownloadReceiptAsync("RLI-OK"), Times.Once);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenAlreadySubmitted_ThrowsInvalidOperationException()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Signed);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id))
-            .ReturnsAsync(new LeaseRegistration { LeaseContractId = lease.Id, Status = RegistrationStatus.SentToProvider });
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenPreviousRegistrationFailed_ReusesRowForRetry()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Signed);
-        var failedRegistration = new LeaseRegistration
-        {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.Failed,
-            ExternalRegistrationId = "RLI-OLD",
-            RegistrationCode = "OLD-CODE",
-            ReceiptStoragePath = "/old-receipt.pdf",
-            SubmittedAt = DateTime.UtcNow.AddDays(-1),
-            ConfirmedAt = DateTime.UtcNow.AddDays(-1),
-        };
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
-            .ReturnsAsync((LeaseContract l) => l);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(failedRegistration);
-        _regRepo.Setup(r => r.TryReserveRetryAsync(failedRegistration)).ReturnsAsync(true);
-        _regRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()))
-            .ReturnsAsync((LeaseRegistration r) => r);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
-            .ReturnsAsync((LeaseEvent e) => e);
-        _regService.Setup(s => s.SubmitRegistrationAsync(lease))
-            .ReturnsAsync("RLI-RETRY-001");
-
-        // Act
-        var registration = await _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth);
-
-        // Assert
-        Assert.Same(failedRegistration, registration);
-        Assert.Equal(RegistrationStatus.SentToProvider, registration.Status);
-        Assert.Equal("RLI-RETRY-001", registration.ExternalRegistrationId);
-        Assert.Null(registration.RegistrationCode);
-        Assert.Null(registration.ReceiptStoragePath);
-        Assert.Null(registration.ConfirmedAt);
-        Assert.NotNull(registration.SubmittedAt);
-        Assert.Equal(LeaseStatus.SentToProvider, lease.Status);
-        _regRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistration>()), Times.Never);
-        _regRepo.Verify(r => r.TryReserveSubmissionAsync(It.IsAny<LeaseRegistration>()), Times.Never);
-        _regRepo.Verify(r => r.TryReserveRetryAsync(failedRegistration), Times.Once);
-        _regRepo.Verify(r => r.UpdateAsync(failedRegistration), Times.Once);
-    }
-
-    [Fact]
-    public async Task TriggerRegistrationAsync_WhenFailedRegistrationRetryAlreadyClaimed_ThrowsBeforeProviderCall()
-    {
-        // Arrange: a concurrent retry already moved the Failed row back to Pending.
-        var lease = BuildLease(LeaseStatus.Signed);
-        var failedRegistration = new LeaseRegistration
-        {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.Failed,
-            ExternalRegistrationId = "RLI-OLD",
-        };
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _regRepo.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(failedRegistration);
-        _regRepo.Setup(r => r.TryReserveRetryAsync(failedRegistration)).ReturnsAsync(false);
-
-        // Act
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.TriggerRegistrationAsync(lease.Id, OwnerId, ValidAuth));
-
-        // Assert
-        Assert.Equal("Registration has already been submitted for this lease.", ex.Message);
-        _regService.Verify(s => s.SubmitRegistrationAsync(It.IsAny<LeaseContract>()), Times.Never);
-        _authRepo.Verify(r => r.AddAsync(It.IsAny<LeaseRegistrationAuthorization>()), Times.Never);
-        _regRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseRegistration>()), Times.Never);
-        Assert.Equal(LeaseStatus.Signed, lease.Status);
     }
 
     [Fact]
