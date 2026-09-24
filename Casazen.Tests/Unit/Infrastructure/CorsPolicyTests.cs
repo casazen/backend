@@ -169,6 +169,49 @@ public class CorsPolicyTests
         Assert.Contains(expected, ex.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("App:PublicSiteBaseUrl")]
+    [InlineData("Seo:PublicBaseUrl")]
+    public async Task Preflight_PublicSiteOrigin_IsAllowedWithoutRepeatingItInCorsVariables(string key)
+    {
+        // SE-02 (A8-02): the public web app always calls the API, whatever its configured domain.
+        const string publicSite = "https://www.public-site.test";
+        await using var app = await StartAsync(Environments.Production, new() { [key] = publicSite + "/" });
+
+        using var allowed = await PreflightAsync(app, publicSite);
+        using var rejected = await PreflightAsync(app, "https://public-site.test");
+
+        Assert.Equal(publicSite, Assert.Single(allowed.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(allowed.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.False(rejected.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Fact]
+    public async Task Preflight_PublicSiteAndCorsOrigins_AreBothAllowed()
+    {
+        const string publicSite = "https://www.public-site.test";
+        await using var app = await StartAsync(Environments.Production, new()
+        {
+            ["Cors:AllowedOrigins"] = WebApp,
+            ["App:PublicSiteBaseUrl"] = publicSite,
+        });
+
+        using var publicSiteResponse = await PreflightAsync(app, publicSite);
+        using var webAppResponse = await PreflightAsync(app, WebApp);
+
+        Assert.Equal(publicSite, Assert.Single(publicSiteResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.Equal(WebApp, Assert.Single(webAppResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+    }
+
+    [Fact]
+    public async Task Start_ProductionWithPlaceholderPublicSiteAndNoOrigins_Fails()
+    {
+        var ex = await Assert.ThrowsAsync<OptionsValidationException>(() =>
+            StartAsync(Environments.Production, new() { ["App:PublicSiteBaseUrl"] = "https://YOUR_TEST_WEB_APP_URL" }));
+
+        Assert.Contains("Cors__AllowedOrigins is missing", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Start_TestingWithoutAllowedOrigins_Starts()
     {

@@ -64,11 +64,22 @@ public sealed class PublicSiteOptionsValidator : IValidateOptions<PublicSiteOpti
         if (!PublicSiteOptions.TryGetBaseUri(options.PublicSiteBaseUrl, out var baseUri))
         {
             return ValidateOptionsResult.Fail(
-                "App__PublicSiteBaseUrl is missing or invalid: set the absolute URL of the web app (e.g. https://<domain>), used for every link in emails.");
+                "App__PublicSiteBaseUrl is missing or invalid: set the absolute URL of the web app (e.g. https://<domain>), " +
+                "used for every link in emails, the SEO canonical URLs and the sitemap.");
         }
 
-        return baseUri.Scheme == Uri.UriSchemeHttps
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail("App__PublicSiteBaseUrl must use https.");
+        if (baseUri.Scheme != Uri.UriSchemeHttps)
+            return ValidateOptionsResult.Fail("App__PublicSiteBaseUrl must use https.");
+
+        // SE-02 (A8-02): one public domain. The Seo__PublicBaseUrl alias may repeat it, never point elsewhere.
+        if (!string.IsNullOrWhiteSpace(options.SeoPublicBaseUrl)
+            && PublicSiteOptions.Normalize(options.SeoPublicBaseUrl) != PublicSiteOptions.Normalize(options.PublicSiteBaseUrl))
+        {
+            return ValidateOptionsResult.Fail(
+                "Seo__PublicBaseUrl differs from App__PublicSiteBaseUrl: the SEO pages are served by the same web app, " +
+                "so set only App__PublicSiteBaseUrl (or give both the same value).");
+        }
+
+        return ValidateOptionsResult.Success;
     }
 }

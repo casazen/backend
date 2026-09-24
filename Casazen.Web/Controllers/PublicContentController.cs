@@ -23,6 +23,15 @@ public class PublicContentController(
     private bool AllowDraftPages() =>
         environment.IsStaging() || environment.IsDevelopment() || environment.EnvironmentName == "Testing";
 
+    /// <summary>
+    /// Hub of the published pages (SE-02, A8-02): the same pages as the sitemap, linked from the public footer so that
+    /// crawlers and visitors can reach every <c>/p/*</c> page from the web app.
+    /// </summary>
+    [HttpGet("content")]
+    [ProducesResponseType(typeof(SeoPublishedPagesDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<SeoPublishedPagesDto>> GetPublishedPages(CancellationToken cancellationToken) =>
+        Ok(await seoContentService.GetPublishedPagesAsync(cancellationToken));
+
     [HttpGet("content/affitti-brevi/{regionSlug}/{comuneSlug}")]
     [ProducesResponseType(typeof(SeoPagePublicDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

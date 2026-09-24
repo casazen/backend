@@ -8,10 +8,10 @@ report-only to enforced.
 
 | Concern | Behaviour | Code |
 |---|---|---|
-| CORS origins | Only the exact origins of `Cors__AllowedOrigins`, plus the Vercel previews matched by `Cors__VercelPreviewPattern` when it is set. No origin is written in code (decision D3). In `Development` any `http://localhost:<port>` is accepted (Vite dev server) | `Casazen.Web/Configuration/CorsOriginOptions.cs` |
+| CORS origins | The origin of the public web app `App__PublicSiteBaseUrl` (SE-02, always: the domain may change without touching CORS), the exact origins of `Cors__AllowedOrigins`, plus the Vercel previews matched by `Cors__VercelPreviewPattern` when it is set. No origin is written in code (decision D3). In `Development` any `http://localhost:<port>` is accepted (Vite dev server) | `Casazen.Web/Configuration/CorsOriginOptions.cs` |
 | CORS policy | Methods `GET POST PUT PATCH DELETE OPTIONS`, headers `Authorization Content-Type Accept X-Requested-With`, **no credentials**: the API authenticates with a Bearer token and sets no cookie | `Casazen.Web/Infrastructure/CasazenCorsPolicyProvider.cs` |
 | Custom domains | Extension point `ICorsOriginSource` (asked only about origins the configuration rejects). Nothing is registered yet: the hosts' custom domains are task BK-16 | same file |
-| Startup check | A malformed entry (path, wildcard, no scheme) or an invalid pattern stops the startup. Outside `Development`/`Testing` an empty `Cors__AllowedOrigins` stops it too (Railway keeps the previous deployment) | `CorsOriginOptionsValidator` |
+| Startup check | A malformed entry (path, wildcard, no scheme) or an invalid pattern stops the startup. Outside `Development`/`Testing` it stops too when neither `Cors__AllowedOrigins` nor `App__PublicSiteBaseUrl` gives an origin (Railway keeps the previous deployment) | `CorsOriginOptionsValidator` |
 | API headers | Every response: `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`. Outside `Development`/`Testing` (both Railway environments) also `Strict-Transport-Security: max-age=31536000; includeSubDomains` | `Casazen.Web/Middleware/SecurityHeadersMiddleware.cs` |
 | Web app headers | `vercel.json` → `headers`: see section 3 | frontend `vercel.json` |
 | Logs | No email address in clear (`LogRedaction.MaskEmail` → `m***@example.it`), no names, no JWT claims. Provider error messages are masked too (`LogRedaction.MaskEmails`) | `Casazen.Core/Utilities/LogRedaction.cs` |
@@ -22,7 +22,7 @@ report-only to enforced.
 
 | Variable | Value | Required |
 |---|---|---|
-| `Cors__AllowedOrigins` | Origins of the web app of **this** environment, comma separated: scheme + host (+ port), no path, no trailing wildcard. E.g. production `https://casazen-app.vercel.app` (plus the custom domain once it exists); test: the Vercel URL of the `develop` deployment | yes, on test and production |
+| `Cors__AllowedOrigins` | **Other** origins of the web app of **this** environment, comma separated: scheme + host (+ port), no path, no trailing wildcard. The origin of `App__PublicSiteBaseUrl` (the public domain, [`seo-domain.md`](seo-domain.md)) is always allowed and need not be repeated; list here e.g. a second host that still serves the web app | only when the web app is reached from an origin other than `App__PublicSiteBaseUrl` |
 | `Cors__VercelPreviewPattern` | Regular expression for the **label** before `.vercel.app` of our own previews. Anchored and case-insensitive; only `https` on the default port; a label with a dot never matches | no; set it on **test only**, leave production empty |
 
 Vercel preview hostnames are `<project>-<hash>-<team-slug>.vercel.app` (one deployment) and
@@ -89,6 +89,10 @@ The CSP (`Content-Security-Policy-Report-Only`) is:
 | `frame-src` | `'self' https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://*.auth0.com` | Vetrina preview, Stripe Elements and 3-D Secure, Auth0 silent authentication (only if the refresh-token fallback is ever enabled) |
 | `worker-src` | `'self' blob:` | |
 | `object-src`, `base-uri`, `form-action` | `'none'`, `'self'`, `'self'` | |
+
+The public domain appears nowhere in the policy: the web app refers to its own origin only as `'self'`, so the CSP
+follows whatever domain is configured (SE-02, `src/test/vercel-routing.test.ts` fails if a domain of ours is written in
+`vercel.json`).
 
 No `'unsafe-eval'`: the app sets `z.config({ jitless: true })` (`src/lib/zod-config.ts`) so Zod never probes
 `new Function()`.
