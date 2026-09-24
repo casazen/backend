@@ -88,11 +88,22 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return !conflicting;
     }
 
-    public async Task<int> CancelExpiredPendingDirectBookingsAsync(Guid propertyId, int ttlMinutes)
+    public async Task<int> CancelExpiredPendingDirectBookingsAsync(
+        Guid propertyId,
+        DateTime checkIn,
+        DateTime checkOut,
+        int ttlMinutes)
     {
         var cutoff = DateTime.UtcNow.AddMinutes(-ttlMinutes);
+        var checkInDate = checkIn.Date;
+        var checkOutDate = checkOut.Date;
+
+        // Only the checkout holds that stand in the way of these dates: an abandoned hold of other dates is left to
+        // the expiry job (BK-21), and host bookings (Manual, or Direct without a Stripe intent) never match.
         var expired = await context.Bookings
             .Where(b => b.PropertyId == propertyId &&
+                        b.CheckInDate.Date < checkOutDate &&
+                        b.CheckOutDate.Date > checkInDate &&
                         b.Status == BookingStatus.Pending &&
                         b.Source == BookingSource.Direct &&
                         (b.StripeSetupIntentId != null ||
