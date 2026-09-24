@@ -269,6 +269,7 @@ public static class ServiceCollectionExtensions
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
         services.AddScoped<CheckoutPaymentSettlementService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();

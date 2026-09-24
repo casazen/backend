@@ -142,7 +142,7 @@ builder.Services.AddScoped<BookingPullJob>();
 builder.Services.AddScoped<DynamicPricingJob>();
 builder.Services.AddScoped<StripeWebhookJob>();
 builder.Services.AddScoped<AlloggiatiWebReportJob>();
-builder.Services.AddScoped<AlloggiatiDeadlineAlertJob>();
+builder.Services.AddScoped<StayAlertsJob>();
 builder.Services.AddScoped<CinDeadlineAlertJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
 // Lease background jobs
@@ -153,10 +153,7 @@ builder.Services.AddScoped<RliDeadlineReminderJob>();
 builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
-builder.Services.AddScoped<GuestCheckInReminderJob>();
-builder.Services.AddScoped<CheckoutReminderJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
-builder.Services.AddScoped<ICheckoutReminderScheduler, CheckoutReminderScheduler>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
@@ -164,6 +161,8 @@ builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.StayAlertOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(

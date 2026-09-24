@@ -103,22 +103,91 @@
     <value>Il link è valido per 7 giorni.</value>
   </data>
   <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
-    <value>Check-in incompleto — {0} ({1})</value>
+    <value>Dati ospiti mancanti — {0} ({1})</value>
   </data>
   <data name="GuestCheckInIncomplete_Body" xml:space="preserve">
-    <value>Attenzione: il check-in per l'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt; è previsto per &lt;strong&gt;{2}&lt;/strong&gt; e non è ancora stato completato.</value>
+    <value>Per il soggiorno di &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;, mancano ancora dati degli ospiti richiesti per la comunicazione Alloggiati Web.</value>
   </data>
   <data name="GuestCheckInIncomplete_Action" xml:space="preserve">
-    <value>Contatta l'ospite o inserisci manualmente i dati dal gestionale.</value>
+    <value>Chiedi all'ospite di completare il check-in online (puoi inviargli di nuovo il link dalla prenotazione) oppure inserisci i dati nella scheda Alloggiati della prenotazione.</value>
   </data>
   <data name="AlloggiatiDeadline_Subject" xml:space="preserve">
     <value>Alloggiati Web in scadenza - {0} ({1})</value>
   </data>
   <data name="AlloggiatiDeadline_Body" xml:space="preserve">
-    <value>Attenzione: la comunicazione Alloggiati Web per l'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt; è in scadenza per il check-in del &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+    <value>La comunicazione Alloggiati Web dell'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;, non risulta ancora inviata.</value>
   </data>
   <data name="AlloggiatiDeadline_Action" xml:space="preserve">
-    <value>Completa o correggi i dati dell'ospite e invia la comunicazione dal gestionale.</value>
+    <value>Inviala sul portale Alloggiati Web, poi segnala l'invio nella scheda Alloggiati della prenotazione («Segna come inviato manualmente»).</value>
+  </data>
+  <data name="AlloggiatiDeadline_Term24" xml:space="preserve">
+    <value>Va inviata entro 24 ore dall'arrivo dell'ospite.</value>
+  </data>
+  <data name="AlloggiatiDeadline_Term6" xml:space="preserve">
+    <value>Soggiorno breve (fino a 24 ore): va inviata entro 6 ore dall'arrivo dell'ospite.</value>
+  </data>
+  <data name="AlloggiatiDeadline_DeadlineAt" xml:space="preserve">
+    <value>Scadenza: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="AlloggiatiDeadline_ArrivalNotRegistered" xml:space="preserve">
+    <value>L'orario di arrivo non è registrato in CasaZen: registra l'arrivo nella prenotazione per vedere la scadenza esatta.</value>
+  </data>
+  <data name="AlloggiatiOverdue_Subject" xml:space="preserve">
+    <value>Alloggiati Web scaduta - {0} ({1})</value>
+  </data>
+  <data name="AlloggiatiOverdue_Body" xml:space="preserve">
+    <value>Il termine per la comunicazione Alloggiati Web dell'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;, è scaduto e la comunicazione non risulta inviata.</value>
+  </data>
+  <data name="AlloggiatiOverdue_ArrivalNotRegistered" xml:space="preserve">
+    <value>L'orario di arrivo non è registrato in CasaZen: il termine è considerato scaduto alla fine del giorno di arrivo.</value>
+  </data>
+  <data name="AlloggiatiOverdue_Action" xml:space="preserve">
+    <value>Inviala al più presto sul portale Alloggiati Web. Se l'hai già inviata, segnalalo nella scheda Alloggiati della prenotazione («Segna come inviato manualmente»): non riceverai altri promemoria.</value>
+  </data>
+  <data name="AlloggiatiOverdue_Reminder" xml:space="preserve">
+    <value>Promemoria {0} di {1}.</value>
+  </data>
+  <data name="AlloggiatiFailed_Subject" xml:space="preserve">
+    <value>Invio Alloggiati Web non riuscito - {0} ({1})</value>
+  </data>
+  <data name="AlloggiatiFailed_Body" xml:space="preserve">
+    <value>La comunicazione Alloggiati Web dell'ospite &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;, non è andata a buon fine: il portale l'ha rifiutata oppure l'invio non è riuscito.</value>
+  </data>
+  <data name="AlloggiatiFailed_Action" xml:space="preserve">
+    <value>Controlla i dati degli ospiti nella scheda Alloggiati della prenotazione, poi invia la comunicazione sul portale Alloggiati Web e segnala l'invio.</value>
+  </data>
+  <data name="CheckoutReminder_Subject" xml:space="preserve">
+    <value>Check-out di oggi - {0} ({1})</value>
+  </data>
+  <data name="CheckoutReminder_Body" xml:space="preserve">
+    <value>Oggi, &lt;strong&gt;{2}&lt;/strong&gt;, è il giorno di partenza di &lt;strong&gt;{0}&lt;/strong&gt; da &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="CheckoutReminder_Action" xml:space="preserve">
+    <value>Completa il check-out in CasaZen: registra la partenza e, se serve, richiedi le pulizie.</value>
+  </data>
+  <data name="StayAlertPush_GuestDataMissing_Title" xml:space="preserve">
+    <value>Dati ospiti mancanti</value>
+  </data>
+  <data name="StayAlertPush_GuestDataMissing_Body" xml:space="preserve">
+    <value>{0}: completa i dati degli ospiti in arrivo il {1}.</value>
+  </data>
+  <data name="StayAlertPush_DeadlineApproaching_Title" xml:space="preserve">
+    <value>Alloggiati Web in scadenza</value>
+  </data>
+  <data name="StayAlertPush_DeadlineApproaching_Body" xml:space="preserve">
+    <value>{0}: invia la comunicazione per l'arrivo del {1}.</value>
+  </data>
+  <data name="StayAlertPush_Overdue_Title" xml:space="preserve">
+    <value>Alloggiati Web scaduta</value>
+  </data>
+  <data name="StayAlertPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: la comunicazione per l'arrivo del {1} non risulta inviata.</value>
+  </data>
+  <data name="StayAlertPush_Failed_Title" xml:space="preserve">
+    <value>Invio Alloggiati Web non riuscito</value>
+  </data>
+  <data name="StayAlertPush_Failed_Body" xml:space="preserve">
+    <value>{0}: controlla la comunicazione per l'arrivo del {1}.</value>
   </data>
   <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
     <value>Rimborso confermato - {0}</value>

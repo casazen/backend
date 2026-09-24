@@ -1,8 +1,9 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -12,65 +13,117 @@ namespace Casazen.Tests.Unit.Services;
 
 public class NotificationServiceTests
 {
-    [Fact]
-    public async Task SendAlloggiatiDeadlineAlertAsync_WithContactEmail_SendsEmailAndPush()
+    [Theory]
+    [InlineData(StayAlertKind.GuestDataMissing, "guest-checkin-incomplete", "guest-data-missing", "Dati ospiti mancanti")]
+    [InlineData(StayAlertKind.AlloggiatiDeadlineApproaching, "alloggiati-deadline", "alloggiati-deadline", "Alloggiati Web in scadenza")]
+    [InlineData(StayAlertKind.AlloggiatiOverdue, "alloggiati-overdue", "alloggiati-overdue", "Alloggiati Web scaduta")]
+    [InlineData(StayAlertKind.AlloggiatiFailed, "alloggiati-failed", "alloggiati-failed", "Invio Alloggiati Web non riuscito")]
+    public async Task SendStayAlertAsync_AlloggiatiAlert_QueuesItsEmailAndPushesItsOwnType(
+        StayAlertKind kind,
+        string template,
+        string pushType,
+        string subject)
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-
-        await using var context = new AppDbContext(options);
+        await using var context = CreateContext();
         var bookingId = await SeedBookingAsync(context, contactEmail: "host@example.com");
-        var emailService = new Mock<IEmailService>();
-        emailService
-            .Setup(s => s.SendEmailAsync("host@example.com", It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new EmailSendResult(true));
-        var pushNotificationService = new Mock<IPushNotificationService>();
-        var service = new NotificationService(
-            context,
-            emailService.Object,
-            pushNotificationService.Object,
-            Mock.Of<ILogger<NotificationService>>());
+        var emails = new RecordingEmailQueue();
+        var push = new Mock<IPushNotificationService>();
+        PushNotificationPayload? sent = null;
+        push.Setup(p => p.SendToBookingHostsAsync(It.IsAny<PushNotificationPayload>(), It.IsAny<CancellationToken>()))
+            .Callback<PushNotificationPayload, CancellationToken>((payload, _) => sent = payload)
+            .Returns(Task.CompletedTask);
 
-        await service.SendAlloggiatiDeadlineAlertAsync(bookingId);
+        await CreateService(context, emails, push.Object).SendStayAlertAsync(new StayAlert(bookingId, kind));
 
-        emailService.Verify(
-            s => s.SendEmailAsync(
-                "host@example.com",
-                It.Is<string>(subject => subject.Contains("Alloggiati Web", StringComparison.Ordinal)),
-                It.Is<string>(html => html.Contains("Test Property", StringComparison.Ordinal))),
-            Times.Once);
-        pushNotificationService.Verify(
-            s => s.SendGuestCheckInIncompleteAsync(bookingId, It.IsAny<CancellationToken>()),
+        var email = Assert.Single(emails.Queued);
+        Assert.Equal("host@example.com", email.To);
+        Assert.Equal(template, email.Template);
+        Assert.StartsWith(subject, email.Content.Subject, StringComparison.Ordinal);
+        Assert.Contains("Test Property", email.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("<strong>Anna Bianchi</strong>", email.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.NotNull(sent);
+        Assert.Equal(pushType, sent.Type);
+        Assert.Equal(bookingId, sent.BookingId);
+        Assert.Equal($"/bookings/{bookingId}", sent.Route);
+        Assert.Contains("Test Property", sent.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Check-in incompleto", sent.Title, StringComparison.Ordinal);
+        push.Verify(p => p.SendCheckoutReminderAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SendStayAlertAsync_CheckoutReminder_QueuesEmailAndSendsTheCheckoutPush()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingAsync(context, contactEmail: "host@example.com");
+        var emails = new RecordingEmailQueue();
+        var push = new Mock<IPushNotificationService>();
+
+        await CreateService(context, emails, push.Object)
+            .SendStayAlertAsync(new StayAlert(bookingId, StayAlertKind.CheckoutReminder));
+
+        var email = Assert.Single(emails.Queued);
+        Assert.Equal("checkout-reminder", email.Template);
+        Assert.StartsWith("Check-out di oggi - Test Property", email.Content.Subject, StringComparison.Ordinal);
+        push.Verify(p => p.SendCheckoutReminderAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
+        push.Verify(p => p.SendToBookingHostsAsync(It.IsAny<PushNotificationPayload>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SendStayAlertAsync_OverdueReminderWithRegisteredArrival_ShowsDeadlineAndReminderCount()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingAsync(context, contactEmail: "host@example.com");
+        var emails = new RecordingEmailQueue();
+        var deadline = new DateTime(2026, 10, 6, 13, 0, 0, DateTimeKind.Utc);
+
+        await CreateService(context, emails, Mock.Of<IPushNotificationService>())
+            .SendStayAlertAsync(new StayAlert(bookingId, StayAlertKind.AlloggiatiOverdue, deadline, ReminderNumber: 2, MaxReminders: 2));
+
+        var html = Assert.Single(emails.Queued).Content.HtmlBody;
+        Assert.Contains("Scadenza: <strong>06/10/2026 15:00</strong>", html, StringComparison.Ordinal);
+        Assert.Contains("Promemoria 2 di 2.", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendStayAlertAsync_WithoutContactEmail_StillSendsPush()
+    {
+        await using var context = CreateContext();
+        var bookingId = await SeedBookingAsync(context, contactEmail: string.Empty);
+        var queue = new Mock<IEmailQueue>();
+        queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
+            .Returns((string? to, EmailContent _, string _) => !string.IsNullOrWhiteSpace(to));
+        var push = new Mock<IPushNotificationService>();
+
+        await CreateService(context, queue.Object, push.Object)
+            .SendStayAlertAsync(new StayAlert(bookingId, StayAlertKind.AlloggiatiDeadlineApproaching));
+
+        push.Verify(
+            p => p.SendToBookingHostsAsync(
+                It.Is<PushNotificationPayload>(payload => payload.BookingId == bookingId),
+                It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
     [Fact]
-    public async Task SendAlloggiatiDeadlineAlertAsync_WithoutContactEmail_StillSendsPush()
+    public async Task SendStayAlertAsync_UnknownBooking_SendsNothing()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
+        await using var context = CreateContext();
+        var emails = new RecordingEmailQueue();
+        var push = new Mock<IPushNotificationService>(MockBehavior.Strict);
 
-        await using var context = new AppDbContext(options);
-        var bookingId = await SeedBookingAsync(context, contactEmail: string.Empty);
-        var emailService = new Mock<IEmailService>();
-        var pushNotificationService = new Mock<IPushNotificationService>();
-        var service = new NotificationService(
-            context,
-            emailService.Object,
-            pushNotificationService.Object,
-            Mock.Of<ILogger<NotificationService>>());
+        await CreateService(context, emails, push.Object)
+            .SendStayAlertAsync(new StayAlert(Guid.NewGuid(), StayAlertKind.AlloggiatiOverdue));
 
-        await service.SendAlloggiatiDeadlineAlertAsync(bookingId);
-
-        emailService.Verify(
-            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-        pushNotificationService.Verify(
-            s => s.SendGuestCheckInIncompleteAsync(bookingId, It.IsAny<CancellationToken>()),
-            Times.Once);
+        Assert.Empty(emails.Queued);
     }
+
+    private static AppDbContext CreateContext() =>
+        new(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+
+    private static NotificationService CreateService(AppDbContext context, IEmailQueue emails, IPushNotificationService push) =>
+        new(context, emails, push, Mock.Of<ILogger<NotificationService>>());
 
     private static async Task<Guid> SeedBookingAsync(AppDbContext context, string contactEmail)
     {

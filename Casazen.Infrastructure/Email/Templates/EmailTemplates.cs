@@ -8,13 +8,13 @@ namespace Casazen.Infrastructure.Email.Templates;
 /// Every transactional email of the application, rendered with <see cref="EmailHtmlBuilder"/> in Italian (default)
 /// or English. Links are passed in already built by <see cref="PublicSiteLinks"/>.
 /// </summary>
-public static class EmailTemplates
+public static partial class EmailTemplates
 {
     /// <summary>Recipients have no language preference yet: emails are sent in Italian.</summary>
     public static CultureInfo DefaultCulture { get; } = CultureInfo.GetCultureInfo("it-IT");
 
     /// <summary>Template names used in logs and queued jobs.</summary>
-    public static class Names
+    public static partial class Names
     {
         public const string ServiceRequestCreated = "service-request-created";
         public const string ServiceRequestStatusChanged = "service-request-status-changed";
@@ -126,7 +126,10 @@ public static class EmailTemplates
             .Muted("GuestCheckInLink_Validity")
             .Build("GuestCheckInLink_Subject", propertyName);
 
-    /// <summary>Guest check-in still incomplete close to arrival, to the host.</summary>
+    /// <summary>
+    /// Guest data for the Alloggiati communication still missing the day before arrival, to the host (first stage of the
+    /// stay alerts, CO-10).
+    /// </summary>
     public static EmailContent GuestCheckInIncomplete(
         CultureInfo culture,
         string guestName,
@@ -137,16 +140,29 @@ public static class EmailTemplates
             .Paragraph("GuestCheckInIncomplete_Action")
             .Build("GuestCheckInIncomplete_Subject", propertyName, checkInDate);
 
-    /// <summary>Alloggiati Web report close to its deadline, to the host.</summary>
+    /// <summary>
+    /// Alloggiati Web communication not sent with its deadline approaching, to the host (CO-10). The term (24 or 6 hours
+    /// from arrival) is always stated; the exact deadline only when the arrival is registered
+    /// (<paramref name="deadlineUtc"/>, shown in Italian time).
+    /// </summary>
     public static EmailContent AlloggiatiDeadline(
         CultureInfo culture,
         string guestName,
         string propertyName,
-        DateTime checkInDate) =>
-        new EmailHtmlBuilder(culture)
+        DateTime checkInDate,
+        bool shortStay = false,
+        DateTime? deadlineUtc = null)
+    {
+        var builder = new EmailHtmlBuilder(culture)
             .Paragraph("AlloggiatiDeadline_Body", guestName, propertyName, checkInDate)
+            .Paragraph(shortStay ? "AlloggiatiDeadline_Term6" : "AlloggiatiDeadline_Term24");
+        builder = deadlineUtc is { } deadline
+            ? builder.Paragraph("AlloggiatiDeadline_DeadlineAt", builder.FormatInstant(deadline))
+            : builder.Muted("AlloggiatiDeadline_ArrivalNotRegistered");
+        return builder
             .Paragraph("AlloggiatiDeadline_Action")
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
+    }
 
     /// <summary>A refund confirmed by Stripe, to the guest (BK-02). <paramref name="amountEur"/> is in euro.</summary>
     public static EmailContent GuestRefundConfirmed(

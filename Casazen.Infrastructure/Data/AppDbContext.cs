@@ -39,6 +39,9 @@ public class AppDbContext(
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
 
+    // Stages of the host alerts already sent per stay (CO-10)
+    public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
+
     // Guests of a stay and official Alloggiati code tables (CO-12)
     public DbSet<StayGuest> StayGuests { get; set; } = null!;
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
@@ -146,6 +149,13 @@ public class AppDbContext(
             .ToTable(t => t.HasCheckConstraint(
                 "CK_AlloggiatiWebReports_SentRequiresReceipt",
                 $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
+
+        // CO-10: the alert stages of a stay go with it.
+        modelBuilder.Entity<StayAlertState>()
+            .HasOne(s => s.Booking)
+            .WithMany()
+            .HasForeignKey(s => s.BookingId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
         modelBuilder.Entity<StayGuest>(entity =>
