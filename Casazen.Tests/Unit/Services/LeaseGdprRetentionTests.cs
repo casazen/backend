@@ -49,7 +49,7 @@ public class LeaseGdprRetentionTests
             ]));
 
         Assert.Equal(start.AddYears(10), result.DataRetentionUntil);
-        Assert.Equal(start.AddDays(30), result.RegistrationDeadline);
+        Assert.Null(result.RegistrationDeadline); // fixed at the stipula (LT-04), not StartDate + 30
         Assert.False(result.ErasureRequested);
     }
 

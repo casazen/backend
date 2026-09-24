@@ -40,7 +40,7 @@ and production never block each other.
 | `cin-deadline-alert` | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` | 300 s |
 | `lease-sign-status-poll` | `*/10` | `LeaseSignStatusPollingJob.ExecuteAsync` | 60 s |
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
-| `rli-deadline-reminder` | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
+| `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
@@ -345,3 +345,24 @@ The last query should stay empty: a row there means the payment webhook did not 
 `Stripe__ConnectWebhookSecret`, then resend the event from the Stripe Dashboard) or a SEPA payment is still
 processing. A SetupIntent still `processing` is not recorded on the booking: the job reads it again at every run until
 the webhook confirms it.
+
+## 8. RLI deadline reminder (LT-04)
+
+Audit defect A7-04. `rli-deadline-reminder` (daily 08:00 UTC, `RliDeadlineReminderJob`) reminds the landlord of the
+RLI registration deadline `min(stipula, start) + 30` days (rule and details: [rli.md](rli.md#registration-deadline-lt-04)).
+
+- Covers every lease not registered yet, from `Draft` on (`Registered` and `Rejected` excluded).
+- Thresholds, not exact days: ≤ 15, ≤ 7, ≤ 1 days (the deadline day included), overdue from the day after. The most
+  urgent threshold reached is sent once per deadline, so a failed, skipped or late run is caught up by the next one and
+  a retry or a manual trigger from the dashboard never sends twice (`DeadlineReminderSent` event, payload
+  `{threshold}:{deadline}`, written only after the email is accepted).
+- A failed email is logged (`RLI reminder … not sent`) and retried at the next daily run, not by Hangfire retries.
+- Nothing to configure on Railway. To send the reminders of the day again after an outage, trigger the job from the
+  dashboard: already-sent thresholds are skipped.
+
+```sql
+-- Reminders sent today, per lease
+SELECT "LeaseContractId", "Payload", "OccurredAt" FROM casazen_prod."LeaseEvents"
+WHERE "EventType" = 12 AND "OccurredAt" >= date_trunc('day', now())
+ORDER BY "OccurredAt";
+```
