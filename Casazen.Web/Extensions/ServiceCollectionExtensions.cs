@@ -6,6 +6,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
@@ -332,13 +333,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
-        services.AddHttpClient("IcalSync", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-IcalSync/1.0");
-        })
-        .AddPolicyHandler((sp, _) =>
-            PollyPolicies.GetRetryPolicy(2, sp.GetRequiredService<ILoggerFactory>().CreateLogger("IcalSync")));
+
+        // User-chosen URLs (iCal feeds) are downloaded only through the anti-SSRF client (FD-16).
+        services.AddOptions<SafeExternalHttpOptions>().BindConfiguration(SafeExternalHttpOptions.SectionName);
+        services.AddSingleton<IExternalHostResolver, SystemDnsHostResolver>();
+        services.AddSingleton<ISafeExternalHttpClient, SafeExternalHttpClient>();
         return services;
     }
 

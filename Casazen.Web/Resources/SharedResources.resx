@@ -228,6 +228,21 @@
   <data name="SignedUrlUnavailable" xml:space="preserve">
     <value>Lo storage configurato non genera link firmati: scarica il documento dall'applicazione.</value>
   </data>
+  <data name="ICalInvalidUrl" xml:space="preserve">
+    <value>L'indirizzo del calendario non è valido: usa un link https pubblico (per esempio il link di esportazione iCal di Airbnb o Booking.com).</value>
+  </data>
+  <data name="ICalUnreachable" xml:space="preserve">
+    <value>Non è stato possibile scaricare il calendario: verifica che il link sia corretto e accessibile pubblicamente.</value>
+  </data>
+  <data name="ICalTooLarge" xml:space="preserve">
+    <value>Il calendario è troppo grande per essere importato.</value>
+  </data>
+  <data name="ICalInvalidFormat" xml:space="preserve">
+    <value>Il link non restituisce un calendario iCal valido.</value>
+  </data>
+  <data name="ICalSyncFailed" xml:space="preserve">
+    <value>La sincronizzazione del calendario non è riuscita: verrà ritentata automaticamente.</value>
+  </data>
   <data name="CheckInLinkEmailQueued" xml:space="preserve">
     <value>Link check-in rigenerato: l'email all'ospite è in coda di invio.</value>
   </data>

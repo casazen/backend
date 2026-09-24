@@ -103,6 +103,9 @@ public interface ISupplierService
     /// Updates calendar sync settings for a supplier profile. Self-contained save — does not
     /// depend on <see cref="UpdateProfileAsync"/> side-effects.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>ical_invalid_url</c>: <paramref name="icalFeedUrl"/> is not an external https URL the server may download.
+    /// </exception>
     Task<SupplierProfile?> UpdateCalendarSyncAsync(
         Guid orgId,
         CalendarSyncType syncType,

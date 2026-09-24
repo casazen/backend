@@ -1,7 +1,7 @@
-using System.Net.Http;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.ICalSpike;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -11,16 +11,16 @@ namespace Casazen.Infrastructure.Services;
 public class CalendarSyncService
 {
     private readonly AppDbContext _db;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ISafeExternalHttpClient _externalHttpClient;
     private readonly ILogger<CalendarSyncService> _logger;
 
     public CalendarSyncService(
         AppDbContext db,
-        IHttpClientFactory httpClientFactory,
+        ISafeExternalHttpClient externalHttpClient,
         ILogger<CalendarSyncService> logger)
     {
         _db = db;
-        _httpClientFactory = httpClientFactory;
+        _externalHttpClient = externalHttpClient;
         _logger = logger;
     }
 
@@ -32,24 +32,40 @@ public class CalendarSyncService
         if (profile is null || string.IsNullOrWhiteSpace(profile.IcalFeedUrl))
             return;
 
+        string icsContent;
         try
         {
-            using var client = _httpClientFactory.CreateClient("IcalSync");
-            client.Timeout = TimeSpan.FromSeconds(30);
+            // Anti-SSRF download (FD-16): https only, public addresses only, size and time limits.
+            icsContent = await _externalHttpClient.GetStringAsync(profile.IcalFeedUrl, ct);
+        }
+        catch (ExternalFetchException ex)
+        {
+            _logger.LogWarning(ex, "iCal download failed for supplier {OrgId} ({Failure})", orgId, ex.Failure);
+            await SaveFailureAsync(profile, ICalErrorCodes.FromFetchFailure(ex.Failure), ct);
+            return;
+        }
 
-            var icsContent = await client.GetStringAsync(profile.IcalFeedUrl, ct);
-
+        IReadOnlyList<CalendarBlockSlice> blocks;
+        try
+        {
             if (!ICalImportSpike.IsValidExportFeed(icsContent))
             {
-                profile.CalendarSyncError = "iCal feed is not valid or contains no events";
-                profile.CalendarLastSyncAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync(ct);
                 _logger.LogWarning("Invalid iCal feed for supplier {OrgId}", orgId);
+                await SaveFailureAsync(profile, ICalErrorCodes.InvalidFormat, ct);
                 return;
             }
 
-            var blocks = ICalImportSpike.ParseImport(icsContent);
+            blocks = ICalImportSpike.ParseImport(icsContent);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Unparsable iCal feed for supplier {OrgId}", orgId);
+            await SaveFailureAsync(profile, ICalErrorCodes.InvalidFormat, ct);
+            return;
+        }
 
+        try
+        {
             // Convert busy blocks to SupplierAvailability (mark as unavailable)
             var dateRange = blocks
                 .SelectMany(b => EnumerateDates(b.StartUtc, b.EndUtc))
@@ -86,13 +102,20 @@ public class CalendarSyncService
                 "iCal sync completed for supplier {OrgId}: {BlockCount} blocks → {DateCount} dates",
                 orgId, blocks.Count, dateRange.Count);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            profile.CalendarSyncError = $"Sync failed: {ex.Message}";
-            profile.CalendarLastSyncAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
             _logger.LogError(ex, "iCal sync failed for supplier {OrgId}", orgId);
+            await SaveFailureAsync(profile, ICalErrorCodes.SyncFailed, ct);
         }
+    }
+
+    // Stores the stable error code, never the exception message (FD-16, A4-10: the message told the supplier
+    // what the server could reach).
+    private async Task SaveFailureAsync(SupplierProfile profile, string errorCode, CancellationToken ct)
+    {
+        profile.CalendarSyncError = errorCode;
+        profile.CalendarLastSyncAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task SyncAllIcalFeedsAsync(CancellationToken ct = default)

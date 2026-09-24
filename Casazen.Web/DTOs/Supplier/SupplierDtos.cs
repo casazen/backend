@@ -183,6 +183,11 @@ public class CalendarSyncStatusDto
     public string CalendarSyncType { get; set; } = "None";
     public string? IcalFeedUrl { get; set; }
     public DateTime? CalendarLastSyncAt { get; set; }
+
+    /// <summary>Stable code of the last sync error (<c>ical_unreachable</c>, <c>ical_too_large</c>, ...).</summary>
+    public string? CalendarSyncErrorCode { get; set; }
+
+    /// <summary>Localized message of <see cref="CalendarSyncErrorCode"/>, never an exception message.</summary>
     public string? CalendarSyncError { get; set; }
 }
 
