@@ -1,0 +1,1677 @@
+[
+[
+"A1-01",
+"P0",
+"Vicolo cieco nell'onboarding per chi ha ruoli Auth0 ma nessuna org (admin inclusi)"
+],
+[
+"A1-02",
+"P0",
+"Sincronizzazione ruoli Auth0 con token M2M statico ed errori silenziosi"
+],
+[
+"A1-03",
+"P1",
+"Upgrade del piano gratuito (#274) e piano scelto all'onboarding senza pagamento"
+],
+[
+"A1-04",
+"P1",
+"Utente disattivato ancora operativo"
+],
+[
+"A1-05",
+"P1",
+"Consensi ToS, Privacy e DPA aggirabili"
+],
+[
+"A1-06",
+"P1",
+"Documenti legali inesistenti ed elenco sub-responsabili non veritiero"
+],
+[
+"A1-07",
+"P1",
+"Frontend del SaaS billing completamente assente"
+],
+[
+"A1-08",
+"P1",
+"IVA e OSS calcolate male, IVA non incassata"
+],
+[
+"A1-09",
+"P1",
+"Idempotenza del webhook Stripe che perde eventi"
+],
+[
+"A1-10",
+"P1",
+"Checkout che crea subscription duplicate"
+],
+[
+"A1-11",
+"P1",
+"Mapping degli stati subscription fail-open"
+],
+[
+"A1-12",
+"P1",
+"`X-Forwarded-For` falsificabile"
+],
+[
+"A1-13",
+"P1",
+"Collegamento account tramite email non verificata"
+],
+[
+"A1-15",
+"P1",
+"Modifica del tipo operatore: piano ignorato in silenzio e step saltati"
+],
+[
+"A1-16",
+"P1",
+"Pagina Admin CIN irraggiungibile e test e2e vuoto"
+],
+[
+"A1-17",
+"P1",
+"Cambio ruolo admin distruttivo"
+],
+[
+"A1-18",
+"P1",
+"Demo mode rotta fuori da Playwright"
+],
+[
+"A1-22",
+"P1",
+"Identità org e utente vuota, nessuna impostazione org"
+],
+[
+"A1-40",
+"P1",
+"Utente fornitore che diventa host: proprietà create nell'org fornitore"
+],
+[
+"A1-14",
+"P2",
+"Race sul primo accesso.** `UserService.cs:127-141` e `OrgService.cs:59-86` fanno check-then-insert. Due richieste parallele sul primo login (FE più mo"
+],
+[
+"A1-19",
+"P2",
+"Errore transitorio su `/users/me` rimanda all'onboarding.** In `onboarding-guard.tsx:19-21` un 5xx o un timeout porta un utente attivo su `/onboarding"
+],
+[
+"A1-20",
+"P2",
+"`TenantContext` mette in cache `OrgId=null` prima del provisioning.** `TenantContext.cs:33-52` e `OrgContextResolver.cs:26-46`: nella stessa richiesta"
+],
+[
+"A1-21",
+"P2",
+"`ReservePropertySlotAsync` non riserva nulla.** `EntitlementService.cs:37-66` apre una transazione serializable, conta e fa commit; l'insert avviene i"
+],
+[
+"A1-23",
+"P2",
+"Slug dell'org derivato dal `sub` Auth0 e non modificabile.** Con `OrgService.cs:142-157` l'URL pubblico diventa `/book/org-google-oauth2-1098…`: espon"
+],
+[
+"A1-24",
+"P2",
+"Il middleware errori espone dettagli interni.** `ErrorHandlingMiddleware.cs:84-97` restituisce `ex.Message` per `InvalidOperationException` (con statu"
+],
+[
+"A1-25",
+"P2",
+"Violazioni i18n."
+],
+[
+"A1-26",
+"P2",
+"Pagine admin senza stati di errore e con filtri incompleti.** `admin-users-page.tsx:18` ignora `isError`; `admin-jobs-page.tsx:9` ignora `isError` e m"
+],
+[
+"A1-27",
+"P2",
+"Statistiche e CIN admin caricano tutte le proprietà in memoria.** `AdminService.cs:45,105` usano `ToListAsync()` sull'intera tabella con paginazione i"
+],
+[
+"A1-28",
+"P2",
+"Invariante RF1 violata o parziale.** `Guest` non ha `OrgId`; `GuestsController.cs:28-37` carica **tutti** gli ospiti della piattaforma e fa un control"
+],
+[
+"A1-29",
+"P2",
+"Membership legacy mai revocate e `LastUsedContextKey` mai scritto.** Il seed in `20260604193911_AddContextAuthorization.cs:159-189` non viene più aggi"
+],
+[
+"A1-30",
+"P2",
+"`POST /api/auth/register` anonimo e stub.** `AuthController.cs:13-46` crea utenti fantasma (Id casuale, password ignorata) e permette spam nel DB e ne"
+],
+[
+"A1-31",
+"P2",
+"Configurazione billing inutilizzabile in test e produzione."
+],
+[
+"A1-32",
+"P2",
+"Stesso tenant Auth0 per preview e produzione.** `secrets/vercel.variables.example.json:5-7`: un ruolo assegnato dal test vale anche in prod, e gli ute"
+],
+[
+"A1-33",
+"P2",
+"Mobile senza refresh token e senza gating.** `MOB/src/auth/AuthProvider.tsx:99-127` salva il refresh token ma non lo usa mai: alla scadenza arriva un "
+],
+[
+"A1-34",
+"P2",
+"Hygiene di sicurezza FE e Hangfire.** `FE/lib/axios.ts:50-56` logga il prefisso del token e fa debug verboso in produzione. Il token sta in `localStor"
+],
+[
+"A1-35",
+"P2",
+"Validazione degli enum.** `Enum.TryParse` accetta stringhe numeriche (`UsersController.cs:129,171`): `rentalType:\"7\"` produce un 500 (`UserService.cs:"
+],
+[
+"A1-36",
+"P2",
+"Piano non gestibile per i landlord LTR-only.** Il badge punta a una route short-rent (`org-badge.tsx:19`, `entitlement-error.ts:7`); `me/entitlement` "
+],
+[
+"A1-37",
+"P2",
+"Milestone `sitePublished` sempre vera.** `OnboardingService.cs:119-122`: basta una proprietà attiva, perché `Org.IsActive` è true di default. **Fix:**"
+],
+[
+"A1-38",
+"P2",
+"Pagina piano: promise non gestita e 409 generico.** In `plan-settings-page.tsx:19-23` un errore di `mutateAsync` lascia `selectedTier` bloccato. Il 40"
+],
+[
+"A1-39",
+"P2",
+"Step consensi senza retry e versioni obsolete non gestite.** `consents-step.tsx:30-38`: se un documento legale non si carica, la schermata è morta (ne"
+],
+[
+"A1-41",
+"P2",
+"PATCH piano admin ignora Stripe.** `AdminController.cs:107-130` modifica il piano anche con una subscription attiva; il webhook successivo lo sovrascr"
+],
+[
+"A1-43",
+"P2",
+"Test che non verificano nulla di significativo."
+],
+[
+"A2-01",
+"P0",
+"La prenotazione creata dall'host nasce `Status=Pending`, `Source=Direct` e non esiste un endpoint per confermarla. `CreateDirectBookingAsync` annulla "
+],
+[
+"A2-02",
+"P0",
+"`Guest` non è per tenant: una prenotazione manuale riusa il record Guest di **un'altra org** trovato per email."
+],
+[
+"A2-03",
+"P0",
+"Foto e documenti finiscono sul filesystem del container Railway (effimero; nessun volume documentato in docs/INFRA.md). L'URL restituito è relativo (`"
+],
+[
+"A2-04",
+"P1",
+"Il PUT sovrascrive **tutti** i campi. Il form FE non invia `cleaningFee`, `damageDeposit`, `houseRules`, `timezone`, `cancellationPolicyId`."
+],
+[
+"A2-05",
+"P1",
+"1) \"Pausa/Attiva\" invia solo `{isActive}` e il BE risponde 400 (Name/Address/City obbligatori): il pulsante non funziona mai. 2) Una proprietà messa i"
+],
+[
+"A2-06",
+"P1",
+"Il range è calcolato una sola volta (mese corrente) e react-big-calendar non rifà la query quando si naviga. `toISOString()` converte la mezzanotte lo"
+],
+[
+"A2-07",
+"P1",
+"Il PUT fa il binding dell'**entità** EF. Con `Nullable enable` (Casazen.Core.csproj:6) le navigation `Property`/`Org`/`Guest` diventano required impli"
+],
+[
+"A2-08",
+"P1",
+"Da web l'host non può confermare, fare il check-in né annullare. L'API di check-in fallisce se usata dopo il giorno d'arrivo (`ValidateBooking` rifiut"
+],
+[
+"A2-09",
+"P1",
+"Le API OTA partner (#31-35, **congelate**) sono raggiungibili e rotte. Il FE chiama `/ota`, `/ota/sync/all`, `/ota/sync/{platform}`, `POST /ota`, `/ot"
+],
+[
+"A2-10",
+"P1",
+"Un feed valido **senza eventi** viene marcato `Failure` e l'import termina prima di rimuovere i blocchi orfani."
+],
+[
+"A2-11",
+"P1",
+"Un solo URL di import per proprietà."
+],
+[
+"A2-12",
+"P1",
+"Un `DbUpdateException` (SUMMARY >500 caratteri, UID duplicato nel feed, due run sovrapposti) fa fallire di nuovo il salvataggio nel catch: l'eccezione"
+],
+[
+"A2-13",
+"P1",
+"La disponibilità pubblica considera solo le prenotazioni, non i `CalendarBlock`. Il FE le passa lo **slug** mentre la rotta vuole un Guid (400). Gli s"
+],
+[
+"A2-14",
+"P1",
+"Il \"prezzo AI\" è uno stub: moltiplicatori fissi per mese e festivi; lo storico registra prezzi inventati; nessun prezzo viene applicato a checkout, pr"
+],
+[
+"A2-15",
+"P1",
+"Npgsql ≥6 rifiuta i parametri `DateTime` con Kind Unspecified sulle colonne timestamptz. Stesso pattern latente in PublicBookingsController.cs:19-26."
+],
+[
+"A2-16",
+"P1",
+"L'app mescola blocchi e prenotazioni e mostra una sola proprietà."
+],
+[
+"A2-17",
+"P1",
+"`GET /api/bookings` (lista e dashboard) esegue una query per prenotazione e ciascuna carica la proprietà con tutte le sue prenotazioni (O(N²) righe). "
+],
+[
+"A2-18",
+"P1",
+"`DELETE /api/properties/{id}` è una cancellazione fisica. Non esposta in UI ma pubblica via API."
+],
+[
+"A2-19",
+"P1",
+"Unicità dell'indirizzo su tutta la piattaforma e senza campo interno/scala."
+],
+[
+"A2-20",
+"P2",
+"`ImportUrl` in chiaro (la spec AC2 chiede cifratura). Gli URL Airbnb contengono un token segreto che dà accesso alle prenotazioni."
+],
+[
+"A2-21",
+"P2",
+"Fetch sincrono di un URL https arbitrario dentro la richiesta, senza limite di dimensione né blocco delle reti private; il messaggio d'eccezione torna"
+],
+[
+"A2-22",
+"P2",
+"L'export non usa VALUE=DATE, riesporta i blocchi importati (effetto eco) con il loro SUMMARY su un URL pubblico, include le Pending non pagate; il tok"
+],
+[
+"A2-23",
+"P2",
+"Il parser ignora `STATUS:CANCELLED` e `TRANSP:TRANSPARENT` e non espande `RRULE`. Le date all-day passano da `AsUtc` e dipendono dal fuso del server. "
+],
+[
+"A2-24",
+"P2",
+"Mutation senza `onError` (rejection non gestita, nessun toast); il campo ricade su `status.importUrl` e non si svuota; \"Salva\" con URL invariato non f"
+],
+[
+"A2-25",
+"P1",
+"Nessun blocco manuale di date (soggiorno del proprietario, manutenzione)."
+],
+[
+"A2-26",
+"P1",
+"Upload, cancellazione e riordino foto hanno gli endpoint (PropertiesController.cs:338-488) ma **nessuna UI**."
+],
+[
+"A2-27",
+"P2",
+"Bagni con step 0,5 contro `int` nel BE (1,5 → 400 \"JSON value could not be converted\"); nessun monolocale (camere ≥1); campi \"Paese\" e \"Valuta\" ignora"
+],
+[
+"A2-28",
+"P2",
+"I messaggi di validazione dichiarati come chiavi i18n arrivano grezzi."
+],
+[
+"A2-29",
+"P2",
+"L'\"occupazione\" è calcolata come prenotazioni in check-in diviso numero di proprietà; il ricavo è cumulativo da sempre; il widget OTA è sempre vuoto ("
+],
+[
+"A2-30",
+"P2",
+"Il link \"Prenotazioni di questa proprietà\" mostra tutte le prenotazioni; nessuna CTA di creazione; \"Annulla\" del form senza effetto; il \"prezzo per no"
+],
+[
+"A2-31",
+"P2",
+"I documenti della proprietà sono scaricabili senza autenticazione con URL permanenti."
+],
+[
+"A2-32",
+"P2",
+"PII (email, nome) nei log a ogni lista; payload `GET /properties/{id}` pesante con tutte le prenotazioni, token di check-in compresi."
+],
+[
+"A2-33",
+"P2",
+"Coordinate arrotondate a 0,01° (circa 1 km)."
+],
+[
+"A2-34",
+"P2",
+"`NextScheduledRunAt = now+1g` e filtro `<= now` alla run successiva (sempre alle 02:00): basta un jitter per saltare giorni; la prima run dopo l'attiv"
+],
+[
+"A2-35",
+"P2",
+"`POST /api/guests` risponde 409 \"Guest with email X already exists\" per email di **qualsiasi** org (enumerazione); l'ospite creato non compare in list"
+],
+[
+"A2-36",
+"P2",
+"KPI prenotazioni: `nextCheckIn` conta le cancellate, gli arrivi di oggi (00:00Z) non sono né \"upcoming\" né \"active\"; qualsiasi errore (anche 500) vien"
+],
+[
+"A2-37",
+"P2",
+"I test non possono rilevare A2-01, 07, 08, 12, 15, 18, 19. Nessun E2E importa un .ics reale né verifica AC13."
+],
+[
+"A3-01",
+"P0",
+"Il widget naviga a `/checkout??checkIn=…&checkOut=…`. `URLSearchParams` legge la chiave `\"?checkIn\"`, quindi `checkIn` vale `null` (verificato con nod"
+],
+[
+"A3-02",
+"P0",
+"Il checkout legge la tabella `TaxRates`, che nessun codice, seed o migration popola (grep: nessun writer). L'admin e i wizard usano `TouristTaxRates` "
+],
+[
+"A3-03",
+"P0",
+"L'evento è \"claimato\" (INSERT committato) prima della logica di business. Se la logica lancia un'eccezione, il retry di Hangfire lo trova già presente"
+],
+[
+"A3-04",
+"P0",
+"Il `Pending` scade dopo 15' (`appsettings.json` `DirectBooking:PendingTtlMinutes`), ma il PaymentIntent resta valido. Se nel frattempo un altro tentat"
+],
+[
+"A3-05",
+"P0",
+"`RefundPaymentAsync` aggiorna solo il DB (\"TODO: Implement actual Stripe refund\"). `ProcessPaymentAsync` \"simula\" un pagamento riuscito. `StripeServic"
+],
+[
+"A3-06",
+"P0",
+"L'opzione \"Paga in struttura\" è sempre offerta e conferma subito, senza carta a garanzia, senza verifica email e senza limite di durata o numero di no"
+],
+[
+"A3-07",
+"P0",
+"`PUT /api/orgs/me/plan` permette a qualsiasi utente autenticato senza abbonamento di impostare Pro/Scale. Con `SubscriptionStatus.None` il tier effett"
+],
+[
+"A3-08",
+"P1",
+"Sottodominio e dominio custom non funzionano: (a) la root `/` è dentro `ProtectedRoute`; (b) `*.casazen.it` è considerato host di default; (c) l'API è"
+],
+[
+"A3-09",
+"P1",
+"La disponibilità è richiesta con lo slug (gli URL usano lo slug per default: `org-landing-page.tsx:26,33`) ma la route vuole un `Guid`, quindi 400. L'"
+],
+[
+"A3-10",
+"P1",
+"Il FE invia solo `{email}`, la BE richiede anche `bookingId` ([Required]) e risponde 400."
+],
+[
+"A3-11",
+"P1",
+"Nessuna email al guest o all'host alla conferma (#58): sono stub con `Task.Delay`. Il template esistente non è mai chiamato, è solo in inglese e inter"
+],
+[
+"A3-12",
+"P1",
+"`AddFixedWindowLimiter(\"PublicBookingCreate\")` non è partizionato: 10 richieste al minuto in totale su tutta la piattaforma, condivise tra create e lo"
+],
+[
+"A3-13",
+"P1",
+"La scadenza dei `Pending` avviene solo quando qualcuno tenta di prenotare la stessa property. Non esiste un job ricorrente. Disponibilità pubblica, ca"
+],
+[
+"A3-14",
+"P1",
+"Addebito differito: (a) il pagamento viene marcato `Completed` senza controllare `paymentIntent.Status` (`requires_action`/`processing`); (b) manca `O"
+],
+[
+"A3-15",
+"P1",
+"(a) \"Prenotazione confermata!\" è mostrata subito dopo `confirmPayment`; il polling di stato non aggiorna la UI e l'esito è ignorato. (b) `return_url ="
+],
+[
+"A3-16",
+"P1",
+"L'opzione \"paga alla scadenza\" è mostrata se `nights > 7` invece che se l'arrivo è tra più di 7 giorni. \"Cancellazione gratuita fino a {checkIn-7}\" è "
+],
+[
+"A3-17",
+"P1",
+"Branding non configurabile: nessun endpoint scrive `LogoUrl`, `ThemeColor`, `HeroImageUrl`, `Tagline`, `PublicThemeId`, `DisplayName` o `Slug`. Il nom"
+],
+[
+"A3-18",
+"P2",
+"I tre temi hanno token identici; font `Fraunces`/`Inter` dichiarati ma mai caricati (fallback Georgia/system-ui)."
+],
+[
+"A3-19",
+"P1",
+"Qualsiasi `StripeException` in `GetAccountAsync` (rate limit, rete, chiave) viene trattata come account \"stale\": il codice azzera `StripeConnectedAcco"
+],
+[
+"A3-20",
+"P1",
+"SEO assente sui siti host: title \"temp-vite\", `lang=\"en\"`, nessun meta, OG, canonical o JSON-LD, nessuna sitemap per org, nessun `robots.txt` (il rewr"
+],
+[
+"A3-21",
+"P1",
+"I link Privacy e Termini puntano a `https://casazen.app/privacy` e `/terms`, che non esistono nella SPA: `CatchAllRedirect` porta a `/` e poi a login."
+],
+[
+"A3-22",
+"P1",
+"Il link di condivisione è `${webUrl}/book/${property.slug}/${property.id}`: lo slug della property viene usato come slug dell'org."
+],
+[
+"A3-23",
+"P1",
+"Lo step 4 del GJ L3 usa `POST /api/bookings` autenticato dall'host: il checkout guest non è mai testato contro API e Stripe reali. Gli E2E FE (demo pi"
+],
+[
+"A3-24",
+"P1",
+"INFRA elenca solo `Stripe__SecretKey` e `Stripe__WebhookSecret`. Mancano `Stripe__ConnectWebhookSecret` (senza, `/webhooks/stripe/connect` risponde 50"
+],
+[
+"A3-25",
+"P1",
+"Solo verifica TXT: il CNAME non è verificato e il dominio non viene mai aggiunto al progetto Vercel (nessuna API Vercel), quindi niente SSL e Vercel r"
+],
+[
+"A3-26",
+"P2",
+"Il sito è \"pubblicato\" appena esiste una property attiva, anche se `ConnectChargesEnabled=false`; l'avviso compare solo in Pagamenti. Nessuno step \"mo"
+],
+[
+"A3-27",
+"P2",
+"`/search` è un vicolo cieco (`console.log`) e usa `AppShell` della console."
+],
+[
+"A3-28",
+"P2",
+"Parametri `checkIn`/`checkOut` invece di `checkin`/`checkout` (contratto AC15/GVR)."
+],
+[
+"A3-29",
+"P2",
+"Il CORS ammette qualsiasi `https://*.vercel.app` con `AllowCredentials`."
+],
+[
+"A3-30",
+"P2",
+"Il rate limit di resolve-host usa il primo valore di `X-Forwarded-For` (falsificabile). `ConsentIpAddress` salva l'IP del proxy Railway."
+],
+[
+"A3-31",
+"P2",
+"Violazione della regola i18n (`IStringLocalizer`/`t()`). Plurale costruito con suffisso \"i\": \"3 nottei\" in IT, \"3 nighti\" in EN. Stringa \"Struttura\" h"
+],
+[
+"A3-32",
+"P2",
+"Contrasto della CTA 2.95:1 (bianco su `#e07a5f`), sotto WCAG AA."
+],
+[
+"A3-33",
+"P2",
+"Il guest con dati personali e consenso viene creato prima della validazione (date passate) e non viene cancellato se Stripe fallisce."
+],
+[
+"A3-34",
+"P2",
+"Adulti di default a 2, scollegati dal widget; paese fisso `IT`; nessuna validazione client di maxGuests, email o date passate. Il controllo \"passato\" "
+],
+[
+"A3-35",
+"P2",
+"Un errore dell'API proprietà viene mostrato come \"nessuna struttura pubblicata\". Hero caricato in lazy chunk (penalizza l'LCP)."
+],
+[
+"A3-36",
+"P2",
+"Copia obsoleta con logica di idempotenza diversa (solo Platform)."
+],
+[
+"A3-37",
+"P2",
+"`ShowPoweredBy` usa `org.PlanTier` salvato, non il tier effettivo (disdetta o past due oltre grace)."
+],
+[
+"A3-38",
+"P2",
+"`process` e `refund` richiedono solo un utente autenticato (manca la policy `payment.write`). `GetAll` senza `propertyId` carica tutti i pagamenti del"
+],
+[
+"A3-39",
+"P2",
+"`EventUtility.ConstructEvent` con `throwOnApiVersionMismatch=true` (default Stripe.net 50.1)."
+],
+[
+"A3-40",
+"P2",
+"`ApplicationFeeAmount = 0` esplicito sulle direct charge: inutile e da verificare in test mode, perché Stripe potrebbe rifiutare 0."
+],
+[
+"A3-41",
+"P2",
+"Nessun rate limit sulle GET pubbliche (org, properties, availability, status, search); l'availability rivela l'occupazione anche di property inattive."
+],
+[
+"A3-42",
+"P2",
+"Policy `property.write` invece di Org admin; `returnUrl`/`refreshUrl` scelti dal client."
+],
+[
+"A4-01",
+"P0",
+"`AssignRoleAsync` legge i ruoli Auth0 dell'utente e li **rimuove tutti** prima di aggiungere `Supplier`."
+],
+[
+"A4-02",
+"P0",
+"Registrazione fornitore anonima (sia pagina FE sia pagina BE) → l'utente fa signup su Auth0 → `/api/users/me` restituisce `orgId` null e il JWT non ha"
+],
+[
+"A4-03",
+"P0",
+"Il link d'invito punta alla pagina HTML del **backend** (`{ApiBaseUrl}/register`) perché `App:ApiBaseUrl` ha la precedenza su `PublicSiteBaseUrl`. Que"
+],
+[
+"A4-04",
+"P1",
+"Self-serve impossibile: email e comune sono `disabled` e presi solo dall'URL. Il token d'invito non è legato all'email né al comune (qualsiasi token v"
+],
+[
+"A4-05",
+"P0",
+"**Tre tassonomie di categorie incompatibili.** Il fornitore salva etichette italiane, host web e mobile filtrano per codici inglesi. Il BE confronta s"
+],
+[
+"A4-06",
+"P1",
+"`ShouldSendEmail` controlla `SendGrid:ApiKey`/`Email:ApiKey`, chiavi che non esistono. Il provider registrato è Resend (`Program.cs:89`, chiave `Email"
+],
+[
+"A4-07",
+"P1",
+"Link della console costruito da `App:FrontendBaseUrl`, chiave non configurata in nessun `appsettings*` (`grep` = 0), con fallback `https://app.casazen"
+],
+[
+"A4-08",
+"P1",
+"`request.Notes`, `Category`, `property.Name` e `supplier.LegalName` vengono interpolati in HTML **senza** `WebUtility.HtmlEncode`. `Notes` e `Category"
+],
+[
+"A4-09",
+"P1",
+"L'attivazione richiede solo la ToS e ignora gli step 2–5 (violazione di SC-AC5 e della tabella wizard in PLANNING)."
+],
+[
+"A4-10",
+"P1",
+"URL del feed iCal fetchato lato server **senza** validazione di schema/host (SSRF). Il messaggio d'eccezione viene salvato e mostrato all'utente (`Cal"
+],
+[
+"A4-11",
+"P2",
+"`Task.Run(() => calendarSyncService.SyncIcalFeedAsync(...))` usa un service **scoped** (e il suo `DbContext`) dopo la fine della richiesta."
+],
+[
+"A4-12",
+"P1",
+"Il codice catastale `F205` è mappato a **Firenze**, ma F205 è **Milano** (Firenze = D612). Il registry conosce solo 12 comuni; negli altri casi il mat"
+],
+[
+"A4-13",
+"P1",
+"Chiavi di correlazione diverse tra web e app. Una richiesta creata dal web marketplace non ha `bookingId`, quindi **non compare mai** nell'app (M5/M6)"
+],
+[
+"A4-14",
+"P1",
+"Il fornitore riceve solo nome property, categoria, urgenza e note. Mancano indirizzo, data/finestra (check-out), host/contatto e booking. Non esiste u"
+],
+[
+"A4-15",
+"P1",
+"**Duplicazione concettuale** `SupplierJob` vs `ServiceRequest`. `SupplierJob` (con QR check-in e `Price`) non ha alcun punto di creazione lato host: `"
+],
+[
+"A4-16",
+"P1",
+"`fetch('/api/…')` relativo invece del client axios con `VITE_API_BASE_URL`: su Vercel ritorna `index.html`, quindi `r.json()` fallisce. In più `Showca"
+],
+[
+"A4-17",
+"P2",
+"`MarkPaid` non intercetta `InvalidOperationException(\"Richiesta non trovata\")`."
+],
+[
+"A4-18",
+"P2",
+"Nessun `[Required]`/`[MaxLength]` su `Category` (entity 100), `Notes` (1000), `Reason` (500). `SupplierOrgId`/`PropertyId` possono essere `Guid.Empty`"
+],
+[
+"A4-19",
+"P2",
+"Nessun controllo di concorrenza sulle transizioni."
+],
+[
+"A4-20",
+"P2",
+"Email e push vengono inviati **dopo** `SaveChanges` e non sono isolati: se lanciano un'eccezione il client riceve un 500, ma lo stato è già cambiato."
+],
+[
+"A4-21",
+"P2",
+"`Guid.Parse(inviteToken)` dentro la query LINQ genera una `FormatException` non gestita (il controller cattura solo `InvalidOperationException`)."
+],
+[
+"A4-22",
+"P2",
+"`fix-orphaned` cancella le org \"duplicate\" senza verificare che non abbiano `ServiceRequests` (FK Restrict) né utenti collegati (`User.SupplierOrgId`/"
+],
+[
+"A4-23",
+"P2",
+"Collegamento dell'utente al profilo fornitore **per email**, senza controllare `email_verified`."
+],
+[
+"A4-24",
+"P2",
+"Il testo \"il tuo profilo fornitore verrà attivato automaticamente\" è falso (resta `Pending`). `ToLocalTime()` sul container UTC produce un orario UTC "
+],
+[
+"A4-25",
+"P2",
+"Nessuna pagina gestisce `isError`: lo spinner resta infinito, oppure l'errore appare come stato vuoto."
+],
+[
+"A4-26",
+"P2",
+"Il flusso \"AI match\" e i suggerimenti esterni (Google/LLM) sono **codice morto** nel web. `webSearch.SearchAsync` è fuori dal try, quindi un'eccezione"
+],
+[
+"A4-27",
+"P2",
+"Stringhe hardcoded (IT/EN), `defaultValue` vietato, stati `Active`/`PresoInCarico` e categorie `cleaning` mostrati grezzi. Il BE non usa `IStringLocal"
+],
+[
+"A4-28",
+"P2",
+"La timeline non mostra `takenAt`, `paidAt` né `rejectionReason`. \"Segna pagato\" sul web non chiede conferma (su mobile sì). Nessuna azione su `Rifiuta"
+],
+[
+"A4-29",
+"P2",
+"L'admin non può vedere i fornitori, reinviare o revocare inviti, né sospendere un fornitore scorretto. Un fornitore `Suspended` potrebbe comunque eseg"
+],
+[
+"A4-30",
+"P2",
+"Per ogni richiesta autenticata di utenti senza ruolo Supplier, `OnTokenValidated` esegue una query DB su `Users`."
+],
+[
+"A4-31",
+"P2",
+"La checkbox \"Accetto i termini di servizio fornitore CasaZen\" non ha alcun link al testo dei termini. `TosAcceptedAt` non registra la versione."
+],
+[
+"A4-32",
+"P2",
+"Codice morto (`SupplierShell` con stringhe hardcoded). La pagina di aiuto iCal è fuori dalla shell fornitore."
+],
+[
+"A4-33",
+"P2",
+"Test che non verificano ciò che dichiarano. `Create_WithBookingId_Returns400` passa per un booking inesistente, non per la regola STR. L3 marketplace "
+],
+[
+"A5-01",
+"P0",
+"**Alloggiati Web è simulato.** Entrambi i rami impostano `Status=Submitted`. Con `Alloggiati:Enabled=true` c'è solo un `TODO` (`:63`) e la segnalazion"
+],
+[
+"A5-02",
+"P0",
+"**Il modello dati non basta per la schedina.** C'è un solo ospite per prenotazione: niente accompagnatori o minori, niente \"tipo alloggiato\" (ospite s"
+],
+[
+"A5-03",
+"P0",
+"**Invio anticipato e duplicato.** Il job Alloggiati parte appena l'ospite invia il form, anche giorni prima dell'arrivo, mentre il PLANNING dice \"quan"
+],
+[
+"A5-04",
+"P0",
+"**Il portale ospite non può mai completare l'invio.** Il BE richiede `gender`; il form FE non ha il campo (ultima modifica FE il 07/07). La pagina non"
+],
+[
+"A5-05",
+"P0",
+"**Formato CIN sbagliato.** `^IT-\\d{5}-\\d{10}$` non corrisponde al CIN rilasciato dalla BDSR: 18 caratteri senza trattini, cioè `IT` + codice ISTAT del"
+],
+[
+"A5-06",
+"P0",
+"**Nessuna property può essere attivata.** Lo step tassa è bloccante mentre il PLANNING lo vuole come warning. La tabella non ha dati. L'host non può i"
+],
+[
+"A5-07",
+"P0",
+"**Fuga di PII fra tenant.** Una prenotazione creata dall'host riusa *globalmente* il Guest che ha la stessa email. Da quel momento l'org B vede i dati"
+],
+[
+"A5-08",
+"P0",
+"**Check-out e turnover irraggiungibili.** Una prenotazione arriva a `CheckedIn` solo via API. `start` accetta `Confirmed` nel giorno di check-out, ma "
+],
+[
+"A5-09",
+"P1",
+"**Tutti i link del cockpit sono rotti.** Il BE restituisce `/properties/{id}/compliance/activation`, `/bookings/{id}/check-in`, `/bookings/{id}/checko"
+],
+[
+"A5-10",
+"P1",
+"**Rate limiter globale.** `AddFixedWindowLimiter` senza partizione significa 10 GET e 3 submit **al minuto per tutta la piattaforma**, non per IP o to"
+],
+[
+"A5-11",
+"P1",
+"**Spam di alert.** Nessuna deduplica: finestra da 24h prima a +8 giorni, e `withinAlertWindow` è vero per tutte le date passate. Una push \"Check-in in"
+],
+[
+"A5-12",
+"P1",
+"**Anonimizzazione e retention incomplete.** Restano data di nascita, cittadinanza, tipo, emissione e scadenza del documento, paese di rilascio, `Docum"
+],
+[
+"A5-13",
+"P1",
+"**Export GDPR (artt. 15/20) incompleto.** Omette data e luogo di nascita, dati del documento, cittadinanza, prenotazioni, sessioni di check-in e conse"
+],
+[
+"A5-14",
+"P1",
+"**L'host può attivare il consenso marketing dell'ospite.**"
+],
+[
+"A5-15",
+"P1",
+"**Base giuridica sbagliata e consenso non dimostrabile.** Il trattamento Alloggiati si basa su un obbligo di legge (art. 6.1.c, `gdpr.md:45`), non sul"
+],
+[
+"A5-16",
+"P1",
+"**Tassa di soggiorno sempre 0 in prenotazione.** Esistono due sorgenti: `TaxRates` per le prenotazioni, che nessuno popola mai, e `TouristTaxRates` pe"
+],
+[
+"A5-17",
+"P1",
+"**Date senza fuso → 500 su Postgres.** Le date \"YYYY-MM-DD\" arrivano come `Kind=Unspecified` e Npgsql rifiuta `timestamptz`. Il test AC12 passa solo s"
+],
+[
+"A5-18",
+"P1",
+"**Bug del wizard FE.** (a) La checklist di sicurezza non viene inizializzata dal server ma viene sempre inviata a \"Completa\": dopo un reload la sovras"
+],
+[
+"A5-19",
+"P1",
+"**Documenti regionali mai applicati.** Le chiavi `LOM`/`LAZ` vengono confrontate con la città; la regione calcolata non viene usata."
+],
+[
+"A5-20",
+"P1",
+"**Lo stato non viene rivalutato.** Si può cancellare il CIN (`PUT /cin` con null) o i documenti di una property `Active` e lei resta `Active`."
+],
+[
+"A5-21",
+"P1",
+"**Checklist di sicurezza normativamente dubbia.** Chiede rilevatore di fumo, estintore e certificato gas. Per quanto ricordo, l'art. 13-ter del D.L. 1"
+],
+[
+"A5-22",
+"P1",
+"**Regole fiscali sbagliate.** (a) La ritenuta OTA del 21% viene applicata automaticamente anche con P.IVA, mentre `fiscale.md` dice \"Non si applica a "
+],
+[
+"A5-23",
+"P1",
+"**Area fiscale FE incompleta.** Nessuna UI per Ordinario/Forfettario. Con 1 immobile non c'è alcuna azione. Report senza tabelle, nessun download per "
+],
+[
+"A5-24",
+"P1",
+"**Il check-out \"wizard\" non è un wizard.** Un solo step, `supplierOrgId: null` fisso, `/start` mai chiamato, `propertyReady` sempre `true`. Nessuna ch"
+],
+[
+"A5-25",
+"P2",
+"Il reminder di check-out viene schedulato solo dopo un check-in manuale ed è solo push (la spec chiede email + push)."
+],
+[
+"A5-26",
+"P1",
+"**Nessun fallback per l'host.** Se l'email non parte il token viene messo `Scaduto` e la query lo esclude: nessuna sessione, quindi nessun pulsante \"I"
+],
+[
+"A5-27",
+"P2",
+"Una sessione scaduta per tempo non passa mai a `Scaduto` e blocca il job, che salta le prenotazioni con sessioni non `Scaduto`."
+],
+[
+"A5-28",
+"P2",
+"Dopo `Completo` il GET pubblico restituisce ancora il prefill con data di nascita e numero documento, fino alla scadenza."
+],
+[
+"A5-29",
+"P2",
+"Il portale legacy anonimo `/api/checkin/{guid}` è ancora attivo: token in chiaro sulla Booking, riusabile fino a check-out + 7 giorni, restituisce tut"
+],
+[
+"A5-30",
+"P1",
+"PII ospite e documenti in chiaro nel DB. Il modello delle credenziali Questura ha `WsKey` in chiaro e `PasswordEncrypted` senza codice di cifratura. L"
+],
+[
+"A5-31",
+"P2",
+"Alert CIN finto (solo log). Dopo l'1/3/2026 i giorni alla scadenza valgono 0 per sempre: il job logga ogni giorno e il banner dice \"la scadenza è oggi"
+],
+[
+"A5-32",
+"P2",
+"Violazione della regola i18n: circa 50 chiavi `compliance.*` assenti in inglese; messaggi BE misti italiano/inglese."
+],
+[
+"A5-33",
+"P2",
+"HTML delle email costruito con interpolazione, senza encoding, e inline invece che con template (contro `.claude/rules/integrations.md`)."
+],
+[
+"A5-34",
+"P2",
+"Torino ha codice ISTAT `010025`, che è Genova; Torino è `001272`. Registro fisso di 12 comuni."
+],
+[
+"A5-35",
+"P1",
+"**Test che non verificano nulla.** Certificano come riusciti la simulazione e un CIN inventato; l'E2E usa mock divergenti dal BE; il Golden Journey sa"
+],
+[
+"A5-36",
+"P2",
+"Il backfill porta ad `Active` le property con un CIN qualsiasi, senza documenti né checklist."
+],
+[
+"A5-37",
+"P2",
+"Scadenza delle 24h calcolata da `CheckInDate` a mezzanotte UTC, non dall'orario reale d'arrivo né dal fuso della property. Il caso \"soggiorno < 24h → "
+],
+[
+"A6-01",
+"P0",
+"Login nativo Auth0 non funzionante: `makeRedirectUri({scheme:'casazen'})` non è tra le Allowed Callback URLs del client Auth0 (che è il client **SPA**"
+],
+[
+"A6-02",
+"P0",
+"La build di release punta a `http://localhost:5000` e al tenant Auth0 **dev** (valori di fallback). `.env` è gitignored, quindi EAS cloud non lo ricev"
+],
+[
+"A6-03",
+"P0",
+"Tassonomia delle categorie incoerente. Il fornitore salva etichette italiane, l'host filtra per codici inglesi, il backend confronta la stringa esatta"
+],
+[
+"A6-04",
+"P0",
+"Il Golden Journey **non è un gate**. (1) Su PR/push/nightly gira solo il ramo L2 in demo mode con `page.route`, con assert sempre veri (`golden-journe"
+],
+[
+"A6-05",
+"P1",
+"La registrazione push non può riuscire. `getExpoPushTokenAsync()` legge il projectId placeholder; manca `android.googleServicesFile`/FCM v1; mancano l"
+],
+[
+"A6-06",
+"P1",
+"`deviceId = Device.osInternalBuildId ?? Device.modelId`: è l'ID di build del sistema operativo, **uguale per tutti i device con la stessa versione di "
+],
+[
+"A6-07",
+"P1",
+"Push ed email \"Check-in incompleto\" inviati **ogni ora**, senza deduplica, per ogni booking con dati ospite incompleti o report Alloggiati non `Inviat"
+],
+[
+"A6-08",
+"P1",
+"Nessuna notifica quando il fornitore **rifiuta**; nessuna push al fornitore su nuova richiesta; nessuna push all'host su nuova prenotazione (metodo st"
+],
+[
+"A6-09",
+"P1",
+"Il link di condivisione usa lo slug della **proprietà** come slug dell'**org**. Senza slug genera `/book/{propertyId}`."
+],
+[
+"A6-10",
+"P1",
+"I blocchi iCal (`type:'ical-block'`, senza `guestName`) sono resi come prenotazioni \"Ospite\". Il tap chiama `router.push('/bookings/{blockId}')`."
+],
+[
+"A6-11",
+"P1",
+"`monthRange` usa `toISOString()` su mezzanotte locale: in Italia (UTC+2) start = ultimo giorno del mese precedente, end = **penultimo** giorno del mes"
+],
+[
+"A6-12",
+"P1",
+"Calendario limitato alla **prima** proprietà e al mese corrente; nessun selettore di proprietà né navigazione; vista a lista, non mese/settimana (AC4)"
+],
+[
+"A6-13",
+"P1",
+"Errori mascherati da stato vuoto: `calendarQuery.isError`, `servicesQuery.isError` e `suppliersQuery.isError` non sono mai gestiti."
+],
+[
+"A6-14",
+"P1",
+"Il refresh token (`offline_access`) viene salvato ma non usato mai. Qualunque 401 cancella i token e manda al login. Il middleware BE mappa `Unauthori"
+],
+[
+"A6-15",
+"P1",
+"Nessun logout nell'interfaccia; `logout()` è chiamato solo dal gestore 401. Non c'è deregistrazione del device, né revoca/logout Auth0, né `queryClien"
+],
+[
+"A6-16",
+"P1",
+"Il check-out rapido chiama `complete` saltando `start`: nessun riepilogo compliance (AC8, M7, G7). Richiede `CheckedIn`, ma l'app non ha un'azione di "
+],
+[
+"A6-17",
+"P1",
+"Il dettaglio non mostra stato check-in ospite né badge compliance (AC5); nessun `RefreshControl`, quindi AC13 (5 s pull-to-refresh) non è soddisfacibi"
+],
+[
+"A6-18",
+"P1",
+"L'app sceglie in automatico `items[0]` da `GET /suppliers` senza ordinamento, senza mostrare alternative, urgenza o prezzo; il web usa `match-supplier"
+],
+[
+"A6-19",
+"P1",
+"Il listener di risposta è registrato solo dopo `isAuthenticated`; non c'è `getLastNotificationResponseAsync()`/`useLastNotificationResponse` per il co"
+],
+[
+"A6-20",
+"P1",
+"`GET /api/properties` restituisce solo le proprietà **di cui l'utente è owner**, ma le push vanno anche ad Admin e PropertyManager dell'org. L'endpoin"
+],
+[
+"A6-21",
+"P2",
+"`EXPO_PUBLIC_E2E_DEMO` non è protetto da `__DEV__`: se vale `1` al build, anche \"Continua con Auth0\" salta Auth0 e salva `demo-e2e-token`. Il README i"
+],
+[
+"A6-22",
+"P1",
+"Le asserzioni Maestro non distinguono un'app funzionante da una rotta. M3 senza push. M5 verifica solo `.*Pagato.*`, già vero dal seed web. M6 ha tap "
+],
+[
+"A6-23",
+"P1",
+"GJ web L3 fedele solo a metà. Step 1–10 via API. Il fornitore dello step 1 viene scartato. L'host fa anche il fornitore. Step 4 senza guest né pagamen"
+],
+[
+"A6-24",
+"P1",
+"F1–F2 skippato fuori da `E2E_LOCAL`; si auto-attiva il fornitore via API; verifica \"host reflects\" via API invece che su web e app host entro 30 s (AC"
+],
+[
+"A6-25",
+"P2",
+"Offline non \"graceful\": nessun `persistQueryClient`, `onlineManager` non collegato a NetInfo (niente refetch alla riconnessione), schermate d'errore s"
+],
+[
+"A6-26",
+"P2",
+"L'estrazione del messaggio ignora `ProblemDetails.detail/title`, che il BE usa per i 409. Alcune risposte BE sono in inglese. `InvalidOperationExcepti"
+],
+[
+"A6-27",
+"P2",
+"Nessuna i18n; enum e codici inglesi mostrati all'utente (`CheckedIn`, `PresoInCarico`, `Pending`, `cleaning`, `linen`). Nessuna lingua EN, contro la r"
+],
+[
+"A6-28",
+"P2",
+"Contrasto sotto WCAG AA (4,5:1); tab senza icone; indicatori di caricamento senza label; nessun `testID` utile anche ai test."
+],
+[
+"A6-29",
+"P2",
+"Invio push sincrono e seriale dentro la richiesta del fornitore (latenza); nessun batching (≤100 messaggi); nessun controllo delle receipts; nessun Ex"
+],
+[
+"A6-30",
+"P2",
+"Nessuna CI mobile (typecheck mai eseguito automaticamente), nessun test unitario, nessuna icona/splash/icona notifiche, versione `0.1.0` in app.json c"
+],
+[
+"A6-31",
+"P2",
+"In `__DEV__` qualunque sorgente può aprire `casazen://e2e-auth?access_token=…` e iniettare una sessione (login CSRF); `EXPO_PUBLIC_E2E_ACCESS_TOKEN` f"
+],
+[
+"A6-32",
+"P2",
+"Testo errato \"Il check-in è stato chiuso\" dopo il check-out. Due bottoni per la stessa azione \"Segna pagato\". \"Richiedi fornitore\" e \"Quick check-out\""
+],
+[
+"A7-01",
+"P0",
+"Registrazione RLI **finta presentata come reale**. `SubmitRegistrationAsync` restituisce `RLI-STUB-{id}` senza chiamare nessuno. `Rli:FilingEnabled` è"
+],
+[
+"A7-02",
+"P0",
+"Firma elettronica **stub**. Il PDF non viene inviato a nessun provider. I link sono `https://sign.provider.example.com/session/…` (`:27`). L'UI dice \""
+],
+[
+"A7-03",
+"P0",
+"Il gate \"template approvato da un legale\" è **aggirato di default**: il config base (valido anche in produzione) marca `Approved: true` per tutti i re"
+],
+[
+"A7-04",
+"P0",
+"La **scadenza RLI è calcolata male**: `StartDate + 30`. Per legge sono 30 giorni dalla **stipula**, o dalla decorrenza se anteriore. Inoltre il job in"
+],
+[
+"A7-05",
+"P0",
+"**La creazione del lease dall'UI fallisce probabilmente su PostgreSQL**. L'FE invia `\"2026-09-01\"`, che diventa un `DateTime` con Kind=Unspecified; Np"
+],
+[
+"A7-06",
+"P0",
+"Un **utente solo-LTR non può creare contratti**: il contesto long-rent non ha `property.*` e `GET /api/properties` e `/documents` rispondono 403. L'FE"
+],
+[
+"A7-07",
+"P1",
+"**Canone ricorrente (#269) assente**. Esistono tabelle e routing webhook, ma il servizio è Null (i metodi lanciano `NotImplementedException`); non ci "
+],
+[
+"A7-08",
+"P1",
+"La voce di checklist \"Comunicazione Questura (art. 7 D.Lgs 286/1998)\" risulta **fatta quando CasaZen invia un'email di promemoria**, non quando il loc"
+],
+[
+"A7-09",
+"P1",
+"Advisory fiscale **numericamente errato**: (1) il 10% viene applicato a ogni lease `CanoneConcordato`, ignorando che vale solo nei comuni ATA verifica"
+],
+[
+"A7-10",
+"P1",
+"**Buchi tra le fasce di superficie**: le bande intere 0–50, 51–74, 75–99, 100+ lasciano scoperti i valori decimali (`Sqm` è `decimal`). Per 50,5 / 74,"
+],
+[
+"A7-11",
+"P1",
+"I coefficienti **ignorano tetti e pavimenti** previsti dall'accordo (ricerca `:153-155`: \"+20% (tetto a 40 mq)\", \"+10% (tetto a 60 mq)\", \"−20% (pavime"
+],
+[
+"A7-12",
+"P1",
+"Il **range del canone concordato è verificato solo lato client** ed è scollegato dai dati del contratto: gli anni del calcolatore sono indipendenti da"
+],
+[
+"A7-13",
+"P1",
+"La **durata non è validata per tipologia** (libero 4+4 ≥ 4 anni, concordato 3+2 ≥ 3 anni, transitorio 1–18 mesi non modellato). `FiscalRegime` mescola"
+],
+[
+"A7-14",
+"P1",
+"Writer PDF minimale: una sola pagina in formato Letter (non A4), nessun a-capo né paginazione, troncamento a 4000 caratteri, encoding ASCII (i caratte"
+],
+[
+"A7-15",
+"P2",
+"**4 stati del lease su 8 senza etichetta** (`PartiallySigned`, `RegistrationPending`, `SentToProvider`, `Rejected`); in compenso ci sono etichette per"
+],
+[
+"A7-16",
+"P2",
+"I link dei firmatari vivono solo in `useState` (non c'è un GET dei firmatari): dopo un refresh un lease `AwaitingSignature` non li mostra più. Testi i"
+],
+[
+"A7-17",
+"P2",
+"L'API restituisce **entità EF** (Party con CF ed email in chiaro, `Property` completa con `OwnerId` e `SafetyChecklistJson`, eventi con email nel payl"
+],
+[
+"A7-18",
+"P1",
+"**#179 non implementata**: nessuna anonimizzazione della PII Party; `ErasureRequested` non viene mai scritto. In più `DataRetentionUntil = StartDate +"
+],
+[
+"A7-19",
+"P2",
+"Stessa classe di bug del commit e611233: ogni `InvalidOperationException` non gestita diventa **503**, ogni `UnauthorizedAccessException` diventa **40"
+],
+[
+"A7-20",
+"P2",
+"Il webhook e-sign **non controlla lo stato**: un evento \"allSigned\" su un lease `Registered` lo riporta a `Signed`, e `PartiallySigned` non viene mai "
+],
+[
+"A7-21",
+"P2",
+"`TriggerRegistrationAsync` **non è atomico**: delega ed evento vengono salvati prima della chiamata al provider; registrazione e aggiornamento del lea"
+],
+[
+"A7-22",
+"P2",
+"**Dati normativi nel codice**: destinatari, PEC e aliquota IMU di Seveso e Cesano sono letterali; le soglie delle sub-fasce sono hardcoded. La migrazi"
+],
+[
+"A7-23",
+"P1",
+"I range vengono calcolati con dati `Partial` (non verificati da un legale: vigenza dell'accordo e ricezione di Seveso) e usati come **vincolo obbligat"
+],
+[
+"A7-24",
+"P2",
+"Calcolatore, guida e pulsante IMU compaiono **per qualunque regime**; il pulsante IMU è abilitato su lease `Registered` non concordato (il BE risponde"
+],
+[
+"A7-25",
+"P2",
+"Le chiavi i18n sono usate come messaggio Zod a livello di schema. In Zod v4 l'errore di schema ha precedenza sul `customError` globale, quindi `i18nZo"
+],
+[
+"A7-26",
+"P2",
+"**Stringhe non tradotte o hardcoded**: ruolo della parte grezzo (\"Landlord\"), `eventType` grezzo nella timeline (\"RegistrationAuthorized\"), \"/mo\". Eti"
+],
+[
+"A7-27",
+"P2",
+"**Stati di errore mancanti**: qualunque errore (500, 403, rete) nel dettaglio viene mostrato come \"contratto non trovato\" (`isError` non letto). Diver"
+],
+[
+"A7-28",
+"P2",
+"Solo 1 locatore e 1 conduttore (comproprietari e coniugi, casi molto frequenti, non sono rappresentabili). CF validato solo per lunghezza (FE 11–16, B"
+],
+[
+"A7-29",
+"P2",
+"**Test deboli**: l'happy path passa grazie a un fake che conferma (in produzione non conferma mai), su InMemory e con date UTC, quindi la CI è verde m"
+],
+[
+"A7-30",
+"P2",
+"**Processo e registro incoerenti**: specs \"frozen\" ma codice mergiato; #269 chiusa come \"completed\" senza implementazione; report \"GOAL_RAGGIUNTO\" su "
+],
+[
+"A7-31",
+"P2",
+"`Enum.TryParse<RentalType>` accetta stringhe numeriche (\"7\"); il mapping lancia `ArgumentOutOfRangeException` → 500 invece del 400 richiesto (role-onb"
+],
+[
+"A8-01",
+"P0",
+"**Denial-of-wallet AI.** `POST /api/service-requests/match-supplier` è aperto a ogni utente autenticato, senza rate limit, con `Category` libera (solo"
+],
+[
+"A8-02",
+"P0",
+"**Le pagine SEO non sono scopribili sul dominio reale.** Canonical e sitemap puntano a `www.casazen.it`, che non è l'host FE documentato e non è tra l"
+],
+[
+"A8-03",
+"P0",
+"**Il funnel CTA è rotto.** `/signup` e `/tools/verifica-conformita` non esistono. Il catch-all porta a `/`, che sta dentro `ProtectedRoute` e rimanda "
+],
+[
+"A8-04",
+"P1",
+"**Il gate di revisione legale è un timbro automatico.** Al primo deploy il bootstrap genera e auto-approva le pagine con `counselApproved:true`. \"Appr"
+],
+[
+"A8-05",
+"P1",
+"**La rigenerazione ripubblica testo mai revisionato.** L'upsert non rimette la pagina in Draft. La nuova revisione viene servita subito, perché `MapPu"
+],
+[
+"A8-06",
+"P1",
+"**Contenuti stub, vuoti o fuori controllo pubblicati.** Senza la sezione `Ai` il provider è Stub: una frase del tipo \"Como: contenuto generato per aff"
+],
+[
+"A8-07",
+"P1",
+"**Il budget AI piattaforma non ha effetto.** DeepSeek restituisce `PromptTokens=0` e `CompletionTokens=0`, quindi `TokensUsedThisMonth` non sale mai. "
+],
+[
+"A8-08",
+"P1",
+"**XSS latente.** Il sanitizer è una blacklist regex. Verificato eseguendo la regex FE: `<img src=\"x\"/onerror=\"alert(1)\">` e `<a href=\"&#106;avascript:"
+],
+[
+"A8-09",
+"P1",
+"**Le pagine SEO sono solo client-side, con metadati minimi.** L'HTML iniziale ha `lang=\"en\"`, titolo `temp-vite`, nessuna description. Titolo e meta a"
+],
+[
+"A8-10",
+"P1",
+"**AC2 assente.** Nessuna lista di immobili in evidenza per comune. Il DTO pubblico non ha `OrgSlug` né lo slug host, quindi non si può costruire il de"
+],
+[
+"A8-11",
+"P1",
+"**AC3, AC8 e AC9 assenti:** niente `SeoEvent`, endpoint eventi, analytics o widget admin."
+],
+[
+"A8-12",
+"P1",
+"**AC6: la tariffa mancante non è gestita.** Il calcolatore resta visibile e fallisce con \"Verifica i dati inseriti\" (fuorviante). La sitemap include p"
+],
+[
+"A8-13",
+"P1",
+"**La ricerca pubblica è rotta.** Con `valueAsNumber` un input vuoto vale `NaN` e `z.number().optional()` lo rifiuta. L'errore compare solo per `city`,"
+],
+[
+"A8-14",
+"P1",
+"**Dati LLM presentati come \"più votati su Google\".** Il testo dice \"Ecco le attività locali più votate su Google\" ma nome, telefono, rating e recensio"
+],
+[
+"A8-15",
+"P1",
+"**Dati verso un provider AI extra-UE non dichiarato.** Le note libere dell'host (che possono contenere nomi o orari degli ospiti) finiscono nel prompt"
+],
+[
+"A8-16",
+"P1",
+"**Feature in freeze esposte.** Il menu OTA chiede API key e secret di Airbnb/Booking (API partner-only, freeze #31-35), salvati in chiaro. I job OTA g"
+],
+[
+"A8-17",
+"P2",
+"**\"AI Dynamic Pricing\" è un moltiplicatore fisso** (×1.5 festivi, ×1.3 estate, ×0.8 inverno)."
+],
+[
+"A8-18",
+"P2",
+"**Test deboli o assenti.** L'E2E SEO dedicato è stato cancellato. L'E2E sulla tassa non mocka `GET /api/public/content/tassa-soggiorno/como` e quindi "
+],
+[
+"A8-19",
+"P2",
+"**i18n.** Nel FE sono hardcoded \"/persona/notte\" e \"max N notti\". Il tipo pagina è mostrato come enum grezzo (\"ComplianceGuide\"). \"e'\" e \"conformita'\""
+],
+[
+"A8-20",
+"P2",
+"**La classe `prose` non ha effetto:** l'HTML del contenuto non ha stili (h2 e ul appiattiti dal preflight)."
+],
+[
+"A8-21",
+"P2",
+"**UX admin SEO.** Mancano anteprima, link alla pagina pubblica e azione \"Ritira\" (torna Draft). Paginazione fissa alla pagina 1 da 50. Il budget non h"
+],
+[
+"A8-22",
+"P2",
+"**Il rate limiter `PublicTouristTaxCalc` è globale** (`AddFixedWindowLimiter`), non per IP: 30 richieste al minuto per tutto il sito."
+],
+[
+"A8-23",
+"P2",
+"**Calcolo tassa impreciso.** I bambini sono sempre esenti a prescindere da `MinimumAge` e la UI non chiede l'età. Il lookup `t.City == city` è case-se"
+],
+[
+"A8-24",
+"P2",
+"**Registry dei comuni hardcoded (12) con codici ISTAT dubbi.** Torino ha `010025`, che è il codice di Genova (Torino = `001272`). Da verificare anche "
+],
+[
+"A8-25",
+"P2",
+"**Cache AI statiche illimitate e con semantica sbagliata.** La cache del provider è permanente, senza TTL né limite, e ha chiavi con l'hash delle note"
+],
+[
+"A8-26",
+"P2",
+"**Config morta o duplicata.** `Seo:AiProvider` non viene mai letto (il provider reale è `Ai:Provider`). `AddCasazenAiProvider` è registrato due volte."
+],
+[
+"A8-27",
+"P2",
+"**Il componente di trasparenza AI Act non è montato** in nessuna pagina (motivazioni AI, discovery, contenuti SEO)."
+],
+[
+"A8-28",
+"P2",
+"**Lo step tassa del wizard linka una rotta admin** (`/app/admin/compliance/tax-rates`) inaccessibile all'host, invece di mostrare avviso e link alla p"
+],
+[
+"A8-29",
+"P1",
+"**La destinazione del funnel non è indicizzabile.** AC12-14 (JSON-LD `VacationRental`, meta/og, sitemap e robots per org) mancano nonostante lo stato "
+],
+[
+"A8-30",
+"P2",
+"**Documentazione incoerente.** La spec ha `status: specced` e `issue:` vuoto, mentre il registro indica `planned #300`. Le Technical Notes citano file"
+],
+[
+"A9-01",
+"P0",
+"**Ospite = entità globale condivisa fra tenant.** La prenotazione manuale riusa l'ospite **trovato per email in tutto il DB**. L'accesso all'ospite è "
+],
+[
+"A9-02",
+"P0",
+"**Upgrade del piano gratuito.** `PUT /api/orgs/me/plan` accetta qualsiasi tier (`Starter/Pro/Scale`) per ogni utente autenticato la cui org non ha `Su"
+],
+[
+"A9-03",
+"P0",
+"**Coda Hangfire condivisa fra test e produzione.** EF usa `SearchPath=casazen_test"
+],
+[
+"A9-04",
+"P0",
+"**Perdita dati a ogni redeploy.** (a) Le chiavi Data Protection vivono nel filesystem effimero del container → dopo un deploy `OtaIntegration.ApiKey/A"
+],
+[
+"A9-05",
+"P0",
+"**Stub in produzione che dichiara successo.** Con `Alloggiati:Enabled` true **o** false, `report.Status = Submitted` e nessuna chiamata HTTP (TODO a :"
+],
+[
+"A9-06",
+"P0",
+"Se `FromAddress` contiene \"casazen.app\" il mittente viene **forzato a `onboarding@resend.dev`**, il dominio di test Resend che consegna solo all'indir"
+],
+[
+"A9-07",
+"P1",
+"Il middleware mappa **ogni** `InvalidOperationException` a **503** \"OperationFailed\" con `Detail = ex.Message`, e fa `Unwrap` fino all'eccezione più i"
+],
+[
+"A9-08",
+"P1",
+"**Localizzazione backend rotta.** Il middleware cerca `Resources/Middleware/ErrorHandlingMiddleware.resx`, che non esiste. `SharedResources` viene ris"
+],
+[
+"A9-09",
+"P1",
+"Nessun contratto d'errore unico. Il FE non legge mai il corpo dell'errore (1 solo uso di `response?.data?.error`)."
+],
+[
+"A9-10",
+"P1",
+"I limiter sono **globali**, non per IP. `GuestCheckInSubmit` = **3 invii al minuto per tutta la piattaforma**, `PublicBookingCreate` = 10/min totali. "
+],
+[
+"A9-11",
+"P1",
+"I test d'integrazione girano su **EF InMemory**, che non applica FK, unique index filtrati, `timestamptz` né transazioni. Esempio concreto: `DELETE /a"
+],
+[
+"A9-12",
+"P1",
+"I DateTime dal client (`yyyy-MM-dd` → Kind=Unspecified) scritti o confrontati su colonne `timestamptz` fanno lanciare un'eccezione a Npgsql."
+],
+[
+"A9-13",
+"P1",
+"`IsValidExportFeed` restituisce false se il feed ha **0 eventi**. Il sync segna Failure ed **esce senza rimuovere i blocchi importati**. Il parser di "
+],
+[
+"A9-14",
+"P1",
+"`_ = Task.Run(() => calendarSyncService.SyncIcalFeedAsync(...))` usa un servizio **scoped** (DbContext della richiesta) dopo la fine della richiesta."
+],
+[
+"A9-15",
+"P1",
+"**Funzionalità \"finte\" esposte come reali.** `POST /payments/{id}/process` imposta Completed senza Stripe. `refund` aggiorna solo il DB. `OtaManager.S"
+],
+[
+"A9-16",
+"P1",
+"`ShouldSendEmail()` in Production invia solo se c'è `SendGrid:ApiKey` o `Email:ApiKey`, ma il provider reale legge `Email:ResendApiKey` (`ResendEmailS"
+],
+[
+"A9-17",
+"P1",
+"`sync-platform` accoda un job per `platform`/`externalId` arbitrari **senza controllo di ownership** (qualsiasi utente autenticato, anche un fornitore"
+],
+[
+"A9-18",
+"P1",
+"L'anonimizzazione e l'erasure lasciano DateOfBirth, Nationality, DocumentType, DocumentIssueDate/ExpiryDate, DocumentIssuingCountry, ConsentIpAddress "
+],
+[
+"A9-19",
+"P1",
+"Health statico (`{status:\"healthy\"}`), nessun `AddHealthChecks` (issue #16). CI `verify-test`: `sleep 90` e poi curl `/api/health` → può testare il co"
+],
+[
+"A9-20",
+"P1",
+"Lista \"endpoint pubblici\" per **substring**: `'/checkin/'` fa match anche su `/bookings/{id}/checkin/resend-link` (`api/bookings.api.ts:45`), e `'/aut"
+],
+[
+"A9-21",
+"P1",
+"`fetch('/api/public/...')` **relativo all'origine Vercel**, e Vercel riscrive tutto su `/index.html`."
+],
+[
+"A9-22",
+"P1",
+"Nessuna gestione di 401 e 403 (solo `console.error`). Nessun retry dopo il refresh del token. Se `getAccessTokenSilently` fallisce (`login_required`),"
+],
+[
+"A9-23",
+"P1",
+"Il workflow è **invalido**: il contesto `secrets` non è ammesso in `steps.if`. GitHub lo rifiuta al parsing, quindi **la suite E2E L2 e staging non è "
+],
+[
+"A9-24",
+"P1",
+"I gate \"Golden Journey\" sono finti: il job BE fa solo `echo`, il job app Maestro FE fa solo `echo \"placeholder\"`, il test supplier-mobile ha `continue"
+],
+[
+"A9-25",
+"P1",
+"**78 chiavi presenti in it.json mancano in en.json** (tutte `compliance.activation.*`, `compliance.checkout.*`). 56 chiavi usate nel codice mancano in"
+],
+[
+"A9-26",
+"P1",
+"Dipendenze con CVE note. La CI non fallisce sulle vulnerabilità."
+],
+[
+"A9-27",
+"P2",
+"`POST /api/auth/register` anonimo, senza RL, crea `Users` con Id GUID casuale (\"In production, this would create user in Auth0\") e logga l'email. Codi"
+],
+[
+"A9-28",
+"P2",
+"CORS: qualunque `*.vercel.app` è ammesso **con `AllowCredentials`**."
+],
+[
+"A9-29",
+"P2",
+"Niente HSTS e niente CSP. La SPA non ha X-Frame-Options né CSP. Il sanitizer a regex è aggirabile (`<svg/onload=…>` non richiede spazio prima di `on…`"
+],
+[
+"A9-30",
+"P2",
+"Seconda implementazione del check-in ospite, non usata da FE e mobile (FE usa `/public/checkin`, `api/checkin.api.ts:9-12`), ma attiva: accetta upload"
+],
+[
+"A9-31",
+"P2",
+"Per ogni richiesta autenticata: query sulla membership Supplier, `Users` (sync, scope separato), `Users` + `UserContextMemberships` per **ogni** polic"
+],
+[
+"A9-32",
+"P2",
+"SSRF cieca: l'URL di import iCal viene scaricato lato server. Per le property si controlla solo `https`, per i fornitori nemmeno lo schema."
+],
+[
+"A9-33",
+"P2",
+"Codice morto che contiene anche le stringhe hardcoded e gli stub."
+],
+[
+"A9-34",
+"P2",
+"File spazzatura e codice morto."
+],
+[
+"A9-35",
+"P2",
+"Migrazioni scritte a mano **senza `.Designer.cs`**. Ho verificato che hanno `[DbContext]` e `[Migration]` (quindi vengono scoperte ed eseguite) e che "
+],
+[
+"A9-36",
+"P2",
+"Email in chiaro nei log (contro security.md: \"never log PII\"). Log di debug del token in produzione."
+],
+[
+"A9-37",
+"P2",
+"Una build `production` EAS senza `.env` punta a localhost. Sessione persa alla scadenza dell'access token."
+],
+[
+"A9-38",
+"P2",
+"`build:demo`: `cross-env VITE_DEMO_MODE=true tsc -b && vite build` → la variabile vale solo per `tsc`, `vite build` produce una build **non demo**. DE"
+],
+[
+"A9-39",
+"P2",
+"`availability` restituisce 200 con `bookedDates` vuoto per property inesistenti o non pubblicate (sembra tutto libero). `/{bookingId}/status` anonimo "
+],
+[
+"A9-40",
+"P2",
+"L'elenco dei sub-responsabili pubblicato agli utenti (GDPR art. 28) è falso: manca Resend e la regione di Auth0 è indicata male."
+],
+[
+"R-01",
+"P0",
+"`POST /api/public/tourist-tax/calculate {\"comuneSlug\":\"milano\",\"numberOfAdults\":2,\"checkInDate\":\"2026-10-01\",\"checkOutDate\":\"2026-10-04\"}` → **500** `"
+],
+[
+"R-02",
+"P0",
+"Regex `^IT-\\d{5}-\\d{10}$` in 5 punti (`CinComplianceRules.cs:8`, `CinCodeAttribute.cs:12`, `AdminService.cs:17`, `PropertyService.cs:336`, FE `propert"
+],
+[
+"R-03",
+"P1",
+"Il FE chiama `GET /api/public/bookings/property/{slug}/availability`; l'API accetta solo GUID → **400**. Con property dotata di slug (default dal 07/2"
+],
+[
+"R-04",
+"P1",
+"Il bottone \"Procedi al checkout\" naviga a `/checkout??checkIn=…&checkOut=…` (doppio `?`): check-in e ospiti persi; \"Cancellazione gratuita fino a Inva"
+],
+[
+"R-05",
+"P0",
+"Checkout mostra \"Tassa di soggiorno 12,00 € — Totale 412,00 €\" (hardcoded FE), il backend crea il booking con `amount: 400.00, touristTaxAmount: 0`."
+],
+[
+"R-06",
+"P1",
+"FE invia `{\"email\":…}`, BE richiede `BookingId` → **400**; la UI mostra \"Nessuna prenotazione trovata\" + \"Errore nella ricerca\"."
+],
+[
+"R-07",
+"P1",
+"Tutte le ProblemDetails mostrano chiavi grezze (`\"detail\":\"UnauthorizedDetail\"`, `\"InternalServerErrorDetail\"`): `SharedResources` è nel namespace `Ca"
+],
+[
+"R-08",
+"P2",
+"\"3 nottei\" (plurale rotto) nel widget e nel checkout."
+],
+[
+"R-09",
+"P2",
+"Pagine comune con corpo segnaposto \"Milano: contenuto generato per affitti brevi, CIN e tassa di soggiorno.\""
+],
+[
+"R-10",
+"P2",
+"`GET /api/public/bookings/property/{guid-inesistente}/availability` → 200 con lista vuota invece di 404. `POST /webhooks/ota/{platform}` → 500 se manc"
+],
+[
+"R-11",
+"P2",
+"Con Connect non configurato il FE mostra solo \"Impossibile avviare il checkout\" (messaggio BE inglese non propagato). Con account Connect presente il "
+]
+]
