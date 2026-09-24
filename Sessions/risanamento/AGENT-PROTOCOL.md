@@ -87,3 +87,6 @@ DUBBI: <domande per il product owner> | -
   - Dopo aver creato o trovato un'org, chiama `IRequestTenantContext.SetOrgId`.
   - Per la creazione di property usa `CreatePropertyWithinLimitAsync`: limite del piano atomico sotto advisory lock.
   - Le corse di creazione vanno gestite con un advisory lock oppure con la gestione di 23505 e rilettura, mai con check-then-insert.
+- **Advisory lock Postgres:** prima di scegliere una chiave, cerca quelle esistenti (`grep -rn "AdvisoryLock\|pg_advisory" --include=*.cs`) e usa un valore nuovo e univoco. Se al merge trovi collisioni, tieni valori distinti.
+- **iCal (PC-10):** usa il parser in `Services/ICal` e la sincronizzazione per feed isolata. Il runbook è `docs/runbooks/ical.md`.
+- **Disponibilità (BK-05):** le notti occupate si calcolano solo con `PropertyOccupancy`, usato da disponibilità pubblica, creazione e controllo sovrapposizioni. Non scrivere un'altra logica di occupazione.

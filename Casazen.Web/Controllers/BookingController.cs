@@ -8,7 +8,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
-using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,13 +23,8 @@ public class BookingsController(
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
-    IAlloggiatiReportScheduler alloggiatiReportScheduler,
-    IComplianceWizardService complianceWizardService,
-    ILogger<BookingsController> logger,
-    TimeProvider? timeProvider = null) : ControllerBase
+    ILogger<BookingsController> logger) : ControllerBase
 {
-    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId = null, [FromQuery] Guid? guestId = null)
     {
@@ -256,158 +250,6 @@ public class BookingsController(
         };
 
         return Ok(response);
-    }
-
-    [HttpPost("{id}/check-in")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<IActionResult> CheckIn(Guid id)
-    {
-        var booking = await bookingService.GetBookingAsync(id);
-        if (booking == null)
-            return NotFound();
-
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
-            return NotFound();
-
-        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
-        if (property == null)
-            return NotFound();
-
-        if (booking.Status != BookingStatus.Confirmed)
-        {
-            return BadRequest(new
-            {
-                error = "Transizione di stato non valida",
-                message = $"Il check-in è possibile solo da Confirmed. Stato attuale: {booking.Status}"
-            });
-        }
-
-        if (booking.CheckInDate.Date > _clock.TodayInRome())
-        {
-            return BadRequest(new
-            {
-                error = "Data di check-in non raggiunta",
-                message = $"Impossibile fare check-in prima del {booking.CheckInDate:yyyy-MM-dd}"
-            });
-        }
-
-        booking.Status = BookingStatus.CheckedIn;
-        // Real arrival: the Alloggiati Web term (art. 109 TULPS: 24 hours, 6 for short stays) runs from here.
-        booking.ArrivedAt ??= _clock.GetUtcNow().UtcDateTime;
-        await bookingService.UpdateBookingAsync(booking);
-
-        // Idempotent per booking and guest: if the guest portal already scheduled the report, nothing is queued again.
-        // The check-in is already saved: a scheduling failure is logged, and from the arrival day the booking shows
-        // "to send manually" anyway (derived status), so the host is never told it was sent.
-        try
-        {
-            await alloggiatiReportScheduler.EnsureScheduledAsync(booking.Id);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled at check-in", booking.Id);
-        }
-
-        // The check-out reminder (email + push) comes from the hourly stay-alerts job for every confirmed or checked-in
-        // stay, not from the check-in (CO-10): nothing to schedule here.
-
-        logger.LogInformation("Check-in completed for booking {BookingId}, Alloggiati Web report scheduled", id);
-        var updated = await bookingService.GetBookingAsync(id);
-        return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
-    }
-
-    [HttpPost("{id}/checkout-wizard/start")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<CheckoutWizardDto>> StartCheckoutWizard(Guid id)
-    {
-        var userId = GetUserId();
-        if (userId is null)
-            return Unauthorized();
-
-        var bookingForAuth = await bookingService.GetBookingAsync(id);
-        if (bookingForAuth is null)
-            return NotFound();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, GetUserRoles()))
-            return NotFound();
-
-        try
-        {
-            var (_, steps) = await complianceWizardService.StartCheckoutWizardAsync(id);
-            return Ok(new CheckoutWizardDto
-            {
-                Steps = steps.Select(s => new ComplianceActivationStepDto
-                {
-                    Id = s.Id,
-                    Label = s.Label,
-                    Status = s.Status,
-                    Blocker = s.Blocker,
-                    Message = s.Message,
-                }),
-            });
-        }
-        catch (KeyNotFoundException)
-        {
-            return NotFound();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
-    }
-
-    [HttpPost("{id}/checkout-wizard/complete")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    [ProducesResponseType(typeof(CompleteCheckoutWizardResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<CompleteCheckoutWizardResponse>> CompleteCheckoutWizard(
-        Guid id,
-        [FromBody] CompleteCheckoutWizardRequest request)
-    {
-        var userId = GetUserId();
-        if (userId is null)
-            return Unauthorized();
-
-        var bookingForAuth = await bookingService.GetBookingAsync(id);
-        if (bookingForAuth is null)
-            return NotFound();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, GetUserRoles()))
-            return NotFound();
-
-        try
-        {
-            var (booking, propertyReady) = await complianceWizardService.CompleteCheckoutWizardAsync(
-                id,
-                userId,
-                new CompleteCheckoutWizardInput(
-                    request.ConfirmDeparture,
-                    request.SupplierOrgId,
-                    request.ServiceNotes,
-                    request.ServiceCategory));
-
-            return Ok(new CompleteCheckoutWizardResponse
-            {
-                PropertyReady = propertyReady,
-                BookingStatus = booking.Status.ToString(),
-            });
-        }
-        catch (KeyNotFoundException)
-        {
-            return NotFound();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
     }
 
     [HttpGet("{id}/alloggiati-status")]

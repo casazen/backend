@@ -163,6 +163,7 @@ public class StripeWebhookHandlerIdempotencyTests
             Mock.Of<IRentBillingService>(),
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
+            TestDeferredCharges.Create(db),
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event DirectBookingSucceededEvent(string eventId, string paymentIntentId) =>
