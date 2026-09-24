@@ -78,10 +78,44 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         using var clientA = _factory.CreateAuthenticatedClient(s.OwnerA, OwnerRole);
         using var own = await ReadJsonAsync(await clientA.GetAsync($"/api/guests/{s.GuestA}"));
         var root = own.RootElement;
-        Assert.Equal("AA1111111", root.GetProperty("documentNumber").GetString());
+        // CO-14: the document number is masked; the full one only from the audited document-number action.
+        Assert.Equal("*****111", root.GetProperty("documentNumberMasked").GetString());
+        Assert.DoesNotContain("AA1111111", root.GetRawText());
         Assert.True(root.GetProperty("hasDocumentScan").GetBoolean());
-        foreach (var hidden in new[] { "bookings", "alloggiatiWebReports", "orgId", "org", "documentScanUrl", "consentIpAddress" })
+        foreach (var hidden in new[] { "bookings", "alloggiatiWebReports", "orgId", "org", "documentScanUrl", "consentIpAddress", "documentNumber" })
             Assert.False(root.TryGetProperty(hidden, out _), $"GuestDto must not expose '{hidden}'");
+    }
+
+    [Fact]
+    public async Task GetDocumentNumber_OwnGuest_ReturnsFullNumberNotCached_AndOtherOrgGets404()
+    {
+        var s = await SeedTwoOrgsWithSameGuestEmailAsync();
+
+        using var clientA = _factory.CreateAuthenticatedClient(s.OwnerA, OwnerRole);
+        var response = await clientA.GetAsync($"/api/guests/{s.GuestA}/document-number");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
+        using (var doc = await ReadJsonAsync(response))
+        {
+            Assert.Equal(s.GuestA, doc.RootElement.GetProperty("guestId").GetGuid());
+            Assert.Equal("AA1111111", doc.RootElement.GetProperty("documentNumber").GetString());
+        }
+
+        using var clientB = _factory.CreateAuthenticatedClient(s.OwnerB, OwnerRole);
+        await AssertGuestNotFoundAsync(await clientB.GetAsync($"/api/guests/{s.GuestA}/document-number"));
+    }
+
+    [Fact]
+    public async Task GetDocumentNumber_GuestWithoutDocument_Returns404WithStableCode()
+    {
+        var s = await SeedTwoOrgsWithSameGuestEmailAsync();
+        using var clientB = _factory.CreateAuthenticatedClient(s.OwnerB, OwnerRole);
+
+        var response = await clientB.GetAsync($"/api/guests/{s.GuestB}/document-number");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("guest_document_number_missing", problem.RootElement.GetProperty("code").GetString());
     }
 
     [Fact]

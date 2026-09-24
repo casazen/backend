@@ -954,4 +954,25 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
   </data>
+  <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
+    <value>Enter the Alloggiati Web username.</value>
+  </data>
+  <data name="QuesturaCredentialsUsernameTooLong" xml:space="preserve">
+    <value>The username can be at most {1} characters long.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordRequired" xml:space="preserve">
+    <value>Enter the Alloggiati Web password.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordTooLong" xml:space="preserve">
+    <value>The password can be at most {1} characters long.</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyRequired" xml:space="preserve">
+    <value>Enter the Alloggiati Web service key (WSKey).</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyTooLong" xml:space="preserve">
+    <value>The web service key can be at most {1} characters long.</value>
+  </data>
+  <data name="GuestDocumentNumberMissing" xml:space="preserve">
+    <value>No document number is recorded for this guest.</value>
+  </data>
 </root>

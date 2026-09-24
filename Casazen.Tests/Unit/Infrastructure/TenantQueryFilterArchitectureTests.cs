@@ -56,7 +56,6 @@ public class TenantQueryFilterArchitectureTests
 
         // Children never addressed by their own id: reached only through a tenant-filtered parent.
         [typeof(OtaSyncLog)] = "No reader or writer outside its unused repository (OTA partner APIs frozen, D10). Must become ITenantOwned before an endpoint exposes it.",
-        [typeof(PropertyQuesturaCredentials)] = "No reader or writer yet. Must become ITenantOwned when the credentials UI is added (CO-14).",
         [typeof(Party)] = "Reached only through its LeaseContract (tenant-filtered and owner-verified by LeaseWorkflowService); no endpoint addresses a party by its own id.",
         [typeof(LeaseRegistration)] = "Reached only through its LeaseContract (tenant-filtered, then authorized by the controller and RliRegistrationService); the provider polling job runs without tenant.",
         [typeof(LeaseEvent)] = "Append-only log reached only through its LeaseContract (tenant-filtered and owner-verified); written by services and jobs for an already verified lease.",

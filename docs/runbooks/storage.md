@@ -81,7 +81,7 @@ The frontend needs no new variable: photo URLs arrive absolute from the API. Whe
 
 ## 4. Data Protection keys: at-rest encryption certificate
 
-Keys are stored in the `DataProtectionKeys` table. **Without a certificate they are stored in clear text**: whoever can read the table (a database dump, a leaked `postgres` password) can decrypt the protected secrets. The API logs this warning at every startup outside Development/Testing. Setting a certificate is strongly recommended.
+Keys are stored in the `DataProtectionKeys` table. **Without a certificate they are stored in clear text**: whoever can read the table (a database dump, a leaked `postgres` password) can decrypt the protected secrets. Since CO-14 the certificate is **required outside Development/Testing**: the API does not start without it, because the keys now also protect the guest identity documents and the Questura credentials ([`encryption.md`](encryption.md)).
 
 Create one certificate **per environment** on a trusted machine:
 
