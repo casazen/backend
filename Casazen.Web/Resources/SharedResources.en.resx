@@ -795,4 +795,85 @@
   <data name="GuestDocumentScanMissing" xml:space="preserve">
     <value>No document scan is available for this guest.</value>
   </data>
+  <data name="PropertyActivationBlocked" xml:space="preserve">
+    <value>The property cannot be activated yet: complete the required points listed.</value>
+  </data>
+  <data name="ActivationTosRequired" xml:space="preserve">
+    <value>You must accept the terms of service.</value>
+  </data>
+  <data name="ActivationBaseDataIncomplete" xml:space="preserve">
+    <value>Complete the basic details of the property: name, address, city, bedrooms, guests and rate.</value>
+  </data>
+  <data name="ActivationCinMissing" xml:space="preserve">
+    <value>Enter the CIN code of the property.</value>
+  </data>
+  <data name="ActivationCinInvalid" xml:space="preserve">
+    <value>The format of the CIN code is not valid.</value>
+  </data>
+  <data name="ActivationDocumentsMissing" xml:space="preserve">
+    <value>Upload the required documents: {0}.</value>
+  </data>
+  <data name="ActivationSafetyIncomplete" xml:space="preserve">
+    <value>Points to complete in the safety checklist: {0}.</value>
+  </data>
+  <data name="SafetyEntrepreneurialUnanswered" xml:space="preserve">
+    <value>State whether you run the rental as a business: the safety requirements of the systems depend on it (art. 13-ter, par. 7, Decree-Law 145/2023).</value>
+  </data>
+  <data name="SafetyGasUnanswered" xml:space="preserve">
+    <value>State whether the unit has a gas system or supply and which combustion appliances it has: the gas and carbon monoxide detectors depend on it.</value>
+  </data>
+  <data name="SafetyFloorsUnanswered" xml:space="preserve">
+    <value>Enter the number of floors of the unit: it is needed to work out the minimum number of extinguishers (at least one per floor).</value>
+  </data>
+  <data name="SafetyFloorAreasMissing" xml:space="preserve">
+    <value>Without the m² of each floor the minimum number of extinguishers is based on the floors only. The law requires one every 200 m² of floor or fraction, with at least one per floor.</value>
+  </data>
+  <data name="SafetyExtinguishersMissing" xml:space="preserve">
+    <value>Portable fire extinguishers: required in every unit let for short stays or for tourism (art. 13-ter, par. 7, Decree-Law 145/2023).</value>
+  </data>
+  <data name="SafetyExtinguishersBelowMinimum" xml:space="preserve">
+    <value>Not enough extinguishers: you entered {0}, at least {1} are needed (one every 200 m² of floor or fraction, at least one per floor).</value>
+  </data>
+  <data name="SafetyExtinguishersReview" xml:space="preserve">
+    <value>Fire extinguishers: the answer comes from the old checklist. Confirm it by entering the number of extinguishers and the floors of the unit.</value>
+  </data>
+  <data name="SafetyGasDetectorMissing" xml:space="preserve">
+    <value>Combustible gas detector: required, because the unit has gas or combustion appliances (art. 13-ter, par. 7, Decree-Law 145/2023).</value>
+  </data>
+  <data name="SafetyCoDetectorMissing" xml:space="preserve">
+    <value>Carbon monoxide detector: required, because the unit has gas or combustion appliances (art. 13-ter, par. 7, Decree-Law 145/2023).</value>
+  </data>
+  <data name="SafetySystemsComplianceMissing" xml:space="preserve">
+    <value>Systems compliant with national and regional rules: required when the rental is run as a business (art. 13-ter, par. 7, Decree-Law 145/2023).</value>
+  </data>
+  <data name="SafetySystemsComplianceReview" xml:space="preserve">
+    <value>Systems: the old checklist stated a compliance certificate of the gas system. Confirm the answer.</value>
+  </data>
+  <data name="SafetyBdsrDeclarationMissing" xml:space="preserve">
+    <value>Confirm that you declared the safety requirements in the BDSR, with the CIN request or update (art. 13-ter, par. 3, Decree-Law 145/2023).</value>
+  </data>
+  <data name="SafetyConfirmationMissing" xml:space="preserve">
+    <value>Confirm the safety checklist with the current answers.</value>
+  </data>
+  <data name="SafetyChecklistInvalid" xml:space="preserve">
+    <value>The safety checklist contains invalid values.</value>
+  </data>
+  <data name="SafetyFloorsInvalid" xml:space="preserve">
+    <value>Invalid floors: enter from 1 to {0} floors and, if you give them, the m² of each floor (more than 0 and at most {1}).</value>
+  </data>
+  <data name="SafetyQuantityInvalid" xml:space="preserve">
+    <value>The number of devices must be between 1 and {0}.</value>
+  </data>
+  <data name="SafetyExtinguisherQuantityRequired" xml:space="preserve">
+    <value>Enter how many extinguishers the unit has.</value>
+  </data>
+  <data name="SafetyDateInFuture" xml:space="preserve">
+    <value>The date of the check cannot be in the future.</value>
+  </data>
+  <data name="SafetyEvidenceNotFound" xml:space="preserve">
+    <value>The document attached as proof does not belong to this property.</value>
+  </data>
+  <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
+    <value>The checklist was changed at the same time by another session: reload the page and try again.</value>
+  </data>
 </root>

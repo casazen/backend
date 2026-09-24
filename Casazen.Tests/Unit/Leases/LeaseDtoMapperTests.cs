@@ -228,7 +228,6 @@ public class LeaseDtoMapperTests
                 City = "Roma",
                 OwnerId = "auth0|owner",
                 Address = "Via Roma 1",
-                SafetyChecklistJson = "{\"extinguisher\":true}",
             },
             Parties =
             [

@@ -92,6 +92,7 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
     [InlineData("GET", "/api/properties/{property}/detail")]
     [InlineData("GET", "/api/properties/{property}/images")]
     [InlineData("GET", "/api/properties/{property}/compliance/activation")]
+    [InlineData("GET", "/api/properties/{property}/compliance/safety-checklist")]
     [InlineData("GET", "/api/pricing-adapter/config/{property}")]
     [InlineData("GET", "/api/payments")]
     [InlineData("GET", "/api/guests")]
