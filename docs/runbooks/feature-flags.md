@@ -3,6 +3,7 @@
 Task FD-20 (defects A2-09, A9-17, R-10 webhook part, A8-16 OTA part, A9-15 OTA jobs; decision D10).
 Task FD-21 adds `AiSupplierDiscovery` (defects A8-01, A8-14, A8-15, A4-26, A8-16 AI part; decision D11).
 Task LT-01 adds `RliProvider` (defects A7-01, A7-21; decision D15; `docs/runbooks/rli.md`).
+Task LT-02 adds `ESignProvider` (defects A7-02, A7-16, A7-20; decision D15; `docs/runbooks/rli.md` § Contract signature).
 
 ## How it works
 
@@ -21,6 +22,7 @@ Task LT-01 adds `RliProvider` (defects A7-01, A7-21; decision D15; `docs/runbook
 | `OtaPartnerApi` | `Features__OtaPartnerApi` | `false` (D10: Airbnb / Booking.com partner API in freeze, #31-35) | `api/ota`, `api/properties/{id}/ota-integrations`, `POST /webhooks/ota/{platform}` (404 when off, also without `OTA:WebhookSecret`); OTA adapters, their HTTP clients and rate limiter (not registered in DI); recurring jobs `ota-sync-all` and `booking-pull-all` (not registered, and removed with `RemoveIfExists` from the Hangfire schema of earlier deploys); frontend menu "Canali OTA", routes `/app/short-rent/ota*`, dashboard OTA widget, OTA card in the property detail. **iCal import/export is not behind this flag.** |
 | `AiSupplierDiscovery` | `Features__AiSupplierDiscovery` | `false` (D11: AI supplier discovery, US-014 in freeze) | `POST /api/service-requests/match-supplier` (404 when off, before authentication); inside the services, with the flag off: no web search (`IWebSearchClient`), no LLM extraction of "nearby businesses", no AI match reason, so **nothing reaches the AI provider**. Frontend: key `aiSupplierDiscovery` with no consumer: the web AI match flow ("Raccomandazione AI", "più votati su Google") was unreachable and has been removed. **The manual service request** (`POST /api/service-requests` with the supplier chosen in the marketplace) **is not behind this flag.** |
 | `RliProvider` | `Features__RliProvider` | `false` (D15: RLI filing through a provider needs a real provider client, the legal opinion and the cost approval, `docs/integrations/rli-esign.md` §5) | `POST /api/leases/{id}/registration` (404 when off); recurring job `lease-registration-status-poll` (not registered, removed with `RemoveIfExists`); in the service, nothing reaches the provider. **On is not enough**: the provider must also be configured (`ILeaseRegistrationProvider.IsConfigured`), and today the only one registered is `UnconfiguredLeaseRegistrationProvider`, so the path stays unavailable (409 `rli_provider_unavailable`). Frontend: key `rliProvider` with no direct consumer; the lease page reads `providerFilingAvailable` from the RLI checklist. **Manual registration** (`POST /api/leases/{id}/registration/manual`) **is not behind this flag** and is the default. |
+| `ESignProvider` | `Features__ESignProvider` | `false` (D15: a lease signed electronically needs at least the FEA; no provider client is written and the budget and the legal opinion are open, `docs/integrations/rli-esign.md` §3–§5) | `POST /api/leases/{id}/signing` and `POST /webhooks/esign` (404 when off, before anything is read); recurring job `lease-sign-status-poll` (not registered, removed with `RemoveIfExists`); queued webhook events are dropped. **On is not enough**: the provider must also be configured (`ILeaseESignService.IsConfigured`), and today the only one registered is `UnconfiguredLeaseESignService`, so the path stays unavailable (409 `esign_provider_unavailable`). **On requires `ESign__WebhookSecret`** (at least 16 characters, no placeholder): otherwise the service does not start (`ESignOptionsValidator`). Frontend: key `eSignProvider` with no direct consumer; the lease page reads `providerSigningAvailable` from `GET /api/leases/{id}/signers`. **The offline signature** (`GET contract.pdf`, `POST signed-document`, `POST stipula`) **is not behind this flag** and is the default. |
 
 ### Before turning `AiSupplierDiscovery` on
 
@@ -62,7 +64,8 @@ The flag only hides code that is still in freeze; turning it on brings back the 
 
 ## Product owner steps (Railway)
 
-Nothing to do for `OtaPartnerApi`, `AiSupplierDiscovery` and `RliProvider`: the default is off. Do **not** set
-`Features__OtaPartnerApi` (D10) or `Features__AiSupplierDiscovery` (D11) on test or production while the decisions are
-in force, nor `Features__RliProvider` before a real provider client exists (`docs/runbooks/rli.md`). After the first deploy with FD-20, the Hangfire dashboard (if enabled) no longer lists
+Nothing to do for `OtaPartnerApi`, `AiSupplierDiscovery`, `RliProvider` and `ESignProvider`: the default is off. Do
+**not** set `Features__OtaPartnerApi` (D10) or `Features__AiSupplierDiscovery` (D11) on test or production while the
+decisions are in force, nor `Features__RliProvider` / `Features__ESignProvider` before a real provider client exists
+(`docs/runbooks/rli.md`). After the first deploy with FD-20, the Hangfire dashboard (if enabled) no longer lists
 `ota-sync-all` and `booking-pull-all`.

@@ -21,6 +21,30 @@ public class LeaseContractTemplateService(
 
     public Task<byte[]> GeneratePdfAsync(LeaseContract lease)
     {
+        var (template, data) = ResolveApprovedTemplate(lease);
+
+        logger.LogInformation(
+            "Generating final lease contract PDF. LeaseId={LeaseId} FiscalRegime={Regime} TemplateVersion={Version}",
+            lease.Id, lease.FiscalRegime, template.VersionId);
+
+        return Task.FromResult(FiscalPdfWriter.Write(template.Title!, LeaseContractDocument.BuildFinalBody(template, data)));
+    }
+
+    public void EnsureFinalContractAvailable(LeaseContract lease) => ResolveApprovedTemplate(lease);
+
+    public string? GetFinalContractBlocker(LeaseContract lease)
+    {
+        var template = catalog.Get(lease.FiscalRegime);
+        if (!template.IsApproved)
+            return TemplateNotApprovedCode;
+
+        return LeaseContractDocument.MissingData(template, LeaseContractDocument.ResolveData(lease)).Count > 0
+            ? DataMissingCode
+            : null;
+    }
+
+    private (LeaseContractTemplateState Template, IReadOnlyDictionary<string, string?> Data) ResolveApprovedTemplate(LeaseContract lease)
+    {
         var template = catalog.Get(lease.FiscalRegime);
         if (!template.IsApproved)
         {
@@ -40,11 +64,7 @@ public class LeaseContractTemplateService(
             throw new DomainRuleException(DataMissingCode, "LeaseContractDataMissing", string.Join(", ", missing));
         }
 
-        logger.LogInformation(
-            "Generating final lease contract PDF. LeaseId={LeaseId} FiscalRegime={Regime} TemplateVersion={Version}",
-            lease.Id, lease.FiscalRegime, template.VersionId);
-
-        return Task.FromResult(FiscalPdfWriter.Write(template.Title!, LeaseContractDocument.BuildFinalBody(template, data)));
+        return (template, data);
     }
 
     public Task<byte[]> GeneratePreviewPdfAsync(LeaseContract lease)

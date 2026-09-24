@@ -228,28 +228,33 @@ public class WebhooksController : ControllerBase
     }
 
     /// <summary>
-    /// Handles e-signature provider callbacks (signing completed/partially signed).
-    /// Validates provider signature header and queues background processing.
+    /// E-signature provider callbacks (LT-02, A7-20). Only with <c>Features:ESignProvider</c> on (404 otherwise, before
+    /// anything is read). The body must be signed with <c>ESign:WebhookSecret</c> (HMAC-SHA256, hex in
+    /// <c>X-ESign-Signature</c>): 401 otherwise. The event is applied by <see cref="ESignWebhookJob"/>, which moves only a
+    /// lease whose signature is in progress.
     /// </summary>
     [HttpPost("esign")]
+    [FeatureGate(FeatureFlags.ESignProvider)]
     public async Task<IActionResult> ESignWebhook()
     {
         try
         {
             var payload = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
 
+            // Validated at startup with the flag on (ESignOptionsValidator); a public placeholder never signs anything.
             var webhookSecret = _configuration["ESign:WebhookSecret"];
-            if (string.IsNullOrEmpty(webhookSecret))
+            if (ESignOptionsValidator.IsWebhookSecretMissing(webhookSecret))
             {
                 _logger.LogError("ESign webhook secret not configured");
-                return StatusCode(500, "Webhook secret not configured");
+                return this.ApiProblem(
+                    StatusCodes.Status500InternalServerError, LeaseSigningErrorCodes.WebhookNotConfigured, "ESignWebhookNotConfigured");
             }
 
             var signatureHeader = Request.Headers["X-ESign-Signature"].ToString();
             if (string.IsNullOrEmpty(signatureHeader))
             {
                 _logger.LogWarning("ESign webhook received without signature header");
-                return Unauthorized("Missing signature");
+                return ESignSignatureInvalid();
             }
 
             byte[] providedBytes;
@@ -257,17 +262,17 @@ public class WebhooksController : ControllerBase
             catch (FormatException)
             {
                 _logger.LogWarning("ESign webhook signature header is not valid hex");
-                return Unauthorized("Invalid signature");
+                return ESignSignatureInvalid();
             }
 
             var expectedBytes = HMACSHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(webhookSecret),
-                System.Text.Encoding.UTF8.GetBytes(payload));
+                Encoding.UTF8.GetBytes(webhookSecret!),
+                Encoding.UTF8.GetBytes(payload));
 
             if (!CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes))
             {
                 _logger.LogWarning("Invalid e-sign webhook signature");
-                return Unauthorized("Invalid signature");
+                return ESignSignatureInvalid();
             }
 
             _backgroundJobClient.Enqueue<ESignWebhookJob>(job =>
@@ -282,4 +287,7 @@ public class WebhooksController : ControllerBase
             return StatusCode(500, "Internal server error");
         }
     }
+
+    private ObjectResult ESignSignatureInvalid() =>
+        this.ApiProblem(StatusCodes.Status401Unauthorized, "invalid_signature", "ESignWebhookSignatureInvalid");
 }

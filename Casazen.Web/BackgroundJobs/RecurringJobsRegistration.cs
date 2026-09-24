@@ -42,11 +42,7 @@ public static class RecurringJobsRegistration
             "0 8 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        recurringJobManager.AddOrUpdate<LeaseSignStatusPollingJob>(
-            "lease-sign-status-poll",
-            job => job.ExecuteAsync(),
-            "*/10 * * * *",
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        ConfigureESignProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ESignProvider));
 
         ConfigureRliProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.RliProvider));
 
@@ -115,6 +111,25 @@ public static class RecurringJobsRegistration
             LeaseRegistrationStatusPollingJob.RecurringJobId,
             job => job.ExecuteAsync(),
             "*/5 * * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// E-signature provider watch (LT-02): only with <see cref="FeatureFlags.ESignProvider"/> on. With the flag off every
+    /// contract is signed offline and no lease waits for a provider; the schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureESignProviderJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(LeaseSignStatusPollingJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<LeaseSignStatusPollingJob>(
+            LeaseSignStatusPollingJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "*/10 * * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

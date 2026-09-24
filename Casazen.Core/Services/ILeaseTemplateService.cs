@@ -12,6 +12,19 @@ public interface ILeaseTemplateService
     /// </summary>
     Task<byte[]> GeneratePdfAsync(LeaseContract lease);
 
+    /// <summary>
+    /// The gate of <see cref="GeneratePdfAsync"/> without building the PDF: throws the same 422 errors when the final
+    /// contract of <paramref name="lease"/> cannot exist (LT-02: an offline signature needs an approved template too).
+    /// </summary>
+    void EnsureFinalContractAvailable(LeaseContract lease);
+
+    /// <summary>
+    /// The error code <see cref="GeneratePdfAsync"/> would answer for <paramref name="lease"/>
+    /// (<c>contract_template_not_approved</c>, <c>contract_data_missing</c>), or null when the final contract can be
+    /// generated. Throws and logs nothing: the signature panel reads it on every load (LT-02).
+    /// </summary>
+    string? GetFinalContractBlocker(LeaseContract lease);
+
     /// <summary>Preview marked "BOZZA - template non approvato" (or "ANTEPRIMA" when approved): never valid for signature.</summary>
     Task<byte[]> GeneratePreviewPdfAsync(LeaseContract lease);
 }

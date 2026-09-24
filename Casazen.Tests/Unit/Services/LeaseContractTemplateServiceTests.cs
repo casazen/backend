@@ -149,6 +149,34 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
         Assert.Contains(LeaseContractPlaceholders.CadastralData, missing, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void GetFinalContractBlocker_DefaultOptionsApprovedOrMissingData_SameCodeAsGeneratePdf()
+    {
+        // LT-02: the signature panel shows why the final contract cannot be downloaded, without throwing.
+        Assert.Equal(
+            LeaseContractTemplateService.TemplateNotApprovedCode,
+            CreateSut(new LeaseTemplateOptions()).GetFinalContractBlocker(BuildLease(FiscalRegime.CedolareSecca)));
+
+        _files.Write(
+            FiscalRegime.CanoneConcordato,
+            LeaseTemplateTestFiles.ApprovedVersion,
+            LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.CanoneConcordato));
+        Assert.Null(CreateSut(_files.Options(FiscalRegime.CanoneConcordato, LeaseTemplateTestFiles.Approved()))
+            .GetFinalContractBlocker(BuildLease(FiscalRegime.CanoneConcordato)));
+
+        _files.Write(
+            FiscalRegime.RegimeOrdinario,
+            LeaseTemplateTestFiles.ApprovedVersion,
+            LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.RegimeOrdinario, new Dictionary<string, string>
+            {
+                [LeaseContractTemplateStructure.Deposit] = "Deposito di prova {{deposito_cauzionale}}.",
+            }));
+        Assert.Equal(
+            LeaseContractTemplateService.DataMissingCode,
+            CreateSut(_files.Options(FiscalRegime.RegimeOrdinario, LeaseTemplateTestFiles.Approved()))
+                .GetFinalContractBlocker(BuildLease(FiscalRegime.RegimeOrdinario)));
+    }
+
     [Theory]
     [InlineData(FiscalRegime.CedolareSecca)]
     [InlineData(FiscalRegime.RegimeOrdinario)]

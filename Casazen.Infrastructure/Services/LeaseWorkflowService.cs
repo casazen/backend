@@ -12,13 +12,12 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Lease drafting and signing. The RLI registration (provider or manual, LT-01) is <see cref="RliRegistrationService"/>.
+/// Lease drafting and reads. The signature (offline or provider, LT-02) is <see cref="LeaseSigningService"/>, the RLI
+/// registration (provider or manual, LT-01) is <see cref="RliRegistrationService"/>.
 /// </summary>
 public class LeaseWorkflowService(
     ILeaseContractRepository leaseRepository,
     ILeaseEventRepository eventRepository,
-    ILeaseTemplateService templateService,
-    ILeaseESignService eSignService,
     IPropertyRepository propertyRepository,
     IApeComplianceService apeCompliance,
     ICanoneConcordatoEligibilityService canoneConcordatoEligibility,
@@ -89,99 +88,6 @@ public class LeaseWorkflowService(
         return lease;
     }
 
-    public async Task<SigningInitiatedResult> InitiateSigningAsync(Guid leaseId, string ownerId)
-    {
-        var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
-
-        if (lease.Status != LeaseStatus.Draft)
-            throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
-
-        EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
-
-        await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
-
-        var pdfBytes = await templateService.GeneratePdfAsync(lease);
-        var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
-
-        lease.Status = LeaseStatus.AwaitingSignature;
-        lease.ExternalSigningSessionId = sessionResult.ExternalSessionId;
-        await leaseRepository.UpdateAsync(lease);
-        await eventRepository.AddAsync(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.SigningInitiated
-        });
-
-        logger.LogInformation("Signing initiated. LeaseId={LeaseId} SessionId={SessionId}", leaseId, sessionResult.ExternalSessionId);
-        return new SigningInitiatedResult(lease.Id, lease.Status, sessionResult.Signers);
-    }
-
-    public async Task HandleESignEventAsync(string providerPayload)
-    {
-        var esignEvent = await eSignService.ParseWebhookEventAsync(providerPayload);
-
-        var lease = await leaseRepository.GetByExternalSigningSessionIdAsync(esignEvent.ExternalSessionId);
-        if (lease is null)
-        {
-            logger.LogWarning("ESign webhook received but no lease found for SessionId={SessionId}", esignEvent.ExternalSessionId);
-            return;
-        }
-
-        if (esignEvent.AllSigned)
-        {
-            if (lease.Status != LeaseStatus.AwaitingSignature)
-            {
-                logger.LogInformation(
-                    "Ignoring all-signed webhook for lease {LeaseId} in status {Status}",
-                    lease.Id,
-                    lease.Status);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(esignEvent.SignedDocumentPath))
-            {
-                logger.LogWarning(
-                    "ESign all-signed webhook missing signed document path. LeaseId={LeaseId} SessionId={SessionId}",
-                    lease.Id,
-                    esignEvent.ExternalSessionId);
-                return;
-            }
-
-            // The provider reports no signing time: the stipula is the Rome day on which CasaZen records the last
-            // signature, the same instant as the AllPartiesSigned event (LT-04).
-            var signedAt = _clock.GetUtcNow().UtcDateTime;
-            lease.Status = LeaseStatus.Signed;
-            lease.SignedPdfStoragePath = esignEvent.SignedDocumentPath;
-            lease.RecordStipula(signedAt);
-            await leaseRepository.UpdateAsync(lease);
-            await eventRepository.AddAsync(new LeaseEvent
-            {
-                LeaseContractId = lease.Id,
-                EventType = LeaseEventType.AllPartiesSigned,
-                OccurredAt = signedAt,
-            });
-            logger.LogInformation(
-                "All parties signed. LeaseId={LeaseId} StipulaDate={StipulaDate:yyyy-MM-dd} RegistrationDeadline={RegistrationDeadline:yyyy-MM-dd}",
-                lease.Id,
-                lease.StipulaDate,
-                lease.RegistrationDeadline);
-        }
-        else
-        {
-            // The payload names the signer by party id, never by email: event payloads hold no personal data (A7-17).
-            var signer = string.IsNullOrWhiteSpace(esignEvent.SignerEmail)
-                ? null
-                : lease.Parties.FirstOrDefault(p =>
-                    string.Equals(p.ContactEmail.Trim(), esignEvent.SignerEmail.Trim(), StringComparison.OrdinalIgnoreCase));
-            await eventRepository.AddAsync(new LeaseEvent
-            {
-                LeaseContractId = lease.Id,
-                EventType = LeaseEventType.PartySignedDocument,
-                Payload = signer?.Id.ToString()
-            });
-        }
-    }
-
     public async Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
     {
         // The deadline of a lease not signed yet depends on today (LT-04): resolved here, not stored.
@@ -197,21 +103,6 @@ public class LeaseWorkflowService(
 
     public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
         => leaseRepository.GetByIdWithDetailsAsync(leaseId);
-
-    private async Task<LeaseContract> GetVerifiedLeaseAsync(Guid leaseId, string ownerId)
-    {
-        var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId)
-            ?? throw new NotFoundException($"Lease {leaseId} not found.")
-            {
-                Code = "lease_not_found",
-                MessageKey = "LeaseNotFound",
-            };
-
-        if (lease.Property is null || lease.Property.OwnerId != ownerId)
-            throw new UnauthorizedAccessException("Lease does not belong to this owner.");
-
-        return lease;
-    }
 
     private async Task EnsureCanoneConcordatoRentIsValidAsync(
         Guid propertyId,

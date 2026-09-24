@@ -29,7 +29,7 @@ public class LeaseDtoMapperTests
     [
         "ownerId", "orgId", "safetyChecklistJson", "fiscalCode", "contactEmail", "citizenship", "payload",
         "signedPdfStoragePath", "externalSigningSessionId", "externalRegistrationId", "receiptStoragePath",
-        "declaredByUserId", "requestedAt", "dataRetentionUntil", "erasureRequested", "leaseContract",
+        "declaredByUserId", "stipulaDeclaredByUserId", "requestedAt", "dataRetentionUntil", "erasureRequested", "leaseContract",
     ];
 
     [Fact]
@@ -48,11 +48,21 @@ public class LeaseDtoMapperTests
     }
 
     [Fact]
+    public void ToDetail_SignedPathLeftByTheOldStub_HasNoSignedPdf()
+    {
+        // LT-02: a provider path written by the old e-sign stub is not a file of the private bucket and cannot be served.
+        var lease = BuildLease();
+        lease.SignedPdfStoragePath = "/signed/lease.pdf";
+
+        Assert.False(LeaseDtoMapper.ToDetail(lease, Today).HasSignedPdf);
+    }
+
+    [Fact]
     public void ToDetail_SerializedAsTheApiDoes_ContainsNoClearPersonalDataNorInternalFields()
     {
         var json = JsonSerializer.Serialize(LeaseDtoMapper.ToDetail(BuildLease(), Today), ApiJson);
 
-        foreach (var secret in new[] { LandlordCf, TenantCf, LandlordEmail, TenantEmail, "auth0|owner", "/signed/", "provider-123", "receipts/", "{\"extinguisher\":true}", "US" })
+        foreach (var secret in new[] { LandlordCf, TenantCf, LandlordEmail, TenantEmail, "auth0|owner", "signed-contract/", "provider-123", "receipts/", "{\"extinguisher\":true}", "US" })
             Assert.DoesNotContain(secret, json, StringComparison.Ordinal);
         AssertNoForbiddenFields(json);
         Assert.Contains("\"eventType\":\"PartySignedDocument\"", json, StringComparison.Ordinal);
@@ -209,7 +219,8 @@ public class LeaseDtoMapperTests
             MonthlyRent = 1200m,
             DataRetentionUntil = new DateTime(2036, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             ExternalSigningSessionId = "session-1",
-            SignedPdfStoragePath = "/signed/lease.pdf",
+            SignedPdfStoragePath = $"leases/{Guid.Empty}/{leaseId}/signed-contract/signed.pdf",
+            StipulaDeclaredByUserId = "auth0|owner",
             Property = new Property
             {
                 Id = Guid.NewGuid(),
