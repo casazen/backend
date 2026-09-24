@@ -10,6 +10,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -53,13 +54,14 @@ public class SupplierServiceRegistrationTests
         });
         await db.SaveChangesAsync();
 
-        var (returnedOrg, returnedProfile) = await service.RegisterAsync(
+        var (returnedOrg, returnedProfile) = await service.RegisterAsync(new SupplierRegistration(
             "new-registration@test.com",
             "New Supplier Srl",
             "+39 06 222222",
             "F205",
-            inviteToken: null,
-            userId);
+            InviteToken: null,
+            userId,
+            AccountEmail: org.ContactEmail));
 
         Assert.Equal(org.Id, returnedOrg.Id);
         Assert.Equal(org.Id, returnedProfile.OrgId);
@@ -291,7 +293,13 @@ public class SupplierServiceRegistrationTests
     }
 
     private static SupplierService CreateService(AppDbContext db) =>
-        new(db, Mock.Of<IEmailQueue>(), EmailTestHelpers.Links(), Mock.Of<ISafeExternalHttpClient>(), NullLogger<SupplierService>.Instance);
+        new(
+            db,
+            Mock.Of<IEmailQueue>(),
+            EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
+            Options.Create(new SupplierRegistrationOptions()),
+            NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()
     {

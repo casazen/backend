@@ -204,6 +204,12 @@
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
   </data>
+  <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
+    <value>Il modello di contratto per questo regime fiscale non è ancora approvato da un legale: è disponibile solo l'anteprima in bozza e il contratto non può essere inviato alla firma.</value>
+  </data>
+  <data name="LeaseContractDataMissing" xml:space="preserve">
+    <value>Mancano dati del contratto richiesti dal modello approvato: {0}. Il contratto non può essere inviato alla firma finché non sono disponibili.</value>
+  </data>
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Contratto di locazione non trovato</value>
   </data>
@@ -337,7 +343,7 @@
     <value>Indica l'età da cui l'imposta è dovuta (0 se non ci sono esenzioni per età).</value>
   </data>
   <data name="TaxRateMinimumAgeOutOfRange" xml:space="preserve">
-    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 120 anni.</value>
+    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 18 anni (gli adulti non sono mai esenti per età).</value>
   </data>
   <data name="TaxRateEffectiveFromRequired" xml:space="preserve">
     <value>Indica la data da cui la tariffa è in vigore.</value>
@@ -359,6 +365,39 @@
   </data>
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
+  </data>
+  <data name="ActivationTouristTaxCategoryRequired" xml:space="preserve">
+    <value>A {0} la tariffa dell'imposta di soggiorno dipende dalla categoria della struttura, che CasaZen non conosce ancora: il calcolo automatico non è disponibile. Non blocca l'attivazione: verifica la tariffa della tua categoria con il comune.</value>
+  </data>
+  <data name="TouristTaxChildAgesRequired" xml:space="preserve">
+    <value>Per calcolare la tassa di soggiorno serve l'età di ogni minore al check-in.</value>
+  </data>
+  <data name="TouristTaxChildAgesInvalid" xml:space="preserve">
+    <value>Indica un'età tra 0 e 17 anni per ogni minore.</value>
+  </data>
+  <data name="TouristTaxQuoteInvalid" xml:space="preserve">
+    <value>Dati del calcolo non validi: controlla date (massimo 366 notti), ospiti, età dei minori e prezzo per notte.</value>
+  </data>
+  <data name="TaxRateIstatCodeInvalid" xml:space="preserve">
+    <value>Il codice ISTAT del comune deve avere 6 cifre.</value>
+  </data>
+  <data name="TaxRateCategoryTooLong" xml:space="preserve">
+    <value>La categoria di struttura può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="TaxRateSeasonInvalid" xml:space="preserve">
+    <value>Indica inizio e fine della stagione nel formato MM-GG (es. 02-01 e 12-31), oppure lascia vuoti entrambi.</value>
+  </data>
+  <data name="TaxRateCalculationMethodInvalid" xml:space="preserve">
+    <value>Il tipo di tariffa non è valido.</value>
+  </data>
+  <data name="TaxRatePercentOutOfRange" xml:space="preserve">
+    <value>Per una tariffa percentuale indica una percentuale tra 0,01 e 100.</value>
+  </data>
+  <data name="TaxRateCapOutOfRange" xml:space="preserve">
+    <value>Il tetto per persona per notte deve essere compreso tra 0,01 e 1000 euro.</value>
+  </data>
+  <data name="TaxRateReducedRateInvalid" xml:space="preserve">
+    <value>Per la tariffa ridotta indica sia l'età massima (tra l'età di esenzione e 17 anni) sia l'importo per persona per notte (tra 0,01 e 1000 euro); solo per tariffe a importo fisso.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>Questo pagamento non è rimborsabile: si possono rimborsare solo i pagamenti incassati.</value>
@@ -413,6 +452,36 @@
   </data>
   <data name="ServiceCategoryNotSupported" xml:space="preserve">
     <value>Categoria del servizio non supportata.</value>
+  </data>
+  <data name="SupplierInviteInvalid" xml:space="preserve">
+    <value>Invito non valido: il link è incompleto o non esiste. Apri di nuovo il link ricevuto via email o chiedi un nuovo invito.</value>
+  </data>
+  <data name="SupplierInviteExpired" xml:space="preserve">
+    <value>Questo invito è scaduto. Chiedi al team CasaZen di inviartene uno nuovo.</value>
+  </data>
+  <data name="SupplierInviteUsed" xml:space="preserve">
+    <value>Questo invito è già stato usato. Se hai già un account fornitore, accedi.</value>
+  </data>
+  <data name="SupplierInviteLoginRequired" xml:space="preserve">
+    <value>Per accettare l'invito accedi o crea un account con l'email invitata.</value>
+  </data>
+  <data name="SupplierInviteEmailMismatch" xml:space="preserve">
+    <value>L'invito è per un'altra email: accedi con l'account dell'email a cui è arrivato l'invito.</value>
+  </data>
+  <data name="SupplierInviteComuneMismatch" xml:space="preserve">
+    <value>L'invito vale per un altro comune: il comune non si può cambiare.</value>
+  </data>
+  <data name="SupplierAccountEmailMissing" xml:space="preserve">
+    <value>Il tuo account non ha un'email: impossibile verificare la registrazione. Accedi con un account che ha un'email.</value>
+  </data>
+  <data name="SupplierAccountEmailMismatch" xml:space="preserve">
+    <value>L'email della registrazione deve essere quella del tuo account.</value>
+  </data>
+  <data name="SupplierSelfServeUnavailable" xml:space="preserve">
+    <value>La registrazione autonoma dei fornitori non è ancora disponibile: puoi entrare solo con un invito del team CasaZen.</value>
+  </data>
+  <data name="SupplierComuneNotPilot" xml:space="preserve">
+    <value>La registrazione autonoma non è disponibile per questo comune: scegli uno dei comuni dell'elenco o chiedi un invito.</value>
   </data>
   <data name="CheckInGuestsCount" xml:space="preserve">
     <value>Inserisci da 1 a {0} ospiti.</value>

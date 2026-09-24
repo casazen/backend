@@ -5,6 +5,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,7 @@ public class ComplianceWizardService(
     IConfiguration configuration,
     IAlloggiatiWebService alloggiatiWebService,
     IServiceRequestService serviceRequestService,
+    ITouristTaxQuoteService touristTaxQuoteService,
     ILogger<ComplianceWizardService> logger,
     TimeProvider? timeProvider = null) : IComplianceWizardService
 {
@@ -399,8 +401,11 @@ public class ComplianceWizardService(
         if (touristTax.Rate is not null)
             return step;
 
-        return string.IsNullOrWhiteSpace(touristTax.City)
-            ? step with { MessageKey = "ActivationTouristTaxCityMissing" }
+        if (string.IsNullOrWhiteSpace(touristTax.City))
+            return step with { MessageKey = "ActivationTouristTaxCityMissing" };
+
+        return touristTax.CategoryRequired
+            ? step with { MessageKey = "ActivationTouristTaxCategoryRequired", MessageArgs = [touristTax.City] }
             : step with { MessageKey = "ActivationTouristTaxNoRate", MessageArgs = [touristTax.City] };
     }
 
@@ -412,13 +417,14 @@ public class ComplianceWizardService(
         if (city.Length == 0)
             return new TouristTaxActivationInfo(city, null, null);
 
-        var today = _clock.TodayInRome();
-        var rate = await db.TouristTaxRates
-            .AsNoTracking()
-            .Where(t => t.IsActive && t.City.ToLower() == city.ToLower())
-            .Where(t => t.EffectiveFrom <= today && (t.EffectiveTo == null || t.EffectiveTo >= today))
-            .OrderByDescending(t => t.EffectiveFrom)
-            .FirstOrDefaultAsync(cancellationToken);
+        // Same lookup as the checkout and the calculator (BK-03): comune by normalized name, rate in force today in
+        // Europe/Rome and in season. The property has no accommodation category, so category rates do not apply.
+        var today = _clock.TodayInRomeAsDateOnly();
+        var ratesInForce = await touristTaxQuoteService.GetRatesInForceAsync(
+            new TouristTaxComune(null, city), today, cancellationToken);
+        var rate = TouristTaxCalculator.RateFor(ratesInForce, today);
+        var categoryRequired = rate is null
+            && ratesInForce.Any(r => !string.IsNullOrWhiteSpace(r.AccommodationCategory));
 
         // Only a reviewed page is public in production (PublicContentController); the wizard never links a draft.
         string? publicPageSlug = null;
@@ -435,7 +441,7 @@ public class ComplianceWizardService(
                 publicPageSlug = comune.ComuneSlug;
         }
 
-        return new TouristTaxActivationInfo(city, rate, publicPageSlug);
+        return new TouristTaxActivationInfo(city, rate, publicPageSlug) { CategoryRequired = categoryRequired };
     }
 
     private static IReadOnlyList<ComplianceActivationStep> BuildCheckoutSteps(Booking booking)

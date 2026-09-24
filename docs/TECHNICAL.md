@@ -76,16 +76,19 @@ registered, registered but unused, or an action with neither).
 | `AdminOnly` | JWT role `Admin` |
 | `Supplier` (`RequireSupplier`) | JWT role `Supplier` (backfilled from the DB supplier link) |
 | `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator: plan, billing, domain |
-| `PropertyRead` / `PropertyWrite` | host of either rental context (`property.*` is shared by short-rent and long-rent) |
+| `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE, plan entitlement) — A7-06 |
+| `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
 | `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
 | `LeaseRead/Create/Sign/Register` | long-rent context permission |
 
 Context permissions come from the DB memberships (`UserContextMemberships` → `Roles` → `RolePermissions`) with the JWT
-roles as fallback (`ContextAuthorizationService`). The class carries the read permission, writing actions add the write one.
+roles as fallback (`ContextAuthorizationService`). A permission counts only in the context that grants it: the long-rent
+`property.*` never satisfies a short-rent policy (`RequireContext:short-rent|long-rent:…` lists both contexts where an
+endpoint serves both). The class carries the read permission, writing actions add the write one.
 
 The policy says what kind of operation a user may do; the row itself is checked with
-`IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `BookingOperations`,
-`GuestOperations`, `PaymentOperations`, `OtaOperations`): `HostResourceAuthorizationHandler` grants it only when the row
+`IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
+`BookingOperations`, `GuestOperations`, `PaymentOperations`, `OtaOperations`, `LeaseOperations`): `HostResourceAuthorizationHandler` grants it only when the row
 is in the caller's org, the caller holds the permission and, for property-bound rows, owns the property or has an
 org-wide role (`HostRoles.OrgWide`: `PropertyManager`, `Admin`). Lists use `User.GetHostScope(orgId)` → `HostScope`,
 filtered in SQL. Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
@@ -119,7 +122,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 |---|---|---|---|
 | `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships` |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
-| `GET` | `/api/orgs/me/entitlement` | short-rent property.read | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
+| `GET` | `/api/orgs/me/entitlement` | property.read (short-rent or long-rent) | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
 | `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
@@ -135,11 +138,14 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/properties` | List properties owned by the authenticated user |
-| `GET` | `/api/properties/{id}` | Get a single property |
-| `POST` | `/api/properties` | Create a new property |
-| `PUT` | `/api/properties/{id}` | Update a property (owner only) |
-| `DELETE` | `/api/properties/{id}` | Delete a property (owner only) |
+| `GET` | `/api/properties` | Properties of the caller's org the caller may handle (own ones; whole org for org-wide roles). Short-rent or long-rent |
+| `GET` | `/api/properties/{id}` | Get a single property. Short-rent or long-rent |
+| `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation) |
+| `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role). Short-rent or long-rent |
+| `GET`/`POST` | `/api/properties/{id}/documents` | List (with `documentType`) / upload documents such as the APE. Short-rent or long-rent |
+| `DELETE` | `/api/properties/{id}/documents/{docId}` | Delete a document. Short-rent or long-rent |
+| `GET` | `/api/properties/{id}/documents/{docId}/download` | Authenticated download from the private bucket (FD-07). Short-rent or long-rent |
+| `DELETE` | `/api/properties/{id}` | Delete a property (owner only). Short-rent only |
 | `GET` | `/api/properties/search` | Search properties by city, bedrooms, max price (anonymous) |
 | `POST` | `/api/properties/{id}/images` | Upload photos (max 20, JPEG/PNG/WebP, 10 MB each) |
 | `GET` | `/api/properties/{id}/images` | List photo URLs |
@@ -177,9 +183,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/leases` | LongTermLandlord + lease.read | List leases |
-| `GET` | `/api/leases/{id}` | LongTermLandlord + lease.read | Get lease |
-| `POST` | `/api/leases` | lease.create | Create lease |
+| `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
+| `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
+| `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
 | `POST` | `/api/leases/{id}/signing` | lease.sign | Start / advance e-sign flow |
 | `POST` | `/api/leases/{id}/registration` | lease.register | Submit lease registration |
 | `GET` | `/api/leases/{id}/registration` | lease.read | Registration status |
@@ -268,7 +274,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email via SMTP); 409 pending invite; 502 email failure rolls back |
-| `POST` | `/api/suppliers/register` | Anonymous | Self-serve or invite-token registration |
+| `POST` | `/api/suppliers/register` | Anonymous (rate limited) | Self-serve registration for a pilot comune, or invite acceptance by the signed-in invited account (SU-01) |
+| `POST` | `/api/suppliers/invites/lookup` | Anonymous (rate limited) | Invite of a link token (email, comune, expiry) for the web registration page |
+| `GET` | `/api/suppliers/registration-options` | Anonymous (rate limited) | Self-serve on/off and pilot comuni (`Suppliers:PilotComuni`) |
 | `GET` | `/api/suppliers?comune=&category=` | JWT | List **Active** suppliers for host picker |
 | `GET` | `/api/supplier/profile` | Supplier | Supplier profile for current org |
 | `PUT` | `/api/supplier/profile` | Supplier | Update profile fields |
@@ -294,9 +302,8 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/api/service-requests/{id}/complete` | Supplier | Complete request |
 | `POST` | `/api/service-requests/{id}/reject` | Supplier | Reject request |
 | `POST` | `/api/service-requests/{id}/mark-paid` | JWT | Mark request paid |
-| `GET` | `/register` | Anonymous | Supplier register page (MVC) |
 
-**Invite email:** `SupplierService.CreateInviteAsync` persists `SupplierInviteRecords`, then sends via `IEmailService` (MailKit SMTP) with HTML from `SupplierInviteEmailBuilder`. Signup URL: `{App:PublicSiteBaseUrl}/login?inviteToken={id}&email={email}&comune={comuneCode}`. Skipped in Testing/Development when no email config is present.
+**Invite email:** `SupplierService.CreateInviteAsync` stores the invite with the SHA-256 of a random token, then queues the email (`EmailTemplates.SupplierInvite`, Hangfire). Signup URL: `{App:PublicSiteBaseUrl}/register?inviteToken={token}` (web app page; the backend no longer serves a `/register` page). Runbook: `docs/runbooks/suppliers.md`.
 
 **Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier`. Default route: `/supplier/inbox`.
 

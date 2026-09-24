@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 
 namespace Casazen.Core.Repositories;
 
@@ -6,6 +7,12 @@ public interface IPropertyRepository
 {
     Task<Property?> GetByIdAsync(Guid id);
     Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId);
+
+    /// <summary>
+    /// Active properties of <see cref="HostScope.OrgId"/>, restricted to <see cref="HostScope.OwnerId"/> when set
+    /// (TN-3 list filter, in SQL).
+    /// </summary>
+    Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
     IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null);

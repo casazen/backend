@@ -11,6 +11,7 @@ using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Moq;
 using Xunit;
@@ -26,7 +27,7 @@ public class ComuneImuNotificationServiceTests
     {
         var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Registered));
 
-        var result = await sut.ExportAsync(Guid.NewGuid(), OwnerId);
+        var result = await sut.ExportAsync(Guid.NewGuid());
 
         Assert.NotNull(result);
         Assert.True(result.PdfBytes.Length > 4);
@@ -46,7 +47,7 @@ public class ComuneImuNotificationServiceTests
     {
         var (sut, _) = CreateSut(BuildLease("Cesano Maderno", LeaseStatus.Registered));
 
-        var result = await sut.ExportAsync(Guid.NewGuid(), OwnerId);
+        var result = await sut.ExportAsync(Guid.NewGuid());
 
         Assert.NotNull(result);
         var text = Encoding.ASCII.GetString(result.PdfBytes);
@@ -62,7 +63,7 @@ public class ComuneImuNotificationServiceTests
         var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Draft));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
-            () => sut.ExportAsync(Guid.NewGuid(), OwnerId));
+            () => sut.ExportAsync(Guid.NewGuid()));
         events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
     }
 
@@ -75,7 +76,7 @@ public class ComuneImuNotificationServiceTests
             FiscalRegime.CedolareSecca));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
-            () => sut.ExportAsync(Guid.NewGuid(), OwnerId));
+            () => sut.ExportAsync(Guid.NewGuid()));
         events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
     }
 
@@ -87,16 +88,17 @@ public class ComuneImuNotificationServiceTests
             BuildAgreement("Monza", DataCompleteness.Missing, includeBand: false));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
-            () => sut.ExportAsync(Guid.NewGuid(), OwnerId));
+            () => sut.ExportAsync(Guid.NewGuid()));
         events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
     }
 
     [Fact]
-    public async Task ExportAsync_OtherOwner_ReturnsNull()
+    public async Task ExportAsync_LeaseNotVisible_ReturnsNullWithoutEvent()
     {
-        var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Registered));
+        var (sut, events) = CreateSut(lease: null);
 
-        var result = await sut.ExportAsync(Guid.NewGuid(), "auth0|other");
+        // Who may export is decided by the controller (TN-3); a lease outside the caller's org is not found.
+        var result = await sut.ExportAsync(Guid.NewGuid());
 
         Assert.Null(result);
         events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
@@ -106,9 +108,9 @@ public class ComuneImuNotificationServiceTests
     public async Task Controller_Export_NotRegistered_Returns409()
     {
         var imu = new Mock<IComuneImuNotificationService>();
-        imu.Setup(s => s.ExportAsync(It.IsAny<Guid>(), OwnerId, It.IsAny<CancellationToken>()))
+        imu.Setup(s => s.ExportAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new ImuNotificationNotReadyException());
-        var controller = CreateController(imu.Object);
+        var controller = CreateController(imu.Object, BuildLease("Seveso", LeaseStatus.Signed));
 
         var result = await controller.ExportImuNotification(Guid.NewGuid(), CancellationToken.None);
 
@@ -116,16 +118,28 @@ public class ComuneImuNotificationServiceTests
     }
 
     [Fact]
-    public async Task Controller_Export_OtherOwner_Returns404()
+    public async Task Controller_Export_LeaseNotVisible_Returns404WithoutExporting()
     {
         var imu = new Mock<IComuneImuNotificationService>();
-        imu.Setup(s => s.ExportAsync(It.IsAny<Guid>(), OwnerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ImuNotificationExportResult?)null);
-        var controller = CreateController(imu.Object);
+        var controller = CreateController(imu.Object, lease: null);
 
         var result = await controller.ExportImuNotification(Guid.NewGuid(), CancellationToken.None);
 
-        Assert.IsType<NotFoundResult>(result);
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        imu.Verify(s => s.ExportAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Controller_Export_LeaseNotAllowed_Returns403WithoutExporting()
+    {
+        var imu = new Mock<IComuneImuNotificationService>();
+        var controller = CreateController(imu.Object, BuildLease("Seveso", LeaseStatus.Registered), authorized: false);
+
+        var result = await controller.ExportImuNotification(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        imu.Verify(s => s.ExportAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -231,9 +245,9 @@ public class ComuneImuNotificationServiceTests
     public async Task Controller_Export_Registered_ReturnsPdfFile()
     {
         var imu = new Mock<IComuneImuNotificationService>();
-        imu.Setup(s => s.ExportAsync(It.IsAny<Guid>(), OwnerId, It.IsAny<CancellationToken>()))
+        imu.Setup(s => s.ExportAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ImuNotificationExportResult("%PDF-1.4 test"u8.ToArray(), "comunicazione-imu.pdf"));
-        var controller = CreateController(imu.Object);
+        var controller = CreateController(imu.Object, BuildLease("Seveso", LeaseStatus.Registered));
 
         var result = await controller.ExportImuNotification(Guid.NewGuid(), CancellationToken.None);
 
@@ -243,7 +257,7 @@ public class ComuneImuNotificationServiceTests
     }
 
     private static (ComuneImuNotificationService Sut, Mock<ILeaseEventRepository> Events) CreateSut(
-        LeaseContract lease,
+        LeaseContract? lease,
         TerritorialRentAgreement? agreement = null)
     {
         var leases = new Mock<ILeaseContractRepository>();
@@ -253,28 +267,50 @@ public class ComuneImuNotificationServiceTests
         var territorialAgreements = new Mock<ITerritorialRentAgreementRepository>();
         territorialAgreements
             .Setup(r => r.GetByComuneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(agreement ?? BuildAgreement(lease.Property.City));
+            .ReturnsAsync(agreement ?? BuildAgreement(lease?.Property.City ?? "Seveso"));
         return (new ComuneImuNotificationService(leases.Object, events.Object, territorialAgreements.Object), events);
     }
 
-    private static LeasesController CreateController(IComuneImuNotificationService imu)
+    /// <summary>
+    /// Controller whose lease lookup returns <paramref name="lease"/> (null = not in the caller's org) and whose
+    /// TN-3 resource check answers <paramref name="authorized"/>. MarkSent still goes to the service with the owner.
+    /// </summary>
+    private static LeasesController CreateController(
+        IComuneImuNotificationService imu,
+        LeaseContract? lease = null,
+        bool authorized = true)
     {
+        var leaseService = new Mock<ILeaseWorkflowService>();
+        leaseService.Setup(s => s.GetLeaseDetailAsync(It.IsAny<Guid>())).ReturnsAsync(lease);
+        var authorization = new Mock<IAuthorizationService>();
+        authorization
+            .Setup(a => a.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(authorized ? AuthorizationResult.Success() : AuthorizationResult.Failed());
+        var localizer = new Mock<IStringLocalizer<SharedResources>>();
+        localizer
+            .Setup(l => l[It.IsAny<string>()])
+            .Returns((string key) => new LocalizedString(key, key));
+        localizer
+            .Setup(l => l[It.IsAny<string>(), It.IsAny<object[]>()])
+            .Returns((string key, object[] _) => new LocalizedString(key, key));
         var controller = new LeasesController(
-            Mock.Of<ILeaseWorkflowService>(),
+            leaseService.Object,
             imu,
             Mock.Of<ICedolareAdvisoryService>(),
             Mock.Of<IRliExportService>(),
             Mock.Of<IRliChecklistService>(),
             Mock.Of<IHostResourceLookup>(),
-            Mock.Of<IAuthorizationService>(),
+            authorization.Object,
             Mock.Of<IOrgContextResolver>(),
-            Mock.Of<IStringLocalizer<SharedResources>>());
+            localizer.Object);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
             {
                 User = new ClaimsPrincipal(new ClaimsIdentity(
                     [new Claim(ClaimTypes.NameIdentifier, OwnerId)], "test")),
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
             },
         };
         return controller;

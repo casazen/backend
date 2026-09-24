@@ -49,7 +49,7 @@ public class AttestationGuidanceServiceTests
             new TerritorialRentAgreementRepository(db),
             new PropertyRepository(db));
 
-        var result = await sut.GetSignatoryOrganizationsAsync(property.Id, OwnerId);
+        var result = await sut.GetSignatoryOrganizationsAsync(property.Id);
 
         Assert.NotNull(result);
         Assert.True(result.Organizations.Count >= 1);

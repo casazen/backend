@@ -572,14 +572,28 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
 
 internal sealed class FakeStripeService : IStripeService
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> IntentStatuses = new();
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<(string IntentId, string? AccountId, string IdempotencyKey)> Cancellations = new();
+
     public static string? LastPaymentIntentId { get; private set; }
     public static string LastClientSecret { get; private set; } = "pi_test_secret_direct";
 
+    /// <summary>Cancellations sent (intent, <c>Stripe-Account</c>, idempotency key), in order.</summary>
+    public static IReadOnlyList<(string IntentId, string? AccountId, string IdempotencyKey)> CancelledIntents => Cancellations.ToList();
+
+    // Intent statuses and cancellations are keyed by unique intent ids and never cleared: test classes run in parallel
+    // on this shared fake, so a Reset from one class must not wipe what another is asserting on.
     public static void Reset()
     {
         LastPaymentIntentId = null;
         LastClientSecret = "pi_test_secret_direct";
     }
+
+    /// <summary>Stripe status returned for one intent id, whatever the defaults (BK-21: a hold whose guest has paid).</summary>
+    public static void SetIntentStatus(string intentId, string status) => IntentStatuses[intentId] = status;
+
+    private static string StatusOf(string intentId, string defaultStatus) =>
+        IntentStatuses.TryGetValue(intentId, out var status) ? status : defaultStatus;
 
     public Task<PaymentIntent> CreatePaymentIntentAsync(
         long amount,
@@ -622,7 +636,10 @@ internal sealed class FakeStripeService : IStripeService
     /// <summary>Status Stripe answers to a refund request (<c>succeeded</c> for cards, <c>pending</c> for some methods).</summary>
     public string RefundStatus { get; set; } = "succeeded";
 
-    /// <summary>Status of every PaymentIntent read by <see cref="GetPaymentIntentAsync"/>.</summary>
+    /// <summary>
+    /// Status of every PaymentIntent read by <see cref="GetPaymentIntentAsync"/>, unless one was set for that intent with
+    /// <see cref="SetIntentStatus"/>.
+    /// </summary>
     public string PaymentIntentStatus { get; set; } = "requires_payment_method";
 
     public System.Collections.Concurrent.ConcurrentQueue<(string PaymentIntentId, string? AccountId)> CanceledPaymentIntents { get; } = new();
@@ -650,7 +667,7 @@ internal sealed class FakeStripeService : IStripeService
         string paymentIntentId,
         string? connectedAccountId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = PaymentIntentStatus });
+        Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = StatusOf(paymentIntentId, PaymentIntentStatus) });
 
     public Task<PaymentIntent> CancelPaymentIntentAsync(
         string paymentIntentId,
@@ -659,6 +676,7 @@ internal sealed class FakeStripeService : IStripeService
         CancellationToken cancellationToken = default)
     {
         CanceledPaymentIntents.Enqueue((paymentIntentId, connectedAccountId));
+        Cancellations.Enqueue((paymentIntentId, connectedAccountId, idempotencyKey));
         return Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = "canceled" });
     }
 
@@ -666,14 +684,17 @@ internal sealed class FakeStripeService : IStripeService
         string setupIntentId,
         string connectedAccountId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult(new SetupIntent { Id = setupIntentId, Status = "requires_payment_method" });
+        Task.FromResult(new SetupIntent { Id = setupIntentId, Status = StatusOf(setupIntentId, "requires_payment_method") });
 
     public Task<SetupIntent> CancelSetupIntentAsync(
         string setupIntentId,
         string connectedAccountId,
         string idempotencyKey,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(new SetupIntent { Id = setupIntentId, Status = "canceled" });
+        CancellationToken cancellationToken = default)
+    {
+        Cancellations.Enqueue((setupIntentId, connectedAccountId, idempotencyKey));
+        return Task.FromResult(new SetupIntent { Id = setupIntentId, Status = "canceled" });
+    }
 
     public Task DetachPaymentMethodAsync(
         string paymentMethodId,

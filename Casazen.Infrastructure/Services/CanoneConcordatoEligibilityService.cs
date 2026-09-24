@@ -12,12 +12,11 @@ public class CanoneConcordatoEligibilityService(
 {
     public async Task<CanoneConcordatoEligibilityDto?> CalculateAsync(
         Guid propertyId,
-        string ownerId,
         RentBandCharacteristics characteristics,
         CancellationToken cancellationToken = default)
     {
         var property = await properties.GetByIdAsync(propertyId);
-        if (property is null || property.OwnerId != ownerId)
+        if (property is null)
             return null;
 
         if (characteristics.Sqm < 1m)

@@ -113,7 +113,7 @@ public class ContextAuthorizationServiceTests
     }
 
     [Fact]
-    public void BuildFallbackAccess_LongTermLandlord_HasSharedPropertyPermissions()
+    public void BuildFallbackAccess_LongTermLandlord_HasLongRentPropertyPermissions()
     {
         var contexts = ContextAccessBootstrap.BuildFallbackAccess(["LongTermLandlord"]);
 
@@ -124,23 +124,23 @@ public class ContextAuthorizationServiceTests
     }
 
     [Fact]
-    public async Task HasPermissionAsync_LongTermLandlord_CanSatisfyExistingPropertyPolicies()
+    public async Task HasPermissionAsync_LongTermLandlord_HasPropertyPermissionsOnlyInLongRent()
     {
         await using var db = CreateDbContext();
         var httpContext = BuildHttpContext("auth0|long-only", ["LongTermLandlord"]);
         var service = CreateService(db, httpContext);
 
-        var canReadProperty = await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.read");
-        var canWriteProperty = await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.write");
-        var canReadBookings = await service.HasPermissionAsync("auth0|long-only", "short-rent", "booking.read");
-
-        Assert.True(canReadProperty);
-        Assert.True(canWriteProperty);
-        Assert.False(canReadBookings);
+        // property.* counts in the context that grants it (LT-05): the shared property endpoints accept either
+        // context in their policy, the short-rent ones (pricing, iCal, photos...) stay closed to a landlord.
+        Assert.True(await service.HasPermissionAsync("auth0|long-only", "long-rent", "property.read"));
+        Assert.True(await service.HasPermissionAsync("auth0|long-only", "long-rent", "property.write"));
+        Assert.False(await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.read"));
+        Assert.False(await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.write"));
+        Assert.False(await service.HasPermissionAsync("auth0|long-only", "short-rent", "booking.read"));
     }
 
     [Fact]
-    public async Task HasPermissionAsync_LongRentMembership_CanSatisfyExistingPropertyPolicies()
+    public async Task HasPermissionAsync_LongRentMembership_DoesNotGrantShortRentPropertyPermissions()
     {
         await using var db = CreateDbContext();
         if (!await db.AppContexts.AnyAsync(c => c.Key == "long-rent"))
@@ -179,11 +179,9 @@ public class ContextAuthorizationServiceTests
         var httpContext = BuildHttpContext("auth0|long-membership", []);
         var service = CreateService(db, httpContext);
 
-        var canWriteProperty = await service.HasPermissionAsync("auth0|long-membership", "short-rent", "property.write");
-        var canReadBookings = await service.HasPermissionAsync("auth0|long-membership", "short-rent", "booking.read");
-
-        Assert.True(canWriteProperty);
-        Assert.False(canReadBookings);
+        Assert.True(await service.HasPermissionAsync("auth0|long-membership", "long-rent", "property.write"));
+        Assert.False(await service.HasPermissionAsync("auth0|long-membership", "short-rent", "property.write"));
+        Assert.False(await service.HasPermissionAsync("auth0|long-membership", "short-rent", "booking.read"));
     }
 
     private static AppDbContext CreateDbContext()

@@ -28,7 +28,7 @@ public class CedolareAdvisoryServiceTests
         var lease = Lease(FiscalRegime.CedolareSecca, 1000m);
         var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(), options);
 
-        var result = await sut.EvaluateAsync(lease.Id, OwnerId);
+        var result = await sut.EvaluateAsync(lease.Id);
 
         Assert.NotNull(result);
         Assert.Equal(0.21m, result.CedolareRate);
@@ -52,7 +52,7 @@ public class CedolareAdvisoryServiceTests
         var lease = Lease(FiscalRegime.CanoneConcordato, 500m);
         var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(verifiedDirectly: true), options);
 
-        var result = await sut.EvaluateAsync(lease.Id, OwnerId);
+        var result = await sut.EvaluateAsync(lease.Id);
 
         Assert.NotNull(result);
         Assert.Equal(0.10m, result.CedolareRate);
@@ -73,7 +73,7 @@ public class CedolareAdvisoryServiceTests
         var lease = Lease(FiscalRegime.CanoneConcordato, 500m);
         var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(verifiedDirectly: false), options);
 
-        var result = await sut.EvaluateAsync(lease.Id, OwnerId);
+        var result = await sut.EvaluateAsync(lease.Id);
 
         Assert.NotNull(result);
         Assert.Equal(0.21m, result.CedolareRate);
@@ -95,7 +95,7 @@ public class CedolareAdvisoryServiceTests
         var lease = Lease(FiscalRegime.RegimeOrdinario, 800m);
         var sut = new CedolareAdvisoryService(Repo(lease), AtaRepo(), options);
 
-        var result = await sut.EvaluateAsync(lease.Id, OwnerId);
+        var result = await sut.EvaluateAsync(lease.Id);
 
         Assert.NotNull(result);
         Assert.Equal(FiscalRegime.RegimeOrdinario, result.LeaseRegime);
@@ -106,13 +106,14 @@ public class CedolareAdvisoryServiceTests
     }
 
     [Fact]
-    public async Task Evaluate_WrongOwner_ReturnsNull()
+    public async Task Evaluate_LeaseNotVisible_ReturnsNull()
     {
         var lease = Lease(FiscalRegime.CedolareSecca, 1000m);
         var sut = new CedolareAdvisoryService(
             Repo(lease), AtaRepo(), Options.Create(new CedolareAdvisoryOptions()));
 
-        Assert.Null(await sut.EvaluateAsync(lease.Id, "auth0|other"));
+        // Who may read the lease is decided by the controller (TN-3); an id outside the caller's org is not found.
+        Assert.Null(await sut.EvaluateAsync(Guid.NewGuid()));
     }
 
     private static ILeaseContractRepository Repo(LeaseContract lease)

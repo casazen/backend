@@ -1,41 +1,62 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
-using Casazen.Core.Options;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.LeaseContracts;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Draft PDF/A generation. Counsel-reviewed wording is still a BOZZA until templates are approved beyond dev-stub.
+/// Lease contract PDF from the template of the lease's fiscal regime (LT-03, A7-03). The final contract, the one sent
+/// to signature and then to registration, exists only when the template is complete and approved by a lawyer and every
+/// datum it uses is known; otherwise 422. The preview is always available and marked BOZZA.
 /// </summary>
 public class LeaseContractTemplateService(
-    IOptions<LeaseTemplateOptions> options,
+    ILeaseContractTemplateCatalog catalog,
     ILogger<LeaseContractTemplateService> logger) : ILeaseTemplateService
 {
+    public const string TemplateNotApprovedCode = "contract_template_not_approved";
+    public const string DataMissingCode = "contract_data_missing";
+
     public Task<byte[]> GeneratePdfAsync(LeaseContract lease)
     {
-        var key = lease.FiscalRegime.ToString();
-        if (!options.Value.Variants.TryGetValue(key, out var variant) || !variant.Approved)
+        var template = catalog.Get(lease.FiscalRegime);
+        if (!template.IsApproved)
         {
-            throw new InvalidOperationException(
-                $"No counsel-reviewed template is approved for fiscal regime {lease.FiscalRegime}.");
+            logger.LogWarning(
+                "Final lease contract blocked: template {Regime} is {Status} (version {VersionId}). LeaseId={LeaseId}",
+                lease.FiscalRegime, template.Status, template.VersionId, lease.Id);
+            throw new DomainRuleException(TemplateNotApprovedCode, "LeaseContractTemplateNotApproved");
+        }
+
+        var data = LeaseContractDocument.ResolveData(lease);
+        var missing = LeaseContractDocument.MissingData(template, data);
+        if (missing.Count > 0)
+        {
+            logger.LogWarning(
+                "Final lease contract blocked: data {MissingData} missing for template {Regime} (version {VersionId}). LeaseId={LeaseId}",
+                string.Join(", ", missing), lease.FiscalRegime, template.VersionId, lease.Id);
+            throw new DomainRuleException(DataMissingCode, "LeaseContractDataMissing", string.Join(", ", missing));
         }
 
         logger.LogInformation(
-            "Generating PDF/A for LeaseId={LeaseId} FiscalRegime={Regime} TemplateVersion={Version}",
-            lease.Id, lease.FiscalRegime, variant.VersionId);
+            "Generating final lease contract PDF. LeaseId={LeaseId} FiscalRegime={Regime} TemplateVersion={Version}",
+            lease.Id, lease.FiscalRegime, template.VersionId);
 
-        var isConcordato = lease.FiscalRegime == FiscalRegime.CanoneConcordato;
-        var title = isConcordato
-            ? "Contratto di locazione a canone concordato - BOZZA"
-            : "Contratto di locazione - BOZZA";
-        var body = isConcordato
-            ? CanoneConcordatoContractBody.Build(lease, variant.VersionId)
-            : CanoneConcordatoContractBody.BuildGenericDraft(lease, variant.VersionId);
+        return Task.FromResult(FiscalPdfWriter.Write(template.Title!, LeaseContractDocument.BuildFinalBody(template, data)));
+    }
 
-        return Task.FromResult(FiscalPdfWriter.Write(title, body));
+    public Task<byte[]> GeneratePreviewPdfAsync(LeaseContract lease)
+    {
+        var template = catalog.Get(lease.FiscalRegime);
+        var marker = template.IsApproved ? LeaseContractDocument.ApprovedPreviewMarker : LeaseContractDocument.DraftMarker;
+        var body = LeaseContractDocument.BuildPreviewBody(template, LeaseContractDocument.ResolveData(lease));
+
+        logger.LogInformation(
+            "Generating lease contract preview. LeaseId={LeaseId} FiscalRegime={Regime} TemplateStatus={Status}",
+            lease.Id, lease.FiscalRegime, template.Status);
+
+        return Task.FromResult(FiscalPdfWriter.Write(marker, $"{body}\n\n{marker}"));
     }
 }

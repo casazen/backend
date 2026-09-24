@@ -13,10 +13,10 @@ public class CedolareAdvisoryService(
     IOptions<CedolareAdvisoryOptions> options) : ICedolareAdvisoryService
 {
     public async Task<CedolareAdvisoryResult?> EvaluateAsync(
-        Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
+        Guid leaseId, CancellationToken cancellationToken = default)
     {
         var lease = await leases.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId)
+        if (lease is null || lease.Property is null)
             return null;
 
         var cfg = options.Value;

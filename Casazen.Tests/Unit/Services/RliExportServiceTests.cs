@@ -23,7 +23,7 @@ public class RliExportServiceTests
         events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
         var sut = new RliExportService(leases.Object, events.Object);
 
-        var result = await sut.ExportAsync(lease.Id, OwnerId);
+        var result = await sut.ExportAsync(lease.Id);
 
         Assert.NotNull(result);
         Assert.True(result.PdfBytes.Length > 4);
@@ -35,7 +35,7 @@ public class RliExportServiceTests
     }
 
     [Fact]
-    public async Task ExportAsync_WrongOwner_ReturnsNull()
+    public async Task ExportAsync_LeaseNotVisible_ReturnsNullWithoutEvent()
     {
         var lease = BuildLease();
         var leases = new Mock<ILeaseContractRepository>();
@@ -43,7 +43,8 @@ public class RliExportServiceTests
         var events = new Mock<ILeaseEventRepository>();
         var sut = new RliExportService(leases.Object, events.Object);
 
-        Assert.Null(await sut.ExportAsync(lease.Id, "auth0|other"));
+        // Who may export is decided by the controller (TN-3); an id outside the caller's org is not found.
+        Assert.Null(await sut.ExportAsync(Guid.NewGuid()));
         events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
     }
 

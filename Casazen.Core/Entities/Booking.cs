@@ -106,6 +106,12 @@ public class Booking : ITenantOwned
 
     public DateTime? CheckoutWizardStartedAt { get; set; }
 
+    /// <summary>
+    /// Why the system cancelled the booking; null when a person cancelled it (host, admin) or it is not cancelled.
+    /// Lets the payment webhook and support tell an expired checkout hold from a real cancellation (BK-21).
+    /// </summary>
+    public BookingCancellationReason? CancellationReason { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -142,6 +148,16 @@ public enum BookingSource
     /// once and is never touched by the expiry of abandoned checkout holds (PC-01, A2-01). Stored as 8.
     /// </summary>
     Manual
+}
+
+/// <summary>Reason of a cancellation made by the system (<see cref="Booking.CancellationReason"/>). Stored as an integer.</summary>
+public enum BookingCancellationReason
+{
+    /// <summary>
+    /// Hold of the public checkout not paid within <c>DirectBooking:PendingTtlMinutes</c>: its PaymentIntent or
+    /// SetupIntent was cancelled on Stripe and the dates released (BK-21, A3-13).
+    /// </summary>
+    CheckoutHoldExpired = 1,
 }
 
 public enum PaymentOption

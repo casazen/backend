@@ -44,7 +44,6 @@ public class AppDbContext(
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
-    public DbSet<TaxRate> TaxRates { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
@@ -253,6 +252,13 @@ public class AppDbContext(
             .Property(t => t.VerificationLevel)
             .HasConversion<string>()
             .HasMaxLength(20);
+        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.IstatCode);
+        modelBuilder.Entity<TouristTaxRate>()
+            .Property(t => t.CalculationMethod)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .HasDefaultValue(TouristTaxCalculationMethod.PerPersonPerNight)
+            .HasSentinel((TouristTaxCalculationMethod)(-1));
 
         modelBuilder.Entity<SeoContentPage>()
             .HasIndex(p => new { p.ComuneCode, p.PageType })
@@ -632,6 +638,11 @@ public class AppDbContext(
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => new { i.Email, i.IsUsed });
+
+        modelBuilder.Entity<SupplierInviteRecord>()
+            .HasIndex(i => i.TokenHash)
+            .IsUnique()
+            .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()

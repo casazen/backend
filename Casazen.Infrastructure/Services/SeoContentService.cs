@@ -7,6 +7,8 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -14,13 +16,15 @@ namespace Casazen.Infrastructure.Services;
 
 public class SeoContentService(
     ISeoContentRepository repository,
-    ITouristTaxRateRepository touristTaxRateRepository,
-    ITouristTaxService touristTaxService,
+    ITouristTaxQuoteService touristTaxQuoteService,
     IAiProvider aiProvider,
     IConfiguration configuration,
-    ILogger<SeoContentService> logger) : ISeoContentService
+    ILogger<SeoContentService> logger,
+    TimeProvider? timeProvider = null) : ISeoContentService
 {
     public const int CounselRequiredBatchSize = 100;
+
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
@@ -57,37 +61,32 @@ public class SeoContentService(
         if (comune is null)
             return null;
 
-        var taxRate = await touristTaxRateRepository.GetActiveByCityAsync(comune.Name, request.CheckInDate);
-        if (taxRate is null)
-            return null;
-
-        var nights = (request.CheckOutDate.Date - request.CheckInDate.Date).Days;
-        if (nights <= 0)
-            return null;
-
-        var taxAmount = await touristTaxService.CalculateTouristTaxAsync(
-            comune.Name,
-            request.NumberOfAdults,
-            request.NumberOfChildren,
-            request.CheckInDate,
-            request.CheckOutDate);
-
-        var maxNightsApplied = nights;
-        if (taxRate.MaxNights.HasValue && nights > taxRate.MaxNights.Value)
-            maxNightsApplied = taxRate.MaxNights.Value;
+        // Same engine as the checkout (BK-03): ages, category, season, cap of nights and percentage rates included.
+        var quote = await touristTaxQuoteService.QuoteAsync(
+            ToTouristTaxComune(comune),
+            new TouristTaxStay(
+                RomeCalendar.DateInRome(request.CheckInDate),
+                RomeCalendar.DateInRome(request.CheckOutDate),
+                request.NumberOfAdults,
+                request.NumberOfChildren,
+                request.ChildrenAges,
+                request.AccommodationCategory,
+                request.NightlyPrice),
+            cancellationToken);
 
         return new PublicTouristTaxCalculateResponse(
-            request.ComuneSlug,
+            comune.ComuneSlug,
             comune.Name,
-            taxAmount,
+            quote.Status,
+            quote.Status == TouristTaxQuoteStatus.Calculated ? quote.Amount : null,
             request.NumberOfAdults,
             request.NumberOfChildren,
-            nights,
-            taxRate.RatePerPersonPerNight,
-            maxNightsApplied,
+            quote.Nights,
+            quote.TaxableNights,
+            quote.AgeRulesApply,
+            quote.Categories,
             request.CheckInDate,
-            request.CheckOutDate,
-            "Stima indicativa. Verifica le tariffe ufficiali del comune.");
+            request.CheckOutDate);
     }
 
     public async Task<(IReadOnlyList<SeoPageAdminDto> Items, int TotalCount)> ListPagesAsync(
@@ -274,6 +273,7 @@ public class SeoContentService(
     public async Task<string> BuildComplianceSitemapXmlAsync(CancellationToken cancellationToken = default)
     {
         var pages = await repository.GetReviewedPagesForSitemapAsync(cancellationToken);
+        var today = _clock.TodayInRomeAsDateOnly();
         var baseUrl = configuration["Seo:PublicBaseUrl"] ?? "https://www.casazen.it";
         XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
 
@@ -296,6 +296,13 @@ public class SeoContentService(
             if (loc is null)
                 continue;
 
+            // A8-12: a calculator page of a comune without a rate in force is not worth indexing.
+            if (page.PageType == SeoPageType.TouristTaxCalc
+                && (await touristTaxQuoteService.GetRatesInForceAsync(ToTouristTaxComune(comune), today, cancellationToken)).Count == 0)
+            {
+                continue;
+            }
+
             urlset.Add(new XElement(ns + "url",
                 new XElement(ns + "loc", loc),
                 new XElement(ns + "lastmod", (page.LastRefreshedAt ?? page.UpdatedAt).ToString("yyyy-MM-dd"))));
@@ -311,8 +318,9 @@ public class SeoContentService(
         int ordinalHint,
         CancellationToken cancellationToken)
     {
-        var taxRate = await touristTaxRateRepository.GetActiveByCityAsync(comune.Name, DateTime.UtcNow);
-        var sourceVersion = BuildSourceDataVersion(comune, taxRate);
+        var taxRates = await touristTaxQuoteService.GetRatesInForceAsync(
+            ToTouristTaxComune(comune), _clock.TodayInRomeAsDateOnly(), cancellationToken);
+        var sourceVersion = BuildSourceDataVersion(comune, taxRates);
 
         var slug = BuildSlug(comune, pageType);
         var existing = await repository.GetPublishedPageAsync(
@@ -333,7 +341,7 @@ public class SeoContentService(
         }
 
         var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}";
-        var prompt = BuildPrompt(comune, pageType, taxRate);
+        var prompt = BuildPrompt(comune, pageType, taxRates);
         // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
         // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
         var aiResult = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
@@ -374,7 +382,8 @@ public class SeoContentService(
         var revision = await repository.GetLatestRevisionAsync(page.Id, cancellationToken);
         var bodyHtml = SeoHtmlSanitizer.Sanitize(revision?.BodyHtml);
         var refreshedAt = page.LastRefreshedAt ?? revision?.GeneratedAt;
-        var taxRate = await touristTaxRateRepository.GetActiveByCityAsync(comune.Name, DateTime.UtcNow);
+        var taxRates = await touristTaxQuoteService.GetRatesInForceAsync(
+            ToTouristTaxComune(comune), _clock.TodayInRomeAsDateOnly(), cancellationToken);
 
         return new SeoPagePublicDto(
             page.Id,
@@ -391,14 +400,29 @@ public class SeoContentService(
             refreshedAt,
             BuildDisclaimers(refreshedAt),
             BuildCta(comune),
-            taxRate is null
-                ? null
-                : new PublicTouristTaxRateSummaryDto(
-                    taxRate.RatePerPersonPerNight,
-                    taxRate.MaxNights,
-                    taxRate.MinimumAge,
-                    taxRate.City));
+            taxRates.Select(ToPublicSummary).ToList());
     }
+
+    /// <summary>The registry gives a trusted ISTAT code: rates carrying one are matched by code, the others by name.</summary>
+    private static TouristTaxComune ToTouristTaxComune(ComuneInfo comune) => new(comune.Code, comune.Name);
+
+    private static PublicTouristTaxRateSummaryDto ToPublicSummary(TouristTaxRate rate) =>
+        new(
+            rate.City,
+            rate.AccommodationCategory,
+            rate.SeasonStart,
+            rate.SeasonEnd,
+            rate.CalculationMethod,
+            rate.RatePerPersonPerNight,
+            rate.PercentOfNightlyPrice,
+            rate.CapPerPersonPerNight,
+            rate.MaxNights,
+            rate.MinimumAge,
+            rate.ReducedRateMaxAge,
+            rate.ReducedRatePerPersonPerNight,
+            rate.EffectiveFrom,
+            rate.EffectiveTo,
+            rate.SourceUrl);
 
     private async Task<SeoPageAdminDto> MapAdminPageAsync(SeoContentPage page, CancellationToken cancellationToken)
     {
@@ -426,8 +450,19 @@ public class SeoContentService(
                     revision.SourceDataVersion));
     }
 
-    private static string BuildSourceDataVersion(ComuneInfo comune, TouristTaxRate? taxRate) =>
-        $"{comune.Code}:{taxRate?.UpdatedAt:O}:{taxRate?.RatePerPersonPerNight}:{taxRate?.MaxNights}";
+    /// <summary>
+    /// Changes when a rate of the comune changes. With zero or one rate it keeps the pre-BK-03 format, so existing pages
+    /// are not regenerated just because the format changed.
+    /// </summary>
+    private static string BuildSourceDataVersion(ComuneInfo comune, IReadOnlyList<TouristTaxRate> taxRates)
+    {
+        var first = taxRates.FirstOrDefault();
+        var version = $"{comune.Code}:{first?.UpdatedAt:O}:{first?.RatePerPersonPerNight}:{first?.MaxNights}";
+        foreach (var rate in taxRates.Skip(1))
+            version += $"|{rate.Id:N}:{rate.UpdatedAt:O}";
+
+        return version;
+    }
 
     private static string BuildSlug(ComuneInfo comune, SeoPageType pageType) =>
         pageType switch
@@ -455,17 +490,22 @@ public class SeoContentService(
             _ => $"Microsite fornitori per affitti brevi a {comune.Name} (Phase 0 deferred).",
         };
 
-    private static string BuildPrompt(ComuneInfo comune, SeoPageType pageType, TouristTaxRate? taxRate)
+    private static string BuildPrompt(ComuneInfo comune, SeoPageType pageType, IReadOnlyList<TouristTaxRate> taxRates)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Comune: {comune.Name}");
         sb.AppendLine($"PageType: {pageType}");
         sb.AppendLine("CIN: obbligatorio per affitti brevi in Italia.");
         sb.AppendLine("Alloggiati Web: comunicazione ospiti entro 24h dal check-in.");
-        if (taxRate is not null)
+        foreach (var taxRate in taxRates)
         {
+            var amount = taxRate.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice
+                ? $"{taxRate.PercentOfNightlyPrice}% del prezzo per notte, max €{taxRate.CapPerPersonPerNight?.ToString() ?? "none"}"
+                : $"€{taxRate.RatePerPersonPerNight}/persona/notte";
+            var category = taxRate.AccommodationCategory is null ? string.Empty : $" [{taxRate.AccommodationCategory}]";
+            var season = taxRate.SeasonStart is null ? string.Empty : $" stagione {taxRate.SeasonStart}..{taxRate.SeasonEnd}";
             sb.AppendLine(
-                $"TouristTaxRate: €{taxRate.RatePerPersonPerNight}/persona/notte, max nights {taxRate.MaxNights?.ToString() ?? "none"}");
+                $"TouristTaxRate{category}: {amount}, max nights {taxRate.MaxNights?.ToString() ?? "none"}, esenti sotto {taxRate.MinimumAge} anni{season}");
         }
 
         return sb.ToString();
