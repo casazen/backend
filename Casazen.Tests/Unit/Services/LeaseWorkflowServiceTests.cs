@@ -58,7 +58,9 @@ public class LeaseWorkflowServiceTests
         // Assert
         Assert.Equal(LeaseStatus.Draft, result.Status);
         Assert.Equal(request.MonthlyRent, result.MonthlyRent);
-        Assert.Equal(request.StartDate.AddDays(30), result.RegistrationDeadline);
+        // LT-04 (A7-04): no stipula yet, so no deadline stored (it was StartDate + 30).
+        Assert.Null(result.StipulaDate);
+        Assert.Null(result.RegistrationDeadline);
         Assert.Equal(request.StartDate.AddYears(10), result.DataRetentionUntil);
         Assert.False(result.ErasureRequested);
     }
@@ -317,6 +319,44 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task HandleESignEventAsync_AllSignedOnAugustFirstWithStartOctoberFirst_DeadlineAugust31()
+    {
+        // LT-04 (A7-04): signed 1/8 (00:30 in Rome, still 31/7 in UTC), start 1/10 → stipula 1/8, deadline 31/8.
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 7, 31, 22, 30, 0, TimeSpan.Zero));
+        var sut = CreateSut(clock);
+        var lease = BuildLease(LeaseStatus.AwaitingSignature);
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.ExternalSigningSessionId = "session-xyz";
+        SetupAllSigned(lease);
+
+        await sut.HandleESignEventAsync("payload");
+
+        Assert.Equal(LeaseStatus.Signed, lease.Status);
+        Assert.Equal(new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), lease.StipulaDate);
+        Assert.Equal(new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), lease.RegistrationDeadline);
+        _leaseRepo.Verify(r => r.UpdateAsync(It.Is<LeaseContract>(l => l.StipulaDate != null)), Times.Once);
+        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
+            e.EventType == LeaseEventType.AllPartiesSigned
+            && e.OccurredAt == new DateTime(2026, 7, 31, 22, 30, 0, DateTimeKind.Utc))), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleESignEventAsync_AllSignedAfterStartDate_DeadlineFromStartDate()
+    {
+        // Start (decorrenza) 1/9 earlier than the stipula 20/9: 30 days from the start → 1/10.
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 9, 20, 10, 0, 0, TimeSpan.Zero));
+        var sut = CreateSut(clock);
+        var lease = BuildLease(LeaseStatus.AwaitingSignature);
+        lease.ExternalSigningSessionId = "session-xyz";
+        SetupAllSigned(lease);
+
+        await sut.HandleESignEventAsync("payload");
+
+        Assert.Equal(new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc), lease.StipulaDate);
+        Assert.Equal(new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), lease.RegistrationDeadline);
+    }
+
+    [Fact]
     public async Task HandleESignEventAsync_WhenAllSignedReplayedAfterRegistration_DoesNotDowngradeLease()
     {
         // Arrange
@@ -560,6 +600,26 @@ public class LeaseWorkflowServiceTests
     }
 
     // Helpers
+
+    private LeaseWorkflowService CreateSut(TimeProvider clock) => new(
+        _leaseRepo.Object,
+        _eventRepo.Object,
+        _templateService.Object,
+        _eSignService.Object,
+        _propertyRepo.Object,
+        _apeCompliance.Object,
+        _canoneEligibility.Object,
+        new Mock<ILogger<LeaseWorkflowService>>().Object,
+        clock);
+
+    private void SetupAllSigned(LeaseContract lease)
+    {
+        var esignEvent = new ESignEvent(lease.ExternalSigningSessionId!, "all_signed", null, AllSigned: true, "/path/signed.pdf");
+        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
+        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync(lease.ExternalSigningSessionId!)).ReturnsAsync(lease);
+        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>())).ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
+    }
 
     private static Property BuildProperty(bool hasApe, string? ownerId = null) => new()
     {

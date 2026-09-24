@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -32,7 +33,10 @@ public class RliChecklistService(
         var providerFilingAvailable = RliProviderFiling.IsAvailable(featureFlags, registrationProvider);
         var auth = await authorizations.GetByLeaseIdAsync(lease.Id);
         var leaseEvents = (await events.GetByLeaseIdAsync(lease.Id)).ToList();
-        var daysRemaining = (int)(lease.RegistrationDeadline.Date - _clock.TodayInRome()).TotalDays;
+        // min(stipula, start) + 30 on the Rome calendar, or null while it is to be determined (LT-04, A7-04).
+        var today = _clock.TodayInRome();
+        var deadline = RliRegistrationDeadline.Resolve(lease, today);
+        int? daysRemaining = deadline is { } due ? RliRegistrationDeadline.DaysRemaining(due, today) : null;
         var registration = lease.Registration;
 
         var items = new List<RliChecklistItem>
@@ -63,7 +67,7 @@ public class RliChecklistService(
         }
 
         return new RliChecklistResult(
-            lease.RegistrationDeadline,
+            deadline,
             daysRemaining,
             rliOptions.Value.TosVersion,
             rliOptions.Value.AttestationText,

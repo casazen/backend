@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Web.BackgroundJobs;
@@ -41,6 +42,9 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
 
         var afterCreate = await GetLease(client, leaseId);
         Assert.Equal("Draft", afterCreate.GetProperty("status").GetString());
+        // LT-04: not signed yet, start 1/9 already passed → deadline 30 days from the start, no stipula.
+        Assert.Equal(JsonValueKind.Null, afterCreate.GetProperty("stipulaDate").ValueKind);
+        Assert.Equal(new DateTime(2026, 10, 1), afterCreate.GetProperty("registrationDeadline").GetDateTime().Date);
 
         var signing = await client.PostAsync($"/api/leases/{leaseId}/signing", null);
         Assert.Equal(HttpStatusCode.OK, signing.StatusCode);
@@ -64,8 +68,12 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
             await job.ProcessEventAsync(payload);
         }
 
+        var todayBefore = TimeProvider.System.TodayInRome();
         var signed = await GetLease(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
+        // LT-04: stipula = the Rome day of the last signature; start 1/9 is earlier, so the deadline stays 1/10.
+        Assert.InRange(signed.GetProperty("stipulaDate").GetDateTime().Date, todayBefore.AddDays(-1), TimeProvider.System.TodayInRome());
+        Assert.Equal(new DateTime(2026, 10, 1), signed.GetProperty("registrationDeadline").GetDateTime().Date);
         // The storage path stays on the server (A7-17): the client only learns that the signed PDF exists.
         Assert.True(signed.GetProperty("hasSignedPdf").GetBoolean());
         Assert.False(signed.TryGetProperty("signedPdfStoragePath", out _));
@@ -831,8 +839,12 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         });
         using var scope = _factory.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<ESignWebhookJob>().ProcessEventAsync(payload);
+        var todayBefore = TimeProvider.System.TodayInRome();
         var signed = await GetLease(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
+        // LT-04: stipula = the Rome day of the last signature; start 1/9 is earlier, so the deadline stays 1/10.
+        Assert.InRange(signed.GetProperty("stipulaDate").GetDateTime().Date, todayBefore.AddDays(-1), TimeProvider.System.TodayInRome());
+        Assert.Equal(new DateTime(2026, 10, 1), signed.GetProperty("registrationDeadline").GetDateTime().Date);
         return leaseId;
     }
 

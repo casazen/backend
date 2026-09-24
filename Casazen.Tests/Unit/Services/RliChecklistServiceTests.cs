@@ -143,7 +143,53 @@ public class RliChecklistServiceTests
         Assert.False(result.ProviderFilingAvailable);
     }
 
-    private static RliChecklistService CreateSut(LeaseContract lease, bool providerAvailable = false, bool? flagOn = null)
+    [Fact]
+    public async Task GetAsync_SignedBeforeStart_DeadlineFromStipulaAndDaysOnRomeCalendar()
+    {
+        // LT-04 (A7-04): signed 1/8, start 1/10 → deadline 31/8; today 24/8 (00:30 in Rome) → 7 days.
+        var lease = BuildLease(extraEu: false);
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.RecordStipula(new DateTime(2026, 8, 1, 10, 0, 0, DateTimeKind.Utc));
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 8, 23, 22, 30, 0, TimeSpan.Zero));
+        var sut = CreateSut(lease, clock: clock);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.Equal(new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), result.RegistrationDeadline);
+        Assert.Equal(7, result.DaysRemaining);
+    }
+
+    [Fact]
+    public async Task GetAsync_DeadlinePassed_NegativeDaysRemaining()
+    {
+        var lease = BuildLease(extraEu: false);
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.RecordStipula(new DateTime(2026, 8, 1, 10, 0, 0, DateTimeKind.Utc));
+        var sut = CreateSut(lease, clock: new FixedTimeProvider(new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero)));
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.Equal(-1, result.DaysRemaining);
+    }
+
+    [Theory]
+    [InlineData(LeaseStatus.Signed)]
+    [InlineData(LeaseStatus.AwaitingSignature)]
+    public async Task GetAsync_NoStipulaAndStartAhead_DeadlineToBeDetermined(LeaseStatus status)
+    {
+        // Signed without a recorded stipula (older lease), or not signed yet with the start date ahead: no deadline.
+        var lease = BuildLease(extraEu: false, status);
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        var sut = CreateSut(lease, clock: new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 8, 0, 0, TimeSpan.Zero)));
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.Null(result.RegistrationDeadline);
+        Assert.Null(result.DaysRemaining);
+    }
+
+    private static RliChecklistService CreateSut(
+        LeaseContract lease, bool providerAvailable = false, bool? flagOn = null, TimeProvider? clock = null)
     {
         var auths = new Mock<ILeaseRegistrationAuthorizationRepository>();
         auths.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistrationAuthorization?)null);
@@ -158,7 +204,8 @@ public class RliChecklistServiceTests
             events.Object,
             Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", AttestationText = "bozza" }),
             flags.Object,
-            provider.Object);
+            provider.Object,
+            clock);
     }
 
     private static LeaseContract BuildLease(bool extraEu, LeaseStatus status = LeaseStatus.Signed)
@@ -169,7 +216,7 @@ public class RliChecklistServiceTests
             Id = Guid.NewGuid(),
             Status = status,
             FiscalRegime = FiscalRegime.CedolareSecca,
-            RegistrationDeadline = DateTime.UtcNow.Date.AddDays(20),
+            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             Property = property,
             Parties =
             [

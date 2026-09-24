@@ -34,6 +34,33 @@ public class RliExportServiceTests
         events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e => e.EventType == LeaseEventType.RliExported)), Times.Once);
     }
 
+    [Theory]
+    // LT-04 (A7-04): signed 1/8, start 1/10 → stipula and deadline 31/8 in the prefill.
+    [InlineData(true, "Data di stipula: 2026-08-01", "Scadenza registrazione: 2026-08-31")]
+    // Signed without a recorded stipula: no invented date.
+    [InlineData(false, "Data di stipula: non disponibile", "Scadenza registrazione: da determinare")]
+    public async Task ExportAsync_Deadline_FromStipulaOrToBeDetermined(bool withStipula, string stipulaLine, string deadlineLine)
+    {
+        var lease = BuildLease();
+        lease.Status = LeaseStatus.Signed;
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.RegistrationDeadline = null;
+        if (withStipula)
+            lease.RecordStipula(new DateTime(2026, 8, 1, 10, 0, 0, DateTimeKind.Utc));
+        var leases = new Mock<ILeaseContractRepository>();
+        leases.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
+        var events = new Mock<ILeaseEventRepository>();
+        events.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 8, 0, 0, TimeSpan.Zero));
+        var sut = new RliExportService(leases.Object, events.Object, clock);
+
+        var result = await sut.ExportAsync(lease.Id);
+
+        var pdf = Encoding.ASCII.GetString(result!.PdfBytes);
+        Assert.Contains(stipulaLine, pdf, StringComparison.Ordinal);
+        Assert.Contains(deadlineLine, pdf, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ExportAsync_LeaseNotVisible_ReturnsNullWithoutEvent()
     {
@@ -55,7 +82,6 @@ public class RliExportServiceTests
         MonthlyRent = 1200m,
         StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
-        RegistrationDeadline = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
         Property = new Property { OwnerId = OwnerId, City = "Milano", Name = "Via Roma" },
         Parties =
         [
