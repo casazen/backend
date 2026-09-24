@@ -7,8 +7,10 @@ using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Mapping;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -168,23 +170,45 @@ public class UsersController(
         return Ok(new { id, role = newRole.ToString(), rolesSynced = true });
     }
 
-    /// <summary>Soft-deletes a user (sets IsActive = false). Admin only. Cannot self-delete.</summary>
+    /// <summary>
+    /// Deactivates a user (soft delete, PL-03). Admin only. From the next request the API refuses the user with 403
+    /// <c>account_inactive</c>; Auth0 blocks the account and loses its roles (<c>auth0Synced</c> tells whether it did).
+    /// 422 <c>cannot_deactivate_self</c> for the caller's own account, <c>last_active_admin</c> for the last active admin.
+    /// </summary>
     [HttpDelete("{id}")]
     [Authorize(Policy = "AdminOnly")]
-    public async Task<ActionResult> Delete(string id)
+    public async Task<ActionResult<UserActivationResponseDto>> Deactivate(
+        string id,
+        [FromServices] IStringLocalizer<SharedResources> localizer)
     {
         var adminSub = GetSub();
         if (adminSub == null)
             return Unauthorized();
 
-        if (id == adminSub)
-            return BadRequest(new { error = "Admins cannot deactivate their own account" });
+        var result = await userService.DeactivateUserAsync(id, adminSub, HttpContext.RequestAborted);
+        return Ok(ToActivationResponse(
+            result,
+            localizer[result.Auth0Sync.Succeeded ? "UserDeactivated" : "UserDeactivatedAuth0NotSynced"]));
+    }
 
-        var deleted = await userService.DeleteUserAsync(id);
-        if (!deleted)
-            return NotFound();
+    /// <summary>
+    /// Reactivates a deactivated user (PL-03). Admin only. Auth0 gets back the roles removed by the deactivation, then the
+    /// account is unblocked; when Auth0 fails the user stays unable to log in until the call is repeated.
+    /// </summary>
+    [HttpPost("{id}/reactivate")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<UserActivationResponseDto>> Reactivate(
+        string id,
+        [FromServices] IStringLocalizer<SharedResources> localizer)
+    {
+        var adminSub = GetSub();
+        if (adminSub == null)
+            return Unauthorized();
 
-        return NoContent();
+        var result = await userService.ReactivateUserAsync(id, adminSub, HttpContext.RequestAborted);
+        return Ok(ToActivationResponse(
+            result,
+            localizer[result.Auth0Sync.Succeeded ? "UserReactivated" : "UserReactivatedAuth0NotSynced"]));
     }
 
     private async Task<ActionResult<OnboardingResponseDto>> CompleteOnboardingAsync(
@@ -283,6 +307,17 @@ public class UsersController(
         User.FindFirst("sub")?.Value
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+    private static UserActivationResponseDto ToActivationResponse(UserActivationResult result, string message) => new()
+    {
+        Id = result.User.Id,
+        IsActive = result.User.IsActive,
+        Changed = result.Changed,
+        Auth0Synced = result.Auth0Sync.Succeeded,
+        Auth0SyncError = result.Auth0Sync.Succeeded ? null : result.Auth0Sync.ErrorCode,
+        Message = message,
+        RolesRestored = result.RestoredRoles.Select(r => r.ToString()).ToList(),
+    };
 
     private UserSummaryDto ToSummary(User u, Org? org = null) => new()
     {

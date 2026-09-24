@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -197,6 +198,176 @@ public class UserServiceTests
         // Act + Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _service.ChangeRoleAsync("nonexistent", UserRole.Admin, "admin"));
+    }
+
+    [Fact]
+    public async Task ChangeRoleAsync_DeactivatedUser_ThrowsUserInactiveWithoutAuth0Calls()
+    {
+        var userId = "auth0|user-inactive";
+        _repoMock.Setup(r => r.GetByIdAsync(userId))
+            .ReturnsAsync(new User { Id = userId, Role = UserRole.PropertyOwner, IsActive = false });
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.ChangeRoleAsync(userId, UserRole.Admin, "auth0|admin"));
+
+        Assert.Equal(UserActivationErrors.UserInactive, ex.Code);
+        _auth0Mock.Verify(a => a.AssignRoleAsync(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    // ─── DeactivateUserAsync / ReactivateUserAsync (PL-03) ──────────────────
+
+    [Fact]
+    public async Task DeactivateUserAsync_OwnAccount_ThrowsCannotDeactivateSelfWithoutChanges()
+    {
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.DeactivateUserAsync("auth0|admin", "auth0|admin"));
+
+        Assert.Equal(UserActivationErrors.CannotDeactivateSelf, ex.Code);
+        _repoMock.Verify(
+            r => r.SetActiveAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(UserActivationOutcome.LastActiveAdmin, typeof(DomainRuleException))]
+    [InlineData(UserActivationOutcome.ActorInactive, typeof(UnauthorizedAccessException))]
+    [InlineData(UserActivationOutcome.NotFound, typeof(NotFoundException))]
+    public async Task DeactivateUserAsync_RefusedByTheRepository_ThrowsWithoutAuth0Calls(
+        UserActivationOutcome outcome,
+        Type expected)
+    {
+        var user = outcome == UserActivationOutcome.NotFound ? null : new User { Id = "auth0|target", Role = UserRole.Admin };
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", false, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((outcome, user));
+
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => _service.DeactivateUserAsync("auth0|target", "auth0|admin"));
+
+        Assert.IsType(expected, ex);
+        if (ex is DomainRuleException domain)
+            Assert.Equal(UserActivationErrors.LastActiveAdmin, domain.Code);
+        _auth0Mock.Verify(a => a.SetBlockedAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeactivateUserAsync_ActiveUser_BlocksThenRemembersAndRemovesItsAuth0Roles()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner, IsActive = false };
+        var steps = new List<string>();
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", false, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserActivationOutcome.Updated, user));
+        _repoMock.Setup(r => r.UpdateAsync(user))
+            .Callback(() => steps.Add("store:" + string.Join(",", user.SuspendedAuth0Roles ?? [])))
+            .Returns(Task.CompletedTask);
+        _auth0Mock.Setup(a => a.SetBlockedAsync("auth0|target", true, It.IsAny<CancellationToken>()))
+            .Callback(() => steps.Add("block"))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync("auth0|target", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner, UserRole.Admin]));
+        _auth0Mock.Setup(a => a.RemoveRolesAsync("auth0|target", It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyCollection<UserRole>, CancellationToken>((_, roles, _) => steps.Add("remove:" + string.Join(",", roles)))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+
+        var result = await _service.DeactivateUserAsync("auth0|target", "auth0|admin");
+
+        Assert.True(result.Changed);
+        Assert.True(result.Auth0Sync.Succeeded);
+        // The roles are stored before they are removed: a failure in between never loses them.
+        Assert.Equal(["block", "store:PropertyOwner,Admin", "remove:PropertyOwner,Admin"], steps);
+        _cacheMock.Verify(c => c.Invalidate("auth0|target"), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task DeactivateUserAsync_RetriedOnInactiveUser_KeepsTheRolesRememberedBefore()
+    {
+        var user = new User { Id = "auth0|target", IsActive = false, SuspendedAuth0Roles = ["Supplier"] };
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", false, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserActivationOutcome.Unchanged, user));
+        _auth0Mock.Setup(a => a.SetBlockedAsync("auth0|target", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync("auth0|target", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner]));
+
+        var result = await _service.DeactivateUserAsync("auth0|target", "auth0|admin");
+
+        Assert.False(result.Changed);
+        Assert.Equal(["Supplier", "PropertyOwner"], user.SuspendedAuth0Roles);
+    }
+
+    [Fact]
+    public async Task DeactivateUserAsync_Auth0NotConfigured_KeepsDbDeactivationAndReportsNotConfigured()
+    {
+        var user = new User { Id = "auth0|target", IsActive = false };
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", false, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserActivationOutcome.Updated, user));
+        _auth0Mock.Setup(a => a.SetBlockedAsync("auth0|target", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.NotConfigured);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync("auth0|target", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0UserRolesResult.Failed(Auth0SyncResult.NotConfigured));
+
+        var result = await _service.DeactivateUserAsync("auth0|target", "auth0|admin");
+
+        Assert.True(result.Changed);
+        Assert.Equal(Auth0SyncResult.NotConfiguredCode, result.Auth0Sync.ErrorCode);
+        Assert.Null(user.SuspendedAuth0Roles);
+        _auth0Mock.Verify(a => a.RemoveRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReactivateUserAsync_SuspendedRoles_AssignsThemThenUnblocksAndForgetsThem()
+    {
+        var user = new User { Id = "auth0|target", IsActive = true, SuspendedAuth0Roles = ["Admin", "Supplier"] };
+        var steps = new List<string>();
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", true, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserActivationOutcome.Updated, user));
+        _auth0Mock.Setup(a => a.AssignRolesAsync("auth0|target", It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyCollection<UserRole>, CancellationToken>((_, roles, _) => steps.Add("assign:" + string.Join(",", roles)))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+        _auth0Mock.Setup(a => a.SetBlockedAsync("auth0|target", false, It.IsAny<CancellationToken>()))
+            .Callback(() => steps.Add("unblock"))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+
+        var result = await _service.ReactivateUserAsync("auth0|target", "auth0|admin");
+
+        Assert.True(result.Auth0Sync.Succeeded);
+        Assert.Equal([UserRole.Admin, UserRole.Supplier], result.RestoredRoles);
+        Assert.Equal(["assign:Admin,Supplier", "unblock"], steps);
+        Assert.Null(user.SuspendedAuth0Roles);
+        _repoMock.Verify(r => r.UpdateAsync(user), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReactivateUserAsync_RolesCannotBeRestored_StaysBlockedAndKeepsThemForTheRetry()
+    {
+        var user = new User { Id = "auth0|target", IsActive = true, SuspendedAuth0Roles = ["PropertyOwner"] };
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", true, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserActivationOutcome.Updated, user));
+        _auth0Mock.Setup(a => a.AssignRolesAsync("auth0|target", It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.Failed(Auth0SyncResult.ApiErrorCode));
+
+        var result = await _service.ReactivateUserAsync("auth0|target", "auth0|admin");
+
+        Assert.Equal(Auth0SyncResult.ApiErrorCode, result.Auth0Sync.ErrorCode);
+        Assert.Empty(result.RestoredRoles);
+        Assert.Equal(["PropertyOwner"], user.SuspendedAuth0Roles);
+        _auth0Mock.Verify(a => a.SetBlockedAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReactivateUserAsync_NoRoleWasRemoved_OnlyUnblocks()
+    {
+        var user = new User { Id = "auth0|target", IsActive = true };
+        _repoMock.Setup(r => r.SetActiveAsync("auth0|target", true, "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserActivationOutcome.Updated, user));
+        _auth0Mock.Setup(a => a.SetBlockedAsync("auth0|target", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.Synced);
+
+        var result = await _service.ReactivateUserAsync("auth0|target", "auth0|admin");
+
+        Assert.True(result.Auth0Sync.Succeeded);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auth0Mock.Verify(a => a.SetBlockedAsync("auth0|target", false, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ─── CompleteOnboardingAsync ────────────────────────────────────────────

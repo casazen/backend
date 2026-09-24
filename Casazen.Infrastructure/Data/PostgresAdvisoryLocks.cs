@@ -46,6 +46,9 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Claim of one supplier profile (key: supplier org id): at most one account is linked (SU-02).</summary>
         SupplierClaim = 1_008,
+
+        /// <summary>Deactivation of any user (single key): the last active platform admin is never deactivated (PL-03).</summary>
+        UserDeactivation = 1_009,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
