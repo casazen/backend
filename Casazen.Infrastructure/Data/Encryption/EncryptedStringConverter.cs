@@ -7,11 +7,10 @@ namespace Casazen.Infrastructure.Data.Encryption;
 /// EF value converter that encrypts string columns at rest using ASP.NET Data Protection.
 /// </summary>
 /// <remarks>
-/// The converter is part of the EF model, and EF builds the model once per internal service provider: every
-/// <see cref="AppDbContext"/> created by the application's DI container uses the protector of the first one built
-/// in the process. In the application there is one container, hence one Data Protection provider, so this is the
-/// right protector. Always read and write an encrypted column through EF (never raw SQL with a protector taken
-/// from DI), so that both directions use the same protector. See <c>docs/runbooks/ical.md</c> (PC-11).
+/// The converter is part of the EF model: <see cref="DataProtectionModelCacheKeyFactory"/> caches the model of
+/// <see cref="AppDbContext"/> per Data Protection provider, so each context encrypts with its own provider. Read and
+/// write an encrypted column through EF (never raw SQL with a protector of its own). See <c>docs/runbooks/ical.md</c>
+/// (PC-11).
 /// </remarks>
 public sealed class EncryptedStringConverter : ValueConverter<string, string>
 {

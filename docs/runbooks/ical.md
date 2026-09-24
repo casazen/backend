@@ -79,14 +79,15 @@ in clear.
   (`DELETE FROM "PropertyICalFeeds" WHERE "PropertyId" = '…'`, their blocks go with them) and let the host link the
   calendars again.
 
-**Verified limit of the converter (FD-20 note).** EF builds the model, converter included, once per process for all
-the contexts created by the application's DI: the converter uses the Data Protection provider of the first context.
-In the application there is one DI container, hence one provider, so encryption and decryption always use the
-right key ring; contexts built by hand without the application's service provider (design time, some tests) get a
-separate model and never replace it. Two rules follow: read and write the encrypted column **through EF only** (never
-raw SQL with a protector taken from DI), and in tests share one provider between the web hosts of the process
-(`CasazenWebApplicationFactory.SharedDataProtectionProvider`), otherwise every host would encrypt with the key ring of
-the first one, possibly already disposed.
+**Limit of the converter noted by FD-20: verified and fixed.** EF caches the model (converters included) and by
+default keys the cache on the context type only: the first `AppDbContext` of the process fixed the Data Protection
+provider of every later one. It never mattered in production (one DI container, one provider), but in the tests the
+hosts encrypted with the key ring of the first one, possibly already disposed, and the result depended on the order of
+the tests. Since PC-11 `AppDbContext` replaces the cache key (`Data/Encryption/DataProtectionModelCacheKeyFactory.cs`):
+the model is cached per provider, so each context encrypts and decrypts with its own provider; the application still
+builds one model. Read and write the encrypted column **through EF only** (never raw SQL with a protector of its own).
+The test hosts share one provider (`CasazenWebApplicationFactory.SharedDataProtectionProvider`) so they share one
+model.
 
 ### Migration `AddICalMultiFeed` (single feed → list)
 

@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
@@ -20,6 +21,12 @@ public class AppDbContext(
     // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
     // no-op (filter disabled) for design-time, background jobs, and unit tests.
     private readonly ITenantContext _tenant = tenantContext ?? NullTenantContext.Instance;
+
+    /// <summary>
+    /// Provider of the encrypted columns' converters; part of the model cache key
+    /// (<see cref="DataProtectionModelCacheKeyFactory"/>), so a context never encrypts with another context's provider.
+    /// </summary>
+    internal IDataProtectionProvider? EncryptionProvider { get; } = dataProtectionProvider;
 
     /// <summary>
     /// ASP.NET Core Data Protection key ring (FD-07, A9-04): persisted here instead of the container
@@ -106,6 +113,9 @@ public class AppDbContext(
         configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeValueConverter>();
         configurationBuilder.Properties<DateTime?>().HaveConversion<UtcDateTimeValueConverter>();
     }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.ReplaceService<IModelCacheKeyFactory, DataProtectionModelCacheKeyFactory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -250,10 +260,10 @@ public class AppDbContext(
         });
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
 
-        if (dataProtectionProvider is not null)
+        if (EncryptionProvider is not null)
         {
             var encryptedConverter = new EncryptedStringConverter(
-                dataProtectionProvider,
+                EncryptionProvider,
                 "Casazen.OtaIntegration.Secrets");
 
             modelBuilder.Entity<OtaIntegration>()
@@ -270,7 +280,7 @@ public class AppDbContext(
             modelBuilder.Entity<PropertyICalFeed>()
                 .Property(f => f.ImportUrl)
                 .HasConversion((ValueConverter)new EncryptedStringConverter(
-                    dataProtectionProvider,
+                    EncryptionProvider,
                     PropertyICalFeedUrlEncryption.Purpose,
                     PropertyICalFeedUrlEncryption.IsLegacyPlaintext));
         }

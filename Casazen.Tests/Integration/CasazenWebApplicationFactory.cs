@@ -135,10 +135,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             if (UsesPostgreSql)
                 UseDedicatedPostgresDatabase(services);
 
-            // One Data Protection provider for every test host of the process (PC-11). The encrypted columns use a
-            // value converter of the EF model, and EF builds that model once for all the hosts of the process: with a
-            // provider per host, every host would encrypt with the key ring of the first one (possibly disposed,
-            // its database dropped). Production has a single host, so a single provider (docs/runbooks/ical.md).
+            // One Data Protection provider for every test host of the process (PC-11): the EF model is cached per
+            // provider (DataProtectionModelCacheKeyFactory), so the hosts share one model instead of building one each,
+            // and a value encrypted by one host can be read by another. Production has a single host, so a single
+            // provider (docs/runbooks/ical.md).
             RemoveAllOf<IDataProtectionProvider>(services);
             services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
 

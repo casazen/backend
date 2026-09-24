@@ -57,7 +57,7 @@ public class ICalMultiFeedMigrationPostgresTests : IAsyncLifetime
 
         // One feed per property that had a URL, same id, channel taken from the host; the export-only row is gone.
         var feeds = await context.PropertyICalFeeds.AsNoTracking().OrderBy(f => f.PropertyId).ToListAsync();
-        Assert.Equal([Seed.FeedA, Seed.FeedC], feeds.Select(f => f.Id).Order());
+        Assert.Equal(new[] { Seed.FeedA, Seed.FeedC }.Order(), feeds.Select(f => f.Id).Order());
         Assert.Equal(ICalFeedChannel.Airbnb, feeds.Single(f => f.Id == Seed.FeedA).Channel);
         Assert.Equal(ICalFeedChannel.BookingCom, feeds.Single(f => f.Id == Seed.FeedC).Channel);
         Assert.All(feeds, f => Assert.NotEqual(default, f.CreatedAt));

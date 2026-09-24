@@ -1,6 +1,10 @@
+using Casazen.Core.Entities;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -57,6 +61,37 @@ public class ICalFeedUrlProtectionTests
     public void Converter_OtherTextThatIsNotAPayload_IsNotAcceptedAsClearText() =>
         Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(
             () => NewConverter().ConvertFromProvider("tampered-value"));
+
+    // The limit noted by FD-20: EF cached one model per context type, so every context encrypted with the provider of
+    // the first one. The model is now cached per provider: each context uses its own, the same provider shares one.
+    [Fact]
+    public void Model_ContextsWithDifferentProviders_EachEncryptsWithItsOwnProvider()
+    {
+        var first = new EphemeralDataProtectionProvider();
+        var second = new EphemeralDataProtectionProvider();
+        using var firstContext = NewContext(first);
+        using var secondContext = NewContext(second);
+        using var sameProviderContext = NewContext(first);
+        using var withoutProvider = NewContext(null);
+
+        var payload = (string)ImportUrlConverter(secondContext)!.ConvertToProvider(Url)!;
+
+        Assert.Equal(Url, ImportUrlConverter(secondContext)!.ConvertFromProvider(payload));
+        Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(
+            () => ImportUrlConverter(firstContext)!.ConvertFromProvider(payload));
+        Assert.Same(firstContext.Model, sameProviderContext.Model);
+        Assert.NotSame(firstContext.Model, secondContext.Model);
+        Assert.Null(ImportUrlConverter(withoutProvider));
+    }
+
+    private static AppDbContext NewContext(IDataProtectionProvider? provider) =>
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            tenantContext: null,
+            provider);
+
+    private static ValueConverter? ImportUrlConverter(AppDbContext context) =>
+        context.Model.FindEntityType(typeof(PropertyICalFeed))!.FindProperty(nameof(PropertyICalFeed.ImportUrl))!.GetValueConverter();
 
     private static EncryptedStringConverter NewConverter() =>
         new(new EphemeralDataProtectionProvider(), PropertyICalFeedUrlEncryption.Purpose, PropertyICalFeedUrlEncryption.IsLegacyPlaintext);
