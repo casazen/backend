@@ -402,6 +402,10 @@
   <data name="ICalFeedInvalidLabel" xml:space="preserve">
     <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
   </data>
+  <data name="ICalExportBusySummary" xml:space="preserve">
+    <value>Occupato</value>
+    <comment>SUMMARY of every event of the public iCal export read by the OTAs (PC-12): neutral, never a name.</comment>
+  </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
   </data>

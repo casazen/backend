@@ -973,6 +973,32 @@ public class PropertiesController(
         });
     }
 
+    /// <summary>
+    /// Replaces the token of the export link (PC-12, A2-22): 200 with the new <c>exportUrl</c>; the old link answers
+    /// 404 from now on, so the host must paste the new one on every OTA. 404 when the property is not visible (other
+    /// org), 403 without write permission on it.
+    /// </summary>
+    [HttpPost("{id:guid}/ical/export-url/regenerate")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyIcalExportUrlDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyIcalExportUrlDto>> RegenerateIcalExportUrl(
+        Guid id,
+        [FromServices] IAuthorizationService hostAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeIcalAsync(id, PropertyOperations.Write, hostAuthorization);
+        if (denied is not null)
+            return denied;
+
+        var export = await propertyICalSyncService.RegenerateExportTokenAsync(id, property.OrgId, cancellationToken);
+        return Ok(new PropertyIcalExportUrlDto
+        {
+            ExportUrl = propertyICalSyncService.BuildExportUrl(export.ExportToken),
+        });
+    }
+
     // TN-3 resource-based check of the property for the iCal actions: 404 when the property is not visible (other
     // org), 403 when visible but the operation is not allowed.
     private async Task<(Property Property, ActionResult? Denied)> AuthorizeIcalAsync(
