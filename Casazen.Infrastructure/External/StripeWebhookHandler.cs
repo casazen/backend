@@ -7,6 +7,7 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Casazen.Infrastructure.External;
 
@@ -32,18 +33,33 @@ public class StripeWebhookHandler(
     public Task HandleEventAsync(Event stripeEvent) =>
         HandleEventAsync(stripeEvent, WebhookSource.Platform);
 
+    /// <summary>
+    /// Applies one Stripe event exactly once, for the platform and the Connect endpoint alike (A1-09, A3-03).
+    /// On PostgreSQL the claim of <see cref="Event.Id"/> (insert into <c>ProcessedStripeEvents</c>, primary key)
+    /// and the business updates share one transaction:
+    /// <list type="bullet">
+    ///   <item>a duplicate delivered later finds the committed claim and is skipped;</item>
+    ///   <item>a duplicate processed in parallel blocks on the uncommitted claim, then gets a unique violation
+    ///   (skipped) when the first worker commits, or claims the event itself when the first worker rolls back;</item>
+    ///   <item>a failure rolls back the claim with every partial update and is rethrown, so the Hangfire retry
+    ///   or a new delivery from Stripe processes the event again.</item>
+    /// </list>
+    /// The signature was verified by <c>WebhooksController</c> before the event was queued.
+    /// </summary>
     public async Task HandleEventAsync(Event stripeEvent, WebhookSource source)
     {
         await using var eventTransaction = await BeginEventTransactionAsync();
 
-        // Claim the event inside the same transaction as the business updates. A failed
-        // attempt must roll back the marker so Hangfire/Stripe can retry the event.
         if (!await TryClaimEventAsync(stripeEvent, source))
         {
             if (eventTransaction is not null)
                 await eventTransaction.RollbackAsync();
 
-            logger.LogInformation("Skipping duplicate Stripe event {EventId}", stripeEvent.Id);
+            logger.LogInformation(
+                "Skipping duplicate Stripe event {EventId} ({EventType}, source={Source})",
+                stripeEvent.Id,
+                stripeEvent.Type,
+                source);
             return;
         }
 
@@ -74,15 +90,15 @@ public class StripeWebhookHandler(
                 case "customer.subscription.updated":
                 case "customer.subscription.deleted":
                     if (source == WebhookSource.Platform)
-                        await HandleSubscriptionChangedAsync(stripeEvent.Data.Object as Subscription, stripeEvent.Type);
+                        await HandleSubscriptionChangedAsync(stripeEvent.Data.Object as Subscription, stripeEvent.Type, stripeEvent.Id);
                     break;
                 case "invoice.paid":
                     if (source == WebhookSource.Platform)
-                        await HandleInvoicePaidAsync(stripeEvent.Data.Object as Invoice);
+                        await HandleInvoicePaidAsync(stripeEvent.Data.Object as Invoice, stripeEvent.Id);
                     break;
                 case "invoice.payment_failed":
                     if (source == WebhookSource.Platform)
-                        await HandleInvoicePaymentFailedAsync(stripeEvent.Data.Object as Invoice);
+                        await HandleInvoicePaymentFailedAsync(stripeEvent.Data.Object as Invoice, stripeEvent.Id);
                     break;
                 default:
                     logger.LogInformation("Unhandled Stripe event: {EventType} (source={Source})", stripeEvent.Type, source);
@@ -97,13 +113,20 @@ public class StripeWebhookHandler(
             if (eventTransaction is not null)
             {
                 await eventTransaction.RollbackAsync();
+                // The tracked entities no longer match the database after the rollback.
+                dbContext.ChangeTracker.Clear();
             }
             else
             {
                 await RemoveClaimedEventAsync(stripeEvent.Id);
             }
 
-            logger.LogError(ex, "Error handling Stripe webhook");
+            logger.LogError(
+                ex,
+                "Error handling Stripe event {EventId} ({EventType}, source={Source}): claim released for the retry",
+                stripeEvent.Id,
+                stripeEvent.Type,
+                source);
             throw;
         }
     }
@@ -142,9 +165,9 @@ public class StripeWebhookHandler(
             await dbContext.SaveChangesAsync();
             return true;
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
-                                           || ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true)
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
+            // Another worker committed the same event while this insert waited on its uncommitted claim.
             dbContext.ChangeTracker.Clear();
             return false;
         }
@@ -163,7 +186,7 @@ public class StripeWebhookHandler(
         await dbContext.SaveChangesAsync();
     }
 
-    private async Task HandleSubscriptionChangedAsync(Subscription? subscription, string eventType)
+    private async Task HandleSubscriptionChangedAsync(Subscription? subscription, string eventType, string eventId)
     {
         if (subscription is null)
             return;
@@ -171,26 +194,49 @@ public class StripeWebhookHandler(
         var org = await ResolveOrgForSubscriptionAsync(subscription);
         if (org is null)
         {
-            logger.LogError("No org resolved for subscription {SubscriptionId}", subscription.Id);
+            logger.LogError("No org resolved for subscription {SubscriptionId} (event {EventId})", subscription.Id, eventId);
             return;
         }
 
+        var status = eventType == "customer.subscription.deleted"
+            ? SubscriptionStatus.Canceled
+            : BillingSubscriptionPolicy.MapStripeStatus(subscription.Status);
+
+        if (IsOutdatedSubscriptionEvent(org, subscription.Id, status, eventId))
+            return;
+
+        if (!string.Equals(org.SubscriptionId, subscription.Id, StringComparison.Ordinal))
+            org.PastDueSince = null; // the grace period belongs to the previous subscription
+
         org.SubscriptionId = subscription.Id;
-        org.SubscriptionStatus = MapSubscriptionStatus(subscription.Status, eventType);
+        org.SubscriptionStatus = status;
         org.CurrentPeriodEnd = subscription.Items?.Data?.FirstOrDefault()?.CurrentPeriodEnd;
 
-        if (org.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing)
+        if (status is SubscriptionStatus.Active or SubscriptionStatus.Trialing)
             org.PastDueSince = null;
-        else if (org.SubscriptionStatus == SubscriptionStatus.PastDue && org.PastDueSince is null)
+        else if (status == SubscriptionStatus.PastDue && org.PastDueSince is null)
             org.PastDueSince = DateTime.UtcNow;
 
-        var priceId = subscription.Items?.Data?.FirstOrDefault()?.Price?.Id;
-        var tier = stripeBillingService.MapPriceIdToTier(priceId);
-        if (tier.HasValue)
-            org.PlanTier = tier.Value;
-
-        if (eventType == "customer.subscription.deleted")
-            org.SubscriptionStatus = SubscriptionStatus.Canceled;
+        // A1-11: the tier of the price is granted only once Stripe reports the subscription active or trialing. An
+        // incomplete (first payment not succeeded), unpaid or paused subscription never sets the tier it has not
+        // paid for; past due keeps the tier already paid (grace period, see EntitlementService).
+        if (status is SubscriptionStatus.Active or SubscriptionStatus.Trialing)
+        {
+            var priceId = subscription.Items?.Data?.FirstOrDefault()?.Price?.Id;
+            var tier = stripeBillingService.MapPriceIdToTier(priceId);
+            if (tier.HasValue)
+            {
+                org.PlanTier = tier.Value;
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Subscription {SubscriptionId} (event {EventId}) has price {PriceId} not mapped to a plan tier: tier unchanged",
+                    subscription.Id,
+                    eventId,
+                    priceId);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(subscription.CustomerId))
             org.StripeCustomerId ??= subscription.CustomerId;
@@ -200,7 +246,61 @@ public class StripeWebhookHandler(
         await entitlementService.SyncFromSubscriptionAsync(org.Id);
     }
 
-    private async Task HandleInvoicePaidAsync(Invoice? invoice)
+    /// <summary>
+    /// Stripe does not guarantee the order of events and Hangfire runs jobs in parallel, so an older event can be
+    /// processed after a newer one. With fail-closed statuses that would lock out a paying org (a late
+    /// <c>customer.subscription.created</c> with <c>incomplete</c> after the <c>active</c> update), or let an event of
+    /// another subscription of the customer overwrite the one that is paying. Such events are ignored.
+    /// </summary>
+    private bool IsOutdatedSubscriptionEvent(Org org, string subscriptionId, SubscriptionStatus incoming, string eventId)
+    {
+        var stored = org.SubscriptionStatus;
+        string? reason = null;
+
+        if (string.Equals(org.SubscriptionId, subscriptionId, StringComparison.Ordinal))
+        {
+            // Stripe never moves a subscription back to incomplete; canceled and incomplete_expired are terminal.
+            if (incoming == SubscriptionStatus.Incomplete && stored is not (SubscriptionStatus.None or SubscriptionStatus.Incomplete))
+                reason = "a subscription never returns to incomplete";
+            else if (stored == SubscriptionStatus.Canceled && incoming != SubscriptionStatus.Canceled)
+                reason = "the subscription is already canceled";
+        }
+        else if (!string.IsNullOrWhiteSpace(org.SubscriptionId) && IsPaidSubscription(stored))
+        {
+            if (IsExistingSubscription(incoming))
+            {
+                logger.LogError(
+                    "Org {OrgId} has a second subscription {SubscriptionId} ({SubscriptionStatus}, event {EventId}) besides {CurrentSubscriptionId}: the current one keeps the plan, cancel and refund the duplicate on Stripe",
+                    org.Id,
+                    subscriptionId,
+                    incoming,
+                    eventId,
+                    org.SubscriptionId);
+            }
+
+            reason = "another subscription of the org drives the plan";
+        }
+
+        if (reason is null)
+            return false;
+
+        logger.LogInformation(
+            "Ignoring Stripe event {EventId} for subscription {SubscriptionId} ({SubscriptionStatus}): {Reason}",
+            eventId,
+            subscriptionId,
+            incoming,
+            reason);
+        return true;
+    }
+
+    /// <summary>A subscription that has been paid and still exists on Stripe.</summary>
+    private static bool IsPaidSubscription(SubscriptionStatus status) =>
+        status is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue or SubscriptionStatus.Unpaid;
+
+    private static bool IsExistingSubscription(SubscriptionStatus status) =>
+        IsPaidSubscription(status) || status == SubscriptionStatus.Incomplete;
+
+    private async Task HandleInvoicePaidAsync(Invoice? invoice, string eventId)
     {
         if (invoice is null || string.IsNullOrWhiteSpace(invoice.Id))
             return;
@@ -211,16 +311,13 @@ public class StripeWebhookHandler(
         var org = await ResolveOrgForInvoiceAsync(invoice);
         if (org is null)
         {
-            logger.LogError("No org resolved for invoice {InvoiceId}", invoice.Id);
+            logger.LogError("No org resolved for invoice {InvoiceId} (event {EventId})", invoice.Id, eventId);
             return;
         }
 
-        if (invoice.Parent?.SubscriptionDetails?.SubscriptionId is not null)
-        {
-            org.SubscriptionStatus = SubscriptionStatus.Active;
-            org.PastDueSince = null;
-            org.UpdatedAt = DateTime.UtcNow;
-        }
+        var subscriptionId = invoice.Parent?.SubscriptionDetails?.SubscriptionId;
+        if (!string.IsNullOrWhiteSpace(subscriptionId))
+            MarkSubscriptionPaid(org, subscriptionId, invoice.Id, eventId);
 
         var amountExVat = ConvertCentsToDecimal(invoice.SubtotalExcludingTax ?? invoice.Subtotal);
         var totalAmount = ConvertCentsToDecimal(invoice.Total);
@@ -269,14 +366,88 @@ public class StripeWebhookHandler(
         }
     }
 
-    private async Task HandleInvoicePaymentFailedAsync(Invoice? invoice)
+    /// <summary>
+    /// A paid invoice of the org's subscription makes it active again (past due or unpaid → active). It never
+    /// reactivates a canceled subscription or changes the status on behalf of another subscription of the customer
+    /// (events out of order, duplicate). The tier is set by the <c>customer.subscription.*</c> events.
+    /// </summary>
+    private void MarkSubscriptionPaid(Org org, string subscriptionId, string invoiceId, string eventId)
+    {
+        var sameSubscription = string.Equals(org.SubscriptionId, subscriptionId, StringComparison.Ordinal);
+        if (!sameSubscription && !string.IsNullOrWhiteSpace(org.SubscriptionId))
+        {
+            logger.LogWarning(
+                "Invoice {InvoiceId} (event {EventId}) paid for subscription {SubscriptionId}, not the org's current {CurrentSubscriptionId}: status unchanged",
+                invoiceId,
+                eventId,
+                subscriptionId,
+                org.SubscriptionId);
+            return;
+        }
+
+        if (sameSubscription && org.SubscriptionStatus == SubscriptionStatus.Canceled)
+        {
+            logger.LogInformation(
+                "Invoice {InvoiceId} (event {EventId}) paid for canceled subscription {SubscriptionId}: status unchanged",
+                invoiceId,
+                eventId,
+                subscriptionId);
+            return;
+        }
+
+        org.SubscriptionId = subscriptionId;
+        org.SubscriptionStatus = SubscriptionStatus.Active;
+        org.PastDueSince = null;
+        org.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// A failed renewal of the org's paying subscription starts the past-due grace period. A failed first payment
+    /// (<c>billing_reason = subscription_create</c>) is not a renewal: the subscription stays incomplete, without
+    /// paid access (A1-11). Invoices of another subscription, or of a canceled, incomplete or unpaid one, change
+    /// nothing.
+    /// </summary>
+    private async Task HandleInvoicePaymentFailedAsync(Invoice? invoice, string eventId)
     {
         if (invoice is null)
             return;
 
+        var subscriptionId = invoice.Parent?.SubscriptionDetails?.SubscriptionId;
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            logger.LogInformation("Failed invoice {InvoiceId} (event {EventId}) has no subscription: ignored", invoice.Id, eventId);
+            return;
+        }
+
+        if (string.Equals(invoice.BillingReason, "subscription_create", StringComparison.Ordinal))
+        {
+            logger.LogInformation(
+                "First payment of subscription {SubscriptionId} failed (invoice {InvoiceId}, event {EventId}): it stays incomplete",
+                subscriptionId,
+                invoice.Id,
+                eventId);
+            return;
+        }
+
         var org = await ResolveOrgForInvoiceAsync(invoice);
         if (org is null)
+        {
+            logger.LogError("No org resolved for failed invoice {InvoiceId} (event {EventId})", invoice.Id, eventId);
             return;
+        }
+
+        if (!string.Equals(org.SubscriptionId, subscriptionId, StringComparison.Ordinal) ||
+            org.SubscriptionStatus is not (SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue))
+        {
+            logger.LogInformation(
+                "Failed invoice {InvoiceId} (event {EventId}) of subscription {SubscriptionId}: the org's subscription {CurrentSubscriptionId} is {SubscriptionStatus}, status unchanged",
+                invoice.Id,
+                eventId,
+                subscriptionId,
+                org.SubscriptionId,
+                org.SubscriptionStatus);
+            return;
+        }
 
         org.SubscriptionStatus = SubscriptionStatus.PastDue;
         org.PastDueSince ??= DateTime.UtcNow;
@@ -287,7 +458,7 @@ public class StripeWebhookHandler(
 
     private async Task<Org?> ResolveOrgForSubscriptionAsync(Subscription subscription)
     {
-        if (subscription.Metadata.TryGetValue("orgId", out var orgIdRaw) &&
+        if (subscription.Metadata?.TryGetValue("orgId", out var orgIdRaw) == true &&
             Guid.TryParse(orgIdRaw, out var orgId))
         {
             var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId);
@@ -304,7 +475,7 @@ public class StripeWebhookHandler(
 
     private async Task<Org?> ResolveOrgForInvoiceAsync(Invoice invoice)
     {
-        if (invoice.Metadata.TryGetValue("orgId", out var orgIdRaw) &&
+        if (invoice.Metadata?.TryGetValue("orgId", out var orgIdRaw) == true &&
             Guid.TryParse(orgIdRaw, out var orgId))
         {
             var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId);
@@ -325,21 +496,6 @@ public class StripeWebhookHandler(
             return await dbContext.Orgs.FirstOrDefaultAsync(o => o.SubscriptionId == subscriptionId);
 
         return null;
-    }
-
-    private static SubscriptionStatus MapSubscriptionStatus(string? stripeStatus, string eventType)
-    {
-        if (eventType == "customer.subscription.deleted")
-            return SubscriptionStatus.Canceled;
-
-        return stripeStatus switch
-        {
-            "trialing" => SubscriptionStatus.Trialing,
-            "active" => SubscriptionStatus.Active,
-            "past_due" => SubscriptionStatus.PastDue,
-            "canceled" or "unpaid" => SubscriptionStatus.Canceled,
-            _ => SubscriptionStatus.None,
-        };
     }
 
     private static decimal ConvertCentsToDecimal(long? cents) =>

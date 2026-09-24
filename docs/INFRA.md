@@ -485,6 +485,8 @@ Check after setting the variables and redeploying:
 2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret or API version; 500 = secret not set on Railway.
 3. Upgrading Stripe.net changes the pinned API version: create both endpoints again with the new version (new secrets), update the two Railway variables, then delete the old endpoints.
 
+Webhook idempotency, subscription states, checkout guard, restricted-key permissions and the Customer portal settings: `docs/runbooks/stripe.md`.
+
 ### Get service URLs → GitHub Variables
 
 After first native deploy:

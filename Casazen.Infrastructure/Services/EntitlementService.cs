@@ -97,9 +97,11 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
 
     /// <summary>
-    /// A paid tier needs a subscription paying for it (#274). <see cref="SubscriptionStatus.None"/> covers orgs
-    /// that never subscribed and Stripe states that are not mapped (incomplete, incomplete_expired, paused):
-    /// like canceled, past due beyond grace and any unknown value they fail closed to Starter.
+    /// A paid tier needs a subscription paying for it (#274, A1-11). Only active, trialing and past due within the
+    /// grace period keep the stored tier. Everything else fails closed to Starter: no subscription
+    /// (<see cref="SubscriptionStatus.None"/>, also Stripe <c>paused</c>), a first payment not yet succeeded
+    /// (<see cref="SubscriptionStatus.Incomplete"/>), retries exhausted (<see cref="SubscriptionStatus.Unpaid"/>),
+    /// canceled or <c>incomplete_expired</c>, past due beyond grace or without a start date, and unknown values.
     /// </summary>
     internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
         status switch
@@ -111,8 +113,9 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
 
     private bool IsPastDueGraceExpired(DateTime? pastDueSince)
     {
+        // The webhook always records when an org became past due; without it the grace cannot be bounded.
         if (pastDueSince is null)
-            return false;
+            return true;
 
         var graceDays = configuration.GetValue("Billing:PastDueGraceDays", 7);
         return DateTime.UtcNow > pastDueSince.Value.AddDays(graceDays);
