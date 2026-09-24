@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Web.DTOs.Supplier;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,8 +38,8 @@ public class AdminSuppliersController(
                 cancellationToken);
 
             logger.LogInformation(
-                "Admin supplier invite created: {InviteId} for {Email} in {Comune}",
-                invite.InviteId, request.Email, request.ComuneCode);
+                "Admin supplier invite created: {InviteId} for {MaskedEmail} in {Comune}",
+                invite.InviteId, LogRedaction.MaskEmail(request.Email), request.ComuneCode);
 
             return CreatedAtAction(nameof(InviteSupplier), new AdminInviteResponse
             {
