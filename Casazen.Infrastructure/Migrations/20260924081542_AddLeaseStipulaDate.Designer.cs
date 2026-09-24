@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924072431_AddLeaseStipulaDate")]
+    [Migration("20260924081542_AddLeaseStipulaDate")]
     partial class AddLeaseStipulaDate
     {
         /// <inheritdoc />
@@ -1349,6 +1349,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("StripeAccountId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("StripeIntentOnPlatform")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(255)
@@ -2742,6 +2745,13 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTime?>("ClaimTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClaimTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ComuniJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -2794,6 +2804,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("OrgId");
+
+                    b.HasIndex("ClaimTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
                     b.HasIndex("Status");
 
