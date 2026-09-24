@@ -433,7 +433,7 @@ public class SeoContentService(
             BuildCanonicalUrl(comune, page.PageType),
             refreshedAt,
             BuildDisclaimers(refreshedAt),
-            BuildCta(comune),
+            BuildCta(comune, page.PageType),
             taxRates.Select(ToPublicSummary).ToList());
     }
 
@@ -561,10 +561,15 @@ public class SeoContentService(
             "Contenuto generato con AI — verifica le fonti ufficiali");
     }
 
-    private static SeoCtaDto BuildCta(ComuneInfo comune) =>
-        new(
-            $"/tools/verifica-conformita?comune={comune.ComuneSlug}&utm_source=seo-compliance",
-            "/signup?utm_source=seo-compliance&utm_medium=cta");
+    /// <summary>
+    /// Signup CTA on App:PublicSiteBaseUrl (D3, SE-03); relative only when it is not configured (Development/Testing).
+    /// No compliance checker CTA: the tool has no spec yet (A8-03).
+    /// </summary>
+    private SeoCtaDto BuildCta(ComuneInfo comune, SeoPageType pageType)
+    {
+        var path = SeoPagePaths.SignupCta(comune, pageType);
+        return new SeoCtaDto(publicSiteLinks.TryPublicPage(path) ?? path);
+    }
 
     private async Task ResetBudgetIfNeededAsync(PlatformAiBudget budget, CancellationToken cancellationToken)
     {
