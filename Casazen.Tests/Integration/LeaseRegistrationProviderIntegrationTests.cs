@@ -281,17 +281,8 @@ public class LeaseRegistrationProviderIntegrationTests(LeaseProviderFlowWebAppli
             },
         }));
         var leaseId = created.GetProperty("id").GetGuid();
-        (await client.PostAsync($"/api/leases/{leaseId}/signing", null)).EnsureSuccessStatusCode();
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            await scope.ServiceProvider.GetRequiredService<ESignWebhookJob>().ProcessEventAsync(JsonSerializer.Serialize(new
-            {
-                externalSessionId = $"stub-session-{leaseId}",
-                eventType = "all_signed",
-                allSigned = true,
-                signedDocumentPath = "/signed/lease.pdf",
-            }));
-        }
+        // LT-02: offline signature (the e-sign provider flag stays off in this factory).
+        (await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId)).EnsureSuccessStatusCode();
 
         Assert.Equal("Signed", (await GetLeaseAsync(client, leaseId)).GetProperty("status").GetString());
         return (client, leaseId);

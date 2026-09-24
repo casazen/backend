@@ -83,6 +83,7 @@ public class AppDbContext(
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
     public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
+    public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
@@ -367,6 +368,26 @@ public class AppDbContext(
 
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
+
+        // LeaseSigner (LT-02, A7-16): one row per party and lease, removed with the lease or the party.
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.LeaseContract)
+            .WithMany(l => l.Signers)
+            .HasForeignKey(s => s.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.Party)
+            .WithMany()
+            .HasForeignKey(s => s.PartyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.Org)
+            .WithMany()
+            .HasForeignKey(s => s.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasIndex(s => new { s.LeaseContractId, s.PartyId })
+            .IsUnique();
 
         modelBuilder.Entity<LeaseRegistrationAuthorization>()
             .HasOne(a => a.LeaseContract)

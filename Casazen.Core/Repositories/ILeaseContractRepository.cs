@@ -9,7 +9,6 @@ public interface ILeaseContractRepository
 {
     Task<LeaseContract?> GetByIdAsync(Guid id);
     Task<LeaseContract?> GetByIdWithDetailsAsync(Guid id);
-    Task<LeaseContract?> GetByExternalSigningSessionIdAsync(string externalSessionId);
 
     /// <summary>
     /// Lease list rows of <paramref name="scope"/> (its org and, when set, only the properties its owner owns),

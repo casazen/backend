@@ -10,14 +10,16 @@ and, for cedolare secca / regime ordinario, did not even name the parties.
 
 ## Behaviour
 
-| Template state (per fiscal regime) | `POST /api/leases/{id}/signing` (final contract) | `GET /api/leases/{id}/contract/preview` |
+| Template state (per fiscal regime) | Final contract: `GET /api/leases/{id}/contract.pdf`, `POST signed-document` (offline signature, LT-02), `POST signing` (provider, off) | `GET /api/leases/{id}/contract/preview` |
 |---|---|---|
 | **Missing**: no `VersionId` or no file | `422 contract_template_not_approved` | PDF marked `BOZZA - template non approvato`, every section `[TESTO DELLA CLAUSOLA NON FORNITO]` with the lease data |
 | **Incomplete**: a required section without text, a required placeholder not used, unknown placeholder, no title | `422 contract_template_not_approved` | same marker, provided texts shown, the rest marked |
 | **NotApproved**: complete, but `Approved=false` or the approval is not valid | `422 contract_template_not_approved` | same marker, full text |
 | **Approved** | PDF of the approved texts with the lease data; `422 contract_data_missing` if the template uses a datum the lease does not have | marked `ANTEPRIMA - documento non valido per la firma` |
 
-- The lease stays `Draft` on a 422: no signing session is created, no event is written.
+- The lease stays `Draft` on a 422: no signing session is created, no signed contract is accepted, no event is written.
+  `GET /api/leases/{id}/signers` reports it in advance (`contractAvailable: false`, `contractUnavailableCode`), so the
+  lease page disables download and upload and offers only the preview (LT-02).
 - The messages are localized (`LeaseContractTemplateNotApproved`, `LeaseContractDataMissing` in `SharedResources.resx` / `.en.resx`); `contract_data_missing` lists the missing placeholders.
 - The preview needs `lease.sign` on the lease (it carries the parties' full fiscal codes); another org's lease answers 404.
 - Registration uses the PDF signed through the signing flow, so a contract generated from an unapproved template can

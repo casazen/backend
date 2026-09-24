@@ -31,8 +31,6 @@ public class LeaseGdprRetentionTests
         var sut = new LeaseWorkflowService(
             leases.Object,
             events.Object,
-            Mock.Of<ILeaseTemplateService>(),
-            Mock.Of<ILeaseESignService>(),
             properties.Object,
             ape.Object,
             Mock.Of<ICanoneConcordatoEligibilityService>(),
