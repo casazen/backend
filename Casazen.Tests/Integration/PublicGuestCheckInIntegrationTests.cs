@@ -53,6 +53,8 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var guest = await db.Guests.FindAsync(guestId);
         Assert.Equal(Gender.Male, guest!.Gender);
+        var stayGuest = await db.StayGuests.SingleAsync(s => s.GuestId == guestId);
+        Assert.Equal(StayGuestType.SingleGuest, stayGuest.Type);
     }
 
     [Fact]
@@ -92,11 +94,18 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.False(root.GetProperty("completed").GetBoolean());
         Assert.Equal("InCompilazione", root.GetProperty("status").GetString());
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("propertyName").GetString()));
-        var prefill = root.GetProperty("guestPrefill");
+        Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
+        Assert.Equal(0, root.GetProperty("availableCodeTables").GetArrayLength());
+        var guests = root.GetProperty("guests").EnumerateArray().ToList();
+        Assert.Equal(2, guests.Count);
+        var prefill = guests[0];
+        Assert.Equal("HeadOfFamily", prefill.GetProperty("type").GetString());
         Assert.Equal("*****456", prefill.GetProperty("documentNumberMasked").GetString());
         Assert.False(prefill.TryGetProperty("documentNumber", out _));
         Assert.Equal("Male", prefill.GetProperty("gender").GetString());
         Assert.Equal("Luigi", prefill.GetProperty("firstName").GetString());
+        Assert.Equal("FamilyMember", guests[1].GetProperty("type").GetString());
+        Assert.Equal(JsonValueKind.Null, guests[1].GetProperty("documentNumberMasked").ValueKind);
     }
 
     [PostgresFact]
@@ -146,6 +155,9 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var guest = await db.Guests.FindAsync(guestId);
         Assert.Equal(Gender.Female, guest!.Gender);
         Assert.Equal(GuestDocumentType.IdentityCard, guest.DocumentType);
+        var rows = await db.StayGuests.Where(s => s.BookingId == session.BookingId).OrderBy(s => s.Position).ToListAsync();
+        Assert.Equal(new[] { StayGuestType.HeadOfFamily, StayGuestType.FamilyMember }, rows.Select(r => r.Type));
+        Assert.Equal(string.Empty, rows[1].DocumentNumber);
     }
 
     [Fact]
@@ -237,7 +249,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadFieldErrorsAsync(response);
-        Assert.Equal("Campo obbligatorio.", Assert.Single(errors["Gender"]));
+        Assert.Equal("Campo obbligatorio.", Assert.Single(errors["Guests[0].Gender"]));
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -256,7 +268,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadFieldErrorsAsync(response);
-        Assert.Equal("This field is required.", Assert.Single(errors["Gender"]));
+        Assert.Equal("This field is required.", Assert.Single(errors["Guests[0].Gender"]));
     }
 
     [Fact]
@@ -272,7 +284,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var errors = await ReadFieldErrorsAsync(response);
         Assert.Equal(
             "Seleziona maschio o femmina: sono gli unici valori accettati da Alloggiati Web.",
-            Assert.Single(errors["Gender"]));
+            Assert.Single(errors["Guests[0].Gender"]));
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -310,7 +322,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadFieldErrorsAsync(response);
-        Assert.Equal("Tipo di documento non valido.", Assert.Single(errors["DocumentType"]));
+        Assert.Equal("Tipo di documento non valido.", Assert.Single(errors["Guests[0].DocumentType"]));
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -382,23 +394,26 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         string? gender = "Male",
         string documentType = "Passport")
     {
-        var genderProperty = gender is not null
-            ? $$"""
-                  "gender": "{{gender}}",
-        """
-            : string.Empty;
+        var genderProperty = gender is not null ? $"\"gender\": \"{gender}\"," : string.Empty;
 
         return $$"""
         {
-          "firstName": "Luigi",
-          "lastName": "Verdi",
-          "dateOfBirth": "1990-05-15",
-          "nationality": "Italiana",
-        {{genderProperty}}
-          "documentType": "{{documentType}}",
-          "documentNumber": "YA1234567",
-          "documentIssuingCountry": "Italia",
-          "placeOfBirth": "Roma",
+          "guests": [
+            {
+              "type": "SingleGuest",
+              "firstName": "Luigi",
+              "lastName": "Verdi",
+              {{genderProperty}}
+              "dateOfBirth": "1990-05-15",
+              "bornInItaly": true,
+              "birthComuneName": "Roma",
+              "birthProvince": "RM",
+              "citizenshipName": "Italia",
+              "documentType": "{{documentType}}",
+              "documentNumber": "YA1234567",
+              "documentIssuePlaceName": "Roma"
+            }
+          ],
           "gdprConsent": {{(gdprConsent ? "true" : "false")}},
           "marketingConsent": false
         }

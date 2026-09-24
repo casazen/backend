@@ -7,7 +7,7 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
-using Microsoft.Extensions.Configuration;
+using Casazen.Tests.Unit.Email;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -34,10 +34,7 @@ public class SeoContentServiceTests
             seoRepo,
             QuoteService(rates),
             Mock.Of<IAiProvider>(),
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Seo:PublicBaseUrl"] = "https://public.test",
-            }).Build(),
+            EmailTestHelpers.Links("https://public.test"),
             Mock.Of<ILogger<SeoContentService>>(),
             Today);
 
@@ -174,7 +171,7 @@ public class SeoContentServiceTests
             seoRepo.Object,
             QuoteService(),
             aiProvider.Object,
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
@@ -211,7 +208,7 @@ public class SeoContentServiceTests
             seoRepo.Object,
             QuoteService(),
             aiProvider.Object,
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var refreshed = await service.RefreshStalePagesAsync();
@@ -239,7 +236,7 @@ public class SeoContentServiceTests
             seoRepo.Object,
             QuoteService(),
             Mock.Of<IAiProvider>(),
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -287,7 +284,7 @@ public class SeoContentServiceTests
             seoRepo.Object,
             QuoteService(),
             aiProvider.Object,
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
@@ -335,7 +332,7 @@ public class SeoContentServiceTests
             seoRepo.Object,
             QuoteService(),
             Mock.Of<IAiProvider>(),
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var dto = pageType == SeoPageType.ComplianceGuide

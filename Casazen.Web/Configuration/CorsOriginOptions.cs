@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Casazen.Infrastructure.Email;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Configuration;
@@ -37,6 +38,23 @@ public sealed class CorsOriginOptions
             [',', ';', ' '],
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
         options.VercelPreviewPattern = section[nameof(VercelPreviewPattern)];
+    }
+
+    /// <summary>
+    /// SE-02 (A8-02): the public web app (<c>App:PublicSiteBaseUrl</c>, alias <c>Seo:PublicBaseUrl</c>) is the site
+    /// that calls the API, so its origin is always allowed: CORS follows the configured public domain without repeating
+    /// it in <c>Cors:AllowedOrigins</c>. A missing or invalid value adds nothing (the email/public site validation
+    /// reports it).
+    /// </summary>
+    public static void AddPublicSiteOrigin(CorsOriginOptions options, IConfiguration configuration)
+    {
+        var publicSiteBaseUrl = PublicSiteOptions.ResolveBaseUrl(configuration);
+        if (!RequiredConfiguration.IsMissing(publicSiteBaseUrl)
+            && PublicSiteOptions.TryGetOrigin(publicSiteBaseUrl, out var origin)
+            && !options.AllowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+        {
+            options.AllowedOrigins.Add(origin);
+        }
     }
 }
 
@@ -189,7 +207,8 @@ public sealed class CorsOriginOptionsValidator(IHostEnvironment environment) : I
         {
             errors.Add(
                 "Cors__AllowedOrigins is missing: set the web app origins of this environment " +
-                "(e.g. https://<project>.vercel.app), otherwise every browser call is rejected by CORS.");
+                "(e.g. https://<project>.vercel.app) or App__PublicSiteBaseUrl, otherwise every browser call is " +
+                "rejected by CORS.");
         }
 
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);

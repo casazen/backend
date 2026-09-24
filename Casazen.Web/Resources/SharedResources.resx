@@ -507,4 +507,40 @@
   <data name="SupplierAccountAlreadyLinked" xml:space="preserve">
     <value>Il tuo account è già collegato a un altro profilo fornitore.</value>
   </data>
+  <data name="CheckInGuestsCount" xml:space="preserve">
+    <value>Inserisci da 1 a {0} ospiti.</value>
+  </data>
+  <data name="CheckInGuestTypeInvalid" xml:space="preserve">
+    <value>Tipo di ospite non valido.</value>
+  </data>
+  <data name="CheckInMemberWithoutHead" xml:space="preserve">
+    <value>Un familiare o un membro del gruppo va inserito dopo il proprio capofamiglia o capogruppo.</value>
+  </data>
+  <data name="CheckInHeadWithoutMembers" xml:space="preserve">
+    <value>Un capofamiglia o capogruppo deve avere almeno un familiare o un membro del gruppo: altrimenti scegli «Ospite singolo».</value>
+  </data>
+  <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
+    <value>La data di nascita non può essere nel futuro.</value>
+  </data>
+  <data name="CheckInProvinceInvalid" xml:space="preserve">
+    <value>Inserisci la sigla della provincia di due lettere (es. RM).</value>
+  </data>
+  <data name="CheckInCodeInvalid" xml:space="preserve">
+    <value>Codice non valido per Alloggiati Web.</value>
+  </data>
+  <data name="CheckInCodeUnknown" xml:space="preserve">
+    <value>Codice non presente nella tabella ufficiale Alloggiati: selezionalo dall'elenco.</value>
+  </data>
+  <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
+    <value>Il numero del documento può contenere solo lettere e cifre, al massimo {0}.</value>
+  </data>
+  <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
+    <value>Elenco di codici sconosciuto: usa comuni, stati, documenti o luoghi.</value>
+  </data>
+  <data name="AlloggiatiCodeTableUnknown" xml:space="preserve">
+    <value>Tabella sconosciuta: usa Comuni, Stati, Documenti o TipiAlloggiato.</value>
+  </data>
+  <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
+    <value>Il file non è valido e nessun codice è stato importato: correggi le righe indicate e riprova.</value>
+  </data>
 </root>

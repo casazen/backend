@@ -382,6 +382,8 @@ Email__Provider=Resend
 Email__ApiKey=[re_...]
 Email__FromAddress=[sender on the domain verified on Resend]
 Email__FromName=CasaZen
+# Public domain of the web app — REQUIRED, no default in code (D3): email links, SEO canonical URLs, sitemap, CORS
+# (docs/runbooks/seo-domain.md). Seo__PublicBaseUrl is only an alias: leave it unset.
 App__PublicSiteBaseUrl=[public URL of the web app for this environment]
 Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
@@ -411,9 +413,9 @@ DataProtection__CertificatePfxBase64=[base64 .pfx]
 DataProtection__CertificatePassword=[pfx password]
 ```
 
-`App__PublicSiteBaseUrl` is the base of **every link in emails** (supplier invite `/register?inviteToken=…` on the web app, see [`runbooks/suppliers.md`](runbooks/suppliers.md); supplier inbox; guest check-in `/checkin/{token}`): there is no fallback domain in code. Use the web app URL of the matching environment. Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
+`App__PublicSiteBaseUrl` is the **single source of the public domain** (SE-02, decision D3): the base of **every link in emails** (supplier invite `/register?inviteToken=…` on the web app, see [`runbooks/suppliers.md`](runbooks/suppliers.md); supplier inbox; guest check-in `/checkin/{token}`), of the `canonicalUrl` of the SEO pages, of every URL of the sitemap (`GET /api/public/sitemap.xml`, served on the web app domain as `/sitemap.xml`) and the origin CORS always allows. There is no fallback domain in code and no value in `appsettings.json`. Use the web app URL of the matching environment; `Seo__PublicBaseUrl` is accepted only as an alias of the same value (different values stop the startup). Public domain, robots.txt, sitemap and Google Search Console: [`runbooks/seo-domain.md`](runbooks/seo-domain.md). Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
-CORS accepts only `Cors__AllowedOrigins` (exact origins) and, when `Cors__VercelPreviewPattern` is set, the Vercel previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
+CORS accepts the origin of `App__PublicSiteBaseUrl`, the exact origins of `Cors__AllowedOrigins` and, when `Cors__VercelPreviewPattern` is set, the Vercel previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
 
 Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
 
@@ -432,11 +434,11 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `Auth0__ManagementClientId`, `Auth0__ManagementClientSecret` | yes for the role sync | ready `auth0: degraded`; onboarding answers `rolesSynced: false` | [`auth0.md`](runbooks/auth0.md) §4-5 |
 | `Auth0__ManagementApiDomain` | only with an Auth0 custom domain | Management API calls fail | [`auth0.md`](runbooks/auth0.md) §5 |
 | `Email__Provider`, `Email__ApiKey`, `Email__FromAddress` (`Email__FromName` optional) | yes | startup fails | [`email.md`](runbooks/email.md) |
-| `App__PublicSiteBaseUrl` | yes (https) | startup fails | [`email.md`](runbooks/email.md) |
+| `App__PublicSiteBaseUrl` | yes (https, no default in code) | startup fails; also when `Seo__PublicBaseUrl` is set to a different value | [`seo-domain.md`](runbooks/seo-domain.md), [`email.md`](runbooks/email.md) |
 | `Storage__Provider=S3`, `Storage__PublicBaseUrl`, `Storage__S3__ServiceUrl`, `Storage__S3__Region`, `Storage__S3__AccessKeyId`, `Storage__S3__SecretAccessKey`, `Storage__S3__PublicBucket`, `Storage__S3__PrivateBucket` | yes | startup fails | [`storage.md`](runbooks/storage.md) |
 | `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | recommended | warning at startup: Data Protection keys stored unencrypted | [`storage.md`](runbooks/storage.md) §4 |
 | `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe | this file § Stripe |
-| `Cors__AllowedOrigins` | yes (no origin in code) | startup fails; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
+| `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
@@ -530,6 +532,9 @@ In Vercel dashboard → Settings → Environment Variables:
 | `VITE_AUTH0_DOMAIN` | `dev-mp6wadq7j6bophl5.us.auth0.com` | same until prod Auth0 tenant is ready |
 | `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | same SPA client until prod tenant is ready |
 | `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api`** (must match Railway `Auth0__Audience` on **both** environments) |
+| `VITE_PUBLIC_SITE_URL` | not needed | **required**: `https://<public domain>`, same value as Railway production `App__PublicSiteBaseUrl`; the build fails without it |
+
+`robots.txt` is generated by the build from `VERCEL_ENV`: only the Production environment allows indexing and declares `Sitemap: {VITE_PUBLIC_SITE_URL}/sitemap.xml`; Preview (PRs and the `develop` test deployment) is always `Disallow: /`. `/sitemap.xml` is served by the Vercel Function `api/sitemap.ts`, which proxies `{VITE_API_BASE_URL}/public/sitemap.xml` at runtime. Keep "Automatically expose System Environment Variables" on. Details and checks: [`runbooks/seo-domain.md`](runbooks/seo-domain.md).
 
 > **Critical:** Preview and Production must point to **different** `VITE_API_BASE_URL` hosts (test vs prod Railway). If Production accidentally uses the test API URL, staging will look fine while production users hit the wrong backend/schema. After every `main` deploy, CI runs `prod-deploy-smoke` to catch this.
 

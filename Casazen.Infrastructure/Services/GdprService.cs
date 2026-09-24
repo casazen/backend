@@ -46,6 +46,7 @@ public class GdprService(
         guest.DeletedAt = DateTime.UtcNow;
         guest.DeletionReason = reason;
         AnonymizeFields(guest);
+        await AnonymizeStayGuestsAsync(guest.Id);
         await guestRepository.UpdateAsync(guest);
         logger.LogInformation("Guest {GuestId} data deleted, reason: {Reason}", guestId, reason);
     }
@@ -56,6 +57,7 @@ public class GdprService(
             ?? throw GuestNotFound(guestId);
 
         AnonymizeFields(guest);
+        await AnonymizeStayGuestsAsync(guest.Id);
         await guestRepository.UpdateAsync(guest);
         logger.LogInformation("Guest {GuestId} data anonymized (retention period expired)", guestId);
     }
@@ -73,6 +75,45 @@ public class GdprService(
 
     private static NotFoundException GuestNotFound(Guid guestId) =>
         new($"Guest {guestId} not found") { Code = "guest_not_found", MessageKey = "GuestNotFound" };
+
+    /// <summary>
+    /// CO-12: the guests of the stays booked by this guest (companions included, entered by the booker for the booker's
+    /// stays) and any row linked to the guest lose their personal data together with the booker's record. Kind and
+    /// position stay, so the stay keeps its shape.
+    /// </summary>
+    private async Task AnonymizeStayGuestsAsync(Guid guestId)
+    {
+        var rows = await db.StayGuests
+            .Where(s => s.GuestId == guestId || db.Bookings.Any(b => b.Id == s.BookingId && b.GuestId == guestId))
+            .ToListAsync();
+        if (rows.Count == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        foreach (var row in rows)
+        {
+            row.FirstName = "ANONYMIZED";
+            row.LastName = "ANONYMIZED";
+            row.Gender = null;
+            row.DateOfBirth = null;
+            row.BornInItaly = null;
+            row.BirthComuneCode = null;
+            row.BirthComuneName = string.Empty;
+            row.BirthProvince = null;
+            row.BirthCountryCode = null;
+            row.BirthCountryName = string.Empty;
+            row.CitizenshipCode = null;
+            row.CitizenshipName = string.Empty;
+            row.DocumentType = null;
+            row.DocumentTypeCode = null;
+            row.DocumentNumber = string.Empty;
+            row.DocumentIssuePlaceCode = null;
+            row.DocumentIssuePlaceName = string.Empty;
+            row.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync();
+    }
 
     private static void AnonymizeFields(Core.Entities.Guest guest)
     {

@@ -61,7 +61,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 Anonymous / public (non-exhaustive highlights):
 - `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
 - `POST /api/auth/register`, `GET /api/orgs/plans`
-- All `/api/public/*`, `/api/checkin/*`, `/api/legal/*`, `/sitemap-compliance.xml`
+- All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml`), `/api/checkin/*`, `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
 ### Authorization (TN-3)
@@ -267,7 +267,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/api/tourist-tax-rates` | Admin | Create rate |
 | `PUT` | `/api/tourist-tax-rates/{id}` | Admin | Update rate |
 | `DELETE` | `/api/tourist-tax-rates/{id}` | Admin | Delete rate |
-| `GET` | `/sitemap-compliance.xml` | Anonymous | Compliance SEO sitemap |
+| `GET` | `/api/public/sitemap.xml` | Anonymous | Compliance SEO sitemap, URLs on `App:PublicSiteBaseUrl`; served on the web app domain as `/sitemap.xml` (runbook `seo-domain.md`) |
 
 #### Supplier marketplace
 
@@ -315,6 +315,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/public/resolve-host` | Anonymous | Resolve host / org from Host header or query |
+| `GET` | `/api/public/content` | Anonymous | SEO hub: the published pages (same as the sitemap) and the hub canonical URL |
 | `GET` | `/api/public/content/affitti-brevi/{regionSlug}/{comuneSlug}` | Anonymous | SEO content page (short-term rentals) |
 | `GET` | `/api/public/content/tassa-soggiorno/{comuneSlug}` | Anonymous | SEO content page (tourist tax) |
 | `POST` | `/api/public/tourist-tax/calculate` | Anonymous | Public tourist-tax calculator |

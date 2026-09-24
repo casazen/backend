@@ -26,8 +26,11 @@ public static class EmailServiceCollectionExtensions
                 if (string.IsNullOrWhiteSpace(options.ApiKey))
                     options.ApiKey = configuration[EmailOptions.LegacyResendApiKeyKey];
             });
+        // The public URL of the web app (App__PublicSiteBaseUrl, alias Seo__PublicBaseUrl) is shared with the SEO pages,
+        // the sitemap and CORS: one domain, no default in code (decision D3, runbook docs/runbooks/seo-domain.md).
         var publicSiteOptions = services.AddOptions<PublicSiteOptions>()
-            .Bind(configuration.GetSection(PublicSiteOptions.SectionName));
+            .Bind(configuration.GetSection(PublicSiteOptions.SectionName))
+            .PostConfigure(options => options.ApplySeoAlias(configuration));
 
         if (EmailConfigurationPolicy.RequiresCompleteConfiguration(environment))
         {

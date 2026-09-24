@@ -31,40 +31,61 @@ public record AlloggiatiSummaryInfo(
     bool IsShortStay);
 
 /// <summary>
-/// Kind of guest ("tipo alloggiato") as a label, never a table code: with one guest per booking the registered
-/// guest is either a single guest or the head of the family/group the others belong to (CO-12 models them).
+/// Data of one guest of the stay (<see cref="StayGuest"/>, CO-12) in the order of the Alloggiati Web record
+/// (<c>.claude/context/regulations/alloggiati.md</c>, "Tracciato record"): kind, arrival date, days of stay, surname,
+/// name, sex, date of birth, comune and province of birth (born in Italy), state of birth, citizenship, and for a single
+/// guest or a head of family or group the document type, number and place of issue. Values are the text stored in
+/// CasaZen; <see cref="Codes"/> holds the official codes found in the imported tables, never invented ones.
 /// </summary>
-public enum AlloggiatiGuestKind
-{
-    SingleGuest,
-    HeadOfFamilyOrGroup,
-}
-
-/// <summary>
-/// Data of one guest in the order of the Alloggiati Web record (<c>.claude/context/regulations/alloggiati.md</c>,
-/// "Tracciato record"): kind, arrival date, days of stay, surname, name, sex, date of birth, place of birth,
-/// citizenship, document type, document number, place of issue. Values are the text stored in CasaZen: no
-/// table code is derived or invented.
-/// </summary>
-/// <param name="MissingFields">Names of the fields the record needs and CasaZen does not have (camelCase property names of this record).</param>
+/// <param name="StayGuestId">Id of the stored row; null for the booker shown before any guest is registered.</param>
+/// <param name="IsMinor">Under 18 on the arrival date; null without a date of birth.</param>
+/// <param name="MissingFields">Record fields missing or not accepted by the record (camelCase names, <c>AlloggiatiRecordRules.Field*</c>).</param>
+/// <param name="CodesToComplete">Record fields whose official code is still to complete: they block only the export.</param>
+/// <param name="CompositionIssue">Why the guest does not fit in the order of the stay (<c>member_without_head</c>, <c>head_without_members</c>); null when it fits.</param>
 public record AlloggiatiGuestRow(
-    Guid GuestId,
-    AlloggiatiGuestKind Kind,
+    Guid? StayGuestId,
+    int Position,
+    StayGuestType Type,
+    bool? IsMinor,
     DateTime ArrivalDate,
     int StayDays,
     string LastName,
     string FirstName,
     Gender? Gender,
     DateTime? DateOfBirth,
-    string PlaceOfBirth,
+    bool? BornInItaly,
+    string BirthComune,
+    string? BirthProvince,
+    string BirthCountry,
     string Citizenship,
+    bool RequiresDocument,
     GuestDocumentType? DocumentType,
     string DocumentNumber,
     string DocumentIssuePlace,
-    IReadOnlyList<string> MissingFields);
+    AlloggiatiRowCodes Codes,
+    IReadOnlyList<string> MissingFields,
+    IReadOnlyList<string> CodesToComplete,
+    string? CompositionIssue);
+
+/// <summary>
+/// Official codes of a guest's record line, from the imported Alloggiati tables (null when still to complete or not
+/// part of the line). <see cref="DocumentTypeDescription"/> is the official description of the document type code.
+/// </summary>
+public record AlloggiatiRowCodes(
+    string? Type,
+    string? BirthComune,
+    string? BirthCountry,
+    string? Citizenship,
+    string? DocumentType,
+    string? DocumentTypeDescription,
+    string? DocumentIssuePlace);
 
 /// <param name="StayExceedsMaxDays">True when the stay is longer than the 30 days the portal accepts on one schedina.</param>
-/// <param name="DeclaredGuests">Guests declared on the booking; the ones beyond <paramref name="Guests"/> are not registered in CasaZen.</param>
+/// <param name="DeclaredGuests">Guests declared on the booking; <paramref name="Guests"/> are the ones registered.</param>
+/// <param name="Guests">One row per guest, in record order (head of family or group before its members).</param>
+/// <param name="DataComplete">Every guest has every field of the record and the order of the guests is valid.</param>
+/// <param name="ExportReady">Data complete and every official code found: the record can be exported (CO-13).</param>
+/// <param name="MissingCodeTables">Official tables not imported yet: their codes cannot be completed.</param>
 public record AlloggiatiGuestSummaryInfo(
     Guid BookingId,
     AlloggiatiWebStatus Status,
@@ -72,7 +93,10 @@ public record AlloggiatiGuestSummaryInfo(
     int StayDays,
     bool StayExceedsMaxDays,
     int DeclaredGuests,
-    IReadOnlyList<AlloggiatiGuestRow> Guests);
+    IReadOnlyList<AlloggiatiGuestRow> Guests,
+    bool DataComplete,
+    bool ExportReady,
+    IReadOnlyList<AlloggiatiCodeTable> MissingCodeTables);
 
 /// <summary>
 /// A report that needs a job on the arrival day: returned by <see cref="IAlloggiatiWebService.ReserveReportAsync"/>

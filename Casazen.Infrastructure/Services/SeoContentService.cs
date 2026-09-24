@@ -9,7 +9,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
-using Microsoft.Extensions.Configuration;
+using Casazen.Infrastructure.Email;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -18,7 +18,7 @@ public class SeoContentService(
     ISeoContentRepository repository,
     ITouristTaxQuoteService touristTaxQuoteService,
     IAiProvider aiProvider,
-    IConfiguration configuration,
+    PublicSiteLinks publicSiteLinks,
     ILogger<SeoContentService> logger,
     TimeProvider? timeProvider = null) : ISeoContentService
 {
@@ -270,46 +270,80 @@ public class SeoContentService(
         return refreshed;
     }
 
+    public async Task<SeoPublishedPagesDto> GetPublishedPagesAsync(CancellationToken cancellationToken = default)
+    {
+        var pages = await GetIndexablePagesAsync(cancellationToken);
+        return new SeoPublishedPagesDto(
+            publicSiteLinks.TryPublicPage(SeoPagePaths.Hub),
+            pages.Select(p => new SeoPublishedPageDto(
+                    p.Page.PageType,
+                    p.Page.Title,
+                    p.Comune.Name,
+                    p.Comune.RegionSlug,
+                    p.Comune.ComuneSlug,
+                    p.Path))
+                .ToList());
+    }
+
     public async Task<string> BuildComplianceSitemapXmlAsync(CancellationToken cancellationToken = default)
     {
-        var pages = await repository.GetReviewedPagesForSitemapAsync(cancellationToken);
-        var today = _clock.TodayInRomeAsDateOnly();
-        var baseUrl = configuration["Seo:PublicBaseUrl"] ?? "https://www.casazen.it";
+        // SE-02 (A8-02, D3): every URL is on App:PublicSiteBaseUrl, the domain of the web app that serves /p/*.
+        // Missing value: configuration error (only possible in Development/Testing), never a fallback domain.
+        publicSiteLinks.EnsureConfigured();
+
+        var pages = await GetIndexablePagesAsync(cancellationToken);
         XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
 
         var urlset = new XElement(ns + "urlset");
-        foreach (var page in pages)
+        if (pages.Count > 0)
+        {
+            urlset.Add(SitemapUrl(ns, SeoPagePaths.Hub, pages.Max(p => p.LastModified)));
+            foreach (var page in pages)
+                urlset.Add(SitemapUrl(ns, page.Path, page.LastModified));
+        }
+
+        var document = new XDocument(new XDeclaration("1.0", "UTF-8", null), urlset);
+        return document.Declaration + Environment.NewLine + document;
+    }
+
+    private XElement SitemapUrl(XNamespace ns, string path, DateTime lastModified) =>
+        new(ns + "url",
+            new XElement(ns + "loc", publicSiteLinks.PublicPage(path)),
+            new XElement(ns + "lastmod", lastModified.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+
+    /// <summary>
+    /// The pages worth indexing, shared by the sitemap and the hub: reviewed (published), with content, of a known
+    /// comune and, for a calculator, with a tourist tax rate in force. There is no feature flag on the SEO pages.
+    /// </summary>
+    private async Task<IReadOnlyList<IndexablePage>> GetIndexablePagesAsync(CancellationToken cancellationToken)
+    {
+        var candidates = await repository.GetReviewedPagesForSitemapAsync(cancellationToken);
+        var today = _clock.TodayInRomeAsDateOnly();
+        var pages = new List<IndexablePage>(candidates.Count);
+        foreach (var page in candidates)
         {
             var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
             if (comune is null)
                 continue;
 
-            var loc = page.PageType switch
-            {
-                SeoPageType.ComplianceGuide =>
-                    $"{baseUrl}/p/affitti-brevi/{comune.RegionSlug}/{comune.ComuneSlug}",
-                SeoPageType.TouristTaxCalc =>
-                    $"{baseUrl}/p/tassa-soggiorno/{comune.ComuneSlug}",
-                _ => null,
-            };
-
-            if (loc is null)
-                continue;
-
-            // A8-12: a calculator page of a comune without a rate in force is not worth indexing.
+            // A8-12 (BK-03): a calculator page of a comune without a rate in force is not worth indexing.
             if (page.PageType == SeoPageType.TouristTaxCalc
                 && (await touristTaxQuoteService.GetRatesInForceAsync(ToTouristTaxComune(comune), today, cancellationToken)).Count == 0)
             {
                 continue;
             }
 
-            urlset.Add(new XElement(ns + "url",
-                new XElement(ns + "loc", loc),
-                new XElement(ns + "lastmod", (page.LastRefreshedAt ?? page.UpdatedAt).ToString("yyyy-MM-dd"))));
+            pages.Add(new IndexablePage(
+                page,
+                comune,
+                SeoPagePaths.For(comune, page.PageType),
+                page.LastRefreshedAt ?? page.UpdatedAt));
         }
 
-        return new XDocument(new XDeclaration("1.0", "UTF-8", null), urlset).ToString();
+        return pages;
     }
+
+    private sealed record IndexablePage(SeoContentPage Page, ComuneInfo Comune, string Path, DateTime LastModified);
 
     private async Task<bool> GenerateSinglePageAsync(
         ComuneInfo comune,
@@ -511,16 +545,9 @@ public class SeoContentService(
         return sb.ToString();
     }
 
-    private string BuildCanonicalUrl(ComuneInfo comune, SeoPageType pageType)
-    {
-        var baseUrl = configuration["Seo:PublicBaseUrl"] ?? "https://www.casazen.it";
-        return pageType switch
-        {
-            SeoPageType.ComplianceGuide => $"{baseUrl}/p/affitti-brevi/{comune.RegionSlug}/{comune.ComuneSlug}",
-            SeoPageType.TouristTaxCalc => $"{baseUrl}/p/tassa-soggiorno/{comune.ComuneSlug}",
-            _ => $"{baseUrl}/p/supplier/{comune.ComuneSlug}",
-        };
-    }
+    /// <summary>Canonical URL on App:PublicSiteBaseUrl (D3); null only when it is not configured (Development/Testing).</summary>
+    private string? BuildCanonicalUrl(ComuneInfo comune, SeoPageType pageType) =>
+        publicSiteLinks.TryPublicPage(SeoPagePaths.For(comune, pageType));
 
     private static SeoDisclaimersDto BuildDisclaimers(DateTime? refreshedAt)
     {
