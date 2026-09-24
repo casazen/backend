@@ -10,4 +10,18 @@ public class UserDetailDto : UserSummaryDto
 
     /// <summary>The caller's organization summary (AC9), or <c>null</c> when the user has no org.</summary>
     public OrgSummaryDto? Org { get; set; }
+
+    /// <summary>
+    /// Own profile only (<c>GET/PUT /api/users/me</c>), <c>null</c> elsewhere: true while the host features are withheld
+    /// (PL-02), i.e. the onboarding is not completed or the current Terms, Privacy notice and DPA are not accepted. The
+    /// host endpoints then answer 403 <c>onboarding_required</c>. Platform admins and suppliers use their own areas
+    /// meanwhile.
+    /// </summary>
+    public bool? OnboardingRequired { get; set; }
+
+    /// <summary>
+    /// Own profile only, <c>null</c> elsewhere: the current versions of Terms, Privacy notice and DPA are accepted for the
+    /// user's org. False with a completed onboarding means a document changed and must be accepted again.
+    /// </summary>
+    public bool? ConsentsAccepted { get; set; }
 }

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -227,7 +228,7 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Users.Add(new User
+        var user = new User
         {
             Id = userId,
             Email = $"{Guid.NewGuid():N}@example.com",
@@ -235,7 +236,10 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
             LastName = "Stessa Org",
             OrgId = org.Id,
             IsActive = true,
-        });
+        };
+        db.Users.Add(user);
+        // A colleague who completed the onboarding for the org (PL-02): the checks are about ownership.
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 

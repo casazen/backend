@@ -282,6 +282,9 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
+  <data name="OnboardingRequired" xml:space="preserve">
+    <value>Per usare le funzioni per host completa l'attivazione dell'account: scegli il tipo di attività e accetta Termini di servizio, Informativa privacy e DPA nella versione in vigore.</value>
+  </data>
   <data name="OnboardingConsentsRequired" xml:space="preserve">
     <value>Per creare la tua organizzazione devi accettare i documenti legali obbligatori.</value>
   </data>

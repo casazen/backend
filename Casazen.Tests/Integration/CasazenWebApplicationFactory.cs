@@ -229,13 +229,14 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     /// <summary>
     /// Finds or creates the default <see cref="Org"/> for an owner and ensures the owner's
     /// <see cref="User"/> row carries its <c>OrgId</c>, so the tenant query filter makes seeded
-    /// rows visible to the authenticated owner (US-004). Returns the owner's org.
+    /// rows visible to the authenticated owner (US-004). The owner is a host who completed the onboarding with the
+    /// current consents (PL-02, <see cref="HostOnboardingSeed"/>). Returns the owner's org.
     /// </summary>
     public async Task<OrgEntity> SeedOrgForOwnerAsync(string ownerId = TestAuthHandler.DefaultUserId)
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var org = await EnsureOrgAsync(db, ownerId);
+        var org = await EnsureOrgAsync(db, ownerId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
 
         try
         {
@@ -259,7 +260,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         (ex is ArgumentException && ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
         || ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } };
 
-    private static async Task<OrgEntity> EnsureOrgAsync(AppDbContext db, string ownerId)
+    private static async Task<OrgEntity> EnsureOrgAsync(AppDbContext db, string ownerId, ILegalDocumentService legal)
     {
         var slug = $"test-org-{ownerId}";
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Slug == slug);
@@ -280,21 +281,27 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == ownerId);
         if (user is null)
         {
-            db.Users.Add(new User
+            user = new User
             {
                 Id = ownerId,
                 Email = $"{Guid.NewGuid():N}@example.com",
                 FirstName = "Test",
                 LastName = "Owner",
                 OrgId = org.Id,
+                Role = UserRole.PropertyOwner,
                 IsActive = true,
-            });
+            };
+            db.Users.Add(user);
         }
         else if (user.OrgId is null)
         {
             user.OrgId = org.Id;
         }
 
+        if (user.Role == UserRole.None)
+            user.Role = UserRole.PropertyOwner;
+
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, user.OrgId ?? org.Id, legal);
         return org;
     }
 

@@ -20,6 +20,12 @@ public static class ProblemCodes
     public const string BusinessRuleViolation = "business_rule_violation";
     public const string TooManyRequests = "too_many_requests";
 
+    /// <summary>
+    /// 403: the host features wait for the onboarding and the current legal consents (PL-02, A1-05). The web app opens the
+    /// onboarding (consents step), the mobile app its activation screen. See <see cref="Casazen.Core.Authorization.HostOnboarding"/>.
+    /// </summary>
+    public const string OnboardingRequired = Casazen.Core.Authorization.HostOnboarding.RequiredCode;
+
     /// <summary>429 from a rate limiting policy (with <c>Retry-After</c>), see <c>RateLimitingServiceCollectionExtensions</c>.</summary>
     public const string RateLimited = "rate_limited";
 

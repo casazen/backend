@@ -326,6 +326,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     public async Task GetSuppliers_ReturnsOnlyActiveForComune()
     {
         await SeedFullSupplierAsync(comuneCode: "F205", autoActivate: true);
+        await _factory.SeedOrgForOwnerAsync();
 
         using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
         var response = await client.GetAsync("/api/suppliers?comune=F205");
@@ -339,6 +340,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     [Fact]
     public async Task GetSuppliers_WithoutComuneOrPropertyId_Returns400WithItalianMessage()
     {
+        await _factory.SeedOrgForOwnerAsync();
         using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
 
         var response = await client.GetAsync("/api/suppliers");

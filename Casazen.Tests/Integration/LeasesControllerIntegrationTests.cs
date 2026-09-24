@@ -731,7 +731,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Users.Add(new User
+        var user = new User
         {
             Id = userId,
             Email = $"{Guid.NewGuid():N}@example.com",
@@ -739,7 +739,10 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
             LastName = "Stessa Org",
             OrgId = org.Id,
             IsActive = true,
-        });
+        };
+        db.Users.Add(user);
+        // A colleague who completed the onboarding for the org (PL-02): the checks are about ownership.
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 

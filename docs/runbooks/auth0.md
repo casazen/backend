@@ -234,7 +234,8 @@ These steps need a real device or emulator; they were not run when the code was 
 1. Install the `preview` build (or `production` before the store release) and tap **Continua con Auth0**:
    the Auth0 login page of the right tenant opens (check the domain in the browser).
 2. Log in with a test user (test tenant only): the app returns to the calendar and loads data from the
-   matching backend (API answers 200, not 401).
+   matching backend (API answers 200, not 401). A user who has not completed the web onboarding with the legal
+   consents sees "Completa l'attivazione sul sito" instead (PL-02, [`onboarding-consents.md`](onboarding-consents.md)).
 3. On a fresh install (or after clearing the app data: the app has no logout button yet), tap
    **Continua con Auth0** and close the browser without logging in: the app stays on the login screen, no
    error.
@@ -261,7 +262,8 @@ demo mode (`EXPO_PUBLIC_E2E_DEMO=1`) works only in development bundles and store
 API rejects.
 
 Maestro flows log in for real with a **test user of the test tenant** (never production): create the user
-(Auth0 → User Management → Users, database connection), give it the `PropertyOwner` role (section 3) and
+(Auth0 → User Management → Users, database connection), give it the `PropertyOwner` role (section 3), complete the
+web onboarding once with it (rental type and legal consents: the role alone opens no host feature, PL-02) and
 seed its host data on the test backend. Credentials are passed to Maestro at run time
 (`maestro test -e E2E_AUTH0_EMAIL=... -e E2E_AUTH0_PASSWORD=...`), never committed: `mobile/README.md`,
 section "Maestro E2E". The automated login flow belongs to task FN-04.
