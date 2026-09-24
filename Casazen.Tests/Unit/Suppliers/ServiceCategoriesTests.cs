@@ -1,5 +1,6 @@
 using Casazen.Core.Exceptions;
-using Casazen.Core.Suppliers;
+using Casazen.Core.Services;
+using Casazen.Core.Validation;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
@@ -83,5 +84,22 @@ public class ServiceCategoriesTests
     public void IsKnown_ExactCodeOnly(string? value, bool expected)
     {
         Assert.Equal(expected, ServiceCategories.IsKnown(value));
+    }
+
+    [Fact]
+    public void ServiceCategoryCodeAttribute_EveryCode_IsValid()
+    {
+        var attribute = new ServiceCategoryCodeAttribute();
+
+        Assert.All(ServiceCategories.All, code => Assert.True(attribute.IsValid(code), code));
+    }
+
+    [Theory]
+    [InlineData("Pulizie")]
+    [InlineData("Cleaning")]
+    [InlineData("free text")]
+    public void ServiceCategoryCodeAttribute_LabelOrNotExactCode_IsInvalid(string value)
+    {
+        Assert.False(new ServiceCategoryCodeAttribute().IsValid(value));
     }
 }

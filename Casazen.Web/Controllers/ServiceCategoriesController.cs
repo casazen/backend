@@ -1,4 +1,4 @@
-using Casazen.Core.Suppliers;
+using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Supplier;
 using Microsoft.AspNetCore.Authorization;

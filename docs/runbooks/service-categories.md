@@ -10,10 +10,10 @@ data and how to check it after the deploy.
 
 | Where | Behaviour | Code |
 |---|---|---|
-| Source of truth | Ten stable lowercase English codes, in display order: `cleaning`, `maintenance`, `plumbing`, `laundry`, `linen`, `check-in`, `gardening`, `events`, `rental`, `excursions` | `Casazen.Core/Suppliers/ServiceCategories.cs` |
+| Source of truth | Ten stable lowercase English codes, in display order: `cleaning`, `maintenance`, `plumbing`, `laundry`, `linen`, `check-in`, `gardening`, `events`, `rental`, `excursions` | `Casazen.Core/Services/ServiceCategories.cs` |
 | Catalog API | `GET /api/service-categories` (any signed-in user) → `{ "items": [{ "code": "cleaning" }, ...] }` | `ServiceCategoriesController` |
 | Writes | Supplier profile (`PUT /api/supplier/profile`), admin invite (`POST /api/admin/suppliers/invite`), service request (`POST /api/service-requests`, checkout wizard) accept only codes. Input is trimmed and lower-cased first (`" Cleaning "` → `cleaning`), duplicates removed. Anything else → **422** `invalid_service_category` (message `ServiceCategoryInvalid`, IT/EN), nothing saved | `ServiceCategories.Require/RequireAll` |
-| Search | `GET /api/suppliers?category=<code>` and `POST /api/service-requests/match-supplier` filter by code; a supplier matches only if it declared the code (no categories = no match). An unknown code → 422 instead of an empty list | `SupplierService.GetActiveByComune`, `SupplierMatchService` |
+| Search | `GET /api/suppliers?category=<code>` filters by code; a supplier matches only if it declared the code (no categories = no match). An unknown code → 422 `invalid_service_category` instead of an empty list. `POST /api/service-requests/match-supplier` (AI match, behind the `AiSupplierDiscovery` flag, FD-21) filters the same way and rejects a value that is not exactly a code with 400 `validation_error` (`[ServiceCategoryCode]`) | `SupplierService.GetActiveByComune`, `SupplierMatchService`, `ServiceCategoryCodeAttribute` |
 | Labels | Clients translate the code: web `serviceRequest.categories.<code>` (`it.json`/`en.json`), app `src/i18n/locales/{it,en}.ts`, emails `ServiceCategory_<code>` (`EmailTexts*.resx`) | frontend, mobile, `EmailTemplates.ServiceCategoryLabel` |
 
 The list is the union of what the three clients already offered; no category was invented. Doubtful synonyms were

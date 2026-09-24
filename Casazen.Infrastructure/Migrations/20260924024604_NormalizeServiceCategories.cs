@@ -6,7 +6,7 @@ namespace Casazen.Infrastructure.Migrations
 {
     /// <summary>
     /// SU-03 (A4-05, A6-03): stores every existing service category as a code of
-    /// <c>Casazen.Core.Suppliers.ServiceCategories</c>. The supplier wizard saved Italian labels
+    /// <c>Casazen.Core.Services.ServiceCategories</c>. The supplier wizard saved Italian labels
     /// (<c>Pulizie</c>, <c>Manutenzione</c>, ...) while hosts searched by code (<c>cleaning</c>, ...), so hosts never
     /// found real suppliers.
     /// </summary>

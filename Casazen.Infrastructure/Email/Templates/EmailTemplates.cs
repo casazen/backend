@@ -1,6 +1,6 @@
 using System.Globalization;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Suppliers;
+using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Email.Templates;
 

@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Suppliers;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -158,21 +158,6 @@ public class ServiceCategoriesIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("check-in", body.GetProperty("category").GetString());
-    }
-
-    [Fact]
-    public async Task MatchSupplier_UnknownCategory_Returns422()
-    {
-        var (hostId, _, propertyId) = await SeedHostPropertyAsync();
-        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
-
-        var response = await client.PostAsJsonAsync("/api/service-requests/match-supplier", new
-        {
-            propertyId,
-            category = "Manutenzione",
-        });
-
-        await AssertInvalidCategoryProblemAsync(response);
     }
 
     [Fact]

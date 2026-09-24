@@ -1,4 +1,6 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Validation;
 
 namespace Casazen.Web.DTOs.ServiceRequests;
 
@@ -23,12 +25,20 @@ public class CompleteServiceRequestRequest
     public string? Notes { get; set; }
 }
 
+/// <summary>
+/// Body of <c>POST api/service-requests/match-supplier</c>. No free text: the host's notes are not accepted, so they
+/// can never reach an AI prompt (A8-15); the category is one of the known codes (A8-01).
+/// </summary>
 public class MatchSupplierRequest
 {
     public Guid PropertyId { get; set; }
+
+    [Required(ErrorMessage = "ServiceCategoryRequired")]
+    [ServiceCategoryCode(ErrorMessage = "ServiceCategoryNotSupported")]
     public string Category { get; set; } = string.Empty;
+
+    [EnumDataType(typeof(ServiceRequestUrgency))]
     public ServiceRequestUrgency Urgency { get; set; } = ServiceRequestUrgency.Normal;
-    public string? Notes { get; set; }
 }
 
 public class SupplierMatchCandidateDto
@@ -53,7 +63,7 @@ public class ExternalSupplierSuggestionDto
     public int? ReviewCount { get; set; }
     public string? GoogleMapsUrl { get; set; }
     public string? WebsiteUrl { get; set; }
-    public string Source { get; set; } = "google_places";
+    public string Source { get; set; } = "ai_web_search";
 }
 
 public class SupplierMatchResponse

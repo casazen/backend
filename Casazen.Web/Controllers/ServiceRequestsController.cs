@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.ServiceRequests;
@@ -27,11 +28,20 @@ public class ServiceRequestsController(
     IOrgContextResolver orgContextResolver,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
+    /// <summary>
+    /// AI-assisted supplier match (D11: behind <see cref="FeatureFlags.AiSupplierDiscovery"/>, off by default, 404 while
+    /// off). Rate limited per user and org; the category must be one of <see cref="ServiceCategories.All"/>; the host's
+    /// notes are not accepted. The manual request (<c>POST api/service-requests</c>) does not depend on it.
+    /// </summary>
     [HttpPost("match-supplier")]
+    [FeatureGate(FeatureFlags.AiSupplierDiscovery)]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [AiRateLimit]
     [ProducesResponseType(typeof(SupplierMatchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SupplierMatchResponse>> MatchSupplier(
         [FromBody] MatchSupplierRequest request,
         CancellationToken cancellationToken)
@@ -42,26 +52,13 @@ public class ServiceRequestsController(
         if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
             return denied;
 
-        try
-        {
-            // A missing or unknown category is a 422 invalid_service_category from the service (SU-03).
-            var result = await supplierMatchService.MatchAsync(
-                orgId.Value,
-                request.PropertyId,
-                request.Category,
-                request.Urgency,
-                request.Notes,
-                cancellationToken);
-            return Ok(MapMatchResult(result));
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var result = await supplierMatchService.MatchAsync(
+            orgId.Value,
+            request.PropertyId,
+            request.Category,
+            request.Urgency,
+            cancellationToken);
+        return Ok(MapMatchResult(result));
     }
 
     [HttpPost]

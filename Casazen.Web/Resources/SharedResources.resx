@@ -333,4 +333,13 @@
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>
   </data>
+  <data name="AiBudgetExhaustedDetail" xml:space="preserve">
+    <value>Il budget mensile per le funzioni AI della piattaforma è esaurito. Riprova il mese prossimo o contatta il supporto.</value>
+  </data>
+  <data name="ServiceCategoryRequired" xml:space="preserve">
+    <value>Indica la categoria del servizio.</value>
+  </data>
+  <data name="ServiceCategoryNotSupported" xml:space="preserve">
+    <value>Categoria del servizio non supportata.</value>
+  </data>
 </root>
