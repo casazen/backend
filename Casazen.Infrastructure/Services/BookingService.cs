@@ -99,40 +99,28 @@ public class BookingService(
 
     public async Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input)
     {
+        // Every checkout error is a ProblemDetails with a stable code and a localized message (R-11, BK-07): the guest
+        // reads why the booking failed instead of a generic "checkout failed".
         if (!Enum.IsDefined(input.PaymentOption))
         {
-            throw new DirectBookingException(
-                "Invalid payment option",
-                DirectBookingErrorCodes.InvalidPaymentOption);
+            throw new DomainRuleException(
+                DirectBookingErrorCodes.InvalidPaymentOption, "DirectBookingInvalidPaymentOption");
         }
 
         var allowedConsentVersion = configuration["DirectBooking:ConsentVersion"] ?? "2026-06-direct-checkout-v1";
         if (!string.Equals(input.ConsentVersion, allowedConsentVersion, StringComparison.Ordinal))
         {
-            throw new DirectBookingException(
-                "Invalid consent version",
-                DirectBookingErrorCodes.InvalidConsentVersion);
+            throw new DomainRuleException(DirectBookingErrorCodes.ConsentOutdated, "DirectBookingConsentOutdated");
         }
 
-        var property = await propertyRepository.GetByIdAsync(input.PropertyId);
-        if (property is null || !property.IsActive)
-        {
-            throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
-        }
-
-        if (property.ComplianceStatus != PropertyComplianceStatus.Active)
-        {
-            throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
-        }
+        var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var org = await orgService.GetByIdAsync(property.OrgId);
         if (org is null ||
             string.IsNullOrWhiteSpace(org.StripeConnectedAccountId) ||
             !org.ConnectChargesEnabled)
         {
-            throw new DirectBookingException(
-                "Complete Stripe onboarding before accepting guest payments",
-                DirectBookingErrorCodes.PaymentNotReady);
+            throw new DomainConflictException(DirectBookingErrorCodes.PaymentsNotReady, "DirectBookingPaymentsNotReady");
         }
 
         var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
@@ -151,18 +139,21 @@ public class BookingService(
             property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges);
         if (price.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
         {
-            throw new DirectBookingException(
-                "The ages of the minors are needed to compute the tourist tax",
-                DirectBookingErrorCodes.ChildAgesRequired);
+            throw new DomainRuleException(DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired");
+        }
+
+        // A3-16: "Paga alla scadenza" only when its charge day is still ahead (the checkout offers it from the same quote).
+        if (input.PaymentOption == PaymentOption.OnCancellationDeadline && !price.PaymentOptions.DeferredPaymentAvailable)
+        {
+            throw new DomainRuleException(
+                DirectBookingErrorCodes.DeferredPaymentUnavailable, "DirectBookingDeferredPaymentUnavailable");
         }
 
         var pendingTtlMinutes = GetPendingDirectTtlMinutes();
 
         if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, pendingTtlMinutes))
         {
-            throw new DirectBookingException(
-                "Property not available for selected dates",
-                DirectBookingErrorCodes.NotAvailable);
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
         var guest = await CreateGuestSnapshotWithConsentAsync(
@@ -172,7 +163,10 @@ public class BookingService(
         var touristTaxAmount = price.TouristTax.AmountOrZero;
         var totalPrice = price.TotalPrice;
         var currency = price.Currency;
-        var freeRefundDeadline = checkIn.AddDays(-7);
+        var freeRefundDeadline = price.FreeRefundDeadline;
+        // Only the guest who made the checkout reads its outcome and resumes its payment (BK-07): the token is returned
+        // once, the database keeps its hash.
+        var checkoutToken = CheckoutOutcomes.NewToken();
 
         var booking = new Booking
         {
@@ -193,6 +187,7 @@ public class BookingService(
             TotalPrice = totalPrice,
             PaymentOption = input.PaymentOption,
             FreeRefundDeadline = freeRefundDeadline,
+            CheckoutTokenHash = CheckoutOutcomes.HashToken(checkoutToken),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -211,9 +206,11 @@ public class BookingService(
         var validationResult = BookingValidator.ValidateBooking(booking, today: _clock.TodayInRome());
         if (!validationResult.IsValid)
         {
-            throw new DirectBookingException(
-                validationResult.ErrorMessage ?? "Booking validation failed",
-                DirectBookingErrorCodes.InvalidDates);
+            logger.LogInformation(
+                "Direct booking validation failed for property {PropertyId}: {Errors}",
+                input.PropertyId,
+                validationResult.ErrorMessage);
+            throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
         Booking createdBooking;
@@ -225,9 +222,7 @@ public class BookingService(
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
         {
             await guestRepository.DeleteAsync(guest.Id);
-            throw new DirectBookingException(
-                "Property not available for selected dates",
-                DirectBookingErrorCodes.NotAvailable);
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
         var amountCents = (long)Math.Round(totalPrice * 100m, MidpointRounding.AwayFromZero);
@@ -273,7 +268,8 @@ public class BookingService(
             freeRefundDeadline,
             input.PaymentOption,
             price.TouristTax.Status,
-            createdBooking.RequestExpiresAt);
+            createdBooking.RequestExpiresAt,
+            checkoutToken);
     }
 
     public async Task<DirectBookingQuote> QuoteDirectBookingAsync(
@@ -282,9 +278,7 @@ public class BookingService(
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var property = await propertyRepository.GetByIdAsync(input.PropertyId);
-        if (property is null || !property.IsActive || property.ComplianceStatus != PropertyComplianceStatus.Active)
-            throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
+        var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var (checkIn, checkOut) = ValidateStay(
             property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren);
@@ -292,6 +286,16 @@ public class BookingService(
         return await PriceStayAsync(
             property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges,
             cancellationToken);
+    }
+
+    /// <summary>An active property whose compliance allows public bookings; 404 otherwise.</summary>
+    private async Task<Property> GetBookablePropertyAsync(Guid propertyId)
+    {
+        var property = await propertyRepository.GetByIdAsync(propertyId);
+        if (property is null || !property.IsActive || property.ComplianceStatus != PropertyComplianceStatus.Active)
+            throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
+
+        return property;
     }
 
     /// <summary>Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights.</summary>
@@ -303,21 +307,14 @@ public class BookingService(
     {
         if (totalGuests > property.MaxGuests)
         {
-            throw new DirectBookingException(
-                $"This property allows a maximum of {property.MaxGuests} guests.",
-                DirectBookingErrorCodes.TooManyGuests)
-            {
-                MessageArgs = [property.MaxGuests],
-            };
+            throw new DomainRuleException(BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", property.MaxGuests);
         }
 
         var checkIn = DateTime.SpecifyKind(checkInDate.Date, DateTimeKind.Utc);
         var checkOut = DateTime.SpecifyKind(checkOutDate.Date, DateTimeKind.Utc);
         if (checkOut <= checkIn || (checkOut - checkIn).Days > TouristTaxCalculator.MaxNights)
         {
-            throw new DirectBookingException(
-                "Check-out date must be after check-in date",
-                DirectBookingErrorCodes.InvalidDates);
+            throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
         return (checkIn, checkOut);
@@ -326,7 +323,8 @@ public class BookingService(
     /// <summary>
     /// Nightly rate x nights + cleaning fee, plus the tourist tax of <see cref="ITouristTaxQuoteService"/> when it can
     /// be calculated. The property has no accommodation category (yet): only the rates for every accommodation of the
-    /// comune apply. The night price for percentage rates is the nightly rate, cleaning excluded.
+    /// comune apply. The night price for percentage rates is the nightly rate, cleaning excluded. The payment options come
+    /// from the free refund deadline of the stay (<see cref="DirectBookingPaymentRules"/>, A3-16).
     /// </summary>
     private async Task<DirectBookingQuote> PriceStayAsync(
         Property property,
@@ -351,6 +349,8 @@ public class BookingService(
                 NightlyPrice: property.NightlyRate),
             cancellationToken);
 
+        var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy);
+
         return new DirectBookingQuote(
             property.Id,
             checkIn,
@@ -361,7 +361,9 @@ public class BookingService(
             basePrice,
             touristTax,
             basePrice + touristTax.AmountOrZero,
-            "EUR");
+            "EUR",
+            freeRefundDeadline,
+            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()));
     }
 
     private async Task<string> HandleImmediatePaymentAsync(
@@ -386,7 +388,7 @@ public class BookingService(
             booking.Status = BookingStatus.Cancelled;
             booking.UpdatedAt = DateTime.UtcNow;
             await repository.UpdateAsync(booking);
-            throw new DirectBookingException("Payment initialization failed", DirectBookingErrorCodes.StripeError);
+            throw new PaymentProcessingException("Payment initialization failed", ex);
         }
 
         var payment = new Payment
@@ -436,7 +438,7 @@ public class BookingService(
             booking.Status = BookingStatus.Cancelled;
             booking.UpdatedAt = DateTime.UtcNow;
             await repository.UpdateAsync(booking);
-            throw new DirectBookingException("Payment initialization failed", DirectBookingErrorCodes.StripeError);
+            throw new PaymentProcessingException("Payment initialization failed", ex);
         }
 
         booking.StripeSetupIntentId = setupIntent.Id;

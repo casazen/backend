@@ -33,4 +33,10 @@ public class DirectBookingResponse
     /// (link sent by email) by this instant, then the host accepts or declines.
     /// </summary>
     public DateTime? EmailConfirmationExpiresAt { get; set; }
+
+    /// <summary>
+    /// Token of the outcome page (BK-07): <c>/book/{orgSlug}/booking/{bookingId}?token=…</c> shows the real state of the
+    /// booking and lets the guest pay the same hold again. Given only here; the database keeps its hash.
+    /// </summary>
+    public string CheckoutToken { get; set; } = string.Empty;
 }

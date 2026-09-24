@@ -21,15 +21,29 @@ public interface IBookingService
     // Cancellation (with refunds and intents on Stripe) is IBookingCancellationService (BK-02).
     Task<bool> IsPropertyAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? pendingDirectTtlMinutes = null);
     Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate);
+    /// <summary>
+    /// Public checkout: a <see cref="BookingStatus.Pending"/> hold with its PaymentIntent / SetupIntent, or a "pay at the
+    /// property" request (BK-06). The result carries the checkout token of the outcome page (BK-07), returned only here.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">The property does not exist or is not bookable.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// 422 with a code of <see cref="DirectBookingErrorCodes"/>, <see cref="BookingErrorCodes.TooManyGuests"/> or
+    /// <see cref="OnSiteRequestErrorCodes.TooManyNights"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// 409 <see cref="BookingErrorCodes.DatesUnavailable"/> or <see cref="DirectBookingErrorCodes.PaymentsNotReady"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.PaymentProcessingException">Stripe could not create the intent (503).</exception>
     Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input);
 
     /// <summary>
     /// Price of a direct booking before it is created (checkout, BK-03): the same calculation
-    /// <see cref="CreateDirectBookingAsync"/> records, tourist tax included. It does not check availability.
+    /// <see cref="CreateDirectBookingAsync"/> records, tourist tax included, and the payment options of the stay (A3-16).
+    /// It does not check availability.
     /// </summary>
-    /// <exception cref="DirectBookingException">
-    /// <see cref="DirectBookingErrorCodes.PropertyNotFound"/>, <see cref="DirectBookingErrorCodes.TooManyGuests"/> or
-    /// <see cref="DirectBookingErrorCodes.InvalidDates"/>.
+    /// <exception cref="Exceptions.NotFoundException">The property does not exist or is not bookable.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="BookingErrorCodes.TooManyGuests"/> or <see cref="DirectBookingErrorCodes.InvalidStay"/>.
     /// </exception>
     Task<DirectBookingQuote> QuoteDirectBookingAsync(DirectBookingQuoteInput input, CancellationToken cancellationToken = default);
 }

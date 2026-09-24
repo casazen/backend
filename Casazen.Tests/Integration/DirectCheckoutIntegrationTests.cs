@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using PlanTierEnum = Casazen.Core.Entities.Enums.PlanTier;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
@@ -477,6 +479,309 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Null(booking.StripePaymentMethodId);
     }
 
+    [Fact]
+    public async Task GetCheckoutOutcome_WithCheckoutToken_ReturnsRealStateWithoutGuestData()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var email = $"outcome.{Guid.NewGuid():N}@example.com";
+        var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id, guestEmail: email));
+
+        var response = await PostWithCheckoutTokenAsync(client, bookingId, "outcome", token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        // A3-15: the page shows the real state, never "confirmed" before the payment webhook.
+        Assert.Equal("AwaitingPayment", root.GetProperty("state").GetString());
+        Assert.Equal("Immediate", root.GetProperty("paymentOption").GetString());
+        Assert.Equal("Direct Checkout Villa", root.GetProperty("propertyName").GetString());
+        Assert.Equal(JsonValueKind.String, root.GetProperty("expiresAt").ValueKind);
+        // Nothing personal about the guest.
+        Assert.DoesNotContain(email, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Mario", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("+393331234567", body, StringComparison.Ordinal);
+
+        // Only the hash of the token is stored.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stored = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        Assert.NotEqual(token, stored.CheckoutTokenHash);
+        Assert.True(CheckoutOutcomes.TokenMatches(stored.CheckoutTokenHash, token));
+    }
+
+    [Fact]
+    public async Task GetCheckoutOutcome_WrongTokenOtherBookingOrUnknownId_Returns404WithTheSameCode()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var first = await CreateCheckoutAsync(client, BuildPayload(property.Id));
+        var second = await CreateCheckoutAsync(
+            client,
+            BuildPayload(property.Id, checkIn: DateTime.UtcNow.Date.AddDays(60), checkOut: DateTime.UtcNow.Date.AddDays(62)));
+
+        // Another guest's token, a made-up token, a guessed id: the same answer, nothing to enumerate.
+        foreach (var (bookingId, token) in new[]
+                 {
+                     (first.BookingId, second.Token),
+                     (first.BookingId, "not-the-checkout-token"),
+                     (Guid.NewGuid(), first.Token),
+                 })
+        {
+            foreach (var action in new[] { "outcome", "payment-session" })
+            {
+                var response = await PostWithCheckoutTokenAsync(client, bookingId, action, token);
+                Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+                using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                Assert.Equal("checkout_link_invalid", problem.RootElement.GetProperty("code").GetString());
+            }
+        }
+
+        var missingToken = await PostWithCheckoutTokenAsync(client, first.BookingId, "outcome", null);
+        Assert.Equal(HttpStatusCode.BadRequest, missingToken.StatusCode);
+
+        // The booking id alone reveals nothing: the anonymous GET status endpoint is gone.
+        var legacy = await client.GetAsync($"/api/public/bookings/{first.BookingId}/status");
+        Assert.True(
+            legacy.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed,
+            $"legacy status endpoint answered {(int)legacy.StatusCode}");
+    }
+
+    [Fact]
+    public async Task GetCheckoutOutcome_AfterThePaymentWebhook_IsConfirmedAndNothingIsLeftToPay()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var paymentIntentId = (await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId)).StripePaymentIntentId!;
+            var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
+            await handler.HandleEventAsync(DirectBookingPaymentSucceeded(paymentIntentId, bookingId), WebhookSource.Connected);
+        }
+
+        Assert.Equal("Confirmed", await ReadOutcomeStateAsync(client, bookingId, token));
+        await AssertProblemAsync(
+            await PostWithCheckoutTokenAsync(client, bookingId, "payment-session", token),
+            HttpStatusCode.Conflict,
+            "checkout_payment_not_resumable");
+    }
+
+    [Fact]
+    public async Task GetCheckoutOutcome_HoldPastItsTtl_IsExpiredAndThePaymentCannotResume()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
+            booking.CreatedAt = DateTime.UtcNow.AddHours(-2);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal("Expired", await ReadOutcomeStateAsync(client, bookingId, token));
+        await AssertProblemAsync(
+            await PostWithCheckoutTokenAsync(client, bookingId, "payment-session", token),
+            HttpStatusCode.Conflict,
+            "checkout_hold_expired");
+    }
+
+    [Fact]
+    public async Task ResumeCheckoutPayment_ValidHold_ReturnsTheSameIntentWithoutANewBooking()
+    {
+        // A3-15: back from a redirect method, or after a failed card, the guest pays the same hold instead of booking
+        // again and hitting their own hold (409 on the dates).
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id));
+
+        var response = await PostWithCheckoutTokenAsync(client, bookingId, "payment-session", token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
+        Assert.Equal($"{payment.StripePaymentIntentId}_secret_test", root.GetProperty("clientSecret").GetString());
+        Assert.Equal(
+            "acct_test_connect_ready",
+            root.GetProperty("connectedAccountPublishableContext").GetProperty("stripeAccountId").GetString());
+        Assert.Equal(1, await db.Bookings.CountAsync(b => b.PropertyId == property.Id));
+    }
+
+    [Fact]
+    public async Task ResumeCheckoutPayment_IntentAlreadyProcessing_Returns409NotResumable()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
+            FakeStripeService.SetIntentStatus(payment.StripePaymentIntentId!, "processing");
+        }
+
+        await AssertProblemAsync(
+            await PostWithCheckoutTokenAsync(client, bookingId, "payment-session", token),
+            HttpStatusCode.Conflict,
+            "checkout_payment_not_resumable");
+    }
+
+    [Fact]
+    public async Task ResumeCheckoutPayment_DeferredPayment_ReturnsTheSetupIntentSecret()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(
+            client, BuildPayload(property.Id, paymentOption: PaymentOption.OnCancellationDeadline));
+
+        var response = await PostWithCheckoutTokenAsync(client, bookingId, "payment-session", token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        Assert.Equal($"{booking.StripeSetupIntentId}_secret_test", doc.RootElement.GetProperty("setupIntentClientSecret").GetString());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("clientSecret").ValueKind);
+    }
+
+    [Fact]
+    public async Task GetCheckoutOutcome_PayAtTheProperty_IsAwaitingTheGuestEmailNotConfirmed()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(
+            client, BuildPayload(property.Id, paymentOption: PaymentOption.OnSite));
+
+        Assert.Equal("AwaitingGuestEmail", await ReadOutcomeStateAsync(client, bookingId, token));
+        await AssertProblemAsync(
+            await PostWithCheckoutTokenAsync(client, bookingId, "payment-session", token),
+            HttpStatusCode.Conflict,
+            "checkout_payment_not_resumable");
+    }
+
+    [Fact]
+    public async Task Quote_ArrivalTomorrowForTenNights_OffersNeitherDeferredPaymentNorFreeCancellation()
+    {
+        // A3-16: the option used to be offered for stays of more than 7 nights, with a deadline already past.
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var tomorrow = TimeProvider.System.TodayInRome().AddDays(1);
+
+        var options = await ReadQuotePaymentOptionsAsync(client, property.Id, tomorrow, tomorrow.AddDays(10));
+
+        Assert.False(options.GetProperty("deferredPaymentAvailable").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, options.GetProperty("deferredChargeDate").ValueKind);
+        // The guest cannot cancel by themselves (BK-02): no free cancellation is promised.
+        Assert.Equal(JsonValueKind.Null, options.GetProperty("freeCancellationUntil").ValueKind);
+    }
+
+    [Fact]
+    public async Task Quote_ArrivalInThirtyDays_OffersDeferredPaymentChargedSevenDaysBefore()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var options = await ReadQuotePaymentOptionsAsync(client, property.Id, checkIn, checkIn.AddDays(2));
+
+        Assert.True(options.GetProperty("deferredPaymentAvailable").GetBoolean());
+        Assert.Equal(checkIn.AddDays(-7).ToString("yyyy-MM-dd"), options.GetProperty("deferredChargeDate").GetString());
+        Assert.Equal(JsonValueKind.Null, options.GetProperty("freeCancellationUntil").ValueKind);
+    }
+
+    [Fact]
+    public async Task CreateDirectBooking_DeferredPaymentWithArrivalTomorrow_Returns422WithStableCodeAndStoresNothing()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var tomorrow = TimeProvider.System.TodayInRome().AddDays(1);
+
+        var response = await PostDirectBookingAsync(
+            client,
+            BuildPayload(
+                property.Id,
+                checkIn: tomorrow,
+                checkOut: tomorrow.AddDays(10),
+                paymentOption: PaymentOption.OnCancellationDeadline));
+
+        await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "direct_booking_deferred_payment_unavailable");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.Bookings.AnyAsync(b => b.PropertyId == property.Id));
+    }
+
+    [Fact]
+    public async Task CreateDirectBooking_DatesHeldByAnotherCheckout_Returns409WithStableCode()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        await CreateCheckoutAsync(client, BuildPayload(property.Id));
+
+        var response = await PostDirectBookingAsync(client, BuildPayload(property.Id));
+
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, "booking_dates_unavailable");
+    }
+
+    private static async Task<(Guid BookingId, string Token)> CreateCheckoutAsync(HttpClient client, object payload)
+    {
+        var response = await PostDirectBookingAsync(client, payload);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var token = doc.RootElement.GetProperty("checkoutToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        return (doc.RootElement.GetProperty("bookingId").GetGuid(), token!);
+    }
+
+    private static Task<HttpResponseMessage> PostWithCheckoutTokenAsync(
+        HttpClient client, Guid bookingId, string action, string? token) =>
+        client.PostAsync(
+            $"/api/public/bookings/{bookingId}/{action}",
+            new StringContent(JsonSerializer.Serialize(new { token }), Encoding.UTF8, "application/json"));
+
+    private static async Task<string?> ReadOutcomeStateAsync(HttpClient client, Guid bookingId, string token)
+    {
+        var response = await PostWithCheckoutTokenAsync(client, bookingId, "outcome", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.GetProperty("state").GetString();
+    }
+
+    private static async Task<JsonElement> ReadQuotePaymentOptionsAsync(
+        HttpClient client, Guid propertyId, DateTime checkIn, DateTime checkOut)
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            propertyId,
+            checkInDate = checkIn.ToString("yyyy-MM-dd"),
+            checkOutDate = checkOut.ToString("yyyy-MM-dd"),
+            numberOfAdults = 2,
+            numberOfChildren = 0,
+        });
+        var response = await client.PostAsync(
+            "/api/public/bookings/quote", new StringContent(json, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.GetProperty("paymentOptions").Clone();
+    }
+
+    private static async Task AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string code)
+    {
+        Assert.Equal(status, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("detail").GetString()));
+    }
+
     private static object BuildPayload(
         Guid propertyId,
         bool consent = true,
@@ -719,7 +1024,12 @@ internal sealed class FakeStripeService : IStripeService
         string paymentIntentId,
         string? connectedAccountId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = StatusOf(paymentIntentId, PaymentIntentStatus) });
+        Task.FromResult(new PaymentIntent
+        {
+            Id = paymentIntentId,
+            Status = StatusOf(paymentIntentId, PaymentIntentStatus),
+            ClientSecret = $"{paymentIntentId}_secret_test",
+        });
 
     public Task<PaymentIntent> CancelPaymentIntentAsync(
         string paymentIntentId,
@@ -736,7 +1046,12 @@ internal sealed class FakeStripeService : IStripeService
         string setupIntentId,
         string connectedAccountId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult(new SetupIntent { Id = setupIntentId, Status = StatusOf(setupIntentId, "requires_payment_method") });
+        Task.FromResult(new SetupIntent
+        {
+            Id = setupIntentId,
+            Status = StatusOf(setupIntentId, "requires_payment_method"),
+            ClientSecret = $"{setupIntentId}_secret_test",
+        });
 
     public Task<SetupIntent> CancelSetupIntentAsync(
         string setupIntentId,

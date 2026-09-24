@@ -337,6 +337,8 @@ public static class ServiceCollectionExtensions
         // "Pay at the property" requests approved by the host (BK-06, D5, docs/runbooks/direct-booking.md).
         services.AddScoped<OnSiteRequestNotifier>();
         services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();
+        // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
+        services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();

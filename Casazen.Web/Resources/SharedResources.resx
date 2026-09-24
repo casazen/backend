@@ -615,4 +615,19 @@
   <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
     <value>Il file non è valido e nessun codice è stato importato: correggi le righe indicate e riprova.</value>
   </data>
+  <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
+    <value>Il pagamento alla scadenza non è disponibile per queste date: l'arrivo è troppo vicino. Scegli un altro metodo di pagamento.</value>
+  </data>
+  <data name="CheckoutTokenRequired" xml:space="preserve">
+    <value>Il link della prenotazione è incompleto: apri di nuovo la pagina di conferma della prenotazione.</value>
+  </data>
+  <data name="CheckoutLinkInvalid" xml:space="preserve">
+    <value>Link della prenotazione non valido: apri di nuovo la pagina di conferma della prenotazione.</value>
+  </data>
+  <data name="CheckoutHoldExpired" xml:space="preserve">
+    <value>Il tempo per completare il pagamento è scaduto e le date sono state liberate. Puoi prenotare di nuovo se sono ancora disponibili.</value>
+  </data>
+  <data name="CheckoutPaymentNotResumable" xml:space="preserve">
+    <value>Non c'è un pagamento da completare per questa prenotazione: è già in corso, completato oppure la prenotazione è chiusa.</value>
+  </data>
 </root>
