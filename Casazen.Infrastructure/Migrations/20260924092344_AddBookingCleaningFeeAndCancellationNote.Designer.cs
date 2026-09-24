@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924090027_AddBookingCleaningFeeAndCancellationNote")]
+    [Migration("20260924092344_AddBookingCleaningFeeAndCancellationNote")]
     partial class AddBookingCleaningFeeAndCancellationNote
     {
         /// <inheritdoc />
@@ -849,7 +849,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("RegistrationDeadline")
+                    b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SignedPdfStoragePath")
@@ -861,6 +861,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StipulaDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
