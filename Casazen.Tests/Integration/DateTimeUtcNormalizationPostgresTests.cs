@@ -154,6 +154,9 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     public async Task GetPublicAvailability_DateOnlyQuery_Returns200()
     {
         var property = await factory.SeedPropertyAsync($"auth0|fd06-avail-{Guid.NewGuid():N}");
+        // Only a published property has a public availability (BK-05).
+        await WithDbAsync(db => db.Properties.Where(p => p.Id == property.Id).ExecuteUpdateAsync(
+            set => set.SetProperty(p => p.ComplianceStatus, Casazen.Core.Entities.Enums.PropertyComplianceStatus.Active)));
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync(

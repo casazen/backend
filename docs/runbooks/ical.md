@@ -117,3 +117,8 @@ message can quote the document). Skipped events are logged as counts with the ty
    `lastErrorCode: "ical_invalid_format"` and the existing blocks stay.
 4. In the logs of the `property-ical-sync` job, a failing feed is followed by the `iCal sync completed` lines of the
    other feeds.
+5. Public booking site (BK-05): on the page of a published property with imported blocks, the availability calendar
+   shows those nights as taken (`GET /api/public/bookings/property/{propertyId}/availability` lists them in
+   `bookedDates`, dates only), and a checkout over one of them answers 409 `booking_dates_unavailable`. The check-out
+   day of a block stays free. A property not published (inactive or compliance not activated) answers 404
+   `public_property_not_found`.
