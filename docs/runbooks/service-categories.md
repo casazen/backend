@@ -24,7 +24,7 @@ Never rename a code: it is stored in the database and used as an i18n key. A new
 
 ## Data migration `NormalizeServiceCategories`
 
-EF migration `20260924022518_NormalizeServiceCategories`, data only (no schema change). It runs with the other
+EF migration `20260924024604_NormalizeServiceCategories`, data only (no schema change). It runs with the other
 migrations when the backend starts on Railway; no manual step is needed.
 
 - Converted columns: `SupplierProfiles.CategoriesJson`, `SupplierInviteRecords.CategoriesJson` (JSON arrays: each
