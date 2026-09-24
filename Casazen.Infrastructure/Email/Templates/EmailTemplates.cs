@@ -74,11 +74,14 @@ public static class EmailTemplates
         return builder.Build($"{prefix}_Subject", propertyName);
     }
 
-    /// <summary>Invitation of a prospective supplier by a platform admin.</summary>
+    /// <summary>
+    /// Invitation of a prospective supplier by a platform admin. <paramref name="comune"/> is the text shown for the
+    /// comune ("Name (code)" when the name is known, else the code); the expiry is shown in Italian time (Europe/Rome).
+    /// </summary>
     public static EmailContent SupplierInvite(
         CultureInfo culture,
         string email,
-        string comuneCode,
+        string comune,
         string? message,
         string signupUrl,
         DateTime expiresAtUtc)
@@ -86,8 +89,9 @@ public static class EmailTemplates
         var builder = new EmailHtmlBuilder(culture);
         return builder
             .Heading("SupplierInvite_Title")
-            .Paragraph("SupplierInvite_Body", comuneCode)
+            .Paragraph("SupplierInvite_Body", comune)
             .Muted("SupplierInvite_EmailHint", email)
+            .Paragraph("SupplierInvite_NextSteps")
             .Quote("SupplierInvite_MessageLabel", message)
             .Button("SupplierInvite_Cta", signupUrl)
             .LinkFallback("SupplierInvite_LinkFallback", signupUrl)

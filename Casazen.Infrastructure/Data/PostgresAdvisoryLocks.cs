@@ -34,6 +34,9 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Stripe Checkout of one org's plan: at most one subscription per org (A1-10).</summary>
         OrgBillingCheckout = 1_004,
+
+        /// <summary>Acceptance of one supplier invite (key: token hash): an invite is used at most once (SU-01).</summary>
+        SupplierInvite = 1_005,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

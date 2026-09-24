@@ -67,7 +67,10 @@
     <value>CasaZen invites you to register as a &lt;strong&gt;supplier&lt;/strong&gt; for the municipality &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="SupplierInvite_EmailHint" xml:space="preserve">
-    <value>Use the email &lt;strong&gt;{0}&lt;/strong&gt; to register: your supplier profile will be activated automatically.</value>
+    <value>Sign up or sign in with the email &lt;strong&gt;{0}&lt;/strong&gt;: the invitation is valid only for this address and can be used once.</value>
+  </data>
+  <data name="SupplierInvite_NextSteps" xml:space="preserve">
+    <value>After registering, complete your supplier profile in the activation steps: until then your profile stays pending and hosts cannot see it.</value>
   </data>
   <data name="SupplierInvite_MessageLabel" xml:space="preserve">
     <value>Message from the CasaZen team:</value>
@@ -79,7 +82,7 @@
     <value>If the button does not work, copy and paste this link into your browser:</value>
   </data>
   <data name="SupplierInvite_Expires" xml:space="preserve">
-    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time).</value>
   </data>
   <data name="GuestCheckInLink_Subject" xml:space="preserve">
     <value>Complete the check-in for your stay — {0}</value>

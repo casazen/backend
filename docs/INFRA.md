@@ -411,7 +411,7 @@ DataProtection__CertificatePfxBase64=[base64 .pfx]
 DataProtection__CertificatePassword=[pfx password]
 ```
 
-`App__PublicSiteBaseUrl` is the base of **every link in emails** (supplier invite `/register?inviteToken=…`, supplier inbox, guest check-in `/checkin/{token}`): there is no fallback domain in code. Use the web app URL of the matching environment. Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
+`App__PublicSiteBaseUrl` is the base of **every link in emails** (supplier invite `/register?inviteToken=…` on the web app, see [`runbooks/suppliers.md`](runbooks/suppliers.md); supplier inbox; guest check-in `/checkin/{token}`): there is no fallback domain in code. Use the web app URL of the matching environment. Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
 CORS accepts only `Cors__AllowedOrigins` (exact origins) and, when `Cors__VercelPreviewPattern` is set, the Vercel previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
 
@@ -442,6 +442,7 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
 | `Ai__Provider`, `Ai__ApiKey`, `Ai__Subprocessor__*` | no (default `Stub`, no external call) | — | [`ai.md`](runbooks/ai.md) |
 | `Features__OtaPartnerApi`, `Features__AiSupplierDiscovery` | no: leave unset (off, decisions D10/D11) | — | [`feature-flags.md`](runbooks/feature-flags.md) |
+| `Suppliers__PilotComuni__{n}__Code`, `Suppliers__PilotComuni__{n}__Name` | no (no default) | supplier self-serve registration off (invites only); an incomplete or repeated entry stops the startup | [`suppliers.md`](runbooks/suppliers.md) |
 | `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |
 
 GitHub (backend repo, Actions **variables**): `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` — required, `verify-test` / `verify-prod` fail without them.

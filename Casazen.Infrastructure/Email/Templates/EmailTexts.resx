@@ -67,7 +67,10 @@
     <value>CasaZen ti invita a registrarti come &lt;strong&gt;fornitore&lt;/strong&gt; per il comune &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="SupplierInvite_EmailHint" xml:space="preserve">
-    <value>Usa l'email &lt;strong&gt;{0}&lt;/strong&gt; per registrarti: il tuo profilo fornitore verrà attivato automaticamente.</value>
+    <value>Registrati o accedi con l'email &lt;strong&gt;{0}&lt;/strong&gt;: l'invito vale solo per questo indirizzo e si può usare una sola volta.</value>
+  </data>
+  <data name="SupplierInvite_NextSteps" xml:space="preserve">
+    <value>Dopo la registrazione completa il tuo profilo fornitore nella procedura di attivazione: fino ad allora il profilo resta in attesa e gli host non lo vedono.</value>
   </data>
   <data name="SupplierInvite_MessageLabel" xml:space="preserve">
     <value>Messaggio dal team CasaZen:</value>
@@ -79,7 +82,7 @@
     <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
   </data>
   <data name="SupplierInvite_Expires" xml:space="preserve">
-    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
   </data>
   <data name="GuestCheckInLink_Subject" xml:space="preserve">
     <value>Completa il check-in per il tuo soggiorno — {0}</value>
