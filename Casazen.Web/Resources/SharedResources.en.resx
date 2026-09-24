@@ -123,6 +123,24 @@
   <data name="BillingNotAvailable" xml:space="preserve">
     <value>Billing not yet available</value>
   </data>
+  <data name="AlreadySubscribed" xml:space="preserve">
+    <value>The organization already has a subscription: use the billing portal to change plan or complete the payment.</value>
+  </data>
+  <data name="BillingPlanTierUnknown" xml:space="preserve">
+    <value>Invalid plan.</value>
+  </data>
+  <data name="BillingCountryInvalid" xml:space="preserve">
+    <value>Invalid billing country: use the 2-letter ISO code.</value>
+  </data>
+  <data name="BillingVatIdInvalid" xml:space="preserve">
+    <value>Invalid VAT number.</value>
+  </data>
+  <data name="StripeWebhookSignatureInvalid" xml:space="preserve">
+    <value>Invalid Stripe webhook signature.</value>
+  </data>
+  <data name="StripeWebhookNotConfigured" xml:space="preserve">
+    <value>Stripe webhook not configured.</value>
+  </data>
   <data name="PlanLimitReached" xml:space="preserve">
     <value>You have reached your plan limit</value>
   </data>
