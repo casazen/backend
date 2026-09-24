@@ -9,8 +9,18 @@ public record PublicTouristTaxRateSummaryDto(decimal RatePerPersonPerNight, int?
 public record SeoPagePublicDto(
     Guid Id, SeoPageType PageType, string Title, string MetaDescription, string BodyHtml,
     string ComuneName, string ComuneCode, string RegionCode, string RegionSlug, string ComuneSlug,
-    string CanonicalUrl, DateTime? LastRefreshedAt, SeoDisclaimersDto Disclaimers, SeoCtaDto Cta,
+    string? CanonicalUrl, DateTime? LastRefreshedAt, SeoDisclaimersDto Disclaimers, SeoCtaDto Cta,
     PublicTouristTaxRateSummaryDto? TouristTaxRate);
+
+/// <summary>A published SEO page listed by the public hub; <c>Path</c> is the web app route (<c>/p/…</c>).</summary>
+public record SeoPublishedPageDto(
+    SeoPageType PageType, string Title, string ComuneName, string RegionSlug, string ComuneSlug, string Path);
+
+/// <summary>
+/// The public hub (<c>/p/affitti-brevi</c>): the pages the sitemap lists, and the hub canonical URL (<c>null</c> only
+/// when <c>App:PublicSiteBaseUrl</c> is not configured, in Development/Testing).
+/// </summary>
+public record SeoPublishedPagesDto(string? CanonicalUrl, IReadOnlyList<SeoPublishedPageDto> Pages);
 
 public record PublicTouristTaxCalculateRequest(
     string ComuneSlug, int NumberOfAdults, int NumberOfChildren,
@@ -47,5 +57,12 @@ public interface ISeoContentService
     Task<int> GeneratePagesForComuneBatchAsync(IReadOnlyList<string> comuneCodes, IReadOnlyList<SeoPageType> pageTypes, bool forceRegenerate, CancellationToken cancellationToken = default);
     Task<int> ApproveAllDraftPagesAsync(bool counselApproved, CancellationToken cancellationToken = default);
     Task<int> RefreshStalePagesAsync(CancellationToken cancellationToken = default);
+    /// <summary>Pages worth indexing: reviewed, with content, calculators only with a tourist tax rate in force.</summary>
+    Task<SeoPublishedPagesDto> GetPublishedPagesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sitemap of <see cref="GetPublishedPagesAsync"/> plus the hub, with absolute URLs on <c>App:PublicSiteBaseUrl</c>.
+    /// Throws when the public URL is not configured (never a fallback domain).
+    /// </summary>
     Task<string> BuildComplianceSitemapXmlAsync(CancellationToken cancellationToken = default);
 }

@@ -18,6 +18,10 @@ public interface ISeoContentRepository
         LegalReviewStatus? legalReviewStatus, SeoPageType? pageType, string? comuneCode,
         int page, int pageSize, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reviewed compliance guides and tourist tax pages whose latest revision has a body, ordered by slug: the
+    /// candidates of the sitemap and of the public hub (the service drops calculators without a rate).
+    /// </summary>
     Task<IReadOnlyList<SeoContentPage>> GetReviewedPagesForSitemapAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<SeoContentPage>> GetPagesNeedingRefreshAsync(CancellationToken cancellationToken = default);

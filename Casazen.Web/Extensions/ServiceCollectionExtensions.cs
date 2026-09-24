@@ -204,16 +204,20 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// CORS restricted to the configured origins (<c>Cors:AllowedOrigins</c>, optional <c>Cors:VercelPreviewPattern</c>),
-    /// without credentials (FD-17, A3-29 / A9-28). No origin in code (decision D3): see
-    /// <c>docs/runbooks/cors-security-headers.md</c>. Custom host domains plug in through <see cref="ICorsOriginSource"/>.
+    /// CORS restricted to the configured origins (<c>Cors:AllowedOrigins</c>, optional <c>Cors:VercelPreviewPattern</c>)
+    /// plus the origin of the public web app (<c>App:PublicSiteBaseUrl</c>), without credentials (FD-17, A3-29 / A9-28,
+    /// SE-02). No origin in code (decision D3): see <c>docs/runbooks/cors-security-headers.md</c>. Custom host domains
+    /// plug in through <see cref="ICorsOriginSource"/>.
     /// </summary>
     public static IServiceCollection AddCasazenCors(this IServiceCollection services)
     {
         // Read from the final configuration (IConfiguration from DI), and validated when the host starts.
         services.AddOptions<CorsOriginOptions>()
             .Configure<IConfiguration>((options, configuration) =>
-                CorsOriginOptions.Configure(options, configuration.GetSection(CorsOriginOptions.SectionName)))
+            {
+                CorsOriginOptions.Configure(options, configuration.GetSection(CorsOriginOptions.SectionName));
+                CorsOriginOptions.AddPublicSiteOrigin(options, configuration);
+            })
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<CorsOriginOptions>, CorsOriginOptionsValidator>();
         services.AddSingleton<CorsOriginAllowList>();

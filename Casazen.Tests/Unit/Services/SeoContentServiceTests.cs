@@ -6,7 +6,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
-using Microsoft.Extensions.Configuration;
+using Casazen.Tests.Unit.Email;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -40,7 +40,6 @@ public class SeoContentServiceTests
 
         var seoRepo = new Mock<ISeoContentRepository>();
         var aiProvider = new Mock<IAiProvider>();
-        var config = new ConfigurationBuilder().Build();
         var logger = new Mock<ILogger<SeoContentService>>();
 
         var service = new SeoContentService(
@@ -48,7 +47,7 @@ public class SeoContentServiceTests
             touristTaxRepo.Object,
             touristTaxService.Object,
             aiProvider.Object,
-            config,
+            EmailTestHelpers.Links(),
             logger.Object);
 
         var result = await service.CalculateTouristTaxAsync(new PublicTouristTaxCalculateRequest(
@@ -88,7 +87,7 @@ public class SeoContentServiceTests
             Mock.Of<ITouristTaxRateRepository>(),
             Mock.Of<ITouristTaxService>(),
             aiProvider.Object,
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
@@ -126,7 +125,7 @@ public class SeoContentServiceTests
             Mock.Of<ITouristTaxRateRepository>(),
             Mock.Of<ITouristTaxService>(),
             aiProvider.Object,
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var refreshed = await service.RefreshStalePagesAsync();
@@ -155,7 +154,7 @@ public class SeoContentServiceTests
             Mock.Of<ITouristTaxRateRepository>(),
             Mock.Of<ITouristTaxService>(),
             Mock.Of<IAiProvider>(),
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -204,7 +203,7 @@ public class SeoContentServiceTests
             Mock.Of<ITouristTaxRateRepository>(),
             Mock.Of<ITouristTaxService>(),
             aiProvider.Object,
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
@@ -253,7 +252,7 @@ public class SeoContentServiceTests
             Mock.Of<ITouristTaxRateRepository>(),
             Mock.Of<ITouristTaxService>(),
             Mock.Of<IAiProvider>(),
-            new ConfigurationBuilder().Build(),
+            EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var dto = pageType == SeoPageType.ComplianceGuide

@@ -1,15 +1,19 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
 using Hangfire.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -102,16 +106,88 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     }
 
     [Fact]
-    public async Task AC8_SitemapComplianceXml_ListsReviewedPages()
+    public async Task AC8_Sitemap_ListsReviewedPagesOnConfiguredPublicSite()
     {
         await SeedSeoPageAsync(LegalReviewStatus.Reviewed, SeoPageType.ComplianceGuide);
 
         var client = _factory.CreateClient();
-        var response = await client.GetAsync("/sitemap-compliance.xml");
+        var response = await client.GetAsync("/api/public/sitemap.xml");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var xml = await response.Content.ReadAsStringAsync();
-        Assert.Contains("affitti-brevi/lombardia/como", xml, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("application/xml", response.Content.Headers.ContentType?.MediaType);
+        var locations = SitemapLocations(await response.Content.ReadAsStringAsync());
+        // SE-02 (A8-02): the host is App:PublicSiteBaseUrl, the domain of the web app that serves /p/* (decision D3).
+        Assert.Contains($"{PublicSiteBaseUrl()}/p/affitti-brevi/lombardia/como", locations);
+        Assert.Contains($"{PublicSiteBaseUrl()}/p/affitti-brevi", locations);
+        Assert.All(locations, loc => Assert.StartsWith(PublicSiteBaseUrl() + "/", loc));
+    }
+
+    [Fact]
+    public async Task Sitemap_OldPathOnApiHost_IsGone()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/sitemap-compliance.xml");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SitemapAndHub_PagesWithoutContentDraftOrWithoutRate_AreLeftOut()
+    {
+        // Reviewed guide without any revision (nothing to show), a draft with content, a calculator without a rate.
+        await SeedPageAsync("013133", "affitti-brevi/lombardia/menaggio", SeoPageType.ComplianceGuide, LegalReviewStatus.Reviewed, bodyHtml: null);
+        await SeedPageAsync("015146", "affitti-brevi/lombardia/milano", SeoPageType.ComplianceGuide, LegalReviewStatus.Draft, "<p>Bozza</p>");
+        await SeedPageAsync("082053", "tassa-soggiorno/palermo", SeoPageType.TouristTaxCalc, LegalReviewStatus.Reviewed, "<p>Palermo</p>");
+
+        var client = _factory.CreateClient();
+        var locations = SitemapLocations(await client.GetStringAsync("/api/public/sitemap.xml"));
+        using var hub = JsonDocument.Parse(await client.GetStringAsync("/api/public/content"));
+        var hubPaths = hub.RootElement.GetProperty("pages").EnumerateArray()
+            .Select(p => p.GetProperty("path").GetString())
+            .ToList();
+
+        foreach (var path in new[] { "/p/affitti-brevi/lombardia/menaggio", "/p/affitti-brevi/lombardia/milano", "/p/tassa-soggiorno/palermo" })
+        {
+            Assert.DoesNotContain(PublicSiteBaseUrl() + path, locations);
+            Assert.DoesNotContain(path, hubPaths);
+        }
+    }
+
+    [Fact]
+    public async Task Hub_ListsTheSitemapPagesWithCanonicalOnConfiguredPublicSite()
+    {
+        await SeedTouristTaxRateAsync("Como", 2.5m, maxNights: 4);
+        await SeedSeoPageAsync(LegalReviewStatus.Reviewed, SeoPageType.ComplianceGuide);
+        await SeedSeoPageAsync(LegalReviewStatus.Reviewed, SeoPageType.TouristTaxCalc);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/public/content");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal($"{PublicSiteBaseUrl()}/p/affitti-brevi", doc.RootElement.GetProperty("canonicalUrl").GetString());
+        var hubPaths = doc.RootElement.GetProperty("pages").EnumerateArray()
+            .Select(p => p.GetProperty("path").GetString())
+            .ToList();
+        Assert.Contains("/p/affitti-brevi/lombardia/como", hubPaths);
+        Assert.Contains("/p/tassa-soggiorno/como", hubPaths);
+
+        var locations = SitemapLocations(await client.GetStringAsync("/api/public/sitemap.xml"));
+        Assert.All(hubPaths, path => Assert.Contains(PublicSiteBaseUrl() + path, locations));
+    }
+
+    [Fact]
+    public async Task PublicComplianceGuide_CanonicalUrl_IsOnConfiguredPublicSite()
+    {
+        await SeedSeoPageAsync(LegalReviewStatus.Reviewed, SeoPageType.ComplianceGuide);
+
+        var client = _factory.CreateClient();
+        using var doc = JsonDocument.Parse(await client.GetStringAsync("/api/public/content/affitti-brevi/lombardia/como"));
+
+        Assert.Equal(
+            $"{PublicSiteBaseUrl()}/p/affitti-brevi/lombardia/como",
+            doc.RootElement.GetProperty("canonicalUrl").GetString());
     }
 
     [Fact]
@@ -187,6 +263,50 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         var stored = await context.SeoContentRevisions.AsNoTracking()
             .SingleAsync(r => r.PageId == pageId && r.SourceDataVersion == "test-v2");
         Assert.Equal("<p>v2</p>", stored.BodyHtml);
+    }
+
+    private string PublicSiteBaseUrl() =>
+        _factory.Services.GetRequiredService<IOptions<PublicSiteOptions>>().Value.PublicSiteBaseUrl!.TrimEnd('/');
+
+    private static List<string> SitemapLocations(string xml)
+    {
+        XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
+        return XDocument.Parse(xml).Descendants(ns + "loc").Select(loc => loc.Value).ToList();
+    }
+
+    /// <summary>A page of <paramref name="pageType"/> with an optional revision (<c>null</c>: no revision at all).</summary>
+    private async Task SeedPageAsync(
+        string comuneCode, string slug, SeoPageType pageType, LegalReviewStatus status, string? bodyHtml)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var page = new SeoContentPage
+        {
+            Slug = slug,
+            ComuneCode = comuneCode,
+            RegionCode = ItalianComuneRegistry.GetByCode(comuneCode)!.RegionCode,
+            PageType = pageType,
+            Title = "Pagina di test",
+            MetaDescription = "Test meta",
+            LegalReviewStatus = status,
+            LastRefreshedAt = DateTime.UtcNow,
+        };
+        context.SeoContentPages.Add(page);
+        await context.SaveChangesAsync();
+
+        if (bodyHtml is null)
+            return;
+
+        context.SeoContentRevisions.Add(new SeoContentRevision
+        {
+            PageId = page.Id,
+            BodyHtml = bodyHtml,
+            AiModelTier = AiModelTier.Economy,
+            PromptTokens = 100,
+            SourceDataVersion = "test-v1",
+        });
+        await context.SaveChangesAsync();
     }
 
     /// <summary>

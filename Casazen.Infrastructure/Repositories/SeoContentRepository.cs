@@ -93,10 +93,22 @@ public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
     public async Task<IReadOnlyList<SeoContentPage>> GetReviewedPagesForSitemapAsync(
         CancellationToken cancellationToken = default)
     {
+        // SE-02 (A8-02): only pages with content. Bodies are sanitized and trimmed when stored (FD-15), so the latest
+        // revision (same order as GetLatestRevisionAsync) is empty exactly when the page has nothing to show.
         return await context.SeoContentPages
             .AsNoTracking()
             .Where(p => p.LegalReviewStatus == LegalReviewStatus.Reviewed &&
                         (p.PageType == SeoPageType.ComplianceGuide || p.PageType == SeoPageType.TouristTaxCalc))
+            .Select(p => new
+            {
+                Page = p,
+                LatestBody = p.Revisions
+                    .OrderByDescending(r => r.GeneratedAt)
+                    .Select(r => r.BodyHtml)
+                    .FirstOrDefault(),
+            })
+            .Where(x => x.LatestBody != null && x.LatestBody != "")
+            .Select(x => x.Page)
             .OrderBy(p => p.Slug)
             .ToListAsync(cancellationToken);
     }
