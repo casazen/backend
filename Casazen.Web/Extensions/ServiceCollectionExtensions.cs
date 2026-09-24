@@ -273,6 +273,7 @@ public static class ServiceCollectionExtensions
         // Booking confirmation (guest + host) and cancellation emails (BK-10, docs/runbooks/email.md).
         services.AddScoped<BookingNotifier>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
@@ -352,6 +353,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
+        services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();

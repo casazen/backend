@@ -28,6 +28,7 @@ public interface ICheckoutOutcomeService
 /// <summary>The checkout of a booking as its guest sees it. No personal data of the guest.</summary>
 /// <param name="ExpiresAt">Until when the guest can pay, or the request waits; null when nothing is pending.</param>
 /// <param name="DeferredChargeDate">"Paga alla scadenza": the day the saved card is charged.</param>
+/// <param name="BookingCode">The booking code of "Le mie prenotazioni" (BK-11), formatted.</param>
 public sealed record CheckoutOutcome(
     Guid BookingId,
     CheckoutOutcomeState State,
@@ -42,7 +43,8 @@ public sealed record CheckoutOutcome(
     decimal TotalPrice,
     string Currency,
     DateTime? ExpiresAt,
-    DateOnly? DeferredChargeDate);
+    DateOnly? DeferredChargeDate,
+    string BookingCode);
 
 /// <summary>What the Stripe Payment Element needs to pay a hold again.</summary>
 /// <param name="ClientSecret">Immediate payment: the PaymentIntent's client secret.</param>

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -87,17 +88,31 @@ public class PushNotificationServiceTests
     }
 
     [Fact]
-    public async Task SendGuestCheckInIncompleteAsync_SendsOnlyToPropertyOwnerAndPrivilegedUsers()
+    public async Task SendToBookingHostsAsync_SendsOnlyToPropertyOwnerAndPrivilegedUsers()
     {
         await using var db = CreateDb();
         var fixture = await SeedNotificationFixtureAsync(db);
-        var service = CreateService(db, out var sentTokens);
+        var service = CreateService(db, out var sentTokens, out var handler);
 
-        await service.SendGuestCheckInIncompleteAsync(fixture.BookingId);
+        await service.SendToBookingHostsAsync(new PushNotificationPayload(
+            "Alloggiati Web in scadenza", "Villa: invia la comunicazione", "alloggiati-deadline", fixture.BookingId, $"/bookings/{fixture.BookingId}"));
 
         Assert.Equal(
             ["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"],
             sentTokens.Order().ToArray());
+        Assert.Equal("alloggiati-deadline", GetDataValue(handler, "type"));
+        Assert.Equal($"/bookings/{fixture.BookingId}", GetRoute(handler));
+    }
+
+    [Fact]
+    public async Task SendToBookingHostsAsync_PayloadWithoutBooking_Throws()
+    {
+        await using var db = CreateDb();
+        var service = CreateService(db, out var sentTokens);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SendToBookingHostsAsync(
+            new PushNotificationPayload("Title", "Body", "alloggiati-deadline", null, "/bookings")));
+        Assert.Empty(sentTokens);
     }
 
     [Fact]

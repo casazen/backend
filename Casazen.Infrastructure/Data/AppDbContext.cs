@@ -40,6 +40,9 @@ public class AppDbContext(
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
 
+    // Stages of the host alerts already sent per stay (CO-10)
+    public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
+
     // Guests of a stay and official Alloggiati code tables (CO-12)
     public DbSet<StayGuest> StayGuests { get; set; } = null!;
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
@@ -85,6 +88,7 @@ public class AppDbContext(
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
     public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
+    public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
@@ -149,6 +153,13 @@ public class AppDbContext(
                 "CK_AlloggiatiWebReports_SentRequiresReceipt",
                 $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
 
+        // CO-10: the alert stages of a stay go with it.
+        modelBuilder.Entity<StayAlertState>()
+            .HasOne(s => s.Booking)
+            .WithMany()
+            .HasForeignKey(s => s.BookingId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
         modelBuilder.Entity<StayGuest>(entity =>
         {
@@ -186,6 +197,11 @@ public class AppDbContext(
             .HasIndex(b => b.CheckInToken)
             .IsUnique()
             .HasFilter("\"CheckInToken\" IS NOT NULL");
+
+        // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.BookingCode })
+            .IsUnique();
 
         // Precision for GPS coordinates
         modelBuilder.Entity<Property>()
@@ -374,6 +390,26 @@ public class AppDbContext(
 
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
+
+        // LeaseSigner (LT-02, A7-16): one row per party and lease, removed with the lease or the party.
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.LeaseContract)
+            .WithMany(l => l.Signers)
+            .HasForeignKey(s => s.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.Party)
+            .WithMany()
+            .HasForeignKey(s => s.PartyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.Org)
+            .WithMany()
+            .HasForeignKey(s => s.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasIndex(s => new { s.LeaseContractId, s.PartyId })
+            .IsUnique();
 
         modelBuilder.Entity<LeaseRegistrationAuthorization>()
             .HasOne(a => a.LeaseContract)

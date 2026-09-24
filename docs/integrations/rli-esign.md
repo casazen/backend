@@ -1,6 +1,6 @@
 # Registrazione RLI e firma elettronica: fattibilità delle integrazioni
 
-> Task **RS-4** del risanamento, aggiornato il 2026-09-23. È un documento di ricerca: nessun codice è stato modificato.
+> Task **RS-4** del risanamento, aggiornato il 2026-09-23. È un documento di ricerca: nessun codice è stato modificato. Lo stato dell'implementazione dopo LT-01 e LT-02 è riassunto subito sotto i verdetti.
 > Serve a decidere **LT-01** (registrazione RLI, difetti A7-01 e A7-21) e **LT-02** (firma del contratto, difetti A7-02, A7-16 e A7-20), secondo la decisione **D15** di `Sessions/risanamento/DECISIONI.md`: se l'integrazione non è possibile senza un contratto, si adotta un flusso manuale onesto.
 
 ## Verdetti
@@ -16,6 +16,15 @@
 - **Percorso provider** dietro il flag `Features:RliProvider` (**spento**) e con un provider configurato. Il client Openapi **non è stato scritto**: identificativo e campi del servizio di locazione non sono nella specifica pubblica (§1.3, §1.7) e scriverli a mano vorrebbe dire inventare il payload. Il provider registrato è `UnconfiguredLeaseRegistrationProvider`, che rifiuta ogni chiamata; lo stub `OpenapiLeaseRegistrationProvider` (`RLI-STUB-…`, `[RECEIPT PLACEHOLDER]`) è stato rimosso.
 - Atomicità (A7-21), stati, codici di errore, migrazione dei dati dello stub e passi per collegare un client reale: `docs/runbooks/rli.md`.
 - `Rli:FilingEnabled` e la sezione `Openapi` (`ClientId`/`ClientSecret`) non esistono più: il flag è `Features:RliProvider`, le chiavi Openapi restano quelle proposte al §1.9, da introdurre con il client.
+
+### Stato dell'implementazione (LT-02, 2026-09-24)
+
+- **Firma offline** come percorso predefinito (flusso manuale del §4): il locatore scarica il contratto definitivo (`GET /api/leases/{id}/contract.pdf`, solo da template approvato, LT-03; altrimenti solo l'anteprima BOZZA), lo fa firmare a tutte le parti su carta o con la loro firma digitale o FEA, poi carica il PDF firmato con la **data di stipula** (`POST /api/leases/{id}/signed-document`, bucket privato, download autenticato). Solo allora il contratto risulta "Firmato", con `RecordStipula` e la scadenza RLI (LT-04). CasaZen **non verifica** le firme del PDF caricato e lo dice nell'interfaccia.
+- **Lease già firmati senza data di stipula**: azione "Dichiara data di stipula" (`POST /api/leases/{id}/stipula`), una sola volta.
+- **Firmatari persistiti** (A7-16): tabella `LeaseSigners` e `GET /api/leases/{id}/signers`, con link del provider, scadenza e badge "scaduto"; l'endpoint dice anche se il percorso provider esiste e se il contratto definitivo è scaricabile.
+- **Percorso provider** dietro il flag `Features:ESignProvider` (**spento**) e con un provider configurato. Il client Yousign/Youtrust **non è stato scritto** (§4: budget e parere legale sulla FEA aperti). Il provider registrato è `UnconfiguredLeaseESignService`, che rifiuta ogni chiamata; lo stub `LeaseESignHttpAdapter` (link a `sign.provider.example.com`) è stato rimosso.
+- **Webhook** (A7-20): 404 con il flag spento; con il flag acceso segreto HMAC obbligatorio all'avvio (niente segnaposto, almeno 16 caratteri), guard di stato (solo da `AwaitingSignature`/`PartiallySigned`: un "all signed" ripetuto non riporta mai un contratto `Registered` a `Signed`), `PartiallySigned` impostato alla firma di una parte, PDF firmato copiato nel bucket privato prima di passare a `Signed`.
+- Dettagli operativi, codici di errore, migrazione `AddLeaseSigners` e passi per collegare un client reale: `docs/runbooks/rli.md` § Contract signature (LT-02).
 
 ---
 
@@ -174,7 +183,7 @@ Un'opzione futura, fuori dallo scope di LT-01, è generare un file XML RLI preco
 
 ## 3. Firma elettronica del contratto
 
-L'adapter attuale è `Casazen.Infrastructure/External/LeaseESignHttpAdapter.cs`: uno stub con link verso `sign.provider.example.com` (A7-02) e un webhook senza controllo di stato né segreto reale (A7-20).
+Al momento della ricerca l'adapter era `Casazen.Infrastructure/External/LeaseESignHttpAdapter.cs`: uno stub con link verso `sign.provider.example.com` (A7-02) e un webhook senza controllo di stato né segreto reale (A7-20). LT-02 lo ha rimosso: vedi "Stato dell'implementazione (LT-02)" in testa al documento.
 
 ### 3.1 Quadro legale italiano: livello di firma richiesto
 

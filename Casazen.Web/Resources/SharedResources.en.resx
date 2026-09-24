@@ -669,6 +669,39 @@
   <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
     <value>The file is not valid and no code was imported: fix the listed lines and try again.</value>
   </data>
+  <data name="ESignProviderUnavailable" xml:space="preserve">
+    <value>Electronic signature through a provider is not available. Download the contract, have every party sign it (on paper or with their own digital signature) and upload the signed PDF here with the signing date.</value>
+  </data>
+  <data name="ESignProviderFailed" xml:space="preserve">
+    <value>The e-signature provider did not accept the request: no signing link was created and the contract is NOT signed. Try again later or use the paper/PDF signature.</value>
+  </data>
+  <data name="ESignWebhookNotConfigured" xml:space="preserve">
+    <value>The e-signature webhook is not configured.</value>
+  </data>
+  <data name="ESignWebhookSignatureInvalid" xml:space="preserve">
+    <value>Invalid e-signature webhook signature.</value>
+  </data>
+  <data name="LeaseSigningNotDraft" xml:space="preserve">
+    <value>Electronic signing can only start on a draft contract.</value>
+  </data>
+  <data name="LeaseAlreadySigned" xml:space="preserve">
+    <value>The contract is already signed by every party.</value>
+  </data>
+  <data name="LeaseSignedContractInvalid" xml:space="preserve">
+    <value>The signed contract must be a PDF file of at most {0} MB.</value>
+  </data>
+  <data name="LeaseSignedContractNotAvailable" xml:space="preserve">
+    <value>The signed contract is not available: it has not been uploaded yet.</value>
+  </data>
+  <data name="LeaseStipulaDateInFuture" xml:space="preserve">
+    <value>The signing date (stipula) cannot be later than today.</value>
+  </data>
+  <data name="LeaseStipulaAlreadyRecorded" xml:space="preserve">
+    <value>The signing date (stipula) of this contract is already recorded.</value>
+  </data>
+  <data name="LeaseStipulaLeaseNotSigned" xml:space="preserve">
+    <value>The contract is not signed yet: upload the PDF signed by every party together with the signing date.</value>
+  </data>
   <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
     <value>Paying at the deadline is not available for these dates: the arrival is too close. Choose another payment method.</value>
   </data>
@@ -710,6 +743,27 @@
   </data>
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
     <value>The check-out can be recorded from the departure day.</value>
+  </data>
+  <data name="GuestBookingNotFound" xml:space="preserve">
+    <value>No booking matches this code and email address. Check the code in the confirmation email and use the email address you booked with.</value>
+  </data>
+  <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
+    <value>The online check-in link cannot be sent now: the booking is not confirmed, the check-in is already completed or it is not time yet.</value>
+  </data>
+  <data name="GuestBookingOrgRequired" xml:space="preserve">
+    <value>The booking site is missing: open “My bookings” again from the property's website.</value>
+  </data>
+  <data name="GuestBookingCodeRequired" xml:space="preserve">
+    <value>Enter the booking code.</value>
+  </data>
+  <data name="GuestBookingCodeInvalid" xml:space="preserve">
+    <value>The booking code is not valid: check the confirmation email.</value>
+  </data>
+  <data name="GuestBookingEmailRequired" xml:space="preserve">
+    <value>Enter the email address you booked with.</value>
+  </data>
+  <data name="GuestBookingEmailInvalid" xml:space="preserve">
+    <value>Invalid email address.</value>
   </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>This property is not available for online booking.</value>

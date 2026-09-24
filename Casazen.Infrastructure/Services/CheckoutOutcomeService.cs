@@ -60,7 +60,8 @@ public sealed class CheckoutOutcomeService(
             CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes),
             booking.PaymentOption == PaymentOption.OnCancellationDeadline && booking.FreeRefundDeadline is { } deadline
                 ? RomeCalendar.DateInRome(deadline)
-                : null);
+                : null,
+            BookingCodes.Format(booking.BookingCode));
     }
 
     public async Task<CheckoutPaymentSession> ResumePaymentAsync(

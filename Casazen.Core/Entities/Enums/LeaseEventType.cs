@@ -14,5 +14,11 @@ public enum LeaseEventType
     ImuNotificationMarkedSent,
     RegistrationAuthorized,
     RliExported,
-    DeadlineReminderSent
+    DeadlineReminderSent,
+
+    /// <summary>
+    /// The landlord declared the stipula date of a lease signed before CasaZen recorded it (LT-02); the offline
+    /// signature itself is <see cref="AllPartiesSigned"/> with payload <c>offline</c>.
+    /// </summary>
+    StipulaDeclared
 }

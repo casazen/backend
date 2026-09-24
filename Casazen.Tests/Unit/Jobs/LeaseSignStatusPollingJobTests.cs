@@ -12,41 +12,31 @@ namespace Casazen.Tests.Unit.Jobs;
 public class LeaseSignStatusPollingJobTests
 {
     /// <summary>
-    /// Known limitation tracked as GitHub #177: this job only logs leases in
-    /// <see cref="LeaseStatus.AwaitingSignature"/>. US-009 verifies current behaviour
-    /// and does not implement an active e-sign poller.
+    /// LT-02: the job (registered only with <c>Features:ESignProvider</c> on) logs the leases waiting for the provider,
+    /// AwaitingSignature and PartiallySigned; it never changes a lease and never calls the provider.
     /// </summary>
     [Fact]
-    public async Task AC5_ExecuteAsync_LogsAwaitingSignatureLeases_DoesNotCallESignProvider_Todo177()
+    public async Task ExecuteAsync_LeasesWaitingForProvider_LogsWithoutChangingOrCallingTheProvider()
     {
-        var pending = new LeaseContract
-        {
-            Id = Guid.NewGuid(),
-            Status = LeaseStatus.AwaitingSignature,
-            UpdatedAt = DateTime.UtcNow.AddDays(-2),
-        };
+        var awaiting = new LeaseContract { Id = Guid.NewGuid(), Status = LeaseStatus.AwaitingSignature, UpdatedAt = DateTime.UtcNow.AddDays(-2) };
+        var partial = new LeaseContract { Id = Guid.NewGuid(), Status = LeaseStatus.PartiallySigned, UpdatedAt = DateTime.UtcNow.AddDays(-1) };
         var leases = new Mock<ILeaseContractRepository>();
-        leases.Setup(r => r.GetByStatusAsync(LeaseStatus.AwaitingSignature)).ReturnsAsync([pending]);
+        leases.Setup(r => r.GetByStatusAsync(LeaseStatus.AwaitingSignature)).ReturnsAsync([awaiting]);
+        leases.Setup(r => r.GetByStatusAsync(LeaseStatus.PartiallySigned)).ReturnsAsync([partial]);
         var logger = new Mock<ILogger<LeaseSignStatusPollingJob>>();
 
-        var job = new LeaseSignStatusPollingJob(leases.Object, logger.Object);
-        await job.ExecuteAsync();
+        await new LeaseSignStatusPollingJob(leases.Object, logger.Object).ExecuteAsync();
 
-        leases.Verify(r => r.GetByStatusAsync(LeaseStatus.AwaitingSignature), Times.Once);
         leases.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
-
         var ctorParams = typeof(LeaseSignStatusPollingJob).GetConstructors()[0].GetParameters();
         Assert.DoesNotContain(ctorParams, p => p.ParameterType == typeof(ILeaseESignService));
-
         logger.Verify(
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((state, _) =>
-                    state.ToString()!.Contains("awaiting signature", StringComparison.OrdinalIgnoreCase)
-                    || state.ToString()!.Contains("Polling sign status", StringComparison.OrdinalIgnoreCase)),
+                It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains("waiting for the e-signature provider", StringComparison.Ordinal)),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.AtLeastOnce);
+            Times.Exactly(3));
     }
 }

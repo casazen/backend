@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 
 namespace Casazen.Core.DTOs.Leases;
@@ -60,12 +61,47 @@ public sealed record LeaseRegistrationDto(
     string? FailureCode,
     bool HasReceipt);
 
+/// <summary>
+/// A party as signer of the contract (LT-02, A7-16). <c>Method</c> Offline: signature on paper or with the party's own
+/// digital signature, recorded when the landlord uploads the signed contract. <c>SigningUrl</c>: the provider link, only
+/// while the signature is pending and only for a caller who may sign the lease; <c>SigningUrlExpired</c> is computed
+/// at read time.
+/// </summary>
+public sealed record LeaseSignerDto(
+    Guid PartyId,
+    PartyRole Role,
+    string FirstName,
+    string LastName,
+    LeaseSignatureMethod Method,
+    LeaseSignerStatus Status,
+    string? SigningUrl,
+    DateTime? SigningUrlExpiresAt,
+    bool SigningUrlExpired,
+    DateTime? SignedAt);
+
+/// <summary>
+/// Signature panel of a lease (<c>GET /api/leases/{id}/signers</c>, LT-02). <c>ProviderSigningAvailable</c>: the
+/// e-signature provider path exists (<c>Features:ESignProvider</c> on and a configured provider); otherwise the contract
+/// is signed offline. <c>ContractAvailable</c>: the final contract to sign can be downloaded now; otherwise
+/// <c>ContractUnavailableCode</c> says why (<c>contract_template_not_approved</c>, <c>contract_data_missing</c>: only the
+/// BOZZA preview exists, LT-03; <c>lease_already_signed</c>).
+/// </summary>
+public sealed record LeaseSigningStateDto(
+    bool ProviderSigningAvailable,
+    bool ContractAvailable,
+    string? ContractUnavailableCode,
+    IReadOnlyList<LeaseSignerDto> Signers);
+
+/// <summary>Result of <c>POST /api/leases/{id}/signing</c> (provider path): the lease status and its signers with their links.</summary>
+public sealed record SigningInitiatedDto(Guid LeaseId, LeaseStatus Status, IReadOnlyList<LeaseSignerDto> Signers);
+
 /// <summary>Timeline entry: the event type only, never its payload.</summary>
 public sealed record LeaseEventDto(LeaseEventType EventType, DateTime OccurredAt);
 
 /// <summary>
 /// Lease detail page. <c>StipulaDate</c>: the day every party had signed; <c>RegistrationDeadline</c>:
-/// <c>min(stipula, start) + 30</c> days, null while it is to be determined (LT-04).
+/// <c>min(stipula, start) + 30</c> days, null while it is to be determined (LT-04). <c>HasSignedPdf</c>: the contract
+/// signed by every party can be downloaded (<c>GET /api/leases/{id}/signed-document</c>, LT-02).
 /// </summary>
 public sealed record LeaseDetailDto(
     Guid Id,
@@ -106,7 +142,8 @@ public static class LeaseDtoMapper
             lease.MonthlyRent,
             lease.StipulaDate,
             RliRegistrationDeadline.Resolve(lease, todayInRome),
-            HasSignedPdf: !string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath),
+            // Only a file of the private bucket can be served (LT-02): a provider path left by the old stub is not one.
+            HasSignedPdf: StorageKeys.IsValid(lease.SignedPdfStoragePath),
             lease.HasExtraEUTenant,
             lease.Parties.OrderBy(p => p.Role).ThenBy(p => p.LastName, StringComparer.Ordinal).Select(ToParty).ToList(),
             lease.Registration is null ? null : ToRegistration(lease.Registration),

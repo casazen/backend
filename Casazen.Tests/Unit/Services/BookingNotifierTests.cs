@@ -32,7 +32,11 @@ public class BookingNotifierTests : IDisposable
         Assert.Equal(("guest@example.com", EmailTemplates.Names.GuestBookingConfirmed), (emails[0].To, emails[0].Template));
         Assert.Equal(("host@example.com", EmailTemplates.Names.HostBookingConfirmed), (emails[1].To, emails[1].Template));
         Assert.Contains("Pagamento ricevuto: <strong>362,00 €</strong>.", emails[0].Content.HtmlBody);
-        Assert.Contains("href=\"https://casazen-app.test/book/villa-org/my-bookings\"", emails[0].Content.HtmlBody);
+        // BK-11: the readable booking code, in the text and in the link to "Le mie prenotazioni"; never the booking id.
+        var code = Casazen.Core.Services.BookingCodes.Format((await _db.Bookings.SingleAsync(b => b.Id == bookingId)).BookingCode);
+        Assert.Contains($"Codice prenotazione: <strong>{code}</strong>", emails[0].Content.HtmlBody);
+        Assert.Contains($"href=\"https://casazen-app.test/book/villa-org/my-bookings?code={code}\"", emails[0].Content.HtmlBody);
+        Assert.DoesNotContain(bookingId.ToString("D"), emails[0].Content.HtmlBody);
         Assert.Contains($"href=\"https://casazen-app.test/app/short-rent/bookings/{bookingId:D}\"", emails[1].Content.HtmlBody);
     }
 

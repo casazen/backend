@@ -1,7 +1,8 @@
 # Runbook: RLI registration of lease contracts
 
 Task **LT-01** (defects A7-01 and A7-21), decision **D15**, research **RS-4** (`docs/integrations/rli-esign.md`).
-Registration deadline and reminders: task **LT-04** (defect A7-04), rule verified by **RS-5**.
+Registration deadline and reminders: task **LT-04** (defect A7-04), rule verified by **RS-5**. Contract signature
+(offline by default, provider off): task **LT-02**, see [Contract signature](#contract-signature-lt-02).
 
 Until LT-01 the "registration" was a stub: `POST /api/leases/{id}/registration` returned `RLI-STUB-{id}` without
 calling anyone, the lease went to `SentToProvider`, the checklist ticked "RLI sent", the toast said "Registration
@@ -147,6 +148,136 @@ SELECT count(*) FROM "LeaseRegistrations" WHERE "ExternalRegistrationId" LIKE 'R
 On the **test** environment the landlords who used the old "Authorize and submit" now see their lease as "Registration
 failed — the previous submission was only simulated": they must register the contract themselves.
 
+## Contract signature (LT-02)
+
+Task **LT-02** (defects A7-02 P0, A7-16, A7-20), decision **D15**, research **RS-4** (`rli-esign.md` §3, §4).
+
+Until LT-02 the signature was a stub (`LeaseESignHttpAdapter`): "Avvia firma" sent the PDF to nobody, moved the lease
+to `AwaitingSignature` with links to the non-existent `sign.provider.example.com` and the lease never reached `Signed`
+(the polling job only logged). The links lived only in the page state and were lost at every refresh. The e-sign
+webhook had no status guard (an `allSigned` event moved a `Registered` lease back to `Signed`), never set
+`PartiallySigned`, and its committed secret was the public string `PLACEHOLDER_SET_IN_ENV`.
+
+Now the signature is **offline by default** and nothing is shown as signed until CasaZen records the signature of
+every party. A lease signed electronically needs at least the FEA (CAD art. 20; FEQ over 9 years), which no provider
+offers self-serve: the provider path exists in the code but stays **off, with no real client** (`rli-esign.md` §4).
+
+### Offline signature (default path)
+
+1. `GET /api/leases/{id}/contract.pdf`, policy `lease.sign` (the PDF carries the full fiscal codes): the **final**
+   contract, only from a complete, lawyer-approved template with every datum known (LT-03). Otherwise 422
+   `contract_template_not_approved` / `contract_data_missing` and the UI offers only the preview
+   `GET /api/leases/{id}/contract/preview`, marked BOZZA and not valid for signature. 409 `lease_already_signed` once
+   every party signed. The canone concordato minimum term and the APE are checked as for the provider path.
+2. The parties sign **outside CasaZen**: by hand on paper, or each with their own digital signature or FEA. CasaZen does
+   not verify the signatures of the uploaded file (the UI says so).
+3. `POST /api/leases/{id}/signed-document` (multipart: `signedContract`, `stipulaDate`), policy `lease.sign` on the
+   lease (TN-3: the owner, or an org-wide member with `lease.sign`):
+   - `signedContract`: checked on its content (`%PDF-` signature, the declared type is ignored), at most 20 MB
+     (422 `lease_signed_contract_invalid`);
+   - `stipulaDate`: the day the last party signed, not later than today in Europe/Rome (422 `lease_stipula_date_in_future`);
+   - the lease must be `Draft`, `AwaitingSignature` or `PartiallySigned` (409 `lease_already_signed`), with the
+     template gate of step 1 (422).
+4. The file is stored in the **private bucket** (FD-07) under `leases/{orgId}/{leaseId}/signed-contract/{random}.pdf`,
+   then one transaction under a row lock on the lease records `LeaseContract.RecordStipula(stipulaDate)` (LT-04: the RLI
+   deadline becomes `min(stipula, start) + 30`), `StipulaDeclaredByUserId`, a `LeaseSigner` per party (`Offline`,
+   `Signed`, `SignedAt` = stipula), the lease `Signed` and the event `AllPartiesSigned` (payload `offline`). If the
+   transaction fails, the uploaded file is deleted.
+5. `GET /api/leases/{id}/signed-document` streams it from the private bucket, only to a caller who may read the lease
+   (tenant filter + TN-3), with `Cache-Control: private, no-store`. 404 `lease_signed_contract_not_available` before.
+6. The RLI registration (manual path above, LT-01) starts once the lease is `Signed`.
+
+### Signers (A7-16)
+
+Table `LeaseSigners` (tenant-owned, one row per lease and party): method `Offline` / `Provider`, status `Pending` /
+`Signed`, provider signer id, personal link and its expiry, `SignedAt`. No personal data: the party is referenced by id.
+
+`GET /api/leases/{id}/signers` (policy `lease.read`) returns the signature panel:
+
+```json
+{ "providerSigningAvailable": false, "contractAvailable": true, "contractUnavailableCode": null,
+  "signers": [ { "partyId": "…", "role": "Landlord", "firstName": "…", "lastName": "…", "method": "Offline",
+                 "status": "Pending", "signingUrl": null, "signingUrlExpiresAt": null, "signingUrlExpired": false,
+                 "signedAt": null } ] }
+```
+
+- Without a row, a party is `Offline`/`Pending` before the signature and `Signed` (with the stipula date) after it.
+- The provider link is returned only while pending and only to a caller with `lease.sign`; `signingUrlExpired` is
+  computed on read, so the UI shows "Link scaduto".
+- `contractUnavailableCode`: `contract_template_not_approved`, `contract_data_missing` or `lease_already_signed`.
+
+### Leases signed before LT-02
+
+- **Signed without a stipula date** (deadline "to be determined", no reminders, see LT-04): the landlord uses "Dichiara
+  data di stipula" in the lease page, `POST /api/leases/{id}/stipula` `{ "stipulaDate": "YYYY-MM-DD" }`, policy
+  `lease.sign`. Only once (409 `lease_stipula_already_recorded`), only for a lease signed by every party (422
+  `lease_stipula_lease_not_signed`: use `signed-document`), not after today. It records the stipula and the deadline,
+  `StipulaDeclaredByUserId` and the event `StipulaDeclared`.
+- **Stuck in `AwaitingSignature` by the old stub** (`ExternalSigningSessionId` = `stub-session-…`, no signer rows):
+  the offline signature accepts them, the panel shows the offline path. No data migration.
+- **`SignedPdfStoragePath` written by the old stub** (`/signed/…`, not a storage key): not a file CasaZen holds, so
+  `hasSignedPdf` is false and the download answers 404. The UI says the signed contract was not uploaded.
+
+### Provider path (off)
+
+Behind the feature flag **`Features:ESignProvider`** (default `false`, `docs/runbooks/feature-flags.md`) **and** a
+configured provider (`ILeaseESignService.IsConfigured`), both checked by `ESignProviderSigning.IsAvailable`.
+
+| Situation | `POST /api/leases/{id}/signing` | `POST /webhooks/esign` | Job `lease-sign-status-poll` | UI |
+|---|---|---|---|---|
+| Flag off (default) | 404 | 404, nothing read or queued | not registered, removed with `RemoveIfExists` | offline only |
+| Flag on, provider not configured (today) | 409 `esign_provider_unavailable`, nothing recorded | HMAC checked; the job drops the event | registered, only logs | offline only (`providerSigningAvailable: false`) |
+| Flag on, provider configured | 200: links persisted, lease `AwaitingSignature`, event `SigningInitiated` | events applied (below) | logs the leases waiting for the provider | "Invia per firma elettronica", links with expiry, offline as alternative |
+
+**There is no real provider client yet**: the registered provider is `UnconfiguredLeaseESignService`
+(`IsConfigured = false`, every call refuses). A provider failure answers 502 `esign_provider_failed` and records nothing.
+
+Webhook (A7-20):
+
+- The body must be signed with `ESign:WebhookSecret` (HMAC-SHA256 of the raw body, hex in `X-ESign-Signature`):
+  401 `invalid_signature` otherwise. **With the flag on the secret is required at startup**: missing, containing
+  `PLACEHOLDER` or shorter than 16 characters, the service does not start (`ESignOptionsValidator`, message with this
+  runbook). The committed value is empty.
+- `ESignWebhookJob` applies an event only to a lease `AwaitingSignature` or `PartiallySigned`: a replayed, late or
+  forged-but-signed "all signed" never moves a `Signed` or `Registered` lease back.
+  - `signer_signed`: that signer `Signed`, the lease `PartiallySigned`, event `PartySignedDocument` (payload: party id,
+    never an email). A replay changes nothing (the signer is already signed).
+  - `all_signed`: the signed PDF is downloaded from the provider and copied to the private bucket, then the lease is
+    `Signed`, the stipula is the Rome day on which CasaZen processes the event (LT-04) and the event `AllPartiesSigned`
+    (payload `provider`) is written. Without a valid PDF nothing changes and the job fails (Hangfire retries it).
+- Idempotency is by state (signer or lease already signed), not by provider event id: the provider's event ids are
+  unknown until a client is chosen.
+
+### How to plug a real client (phase 2)
+
+Prerequisites (`rli-esign.md` §4, §5): budget for a plan with AES (Yousign/Youtrust: annual plan with add-on), legal
+opinion on the FEA obligations (DPCM 22/02/2013 art. 57), QES for contracts over 9 years.
+
+1. Implement `ILeaseESignService`: `IsConfigured` true only with `BaseUrl`, `ApiKey` and `WebhookSecret`;
+   `InitiateSigningAsync` returns the provider session and one link per party with its expiry (never a guessed URL);
+   `ParseWebhookEventAsync` maps the provider events to `SignerSigned` / `AllSigned` / `Other`;
+   `DownloadSignedDocumentAsync` returns the signed PDF.
+2. Adapt the signature check of `POST /webhooks/esign` to the provider header (Yousign: `X-Yousign-Signature-256:
+   sha256=<hex>`; today `X-ESign-Signature: <hex>`).
+3. Register it in `LeaseSigningExtensions.AddCasazenLeaseSigning` instead of `UnconfiguredLeaseESignService`. The
+   expected behaviour is in `LeaseSigningProviderIntegrationTests` (fake provider).
+4. Railway **test** first: `ESign__BaseUrl` (sandbox), `ESign__ApiKey`, `ESign__WebhookSecret`, then
+   `Features__ESignProvider=true`.
+
+### Data migration `AddLeaseSigners`
+
+Adds the table `LeaseSigners` and the column `LeaseContracts.StipulaDeclaredByUserId`; no existing row changes.
+Checks after the deploy (test, then production; replace the schema):
+
+```sql
+-- Leases left waiting by the old stub: to be signed offline by the landlord
+SELECT "Id", "Status", "UpdatedAt" FROM casazen_prod."LeaseContracts"
+WHERE "Status" IN (1, 2) AND "ExternalSigningSessionId" LIKE 'stub-session-%';
+
+-- Signed leases whose "signed PDF" is a path of the old stub, not a stored file
+SELECT "Id", "Status" FROM casazen_prod."LeaseContracts" WHERE "SignedPdfStoragePath" LIKE '/%';
+```
+
 ## Registration deadline (LT-04)
 
 Task **LT-04** (defect A7-04, P0). Until LT-04 the deadline was `StartDate + 30`: a contract signed on 1/8 starting on
@@ -174,10 +305,11 @@ data di decorrenza, se anteriore", so
 `LeaseContract.StipulaDate` is the Europe/Rome day on which every party had signed. It is recorded only by
 `LeaseContract.RecordStipula(signedAt)`, which also fixes `RegistrationDeadline`:
 
-- e-sign: the `all_signed` webhook (`LeaseWorkflowService.HandleESignEventAsync`). The provider sends no signing time,
-  so the stipula is the day CasaZen processes the event, the same instant as the `AllPartiesSigned` event;
-- offline or declared signature (task LT-02, not built yet): the flow must call `RecordStipula` with the declared
-  signing date.
+- offline signature (LT-02, default): the date the landlord declares with the signed PDF (`POST signed-document`);
+- declared stipula of a lease signed before LT-02 (`POST stipula`), once;
+- e-sign provider (off): the `all_signed` webhook (`LeaseSigningService.HandleProviderEventAsync`). The provider sends
+  no signing time, so the stipula is the day CasaZen processes the event, the same instant as the `AllPartiesSigned`
+  event.
 
 ### What the API shows
 
@@ -250,14 +382,19 @@ WHERE "EventType" = 12 AND "OccurredAt" > now() - interval '7 days'
 GROUP BY 1;
 ```
 
-A signed lease without a stipula date needs its signing date from the landlord: until the offline/declared signing of
-LT-02 exists, record it only after checking the signed contract (SQL, then `RegistrationDeadline` as in step 3).
+A signed lease without a stipula date needs its signing date from the landlord: the lease page offers "Dichiara data di
+stipula" (`POST /api/leases/{id}/stipula`, LT-02), which records it once together with the deadline.
 
 ## Product owner steps (Railway)
 
-- Nothing to set: the default is manual registration. Do **not** set `Features__RliProvider` until a real client exists
-  and the open points of `rli-esign.md` §5 are closed.
+- Nothing to set: the default is manual registration and offline signature. Do **not** set `Features__ESignProvider`
+  until a real e-signature client exists and the open points of `rli-esign.md` §5 (FEA opinion, budget) are closed;
+  with the flag on the service does not start without `ESign__WebhookSecret`.
+- Remove, if present, `ESign__WebhookSecret=PLACEHOLDER_SET_IN_ENV` or any other placeholder (it is never a secret).
+- Do **not** set `Features__RliProvider` until a real client exists and the open points of `rli-esign.md` §5 are
+  closed.
 - Remove, if present, the variables no longer read: `Rli__FilingEnabled`, `Openapi__BaseUrl`, `Openapi__ClientId`,
   `Openapi__ClientSecret` (the Openapi model has no client id/secret, `rli-esign.md` §1.2).
-- Storage: the receipts use the private bucket configured for FD-07 (`docs/runbooks/storage.md`); `application/pdf`
-  must be among its allowed MIME types if a restriction was set.
+- Storage: the receipts and the signed contracts use the private bucket configured for FD-07
+  (`docs/runbooks/storage.md`); `application/pdf` must be among its allowed MIME types if a restriction was set, and
+  the bucket size limit must allow 20 MB files (signed contracts).

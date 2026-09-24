@@ -17,10 +17,9 @@ public class RecurringJobsConcurrencyTests
         "property-ical-sync",
         "direct-booking-charge",
         "checkout-hold-expiry",
-        "alloggiati-deadline-alert",
+        "stay-alerts",
         "gdpr-data-retention",
         "guest-checkin-send",
-        "guest-checkin-reminder",
         "booking-pull-all",
         "dynamic-pricing-adaptation",
         "lease-registration-status-poll",
@@ -103,7 +102,7 @@ public class RecurringJobsConcurrencyTests
 
         // Every flag on: the jobs behind a feature flag must be lock-protected too (FD-20).
         RecurringJobsRegistration.Configure(
-            manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true));
+            manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true));
 
         return jobs;
     }

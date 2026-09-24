@@ -38,6 +38,16 @@ public static class FeatureFlags
     /// </summary>
     public const string RliProvider = "RliProvider";
 
+    /// <summary>
+    /// D15 / LT-02: contract signature through an external e-signature provider (docs/integrations/rli-esign.md §3), off
+    /// until the budget and the legal opinion on the FEA exist and a real provider client is written. Off:
+    /// <c>POST api/leases/{id}/signing</c> and <c>POST webhooks/esign</c> answer 404, the <c>lease-sign-status-poll</c>
+    /// job is not registered and no call reaches a provider. The offline signature (download the contract, have it
+    /// signed, upload the signed PDF with the stipula date) is not behind this flag and is the default path. On:
+    /// <c>ESign:WebhookSecret</c> is required at startup.
+    /// </summary>
+    public const string ESignProvider = "ESignProvider";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
-    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery, RliProvider];
+    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery, RliProvider, ESignProvider];
 }
