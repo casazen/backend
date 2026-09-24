@@ -24,7 +24,7 @@ public class EmailTemplatesTests
     {
         "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
         "late-payment-confirmed", "late-payment-refunded", "rli-reminder", "rli-overdue", "rli-extra-eu", "onsite-received",
-        "onsite-to-host", "onsite-accepted", "onsite-declined", "onsite-expired",
+        "onsite-to-host", "onsite-accepted", "onsite-declined", "onsite-expired", "booking-cancelled",
     };
 
     [Theory]
@@ -247,6 +247,25 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void GuestBookingCancelled_ItalianAndEnglish_ShowStayAndRefundOnlyWhenStarted()
+    {
+        var italian = EmailTemplates.GuestBookingCancelled(
+            CultureInfo.GetCultureInfo("it-IT"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m);
+        var english = EmailTemplates.GuestBookingCancelled(
+            CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m);
+        var withoutRefund = EmailTemplates.GuestBookingCancelled(
+            CultureInfo.GetCultureInfo("it-IT"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), null);
+
+        Assert.Equal("Prenotazione annullata - Villa Rosa", italian.Subject);
+        Assert.Contains("1.234,50 €", italian.HtmlBody);
+        Assert.Contains("05/10/2026", italian.HtmlBody);
+        Assert.Contains("08/10/2026", italian.HtmlBody);
+        Assert.Equal("Booking cancelled - Villa Rosa", english.Subject);
+        Assert.Contains("€1,234.50", english.HtmlBody);
+        Assert.DoesNotContain("rimborso", withoutRefund.HtmlBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RliDeadlineReminder_Italian_ShowsPropertyDeadlineAndDaysWithoutTechnicalCodes()
     {
         var content = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
@@ -256,6 +275,19 @@ public class EmailTemplatesTests
         Assert.Contains("<strong>05/10/2026</strong>", content.HtmlBody);
         Assert.Contains("Giorni rimanenti: <strong>7</strong>", content.HtmlBody);
         Assert.DoesNotContain("t-7", content.HtmlBody + content.Subject);
+    }
+
+    [Fact]
+    public void RliDeadlineReminder_ContractNotSignedYet_ExplainsDeadlineFromStartDate()
+    {
+        // LT-04: a lease not signed yet whose start date has passed counts its deadline from the start date.
+        var italian = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7, contractNotSignedYet: true);
+        var english = EmailTemplates.RliDeadlineOverdue(CultureInfo.GetCultureInfo("en"), "Villa Rosa", CheckIn, contractNotSignedYet: true);
+        var signed = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
+
+        Assert.Contains("non risulta ancora firmato da tutte le parti", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("has not been signed by every party", english.HtmlBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("non risulta ancora firmato", signed.HtmlBody, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -356,6 +388,7 @@ public class EmailTemplatesTests
             "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
             "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
             "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),
+            "booking-cancelled" => EmailTemplates.GuestBookingCancelled(culture, value, value, CheckIn, CheckIn.AddDays(3), 99.5m),
             "onsite-received" => EmailTemplates.OnSiteRequestReceived(
                 culture, value, value, CheckIn, CheckIn.AddDays(3), 450m, Link, DateTime.UtcNow),
             "onsite-to-host" => EmailTemplates.OnSiteRequestToHost(

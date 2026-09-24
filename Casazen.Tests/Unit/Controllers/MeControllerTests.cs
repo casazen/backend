@@ -3,8 +3,10 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Auth;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 
@@ -26,6 +28,9 @@ public class MeControllerTests
 
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        // Same stable code as InactiveAccountMiddleware (PL-03), so the web app opens the "account disabled" page.
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(ProblemCodes.AccountInactive, problem.Extensions["code"]);
     }
 
     [Fact]
@@ -68,7 +73,11 @@ public class MeControllerTests
         var identity = new ClaimsIdentity(new[] { new Claim("sub", userId) }, "TestAuth");
         controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) },
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(identity),
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+            },
         };
         return controller;
     }

@@ -47,6 +47,9 @@ internal static class PostgresAdvisoryLocks
         /// <summary>Claim of one supplier profile (key: supplier org id): at most one account is linked (SU-02).</summary>
         SupplierClaim = 1_008,
 
+        /// <summary>Deactivation of any user (single key): the last active platform admin is never deactivated (PL-03).</summary>
+        UserDeactivation = 1_009,
+
         /// <summary>
         /// Import of the iCal feed of one property (key: property id): two sync runs (the 15-minute job and the first
         /// sync of a new URL) never write the same blocks at once (PC-10, A2-12).

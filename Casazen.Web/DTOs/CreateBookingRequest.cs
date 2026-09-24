@@ -38,7 +38,7 @@ public class CreateBookingGuestRequest
 /// Request body for creating a booking. Excludes server-managed fields
 /// (<c>Id</c>, <c>OrgId</c>, <c>GuestId</c>, pricing totals).
 /// </summary>
-public class CreateBookingRequest
+public class CreateBookingRequest : IValidatableObject
 {
     [Required(ErrorMessage = "Property is required")]
     public Guid PropertyId { get; set; }
@@ -52,9 +52,22 @@ public class CreateBookingRequest
     [Range(1, 100, ErrorMessage = "Number of guests must be between 1 and 100")]
     public int NumberOfGuests { get; set; }
 
+    /// <summary>
+    /// Minors among <see cref="NumberOfGuests"/> (PC-07). 0 when omitted: every guest then counts as an adult for the
+    /// tourist tax, as before.
+    /// </summary>
+    [Range(0, 99)]
+    public int NumberOfChildren { get; set; }
+
+    /// <summary>Age of each minor at check-in (0-17), asked when the tourist tax of the comune depends on it (BK-03).</summary>
+    public List<int>? ChildrenAges { get; set; }
+
     [Required(ErrorMessage = "Guest information is required")]
     public CreateBookingGuestRequest Guest { get; set; } = null!;
 
     [MaxLength(1000)]
     public string? SpecialRequests { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
+        BookingGuestsValidation.Validate(validationContext, NumberOfGuests, NumberOfChildren, ChildrenAges);
 }

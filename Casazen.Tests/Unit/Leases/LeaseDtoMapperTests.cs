@@ -16,6 +16,7 @@ public class LeaseDtoMapperTests
     private const string TenantCf = "VRDGLI85B02F205X";
     private const string LandlordEmail = "mario.rossi@example.com";
     private const string TenantEmail = "giulia.verdi@example.com";
+    private static readonly DateTime Today = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
 
     // Same enum handling as the API (Program.cs).
     private static readonly JsonSerializerOptions ApiJson = new(JsonSerializerDefaults.Web)
@@ -34,7 +35,7 @@ public class LeaseDtoMapperTests
     [Fact]
     public void ToDetail_LeaseWithParties_MasksFiscalCodeAndEmail()
     {
-        var detail = LeaseDtoMapper.ToDetail(BuildLease());
+        var detail = LeaseDtoMapper.ToDetail(BuildLease(), Today);
 
         var landlord = detail.Parties.Single(p => p.Role == PartyRole.Landlord);
         Assert.Equal("Mario", landlord.FirstName);
@@ -49,7 +50,7 @@ public class LeaseDtoMapperTests
     [Fact]
     public void ToDetail_SerializedAsTheApiDoes_ContainsNoClearPersonalDataNorInternalFields()
     {
-        var json = JsonSerializer.Serialize(LeaseDtoMapper.ToDetail(BuildLease()), ApiJson);
+        var json = JsonSerializer.Serialize(LeaseDtoMapper.ToDetail(BuildLease(), Today), ApiJson);
 
         foreach (var secret in new[] { LandlordCf, TenantCf, LandlordEmail, TenantEmail, "auth0|owner", "/signed/", "provider-123", "receipts/", "{\"extinguisher\":true}", "US" })
             Assert.DoesNotContain(secret, json, StringComparison.Ordinal);
@@ -159,6 +160,34 @@ public class LeaseDtoMapperTests
         Assert.Equal(expected, PersonalDataMasking.MaskEmail(value));
     }
 
+    [Fact]
+    public void ToDetail_SignedBeforeStart_ReturnsStipulaAndDeadlineFromStipula()
+    {
+        // LT-04 (A7-04): signed on 1/8, start 1/10 → deadline 31/8, not 31/10.
+        var lease = BuildLease();
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        lease.RecordStipula(new DateTime(2026, 8, 1, 9, 0, 0, DateTimeKind.Utc));
+
+        var detail = LeaseDtoMapper.ToDetail(lease, new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), detail.StipulaDate);
+        Assert.Equal(new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), detail.RegistrationDeadline);
+    }
+
+    [Fact]
+    public void ToDetail_DraftWithStartDateAhead_DeadlineToBeDetermined()
+    {
+        var lease = BuildLease();
+        lease.Status = LeaseStatus.Draft;
+        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var detail = LeaseDtoMapper.ToDetail(lease, Today);
+
+        Assert.Null(detail.StipulaDate);
+        Assert.Null(detail.RegistrationDeadline);
+        Assert.Contains("\"registrationDeadline\":null", JsonSerializer.Serialize(detail, ApiJson), StringComparison.Ordinal);
+    }
+
     private static void AssertNoForbiddenFields(string json)
     {
         foreach (var field in ForbiddenFields)
@@ -178,7 +207,6 @@ public class LeaseDtoMapperTests
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent = 1200m,
-            RegistrationDeadline = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
             DataRetentionUntil = new DateTime(2036, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             ExternalSigningSessionId = "session-1",
             SignedPdfStoragePath = "/signed/lease.pdf",

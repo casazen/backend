@@ -18,9 +18,12 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Outcome | Never swallowed. Onboarding: `rolesSynced` / `rolesSyncError` in the response (DB already updated). Supplier registration and claim: same fields. Admin role change: **502** `{ code }` and no change applied | `UsersController`, `SuppliersController` |
 | DB memberships | `UserContextMemberships` written for **every** onboarding role and revoked when a role is removed, so backend context authorization does not depend on the JWT | `UserContextMembershipService` |
 | Per-request DB reads | User flags, supplier link and memberships read once per request and cached 60 s per user (`Authorization:UserCacheSeconds`, `0` disables), invalidated on every role/membership/link change of this instance | `UserAuthorizationSnapshotStore` |
+| Deactivated users (PL-03) | Every authenticated request of a user with `Users.IsActive = false` gets **403 `account_inactive`**, before any policy, whatever the roles in the token. The flag is read with the tenant (one query per request, no cache) | `InactiveAccountMiddleware`, `TenantContext` |
+| Deactivation / reactivation | `DELETE /api/users/{id}`: DB first, then Auth0 `blocked=true` and removal of the user's CasaZen roles (remembered in `Users.SuspendedAuth0Roles`). `POST /api/users/{id}/reactivate`: roles given back, then `blocked=false`. Outcome in `auth0Synced` / `auth0SyncError` / `message`; section 10 | `UserService.DeactivateUserAsync` / `ReactivateUserAsync` |
 
 Error codes returned to clients: `auth0_management_not_configured`, `auth0_management_token_failed`,
-`auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`.
+`auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`. Deactivation (PL-03): `account_inactive` (403),
+`cannot_deactivate_self`, `last_active_admin`, `user_inactive` (422).
 
 ## 1. Tenants: one for test, one for production
 
@@ -58,12 +61,12 @@ Applications → Applications → **Create Application** → *Machine to Machine
 
    | Scope | Used for |
    |---|---|
-   | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims when the access token lacks the Action claims (SU-02) |
-   | `update:users` | user updates such as blocking a deactivated user |
-   | `read:roles` | resolving role ids (cached) |
-   | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`) |
-   | `delete:role_members` | removing a named role from a user (`DELETE /users/{id}/roles`) |
-   | `read:role_members` | optional, only for manual checks |
+   | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims when the access token lacks the Action claims (SU-02); roles of a user before its deactivation (PL-03) |
+   | `update:users` | **blocking and unblocking** a deactivated / reactivated user (`PATCH /users/{id}` with `blocked`, PL-03) |
+   | `read:roles` | resolving role ids (cached); roles of a user before its deactivation |
+   | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`); giving the roles back at the reactivation |
+   | `delete:role_members` | removing a named role from a user (`DELETE /users/{id}/roles`); removing the roles at the deactivation |
+   | `read:role_members` | roles of a user before its deactivation (`GET /users/{id}/roles`, PL-03, with `read:users` and `read:roles`): grant it. When a scope is missing the deactivation still applies in CasaZen and reports `auth0Synced: false` |
 
 2. Copy **Client ID** and **Client Secret** into Railway (next section). Never commit them.
 3. Rotate the secret from the same page when needed: update Railway, redeploy, then revoke the old one.
@@ -292,7 +295,51 @@ Expected Auth0 roles: `RentalType` 0 → `PropertyOwner`, 1 → `LongTermLandlor
 `is_supplier` → `Supplier`. Add the missing ones from Auth0 → Users → user → Roles (adding is safe; do not
 remove roles you did not expect). The user sees them at the next login or token refresh.
 
+## 10. Deactivated users (PL-03, A1-04)
+
+What happens when an admin deactivates a user from the admin console (`DELETE /api/users/{id}`):
+
+1. **CasaZen (always)**: `Users.IsActive = false`. From the next request, on every API instance, every authenticated
+   call of that user answers **403 `account_inactive`**: admin, host, supplier and self-service endpoints alike
+   (`/api/users/me` included), whatever the roles still in its access token. The web app shows the page
+   "Account disattivato" with the support contact and a logout button, instead of a UI full of errors.
+2. **Auth0 (best effort, reported)**: the account is **blocked** (`blocked: true`: no login, no new token, refresh
+   tokens included), then its CasaZen roles are read, stored in `Users.SuspendedAuth0Roles` and **removed**. Roles of
+   other applications of the tenant are not touched. Access tokens issued before the deactivation stay valid until
+   they expire, but the API already refuses them (step 1).
+3. The response says what happened: `auth0Synced` (true/false), `auth0SyncError` (codes above) and a localized
+   `message`. With `auth0Synced: false` the user is still refused by the API; repeat the same deactivation when Auth0
+   is reachable (it retries only the Auth0 part). The admin console shows a warning toast in that case.
+
+Refused with 422: `cannot_deactivate_self` (own account) and `last_active_admin` (the last active user with the
+`Admin` role in the CasaZen DB). Two admins deactivating each other at the same time cannot both succeed (advisory
+lock). A role change of a deactivated user is refused with 422 `user_inactive`: reactivate it first.
+
+Reactivation (`POST /api/users/{id}/reactivate`, button "Riattiva" in the admin console) is the inverse: DB flag back,
+then the roles in `SuspendedAuth0Roles` are given back and only then the account is unblocked (if the roles cannot be
+given back, the account stays blocked and the admin retries). The response lists `rolesRestored`. Roles assigned by
+hand in the Auth0 dashboard after the deactivation are not touched.
+
+Audit: there is no audit log table yet; every deactivation and reactivation writes a structured log line with the
+ids only (no e-mail or name): `User deactivated: userId=… by=… at=… changed=… auth0Synced=… auth0Error=… rolesSuspended=[…]`
+(`User reactivated: … rolesRestored=[…]`). Filter the Railway logs on `User deactivated` / `User reactivated`.
+
+Web support contact (Vercel, optional): `VITE_SUPPORT_EMAIL`. When set, the "Account disattivato" page shows it as a
+`mailto:` link; when missing, the page shows a generic text and no address.
+
+Check after the deploy (test tenant, test users only):
+
+1. Deactivate a test host from the admin console: the toast is a success (no warning); in Auth0 → Users the user is
+   **Blocked** and has no CasaZen role.
+2. With a session of that host already open, reload the web app: it shows "Account disattivato"; logging in again
+   is refused by Auth0 ("user is blocked").
+3. Reactivate it: Auth0 shows the user unblocked with the same roles as before; the host logs in and works again.
+4. If step 1 shows the warning, read `auth0SyncError`: `auth0_management_not_configured` / `auth0_management_token_failed`
+   (section 5), `auth0_management_error` with HTTP 403 in the logs = missing scope (section 4: `update:users`,
+   `read:role_members`, `delete:role_members`).
+
 ## Multi-instance note
 
 The 60 s authorization cache and the role-id cache are per process. A role change is visible immediately on
-the instance that made it and within `Authorization__UserCacheSeconds` on the other instances.
+the instance that made it and within `Authorization__UserCacheSeconds` on the other instances. The deactivation is not
+cached: every instance refuses the user from its next request.

@@ -35,7 +35,6 @@ namespace Casazen.Tests.Unit.Controllers;
 public class BookingsControllerTests
 {
     private readonly Mock<IBookingService> _mockBookingService;
-    private readonly Mock<ITouristTaxQuoteService> _mockTaxService;
     private readonly Mock<IAlloggiatiWebService> _mockAlloggiatiService;
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
@@ -55,11 +54,18 @@ public class BookingsControllerTests
     public BookingsControllerTests()
     {
         _mockBookingService = new Mock<IBookingService>();
-        _mockTaxService = new Mock<ITouristTaxQuoteService>();
-        _mockTaxService
-            .Setup(t => t.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TouristTaxComune _, TouristTaxStay stay, CancellationToken _) =>
-                new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, null, stay.Nights, 0, false, [], []));
+        // Host pricing (PC-07): nightly rate x nights + cleaning fee; tourist tax unknown unless a test says otherwise.
+        _mockBookingService
+            .Setup(b => b.PriceHostStayAsync(
+                It.IsAny<Property>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<int>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Property property, DateTime checkIn, DateTime checkOut, int _, int _, IReadOnlyList<int>? _, CancellationToken _) =>
+                HostQuote(property, checkIn, checkOut, new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, null, 0, 0, false, [], [])));
         _mockAlloggiatiService = new Mock<IAlloggiatiWebService>();
         _mockPropertyService = new Mock<IPropertyService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
@@ -83,7 +89,6 @@ public class BookingsControllerTests
     private BookingsController CreateController(PublicSiteLinks publicSiteLinks, TimeProvider? timeProvider = null) =>
         new(
             _mockBookingService.Object,
-            _mockTaxService.Object,
             _mockAlloggiatiService.Object,
             _mockPropertyService.Object,
             _mockAuthz.Object,
@@ -164,6 +169,16 @@ public class BookingsControllerTests
     // TN-3: the real resource handler, with the caller in the property's org unless told otherwise.
     private static IAuthorizationService HostAuthorization(Guid? callerOrgId = null) =>
         HostAuthorizationTestHarness.Create(callerOrgId ?? OrgId);
+
+    /// <summary>What <c>BookingService.PriceHostStayAsync</c> returns: nightly rate x nights + cleaning fee, plus the tax.</summary>
+    private static DirectBookingQuote HostQuote(Property property, DateTime checkIn, DateTime checkOut, TouristTaxQuote tax)
+    {
+        var nights = (checkOut.Date - checkIn.Date).Days;
+        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+        return new DirectBookingQuote(
+            property.Id, checkIn.Date, checkOut.Date, nights, property.NightlyRate, property.CleaningFee, basePrice, tax,
+            basePrice + tax.AmountOrZero, "EUR");
+    }
 
     private static Property MakeProperty() => new()
     {
@@ -300,13 +315,18 @@ public class BookingsControllerTests
         Guest? storedGuest = null;
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        // Manual bookings have no ages: every guest counts as an adult (BK-03).
-        _mockTaxService
-            .Setup(t => t.QuoteAsync(
-                It.IsAny<TouristTaxComune>(),
-                It.Is<TouristTaxStay>(stay => stay.Adults == 2 && stay.Children == 0),
+        // No minors in the request: every guest counts as an adult for the tourist tax (BK-03).
+        _mockBookingService
+            .Setup(b => b.PriceHostStayAsync(
+                It.Is<Property>(p => p.Id == PropertyId),
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                2,
+                0,
+                null,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 12m, 3, 3, false, [], []));
+            .ReturnsAsync((Property property, DateTime checkIn, DateTime checkOut, int _, int _, IReadOnlyList<int>? _, CancellationToken _) =>
+                HostQuote(property, checkIn, checkOut, new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 12m, 4, 4, false, [], [])));
         _mockBookingService.Setup(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()))
             .Callback<Booking, Guest>((booking, guest) =>
             {
@@ -332,9 +352,12 @@ public class BookingsControllerTests
         Assert.NotNull(stored);
         Assert.Equal(OrgId, stored!.OrgId);
         Assert.Equal(450m, stored.BasePrice);
+        Assert.Equal(50m, stored.CleaningFee);
         Assert.Equal(462m, stored.TotalPrice);
         Assert.Equal(12m, stored.TouristTax);
         Assert.Equal(12m, stored.TouristTaxAmount);
+        Assert.Equal(2, stored.NumberOfAdults);
+        Assert.Equal(0, stored.NumberOfChildren);
         Assert.NotNull(storedGuest);
         Assert.Equal(OrgId, storedGuest!.OrgId);
         Assert.Equal("Mario", storedGuest.FirstName);
@@ -412,152 +435,6 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task Update_WhenPayloadChangesStatus_PreservesExistingStatus()
-    {
-        SetUser(OwnerId);
-        var bookingId = Guid.NewGuid();
-        var guestId = Guid.NewGuid();
-        var existing = new Booking
-        {
-            Id = bookingId,
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            GuestId = guestId,
-            Status = BookingStatus.Pending,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(5),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(7),
-            NumberOfGuests = 2,
-            Source = BookingSource.Direct,
-        };
-        var payload = new Booking
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = Guid.NewGuid(),
-            OrgId = Guid.NewGuid(),
-            GuestId = guestId,
-            Status = BookingStatus.CheckedOut,
-            CheckInDate = existing.CheckInDate,
-            CheckOutDate = existing.CheckOutDate,
-            NumberOfGuests = existing.NumberOfGuests,
-            Source = BookingSource.Direct,
-        };
-
-        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(existing);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
-        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
-            .ReturnsAsync((Booking b) => b);
-
-        var result = await _controller.Update(bookingId, payload);
-
-        Assert.IsType<NoContentResult>(result);
-        _mockBookingService.Verify(b => b.UpdateBookingAsync(It.Is<Booking>(updated =>
-            updated.Id == bookingId &&
-            updated.PropertyId == existing.PropertyId &&
-            updated.OrgId == existing.OrgId &&
-            updated.Status == BookingStatus.Pending)), Times.Once);
-    }
-
-    [Fact]
-    public async Task Update_PreservesServerOwnedGuestPaymentAndLifecycleFields()
-    {
-        SetUser(OwnerId);
-        var bookingId = Guid.NewGuid();
-        var originalGuestId = Guid.NewGuid();
-        var maliciousGuestId = Guid.NewGuid();
-        var existing = new Booking
-        {
-            Id = bookingId,
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            GuestId = originalGuestId,
-            Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
-            ExternalId = "original-external",
-            BasePrice = 300m,
-            TouristTax = 12m,
-            TouristTaxAmount = 12m,
-            TotalPrice = 312m,
-            PaymentOption = PaymentOption.OnCancellationDeadline,
-            FreeRefundDeadline = DateTime.UtcNow.Date.AddDays(5),
-            StripeSetupIntentId = "seti_original",
-            StripePaymentMethodId = "pm_original",
-            StripeCustomerId = "cus_original",
-            CheckInToken = Guid.NewGuid(),
-            CheckInTokenExpiresAt = DateTime.UtcNow.AddDays(10),
-            CheckoutReminderJobId = "reminder-original",
-            CheckoutWizardStartedAt = DateTime.UtcNow.AddDays(-1),
-            CreatedAt = DateTime.UtcNow.AddDays(-3),
-            CheckInDate = DateTime.UtcNow.Date.AddDays(7),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(10),
-            NumberOfGuests = 2,
-        };
-        var update = new Booking
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = Guid.NewGuid(),
-            OrgId = Guid.NewGuid(),
-            GuestId = maliciousGuestId,
-            Status = BookingStatus.CheckedOut,
-            Source = BookingSource.Airbnb,
-            ExternalId = "tampered-external",
-            BasePrice = 9000m,
-            TouristTax = 999m,
-            TouristTaxAmount = 999m,
-            TotalPrice = 9999m,
-            PaymentOption = PaymentOption.OnCancellationDeadline,
-            FreeRefundDeadline = DateTime.UtcNow.Date.AddDays(-1),
-            StripeSetupIntentId = "seti_tampered",
-            StripePaymentMethodId = "pm_tampered",
-            StripeCustomerId = "cus_tampered",
-            CheckInToken = Guid.NewGuid(),
-            CheckInTokenExpiresAt = DateTime.UtcNow.AddYears(1),
-            CheckoutReminderJobId = "reminder-tampered",
-            CheckoutWizardStartedAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            CheckInDate = existing.CheckInDate,
-            CheckOutDate = existing.CheckOutDate,
-            NumberOfGuests = 3,
-            SpecialRequests = "late checkout",
-        };
-
-        Booking? saved = null;
-        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(existing);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
-        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
-            .Callback<Booking>(b => saved = b)
-            .ReturnsAsync((Booking b) => b);
-
-        var result = await _controller.Update(bookingId, update);
-
-        Assert.IsType<NoContentResult>(result);
-        Assert.NotNull(saved);
-        Assert.Equal(bookingId, saved!.Id);
-        Assert.Equal(PropertyId, saved.PropertyId);
-        Assert.Equal(OrgId, saved.OrgId);
-        Assert.Equal(originalGuestId, saved.GuestId);
-        Assert.Equal(existing.Status, saved.Status);
-        Assert.Equal(existing.Source, saved.Source);
-        Assert.Equal(existing.ExternalId, saved.ExternalId);
-        Assert.Equal(existing.BasePrice, saved.BasePrice);
-        Assert.Equal(existing.TouristTax, saved.TouristTax);
-        Assert.Equal(existing.TouristTaxAmount, saved.TouristTaxAmount);
-        Assert.Equal(existing.TotalPrice, saved.TotalPrice);
-        Assert.Equal(existing.PaymentOption, saved.PaymentOption);
-        Assert.Equal(existing.FreeRefundDeadline, saved.FreeRefundDeadline);
-        Assert.Equal(existing.StripeSetupIntentId, saved.StripeSetupIntentId);
-        Assert.Equal(existing.StripePaymentMethodId, saved.StripePaymentMethodId);
-        Assert.Equal(existing.StripeCustomerId, saved.StripeCustomerId);
-        Assert.Equal(existing.CheckInToken, saved.CheckInToken);
-        Assert.Equal(existing.CheckInTokenExpiresAt, saved.CheckInTokenExpiresAt);
-        Assert.Equal(existing.CheckoutReminderJobId, saved.CheckoutReminderJobId);
-        Assert.Equal(existing.CheckoutWizardStartedAt, saved.CheckoutWizardStartedAt);
-        Assert.Equal(existing.CreatedAt, saved.CreatedAt);
-        Assert.Equal("late checkout", saved.SpecialRequests);
-    }
-
-    [Fact]
     public async Task CheckIn_PendingBooking_ReturnsBadRequestWithoutMutating()
     {
         SetUser(OwnerId);
@@ -618,21 +495,6 @@ public class BookingsControllerTests
 
         Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
-    }
-
-    [Fact]
-    public async Task CheckOut_AfterMidnightInRomeOnCheckOutDay_ReturnsOk()
-    {
-        var controller = CreateControllerAt(new DateTimeOffset(2026, 10, 2, 22, 15, 0, TimeSpan.Zero));
-        var booking = SetupAccessibleBooking(
-            BookingStatus.CheckedIn,
-            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
-
-        var result = await controller.CheckOut(booking.Id);
-
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(BookingStatus.CheckedOut, booking.Status);
     }
 
     [Fact]

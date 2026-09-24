@@ -259,6 +259,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+        // Host changes to a booking: edit, confirm, check-out (PC-07).
+        services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").

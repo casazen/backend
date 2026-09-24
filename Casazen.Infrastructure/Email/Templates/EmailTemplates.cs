@@ -23,6 +23,7 @@ public static class EmailTemplates
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
+        public const string GuestBookingCancelled = "guest-booking-cancelled";
         public const string GuestLatePaymentConfirmed = "guest-late-payment-confirmed";
         public const string GuestPaymentRefundedDatesUnavailable = "guest-payment-refunded-dates-unavailable";
         public const string RliDeadlineReminder = "rli-deadline-reminder";
@@ -198,26 +199,67 @@ public static class EmailTemplates
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestPaymentRefundedDatesUnavailable_Subject", propertyName);
 
-    /// <summary>RLI registration deadline approaching, to the landlord (LT-11, A7-26).</summary>
+    /// <summary>
+    /// The host cancelled the booking, to the guest (PC-07, A2-08). <paramref name="refundStartedEur"/> is the refund
+    /// sent to Stripe, in euro, when there is one: its confirmation is <see cref="GuestRefundConfirmed"/>.
+    /// </summary>
+    public static EmailContent GuestBookingCancelled(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal? refundStartedEur)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("GuestBookingCancelled_Greeting", guestName)
+            .Paragraph("GuestBookingCancelled_Body", propertyName, checkInDate, checkOutDate);
+        if (refundStartedEur is > 0m)
+            builder.Paragraph("GuestBookingCancelled_Refund", refundStartedEur.Value.ToString("N2", culture));
+        return builder
+            .Muted("GuestBookingCancelled_Contact")
+            .Build("GuestBookingCancelled_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// RLI registration deadline approaching, to the landlord (LT-11, A7-26). <paramref name="contractNotSignedYet"/>:
+    /// the contract is not signed by every party yet and its start date has passed, so the deadline counts from the
+    /// start date (LT-04).
+    /// </summary>
     public static EmailContent RliDeadlineReminder(
         CultureInfo culture,
         string propertyName,
         DateTime registrationDeadline,
-        int daysRemaining) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("RliDeadlineReminder_Body", propertyName, registrationDeadline, daysRemaining)
+        int daysRemaining,
+        bool contractNotSignedYet = false)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineReminder_Body", propertyName, registrationDeadline, daysRemaining);
+        if (contractNotSignedYet)
+            builder.Paragraph("RliDeadline_NotSignedYet");
+        return builder
             .Paragraph("RliDeadline_Responsibility")
             .Build("RliDeadlineReminder_Subject", propertyName, registrationDeadline);
+    }
 
-    /// <summary>RLI registration deadline passed without a completed registration, to the landlord.</summary>
+    /// <summary>
+    /// RLI registration deadline passed without a completed registration, to the landlord. See
+    /// <see cref="RliDeadlineReminder"/> for <paramref name="contractNotSignedYet"/>.
+    /// </summary>
     public static EmailContent RliDeadlineOverdue(
         CultureInfo culture,
         string propertyName,
-        DateTime registrationDeadline) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("RliDeadlineOverdue_Body", propertyName, registrationDeadline)
+        DateTime registrationDeadline,
+        bool contractNotSignedYet = false)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineOverdue_Body", propertyName, registrationDeadline);
+        if (contractNotSignedYet)
+            builder.Paragraph("RliDeadline_NotSignedYet");
+        return builder
             .Paragraph("RliDeadline_Responsibility")
             .Build("RliDeadlineOverdue_Subject", propertyName);
+    }
 
     /// <summary>
     /// "Pay at the property" request received, to the guest (BK-06, D5): the link confirms the email address and sends the
