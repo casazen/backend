@@ -117,4 +117,34 @@
   <data name="AlloggiatiDeadline_Action" xml:space="preserve">
     <value>Complete or correct the guest data and send the report from CasaZen.</value>
   </data>
+  <data name="ServiceCategory_cleaning" xml:space="preserve">
+    <value>Cleaning</value>
+  </data>
+  <data name="ServiceCategory_maintenance" xml:space="preserve">
+    <value>Maintenance</value>
+  </data>
+  <data name="ServiceCategory_plumbing" xml:space="preserve">
+    <value>Plumbing</value>
+  </data>
+  <data name="ServiceCategory_laundry" xml:space="preserve">
+    <value>Laundry</value>
+  </data>
+  <data name="ServiceCategory_linen" xml:space="preserve">
+    <value>Linen</value>
+  </data>
+  <data name="ServiceCategory_check-in" xml:space="preserve">
+    <value>Guest check-in</value>
+  </data>
+  <data name="ServiceCategory_gardening" xml:space="preserve">
+    <value>Gardening</value>
+  </data>
+  <data name="ServiceCategory_events" xml:space="preserve">
+    <value>Events</value>
+  </data>
+  <data name="ServiceCategory_rental" xml:space="preserve">
+    <value>Rental</value>
+  </data>
+  <data name="ServiceCategory_excursions" xml:space="preserve">
+    <value>Excursions</value>
+  </data>
 </root>

@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -312,7 +313,7 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_NotesAndCategoryWithMarkup_AreHtmlEncodedInSupplierEmail()
+    public async Task CreateAsync_NotesWithMarkup_AreHtmlEncodedInSupplierEmail()
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
@@ -321,14 +322,48 @@ public class ServiceRequestServiceTests
 
         await service.CreateAsync(new CreateServiceRequestCommand(
             hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
-            "cleaning<script>alert(1)</script>", ServiceRequestUrgency.Normal,
-            "<a href=\"https://phish.example\">Conferma IBAN</a>", false));
+            "cleaning", ServiceRequestUrgency.Normal,
+            "<a href=\"https://phish.example\">Conferma IBAN</a><script>alert(1)</script>", false));
 
         var html = Assert.Single(queue.Queued).Content.HtmlBody;
         Assert.DoesNotContain("<a href=\"https://phish.example\"", html);
         Assert.DoesNotContain("<script>", html);
         Assert.Contains("&lt;a href=&quot;https://phish.example&quot;&gt;Conferma IBAN&lt;/a&gt;", html);
-        Assert.Contains("cleaning&lt;script&gt;", html);
+        Assert.Contains("richiesta di <strong>Pulizie</strong>", html);
+    }
+
+    [Theory]
+    [InlineData("Pulizie")]
+    [InlineData("cleaning<script>alert(1)</script>")]
+    [InlineData("")]
+    public async Task CreateAsync_CategoryNotACode_ThrowsInvalidServiceCategoryWithoutCreatingOrEmailing(string category)
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            category, ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceCategories.InvalidCategoryCode, ex.Code);
+        Assert.Empty(db.ServiceRequests);
+        Assert.Empty(queue.Queued);
+    }
+
+    [Fact]
+    public async Task CreateAsync_CodeWithDifferentCase_StoresNormalizedCode()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var result = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            " Linen ", ServiceRequestUrgency.Normal, null, false));
+
+        Assert.Equal(ServiceCategories.Linen, result.Category);
     }
 
     [Fact]

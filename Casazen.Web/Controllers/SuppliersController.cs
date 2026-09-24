@@ -110,7 +110,9 @@ public class SuppliersController(
 
     /// <summary>
     /// Returns <c>Active</c> suppliers for a comune or property. Hosts only (<c>property.read</c>, TN-3); with
-    /// <c>propertyId</c> the property is authorized as a <see cref="HostResource"/>.
+    /// <c>propertyId</c> the property is authorized as a <see cref="HostResource"/>. <c>category</c> is a code of
+    /// <c>GET /api/service-categories</c>: only suppliers that declared it are returned, an unknown code is a 422
+    /// <c>invalid_service_category</c> (SU-03).
     /// </summary>
     [HttpGet]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -119,6 +121,7 @@ public class SuppliersController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
         [FromQuery] GetSuppliersQuery query,
         CancellationToken cancellationToken)

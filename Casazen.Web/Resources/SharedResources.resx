@@ -300,4 +300,7 @@
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
   </data>
+  <data name="ServiceCategoryInvalid" xml:space="preserve">
+    <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>
+  </data>
 </root>

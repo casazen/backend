@@ -23,6 +23,10 @@ public interface ISupplierService
     Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>Updates mutable profile fields. Returns the updated profile or null if not found.</summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// </exception>
     Task<SupplierProfile?> UpdateProfileAsync(
         Guid orgId,
         string? legalName,
@@ -64,11 +68,21 @@ public interface ISupplierService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns <see cref="SupplierStatus.Active"/> suppliers for a given comune (AC6).
+    /// Returns <see cref="SupplierStatus.Active"/> suppliers for a given comune (AC6). With a
+    /// <paramref name="category"/> only suppliers that declared that category code are returned (a supplier without
+    /// categories matches no category).
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// </exception>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default);
 
     /// <summary>Creates an admin invite record. Returns the generated invite id.</summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// </exception>
     Task<SupplierInvite> CreateInviteAsync(
         string email,
         string comuneCode,
@@ -112,7 +126,20 @@ public interface ISupplierService
         string? icalFeedUrl,
         string? calendarSyncError,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stored category values that are not <see cref="Casazen.Core.Suppliers.ServiceCategories"/> codes, across every
+    /// org (platform admin report, SU-03): values the migration <c>NormalizeServiceCategories</c> could not map are
+    /// kept, never deleted, and listed here until someone fixes them.
+    /// </summary>
+    Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// A stored category value that is not a known code. <paramref name="Source"/> is <c>supplier_profile</c> (id = supplier
+/// org id), <c>supplier_invite</c> (id = invite id) or <c>service_request</c> (id = request id).
+/// </summary>
+public record UnmappedServiceCategory(string Source, Guid Id, string Value);
 
 public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);
 

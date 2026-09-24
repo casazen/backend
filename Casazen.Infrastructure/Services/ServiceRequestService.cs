@@ -6,6 +6,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -33,6 +34,9 @@ public class ServiceRequestService(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
+        // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
+        var category = ServiceCategories.Require(command.Category);
+
         if (command.BookingId is { } bookingId)
         {
             var booking = await db.Bookings
@@ -75,7 +79,7 @@ public class ServiceRequestService(
             BookingId = command.BookingId,
             PropertyId = command.PropertyId,
             SupplierOrgId = command.SupplierOrgId,
-            Category = command.Category.Trim(),
+            Category = category,
             Urgency = command.Urgency,
             Notes = command.Notes?.Trim() ?? string.Empty,
             ChargeToGuest = command.ChargeToGuest,

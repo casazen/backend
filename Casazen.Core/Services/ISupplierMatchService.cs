@@ -35,6 +35,10 @@ public interface ISupplierMatchService
     /// Ranks the active suppliers for a property of <paramref name="orgId"/>. The caller has already authorized the
     /// property (TN-3); a property of another org is rejected.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// </exception>
     Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
         Guid propertyId,

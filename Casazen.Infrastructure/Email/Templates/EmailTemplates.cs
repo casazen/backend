@@ -1,5 +1,6 @@
 using System.Globalization;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Suppliers;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
@@ -23,6 +24,18 @@ public static class EmailTemplates
         public const string AlloggiatiDeadline = "alloggiati-deadline";
     }
 
+    /// <summary>EmailTexts key of the label of a <see cref="ServiceCategories"/> code.</summary>
+    public static string ServiceCategoryKey(string code) => $"ServiceCategory_{code}";
+
+    /// <summary>
+    /// Label of a service category code in <paramref name="culture"/> (SU-03). A value that is not a known code (an
+    /// old value kept by the migration) is shown as it is; the builder HTML-encodes it like any dynamic value.
+    /// </summary>
+    public static string ServiceCategoryLabel(CultureInfo culture, string category) =>
+        ServiceCategories.IsKnown(category)
+            ? EmailTexts.Get(ServiceCategoryKey(category), culture)
+            : category;
+
     /// <summary>New service request, to the supplier.</summary>
     public static EmailContent ServiceRequestCreated(
         CultureInfo culture,
@@ -33,7 +46,7 @@ public static class EmailTemplates
         string inboxUrl) =>
         new EmailHtmlBuilder(culture)
             .Paragraph("ServiceRequestCreated_Greeting", supplierName)
-            .Paragraph("ServiceRequestCreated_Body", category, propertyName)
+            .Paragraph("ServiceRequestCreated_Body", ServiceCategoryLabel(culture, category), propertyName)
             .Quote("ServiceRequestCreated_NotesLabel", notes)
             .Button("ServiceRequestCreated_Cta", inboxUrl)
             .Build("ServiceRequestCreated_Subject", propertyName);
@@ -54,7 +67,7 @@ public static class EmailTemplates
             _ => throw new ArgumentOutOfRangeException(nameof(status), status, "No email for this service request status."),
         };
 
-        var builder = new EmailHtmlBuilder(culture).Paragraph($"{prefix}_Body", category, propertyName);
+        var builder = new EmailHtmlBuilder(culture).Paragraph($"{prefix}_Body", ServiceCategoryLabel(culture, category), propertyName);
         if (status == ServiceRequestStatus.Rifiutato)
             builder.Quote("ServiceRequestRejected_ReasonLabel", rejectionReason);
 

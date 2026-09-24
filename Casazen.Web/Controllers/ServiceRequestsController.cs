@@ -31,6 +31,7 @@ public class ServiceRequestsController(
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(SupplierMatchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<SupplierMatchResponse>> MatchSupplier(
         [FromBody] MatchSupplierRequest request,
         CancellationToken cancellationToken)
@@ -38,18 +39,16 @@ public class ServiceRequestsController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null) return Unauthorized();
 
-        if (string.IsNullOrWhiteSpace(request.Category))
-            return BadRequest(new { error = "Categoria obbligatoria." });
-
         if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
             return denied;
 
         try
         {
+            // A missing or unknown category is a 422 invalid_service_category from the service (SU-03).
             var result = await supplierMatchService.MatchAsync(
                 orgId.Value,
                 request.PropertyId,
-                request.Category.Trim(),
+                request.Category,
                 request.Urgency,
                 request.Notes,
                 cancellationToken);
@@ -70,6 +69,7 @@ public class ServiceRequestsController(
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Create(
         [FromBody] CreateServiceRequestRequest request,
         CancellationToken cancellationToken)

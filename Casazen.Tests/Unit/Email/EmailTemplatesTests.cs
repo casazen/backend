@@ -2,6 +2,7 @@ using System.Collections;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Xunit;
@@ -63,10 +64,36 @@ public class EmailTemplatesTests
 
         Assert.Equal("Nuova richiesta di servizio — Villa Rosa", content.Subject);
         Assert.Contains("Ciao Pulizie Srl,", content.HtmlBody);
-        Assert.Contains("Hai ricevuto una nuova richiesta di <strong>cleaning</strong> per la proprietà <strong>Villa Rosa</strong>.", content.HtmlBody);
+        Assert.Contains("Hai ricevuto una nuova richiesta di <strong>Pulizie</strong> per la proprietà <strong>Villa Rosa</strong>.", content.HtmlBody);
         Assert.Contains("Note:</strong><br />Chiavi in portineria", content.HtmlBody);
         Assert.Contains($"href=\"{Link}\"", content.HtmlBody);
         Assert.Contains("Apri la console fornitore", content.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceCategoryLabel_EveryCategoryCode_HasItalianAndEnglishLabel()
+    {
+        var italian = CultureInfo.GetCultureInfo("it-IT");
+        var english = CultureInfo.GetCultureInfo("en");
+
+        Assert.All(ServiceCategories.All, code =>
+        {
+            var it = EmailTemplates.ServiceCategoryLabel(italian, code);
+            var en = EmailTemplates.ServiceCategoryLabel(english, code);
+            Assert.NotEqual(code, it);
+            Assert.NotEqual(it, en);
+        });
+        Assert.Equal("Pulizie", EmailTemplates.ServiceCategoryLabel(italian, ServiceCategories.Cleaning));
+        Assert.Equal("Cleaning", EmailTemplates.ServiceCategoryLabel(english, ServiceCategories.Cleaning));
+    }
+
+    [Fact]
+    public void ServiceRequestStatusChanged_EnglishLegacyCategory_ShowsValueEncoded()
+    {
+        var content = EmailTemplates.ServiceRequestStatusChanged(
+            CultureInfo.GetCultureInfo("en"), ServiceRequestStatus.Completato, "Idraulica <b>speciale</b>", "Villa");
+
+        Assert.Contains("Idraulica &lt;b&gt;speciale&lt;/b&gt;", content.HtmlBody);
     }
 
     [Fact]

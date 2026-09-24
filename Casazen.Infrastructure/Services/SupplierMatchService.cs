@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,8 @@ public class SupplierMatchService(
         string? notes,
         CancellationToken cancellationToken = default)
     {
+        category = ServiceCategories.Require(category);
+
         var property = await db.Properties
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
