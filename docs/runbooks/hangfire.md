@@ -32,8 +32,8 @@ and production never block each other.
 
 | Recurring job | Cron (UTC) | Lock resource | Wait |
 |---|---|---|---|
-| `ota-sync-all` | hourly | `OtaSyncJob.ExecuteAsync:<propertyId>` (also manual syncs) | 300 s |
-| `booking-pull-all` | `*/15` | `BookingPullJob.ExecuteAsync:<propertyId>` | 60 s |
+| `ota-sync-all` (only with `Features:OtaPartnerApi=true`, otherwise removed at startup: FD-20, [feature-flags.md](feature-flags.md)) | hourly | `OtaSyncJob.ExecuteAsync:<propertyId>` (also manual syncs) | 300 s |
+| `booking-pull-all` (only with `Features:OtaPartnerApi=true`, otherwise removed at startup) | `*/15` | `BookingPullJob.ExecuteAsync:<propertyId>` | 60 s |
 | `dynamic-pricing-adaptation` | 02:00 | `DynamicPricingJob` (shared with the per-property manual run) | 300 s |
 | `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
 | `alloggiati-deadline-alert` | hourly | `AlloggiatiDeadlineAlertJob.ExecuteAsync` | 300 s |

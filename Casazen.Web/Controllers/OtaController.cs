@@ -1,16 +1,23 @@
 ﻿using System.Security.Claims;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// OTA partner API (Airbnb / Booking.com, #31-35): in freeze behind <see cref="FeatureFlags.OtaPartnerApi"/> (D10),
+/// 404 while the flag is off. iCal import/export does not go through this controller.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "PropertyOwner")]
+[FeatureGate(FeatureFlags.OtaPartnerApi)]
 public class OtaController : ControllerBase
 {
     private readonly IOtaManager _otaManager;
@@ -87,32 +94,6 @@ public class OtaController : ControllerBase
         }
     }
 
-    [HttpPost("sync-platform")]
-    public IActionResult SyncPlatform([FromQuery] string platform, [FromQuery] string externalId)
-    {
-        try
-        {
-            // Queue platform-specific sync job
-            var jobId = _backgroundJobClient.Enqueue<OtaSyncJob>(job =>
-                job.ExecutePlatformSyncAsync(platform, externalId));
-
-            _logger.LogInformation("{Platform} sync job queued for {ExternalId} with job ID {JobId}", platform, externalId, jobId);
-
-            return Accepted(new
-            {
-                message = $"{platform} sync job queued",
-                jobId,
-                platform,
-                externalId
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error queuing {Platform} sync job", platform);
-            return StatusCode(500, "Internal server error");
-        }
-    }
-
     [HttpGet("status")]
     public async Task<IActionResult> GetStatus([FromQuery] Guid propertyId)
     {
@@ -128,40 +109,6 @@ public class OtaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get status error");
-            return StatusCode(500, "Internal server error");
-        }
-    }
-
-    [HttpPut("pricing")]
-    public async Task<IActionResult> UpdatePricing([FromQuery] Guid propertyId, [FromQuery] decimal newPrice)
-    {
-        try
-        {
-            var accessDenied = await EnsureCanAccessPropertyAsync(propertyId);
-            if (accessDenied is not null)
-                return accessDenied;
-
-            var success = await _otaManager.UpdatePricingAsync(propertyId, newPrice);
-            return success ? Ok(new { message = "Pricing updated" }) : BadRequest("Update failed");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Pricing update error");
-            return StatusCode(500, "Internal server error");
-        }
-    }
-
-    [HttpPost("validate")]
-    public async Task<IActionResult> ValidateIntegration([FromQuery] string platform, [FromQuery] string apiKey)
-    {
-        try
-        {
-            var success = await _otaManager.ValidateIntegrationAsync(platform, apiKey);
-            return success ? Ok(new { valid = true }) : Ok(new { valid = false });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Validation error");
             return StatusCode(500, "Internal server error");
         }
     }

@@ -54,33 +54,6 @@ public class OtaManager(
         }
     }
 
-    public async Task<bool> UpdatePricingAsync(Guid propertyId, decimal newPrice)
-    {
-        try
-        {
-            var property = await propertyRepository.GetByIdAsync(propertyId);
-            if (property == null)
-                return false;
-
-            property.NightlyRate = newPrice;
-            await propertyRepository.UpdateAsync(property);
-
-            foreach (var integration in property.OtaIntegrations.Where(i => i.IsActive))
-            {
-                var adapter = channelFactory.GetAdapter(integration.Platform);
-                // Update pricing on platform
-            }
-
-            logger.LogInformation("Updated pricing for property {PropertyId} to {Price}", propertyId, newPrice);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error updating pricing for property {PropertyId}", propertyId);
-            return false;
-        }
-    }
-
     public async Task<bool> PullBookingsAsync(Guid propertyId)
     {
         try
@@ -115,22 +88,6 @@ public class OtaManager(
             i => i.Platform,
             i => i.IsActive && i.SyncEnabled
         );
-    }
-
-    public async Task<bool> ValidateIntegrationAsync(string platform, string apiKey)
-    {
-        try
-        {
-            var adapter = channelFactory.GetAdapter(platform);
-            var isValid = await adapter.ValidateCredentialsAsync(apiKey);
-            logger.LogInformation("Validated {Platform} credentials: {IsValid}", platform, isValid);
-            return isValid;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error validating {Platform}", platform);
-            return false;
-        }
     }
 
     public async Task<bool> UpdatePricingBatchAsync(Guid propertyId, Dictionary<DateOnly, decimal> pricesByDate)
