@@ -1,11 +1,13 @@
 // File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Documents;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
@@ -320,6 +322,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
+        // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.
+        services.AddSingleton<IPdfDocumentRenderer, MigraDocPdfDocumentRenderer>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
         services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();

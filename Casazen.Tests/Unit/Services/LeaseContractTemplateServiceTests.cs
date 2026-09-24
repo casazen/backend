@@ -4,8 +4,10 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Options;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services.LeaseContracts;
+using Casazen.Tests.Unit.Documents;
 using Casazen.Tests.Unit.Services.LeaseContracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -112,8 +114,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
 
         var text = PdfText(await sut.GeneratePdfAsync(lease));
 
-        Assert.StartsWith("%PDF", text, StringComparison.Ordinal);
-        Assert.Contains("Titolo di prova", text, StringComparison.Ordinal);
+                Assert.Contains("Titolo di prova", text, StringComparison.Ordinal);
         Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
         Assert.Contains("Anna Bianchi", text, StringComparison.Ordinal);
         Assert.Contains("Luigi Verdi", text, StringComparison.Ordinal);
@@ -189,8 +190,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
 
         var text = PdfText(await sut.GeneratePreviewPdfAsync(lease));
 
-        Assert.StartsWith("%PDF", text, StringComparison.Ordinal);
-        Assert.Contains("(BOZZA - template non approvato)", text, StringComparison.Ordinal);
+                Assert.Contains(LeaseContractDocument.DraftMarker, text, StringComparison.Ordinal);
         Assert.Contains("modello assente", text, StringComparison.Ordinal);
         Assert.Contains(LeaseContractDocument.MissingClauseMarker, text, StringComparison.Ordinal);
         Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
@@ -217,7 +217,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
 
         var text = PdfText(await sut.GeneratePreviewPdfAsync(BuildLease(FiscalRegime.CedolareSecca)));
 
-        Assert.Contains("(BOZZA - template non approvato)", text, StringComparison.Ordinal);
+        Assert.Contains(LeaseContractDocument.DraftMarker, text, StringComparison.Ordinal);
         Assert.Contains("modello incompleto", text, StringComparison.Ordinal);
         Assert.Contains("Sezioni senza testo: rinnovo_disdetta, ape", text, StringComparison.Ordinal);
         Assert.Contains("Testo di prova parti. Mario Rossi", text, StringComparison.Ordinal);
@@ -238,10 +238,114 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
         Assert.DoesNotContain("BOZZA", text, StringComparison.Ordinal);
     }
 
-    private static LeaseContractTemplateService CreateSut(LeaseTemplateOptions options) =>
-        new(LeaseTemplateTestFiles.Catalog(options), NullLogger<LeaseContractTemplateService>.Instance);
+    [Fact]
+    public async Task GeneratePreviewPdfAsync_ApprovedTemplate_EveryPageIsWatermarkedAnteprima()
+    {
+        _files.Write(
+            FiscalRegime.CedolareSecca,
+            LeaseTemplateTestFiles.ApprovedVersion,
+            LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.CedolareSecca));
+        var sut = CreateSut(_files.Options(FiscalRegime.CedolareSecca, LeaseTemplateTestFiles.Approved()));
 
-    private static string PdfText(byte[] pdf) => Encoding.ASCII.GetString(pdf);
+        var pages = PdfTestReader.Pages(await sut.GeneratePreviewPdfAsync(BuildLease(FiscalRegime.CedolareSecca)));
+
+        Assert.All(pages, page => Assert.Equal(LeaseContractDocument.ApprovedPreviewWatermark, page.Watermark));
+    }
+
+    [Fact]
+    public async Task GeneratePdfAsync_ApprovedTemplateOver20000Characters_SpansSeveralA4PagesWithoutLosingText()
+    {
+        // LT-09 (A7-14): the old writer printed one Letter page and cut the text at 4000 characters.
+        const int wordCount = 3200;
+        var regime = FiscalRegime.CanoneConcordato;
+        var sections = LeaseContractTemplateStructure.RequiredSections(regime);
+        var perSection = (wordCount + sections.Count - 1) / sections.Count;
+        var texts = new Dictionary<string, string>();
+        for (var i = 0; i < sections.Count; i++)
+        {
+            var words = Enumerable.Range((i * perSection) + 1, perSection).Where(n => n <= wordCount).Select(Token);
+            var placeholders = string.Join(" ", sections[i].RequiredPlaceholders.Select(group => $"{{{{{group[0]}}}}}"));
+            texts[sections[i].Id] = $"Clausola {sections[i].Id}. {placeholders}\n" + string.Join("\n", words.Chunk(40).Select(c => string.Join(' ', c)));
+        }
+
+        var template = LeaseTemplateTestFiles.CompleteTemplate(regime, texts);
+        Assert.True(template.Length > 20_000, $"{template.Length} characters");
+        _files.Write(regime, LeaseTemplateTestFiles.ApprovedVersion, template);
+        var sut = CreateSut(_files.Options(regime, LeaseTemplateTestFiles.Approved()));
+
+        var pdf = await sut.GeneratePdfAsync(BuildLease(regime));
+
+        var pages = PdfTestReader.Pages(pdf);
+        Assert.True(pages.Count >= 3, $"{pages.Count} pages");
+        Assert.All(pages, page =>
+        {
+            Assert.Equal(595, Math.Round(page.Width));
+            Assert.Equal(842, Math.Round(page.Height));
+            Assert.Equal(string.Empty, page.Watermark);
+        });
+        var tokens = PdfTestReader.BodyWords(pdf).Where(w => w.Length == 6 && w[0] == 'w' && w[1..].All(char.IsAsciiDigit));
+        Assert.Equal(Enumerable.Range(1, wordCount).Select(Token), tokens);
+        foreach (var section in sections)
+            Assert.Contains($"Clausola {section.Id}.", PdfTestReader.Text(pdf), StringComparison.Ordinal);
+
+        static string Token(int n) => $"w{n:D5}";
+    }
+
+    [Fact]
+    public async Task GeneratePdfAsync_NonLatinNamesAndAccents_KeepsEveryCharacter()
+    {
+        _files.Write(
+            FiscalRegime.CedolareSecca,
+            LeaseTemplateTestFiles.ApprovedVersion,
+            LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.CedolareSecca, new Dictionary<string, string>
+            {
+                [LeaseContractTemplateStructure.Parties] = "Città, qualità, però: àèìòù ÀÈÌÒÙ. Parti: {{locatori}} e {{conduttori}}.",
+            }));
+        var sut = CreateSut(_files.Options(FiscalRegime.CedolareSecca, LeaseTemplateTestFiles.Approved()));
+        var lease = BuildLease(FiscalRegime.CedolareSecca);
+        lease.Parties.Add(new Party { Role = PartyRole.Landlord, FirstName = "Łukasz", LastName = "Čapek" });
+        lease.Parties.Add(new Party { Role = PartyRole.Tenant, FirstName = "Ольга", LastName = "Иванова" });
+        lease.Parties.Add(new Party { Role = PartyRole.Tenant, FirstName = "Jürgen", LastName = "Straßmüller" });
+
+        var text = PdfText(await sut.GeneratePdfAsync(lease));
+
+        Assert.Contains("Città, qualità, però: àèìòù ÀÈÌÒÙ.", text, StringComparison.Ordinal);
+        Assert.Contains("Łukasz Čapek", text, StringComparison.Ordinal);
+        Assert.Contains("Ольга Иванова", text, StringComparison.Ordinal);
+        Assert.Contains("Jürgen Straßmüller", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("?", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GeneratePreviewPdfAsync_TemplateNotApproved_EveryPageIsWatermarkedBozza()
+    {
+        var longText = string.Join("\n", Enumerable.Range(1, 60).Select(i => $"Riga di prova {i} della clausola, abbastanza lunga da occupare la larghezza della pagina."));
+        _files.Write(
+            FiscalRegime.RegimeOrdinario,
+            "v3",
+            LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.RegimeOrdinario, new Dictionary<string, string>
+            {
+                [LeaseContractTemplateStructure.RenewalAndNotice] = longText,
+                [LeaseContractTemplateStructure.Deposit] = longText,
+            }));
+        var sut = CreateSut(_files.Options(FiscalRegime.RegimeOrdinario, new LeaseTemplateVariantOptions { VersionId = "v3" }));
+
+        var pages = PdfTestReader.Pages(await sut.GeneratePreviewPdfAsync(BuildLease(FiscalRegime.RegimeOrdinario)));
+
+        Assert.True(pages.Count > 1, $"{pages.Count} pages");
+        Assert.All(pages, page => Assert.Equal(LeaseContractDocument.DraftWatermark, page.Watermark));
+        Assert.Contains(LeaseContractDocument.DraftMarker, pages[0].Text, StringComparison.Ordinal);
+        Assert.Contains(LeaseContractDocument.DraftMarker, pages[^1].Text, StringComparison.Ordinal);
+    }
+
+    private static LeaseContractTemplateService CreateSut(LeaseTemplateOptions options) =>
+        new(LeaseTemplateTestFiles.Catalog(options), new MigraDocPdfDocumentRenderer(), NullLogger<LeaseContractTemplateService>.Instance);
+
+    private static string PdfText(byte[] pdf)
+    {
+        Assert.Equal("%PDF-", Encoding.ASCII.GetString(pdf, 0, 5));
+        return PdfTestReader.Text(pdf);
+    }
 
     private static string FindWebProjectDirectory()
     {
