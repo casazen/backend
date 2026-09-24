@@ -390,6 +390,18 @@
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>La sincronizzazione del calendario non è riuscita: verrà ritentata automaticamente.</value>
   </data>
+  <data name="ICalFeedNotFound" xml:space="preserve">
+    <value>Calendario non trovato: potrebbe essere già stato scollegato.</value>
+  </data>
+  <data name="ICalFeedLimitReached" xml:space="preserve">
+    <value>Hai già collegato il numero massimo di calendari per questa proprietà ({0}): scollegane uno prima di aggiungerne un altro.</value>
+  </data>
+  <data name="ICalFeedDuplicate" xml:space="preserve">
+    <value>Questo calendario è già collegato alla proprietà.</value>
+  </data>
+  <data name="ICalFeedInvalidLabel" xml:space="preserve">
+    <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
+  </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
   </data>

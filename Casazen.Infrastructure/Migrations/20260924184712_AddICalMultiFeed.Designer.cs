@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924184712_AddICalMultiFeed")]
+    partial class AddICalMultiFeed
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -846,9 +849,6 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("ContractType")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -881,9 +881,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<decimal?>("SecurityDeposit")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("SignedPdfStoragePath")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -900,9 +897,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("StipulaDeclaredByUserId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
-
-                    b.Property<int?>("TaxRegime")
-                        .HasColumnType("integer");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1832,26 +1826,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("Bedrooms")
                         .HasColumnType("integer");
 
-                    b.Property<string>("CadastralCategory")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<decimal?>("CadastralIncome")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)");
-
-                    b.Property<string>("CadastralParcel")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<string>("CadastralSheet")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<string>("CadastralSubaltern")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
                     b.Property<Guid?>("CancellationPolicyId")
                         .HasColumnType("uuid");
 
@@ -1968,14 +1942,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<string>("ApeCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("ApeEnergyClass")
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
 
                     b.Property<string>("DocumentType")
                         .IsRequired()
@@ -3259,17 +3225,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
-                    b.Property<decimal>("AirConditioningUpliftPercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
-                    b.Property<decimal>("BalconyAppurtenancePercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
-                    b.Property<int>("CoefficientCombination")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Comune")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -3297,14 +3252,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
 
-                    b.Property<decimal>("GarageAppurtenancePercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
-                    b.Property<decimal>("GreenAreaAppurtenancePercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
                     b.Property<int>("LargeSqmMin")
                         .HasColumnType("integer");
 
@@ -3322,10 +3269,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<decimal>("MidSqmUpliftPercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
-                    b.Property<decimal>("OtherAppurtenancePercent")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
 
@@ -3351,25 +3294,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
-
-                    b.Property<int>("StoveHeatingMinTypeBCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SubFascia2MinTypeBCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SubFascia3MaxMinTypeDCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SubFascia3MinQualifyingTypeDCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SubFascia3MinTypeCCount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("SubFascia3QualifyingTypeDElements")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
@@ -3747,113 +3671,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.OwnsOne("Casazen.Core.Entities.LeaseConcordatoAssessment", "ConcordatoAssessment", b1 =>
-                        {
-                            b1.Property<Guid>("LeaseContractId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<bool>("AirConditioning")
-                                .HasColumnType("boolean");
-
-                            b1.Property<decimal>("BalconySqm")
-                                .HasPrecision(10, 2)
-                                .HasColumnType("numeric(10,2)");
-
-                            b1.Property<string>("CadastralSheet")
-                                .HasMaxLength(20)
-                                .HasColumnType("character varying(20)");
-
-                            b1.Property<DateTime>("CalculatedAt")
-                                .HasColumnType("timestamp with time zone");
-
-                            b1.Property<decimal>("CanoneMaxAnnuo")
-                                .HasPrecision(18, 2)
-                                .HasColumnType("numeric(18,2)");
-
-                            b1.Property<decimal>("CanoneMaxMensile")
-                                .HasPrecision(18, 2)
-                                .HasColumnType("numeric(18,2)");
-
-                            b1.Property<decimal>("CanoneMinAnnuo")
-                                .HasPrecision(18, 2)
-                                .HasColumnType("numeric(18,2)");
-
-                            b1.Property<decimal>("CanoneMinMensile")
-                                .HasPrecision(18, 2)
-                                .HasColumnType("numeric(18,2)");
-
-                            b1.Property<int>("ContractYears")
-                                .HasColumnType("integer");
-
-                            b1.Property<int>("DataCompleteness")
-                                .HasColumnType("integer");
-
-                            b1.Property<decimal>("GarageSqm")
-                                .HasPrecision(10, 2)
-                                .HasColumnType("numeric(10,2)");
-
-                            b1.Property<bool>("IsFurnished")
-                                .HasColumnType("boolean");
-
-                            b1.Property<decimal>("OtherAppurtenanceSqm")
-                                .HasPrecision(10, 2)
-                                .HasColumnType("numeric(10,2)");
-
-                            b1.Property<decimal>("PrivateGreenSqm")
-                                .HasPrecision(10, 2)
-                                .HasColumnType("numeric(10,2)");
-
-                            b1.Property<int>("QualifyingTypeDElementCount")
-                                .HasColumnType("integer");
-
-                            b1.Property<bool>("RentWithinRange")
-                                .HasColumnType("boolean");
-
-                            b1.Property<decimal>("Sqm")
-                                .HasPrecision(10, 2)
-                                .HasColumnType("numeric(10,2)");
-
-                            b1.Property<bool>("StoveHeating")
-                                .HasColumnType("boolean");
-
-                            b1.Property<int>("SubFascia")
-                                .HasColumnType("integer");
-
-                            b1.Property<int>("TypeAElementCount")
-                                .HasColumnType("integer");
-
-                            b1.Property<int>("TypeBElementCount")
-                                .HasColumnType("integer");
-
-                            b1.Property<int>("TypeCElementCount")
-                                .HasColumnType("integer");
-
-                            b1.Property<int>("TypeDElementCount")
-                                .HasColumnType("integer");
-
-                            b1.Property<decimal>("UsableSqm")
-                                .HasPrecision(10, 2)
-                                .HasColumnType("numeric(10,2)");
-
-                            b1.Property<string>("Zone")
-                                .IsRequired()
-                                .HasMaxLength(100)
-                                .HasColumnType("character varying(100)");
-
-                            b1.Property<string>("ZoneName")
-                                .HasMaxLength(100)
-                                .HasColumnType("character varying(100)");
-
-                            b1.HasKey("LeaseContractId");
-
-                            b1.ToTable("LeaseContracts");
-
-                            b1.WithOwner()
-                                .HasForeignKey("LeaseContractId");
-                        });
-
-                    b.Navigation("ConcordatoAssessment");
 
                     b.Navigation("Org");
 
