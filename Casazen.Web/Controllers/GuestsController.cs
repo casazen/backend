@@ -13,7 +13,6 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
 [Authorize(Policy = "RequireContext:short-rent:guest.read")]
 public class GuestsController(
     IGuestService guestService,

@@ -11,7 +11,7 @@ namespace Casazen.Web.Controllers;
 /// <summary>OTA partner credentials per property: in freeze behind <see cref="FeatureFlags.OtaPartnerApi"/> (D10).</summary>
 [ApiController]
 [Route("api/properties/{propertyId}/ota-integrations")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:ota.read")]
 [FeatureGate(FeatureFlags.OtaPartnerApi)]
 public class OtaIntegrationsController(
     IOtaIntegrationService otaIntegrationService,
@@ -83,6 +83,7 @@ public class OtaIntegrationsController(
     }
 
     [HttpPost]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<ActionResult<OtaIntegrationDto>> Create(
         Guid propertyId,
         [FromBody] CreateOtaIntegrationRequest request)
@@ -124,6 +125,7 @@ public class OtaIntegrationsController(
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> Update(
         Guid propertyId,
         Guid id,
@@ -154,6 +156,7 @@ public class OtaIntegrationsController(
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> Delete(Guid propertyId, Guid id)
     {
         var userId = GetUserId();

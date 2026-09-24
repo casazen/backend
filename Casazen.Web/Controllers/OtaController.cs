@@ -16,7 +16,7 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:ota.read")]
 [FeatureGate(FeatureFlags.OtaPartnerApi)]
 public class OtaController : ControllerBase
 {
@@ -66,6 +66,7 @@ public class OtaController : ControllerBase
     }
 
     [HttpPost("sync")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> SyncAll([FromQuery] Guid propertyId)
     {
         try
