@@ -45,6 +45,15 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             + $"<strong>{Text(labelKey)}</strong><br />{string.Join("<br />", lines)}</p>");
     }
 
+    /// <summary>A bulleted list with one localized line per entry (e.g. the amounts of a booking); skipped when empty.</summary>
+    public EmailHtmlBuilder List(IEnumerable<(string Key, object?[] Args)> lines)
+    {
+        var items = lines.Select(line => $"<li>{Format(line.Key, line.Args)}</li>").ToList();
+        return items.Count == 0
+            ? this
+            : Append($"<ul style=\"padding-left:20px;\">{string.Concat(items)}</ul>");
+    }
+
     public EmailHtmlBuilder Button(string key, string url) =>
         Append(
             $"<p><a href=\"{EncodeUrl(url)}\" style=\"display:inline-block;padding:12px 20px;background:#0d8abc;"

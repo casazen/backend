@@ -9,8 +9,9 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Emails of the "pay at the property" requests (BK-06, D5, A3-06), rendered from <see cref="EmailTemplates"/> and queued
 /// on Hangfire (<see cref="IEmailQueue"/>): request received with the confirmation link (guest), new request to answer
-/// (host, <c>Org.ContactEmail</c>), accepted / declined / expired (guest). Called after the change is saved: a failure
-/// is logged (booking id only, no address) and never undoes the change. The push to the host is MO-04's.
+/// (host, <c>Org.ContactEmail</c>), declined / expired (guest). An accepted request gets the standard booking
+/// confirmation of <see cref="BookingNotifier"/> (BK-10). Called after the change is saved: a failure is logged (booking
+/// id only, no address) and never undoes the change. The push to the host is MO-04's.
 /// </summary>
 public sealed class OnSiteRequestNotifier(
     AppDbContext db,
@@ -56,18 +57,6 @@ public sealed class OnSiteRequestNotifier(
                 links.HostBookingRequests());
             return (data.HostEmail, content);
         });
-
-    /// <summary>To the guest: the host accepted, the booking is confirmed.</summary>
-    public Task AcceptedAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
-        SendAsync(bookingId, EmailTemplates.Names.OnSiteRequestAccepted, cancellationToken, data =>
-            (data.GuestEmail, EmailTemplates.OnSiteRequestAccepted(
-                EmailTemplates.DefaultCulture,
-                data.GuestFirstName,
-                data.PropertyName,
-                data.CheckInDate,
-                data.CheckOutDate,
-                data.TotalPrice,
-                data.BookingId.ToString("D"))));
 
     /// <summary>To the guest: the host declined, with the host's optional message.</summary>
     public Task DeclinedAsync(Guid bookingId, string? hostMessage, CancellationToken cancellationToken = default) =>

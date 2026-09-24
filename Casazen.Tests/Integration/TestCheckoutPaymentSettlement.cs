@@ -5,6 +5,7 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -42,7 +43,7 @@ internal static class TestCheckoutPaymentSettlement
             paymentRepository ?? new PaymentRepository(db),
             refunds,
             scheduler,
-            emailQueue,
+            new BookingNotifier(db, emailQueue, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance),
             configuration ?? EmptyConfiguration,
             NullLogger<CheckoutPaymentSettlementService>.Instance,
             timeProvider);

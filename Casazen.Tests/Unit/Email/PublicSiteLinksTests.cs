@@ -56,6 +56,34 @@ public class PublicSiteLinksTests
         Assert.Equal("https://app.example.org/app/short-rent/bookings?view=requests", links.HostBookingRequests());
     }
 
+    [Fact]
+    public void GuestBookings_OrgSlug_PointsToMyBookingsOfTheBookingSite()
+    {
+        var links = EmailTestHelpers.Links("https://app.example.org/");
+
+        // BK-10: no booking id, email or checkout token in the URL; the page asks for the code and the email.
+        Assert.Equal("https://app.example.org/book/villa%20rosa/my-bookings", links.GuestBookings("villa rosa"));
+    }
+
+    [Fact]
+    public void HostBooking_BookingId_PointsToConsoleBookingDetail()
+    {
+        var links = EmailTestHelpers.Links("https://app.example.org");
+        var bookingId = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e");
+
+        Assert.Equal(
+            "https://app.example.org/app/short-rent/bookings/0f8fad5b-d9cb-469f-a165-70867728950e",
+            links.HostBooking(bookingId));
+    }
+
+    [Fact]
+    public void GuestBookings_PublicSiteBaseUrlMissing_ThrowsConfigurationError()
+    {
+        var links = EmailTestHelpers.Links(null);
+
+        Assert.Throws<EmailConfigurationException>(() => links.GuestBookings("villa"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

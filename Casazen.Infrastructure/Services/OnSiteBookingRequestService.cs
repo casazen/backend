@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +23,7 @@ public sealed class OnSiteBookingRequestService(
     AppDbContext db,
     PropertyICalSyncService propertyICalSyncService,
     OnSiteRequestNotifier notifier,
+    BookingNotifier bookingNotifier,
     IConfiguration configuration,
     ILogger<OnSiteBookingRequestService> logger,
     TimeProvider? timeProvider = null) : IOnSiteBookingRequestService
@@ -127,7 +129,8 @@ public sealed class OnSiteBookingRequestService(
         }
 
         logger.LogInformation("On-site request {BookingId} accepted by the host: booking confirmed", booking.Id);
-        await notifier.AcceptedAsync(booking.Id, cancellationToken);
+        // The standard confirmation (BK-10) with "pay at the property"; the host, who accepted, is not emailed.
+        await bookingNotifier.BookingConfirmedAsync(booking.Id, BookingConfirmationKind.OnSite, cancellationToken);
         return booking;
     }
 
