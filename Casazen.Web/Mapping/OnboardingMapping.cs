@@ -51,6 +51,8 @@ public static class OnboardingMapping
             Purpose = i.Purpose,
             Region = i.Region,
             Website = i.Website,
+            TransferMechanism = i.TransferMechanism,
+            DetailsPending = i.DetailsPending,
         }).ToList(),
     };
 }

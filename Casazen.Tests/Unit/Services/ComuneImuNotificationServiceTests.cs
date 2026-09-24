@@ -6,6 +6,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -264,6 +265,9 @@ public class ComuneImuNotificationServiceTests
             Mock.Of<ICedolareAdvisoryService>(),
             Mock.Of<IRliExportService>(),
             Mock.Of<IRliChecklistService>(),
+            Mock.Of<IHostResourceLookup>(),
+            Mock.Of<IAuthorizationService>(),
+            Mock.Of<IOrgContextResolver>(),
             Mock.Of<IStringLocalizer<SharedResources>>());
         controller.ControllerContext = new ControllerContext
         {

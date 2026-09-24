@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -8,16 +9,19 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Authorization;
 using Casazen.Tests.Unit.Email;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Resources;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -34,7 +38,6 @@ public class BookingsControllerTests
     private readonly Mock<IAlloggiatiWebService> _mockAlloggiatiService;
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
-    private readonly Mock<IGuestService> _mockGuestService;
     private readonly Mock<IAlloggiatiReportScheduler> _mockAlloggiatiScheduler;
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
@@ -55,7 +58,6 @@ public class BookingsControllerTests
         _mockAlloggiatiService = new Mock<IAlloggiatiWebService>();
         _mockPropertyService = new Mock<IPropertyService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
-        _mockGuestService = new Mock<IGuestService>();
         _mockAlloggiatiScheduler = new Mock<IAlloggiatiReportScheduler>();
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
@@ -81,7 +83,6 @@ public class BookingsControllerTests
             _mockPropertyService.Object,
             _mockAuthz.Object,
             CreatePropertyICalSyncService(),
-            _mockGuestService.Object,
             _mockAlloggiatiScheduler.Object,
             _mockGuestCheckInService.Object,
             _mockComplianceWizardService.Object,
@@ -152,9 +153,18 @@ public class BookingsControllerTests
         var identity = new ClaimsIdentity(new[] { new Claim("sub", userId) }, "TestAuth");
         _controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(identity),
+                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+            },
         };
     }
+
+    // TN-3: the real resource handler, with the caller in the property's org unless told otherwise.
+    private static IAuthorizationService HostAuthorization(Guid? callerOrgId = null) =>
+        HostAuthorizationTestHarness.Create(callerOrgId ?? OrgId);
 
     private static Property MakeProperty() => new()
     {
@@ -284,149 +294,115 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task Create_WithValidRequest_ReturnsCreated()
+    public async Task Create_WithValidRequest_CreatesManualBookingWithGuestSnapshotOfPropertyOrg()
     {
         SetUser(OwnerId);
-        var guest = new Guest { Id = Guid.NewGuid(), Email = "mario.rossi@example.com" };
+        Booking? stored = null;
+        Guest? storedGuest = null;
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
-        _mockGuestService.Setup(g => g.CreateGuestSnapshotAsync(It.IsAny<Guest>())).ReturnsAsync(guest);
-        _mockBookingService.Setup(b => b.IsPropertyAvailableAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(true);
         _mockTaxService.Setup(t => t.CalculateTouristTaxAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), 2))
             .ReturnsAsync(12m);
-        _mockBookingService.Setup(b => b.CreateBookingAsync(It.IsAny<Booking>()))
-            .ReturnsAsync((Booking b) => { b.Id = Guid.NewGuid(); return b; });
-        _mockBookingService.Setup(b => b.GetBookingAsync(It.IsAny<Guid>()))
-            .ReturnsAsync((Guid id) => new Booking
+        _mockBookingService.Setup(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()))
+            .Callback<Booking, Guest>((booking, guest) =>
             {
-                Id = id,
-                PropertyId = PropertyId,
-                OrgId = OrgId,
-                GuestId = guest.Id,
-                Guest = guest,
-                Property = MakeProperty(),
-                NumberOfGuests = 2,
-                BasePrice = 450m,
-                TouristTax = 12m,
-                TotalPrice = 462m,
-                Status = BookingStatus.Confirmed,
-                Source = BookingSource.Direct,
-            });
+                booking.Id = Guid.NewGuid();
+                booking.Status = BookingStatus.Confirmed;
+                booking.Source = BookingSource.Manual;
+                booking.Guest = guest;
+                booking.Property = MakeProperty();
+                stored = booking;
+                storedGuest = guest;
+            })
+            .ReturnsAsync((Booking b, Guest _) => b);
+        _mockBookingService.Setup(b => b.GetBookingAsync(It.IsAny<Guid>())).ReturnsAsync(() => stored);
 
-        var result = await _controller.Create(MakeRequest());
+        var result = await _controller.Create(MakeRequest(), HostAuthorization());
 
         var created = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var booking = Assert.IsType<BookingResponseDto>(created.Value);
-        Assert.Equal(PropertyId, booking.PropertyId);
-        Assert.Equal(462m, booking.TotalPrice);
-        Assert.Equal("Confirmed", booking.Status);
-        Assert.Equal("mario.rossi@example.com", booking.Guest.Email);
-        _mockBookingService.Verify(b => b.CreateBookingAsync(
-            It.Is<Booking>(created => created.Status == BookingStatus.Confirmed)), Times.Once);
+        var dto = Assert.IsType<BookingResponseDto>(created.Value);
+        Assert.Equal(PropertyId, dto.PropertyId);
+        Assert.Equal("Confirmed", dto.Status);
+        Assert.Equal("Manual", dto.Source);
+        Assert.Equal("mario.rossi@example.com", dto.Guest.Email);
+        Assert.NotNull(stored);
+        Assert.Equal(OrgId, stored!.OrgId);
+        Assert.Equal(450m, stored.BasePrice);
+        Assert.Equal(462m, stored.TotalPrice);
+        Assert.NotNull(storedGuest);
+        Assert.Equal(OrgId, storedGuest!.OrgId);
+        Assert.Equal("Mario", storedGuest.FirstName);
+        Assert.Equal("+393331234567", storedGuest.PhoneNumber);
+        Assert.Equal("Italia", storedGuest.Country);
     }
 
     [Fact]
-    public async Task Create_WithExistingGuestEmail_CreatesBookingGuestSnapshot()
+    public async Task Create_WhenDatesOverlap_PropagatesConflictForTheErrorMiddleware()
     {
         SetUser(OwnerId);
-        var existingGuest = new Guest
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "Other",
-            LastName = "Tenant",
-            Email = "mario.rossi@example.com",
-            PhoneNumber = "+390000000000",
-            Country = "France",
-        };
-        var snapshotGuest = new Guest
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "Mario",
-            LastName = "Rossi",
-            Email = existingGuest.Email,
-            PhoneNumber = "+393331234567",
-            Country = "Italia",
-        };
-
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
-        _mockGuestService
-            .Setup(g => g.GetGuestByEmailAsync(It.IsAny<Guid>(), existingGuest.Email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existingGuest);
-        _mockGuestService.Setup(g => g.CreateGuestSnapshotAsync(It.IsAny<Guest>())).ReturnsAsync(snapshotGuest);
-        _mockBookingService.Setup(b => b.IsPropertyAvailableAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(true);
-        _mockTaxService.Setup(t => t.CalculateTouristTaxAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), 2))
-            .ReturnsAsync(0m);
-        _mockBookingService.Setup(b => b.CreateBookingAsync(It.IsAny<Booking>()))
-            .ReturnsAsync((Booking b) => { b.Id = Guid.NewGuid(); return b; });
-        _mockBookingService.Setup(b => b.GetBookingAsync(It.IsAny<Guid>()))
-            .ReturnsAsync((Guid id) => new Booking
-            {
-                Id = id,
-                PropertyId = PropertyId,
-                OrgId = OrgId,
-                GuestId = snapshotGuest.Id,
-                Guest = snapshotGuest,
-                Property = MakeProperty(),
-                NumberOfGuests = 2,
-                Status = BookingStatus.Pending,
-                Source = BookingSource.Direct,
-            });
+        _mockBookingService.Setup(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()))
+            .ThrowsAsync(new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable"));
 
-        var result = await _controller.Create(MakeRequest());
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            _controller.Create(MakeRequest(), HostAuthorization()));
 
-        var created = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var booking = Assert.IsType<BookingResponseDto>(created.Value);
-        Assert.Equal("Mario", booking.Guest.FirstName);
-        Assert.Equal("+393331234567", booking.Guest.Phone);
-        Assert.Equal("Italia", booking.Guest.Country);
-        _mockGuestService.Verify(
-            g => g.GetGuestByEmailAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-        _mockGuestService.Verify(g => g.CreateGuestSnapshotAsync(
-            It.Is<Guest>(guest => guest.Email == existingGuest.Email && guest.FirstName == "Mario" && guest.OrgId == OrgId)),
-            Times.Once);
+        Assert.Equal("booking_dates_unavailable", ex.Code);
     }
 
     [Fact]
-    public async Task Create_WhenPropertyNotFound_ReturnsNotFound()
+    public async Task Create_WhenPropertyNotFound_ReturnsNotFoundProblem()
     {
         SetUser(OwnerId);
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync((Property?)null);
 
-        var result = await _controller.Create(MakeRequest());
+        var result = await _controller.Create(MakeRequest(), HostAuthorization());
 
-        Assert.IsType<NotFoundObjectResult>(result.Result);
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        _mockBookingService.Verify(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()), Times.Never);
     }
 
     [Fact]
-    public async Task Create_WhenUnauthorizedForProperty_ReturnsForbid()
+    public async Task Create_WhenCallerDoesNotOwnPropertyAndHasNoOrgWideRole_ReturnsForbid()
     {
-        SetUser(OwnerId);
+        SetUser("auth0|colleague");
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(false);
 
-        var result = await _controller.Create(MakeRequest());
+        var result = await _controller.Create(MakeRequest(), HostAuthorization());
 
         Assert.IsType<ForbidResult>(result.Result);
+        _mockBookingService.Verify(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()), Times.Never);
     }
 
     [Fact]
-    public async Task Create_WhenTooManyGuests_ReturnsBadRequest()
+    public async Task Create_WhenCallerIsInAnotherOrg_ReturnsForbid()
     {
         SetUser(OwnerId);
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        _mockAuthz.Setup(a => a.CanAccess(OwnerId, OwnerId, It.IsAny<IEnumerable<string>>())).Returns(true);
+
+        var result = await _controller.Create(MakeRequest(), HostAuthorization(Guid.NewGuid()));
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockBookingService.Verify(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Create_WhenTooManyGuests_ReturnsUnprocessableProblemWithStableCode()
+    {
+        SetUser(OwnerId);
+        _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
 
         var request = MakeRequest();
         request.NumberOfGuests = 10;
 
-        var result = await _controller.Create(request);
+        var result = await _controller.Create(request, HostAuthorization());
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, problem.StatusCode);
+        var details = Assert.IsAssignableFrom<ProblemDetails>(problem.Value);
+        Assert.Equal("booking_too_many_guests", details.Extensions["code"]);
+        _mockBookingService.Verify(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()), Times.Never);
     }
 
     [Fact]

@@ -23,6 +23,12 @@ public static class ProblemCodes
     /// <summary>429 from a rate limiting policy (with <c>Retry-After</c>), see <c>RateLimitingServiceCollectionExtensions</c>.</summary>
     public const string RateLimited = "rate_limited";
 
+    /// <summary>
+    /// 422: the monthly platform AI budget cannot cover the call, the provider was not called
+    /// (<see cref="Casazen.Core.Exceptions.AiBudgetExceededException"/>, docs/runbooks/ai.md).
+    /// </summary>
+    public const string AiBudgetExhausted = Casazen.Core.Exceptions.AiBudgetExceededException.ErrorCode;
+
     public const string ClientError = "client_error";
     public const string InternalError = "internal_error";
     public const string PaymentProviderError = "payment_provider_error";

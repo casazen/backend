@@ -54,3 +54,36 @@ TEST: <comandi e risultato sintetico>
 RUNBOOK: <file creati/aggiornati> | -
 DUBBI: <domande per il product owner> | -
 ```
+
+## Convenzioni introdotte dai task di fondamenta (usale, non reinventarle)
+- **Errori backend (FD-05):**
+  - Nei servizi lancia `DomainRuleException(code, key, args)` (→ 422) o `DomainConflictException` (→ 409), entrambe in `Casazen.Core.Exceptions`, oppure `NotFoundException` (→ 404).
+  - Nei controller usa `this.ApiProblem(status, code, key, args)`.
+  - I codici generici sono in `Casazen.Web.Infrastructure.ProblemCodes`.
+  - Ogni chiave va in `Casazen.Web/Resources/SharedResources.resx` (IT) **e** `SharedResources.en.resx`: il test `SharedResourcesLocalizationTests` fallisce altrimenti.
+  - `InvalidOperationException` ora diventa 500 generico: non usarla per errori di dominio. `UnauthorizedAccessException` diventa 403 con code `forbidden`.
+- **Test su PostgreSQL (FD-04):** le factory d'integrazione creano un DB `it_<guid>` reale quando `TEST_POSTGRES_CONNECTION` è impostata (lo fa `env.sh`). Per test solo-Postgres usa `[PostgresFact]`. Esegui sempre i test con `source /home/user/wt/bin/env.sh`.
+- **Client HTTP frontend (FD-08):**
+  - Le chiamate pubbliche si dichiarano esplicitamente (vedi `src/lib/axios.ts` / `src/api/client.ts`).
+  - Negli `onError` usa `getProblemMessage(err, t)`.
+  - Niente `fetch` diretto (regola ESLint).
+- **CI frontend (FD-01):** `npm run lint` deve restare a 0 errori.
+- **Date (FD-06):** le date in ingresso (JSON, query, route) e su EF sono già normalizzate in UTC da infrastruttura globale: niente `SpecifyKind` ad hoc. Per "oggi" di calendario usa `RomeCalendar.TodayInRome()` (basato su `TimeProvider`, registrato in DI); nei test usa un `FakeTimeProvider`.
+- **Email (FD-13):** usa solo `IEmailService` con i template in `Casazen.Infrastructure/Email/Templates` (testi `.resx` IT/EN, valori HTML-encoded). L'invio va accodato su Hangfire, mai dentro la richiesta. I link si costruiscono da `App:PublicSiteBaseUrl` (`PublicSiteLinks`). Niente HTML costruito a mano.
+- **File (FD-07):** usa solo `IFileStorage`. Bucket public per le foto (URL assoluti); bucket private per documenti, scansioni e PDF, scaricabili solo tramite endpoint autenticato con controllo tenant. Niente scritture su `wwwroot` o sul disco locale.
+- **Tenant (TN-1, TN-2):** le entità con `OrgId` implementano `ITenantOwned` e il filtro si registra da solo. Una nuova entità tenant va resa `ITenantOwned`, altrimenti il test architetturale `TenantQueryFilterArchitectureTests` fallisce; l'allow-list va motivata. `Guest` è per org. Ogni `IgnoreQueryFilters` richiede un commento con il motivo.
+- **Autorizzazione (TN-3):**
+  - Le policy sono in `Casazen.Web/Authorization/CasazenPolicies`: `Authenticated` solo per endpoint dell'utente stesso (allow-list motivata), `AdminOnly`, `Supplier`, `OrgBillingAdmin`, `Property/Booking/Payment/Guest/Ota` Read-Write, `Lease` Read/Create/Sign/Register.
+  - A livello di classe metti la policy di lettura, sulle azioni di scrittura quella di scrittura.
+  - Per la singola risorsa usa `authorizationService.IsAuthorizedAsync(User, HostResource, XxxOperations.Write)`; per le liste usa `User.GetHostScope(orgId)` filtrato in SQL.
+  - I servizi non controllano mai i ruoli.
+  - Se tocchi un controller non ancora migrato (Bookings, Properties, Alloggiati, Ota), migralo al nuovo schema nelle parti che modifichi.
+- **Feature flag (FD-20):**
+  - Backend: aggiungi la costante in `Casazen.Core/Features/FeatureFlags.cs` e la voce in `All`, con default in appsettings `Features:X` (se manca = off). Usa `[FeatureGate(FeatureFlags.X)]` sugli endpoint (404 prima dell'auth) e `IFeatureFlags` nei servizi e nei job. Per i job ricorrenti con flag off usa `RemoveIfExists`.
+  - Frontend: chiave e default in `src/config/feature-flags.ts`, `featureFlag:` nelle voci di `ROUTE_MANIFEST`, `useFeatureFlags()` e `enabled:` sulle query. I flag arrivano da `GET /api/public/features` e, se la chiamata fallisce, sono tutti off.
+  - Runbook: `docs/runbooks/feature-flags.md`. Le API OTA partner sono dietro flag OFF (D10): non riattivarle.
+- **Tenant context (TN-4):**
+  - L'`OrgId` viene caricato da un middleware asincrono dopo l'autenticazione.
+  - Dopo aver creato o trovato un'org, chiama `IRequestTenantContext.SetOrgId`.
+  - Per la creazione di property usa `CreatePropertyWithinLimitAsync`: limite del piano atomico sotto advisory lock.
+  - Le corse di creazione vanno gestite con un advisory lock oppure con la gestione di 23505 e rilettura, mai con check-then-insert.

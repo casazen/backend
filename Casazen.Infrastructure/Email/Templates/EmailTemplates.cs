@@ -1,5 +1,6 @@
 using System.Globalization;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Suppliers;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
@@ -22,7 +23,22 @@ public static class EmailTemplates
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
+        public const string RliDeadlineReminder = "rli-deadline-reminder";
+        public const string RliDeadlineOverdue = "rli-deadline-overdue";
+        public const string RliExtraEuNotice = "rli-extra-eu-notice";
     }
+
+    /// <summary>EmailTexts key of the label of a <see cref="ServiceCategories"/> code.</summary>
+    public static string ServiceCategoryKey(string code) => $"ServiceCategory_{code}";
+
+    /// <summary>
+    /// Label of a service category code in <paramref name="culture"/> (SU-03). A value that is not a known code (an
+    /// old value kept by the migration) is shown as it is; the builder HTML-encodes it like any dynamic value.
+    /// </summary>
+    public static string ServiceCategoryLabel(CultureInfo culture, string category) =>
+        ServiceCategories.IsKnown(category)
+            ? EmailTexts.Get(ServiceCategoryKey(category), culture)
+            : category;
 
     /// <summary>New service request, to the supplier.</summary>
     public static EmailContent ServiceRequestCreated(
@@ -34,7 +50,7 @@ public static class EmailTemplates
         string inboxUrl) =>
         new EmailHtmlBuilder(culture)
             .Paragraph("ServiceRequestCreated_Greeting", supplierName)
-            .Paragraph("ServiceRequestCreated_Body", category, propertyName)
+            .Paragraph("ServiceRequestCreated_Body", ServiceCategoryLabel(culture, category), propertyName)
             .Quote("ServiceRequestCreated_NotesLabel", notes)
             .Button("ServiceRequestCreated_Cta", inboxUrl)
             .Build("ServiceRequestCreated_Subject", propertyName);
@@ -55,7 +71,7 @@ public static class EmailTemplates
             _ => throw new ArgumentOutOfRangeException(nameof(status), status, "No email for this service request status."),
         };
 
-        var builder = new EmailHtmlBuilder(culture).Paragraph($"{prefix}_Body", category, propertyName);
+        var builder = new EmailHtmlBuilder(culture).Paragraph($"{prefix}_Body", ServiceCategoryLabel(culture, category), propertyName);
         if (status == ServiceRequestStatus.Rifiutato)
             builder.Quote("ServiceRequestRejected_ReasonLabel", rejectionReason);
 
@@ -133,4 +149,32 @@ public static class EmailTemplates
             .Paragraph("GuestRefundConfirmed_Method")
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestRefundConfirmed_Subject", propertyName);
+
+    /// <summary>RLI registration deadline approaching, to the landlord (LT-11, A7-26).</summary>
+    public static EmailContent RliDeadlineReminder(
+        CultureInfo culture,
+        string propertyName,
+        DateTime registrationDeadline,
+        int daysRemaining) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineReminder_Body", propertyName, registrationDeadline, daysRemaining)
+            .Paragraph("RliDeadline_Responsibility")
+            .Build("RliDeadlineReminder_Subject", propertyName, registrationDeadline);
+
+    /// <summary>RLI registration deadline passed without a completed registration, to the landlord.</summary>
+    public static EmailContent RliDeadlineOverdue(
+        CultureInfo culture,
+        string propertyName,
+        DateTime registrationDeadline) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineOverdue_Body", propertyName, registrationDeadline)
+            .Paragraph("RliDeadline_Responsibility")
+            .Build("RliDeadlineOverdue_Subject", propertyName);
+
+    /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
+    public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliExtraEuNotice_Body", propertyName)
+            .Paragraph("RliExtraEuNotice_Disclaimer")
+            .Build("RliExtraEuNotice_Subject", propertyName);
 }

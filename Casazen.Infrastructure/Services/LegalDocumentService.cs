@@ -1,4 +1,5 @@
 using Casazen.Core.Models;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
 
@@ -30,11 +31,47 @@ public class LegalDocumentService(IConfiguration configuration) : ILegalDocument
         Summary: "Accordo sul trattamento dei dati (Art. 28 GDPR).",
         DocumentUrl: null);
 
+    /// <summary>
+    /// The configured subprocessors plus, when an external AI provider is active (<see cref="AiOptions"/>), that
+    /// provider (A8-15): prompts reach it, so it must be declared. Adding it changes the version (<c>+ai-…</c>), so
+    /// every host acknowledges the new list again during onboarding.
+    /// </summary>
     public SubprocessorsDocument GetSubprocessors()
     {
         var version = GetVersion("Subprocessors");
-        var items = ReadSubprocessorItems();
+        var items = ReadSubprocessorItems().ToList();
+
+        var aiProvider = BuildActiveAiProviderItem();
+        if (aiProvider is not null
+            && !items.Any(item => string.Equals(item.Name, aiProvider.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            items.Add(aiProvider);
+            version = $"{version}+ai-{aiProvider.Name.ToLowerInvariant().Replace(' ', '-')}";
+        }
+
         return new SubprocessorsDocument(version, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc), items);
+    }
+
+    /// <summary>
+    /// Entry of the active external AI provider from <c>Ai:Subprocessor</c>. Location and transfer mechanism are legal
+    /// facts about the provider: never filled in here; while missing the entry is marked <c>DetailsPending</c>.
+    /// </summary>
+    private SubprocessorItem? BuildActiveAiProviderItem()
+    {
+        var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
+        if (!ai.IsExternalProviderActive())
+            return null;
+
+        var details = ai.Subprocessor;
+        var region = details.Region?.Trim() ?? string.Empty;
+        var transferMechanism = string.IsNullOrWhiteSpace(details.TransferMechanism) ? null : details.TransferMechanism.Trim();
+        return new SubprocessorItem(
+            Name: string.IsNullOrWhiteSpace(details.Name) ? ai.Provider.Trim() : details.Name.Trim(),
+            Purpose: string.IsNullOrWhiteSpace(details.Purpose) ? "AI text generation" : details.Purpose.Trim(),
+            Region: region,
+            Website: string.IsNullOrWhiteSpace(details.Website) ? null : details.Website.Trim(),
+            TransferMechanism: transferMechanism,
+            DetailsPending: region.Length == 0 || transferMechanism is null);
     }
 
     private IReadOnlyList<SubprocessorItem> ReadSubprocessorItems()
@@ -57,6 +94,8 @@ public class LegalDocumentService(IConfiguration configuration) : ILegalDocument
             Name: c["Name"] ?? string.Empty,
             Purpose: c["Purpose"] ?? string.Empty,
             Region: c["Region"] ?? string.Empty,
-            Website: c["Website"])).ToList();
+            Website: c["Website"],
+            TransferMechanism: string.IsNullOrWhiteSpace(c["TransferMechanism"]) ? null : c["TransferMechanism"],
+            DetailsPending: string.IsNullOrWhiteSpace(c["Region"]))).ToList();
     }
 }

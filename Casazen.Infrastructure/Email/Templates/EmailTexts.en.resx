@@ -132,4 +132,58 @@
   <data name="GuestRefundConfirmed_Timing" xml:space="preserve">
     <value>When the credit shows on your statement depends on your bank or card issuer.</value>
   </data>
+  <data name="RliDeadlineReminder_Subject" xml:space="preserve">
+    <value>RLI registration reminder — {0} (due {1})</value>
+  </data>
+  <data name="RliDeadlineReminder_Body" xml:space="preserve">
+    <value>Reminder: the RLI registration of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is due on &lt;strong&gt;{1}&lt;/strong&gt;. Days remaining: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="RliDeadlineOverdue_Subject" xml:space="preserve">
+    <value>RLI registration overdue — {0}</value>
+  </data>
+  <data name="RliDeadlineOverdue_Body" xml:space="preserve">
+    <value>The RLI registration deadline of the lease for &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{1}&lt;/strong&gt; and the registration is not complete.</value>
+  </data>
+  <data name="RliDeadline_Responsibility" xml:space="preserve">
+    <value>CasaZen does not file unattended. Filing remains the responsibility of the landlord or an authorized intermediary. Draft wording pending counsel.</value>
+  </data>
+  <data name="RliExtraEuNotice_Subject" xml:space="preserve">
+    <value>Questura notice required (cessione di fabbricato) — {0}</value>
+  </data>
+  <data name="RliExtraEuNotice_Body" xml:space="preserve">
+    <value>The lease for &lt;strong&gt;{0}&lt;/strong&gt; includes a non-EU tenant. Check the Questura communication (Art. 7 D.Lgs 286/1998).</value>
+  </data>
+  <data name="RliExtraEuNotice_Disclaimer" xml:space="preserve">
+    <value>Draft wording pending counsel. CasaZen does not send the communication.</value>
+  </data>
+  <data name="ServiceCategory_cleaning" xml:space="preserve">
+    <value>Cleaning</value>
+  </data>
+  <data name="ServiceCategory_maintenance" xml:space="preserve">
+    <value>Maintenance</value>
+  </data>
+  <data name="ServiceCategory_plumbing" xml:space="preserve">
+    <value>Plumbing</value>
+  </data>
+  <data name="ServiceCategory_laundry" xml:space="preserve">
+    <value>Laundry</value>
+  </data>
+  <data name="ServiceCategory_linen" xml:space="preserve">
+    <value>Linen</value>
+  </data>
+  <data name="ServiceCategory_check-in" xml:space="preserve">
+    <value>Guest check-in</value>
+  </data>
+  <data name="ServiceCategory_gardening" xml:space="preserve">
+    <value>Gardening</value>
+  </data>
+  <data name="ServiceCategory_events" xml:space="preserve">
+    <value>Events</value>
+  </data>
+  <data name="ServiceCategory_rental" xml:space="preserve">
+    <value>Rental</value>
+  </data>
+  <data name="ServiceCategory_excursions" xml:space="preserve">
+    <value>Excursions</value>
+  </data>
 </root>

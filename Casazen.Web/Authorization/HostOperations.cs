@@ -43,3 +43,10 @@ public static class OtaOperations
     public static readonly HostOperationRequirement Read = new("short-rent", "ota.read");
     public static readonly HostOperationRequirement Write = new("short-rent", "ota.write");
 }
+
+/// <summary>Operations on a long-term lease (the resource is its property, with the lease's own org).</summary>
+public static class LeaseOperations
+{
+    public static readonly HostOperationRequirement Read = new("long-rent", "lease.read");
+    public static readonly HostOperationRequirement Create = new("long-rent", "lease.create");
+}

@@ -1,18 +1,26 @@
-using System.Security.Cryptography;
-using System.Text;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Ranks the platform suppliers for a property (rules, not AI). The AI parts, an AI-written match reason and the
+/// external discovery when no supplier covers the zone, run only with <see cref="FeatureFlags.AiSupplierDiscovery"/>
+/// on (D11); the prompt carries only the category, the urgency and the supplier's open load: never the host's notes,
+/// guest data or names (A8-15).
+/// </summary>
 public class SupplierMatchService(
     AppDbContext db,
     ISupplierService supplierService,
     IAiSupplierDiscoveryService aiDiscovery,
     IAiProvider aiProvider,
+    IFeatureFlags featureFlags,
     ILogger<SupplierMatchService> logger) : ISupplierMatchService
 {
     private static readonly ServiceRequestStatus[] OpenStatuses =
@@ -27,22 +35,31 @@ public class SupplierMatchService(
         Guid propertyId,
         string category,
         ServiceRequestUrgency urgency,
-        string? notes,
         CancellationToken cancellationToken = default)
     {
+        category = ServiceCategories.Require(category);
+
         var property = await db.Properties
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
-            ?? throw new InvalidOperationException("Proprietà non trovata.");
+            ?? throw new NotFoundException($"Property {propertyId} not found for supplier match")
+            {
+                Code = "property_not_found",
+                MessageKey = "PropertyNotFound",
+            };
 
         // Who may match for this property is decided by the caller (policy + host resource handler, TN-3);
         // the org boundary is enforced here too.
         if (property.OrgId != orgId)
             throw new UnauthorizedAccessException("Proprietà non appartiene all'organizzazione.");
 
+        var aiEnabled = featureFlags.IsEnabled(FeatureFlags.AiSupplierDiscovery);
         var suppliers = await supplierService.GetActiveByComune(property.City, category, cancellationToken);
         if (suppliers.Count == 0)
         {
+            if (!aiEnabled)
+                return new SupplierMatchResult(null, [], [], false);
+
             var external = await aiDiscovery.SearchNearbyAsync(property.City, category, cancellationToken);
             return new SupplierMatchResult(null, [], external, external.Count > 0);
         }
@@ -76,7 +93,9 @@ public class SupplierMatchService(
             .ToList();
 
         var top = scored[0];
-        var reason = await BuildMatchReasonAsync(top.Profile, category, urgency, top.Load, notes, cancellationToken);
+        var reason = aiEnabled && ServiceCategories.IsKnown(category)
+            ? await BuildMatchReasonAsync(top.Profile, category, urgency, top.Load, cancellationToken)
+            : BuildStaticReason(top.Profile, top.Load);
         var recommended = ToCandidate(top.Profile, top.Score, reason);
         var alternatives = scored
             .Skip(1)
@@ -96,46 +115,41 @@ public class SupplierMatchService(
         string category,
         ServiceRequestUrgency urgency,
         int openLoad,
-        string? notes,
         CancellationToken cancellationToken)
     {
         try
         {
-            var prompt = $"""
-                Seleziona un fornitore per affitti brevi.
-                Fornitore: {profile.LegalName}
-                Categoria: {category}
-                Urgenza: {urgency}
-                Richieste aperte: {openLoad}
-                Note host: {notes ?? "nessuna"}
-                Rispondi in una frase italiana (max 120 caratteri) spiegando perché è la scelta migliore.
-                """;
-            var notesFingerprint = BuildNotesFingerprint(notes);
-            var cacheKey = $"supplier-match:{profile.OrgId}:{category}:{urgency}:{openLoad}:{notesFingerprint}";
+            // Data minimization (A8-15): only fixed codes and a count reach the provider, nothing typed by the host.
+            var prompt = BuildMatchReasonPrompt(category, urgency, openLoad);
+            var cacheKey = $"supplier-match:{category}:{urgency}:{openLoad}";
             var ai = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
             var text = ai.Content.Trim();
             if (text.Length > 160)
                 text = text[..160];
             return string.IsNullOrWhiteSpace(text) ? BuildStaticReason(profile, openLoad) : text;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Budget exhausted or provider failure: the ranking does not depend on the AI, the reason falls back.
             logger.LogWarning(ex, "AI match reason failed for supplier {OrgId}", profile.OrgId);
             return BuildStaticReason(profile, openLoad);
         }
     }
 
+    /// <summary>The whole prompt of the AI match reason: category code, urgency and open load only.</summary>
+    public static string BuildMatchReasonPrompt(string category, ServiceRequestUrgency urgency, int openLoad) =>
+        $"""
+        Spiega perché un fornitore è adatto a una richiesta di servizio per un affitto breve.
+        Categoria: {category}
+        Urgenza: {urgency}
+        Richieste aperte del fornitore: {openLoad}
+        Rispondi in una frase italiana (max 120 caratteri).
+        """;
+
     private static string BuildStaticReason(Casazen.Core.Entities.SupplierProfile profile, int openLoad) =>
         openLoad == 0
             ? $"{profile.LegalName} è attivo nella zona con carico di lavoro basso."
             : $"{profile.LegalName} copre la categoria richiesta con {openLoad} interventi aperti.";
-
-    private static string BuildNotesFingerprint(string? notes)
-    {
-        var normalized = string.IsNullOrWhiteSpace(notes) ? string.Empty : notes.Trim();
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
-        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
-    }
 
     private static SupplierMatchCandidate ToCandidate(
         Casazen.Core.Entities.SupplierProfile profile,

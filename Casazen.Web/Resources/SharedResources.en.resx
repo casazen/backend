@@ -207,6 +207,24 @@
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Lease not found</value>
   </data>
+  <data name="RliChecklist_contract_signed" xml:space="preserve">
+    <value>Contract signed by all parties</value>
+  </data>
+  <data name="RliChecklist_delega_captured" xml:space="preserve">
+    <value>RLI delega / attestation recorded</value>
+  </data>
+  <data name="RliChecklist_rli_exported" xml:space="preserve">
+    <value>RLI dataset exported for review</value>
+  </data>
+  <data name="RliChecklist_rli_submitted" xml:space="preserve">
+    <value>RLI sent to the filing channel</value>
+  </data>
+  <data name="RliChecklist_rli_registered" xml:space="preserve">
+    <value>Registration receipt available</value>
+  </data>
+  <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
+    <value>Questura notice (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Draft wording pending counsel.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Service request not found</value>
   </data>
@@ -218,6 +236,15 @@
   </data>
   <data name="BookingDatesUnavailable" xml:space="preserve">
     <value>The property is not available for the selected dates.</value>
+  </data>
+  <data name="BookingCreateInvalid" xml:space="preserve">
+    <value>The booking cannot be created: the check-in cannot be in the past, the check-out must follow the check-in and at least one guest is needed.</value>
+  </data>
+  <data name="BookingInvalidDates" xml:space="preserve">
+    <value>The check-out date must be after the check-in date.</value>
+  </data>
+  <data name="BookingTooManyGuests" xml:space="preserve">
+    <value>This property hosts at most {0} guests.</value>
   </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
@@ -371,5 +398,17 @@
   </data>
   <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
     <value>Cancelling a booking with payments requires the permission to manage payments.</value>
+  </data>
+  <data name="ServiceCategoryInvalid" xml:space="preserve">
+    <value>The service category "{0}" is not valid: choose one from the list of available categories.</value>
+  </data>
+  <data name="AiBudgetExhaustedDetail" xml:space="preserve">
+    <value>The platform's monthly budget for AI features is used up. Try again next month or contact support.</value>
+  </data>
+  <data name="ServiceCategoryRequired" xml:space="preserve">
+    <value>Choose the service category.</value>
+  </data>
+  <data name="ServiceCategoryNotSupported" xml:space="preserve">
+    <value>This service category is not supported.</value>
   </data>
 </root>
