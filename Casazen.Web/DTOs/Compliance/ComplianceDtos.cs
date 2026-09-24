@@ -121,6 +121,12 @@ public class CompleteCheckoutWizardRequest
     public Guid? SupplierOrgId { get; set; }
     public string? ServiceNotes { get; set; }
     public string? ServiceCategory { get; set; }
+
+    /// <summary>
+    /// The host confirms that the guest arrived: a confirmed booking whose arrival was never registered is checked in
+    /// with the check-out ("registra arrivo e procedi", CO-08).
+    /// </summary>
+    public bool RegisterArrival { get; set; }
 }
 
 public class CompleteCheckoutWizardResponse

@@ -4,7 +4,6 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -18,7 +17,7 @@ public class ComplianceWizardService(
     AppDbContext db,
     IConfiguration configuration,
     IAlloggiatiWebService alloggiatiWebService,
-    IServiceRequestService serviceRequestService,
+    IStayLifecycleService stayLifecycle,
     ITouristTaxQuoteService touristTaxQuoteService,
     ILogger<ComplianceWizardService> logger,
     TimeProvider? timeProvider = null) : IComplianceWizardService
@@ -101,20 +100,16 @@ public class ComplianceWizardService(
             }
         }
 
-        var checkoutCandidates = await db.Bookings
-            .AsNoTracking()
-            .Include(b => b.Guest)
-            .Where(b => b.OrgId == orgId)
-            .Where(b => b.Status == BookingStatus.CheckedIn)
-            .OrderBy(b => b.CheckOutDate)
-            .ToListAsync(cancellationToken);
-
-        var checkoutDue = checkoutCandidates
-            .Where(b => b.CheckOutDate.Date <= today)
-            .Select(b => new ComplianceSummaryItem(
-                b.Id,
-                $"{b.Guest.FirstName} {b.Guest.LastName}".Trim(),
-                $"/bookings/{b.Id}/checkout-wizard"))
+        // Departures of today (Europe/Rome), with or without the arrival registered, and checked-in stays not closed
+        // (CO-08, A5-08): until then only checked-in stays counted and none could be checked in from the apps.
+        var checkoutDue = (await db.Bookings
+                .AsNoTracking()
+                .Where(b => b.OrgId == orgId)
+                .Where(StayLifecycleRules.CheckOutDue(today))
+                .OrderBy(b => b.CheckOutDate)
+                .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
+                .ToListAsync(cancellationToken))
+            .Select(b => new ComplianceSummaryItem(b.Id, b.GuestName, $"/bookings/{b.Id}/checkout-wizard"))
             .ToList();
 
         var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
@@ -195,26 +190,12 @@ public class ComplianceWizardService(
 
     public async Task<(Booking Booking, IReadOnlyList<ComplianceActivationStep> Steps)> StartCheckoutWizardAsync(
         Guid bookingId,
+        bool registerArrival = false,
         CancellationToken cancellationToken = default)
     {
-        var booking = await db.Bookings
-            .Include(b => b.Property)
-            .Include(b => b.Guest)
-            .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
-
-        if (!CanCompleteCheckout(booking))
-        {
-            throw new InvalidOperationException(
-                $"Il check-out richiede una prenotazione in check-in. Stato attuale: {booking.Status}.");
-        }
-
-        booking.CheckoutWizardStartedAt ??= DateTime.UtcNow;
-        booking.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
-
-        var steps = BuildCheckoutSteps(booking);
-        return (booking, steps);
+        // Same rules and transition as the completion and POST /check-out (CO-08).
+        var booking = await stayLifecycle.StartCheckOutAsync(bookingId, registerArrival, cancellationToken);
+        return (booking, BuildCheckoutSteps(booking));
     }
 
     public async Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
@@ -223,67 +204,20 @@ public class ComplianceWizardService(
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(input);
         if (!input.ConfirmDeparture)
-            throw new InvalidOperationException("Conferma che l'ospite ha lasciato la struttura.");
+            throw new DomainRuleException(BookingErrorCodes.DepartureNotConfirmed, "CheckoutDepartureNotConfirmed");
 
-        var booking = await db.Bookings
-            .Include(b => b.Property)
-            .Include(b => b.Guest)
-            .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Booking {bookingId} not found");
-
-        if (!CanCompleteCheckout(booking))
-            throw new InvalidOperationException(
-                $"Il check-out richiede una prenotazione in check-in. Stato attuale: {booking.Status}.");
-
-        if (input.SupplierOrgId.HasValue)
-        {
-            await serviceRequestService.CreateAsync(new CreateServiceRequestCommand(
-                booking.OrgId,
-                userId,
-                booking.PropertyId,
-                booking.Id,
-                input.SupplierOrgId.Value,
-                string.IsNullOrWhiteSpace(input.ServiceCategory) ? ServiceCategories.Cleaning : input.ServiceCategory,
-                ServiceRequestUrgency.Normal,
-                input.ServiceNotes,
-                ChargeToGuest: false), cancellationToken);
-        }
-
-        booking.Status = BookingStatus.CheckedOut;
-        booking.UpdatedAt = DateTime.UtcNow;
-
-        var retentionYears = configuration.GetValue("Compliance:GdprRetentionYears", 7);
-        var retentionUntil = await CalculateGuestRetentionUntilAsync(
-            booking.GuestId,
-            retentionYears,
+        var turnover = input.SupplierOrgId is { } supplierOrgId
+            ? new StayTurnoverRequest(userId, supplierOrgId, input.ServiceCategory, input.ServiceNotes)
+            : null;
+        var booking = await stayLifecycle.CheckOutAsync(
+            bookingId,
+            new StayCheckOut(input.RegisterArrival, turnover),
             cancellationToken);
-        if (retentionUntil > booking.Guest.DataRetentionUntil)
-            booking.Guest.DataRetentionUntil = retentionUntil;
-        booking.Guest.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Checkout wizard completed for booking {BookingId}", bookingId);
 
         return (booking, true);
-    }
-
-    private async Task<DateTime> CalculateGuestRetentionUntilAsync(
-        Guid guestId,
-        int retentionYears,
-        CancellationToken cancellationToken)
-    {
-        var checkoutDates = await db.Bookings
-            .AsNoTracking()
-            .Where(b => b.GuestId == guestId && b.Status != BookingStatus.Cancelled)
-            .Select(b => b.CheckOutDate)
-            .ToListAsync(cancellationToken);
-
-        var latestCheckout = checkoutDates.Count == 0
-            ? DateTime.UtcNow
-            : checkoutDates.Max();
-
-        return latestCheckout.AddYears(retentionYears);
     }
 
     private async Task<Property?> LoadPropertyAsync(Guid propertyId, CancellationToken cancellationToken) =>
@@ -483,13 +417,6 @@ public class ComplianceWizardService(
                 booking.Status == BookingStatus.CheckedOut ? "complete" : "pending",
                 true),
         ];
-    }
-
-    private bool CanCompleteCheckout(Booking booking)
-    {
-        var today = _clock.TodayInRome();
-        return booking.Status == BookingStatus.CheckedIn
-            || (booking.Status == BookingStatus.Confirmed && booking.CheckOutDate.Date <= today);
     }
 
     private IReadOnlyList<string> ResolveRequiredDocuments(Property property)

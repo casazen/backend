@@ -4,8 +4,8 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// Changes the host makes to an existing booking from the console (PC-07, A2-07, A2-08): edit of the fields the host
-/// owns, confirmation of a pending booking entered by hand, check-out. Cancellation (refunds and intents on Stripe) is
-/// <see cref="IBookingCancellationService"/>. Each change runs under the lock of the booking that the cancellation
+/// owns, confirmation of a pending booking entered by hand. Cancellation (refunds and intents on Stripe) is
+/// <see cref="IBookingCancellationService"/>; arrival and check-out are <see cref="IStayLifecycleService"/> (CO-08). Each change runs under the lock of the booking that the cancellation
 /// takes, so a change and a cancellation sent together never overwrite each other. Callers authorize the booking first:
 /// the service never checks roles. Errors are <see cref="Exceptions.DomainRuleException"/> (422),
 /// <see cref="Exceptions.DomainConflictException"/> (409) and <see cref="Exceptions.NotFoundException"/> with the codes
@@ -34,9 +34,6 @@ public interface IHostBookingService
     /// </list>
     /// </summary>
     Task<Booking> ConfirmAsync(Guid bookingId, CancellationToken cancellationToken = default);
-
-    /// <summary>Check-out of a <see cref="BookingStatus.CheckedIn"/> booking, from its check-out day (Europe/Rome).</summary>
-    Task<Booking> CheckOutAsync(Guid bookingId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>What the host may change on a booking.</summary>

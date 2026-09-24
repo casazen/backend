@@ -266,12 +266,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
+        services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
         services.AddScoped<CheckoutPaymentSettlementService>();
         // Booking confirmation (guest + host) and cancellation emails (BK-10, docs/runbooks/email.md).
         services.AddScoped<BookingNotifier>();
+        // Deferred charge of "Paga alla scadenza" bookings: job and webhooks (BK-08, docs/runbooks/direct-booking.md § 9).
+        services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();

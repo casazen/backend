@@ -232,8 +232,9 @@ public sealed class BookingCancellationService(
     }
 
     /// <summary>
-    /// Cancels on Stripe what the guest has not paid yet: the PaymentIntent of an immediate payment and the SetupIntent
-    /// (or the saved card) of a deferred one. A PaymentIntent that is succeeding right now stops the cancellation
+    /// Cancels on Stripe what the guest has not paid yet: the PaymentIntent of an immediate payment, the SetupIntent
+    /// (or the saved card) of a deferred one, and a PaymentIntent whose attempt failed but stays payable (declined
+    /// checkout card, failed deferred charge waiting for the guest, BK-08). A PaymentIntent that is succeeding right now stops the cancellation
     /// (409): once its webhook has recorded the payment, the host cancels again with a refund. Payments without
     /// Stripe (cash on site, recorded by the host) that were still pending are canceled too.
     /// </summary>
@@ -243,7 +244,7 @@ public sealed class BookingCancellationService(
         CancellationToken cancellationToken)
     {
         var canceled = 0;
-        foreach (var payment in payments.Where(p => p.Status == PaymentStatus.Pending))
+        foreach (var payment in payments.Where(IsUncollectedIntentOrPending))
         {
             var paymentIntentId = PaymentRefundService.PaymentIntentIdOf(payment);
             if (paymentIntentId is not null)
@@ -327,9 +328,15 @@ public sealed class BookingCancellationService(
             PaymentRefundService.PaymentIntentIdOf(p) is not null);
 
     private static bool IsUncollectedIntent(Payment payment) =>
-        payment.Status == PaymentStatus.Pending &&
-        (PaymentRefundService.PaymentIntentIdOf(payment) is not null ||
-         payment.TransactionId.StartsWith("seti_", StringComparison.Ordinal));
+        (payment.Status == PaymentStatus.Pending &&
+         (PaymentRefundService.PaymentIntentIdOf(payment) is not null ||
+          payment.TransactionId.StartsWith("seti_", StringComparison.Ordinal))) ||
+        (payment.Status == PaymentStatus.Failed && PaymentRefundService.PaymentIntentIdOf(payment) is not null);
+
+    /// <summary>Pending payments (with or without Stripe) and failed PaymentIntents that can still be paid.</summary>
+    private static bool IsUncollectedIntentOrPending(Payment payment) =>
+        payment.Status == PaymentStatus.Pending ||
+        (payment.Status == PaymentStatus.Failed && PaymentRefundService.PaymentIntentIdOf(payment) is not null);
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
         await db.Bookings

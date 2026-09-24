@@ -62,7 +62,7 @@ public sealed record CheckoutPaymentSessionResponse(
     string? ClientSecret,
     string? SetupIntentClientSecret,
     ConnectedAccountPublishableContext ConnectedAccountPublishableContext,
-    DateTime ExpiresAt)
+    DateTime? ExpiresAt)
 {
     public static CheckoutPaymentSessionResponse From(CheckoutPaymentSession session) => new(
         session.BookingId,

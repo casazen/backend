@@ -55,11 +55,20 @@ public record TouristTaxActivationInfo(string City, TouristTaxRate? Rate, string
     public bool CategoryRequired { get; init; }
 }
 
+/// <param name="ConfirmDeparture">The host confirms that the guest left.</param>
+/// <param name="SupplierOrgId">Optional supplier of the turnover request.</param>
+/// <param name="ServiceNotes">Notes of the turnover request.</param>
+/// <param name="ServiceCategory">Category of the turnover request (cleaning by default).</param>
+/// <param name="RegisterArrival">
+/// The host confirms that the guest arrived: a confirmed booking whose arrival was never registered is checked in with
+/// the check-out ("registra arrivo e procedi", CO-08).
+/// </param>
 public record CompleteCheckoutWizardInput(
     bool ConfirmDeparture,
     Guid? SupplierOrgId,
     string? ServiceNotes,
-    string? ServiceCategory);
+    string? ServiceCategory,
+    bool RegisterArrival = false);
 
 public interface IComplianceWizardService
 {
@@ -81,13 +90,20 @@ public interface IComplianceWizardService
 
     Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Opens the check-out wizard of a booking the caller has already been authorized on (TN-3), with the rules of
+    /// <see cref="IStayLifecycleService.StartCheckOutAsync"/>: <paramref name="registerArrival"/> registers first the
+    /// arrival of a confirmed booking ("registra arrivo e procedi").
+    /// </summary>
     Task<(Booking Booking, IReadOnlyList<ComplianceActivationStep> Steps)> StartCheckoutWizardAsync(
         Guid bookingId,
+        bool registerArrival = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Completes the checkout of a booking the caller has already been authorized on (TN-3); the optional
-    /// service request is created on behalf of <paramref name="userId"/> without further role checks.
+    /// Completes the checkout of a booking the caller has already been authorized on (TN-3), through
+    /// <see cref="IStayLifecycleService.CheckOutAsync"/> (same rules as <c>POST /api/bookings/{id}/check-out</c>); the
+    /// optional service request is created on behalf of <paramref name="userId"/> without further role checks.
     /// </summary>
     Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
         Guid bookingId,
