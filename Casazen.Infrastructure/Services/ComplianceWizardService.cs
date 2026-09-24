@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -25,8 +24,6 @@ public class ComplianceWizardService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
-
     public async Task<(Property Property, IReadOnlyList<ComplianceActivationStep> Steps)> GetActivationWizardAsync(
         Guid propertyId,
         CancellationToken cancellationToken = default)
@@ -38,34 +35,20 @@ public class ComplianceWizardService(
         return (property, steps);
     }
 
-    public async Task<(Property Property, IReadOnlyList<string> IncompleteBlockers)> CompleteActivationAsync(
+    public async Task<(Property Property, IReadOnlyList<ComplianceActivationStep> IncompleteBlockers)> CompleteActivationAsync(
         Guid propertyId,
         string userId,
-        PropertySafetyChecklistInput? safetyChecklist,
         bool? tosAccepted,
         CancellationToken cancellationToken = default)
     {
         var property = await LoadPropertyAsync(propertyId, cancellationToken)
             ?? throw new KeyNotFoundException($"Property {propertyId} not found");
 
-        if (safetyChecklist is not null)
-        {
-            property.SafetyChecklistJson = JsonSerializer.Serialize(new
-            {
-                smokeDetector = safetyChecklist.SmokeDetector,
-                fireExtinguisher = safetyChecklist.FireExtinguisher,
-                gasCompliance = safetyChecklist.GasCompliance,
-                acknowledgedAt = DateTime.UtcNow,
-                acknowledgedBy = safetyChecklist.AcknowledgedBy ?? userId,
-            }, JsonOpts);
-            property.UpdatedAt = DateTime.UtcNow;
-        }
-
         if (tosAccepted != true)
-            throw new InvalidOperationException("Devi accettare i termini di servizio");
+            throw new DomainConflictException("activation_tos_required", "ActivationTosRequired");
 
         var steps = await BuildActivationStepsAsync(property, cancellationToken);
-        var blockers = steps.Where(s => s.Blocker && s.Status != "complete").Select(s => s.Id).ToList();
+        var blockers = steps.Where(s => s.Blocker && s.Status != "complete").ToList();
 
         if (blockers.Count == 0)
         {
@@ -250,10 +233,10 @@ public class ComplianceWizardService(
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
+        // Bedrooms are not checked: 0 is a studio flat (monolocale, A2-27).
         var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
-            && property.Bedrooms > 0
             && property.MaxGuests > 0
             && property.NightlyRate > 0;
 
@@ -264,9 +247,13 @@ public class ComplianceWizardService(
         var missingDocs = requiredDocs.Where(d => !uploadedTypes.Contains(d)).ToList();
         var docsComplete = missingDocs.Count == 0;
 
-        var safety = ParseSafetyChecklist(property.SafetyChecklistJson);
-        var safetyComplete = safety.SmokeDetector && safety.FireExtinguisher && safety.GasCompliance
-            && safety.AcknowledgedAt.HasValue;
+        // D.L. 145/2023 art. 13-ter (CO-07): only the required items of the checklist block.
+        var safetyChecklist = await db.PropertySafetyChecklists
+            .AsNoTracking()
+            .Include(c => c.Items)
+            .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
+        var safety = SafetyChecklistRules.Evaluate(safetyChecklist);
+        var safetyComplete = safety.IsComplete;
 
         var regionCode = await ResolveRegionCodeAsync(property.City, cancellationToken);
         var touristTax = await ResolveTouristTaxAsync(property.City, cancellationToken);
@@ -283,7 +270,10 @@ public class ComplianceWizardService(
                 "Dati base proprietà",
                 baseComplete ? "complete" : "pending",
                 true,
-                baseComplete ? null : "Completa nome, indirizzo, città e tariffe"),
+                baseComplete ? null : "Completa nome, indirizzo, città e tariffe")
+            {
+                Blockers = baseComplete ? [] : [new("activation_base_data_incomplete", "ActivationBaseDataIncomplete")],
+            },
             new ComplianceActivationStep(
                 "cin",
                 "Codice CIN",
@@ -294,19 +284,34 @@ public class ComplianceWizardService(
                     : $"Formato CIN non valido (guida: {cinGuidanceUrl})")
             {
                 LinkUrl = cinGuidanceUrl,
+                Blockers = cinStatus switch
+                {
+                    "valid" => [],
+                    "missing" => [new("activation_cin_missing", "ActivationCinMissing")],
+                    _ => [new("activation_cin_invalid", "ActivationCinInvalid")],
+                },
             },
             new ComplianceActivationStep(
                 "documents",
                 "Documenti richiesti",
                 docsComplete ? "complete" : "pending",
                 true,
-                docsComplete ? null : $"Documenti mancanti: {string.Join(", ", missingDocs)}"),
+                docsComplete ? null : $"Documenti mancanti: {string.Join(", ", missingDocs)}")
+            {
+                Blockers = docsComplete
+                    ? []
+                    : [new("activation_documents_missing", "ActivationDocumentsMissing", [string.Join(", ", missingDocs)])],
+            },
             new ComplianceActivationStep(
                 "safety",
                 "Checklist sicurezza",
                 safetyComplete ? "complete" : "pending",
-                true,
-                safetyComplete ? null : "Conferma rilevatori, estintore e conformità gas"),
+                true)
+            {
+                MessageKey = safetyComplete ? null : "ActivationSafetyIncomplete",
+                MessageArgs = safetyComplete ? null : [safety.Blockers.Count],
+                Blockers = safety.Blockers.Select(b => new ActivationBlocker(b.Code, b.MessageKey, b.MessageArgs)).ToList(),
+            },
             BuildTouristTaxStep(touristTax),
             new ComplianceActivationStep(
                 "ical",
@@ -427,7 +432,8 @@ public class ComplianceWizardService(
             ?? "default";
 
         var docs = section.GetSection(regionCode).Get<string[]>();
-        return docs is { Length: > 0 } ? docs : ["CinCertificate", "SafetyCompliance"];
+        // No safety certificate is required by D.L. 145/2023 art. 13-ter: proofs are optional on the checklist (CO-07).
+        return docs is { Length: > 0 } ? docs : ["CinCertificate"];
     }
 
     private async Task<string> ResolveRegionCodeAsync(string city, CancellationToken cancellationToken)
@@ -439,29 +445,5 @@ public class ComplianceWizardService(
             .FirstOrDefaultAsync(cancellationToken);
 
         return string.IsNullOrWhiteSpace(rate) ? "default" : rate;
-    }
-
-    private static (bool SmokeDetector, bool FireExtinguisher, bool GasCompliance, DateTime? AcknowledgedAt) ParseSafetyChecklist(
-        string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-            return (false, false, false, null);
-
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            return (
-                root.TryGetProperty("smokeDetector", out var sd) && sd.GetBoolean(),
-                root.TryGetProperty("fireExtinguisher", out var fe) && fe.GetBoolean(),
-                root.TryGetProperty("gasCompliance", out var gc) && gc.GetBoolean(),
-                root.TryGetProperty("acknowledgedAt", out var at) && at.ValueKind == JsonValueKind.String
-                    ? DateTime.Parse(at.GetString()!)
-                    : null);
-        }
-        catch
-        {
-            return (false, false, false, null);
-        }
     }
 }

@@ -15,10 +15,14 @@ public class ComplianceOptions
 
     public int GdprRetentionYears { get; set; } = 7;
 
+    /// <summary>
+    /// Documents required for the activation, per region. No safety certificate: D.L. 145/2023 art. 13-ter asks for none
+    /// (proofs are optional on the safety checklist, CO-07).
+    /// </summary>
     public Dictionary<string, string[]> RequiredDocuments { get; set; } = new()
     {
-        ["default"] = ["CinCertificate", "SafetyCompliance"],
-        ["LOM"] = ["CinCertificate", "SafetyCompliance", "Ape"],
-        ["LAZ"] = ["CinCertificate", "SafetyCompliance", "PropertyLicense"],
+        ["default"] = ["CinCertificate"],
+        ["LOM"] = ["CinCertificate", "Ape"],
+        ["LAZ"] = ["CinCertificate", "PropertyLicense"],
     };
 }
