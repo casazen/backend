@@ -2,14 +2,18 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
+using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// What the host does on a booking from the console (PC-07, A2-07, A2-08): price a stay, change a booking, check out.
+/// What the host does on a booking from the console (PC-07, A2-07, A2-08): price a stay, change a booking, register the
+/// arrival and check out (CO-08, A5-08: one domain path, <see cref="IStayLifecycleService"/>, for the arrival, the
+/// check-out wizard and <c>POST /check-out</c>).
 /// Cancellation with refunds is <see cref="BookingCancellationController"/>; the confirmation of a pending booking (entered
 /// by hand, or a "pay at the property" request) is the single <c>POST /api/bookings/{id}/approve</c> of
 /// <see cref="BookingApprovalController"/>.
@@ -23,6 +27,8 @@ namespace Casazen.Web.Controllers;
 public class BookingLifecycleController(
     IBookingService bookingService,
     IHostBookingService hostBookings,
+    IStayLifecycleService stayLifecycle,
+    IComplianceWizardService complianceWizard,
     IPropertyService propertyService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
@@ -98,8 +104,35 @@ public class BookingLifecycleController(
     }
 
     /// <summary>
-    /// Check-out of a checked-in booking, from its check-out day (Europe/Rome). Only the status changes: the dates of the
-    /// stay are not validated again, so a stay of any length can be checked out (A2-08).
+    /// "Registra arrivo": the host records that the guest arrived. A confirmed booking becomes checked in from its
+    /// check-in day to its check-out day (Europe/Rome); a registration on a later day of the stay is not an error. The
+    /// Alloggiati communication is scheduled. Incomplete guest data do not block the arrival:
+    /// <c>guestDataComplete</c> tells the client to send the host to complete them.
+    /// 409 <c>booking_already_checked_in</c> / <c>booking_not_confirmed</c>, 422 <c>booking_arrival_too_early</c> /
+    /// <c>booking_arrival_after_departure</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/check-in")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(ArrivalRegisteredResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ArrivalRegisteredResponse>> CheckIn(Guid id, CancellationToken cancellationToken)
+    {
+        if (!await CanWriteAsync(id, cancellationToken))
+            return BookingNotFound();
+
+        var arrival = await stayLifecycle.RegisterArrivalAsync(id, cancellationToken);
+        var response = BookingMapper.Fill(new ArrivalRegisteredResponse(), arrival.Booking, DateTime.UtcNow);
+        response.GuestDataComplete = arrival.GuestDataComplete;
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Check-out of a stay, with the rules of the check-out wizard (same domain path): a checked-in stay from its
+    /// check-in day (an early departure is allowed), or a confirmed booking with <c>registerArrival: true</c>, which
+    /// registers the arrival in the same transaction. Only the status changes, not the dates, so a stay of any length can
+    /// be checked out (A2-08). 409 <c>booking_arrival_not_registered</c> when the arrival was never registered.
     /// </summary>
     [HttpPost("{id:guid}/check-out")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -107,13 +140,94 @@ public class BookingLifecycleController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<BookingResponseDto>> CheckOut(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<BookingResponseDto>> CheckOut(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] StayCheckOutRequest? request,
+        CancellationToken cancellationToken)
     {
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
 
-        var checkedOut = await hostBookings.CheckOutAsync(id, cancellationToken);
+        var checkedOut = await stayLifecycle.CheckOutAsync(
+            id,
+            new StayCheckOut(request?.RegisterArrival ?? false),
+            cancellationToken);
         return Ok(BookingMapper.ToResponse(checkedOut));
+    }
+
+    /// <summary>
+    /// Opens the check-out wizard: same rules as <c>POST /check-out</c>. With <c>registerArrival: true</c> a confirmed
+    /// booking whose arrival was never registered is checked in first ("registra arrivo e procedi").
+    /// </summary>
+    [HttpPost("{id:guid}/checkout-wizard/start")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CheckoutWizardDto>> StartCheckoutWizard(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] StayCheckOutRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanWriteAsync(id, cancellationToken))
+            return BookingNotFound();
+
+        var (_, steps) = await complianceWizard.StartCheckoutWizardAsync(
+            id,
+            request?.RegisterArrival ?? false,
+            cancellationToken);
+        return Ok(new CheckoutWizardDto
+        {
+            Steps = steps.Select(s => new ComplianceActivationStepDto
+            {
+                Id = s.Id,
+                Label = s.Label,
+                Status = s.Status,
+                Blocker = s.Blocker,
+                Message = s.Message,
+            }),
+        });
+    }
+
+    /// <summary>
+    /// Completes the check-out wizard: the guest left (<c>confirmDeparture</c>), optional turnover request to a supplier,
+    /// same rules and transition as <c>POST /check-out</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/checkout-wizard/complete")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(CompleteCheckoutWizardResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CompleteCheckoutWizardResponse>> CompleteCheckoutWizard(
+        Guid id,
+        [FromBody] CompleteCheckoutWizardRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanWriteAsync(id, cancellationToken))
+            return BookingNotFound();
+
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var (booking, propertyReady) = await complianceWizard.CompleteCheckoutWizardAsync(
+            id,
+            userId,
+            new CompleteCheckoutWizardInput(
+                request.ConfirmDeparture,
+                request.SupplierOrgId,
+                request.ServiceNotes,
+                request.ServiceCategory,
+                request.RegisterArrival),
+            cancellationToken);
+
+        return Ok(new CompleteCheckoutWizardResponse
+        {
+            PropertyReady = propertyReady,
+            BookingStatus = booking.Status.ToString(),
+        });
     }
 
     /// <summary>TN-3: the booking is visible (tenant filter) and the caller has <c>booking.write</c> on its property.</summary>

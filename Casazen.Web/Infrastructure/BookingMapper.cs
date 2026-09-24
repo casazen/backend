@@ -10,28 +10,37 @@ public static class BookingMapper
 
     /// <param name="booking">The booking, with its property and guest when loaded.</param>
     /// <param name="nowUtc">Instant that decides whether a "pay at the property" request is still open.</param>
-    public static BookingResponseDto ToResponse(Booking booking, DateTime nowUtc) => new()
+    public static BookingResponseDto ToResponse(Booking booking, DateTime nowUtc) => Fill(new BookingResponseDto(), booking, nowUtc);
+
+    /// <summary>
+    /// Fills <paramref name="response"/> (a <see cref="BookingResponseDto"/> or a response that adds fields to it, such
+    /// as <see cref="ArrivalRegisteredResponse"/>) with the booking.
+    /// </summary>
+    public static T Fill<T>(T response, Booking booking, DateTime nowUtc) where T : BookingResponseDto
     {
-        Id = booking.Id,
-        PropertyId = booking.PropertyId,
-        PropertyName = booking.Property?.Name,
-        CheckInDate = booking.CheckInDate,
-        CheckOutDate = booking.CheckOutDate,
-        NumberOfGuests = booking.NumberOfGuests,
-        NumberOfAdults = BookingGuestCounts.Of(booking).Adults,
-        NumberOfChildren = BookingGuestCounts.Of(booking).Children,
-        TotalPrice = booking.TotalPrice,
-        BasePrice = booking.BasePrice,
-        CleaningFee = booking.CleaningFee,
-        TouristTax = booking.TouristTax,
-        Status = booking.Status.ToString(),
-        CancellationNote = booking.CancellationNote,
-        Source = booking.Source.ToString(),
-        SpecialRequests = booking.SpecialRequests,
-        PaymentOption = booking.PaymentOption.ToString(),
-        OnSiteRequestState = OnSiteRequests.StateOf(booking, nowUtc)?.ToString(),
-        RequestExpiresAt = OnSiteRequests.StateOf(booking, nowUtc) is null ? null : booking.RequestExpiresAt,
-        Guest = booking.Guest is null
+        ArgumentNullException.ThrowIfNull(response);
+        ArgumentNullException.ThrowIfNull(booking);
+
+        response.Id = booking.Id;
+        response.PropertyId = booking.PropertyId;
+        response.PropertyName = booking.Property?.Name;
+        response.CheckInDate = booking.CheckInDate;
+        response.CheckOutDate = booking.CheckOutDate;
+        response.NumberOfGuests = booking.NumberOfGuests;
+        response.NumberOfAdults = BookingGuestCounts.Of(booking).Adults;
+        response.NumberOfChildren = BookingGuestCounts.Of(booking).Children;
+        response.TotalPrice = booking.TotalPrice;
+        response.BasePrice = booking.BasePrice;
+        response.CleaningFee = booking.CleaningFee;
+        response.TouristTax = booking.TouristTax;
+        response.Status = booking.Status.ToString();
+        response.CancellationNote = booking.CancellationNote;
+        response.Source = booking.Source.ToString();
+        response.SpecialRequests = booking.SpecialRequests;
+        response.PaymentOption = booking.PaymentOption.ToString();
+        response.OnSiteRequestState = OnSiteRequests.StateOf(booking, nowUtc)?.ToString();
+        response.RequestExpiresAt = OnSiteRequests.StateOf(booking, nowUtc) is null ? null : booking.RequestExpiresAt;
+        response.Guest = booking.Guest is null
             ? new BookingGuestDto()
             : new BookingGuestDto
             {
@@ -40,8 +49,9 @@ public static class BookingMapper
                 Email = booking.Guest.Email,
                 Phone = booking.Guest.PhoneNumber,
                 Country = booking.Guest.Country,
-            },
-        CreatedAt = booking.CreatedAt,
-        UpdatedAt = booking.UpdatedAt,
-    };
+            };
+        response.CreatedAt = booking.CreatedAt;
+        response.UpdatedAt = booking.UpdatedAt;
+        return response;
+    }
 }
