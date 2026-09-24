@@ -14,9 +14,9 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// TN-4 on the real pipeline and PostgreSQL: the tenant of a request follows the org provisioned in that
-/// request (A1-20), parallel first accesses create one user and one org (A1-14), and parallel creates cannot
-/// exceed the plan limit (A1-21).
+/// TN-4 on the real pipeline and PostgreSQL: the tenant of a request follows the org linked during that request
+/// (A1-20), parallel first accesses create one user and, without the onboarding, no org (A1-14, PL-02), and parallel
+/// creates cannot exceed the plan limit (A1-21).
 /// </summary>
 public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -27,7 +27,7 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
     private static string NewSub() => $"auth0|tn4-{Guid.NewGuid():N}";
 
     [PostgresFact]
-    public async Task GetOrProvisionOrgIdAsync_OrgProvisionedInTheSameRequest_TenantQueriesReturnItsRows()
+    public async Task GetOrProvisionOrgIdAsync_OrgLinkedAfterTheTenantWasResolved_TenantQueriesReturnItsRows()
     {
         var sub = NewSub();
         await using var requestScope = _factory.Services.CreateAsyncScope();
@@ -46,21 +46,24 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
             await tenant.ResolveAsync();
             Assert.Null(tenant.OrgId);
 
+            // Meanwhile a parallel request (the onboarding with its consents) creates and links the org.
+            var linkedOrg = await _factory.SeedOrgForOwnerAsync(sub);
+
             var orgId = await requestScope.ServiceProvider.GetRequiredService<IOrgContextResolver>()
                 .GetOrProvisionOrgIdAsync();
-            Assert.NotNull(orgId);
+            Assert.Equal(linkedOrg.Id, orgId);
 
             var db = requestScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Properties.Add(NewProperty(sub, orgId.Value, "Via Stessa Richiesta 1"));
+            db.Properties.Add(NewProperty(sub, linkedOrg.Id, "Via Stessa Richiesta 1"));
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
 
-            // Same request, tenant-filtered read: it must see the row of the org just provisioned.
+            // Same request, tenant-filtered read: it must see the row of the org linked in the meantime (A1-20).
             var visible = await db.Properties.Where(p => p.OwnerId == sub).ToListAsync();
 
-            Assert.Equal(orgId, tenant.OrgId);
+            Assert.Equal(linkedOrg.Id, tenant.OrgId);
             var property = Assert.Single(visible);
-            Assert.Equal(orgId, property.OrgId);
+            Assert.Equal(linkedOrg.Id, property.OrgId);
         }
         finally
         {
@@ -69,7 +72,40 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
     }
 
     [PostgresFact]
-    public async Task FirstAccess_ParallelRequests_AllReturn200WithOneUserAndOneOrg()
+    public async Task GetOrProvisionOrgIdAsync_UserWithoutOrg_ReturnsNullAndCreatesNoOrg()
+    {
+        // PL-02 (A1-05): the first org of a user is created only by the onboarding, with the legal consents.
+        var sub = NewSub();
+        await using var requestScope = _factory.Services.CreateAsyncScope();
+        var accessor = requestScope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+        accessor.HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", sub)], "Test")),
+            RequestServices = requestScope.ServiceProvider,
+        };
+
+        try
+        {
+            await requestScope.ServiceProvider.GetRequiredService<IRequestTenantContext>().ResolveAsync();
+
+            var orgId = await requestScope.ServiceProvider.GetRequiredService<IOrgContextResolver>()
+                .GetOrProvisionOrgIdAsync();
+
+            Assert.Null(orgId);
+            var db = requestScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var user = Assert.Single(await db.Users.AsNoTracking().Where(u => u.Id == sub).ToListAsync());
+            Assert.Null(user.OrgId);
+            Assert.Equal(UserRole.None, user.Role);
+            Assert.Equal(0, await db.Orgs.CountAsync(o => o.Slug.StartsWith($"org-{sub.Replace("|", "-")}")));
+        }
+        finally
+        {
+            accessor.HttpContext = null;
+        }
+    }
+
+    [PostgresFact]
+    public async Task FirstAccess_ParallelRequestsWithoutOnboarding_OneUserNoOrgAndHostEndpointsRefused()
     {
         var sub = NewSub();
         var client = _factory.CreateAuthenticatedClient(
@@ -82,26 +118,28 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
 
         var responses = await Task.WhenAll(paths.Select(path => client.GetAsync(path)));
 
-        foreach (var response in responses)
-            Assert.True(response.StatusCode == HttpStatusCode.OK, $"{response.RequestMessage?.RequestUri}: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+        for (var i = 0; i < paths.Length; i++)
+        {
+            var body = await responses[i].Content.ReadAsStringAsync();
+            if (paths[i] == "/api/users/me")
+            {
+                Assert.True(responses[i].StatusCode == HttpStatusCode.OK, $"{paths[i]}: {(int)responses[i].StatusCode} {body}");
+                continue;
+            }
+
+            // A JWT role alone is not a completed onboarding (PL-02): no org is provisioned behind the user's back.
+            Assert.True(responses[i].StatusCode == HttpStatusCode.Forbidden, $"{paths[i]}: {(int)responses[i].StatusCode} {body}");
+            using var doc = JsonDocument.Parse(body);
+            Assert.Equal("onboarding_required", doc.RootElement.GetProperty("code").GetString());
+        }
 
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var user = Assert.Single(await db.Users.AsNoTracking().Where(u => u.Id == sub).ToListAsync());
-        Assert.NotNull(user.OrgId);
+        Assert.Null(user.OrgId);
+        Assert.Equal(UserRole.None, user.Role);
         var baseSlug = $"org-{sub.Replace("|", "-")}";
-        Assert.Equal(1, await db.Orgs.CountAsync(o => o.Slug.StartsWith(baseSlug)));
-
-        var entitlementOrgIds = new List<Guid>();
-        for (var i = 0; i < paths.Length; i++)
-        {
-            if (paths[i] != "/api/orgs/me/entitlement")
-                continue;
-            using var doc = JsonDocument.Parse(await responses[i].Content.ReadAsStringAsync());
-            entitlementOrgIds.Add(doc.RootElement.GetProperty("orgId").GetGuid());
-        }
-
-        Assert.All(entitlementOrgIds, id => Assert.Equal(user.OrgId, id));
+        Assert.Equal(0, await db.Orgs.CountAsync(o => o.Slug.StartsWith(baseSlug)));
     }
 
     [PostgresFact]

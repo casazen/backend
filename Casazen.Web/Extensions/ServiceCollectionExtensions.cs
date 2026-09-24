@@ -181,6 +181,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
+        // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
+        services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, OnboardingRequiredAuthorizationResultHandler>();
         services.AddScoped<IAuthorizationHandler, ContextAuthorizationHandler>();
 
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();

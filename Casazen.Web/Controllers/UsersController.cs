@@ -23,7 +23,8 @@ public class UsersController(
     IOnboardingService onboardingService,
     IRequestTenantContext tenantContext,
     ILogger<UsersController> logger,
-    IEntitlementService entitlementService) : ControllerBase
+    IEntitlementService entitlementService,
+    IHostOnboardingGate hostOnboardingGate) : ControllerBase
 {
     /// <summary>
     /// 422 on <c>PUT /api/users/onboarding</c> from a user without an org and without consents: the first org is
@@ -96,7 +97,7 @@ public class UsersController(
                         ?? string.Empty;
 
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
-        return Ok(ToDetail(user, await ResolveOrgAsync(user)));
+        return Ok(await ToOwnDetailAsync(user));
     }
 
     /// <summary>Completes first-time onboarding by assigning roles from rental type choice.</summary>
@@ -155,7 +156,7 @@ public class UsersController(
             existing.PhoneNumber = dto.PhoneNumber;
 
         var updated = await userService.UpdateUserAsync(existing);
-        return Ok(ToDetail(updated, await ResolveOrgAsync(updated)));
+        return Ok(await ToOwnDetailAsync(updated));
     }
 
     /// <summary>Changes the role of a user. Admin only.</summary>
@@ -359,6 +360,16 @@ public class UsersController(
 
     private async Task<Org?> ResolveOrgAsync(User user) =>
         user.OrgId.HasValue ? await orgService.GetByIdAsync(user.OrgId.Value) : null;
+
+    /// <summary>The caller's own profile, with where it stands with the host onboarding gate (PL-02).</summary>
+    private async Task<UserDetailDto> ToOwnDetailAsync(User user)
+    {
+        var detail = ToDetail(user, await ResolveOrgAsync(user));
+        var onboarding = await hostOnboardingGate.GetStatusAsync(user.Id, HttpContext.RequestAborted);
+        detail.OnboardingRequired = !onboarding.IsComplete;
+        detail.ConsentsAccepted = onboarding.ConsentsAccepted;
+        return detail;
+    }
 
     private UserDetailDto ToDetail(User u, Org? org = null) => new()
     {

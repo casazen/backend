@@ -20,14 +20,19 @@ public class DevicesController(
     [ProducesResponseType(typeof(DeviceRegistrationDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<DeviceRegistrationDto>> Register(
         [FromBody] RegisterDeviceRequest request,
         CancellationToken cancellationToken)
     {
         var userId = GetUserId();
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (userId is null || orgId is null)
+        if (userId is null)
             return Unauthorized();
+
+        // PL-02: push notifications are about the host's org; a user without one has not completed the onboarding.
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.OnboardingRequired, "OnboardingRequired");
 
         var platform = request.Platform.Trim().ToLowerInvariant();
         if (platform is not ("ios" or "android"))
