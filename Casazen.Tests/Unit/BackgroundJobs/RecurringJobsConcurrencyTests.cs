@@ -79,13 +79,14 @@ public class RecurringJobsConcurrencyTests
     }
 
     [Fact]
-    public void DynamicPricingJob_DailyAndPerPropertyRuns_ShareOneLock()
+    public void DynamicPricingJob_NightlyRun_HoldsItsLock()
     {
-        var daily = ConcurrencyAttribute(typeof(DynamicPricingJob).GetMethod(nameof(DynamicPricingJob.ExecuteAsync))!)!;
-        var perProperty = ConcurrencyAttribute(typeof(DynamicPricingJob).GetMethod(nameof(DynamicPricingJob.ExecuteForPropertyAsync))!)!;
+        // PC-15: the manual recalculation runs in the request under a per-property advisory lock; the nightly run keeps
+        // its Hangfire lock so two nightly runs never overlap.
+        var nightly = ConcurrencyAttribute(typeof(DynamicPricingJob).GetMethod(nameof(DynamicPricingJob.ExecuteAsync))!)!;
 
-        Assert.NotNull(daily.Resource);
-        Assert.Equal(daily.Resource, perProperty.Resource);
+        Assert.NotNull(nightly.Resource);
+        Assert.Null(typeof(DynamicPricingJob).GetMethod("ExecuteForPropertyAsync"));
     }
 
     private static DisableConcurrentExecutionAttribute? ConcurrencyAttribute(MethodInfo method) =>

@@ -19,7 +19,7 @@ public static class RecurringJobsRegistration
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(
-            "dynamic-pricing-adaptation",
+            DynamicPricingJob.RecurringJobId,
             job => job.ExecuteAsync(),
             "0 2 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });

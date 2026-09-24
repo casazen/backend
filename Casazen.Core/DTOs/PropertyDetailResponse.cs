@@ -69,9 +69,12 @@ public class BookingsSummaryDto
     public DateTime? NextCheckOut { get; set; }
 }
 
+/// <summary>Seasonal price suggestions of the property (PC-15): on/off, last computation, next due Rome date.</summary>
 public class PricingAdapterSummaryDto
 {
     public bool IsEnabled { get; set; }
     public DateTime? LastAdaptedAt { get; set; }
-    public DateTime? NextScheduledRunAt { get; set; }
+
+    /// <summary>Europe/Rome date from which the next automatic computation is due; <c>null</c> when disabled or never computed.</summary>
+    public DateOnly? NextRunOn { get; set; }
 }

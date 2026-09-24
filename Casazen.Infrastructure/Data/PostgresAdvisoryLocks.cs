@@ -62,6 +62,12 @@ internal static class PostgresAdvisoryLocks
         /// same alerts at once, even outside Hangfire's own lock (CO-10, A5-11).
         /// </summary>
         StayAlertsRun = 1_011,
+
+        /// <summary>
+        /// Seasonal price suggestions of one property (key: property id): the nightly job, the manual recalculation and a
+        /// configuration save never upsert the same dates at once (PC-15).
+        /// </summary>
+        SeasonalPriceSuggestions = 1_019,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -927,4 +927,19 @@
   <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
     <value>La checklist è stata modificata nello stesso momento da un'altra sessione: ricarica la pagina e riprova.</value>
   </data>
+  <data name="PricingFrequencyInvalid" xml:space="preserve">
+    <value>La frequenza di aggiornamento deve essere 'daily' (ogni giorno) o 'weekly' (ogni settimana).</value>
+  </data>
+  <data name="PricingMultiplierRange" xml:space="preserve">
+    <value>Il moltiplicatore deve essere tra {1} e {2}.</value>
+  </data>
+  <data name="PricingSeasonMonthsInvalid" xml:space="preserve">
+    <value>I mesi di una stagione devono essere numeri da 1 a 12, senza ripetizioni.</value>
+  </data>
+  <data name="PricingSeasonMonthsOverlap" xml:space="preserve">
+    <value>Un mese non può essere sia di alta sia di bassa stagione.</value>
+  </data>
+  <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
+    <value>I suggerimenti stagionali non sono attivi per questa struttura: attivali prima di ricalcolarli.</value>
+  </data>
 </root>
