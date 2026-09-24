@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924081542_AddLeaseStipulaDate")]
+    [Migration("20260924082554_AddLeaseStipulaDate")]
     partial class AddLeaseStipulaDate
     {
         /// <inheritdoc />
@@ -253,6 +253,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FreeRefundDeadline")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("GuestEmailVerificationTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("GuestEmailVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uuid");
 
@@ -273,6 +280,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RequestExpiresAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Source")
                         .HasColumnType("integer");
