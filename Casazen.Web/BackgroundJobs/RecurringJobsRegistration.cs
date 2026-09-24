@@ -72,6 +72,12 @@ public static class RecurringJobsRegistration
             "0 6 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        recurringJobManager.AddOrUpdate<CheckoutHoldExpiryJob>(
+            CheckoutHoldExpiryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CheckoutHoldExpiryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<IcalSupplierSyncJob>(
             "ical-supplier-sync",
             job => job.ExecuteAsync(),

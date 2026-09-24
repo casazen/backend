@@ -23,6 +23,7 @@ public class BookingService(
     PropertyICalSyncService propertyICalSyncService,
     IConfiguration configuration,
     ILogger<BookingService> logger,
+    ICheckoutHoldExpiryService checkoutHoldExpiry,
     TimeProvider? timeProvider = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -431,8 +432,11 @@ public class BookingService(
         int? pendingDirectTtlMinutes = null)
     {
         var effectivePendingTtlMinutes = pendingDirectTtlMinutes ?? GetPendingDirectTtlMinutes();
-        await repository.CancelExpiredPendingDirectBookingsAsync(
-            propertyId, checkIn, checkOut, effectivePendingTtlMinutes);
+
+        // Expired checkout holds of these dates are released first, by the same routine as the expiry job (BK-21): the
+        // intent is cancelled on Stripe, and a hold whose guest has paid meanwhile keeps its dates. Holds of other
+        // dates are left to the job.
+        await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(propertyId, checkIn, checkOut);
 
         if (!await repository.IsAvailableAsync(propertyId, checkIn, checkOut, effectivePendingTtlMinutes))
             return false;
@@ -442,15 +446,11 @@ public class BookingService(
 
     public async Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate)
     {
-        await repository.CancelExpiredPendingDirectBookingsAsync(
-            propertyId, startDate, endDate, GetPendingDirectTtlMinutes());
-        return await repository.GetByDateRangeAsync(propertyId, startDate, endDate);
+        // Read only: expired checkout holds are left out (they no longer take their dates) and cancelled by the job.
+        return await repository.GetByDateRangeAsync(propertyId, startDate, endDate, GetPendingDirectTtlMinutes());
     }
 
-    private int GetPendingDirectTtlMinutes()
-    {
-        return Math.Max(1, configuration.GetValue("DirectBooking:PendingTtlMinutes", 15));
-    }
+    private int GetPendingDirectTtlMinutes() => CheckoutHolds.GetTtlMinutes(configuration);
 
     private async Task<Guest> CreateGuestSnapshotWithConsentAsync(
         Guid orgId,

@@ -16,6 +16,7 @@ public class RecurringJobsConcurrencyTests
         "ical-supplier-sync",
         "property-ical-sync",
         "direct-booking-charge",
+        "checkout-hold-expiry",
         "alloggiati-deadline-alert",
         "gdpr-data-retention",
         "guest-checkin-send",
@@ -52,7 +53,7 @@ public class RecurringJobsConcurrencyTests
     {
         var jobs = RegisteredJobs();
 
-        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll" })
+        foreach (var id in new[] { "ical-supplier-sync", "property-ical-sync", "booking-pull-all", "lease-sign-status-poll", "lease-registration-status-poll", "checkout-hold-expiry" })
         {
             var attribute = ConcurrencyAttribute(jobs[id].Method)!;
             Assert.True(attribute.TimeoutSec < 5 * 60, $"{id} waits {attribute.TimeoutSec}s for its previous run");

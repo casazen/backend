@@ -12,6 +12,31 @@ public interface IStripeService
         string currency,
         Dictionary<string, string> metadata);
     Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
+
+    Task<PaymentIntent> GetPaymentIntentAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Cancels a PaymentIntent that was not paid (the guest is never charged afterwards).</summary>
+    Task<PaymentIntent> CancelPaymentIntentAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    Task<SetupIntent> GetSetupIntentAsync(
+        string setupIntentId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Cancels a SetupIntent that has not saved a card yet.</summary>
+    Task<SetupIntent> CancelSetupIntentAsync(
+        string setupIntentId,
+        string connectedAccountId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
     Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null);
     Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
         string connectedAccountId,
@@ -28,8 +53,15 @@ public interface IStripeService
         string? idempotencyKey = null);
 }
 
-public class StripeService(ILogger<StripeService> logger) : IStripeService
+/// <summary>
+/// Stripe calls of the booking payments. The intent reads and cancellations go through <see cref="IStripeClient"/>: the
+/// global client configured from <c>Stripe:SecretKey</c> at startup, or the one passed in (tests check the path, the
+/// options and the <c>Stripe-Account</c> / idempotency headers on a mocked client).
+/// </summary>
+public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeClient = null) : IStripeService
 {
+    private IStripeClient Client => stripeClient ?? StripeConfiguration.StripeClient;
+
     public async Task<PaymentIntent> CreatePaymentIntentAsync(long amount, string currency, Dictionary<string, string> metadata)
     {
         try
@@ -104,6 +136,65 @@ public class StripeService(ILogger<StripeService> logger) : IStripeService
             throw;
         }
     }
+
+    public Task<PaymentIntent> GetPaymentIntentAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        new PaymentIntentService(Client).GetAsync(
+            paymentIntentId,
+            options: null,
+            RequestOptionsFor(connectedAccountId),
+            cancellationToken);
+
+    public async Task<PaymentIntent> CancelPaymentIntentAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        var paymentIntent = await new PaymentIntentService(Client).CancelAsync(
+            paymentIntentId,
+            new PaymentIntentCancelOptions { CancellationReason = "abandoned" },
+            RequestOptionsFor(connectedAccountId, idempotencyKey),
+            cancellationToken);
+        logger.LogInformation(
+            "Payment intent {PaymentIntentId} canceled on {AccountId}",
+            paymentIntentId,
+            connectedAccountId ?? "platform");
+        return paymentIntent;
+    }
+
+    public Task<SetupIntent> GetSetupIntentAsync(
+        string setupIntentId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        new SetupIntentService(Client).GetAsync(
+            setupIntentId,
+            options: null,
+            RequestOptionsFor(connectedAccountId),
+            cancellationToken);
+
+    public async Task<SetupIntent> CancelSetupIntentAsync(
+        string setupIntentId,
+        string connectedAccountId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        var setupIntent = await new SetupIntentService(Client).CancelAsync(
+            setupIntentId,
+            new SetupIntentCancelOptions { CancellationReason = "abandoned" },
+            RequestOptionsFor(connectedAccountId, idempotencyKey),
+            cancellationToken);
+        logger.LogInformation("Setup intent {SetupIntentId} canceled on {AccountId}", setupIntentId, connectedAccountId);
+        return setupIntent;
+    }
+
+    private static RequestOptions RequestOptionsFor(string? connectedAccountId, string? idempotencyKey = null) => new()
+    {
+        StripeAccount = string.IsNullOrWhiteSpace(connectedAccountId) ? null : connectedAccountId,
+        IdempotencyKey = idempotencyKey,
+    };
 
     public async Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null)
     {
