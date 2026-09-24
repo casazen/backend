@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924065347_SupplierClaimToken")]
+    [Migration("20260924071021_SupplierClaimToken")]
     partial class SupplierClaimToken
     {
         /// <inheritdoc />
@@ -889,12 +889,23 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeclaredByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("ExternalRegistrationId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
@@ -907,6 +918,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTime?>("RegistrationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -918,7 +935,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("LeaseContractId")
                         .IsUnique();
 
-                    b.ToTable("LeaseRegistrations");
+                    b.ToTable("LeaseRegistrations", t =>
+                        {
+                            t.HasCheckConstraint("CK_LeaseRegistrations_RegisteredRequiresReceipt", "\"Status\" <> 2 OR btrim(coalesce(\"ReceiptStoragePath\", '')) <> ''");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.LeaseRegistrationAuthorization", b =>
