@@ -7,6 +7,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
@@ -84,7 +85,7 @@ public class PropertiesControllerTests
             .Build();
         return new PropertyICalSyncService(
             db,
-            Mock.Of<IHttpClientFactory>(),
+            Mock.Of<ISafeExternalHttpClient>(),
             new ICalImportService(),
             new ICalExportService(),
             configuration,

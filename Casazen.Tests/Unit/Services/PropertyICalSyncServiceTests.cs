@@ -1,6 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -12,12 +15,14 @@ namespace Casazen.Tests.Unit.Services;
 
 public class PropertyICalSyncServiceTests
 {
-    private static PropertyICalSyncService CreateService(AppDbContext db, string? icsContent = null, bool fail = false)
-    {
-        var handler = new FakeIcalHandler(icsContent, fail);
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(f => f.CreateClient("IcalSync")).Returns(() => new HttpClient(handler));
+    private static PropertyICalSyncService CreateService(
+        AppDbContext db,
+        string? icsContent = null,
+        ExternalFetchFailure? failure = null) =>
+        CreateService(db, new FakeExternalHttpClient(icsContent, failure));
 
+    private static PropertyICalSyncService CreateService(AppDbContext db, ISafeExternalHttpClient externalHttpClient)
+    {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -27,7 +32,7 @@ public class PropertyICalSyncServiceTests
 
         return new PropertyICalSyncService(
             db,
-            factory.Object,
+            externalHttpClient,
             new ICalImportService(),
             new ICalExportService(),
             configuration,
@@ -139,12 +144,73 @@ public class PropertyICalSyncServiceTests
         var orgId = Guid.NewGuid();
         SeedFeed(db, propertyId, orgId, "https://example.com/cal.ics");
 
-        var service = CreateService(db, icsContent: null, fail: true);
+        var service = CreateService(db, icsContent: null, failure: ExternalFetchFailure.Unreachable);
         await service.SyncPropertyFeedAsync(propertyId);
 
         var feed = await db.PropertyICalFeeds.FirstAsync();
         Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
-        Assert.False(string.IsNullOrWhiteSpace(feed.LastError));
+        Assert.Equal(ICalErrorCodes.Unreachable, feed.LastError);
+    }
+
+    [Theory]
+    [InlineData(ExternalFetchFailure.BlockedDestination, ICalErrorCodes.Unreachable)]
+    [InlineData(ExternalFetchFailure.RedirectRejected, ICalErrorCodes.Unreachable)]
+    [InlineData(ExternalFetchFailure.Timeout, ICalErrorCodes.Unreachable)]
+    [InlineData(ExternalFetchFailure.TooLarge, ICalErrorCodes.TooLarge)]
+    [InlineData(ExternalFetchFailure.InvalidUrl, ICalErrorCodes.InvalidUrl)]
+    public async Task SyncPropertyFeedAsync_OnFetchFailure_StoresStableCodeNotExceptionMessage(
+        ExternalFetchFailure failure,
+        string expectedCode)
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        SeedFeed(db, propertyId, Guid.NewGuid(), "https://example.com/cal.ics");
+
+        var service = CreateService(db, icsContent: null, failure: failure);
+        await service.SyncPropertyFeedAsync(propertyId);
+
+        var feed = await db.PropertyICalFeeds.FirstAsync();
+        Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
+        Assert.Equal(expectedCode, feed.LastError);
+        Assert.DoesNotContain(FakeExternalHttpClient.ExceptionMessage, feed.LastError);
+    }
+
+    [Fact]
+    public async Task SetImportUrlAsync_ValidUrl_SavesUrlAndMarksSyncingWithoutDownloading()
+    {
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        var client = new FakeExternalHttpClient("BEGIN:VCALENDAR");
+
+        var service = CreateService(db, client);
+        var feed = await service.SetImportUrlAsync(propertyId, Guid.NewGuid(), " https://www.airbnb.it/calendar/ical/1.ics?s=abc ");
+
+        Assert.Equal("https://www.airbnb.it/calendar/ical/1.ics?s=abc", feed.ImportUrl);
+        Assert.Equal(PropertyICalImportStatus.Syncing, feed.LastImportStatus);
+        Assert.Null(feed.LastError);
+        Assert.Equal(0, client.Downloads);
+    }
+
+    [Theory]
+    [InlineData("http://example.com/cal.ics")]
+    [InlineData("https://127.0.0.1/cal.ics")]
+    [InlineData("https://10.1.2.3/cal.ics")]
+    [InlineData("https://169.254.169.254/latest/meta-data/")]
+    [InlineData("https://[::1]/cal.ics")]
+    [InlineData("https://localhost/cal.ics")]
+    [InlineData("https://example.com:8443/cal.ics")]
+    [InlineData("")]
+    public async Task SetImportUrlAsync_NotAnExternalHttpsUrl_ThrowsInvalidUrlAndSavesNothing(string url)
+    {
+        await using var db = CreateDb();
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.SetImportUrlAsync(Guid.NewGuid(), Guid.NewGuid(), url));
+
+        Assert.Equal(ICalErrorCodes.InvalidUrl, ex.Code);
+        Assert.Equal("ICalInvalidUrl", ex.MessageKey);
+        Assert.Empty(db.PropertyICalFeeds);
     }
 
     [Fact]
@@ -183,7 +249,7 @@ public class PropertyICalSyncServiceTests
         var feed = await db.PropertyICalFeeds.FirstAsync();
         var blocks = await db.CalendarBlocks.Where(b => b.PropertyId == propertyId).ToListAsync();
         Assert.Equal(PropertyICalImportStatus.Failure, feed.LastImportStatus);
-        Assert.False(string.IsNullOrWhiteSpace(feed.LastError));
+        Assert.Equal(ICalErrorCodes.InvalidFormat, feed.LastError);
         Assert.Single(blocks);
         Assert.Equal("existing-block", blocks[0].ExternalUid);
     }
@@ -233,27 +299,23 @@ public class PropertyICalSyncServiceTests
         db.SaveChanges();
     }
 
-    private sealed class FakeIcalHandler : HttpMessageHandler
+    private sealed class FakeExternalHttpClient(string? icsContent, ExternalFetchFailure? failure = null)
+        : ISafeExternalHttpClient
     {
-        private readonly string? _icsContent;
-        private readonly bool _fail;
+        public const string ExceptionMessage = "Connection refused (10.0.0.5:443)";
 
-        public FakeIcalHandler(string? icsContent, bool fail = false)
+        public int Downloads { get; private set; }
+
+        public bool TryValidateUrl(string? url, [NotNullWhen(true)] out Uri? uri) =>
+            ExternalUrlPolicy.TryParse(url, [443], out uri);
+
+        public Task<string> GetStringAsync(string url, CancellationToken cancellationToken = default)
         {
-            _icsContent = icsContent;
-            _fail = fail;
-        }
+            Downloads++;
+            if (failure is { } f)
+                throw new ExternalFetchException(f, ExceptionMessage);
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            if (_fail)
-                throw new HttpRequestException("fetch failed");
-
-            var content = _icsContent ?? string.Empty;
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-            {
-                Content = new StringContent(content),
-            });
+            return Task.FromResult(icsContent ?? string.Empty);
         }
     }
 }
