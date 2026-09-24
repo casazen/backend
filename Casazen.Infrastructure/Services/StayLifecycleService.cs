@@ -182,10 +182,11 @@ public sealed class StayLifecycleService(
                 turnover.Notes,
                 ChargeToGuest: false), cancellationToken);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is NotFoundException
+            or DomainRuleException { Code: ServiceRequestErrorCodes.SupplierInactive or ServiceRequestErrorCodes.SupplierOutsideComune })
         {
-            // The service request rules (supplier active and covering the comune) still use InvalidOperationException:
-            // the check-out is not saved and the host gets a 422 instead of a generic 500 (FD-05).
+            // The supplier of the turnover request is missing, not active or not covering the comune (SU-10 typed
+            // errors): the check-out is not saved and the host gets the check-out's own 422 (FD-05).
             logger.LogWarning(
                 ex,
                 "Turnover request of booking {BookingId} to supplier {SupplierOrgId} refused at check-out",

@@ -2,6 +2,7 @@ using System.Data;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Leases;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -80,7 +81,7 @@ public class RliRegistrationService(
         if (string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath))
             throw new DomainRuleException(RliRegistrationErrorCodes.SignedPdfMissing, "RliSignedPdfMissing");
 
-        LeaseWorkflowService.EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
+        LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
 
         if (!delega.AttestationAccepted
             || !string.Equals(delega.TosVersion, rliOptions.Value.TosVersion, StringComparison.Ordinal))

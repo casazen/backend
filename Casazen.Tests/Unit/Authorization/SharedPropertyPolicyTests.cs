@@ -32,6 +32,9 @@ public class SharedPropertyPolicyTests
         "PropertiesController.GetDocumentSignedUrl",
         "PropertiesController.GetDocuments",
         "PropertiesController.Update",
+        // LT-10: the lease contract needs the cadastral data of the unit and the APE code and class (property core).
+        "PropertiesController.UpdateApeIdentification",
+        "PropertiesController.UpdateCadastral",
         "PropertiesController.UploadDocument",
     ];
 
@@ -115,7 +118,10 @@ public class SharedPropertyPolicyTests
     [InlineData(nameof(PropertiesController.GetImages))]
     [InlineData(nameof(PropertiesController.UploadImages))]
     [InlineData(nameof(PropertiesController.GetIcalStatus))]
-    [InlineData(nameof(PropertiesController.SetIcalImportUrl))]
+    [InlineData(nameof(PropertiesController.GetIcalFeeds))]
+    [InlineData(nameof(PropertiesController.AddIcalFeed))]
+    [InlineData(nameof(PropertiesController.RemoveIcalFeed))]
+    [InlineData(nameof(PropertiesController.SyncIcalFeed))]
     [InlineData(nameof(PropertiesController.GetIcalExportUrl))]
     [InlineData(nameof(PropertiesController.GetComplianceActivation))]
     [InlineData(nameof(PropertiesController.GetCinCompliance))]

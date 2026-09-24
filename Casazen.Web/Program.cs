@@ -9,6 +9,7 @@ using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.Extensions;
@@ -258,6 +259,10 @@ if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("T
     using var migrateScope = app.Services.CreateScope();
     var db = migrateScope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    // iCal import URLs saved in clear before PC-11 (A2-20) are rewritten encrypted; a no-op once done.
+    await PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync(
+        db, migrateScope.ServiceProvider.GetRequiredService<ILogger<Program>>());
 }
 
 // One-off command: `dotnet Casazen.Web.dll storage:migrate-legacy [--dry-run]` (docs/runbooks/storage.md).
