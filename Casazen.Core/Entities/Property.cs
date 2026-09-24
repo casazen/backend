@@ -93,6 +93,26 @@ public class Property : ITenantOwned
 
     public DateTime? ComplianceCompletedAt { get; set; }
 
+    /// <summary>
+    /// UTC instant the property went from <see cref="PropertyComplianceStatus.Active"/> to
+    /// <see cref="PropertyComplianceStatus.Suspended"/> because an activation blocker appeared (CO-06, A5-20); null when
+    /// it is not suspended. Cleared by the reactivation.
+    /// </summary>
+    public DateTime? ComplianceSuspendedAt { get; set; }
+
+    /// <summary>
+    /// Stable codes of the activation blockers that suspended the property (e.g. <c>activation_cin_missing</c>,
+    /// <c>safety_confirmation_missing</c>), as they were at the suspension; null when it is not suspended.
+    /// </summary>
+    public List<string>? ComplianceSuspensionReasons { get; set; }
+
+    /// <summary>
+    /// UTC instant of the last evaluation of the status of an active property by the compliance status service (CO-06).
+    /// Null = never evaluated: the property was published before CO-06 (backfill of A5-36 or old checklist), and its first
+    /// evaluation follows <c>Compliance:StatusCheck:NotifyOnFirstCheck</c> for the email to the host.
+    /// </summary>
+    public DateTime? ComplianceCheckedAt { get; set; }
+
     // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -12,7 +12,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-public class PropertyService(IPropertyRepository repository, ILogger<PropertyService> logger) : IPropertyService
+/// <remarks>
+/// Every change of the CIN or of the property row (base data, city, CIN sent with the PATCH) re-evaluates the compliance
+/// status (<see cref="IPropertyComplianceStatusService.ReevaluateAsync"/>, CO-06): an active property that loses a
+/// requirement is suspended from the booking site.
+/// </remarks>
+public class PropertyService(
+    IPropertyRepository repository,
+    IPropertyComplianceStatusService complianceStatus,
+    ILogger<PropertyService> logger) : IPropertyService
 {
     /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
     public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
@@ -73,7 +81,9 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         }
 
         await EnsureCancellationPolicyExistsAsync(property);
-        return await repository.UpdateAsync(property);
+        var updated = await repository.UpdateAsync(property);
+        await complianceStatus.ReevaluateAsync(updated.Id);
+        return updated;
     }
 
     /// <summary>An unknown policy id would otherwise fail on the foreign key as a 500 (A2-04).</summary>
@@ -439,6 +449,8 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
 
         property.CinCode = normalized;
         await repository.UpdateAsync(property);
+        // A removed CIN suspends an active property (CO-06, A5-20); a CIN entered again never republishes it on its own.
+        await complianceStatus.ReevaluateAsync(propertyId);
     }
 
     private async Task<string> ResolveSlugForCreateAsync(Guid orgId, string name, string? requestedSlug)

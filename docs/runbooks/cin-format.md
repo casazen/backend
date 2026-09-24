@@ -60,7 +60,8 @@ compliance page.
   detail page and the CIN compliance page. The activation wizard keeps the CIN step pending until a valid CIN is saved.
 - **Guest (public site, search):** only a valid CIN is shown, as plain text ("CIN IT058091C27G5FFZDZ"). No
   "invalid" or "missing" badge is shown to guests.
-- Publication rules are unchanged (they belong to task CO-06).
+- Publication (CO-06, [compliance.md](compliance.md)): a missing or invalid CIN blocks the activation; removing the CIN
+  of an active property suspends it from the booking site at once, and the host reactivates it from the wizard.
 
 ## Not done yet
 

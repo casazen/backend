@@ -471,4 +471,31 @@
   <data name="GuestBookingCancelled_NoCharge" xml:space="preserve">
     <value>You have not been charged.</value>
   </data>
+  <data name="PropertyComplianceSuspended_Subject" xml:space="preserve">
+    <value>Listing suspended - {0}</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Body" xml:space="preserve">
+    <value>The listing of &lt;strong&gt;{0}&lt;/strong&gt; has been suspended: it can no longer be seen or booked on the direct booking site, because a requirement for publishing it is missing:</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepBaseData" xml:space="preserve">
+    <value>incomplete basic data (name, address, city, number of guests or nightly price);</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepCin" xml:space="preserve">
+    <value>national identification code (CIN) missing or not valid;</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepDocuments" xml:space="preserve">
+    <value>required documents missing;</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepSafety" xml:space="preserve">
+    <value>safety checklist (D.L. 145/2023) incomplete or not confirmed.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_BookingsKept" xml:space="preserve">
+    <value>Bookings already confirmed remain valid: no booking has been cancelled.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Action" xml:space="preserve">
+    <value>Complete the missing requirements and reactivate the listing from the activation of the property.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
+    <value>Open the activation</value>
+  </data>
 </root>
