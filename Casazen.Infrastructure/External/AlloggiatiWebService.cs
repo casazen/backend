@@ -45,6 +45,8 @@ public class AlloggiatiWebService(
         {
             GuestId = guestId,
             BookingId = bookingId,
+            // The report belongs to its booking's org (TN-2), like every other child row.
+            OrgId = await context.Bookings.Where(b => b.Id == bookingId).Select(b => b.OrgId).SingleAsync(),
         };
         report.GuestId = guestId;
 

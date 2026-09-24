@@ -24,6 +24,7 @@ public class AlloggiatiWebServiceTests
         await using var context = new AppDbContext(options);
         var guestId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
+        var bookingOrgId = Guid.NewGuid();
 
         context.Guests.Add(new Guest
         {
@@ -44,7 +45,7 @@ public class AlloggiatiWebServiceTests
         {
             Id = bookingId,
             PropertyId = Guid.NewGuid(),
-            OrgId = Guid.NewGuid(),
+            OrgId = bookingOrgId,
             GuestId = guestId,
             CheckInDate = DateTime.UtcNow,
             CheckOutDate = DateTime.UtcNow.AddDays(2),
@@ -72,6 +73,7 @@ public class AlloggiatiWebServiceTests
         var report = context.AlloggiatiWebReports.Single(r => r.BookingId == bookingId);
         Assert.Equal(AlloggiatiWebStatus.Submitted, report.Status);
         Assert.Equal("simulated", report.ErrorMessage);
+        Assert.Equal(bookingOrgId, report.OrgId); // TN-2: the report belongs to its booking's org
     }
 
     [Fact]

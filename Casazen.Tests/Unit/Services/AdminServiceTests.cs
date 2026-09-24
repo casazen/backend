@@ -124,6 +124,11 @@ public class AdminServiceTests
             new Payment { Id = Guid.NewGuid(), OrgId = orgA, BookingId = bookingA.Id, Amount = 100m, Status = PaymentStatus.Completed },
             new Payment { Id = Guid.NewGuid(), OrgId = orgB, BookingId = bookingB.Id, Amount = 150m, Status = PaymentStatus.Completed });
 
+        // TN-2: OtaIntegrations is tenant-filtered too; the OTA health counters must stay platform-wide.
+        ctx.OtaIntegrations.AddRange(
+            new OtaIntegration { OrgId = orgA, PropertyId = propA.Id, Platform = "Airbnb", ExternalPropertyId = "a" },
+            new OtaIntegration { OrgId = orgB, PropertyId = propB.Id, Platform = "Booking", ExternalPropertyId = "b" });
+
         await ctx.SaveChangesAsync();
 
         // Guard: confirm the tenant filter really is engaged on this context (a filtered read sees
@@ -143,6 +148,7 @@ public class AdminServiceTests
         Assert.Equal(250m, stats.TotalRevenue);
         Assert.Equal(2, stats.CinTotal);
         Assert.Equal(2, stats.CinValid);
+        Assert.Equal(2, stats.OtaNeverSynced);
     }
 
     [Fact]

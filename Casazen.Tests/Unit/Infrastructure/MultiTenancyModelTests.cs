@@ -35,6 +35,13 @@ public class MultiTenancyModelTests
     [InlineData(typeof(Booking))]
     [InlineData(typeof(LeaseContract))]
     [InlineData(typeof(Payment))]
+    [InlineData(typeof(Guest))] // TN-1
+    [InlineData(typeof(PropertyDocument))] // TN-2: child rows exposed by controllers
+    [InlineData(typeof(OtaIntegration))]
+    [InlineData(typeof(PricingAdapterConfig))]
+    [InlineData(typeof(PricingHistory))]
+    [InlineData(typeof(AlloggiatiWebReport))]
+    [InlineData(typeof(GuestCheckInSession))]
     public void TenantEntity_HasRequiredRestrictedOrgIdFkAndIndex(Type clrType)
     {
         using var db = NewDb();

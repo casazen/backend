@@ -64,6 +64,8 @@ public class PushNotificationService(
         string statusLabel,
         CancellationToken cancellationToken = default)
     {
+        // IgnoreQueryFilters: runs in the supplier's request, the property belongs to the host org. The
+        // recipients are then limited to that org's hosts (SendToPropertyHostsAsync).
         var request = await db.ServiceRequests
             .AsNoTracking()
             .IgnoreQueryFilters()

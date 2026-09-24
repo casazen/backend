@@ -55,6 +55,8 @@ public class PropertyICalSyncService
     public async Task<PropertyICalFeed?> GetFeedAsync(Guid propertyId, CancellationToken ct = default) =>
         await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.PropertyId == propertyId, ct);
 
+    // IgnoreQueryFilters (here and in BuildPublicExportAsync): the public export is authorized by the
+    // unguessable ExportToken, not by a user, and is scoped to that feed's property.
     public async Task<PropertyICalFeed?> GetFeedByExportTokenAsync(Guid exportToken, CancellationToken ct = default) =>
         await _db.PropertyICalFeeds
             .IgnoreQueryFilters()

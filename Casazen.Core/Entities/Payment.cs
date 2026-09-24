@@ -1,12 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
 [Table("Payments")]
-public class Payment
+public class Payment : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

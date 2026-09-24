@@ -172,6 +172,7 @@ public sealed class LegacyFileMigrationServiceTests : IAsyncLifetime
         var document = new PropertyDocument
         {
             PropertyId = property.Id,
+            OrgId = org.Id,
             FileName = "Certificato CIN.pdf",
             StorageUrl = $"/uploads/properties/{property.Id}/documents/cin.pdf",
             DocumentType = DocumentType.CinCertificate,

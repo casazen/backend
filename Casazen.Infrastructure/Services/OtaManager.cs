@@ -162,6 +162,7 @@ public class OtaManager(
             var pricingHistory = new PricingHistory
             {
                 PropertyId = propertyId,
+                OrgId = property.OrgId,
                 AdaptationDate = DateTime.UtcNow,
                 PreviousPrice = property.NightlyRate,
                 NewPrice = pricesByDate.Values.FirstOrDefault(),

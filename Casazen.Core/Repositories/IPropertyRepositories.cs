@@ -13,6 +13,12 @@ public interface IPropertyRepository
     Task<Property> UpdateAsync(Property property);
     Task DeleteAsync(Guid id);
     Task<bool> ExistsAsync(Guid id);
+
+    /// <summary>
+    /// OrgId of the property (under the caller's tenant filter), or <c>null</c> when it does not exist.
+    /// Child rows (documents, OTA integrations, pricing) copy it on creation (TN-2).
+    /// </summary>
+    Task<Guid?> GetOrgIdAsync(Guid id);
     Task<Property?> GetPropertyDetailAsync(Guid id);
     Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId);
     Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);
