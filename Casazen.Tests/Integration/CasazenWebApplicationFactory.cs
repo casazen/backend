@@ -119,12 +119,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["ESign:WebhookSecret"] = "esign-test-secret",
                 ["Stripe:WebhookSecret"] = "whsec_test_casazen_integration",
                 ["Rli:TosVersion"] = "2026-08-rli-delega-bozza",
-                ["LeaseTemplates:Variants:CedolareSecca:VersionId"] = "dev-stub",
-                ["LeaseTemplates:Variants:CedolareSecca:Approved"] = "true",
-                ["LeaseTemplates:Variants:RegimeOrdinario:VersionId"] = "dev-stub",
-                ["LeaseTemplates:Variants:RegimeOrdinario:Approved"] = "true",
-                ["LeaseTemplates:Variants:CanoneConcordato:VersionId"] = "dev-stub",
-                ["LeaseTemplates:Variants:CanoneConcordato:Approved"] = "true",
             });
         });
 
