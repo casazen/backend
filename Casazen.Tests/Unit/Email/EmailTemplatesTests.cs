@@ -2,6 +2,8 @@ using System.Collections;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Xunit;
@@ -20,7 +22,8 @@ public class EmailTemplatesTests
 
     public static TheoryData<string> TemplateNames => new()
     {
-        "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati",
+        "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
+        "rli-reminder", "rli-overdue", "rli-extra-eu",
     };
 
     [Theory]
@@ -63,10 +66,36 @@ public class EmailTemplatesTests
 
         Assert.Equal("Nuova richiesta di servizio — Villa Rosa", content.Subject);
         Assert.Contains("Ciao Pulizie Srl,", content.HtmlBody);
-        Assert.Contains("Hai ricevuto una nuova richiesta di <strong>cleaning</strong> per la proprietà <strong>Villa Rosa</strong>.", content.HtmlBody);
+        Assert.Contains("Hai ricevuto una nuova richiesta di <strong>Pulizie</strong> per la proprietà <strong>Villa Rosa</strong>.", content.HtmlBody);
         Assert.Contains("Note:</strong><br />Chiavi in portineria", content.HtmlBody);
         Assert.Contains($"href=\"{Link}\"", content.HtmlBody);
         Assert.Contains("Apri la console fornitore", content.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceCategoryLabel_EveryCategoryCode_HasItalianAndEnglishLabel()
+    {
+        var italian = CultureInfo.GetCultureInfo("it-IT");
+        var english = CultureInfo.GetCultureInfo("en");
+
+        Assert.All(ServiceCategories.All, code =>
+        {
+            var it = EmailTemplates.ServiceCategoryLabel(italian, code);
+            var en = EmailTemplates.ServiceCategoryLabel(english, code);
+            Assert.NotEqual(code, it);
+            Assert.NotEqual(it, en);
+        });
+        Assert.Equal("Pulizie", EmailTemplates.ServiceCategoryLabel(italian, ServiceCategories.Cleaning));
+        Assert.Equal("Cleaning", EmailTemplates.ServiceCategoryLabel(english, ServiceCategories.Cleaning));
+    }
+
+    [Fact]
+    public void ServiceRequestStatusChanged_EnglishLegacyCategory_ShowsValueEncoded()
+    {
+        var content = EmailTemplates.ServiceRequestStatusChanged(
+            CultureInfo.GetCultureInfo("en"), ServiceRequestStatus.Completato, "Idraulica <b>speciale</b>", "Villa");
+
+        Assert.Contains("Idraulica &lt;b&gt;speciale&lt;/b&gt;", content.HtmlBody);
     }
 
     [Fact]
@@ -131,6 +160,43 @@ public class EmailTemplatesTests
         Assert.Contains("<strong>05/10/2026</strong>", content.HtmlBody);
     }
 
+    [Fact]
+    public void GuestRefundConfirmed_ItalianAndEnglish_ShowAmountInEuroPropertyAndArrival()
+    {
+        var italian = EmailTemplates.GuestRefundConfirmed(CultureInfo.GetCultureInfo("it-IT"), "Anna", "Villa Rosa", CheckIn, 1234.5m);
+        var english = EmailTemplates.GuestRefundConfirmed(CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, 1234.5m);
+
+        Assert.Equal("Rimborso confermato - Villa Rosa", italian.Subject);
+        Assert.Contains("1.234,50 €", italian.HtmlBody);
+        Assert.Contains("Villa Rosa", italian.HtmlBody);
+        Assert.Contains("€1,234.50", english.HtmlBody);
+        Assert.Equal("Refund confirmed - Villa Rosa", english.Subject);
+    }
+
+    [Fact]
+    public void RliDeadlineReminder_Italian_ShowsPropertyDeadlineAndDaysWithoutTechnicalCodes()
+    {
+        var content = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
+
+        Assert.Equal("Promemoria registrazione RLI — Villa Rosa (scadenza 05/10/2026)", content.Subject);
+        Assert.Contains("<strong>Villa Rosa</strong>", content.HtmlBody);
+        Assert.Contains("<strong>05/10/2026</strong>", content.HtmlBody);
+        Assert.Contains("Giorni rimanenti: <strong>7</strong>", content.HtmlBody);
+        Assert.DoesNotContain("t-7", content.HtmlBody + content.Subject);
+    }
+
+    [Fact]
+    public void RliExtraEuNotice_EnglishAndItalian_MentionQuestura()
+    {
+        var italian = EmailTemplates.RliExtraEuNotice(EmailTemplates.DefaultCulture, "Villa Rosa");
+        var english = EmailTemplates.RliExtraEuNotice(CultureInfo.GetCultureInfo("en"), "Villa Rosa");
+
+        Assert.Contains("Questura", italian.Subject);
+        Assert.Contains("Questura", english.Subject);
+        Assert.Contains("conduttore extra-UE", italian.HtmlBody);
+        Assert.Contains("non-EU tenant", english.HtmlBody);
+    }
+
     [Theory]
     [InlineData("javascript:alert(1)")]
     [InlineData("/app/supplier/inbox")]
@@ -184,6 +250,10 @@ public class EmailTemplatesTests
             "checkin-link" => EmailTemplates.GuestCheckInLink(culture, value, value, CheckIn, Link),
             "checkin-incomplete" => EmailTemplates.GuestCheckInIncomplete(culture, value, value, CheckIn),
             "alloggiati" => EmailTemplates.AlloggiatiDeadline(culture, value, value, CheckIn),
+            "refund" => EmailTemplates.GuestRefundConfirmed(culture, value, value, CheckIn, 1234.5m),
+            "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
+            "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
+            "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),
             _ => throw new ArgumentOutOfRangeException(nameof(template)),
         };
     }

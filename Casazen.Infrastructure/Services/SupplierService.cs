@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
@@ -120,6 +121,9 @@ public class SupplierService(
         IEnumerable<string>? photoUrls,
         CancellationToken cancellationToken = default)
     {
+        // Only category codes are stored (SU-03): an Italian label or unknown value is rejected (422), never saved.
+        var categoryCodes = categories is null ? null : ServiceCategories.RequireAll(categories);
+
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
             return null;
@@ -127,7 +131,7 @@ public class SupplierService(
         if (legalName is not null) profile.LegalName = legalName;
         if (vatNumber is not null) profile.VatNumber = vatNumber.Length == 0 ? null : vatNumber;
         if (phone is not null) profile.Phone = phone;
-        if (categories is not null) profile.CategoriesJson = JsonSerializer.Serialize(categories, JsonOpts);
+        if (categoryCodes is not null) profile.CategoriesJson = JsonSerializer.Serialize(categoryCodes, JsonOpts);
         if (comuni is not null) profile.ComuniJson = JsonSerializer.Serialize(comuni, JsonOpts);
         if (bio is not null) profile.Bio = bio.Length == 0 ? null : bio;
         if (photoUrls is not null) profile.PhotoUrlsJson = JsonSerializer.Serialize(photoUrls, JsonOpts);
@@ -235,6 +239,10 @@ public class SupplierService(
 
     public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default)
     {
+        // Filter by category code (SU-03). An unknown code is an error (422), not an empty list that hides the mistake;
+        // a supplier matches only when it declared the code (no categories = no match).
+        var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
+
         var all = await db.SupplierProfiles
             .Where(sp => sp.Status == SupplierStatus.Active)
             .ToListAsync(cancellationToken);
@@ -245,16 +253,76 @@ public class SupplierService(
             if (!comuni.Any(c => ItalianComuneRegistry.Matches(comuneCode, c)))
                 return false;
 
-            if (category is not null)
-            {
-                var cats = JsonSerializer.Deserialize<string[]>(sp.CategoriesJson, JsonOpts) ?? [];
-                // Active suppliers may still be filling categories (activation only gates ToS).
-                if (cats.Length == 0)
-                    return true;
-                return cats.Contains(category, StringComparer.OrdinalIgnoreCase);
-            }
+            if (categoryCode is not null)
+                return DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal);
+
             return true;
         }).ToList();
+    }
+
+    public async Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        var unmapped = new List<UnmappedServiceCategory>();
+
+        var profiles = await db.SupplierProfiles
+            .AsNoTracking()
+            .OrderBy(sp => sp.OrgId)
+            .Select(sp => new { sp.OrgId, sp.CategoriesJson })
+            .ToListAsync(cancellationToken);
+        foreach (var profile in profiles)
+        {
+            unmapped.AddRange(DeserializeStrings(profile.CategoriesJson)
+                .Where(value => !ServiceCategories.IsKnown(value))
+                .Select(value => new UnmappedServiceCategory("supplier_profile", profile.OrgId, value)));
+        }
+
+        var invites = await db.SupplierInviteRecords
+            .AsNoTracking()
+            .Where(i => i.CategoriesJson != null)
+            .OrderBy(i => i.Id)
+            .Select(i => new { i.Id, i.CategoriesJson })
+            .ToListAsync(cancellationToken);
+        foreach (var invite in invites)
+        {
+            unmapped.AddRange(DeserializeStrings(invite.CategoriesJson)
+                .Where(value => !ServiceCategories.IsKnown(value))
+                .Select(value => new UnmappedServiceCategory("supplier_invite", invite.Id, value)));
+        }
+
+        var known = ServiceCategories.All.ToList();
+        // Platform admin report across every host org (the endpoint is AdminOnly); ServiceRequest has no tenant filter.
+        var requests = await db.ServiceRequests
+            .AsNoTracking()
+            .Where(sr => !known.Contains(sr.Category))
+            .OrderBy(sr => sr.CreatedAt)
+            .Select(sr => new { sr.Id, sr.Category })
+            .ToListAsync(cancellationToken);
+        unmapped.AddRange(requests.Select(sr => new UnmappedServiceCategory("service_request", sr.Id, sr.Category)));
+
+        return unmapped;
+    }
+
+    /// <summary>String items of a JSON array column; anything else (not an array, non-string items) is ignored.</summary>
+    private static IReadOnlyList<string> DeserializeStrings(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+                return [];
+
+            return document.RootElement.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     public async Task<SupplierInvite> CreateInviteAsync(
@@ -264,6 +332,8 @@ public class SupplierService(
         string? message,
         CancellationToken cancellationToken = default)
     {
+        var categoryCodes = categories is null ? null : ServiceCategories.RequireAll(categories);
+
         var existing = await db.SupplierInviteRecords
             .FirstOrDefaultAsync(i => i.Email == email && !i.IsUsed && i.ExpiresAt > DateTime.UtcNow, cancellationToken);
 
@@ -274,8 +344,8 @@ public class SupplierService(
         {
             Email = email,
             ComuneCode = comuneCode,
-            CategoriesJson = categories is not null
-                ? JsonSerializer.Serialize(categories, JsonOpts)
+            CategoriesJson = categoryCodes is not null
+                ? JsonSerializer.Serialize(categoryCodes, JsonOpts)
                 : null,
             Message = message,
             ExpiresAt = DateTime.UtcNow.AddDays(7),

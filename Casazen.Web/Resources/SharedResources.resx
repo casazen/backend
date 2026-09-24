@@ -207,6 +207,24 @@
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Contratto di locazione non trovato</value>
   </data>
+  <data name="RliChecklist_contract_signed" xml:space="preserve">
+    <value>Contratto firmato da tutte le parti</value>
+  </data>
+  <data name="RliChecklist_delega_captured" xml:space="preserve">
+    <value>Delega / attestazione RLI registrata</value>
+  </data>
+  <data name="RliChecklist_rli_exported" xml:space="preserve">
+    <value>Dataset RLI esportato per revisione</value>
+  </data>
+  <data name="RliChecklist_rli_submitted" xml:space="preserve">
+    <value>RLI inviato al canale di filing</value>
+  </data>
+  <data name="RliChecklist_rli_registered" xml:space="preserve">
+    <value>Ricevuta di registrazione disponibile</value>
+  </data>
+  <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
+    <value>Comunicazione Questura (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Bozza da confermare con legale.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Richiesta di servizio non trovata</value>
   </data>
@@ -230,6 +248,9 @@
   </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
+  </data>
+  <data name="OnboardingConsentsRequired" xml:space="preserve">
+    <value>Per creare la tua organizzazione devi accettare i documenti legali obbligatori.</value>
   </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
@@ -371,6 +392,51 @@
   </data>
   <data name="TaxRateReducedRateInvalid" xml:space="preserve">
     <value>Per la tariffa ridotta indica sia l'età massima (tra l'età di esenzione e 17 anni) sia l'importo per persona per notte (tra 0,01 e 1000 euro); solo per tariffe a importo fisso.</value>
+  </data>
+  <data name="PaymentNotRefundable" xml:space="preserve">
+    <value>Questo pagamento non è rimborsabile: si possono rimborsare solo i pagamenti incassati.</value>
+  </data>
+  <data name="PaymentRefundOffline" xml:space="preserve">
+    <value>Questo pagamento non è passato da Stripe (contanti, bonifico o registrazione manuale): il rimborso va fatto fuori da CasaZen.</value>
+  </data>
+  <data name="PaymentRefundAccountMissing" xml:space="preserve">
+    <value>L'account Stripe dell'host non è disponibile: completa o ricollega Stripe nelle impostazioni dei pagamenti e riprova.</value>
+  </data>
+  <data name="PaymentNothingToRefund" xml:space="preserve">
+    <value>Non c'è più nulla da rimborsare su questo pagamento.</value>
+  </data>
+  <data name="RefundAmountInvalid" xml:space="preserve">
+    <value>Inserisci un importo di rimborso valido, maggiore di zero e con al massimo due decimali.</value>
+  </data>
+  <data name="RefundAmountExceedsRefundable" xml:space="preserve">
+    <value>L'importo supera quanto si può ancora rimborsare ({0:N2} €).</value>
+  </data>
+  <data name="RefundReasonTooLong" xml:space="preserve">
+    <value>Il motivo del rimborso può avere al massimo 500 caratteri.</value>
+  </data>
+  <data name="BookingAlreadyCancelled" xml:space="preserve">
+    <value>La prenotazione è già cancellata.</value>
+  </data>
+  <data name="BookingNotCancellable" xml:space="preserve">
+    <value>Una prenotazione con soggiorno concluso non si può cancellare: per restituire denaro usa il rimborso dal pagamento.</value>
+  </data>
+  <data name="BookingCancelNothingToRefund" xml:space="preserve">
+    <value>Non c'è nessun pagamento incassato tramite Stripe da rimborsare per questa prenotazione.</value>
+  </data>
+  <data name="BookingCancelRefundRequired" xml:space="preserve">
+    <value>La prenotazione è stata pagata: indica quanto rimborsare all'ospite (da 0 a {0:N2} €).</value>
+  </data>
+  <data name="BookingCancelRefundBelowMinimum" xml:space="preserve">
+    <value>Per le condizioni di cancellazione mostrate all'ospite il rimborso deve essere di almeno {0:N2} €.</value>
+  </data>
+  <data name="BookingPaymentInProgress" xml:space="preserve">
+    <value>Il pagamento dell'ospite è in corso di conferma: attendi qualche istante, ricarica la prenotazione e riprova.</value>
+  </data>
+  <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
+    <value>Per cancellare una prenotazione con pagamenti serve il permesso di gestire i pagamenti.</value>
+  </data>
+  <data name="ServiceCategoryInvalid" xml:space="preserve">
+    <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>
   </data>
   <data name="AiBudgetExhaustedDetail" xml:space="preserve">
     <value>Il budget mensile per le funzioni AI della piattaforma è esaurito. Riprova il mese prossimo o contatta il supporto.</value>

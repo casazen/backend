@@ -107,10 +107,14 @@ public class SupplierProfileController(
         return Ok(MapProfile(profile));
     }
 
-    /// <summary>Updates the caller's supplier profile fields.</summary>
+    /// <summary>
+    /// Updates the caller's supplier profile fields. <c>categories</c> holds codes of <c>GET /api/service-categories</c>;
+    /// any other value is a 422 <c>invalid_service_category</c> and nothing is saved (SU-03).
+    /// </summary>
     [HttpPut("profile")]
     [ProducesResponseType(typeof(SupplierProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<SupplierProfileDto>> UpdateProfile(
         [FromBody] UpdateSupplierProfileRequest request,
         CancellationToken cancellationToken)

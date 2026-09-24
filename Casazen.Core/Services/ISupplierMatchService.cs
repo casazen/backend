@@ -36,6 +36,10 @@ public interface ISupplierMatchService
     /// property (TN-3); a property of another org is rejected. The host's notes are not an input: nothing typed by
     /// the host can reach an AI prompt (A8-15).
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Code <c>invalid_service_category</c>: <paramref name="category"/> is not a
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// </exception>
     Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
         Guid propertyId,

@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -258,7 +259,7 @@ public class ComplianceWizardService(
                 booking.PropertyId,
                 booking.Id,
                 input.SupplierOrgId.Value,
-                input.ServiceCategory ?? "cleaning",
+                string.IsNullOrWhiteSpace(input.ServiceCategory) ? ServiceCategories.Cleaning : input.ServiceCategory,
                 ServiceRequestUrgency.Normal,
                 input.ServiceNotes,
                 ChargeToGuest: false), cancellationToken);

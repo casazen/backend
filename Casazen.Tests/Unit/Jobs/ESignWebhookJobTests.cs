@@ -49,18 +49,35 @@ public class ESignWebhookJobTests
     {
         var lease = BuildLease();
         lease.ExternalSigningSessionId = "session-partial";
+        var tenant = new Party { Role = PartyRole.Tenant, ContactEmail = "tenant@example.com" };
+        lease.Parties.Add(tenant);
         var (sut, leaseRepo, events) = CreateWorkflow(lease, new ESignEvent(
-            "session-partial", "party_signed", "tenant@example.com", false, null));
+            "session-partial", "party_signed", " Tenant@Example.com ", false, null));
 
         await new ESignWebhookJob(sut, Mock.Of<ILogger<ESignWebhookJob>>())
             .ProcessEventAsync("payload");
 
         Assert.Equal(LeaseStatus.AwaitingSignature, lease.Status);
         Assert.Null(lease.SignedPdfStoragePath);
+        // The payload identifies the signer by party id: no email address in the event (A7-17).
         events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
             e.EventType == LeaseEventType.PartySignedDocument
-            && e.Payload == "tenant@example.com")), Times.Once);
+            && e.Payload == tenant.Id.ToString())), Times.Once);
         leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleESignEventAsync_PartialForUnknownSigner_StoresEventWithoutEmail()
+    {
+        var lease = BuildLease();
+        lease.ExternalSigningSessionId = "session-unknown-signer";
+        var (sut, _, events) = CreateWorkflow(lease, new ESignEvent(
+            "session-unknown-signer", "party_signed", "someone@example.com", false, null));
+
+        await sut.HandleESignEventAsync("payload");
+
+        events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
+            e.EventType == LeaseEventType.PartySignedDocument && e.Payload == null)), Times.Once);
     }
 
     [Fact]

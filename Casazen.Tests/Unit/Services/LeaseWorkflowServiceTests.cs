@@ -494,14 +494,27 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
-    public async Task GetLeaseDetailAsync_WhenWrongOwner_ReturnsNull()
+    public async Task GetLeaseDetailAsync_ExistingLease_ReturnsItForTheCallerToAuthorize()
     {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Draft); // Property.OwnerId = OwnerId
+        // Arrange: ownership is no longer decided here but by the controller (TN-3 HostResource check).
+        var lease = BuildLease(LeaseStatus.Draft);
         _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
 
         // Act
-        var result = await _sut.GetLeaseDetailAsync(lease.Id, "auth0|different-owner");
+        var result = await _sut.GetLeaseDetailAsync(lease.Id);
+
+        // Assert
+        Assert.Same(lease, result);
+    }
+
+    [Fact]
+    public async Task GetLeaseDetailAsync_UnknownLease_ReturnsNull()
+    {
+        // Arrange
+        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<Guid>())).ReturnsAsync((LeaseContract?)null);
+
+        // Act
+        var result = await _sut.GetLeaseDetailAsync(Guid.NewGuid());
 
         // Assert
         Assert.Null(result);

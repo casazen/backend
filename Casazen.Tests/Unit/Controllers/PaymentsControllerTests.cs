@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Controllers;
+using Casazen.Web.DTOs.Payments;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +29,7 @@ public class PaymentsControllerTests
     private readonly Mock<IHostResourceLookup> _hostResources = new();
     private readonly Mock<IOrgContextResolver> _orgResolver = new();
     private readonly Mock<IFiscalRegimeService> _fiscal = new();
+    private readonly Mock<IPaymentRefundService> _refundService = new();
     private Func<string, string, bool>? _permissions;
 
     public PaymentsControllerTests()
@@ -108,23 +110,59 @@ public class PaymentsControllerTests
         _hostResources.Setup(h => h.ForPropertyAsync(PropertyId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HostResource(OrgId, OtherOwnerId));
 
-        var result = await CreateController().Refund(payment.Id);
+        var result = await CreateController().Refund(payment.Id, new RefundPaymentRequest { Amount = 10m });
 
-        Assert.IsType<NotFoundResult>(result);
-        _paymentService.Verify(p => p.RefundPaymentAsync(It.IsAny<Guid>(), It.IsAny<decimal?>()), Times.Never);
+        Assert.IsType<NotFoundResult>(result.Result);
+        _refundService.Verify(
+            r => r.RefundAsync(It.IsAny<PaymentRefundRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task Process_WhenCallerLacksPaymentWrite_DoesNotProcess()
+    public async Task Refund_WhenCallerLacksPaymentWrite_DoesNotRefund()
     {
         var payment = MakePayment(PropertyId);
         _paymentService.Setup(p => p.GetPaymentAsync(payment.Id)).ReturnsAsync(payment);
         _permissions = (_, permission) => permission != "payment.write";
 
-        var result = await CreateController().Process(payment.Id);
+        var result = await CreateController().Refund(payment.Id);
 
-        Assert.IsType<NotFoundResult>(result);
-        _paymentService.Verify(p => p.ProcessPaymentAsync(It.IsAny<Guid>()), Times.Never);
+        Assert.IsType<NotFoundResult>(result.Result);
+        _refundService.Verify(
+            r => r.RefundAsync(It.IsAny<PaymentRefundRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Refund_WhenAuthorized_ReturnsRefundAsStripeLeftIt()
+    {
+        var payment = MakePayment(PropertyId);
+        _paymentService.Setup(p => p.GetPaymentAsync(payment.Id)).ReturnsAsync(payment);
+        var pending = new PaymentRefund
+        {
+            PaymentId = payment.Id,
+            OrgId = OrgId,
+            Amount = 40m,
+            Status = PaymentRefundStatus.Pending,
+        };
+        _refundService
+            .Setup(r => r.RefundAsync(It.IsAny<PaymentRefundRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pending);
+
+        var result = await CreateController().Refund(payment.Id, new RefundPaymentRequest { Amount = 40m, Reason = "Guasto" });
+
+        var dto = Assert.IsType<PaymentRefundDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(PaymentRefundStatus.Pending, dto.Status);
+        _refundService.Verify(r => r.RefundAsync(
+            It.Is<PaymentRefundRequest>(q => q.PaymentId == payment.Id && q.Amount == 40m && q.Reason == "Guasto" && q.RequestedByUserId == OwnerId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void Controller_HasNoProcessPaymentAction()
+    {
+        // A9-15: "process" marked a payment Completed without Stripe; payments are collected only through Stripe.
+        Assert.Null(typeof(PaymentsController).GetMethod("Process"));
     }
 
     [Fact]
@@ -152,6 +190,7 @@ public class PaymentsControllerTests
             HostAuthorizationTestHarness.Create(OrgId, (c, p) => _permissions?.Invoke(c, p) ?? true),
             _orgResolver.Object,
             _fiscal.Object,
+            _refundService.Object,
             Mock.Of<ILogger<PaymentsController>>());
 
         controller.ControllerContext = new ControllerContext

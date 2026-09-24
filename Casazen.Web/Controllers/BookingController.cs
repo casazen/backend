@@ -218,29 +218,6 @@ public class BookingsController(
         return NoContent();
     }
 
-    [HttpDelete("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<IActionResult> Cancel(Guid id)
-    {
-        logger.LogInformation("Cancelling booking: {BookingId}", id);
-        var existing = await bookingService.GetBookingAsync(id);
-        if (existing == null)
-            return NotFound();
-
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
-            return NotFound();
-
-        var checkoutReminderJobId = existing.CheckoutReminderJobId;
-        await bookingService.CancelBookingAsync(id);
-        checkoutReminderScheduler.CancelReminder(checkoutReminderJobId);
-        logger.LogInformation("Booking cancelled: {BookingId}", id);
-        return NoContent();
-    }
-
     [HttpGet("calendar")]
     public async Task<ActionResult<CalendarResponseDto>> GetCalendar(
         [FromQuery] Guid propertyId,

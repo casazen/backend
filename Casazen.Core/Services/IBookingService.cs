@@ -18,7 +18,7 @@ public interface IBookingService
     Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest);
 
     Task<Booking> UpdateBookingAsync(Booking booking);
-    Task<bool> CancelBookingAsync(Guid bookingId);
+    // Cancellation (with refunds and intents on Stripe) is IBookingCancellationService (BK-02).
     Task<bool> IsPropertyAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? pendingDirectTtlMinutes = null);
     Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate);
     Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input);

@@ -1,7 +1,11 @@
 using System.ComponentModel.DataAnnotations;
-using System.Security.Claims;
+using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,44 +13,65 @@ using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// Long-term leases. Reads need <c>lease.read</c>, each write its own lease permission. The migrated actions (list,
+/// detail, create, registration, checklist) authorize the row as a <see cref="HostResource"/> of the lease's property
+/// (TN-3): another org's lease is invisible (404), a lease of the org the caller may not handle answers 403.
+/// Responses are DTOs (LT-11, A7-17): never EF entities, no clear personal data of the parties.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "RequireContext:long-rent:lease.read")]
+[Authorize(Policy = CasazenPolicies.LeaseRead)]
 public class LeasesController(
     ILeaseWorkflowService leaseService,
     IComuneImuNotificationService imuNotification,
     ICedolareAdvisoryService cedolareAdvisory,
     IRliExportService rliExport,
     IRliChecklistService rliChecklist,
+    IHostResourceLookup hostResources,
+    IAuthorizationService authorizationService,
+    IOrgContextResolver orgContextResolver,
     IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
-    private string? GetOwnerId() =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+    private const string LeaseNotFoundCode = "lease_not_found";
+    private const string PropertyNotFoundCode = "property_not_found";
 
-    /// <summary>List all lease contracts for the authenticated owner.</summary>
+    private string? GetOwnerId() => User.GetUserId();
+
+    /// <summary>Lease list of the caller's org, restricted to the properties they own unless org-wide (TN-3).</summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] Guid? propertyId = null)
+    public async Task<ActionResult<IReadOnlyList<LeaseSummaryDto>>> GetAll(
+        [FromQuery] Guid? propertyId = null, CancellationToken cancellationToken = default)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        var leases = await leaseService.GetOwnerLeasesAsync(ownerId, propertyId);
-        return Ok(leases);
+        // Org and ownership filter applied in SQL (HostScope), never the whole table filtered in memory.
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+            return Unauthorized();
+
+        return Ok(await leaseService.GetLeasesAsync(scope, propertyId));
     }
 
-    /// <summary>Get full lease contract detail including parties, registration, and events.</summary>
+    /// <summary>Lease detail: parties with masked fiscal code and email, registration, timeline without payloads.</summary>
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetById(Guid id)
+    public async Task<ActionResult<LeaseDetailDto>> GetById(Guid id)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        var lease = await leaseService.GetLeaseDetailAsync(id, ownerId);
-        return lease is null ? NotFound() : Ok(lease);
+        var (lease, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        return denied ?? Ok(LeaseDtoMapper.ToDetail(lease!));
     }
 
     /// <summary>Create a new lease contract draft.</summary>
     [HttpPost]
-    [Authorize(Policy = "RequireContext:long-rent:lease.create")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<IActionResult> Create([FromBody] CreateLeaseDto dto)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
+
+        var property = await hostResources.ForPropertyAsync(dto.PropertyId, HttpContext.RequestAborted);
+        if (property is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, PropertyNotFoundCode, "PropertyNotFound");
+        if (!await authorizationService.IsAuthorizedAsync(User, property, LeaseOperations.Create))
+            return Forbid();
+
         try
         {
             var request = new CreateLeaseRequest(
@@ -70,7 +95,8 @@ public class LeasesController(
                         dto.CanoneConcordato.CadastralSheet));
 
             var lease = await leaseService.CreateDraftAsync(dto.PropertyId, ownerId, request);
-            return CreatedAtAction(nameof(GetById), new { id = lease.Id }, lease);
+            var created = await leaseService.GetLeaseDetailAsync(lease.Id) ?? lease;
+            return CreatedAtAction(nameof(GetById), new { id = lease.Id }, LeaseDtoMapper.ToDetail(created));
         }
         catch (ApeComplianceException ex)
         {
@@ -91,7 +117,7 @@ public class LeasesController(
 
     /// <summary>Generate PDF/A and initiate digital signing for a lease in Draft status.</summary>
     [HttpPost("{id:guid}/signing")]
-    [Authorize(Policy = "RequireContext:long-rent:lease.sign")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
     public async Task<IActionResult> InitiateSigning(Guid id)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
@@ -112,7 +138,7 @@ public class LeasesController(
 
     /// <summary>Submit a Signed lease to the filing channel after per-lease delega (async).</summary>
     [HttpPost("{id:guid}/registration")]
-    [Authorize(Policy = "RequireContext:long-rent:lease.register")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
     public async Task<IActionResult> TriggerRegistration(Guid id, [FromBody] TriggerRegistrationDto dto)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
@@ -148,7 +174,7 @@ public class LeasesController(
     }
 
     [HttpGet("{id:guid}/rli/export")]
-    [Authorize(Policy = "RequireContext:long-rent:lease.register")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
     public async Task<IActionResult> ExportRli(Guid id, CancellationToken cancellationToken)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
@@ -158,21 +184,35 @@ public class LeasesController(
             : File(result.PdfBytes, "application/pdf", result.FileName);
     }
 
+    /// <summary>RLI checklist; item labels are localized here from their stable keys (A7-26).</summary>
     [HttpGet("{id:guid}/rli/checklist")]
-    public async Task<IActionResult> GetRliChecklist(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<RliChecklistResponse>> GetRliChecklist(Guid id, CancellationToken cancellationToken)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        var result = await rliChecklist.GetAsync(id, ownerId, cancellationToken);
-        return result is null ? NotFound() : Ok(result);
+        var (lease, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var result = await rliChecklist.GetAsync(lease!, cancellationToken);
+        return Ok(new RliChecklistResponse(
+            result.RegistrationDeadline,
+            result.DaysRemaining,
+            result.TosVersion,
+            result.AttestationText,
+            result.Items.Select(i => new RliChecklistItemResponse(i.Key, ChecklistLabel(i.Key), i.Done)).ToList()));
     }
 
     /// <summary>Get current RLI registration status.</summary>
     [HttpGet("{id:guid}/registration")]
-    public async Task<IActionResult> GetRegistration(Guid id)
+    public async Task<ActionResult<LeaseRegistrationDto>> GetRegistration(Guid id)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        var registration = await leaseService.GetRegistrationAsync(id, ownerId);
-        return registration is null ? NotFound() : Ok(registration);
+        var (lease, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        if (lease!.Registration is not { } registration)
+            return NotFound();
+
+        return Ok(LeaseDtoMapper.ToRegistration(registration));
     }
 
     /// <summary>Download the official RLI registration receipt (PDF).</summary>
@@ -215,7 +255,7 @@ public class LeasesController(
 
     /// <summary>Landlord attests they sent the IMU notification. Never inferred.</summary>
     [HttpPost("{id:guid}/canone-concordato/imu-notification/mark-sent")]
-    [Authorize(Policy = "RequireContext:long-rent:lease.register")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
     public async Task<IActionResult> MarkImuNotificationSent(Guid id, CancellationToken cancellationToken)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
@@ -229,7 +269,44 @@ public class LeasesController(
             return Conflict(new { error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Loads a lease of the caller's org (tenant filter) and authorizes <paramref name="operation"/> on it as a row of
+    /// its property: 404 <c>lease_not_found</c> when it is not visible, 403 when the caller may not handle it.
+    /// </summary>
+    private async Task<(LeaseContract? Lease, ActionResult? Denied)> AuthorizeLeaseAsync(
+        Guid leaseId, HostOperationRequirement operation)
+    {
+        var lease = await leaseService.GetLeaseDetailAsync(leaseId);
+        if (lease is null)
+            return (null, this.ApiProblem(StatusCodes.Status404NotFound, LeaseNotFoundCode, "LeaseNotFound"));
+
+        // Without its property the owner is unknown: fail closed rather than treat the lease as an org-level row.
+        if (lease.Property is null)
+            return (null, Forbid());
+
+        var resource = HostResource.ForProperty(lease.Property) with { OrgId = lease.OrgId };
+        return await authorizationService.IsAuthorizedAsync(User, resource, operation)
+            ? (lease, null)
+            : (null, Forbid());
+    }
+
+    private string ChecklistLabel(string key)
+    {
+        var label = localizer[$"RliChecklist_{key}"];
+        return label.ResourceNotFound ? key : label.Value;
+    }
 }
+
+/// <summary>RLI checklist as returned by the API, with labels in the request language.</summary>
+public record RliChecklistResponse(
+    DateTime RegistrationDeadline,
+    int DaysRemaining,
+    string TosVersion,
+    string AttestationText,
+    IReadOnlyList<RliChecklistItemResponse> Items);
+
+public record RliChecklistItemResponse(string Key, string Label, bool Done);
 
 public record CreateLeaseDto(
     [param: Required] Guid PropertyId,

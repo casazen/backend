@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924040732_UnifyTouristTaxOnTouristTaxRates")]
-    partial class UnifyTouristTaxOnTouristTaxRates
+    [Migration("20260924024604_NormalizeServiceCategories")]
+    partial class NormalizeServiceCategories
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -2496,6 +2496,46 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SupplierProfiles");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.TaxRate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MaxNights")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("RatePerNight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TaxRates");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.TerritorialAgreementSignatory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2619,21 +2659,6 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AccommodationCategory")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("CalculationMethod")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasDefaultValue("PerPersonPerNight");
-
-                    b.Property<decimal?>("CapPerPersonPerNight")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
                     b.Property<string>("City")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -2651,10 +2676,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("IstatCode")
-                        .HasMaxLength(6)
-                        .HasColumnType("character varying(6)");
-
                     b.Property<int?>("MaxNights")
                         .HasColumnType("integer");
 
@@ -2666,18 +2687,7 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<decimal?>("PercentOfNightlyPrice")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
                     b.Property<decimal>("RatePerPersonPerNight")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<int?>("ReducedRateMaxAge")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal?>("ReducedRatePerPersonPerNight")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
@@ -2685,14 +2695,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
-
-                    b.Property<string>("SeasonEnd")
-                        .HasMaxLength(5)
-                        .HasColumnType("character varying(5)");
-
-                    b.Property<string>("SeasonStart")
-                        .HasMaxLength(5)
-                        .HasColumnType("character varying(5)");
 
                     b.Property<string>("SourceUrl")
                         .HasMaxLength(500)
@@ -2708,8 +2710,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("City");
-
-                    b.HasIndex("IstatCode");
 
                     b.HasIndex("City", "IsActive", "EffectiveFrom");
 

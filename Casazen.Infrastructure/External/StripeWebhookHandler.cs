@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public class StripeWebhookHandler(
     IOssRevenueTracker ossRevenueTracker,
     ISdiEInvoiceService sdiEInvoiceService,
     IRentBillingService rentBillingService,
+    IPaymentRefundService paymentRefundService,
     ILogger<StripeWebhookHandler> logger)
 {
     private const string DirectBookingKind = "direct-booking";
@@ -63,12 +65,14 @@ public class StripeWebhookHandler(
             return;
         }
 
+        // Refunds that Stripe has just confirmed: the guest is emailed once the event is committed.
+        IReadOnlyList<Guid> succeededRefunds = [];
         try
         {
             switch (stripeEvent.Type)
             {
                 case "payment_intent.succeeded":
-                    await HandlePaymentSucceededAsync(stripeEvent.Data.Object as PaymentIntent, source);
+                    await HandlePaymentSucceededAsync(stripeEvent.Data.Object as PaymentIntent, source, stripeEvent.Account);
                     break;
                 case "payment_intent.payment_failed":
                 case "payment_intent.canceled":
@@ -79,8 +83,13 @@ public class StripeWebhookHandler(
                         await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent);
                     break;
                 case "charge.refunded":
-                    if (source == WebhookSource.Platform)
-                        await HandleRefundAsync(stripeEvent.Data.Object as Charge);
+                    succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
+                    break;
+                case "refund.created":
+                case "refund.updated":
+                case "refund.failed":
+                case "charge.refund.updated":
+                    succeededRefunds = await HandleRefundChangedAsync(stripeEvent.Data.Object as Refund, source, stripeEvent.Account);
                     break;
                 case "account.updated":
                     if (source == WebhookSource.Connected)
@@ -129,6 +138,9 @@ public class StripeWebhookHandler(
                 source);
             throw;
         }
+
+        foreach (var refundId in succeededRefunds)
+            await paymentRefundService.NotifyGuestAsync(refundId);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -511,7 +523,7 @@ public class StripeWebhookHandler(
         await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
     }
 
-    private async Task HandlePaymentSucceededAsync(PaymentIntent? paymentIntent, WebhookSource source)
+    private async Task HandlePaymentSucceededAsync(PaymentIntent? paymentIntent, WebhookSource source, string? account)
     {
         if (paymentIntent is null)
             return;
@@ -528,12 +540,12 @@ public class StripeWebhookHandler(
             }
             if (string.Equals(kind, DirectBookingKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
             {
-                await HandleDirectBookingPaymentSucceededAsync(paymentIntent);
+                await HandleDirectBookingPaymentSucceededAsync(paymentIntent, account);
                 return;
             }
             if (string.Equals(kind, DirectBookingDeadlineChargeKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
             {
-                await HandleDirectBookingDeadlineChargeSucceededAsync(paymentIntent);
+                await HandleDirectBookingDeadlineChargeSucceededAsync(paymentIntent, account);
                 return;
             }
         }
@@ -600,7 +612,7 @@ public class StripeWebhookHandler(
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
     }
 
-    private async Task HandleDirectBookingPaymentSucceededAsync(PaymentIntent paymentIntent)
+    private async Task HandleDirectBookingPaymentSucceededAsync(PaymentIntent paymentIntent, string? account)
     {
         logger.LogInformation("Direct booking payment succeeded: {PaymentIntentId}", paymentIntent.Id);
 
@@ -615,6 +627,7 @@ public class StripeWebhookHandler(
             return;
 
         payment.Status = PaymentStatus.Completed;
+        payment.StripeAccountId ??= account;
         payment.ProcessedAt = DateTime.UtcNow;
         payment.UpdatedAt = DateTime.UtcNow;
         await paymentRepository.UpdateAsync(payment);
@@ -638,7 +651,7 @@ public class StripeWebhookHandler(
         await bookingRepository.UpdateAsync(booking);
     }
 
-    private async Task HandleDirectBookingDeadlineChargeSucceededAsync(PaymentIntent paymentIntent)
+    private async Task HandleDirectBookingDeadlineChargeSucceededAsync(PaymentIntent paymentIntent, string? account)
     {
         logger.LogInformation("Direct booking deadline charge succeeded: {PaymentIntentId}", paymentIntent.Id);
 
@@ -649,6 +662,7 @@ public class StripeWebhookHandler(
             {
                 existingPaymentIntent.Status = PaymentStatus.Completed;
                 existingPaymentIntent.StripePaymentIntentId = paymentIntent.Id;
+                existingPaymentIntent.StripeAccountId ??= account;
                 existingPaymentIntent.ProcessedAt = DateTime.UtcNow;
                 existingPaymentIntent.UpdatedAt = DateTime.UtcNow;
                 await paymentRepository.UpdateAsync(existingPaymentIntent);
@@ -682,6 +696,7 @@ public class StripeWebhookHandler(
             deferredPayment.Status = PaymentStatus.Completed;
             deferredPayment.TransactionId = paymentIntent.Id;
             deferredPayment.StripePaymentIntentId = paymentIntent.Id;
+            deferredPayment.StripeAccountId ??= account;
             deferredPayment.ProcessedAt = DateTime.UtcNow;
             deferredPayment.UpdatedAt = DateTime.UtcNow;
             await paymentRepository.UpdateAsync(deferredPayment);
@@ -697,6 +712,7 @@ public class StripeWebhookHandler(
             Method = Casazen.Core.Entities.PaymentMethod.CreditCard,
             TransactionId = paymentIntent.Id,
             StripePaymentIntentId = paymentIntent.Id,
+            StripeAccountId = account,
             Description = DeadlineChargeDescription,
             ProcessedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,
@@ -722,7 +738,7 @@ public class StripeWebhookHandler(
             if (string.Equals(kind, DirectBookingKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
             {
                 logger.LogInformation("Direct booking payment failed/canceled: {PaymentIntentId}", paymentIntent.Id);
-                await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Failed);
+                await UpdatePaymentStatusAsync(paymentIntent.Id, FailedOrCanceled(eventType));
                 return;
             }
         }
@@ -731,25 +747,65 @@ public class StripeWebhookHandler(
             return;
 
         logger.LogInformation("Platform payment failed: {PaymentIntentId}", paymentIntent.Id);
-        await UpdatePaymentStatusAsync(paymentIntent.Id, PaymentStatus.Failed);
+        await UpdatePaymentStatusAsync(paymentIntent.Id, FailedOrCanceled(eventType));
     }
 
-    private async Task HandleRefundAsync(Charge? charge)
+    // A PaymentIntent canceled with its booking (BK-02) was never collected: Canceled, not Failed.
+    private static PaymentStatus FailedOrCanceled(string eventType) =>
+        eventType == "payment_intent.canceled" ? PaymentStatus.Canceled : PaymentStatus.Failed;
+
+    /// <summary>
+    /// A charge was refunded, fully or partly, from CasaZen or from the Stripe Dashboard (A3-05). Since API version
+    /// 2022-11-15 the charge does not embed its refunds, so they are read from Stripe (on the event's connected
+    /// account) and applied one by one: the payment is Refunded / PartiallyRefunded only for refunds that succeeded.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> HandleChargeRefundedAsync(Charge? charge, WebhookSource source, string? account)
     {
-        if (charge is null)
-            return;
+        if (charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId))
+            return [];
 
-        logger.LogInformation("Charge refunded: {ChargeId}", charge.Id);
-        var transactionId = charge.PaymentIntentId;
-        if (string.IsNullOrEmpty(transactionId))
-            return;
+        logger.LogInformation("Charge refunded: {ChargeId} ({PaymentIntentId}, source={Source})", charge.Id, charge.PaymentIntentId, source);
+        if (!TryGetRefundAccount(source, account, out var connectedAccountId))
+            return [];
 
-        var payment = await paymentRepository.GetByTransactionIdAsync(transactionId);
-        if (payment is not null)
+        if (charge.Refunds?.Data is { Count: > 0 } embedded)
         {
-            payment.Status = PaymentStatus.Refunded;
-            await paymentRepository.UpdateAsync(payment);
+            return await paymentRefundService.ApplyStripeRefundsAsync(
+                embedded.Select(PaymentRefundService.ToSnapshot).ToList(),
+                connectedAccountId);
         }
+
+        return await paymentRefundService.SyncPaymentIntentRefundsAsync(charge.PaymentIntentId, connectedAccountId);
+    }
+
+    /// <summary>A refund was created or changed status (pending → succeeded, failed, canceled).</summary>
+    private async Task<IReadOnlyList<Guid>> HandleRefundChangedAsync(Refund? refund, WebhookSource source, string? account)
+    {
+        if (refund is null || string.IsNullOrWhiteSpace(refund.PaymentIntentId))
+            return [];
+
+        logger.LogInformation("Refund {RefundId} is {Status} (source={Source})", refund.Id, refund.Status, source);
+        if (!TryGetRefundAccount(source, account, out var connectedAccountId))
+            return [];
+
+        return await paymentRefundService.ApplyStripeRefundsAsync([PaymentRefundService.ToSnapshot(refund)], connectedAccountId);
+    }
+
+    /// <summary>Connect events carry the connected account they happened on; platform events have none.</summary>
+    private bool TryGetRefundAccount(WebhookSource source, string? account, out string? connectedAccountId)
+    {
+        connectedAccountId = null;
+        if (source == WebhookSource.Platform)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(account))
+        {
+            logger.LogWarning("Connect refund event without account: ignored");
+            return false;
+        }
+
+        connectedAccountId = account;
+        return true;
     }
 
     private static bool TryGetMetadataKind(PaymentIntent paymentIntent, out string? kind) =>
