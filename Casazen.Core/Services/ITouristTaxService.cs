@@ -18,22 +18,40 @@ public sealed record TouristTaxRateInput(
     DateTime? EffectiveTo,
     string? Notes,
     string? SourceUrl,
-    TouristTaxRateVerification? VerificationLevel);
+    TouristTaxRateVerification? VerificationLevel)
+{
+    /// <summary>ISTAT code of the comune (6 digits), optional.</summary>
+    public string? IstatCode { get; init; }
+
+    /// <summary>Accommodation category; null for every accommodation of the comune.</summary>
+    public string? AccommodationCategory { get; init; }
+
+    /// <summary>Season as <c>MM-dd</c> bounds, both or none.</summary>
+    public string? SeasonStart { get; init; }
+
+    public string? SeasonEnd { get; init; }
+
+    public TouristTaxCalculationMethod CalculationMethod { get; init; } = TouristTaxCalculationMethod.PerPersonPerNight;
+
+    public decimal? PercentOfNightlyPrice { get; init; }
+
+    public decimal? CapPerPersonPerNight { get; init; }
+
+    public int? ReducedRateMaxAge { get; init; }
+
+    public decimal? ReducedRatePerPersonPerNight { get; init; }
+}
 
 public interface ITouristTaxService
 {
-    /// <summary>
-    /// Calculate tourist tax for a booking
-    /// </summary>
-    Task<decimal> CalculateTouristTaxAsync(string city, int numberOfAdults, int numberOfChildren, DateTime checkIn, DateTime checkOut);
-
     /// <summary>
     /// Get tax rate by ID
     /// </summary>
     Task<TouristTaxRate?> GetTaxRateByIdAsync(Guid id);
 
     /// <summary>
-    /// Get active tax rate for a city
+    /// Rate of a night on <paramref name="date"/> in <paramref name="city"/> (name matched case- and accent-insensitive)
+    /// for an accommodation without category. The amount of a stay comes from <see cref="ITouristTaxQuoteService"/>.
     /// </summary>
     Task<TouristTaxRate?> GetTaxRateAsync(string city, DateTime date);
 

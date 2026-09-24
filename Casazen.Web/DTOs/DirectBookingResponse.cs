@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.TouristTax;
 
 namespace Casazen.Web.DTOs;
 
@@ -20,4 +21,10 @@ public class DirectBookingResponse
     public decimal BasePrice { get; set; }
     public DateTime FreeRefundDeadline { get; set; }
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
+
+    /// <summary>
+    /// Whether <see cref="TouristTaxAmount"/> was calculated. <c>RateUnavailable</c> / <c>CategoryRequired</c>: the
+    /// tax is not included in <see cref="Amount"/> (0), it is not known to CasaZen.
+    /// </summary>
+    public TouristTaxQuoteStatus TouristTaxStatus { get; set; } = TouristTaxQuoteStatus.Calculated;
 }

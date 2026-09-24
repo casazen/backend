@@ -63,7 +63,7 @@ running and the deploy log shows the list of problems.
 | `ConnectionStrings__DefaultConnection` (empty value) | FD-12, `RequiredConfiguration` | `ConnectionStrings__DefaultConnection is missing …` |
 | `Auth0__Domain` (host only, no `https://`), `Auth0__Audience` | FD-12, `Auth0OptionsValidator` (`ValidateOnStart`) | `OptionsValidationException: Auth0__Domain is missing or a placeholder …` |
 | `Hangfire__Schema` (or a SearchPath) | FD-11 | `Hangfire schema is ambiguous …` |
-| `Email__*`, `App__PublicSiteBaseUrl` | FD-13 | `OptionsValidationException: Email__ApiKey is missing …` |
+| `Email__*`, `App__PublicSiteBaseUrl` (no value in `appsettings.json`; alias `Seo__PublicBaseUrl` must not differ) | FD-13, SE-02 | `OptionsValidationException: Email__ApiKey is missing …`, `App__PublicSiteBaseUrl is missing or invalid …` |
 | `Storage__*` | FD-07 | `OptionsValidationException: Storage:S3:… is required.` |
 
 Stripe and the Auth0 Management client are **not** validated at startup: they are optional and reported as `degraded`.

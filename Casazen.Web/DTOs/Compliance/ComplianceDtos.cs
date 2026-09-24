@@ -27,13 +27,23 @@ public class ActivationTouristTaxDto
 
     /// <summary>Slug of the public page <c>/p/tassa-soggiorno/{slug}</c>, only when a reviewed page exists.</summary>
     public string? PublicPageSlug { get; set; }
+
+    /// <summary>True when the comune has rates only per accommodation category, unknown for the property (BK-03).</summary>
+    public bool CategoryRequired { get; set; }
 }
 
 public class ActivationTouristTaxRateDto
 {
+    public TouristTaxCalculationMethod CalculationMethod { get; set; }
     public decimal RatePerPersonPerNight { get; set; }
+    public decimal? PercentOfNightlyPrice { get; set; }
+    public decimal? CapPerPersonPerNight { get; set; }
     public int? MaxNights { get; set; }
     public int MinimumAge { get; set; }
+    public int? ReducedRateMaxAge { get; set; }
+    public decimal? ReducedRatePerPersonPerNight { get; set; }
+    public string? SeasonStart { get; set; }
+    public string? SeasonEnd { get; set; }
     public DateTime EffectiveFrom { get; set; }
     public DateTime? EffectiveTo { get; set; }
     public string? SourceUrl { get; set; }

@@ -39,7 +39,6 @@ public class AppDbContext(
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
-    public DbSet<TaxRate> TaxRates { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
@@ -225,6 +224,13 @@ public class AppDbContext(
             .Property(t => t.VerificationLevel)
             .HasConversion<string>()
             .HasMaxLength(20);
+        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.IstatCode);
+        modelBuilder.Entity<TouristTaxRate>()
+            .Property(t => t.CalculationMethod)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .HasDefaultValue(TouristTaxCalculationMethod.PerPersonPerNight)
+            .HasSentinel((TouristTaxCalculationMethod)(-1));
 
         modelBuilder.Entity<SeoContentPage>()
             .HasIndex(p => new { p.ComuneCode, p.PageType })

@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -35,7 +36,7 @@ public class OrgsController(
     /// another property may be created (AC8).
     /// </summary>
     [HttpGet("me/entitlement")]
-    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

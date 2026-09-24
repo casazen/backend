@@ -38,7 +38,7 @@ public class BookingServiceTests
             new Mock<IPropertyRepository>().Object,
             new Mock<IOrgService>().Object,
             _mockGuestRepository.Object,
-            new Mock<ITaxCalculationService>().Object,
+            new Mock<ITouristTaxQuoteService>().Object,
             new Mock<IStripeService>().Object,
             new Mock<IPaymentRepository>().Object,
             CreatePropertyICalSyncService(configuration),

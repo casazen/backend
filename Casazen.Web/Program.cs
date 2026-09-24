@@ -86,7 +86,7 @@ builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
 builder.Services.AddCasazenAuth0Management();
 builder.Services.AddScoped<IAdminService, AdminService>();
-builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
+builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();

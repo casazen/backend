@@ -4,7 +4,18 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace Casazen.Web.Infrastructure;
 
-public sealed record ContextPermissionRequirement(string ContextKey, string PermissionKey) : IAuthorizationRequirement;
+/// <summary>
+/// Requirement of a context policy (<c>CasazenPolicies</c>): <see cref="PermissionKey"/> held in at least one of
+/// <see cref="ContextKeys"/>. A permission counts only in the context that grants it.
+/// </summary>
+public sealed record ContextPermissionRequirement(IReadOnlyList<string> ContextKeys, string PermissionKey) : IAuthorizationRequirement
+{
+    /// <summary>A requirement on a single context.</summary>
+    public ContextPermissionRequirement(string contextKey, string permissionKey)
+        : this([contextKey], permissionKey)
+    {
+    }
+}
 
 public class ContextAuthorizationHandler(
     IContextAuthorizationService contextAuthorizationService) : AuthorizationHandler<ContextPermissionRequirement>
@@ -22,14 +33,13 @@ public class ContextAuthorizationHandler(
             return;
         }
 
-        var authorized = await contextAuthorizationService.HasPermissionAsync(
-            userId,
-            requirement.ContextKey,
-            requirement.PermissionKey);
-
-        if (authorized)
+        foreach (var contextKey in requirement.ContextKeys)
         {
-            context.Succeed(requirement);
+            if (await contextAuthorizationService.HasPermissionAsync(userId, contextKey, requirement.PermissionKey))
+            {
+                context.Succeed(requirement);
+                return;
+            }
         }
     }
 }

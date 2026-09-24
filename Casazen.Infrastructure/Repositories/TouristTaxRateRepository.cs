@@ -20,15 +20,22 @@ public class TouristTaxRateRepository(AppDbContext context) : ITouristTaxRateRep
             .ToListAsync();
     }
 
-    public async Task<TouristTaxRate?> GetActiveByCityAsync(string city, DateTime date)
+    public async Task<IReadOnlyList<TouristTaxRate>> GetActiveInPeriodAsync(
+        DateTime from,
+        DateTime to,
+        CancellationToken cancellationToken = default)
     {
+        // One day of margin on both sides: the calculator checks every night on the Europe/Rome calendar date.
+        var fromBound = from.AddDays(-1);
+        var toBound = to.AddDays(1);
         return await context.TouristTaxRates
-            .Where(t => t.City == city &&
-                       t.IsActive &&
-                       t.EffectiveFrom <= date &&
-                       (t.EffectiveTo == null || t.EffectiveTo >= date))
-            .OrderByDescending(t => t.EffectiveFrom)
-            .FirstOrDefaultAsync();
+            .AsNoTracking()
+            .Where(t => t.IsActive
+                        && t.EffectiveFrom <= toBound
+                        && (t.EffectiveTo == null || t.EffectiveTo >= fromBound))
+            .OrderBy(t => t.City)
+            .ThenBy(t => t.EffectiveFrom)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<TouristTaxRate> AddAsync(TouristTaxRate taxRate)
