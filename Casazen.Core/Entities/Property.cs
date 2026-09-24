@@ -44,7 +44,7 @@ public class Property : ITenantOwned
     public decimal Latitude { get; set; }
     public decimal Longitude { get; set; }
 
-    [Range(1, 100, ErrorMessage = "Bedrooms must be between 1 and 100")]
+    [Range(0, 100, ErrorMessage = "Bedrooms must be between 0 (studio) and 100")]
     public int Bedrooms { get; set; }
 
     [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]

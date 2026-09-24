@@ -24,6 +24,8 @@
     <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.12" />
     <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
     <PackageReference Include="Ical.Net" Version="4.3.1" />
+    <!-- PDF rendering (LT-09): MIT, fully managed. Licence and font notes in docs/runbooks/lease-contract-templates.md. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="Resend" Version="0.5.1" />
     <PackageReference Include="Stripe.net" Version="50.1.0" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.12" />
@@ -35,6 +37,12 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Casazen.Tests" />
+  </ItemGroup>
+
+  <!-- Fonts of the generated PDFs (LT-09): compiled into the assembly, never read from the host. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Documents\Fonts\DejaVuSans.ttf" LogicalName="Casazen.Infrastructure.Documents.Fonts.DejaVuSans.ttf" />
+    <EmbeddedResource Include="Documents\Fonts\DejaVuSans-Bold.ttf" LogicalName="Casazen.Infrastructure.Documents.Fonts.DejaVuSans-Bold.ttf" />
   </ItemGroup>
 
 </Project>

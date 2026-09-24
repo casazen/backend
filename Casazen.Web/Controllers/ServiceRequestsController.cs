@@ -13,11 +13,17 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Service requests (TN-3). Host side: <c>property.read</c> / <c>property.write</c> (both rental contexts), then the
+/// Service requests (TN-3). Host side, short-rent context: <c>property.read</c> / <c>property.write</c>, then the
 /// property is authorized as a <see cref="HostResource"/> (org, permission, ownership). Supplier side:
 /// <see cref="CasazenPolicies.Supplier"/> plus the linked supplier org. <c>GET</c> list and detail serve both sides and
 /// evaluate the policy of the branch they take.
 /// </summary>
+/// <remarks>
+/// Decision D2 (SU-07): the host side here is the short-rent one, where a request is for one stay: <c>POST</c> needs a
+/// <c>bookingId</c> of the property, and the host endpoints reach only <see cref="ServiceRequestRentalContext.ShortRent"/>
+/// requests. Web and app list them the same way: <c>?bookingId=</c> for a stay, <c>?propertyId=</c> for a property.
+/// Long-rent requests (per property) live in <see cref="LongRentServiceRequestsController"/>.
+/// </remarks>
 [ApiController]
 [Route("api/service-requests")]
 [Authorize(Policy = CasazenPolicies.Authenticated)]
@@ -91,7 +97,8 @@ public class ServiceRequestsController(
                     request.Category,
                     request.Urgency,
                     request.Notes,
-                    request.ChargeToGuest),
+                    request.ChargeToGuest,
+                    ServiceRequestRentalContext.ShortRent),
                 cancellationToken);
 
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
@@ -107,10 +114,15 @@ public class ServiceRequestsController(
     }
 
     /// <summary>
-    /// Host list (<c>property.read</c>), or the supplier inbox with <c>view=supplier</c> (<see cref="CasazenPolicies.Supplier"/>).
+    /// Host list of short-rent requests (<c>property.read</c>), or the supplier inbox with <c>view=supplier</c>
+    /// (<see cref="CasazenPolicies.Supplier"/>). <c>bookingId</c> lists one stay's requests, <c>propertyId</c> a
+    /// property's (every stay, plus the older requests not traced to a stay): a booking or property that is not in the
+    /// caller's org is 404, one the caller may not read is 403.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceRequestListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ServiceRequestListResponse>> List(
         [FromQuery] string? status,
         [FromQuery] Guid? propertyId,
@@ -154,8 +166,11 @@ public class ServiceRequestsController(
         var scope = await GetHostScopeAsync(cancellationToken);
         if (scope is null) return Unauthorized();
 
+        if (await AuthorizeListFiltersAsync(propertyId, bookingId, cancellationToken) is { } denied)
+            return denied;
+
         var (hostItems, hostTotal) = await serviceRequestService.ListForHostAsync(
-            scope, statusFilter, propertyId, bookingId, page, pageSize, cancellationToken);
+            scope, ServiceRequestRentalContext.ShortRent, statusFilter, propertyId, bookingId, page, pageSize, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {
@@ -193,7 +208,8 @@ public class ServiceRequestsController(
         var scope = await GetHostScopeAsync(cancellationToken);
         if (scope is null) return Unauthorized();
 
-        var hostRequest = await serviceRequestService.GetByIdForHostAsync(id, scope, cancellationToken);
+        var hostRequest = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (hostRequest is null) return NotFound();
 
         return Ok(MapDto(hostRequest));
@@ -293,8 +309,8 @@ public class ServiceRequestsController(
     }
 
     /// <summary>
-    /// Host marks a completed request as paid (manual flag, no Stripe transfer): <c>property.write</c> on the request's
-    /// property. A request outside the caller's host scope is 404.
+    /// Host marks a completed short-rent request as paid (manual flag, no Stripe transfer): <c>property.write</c> on the
+    /// request's property. A request outside the caller's host scope, or a long-rent one, is 404.
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
@@ -306,7 +322,8 @@ public class ServiceRequestsController(
         var scope = await GetHostScopeAsync(cancellationToken);
         if (scope is null) return Unauthorized();
 
-        var existing = await serviceRequestService.GetByIdForHostAsync(id, scope, cancellationToken);
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (existing is null) return NotFound();
 
         var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
@@ -334,6 +351,30 @@ public class ServiceRequestsController(
         return orgId is null ? null : User.GetHostScope(orgId.Value);
     }
 
+    /// <summary>
+    /// The stay and the property a host list filters on (SU-07): 404 when not in the caller's org, 403 when the caller
+    /// may not read them.
+    /// </summary>
+    private async Task<ActionResult?> AuthorizeListFiltersAsync(
+        Guid? propertyId,
+        Guid? bookingId,
+        CancellationToken cancellationToken)
+    {
+        if (bookingId is { } stayId)
+        {
+            var booking = await hostResources.ForBookingAsync(stayId, cancellationToken);
+            if (booking is null)
+                return this.ApiProblem(StatusCodes.Status404NotFound, "booking_not_found", "BookingNotFound");
+
+            if (!await authorizationService.IsAuthorizedAsync(User, booking, PropertyOperations.Read))
+                return Forbid();
+        }
+
+        return propertyId is { } id
+            ? await AuthorizePropertyAsync(id, PropertyOperations.Read, cancellationToken)
+            : null;
+    }
+
     /// <summary>404 when the property is not in the caller's org, 403 when the operation is not allowed on it.</summary>
     private async Task<ActionResult?> AuthorizePropertyAsync(
         Guid propertyId,
@@ -352,6 +393,7 @@ public class ServiceRequestsController(
         Id = r.Id,
         OrgId = r.OrgId,
         BookingId = r.BookingId,
+        RentalContext = r.RentalContext.ToString(),
         PropertyId = r.PropertyId,
         PropertyName = r.Property?.Name,
         SupplierOrgId = r.SupplierOrgId,

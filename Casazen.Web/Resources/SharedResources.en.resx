@@ -795,6 +795,60 @@
   <data name="GuestDocumentScanMissing" xml:space="preserve">
     <value>No document scan is available for this guest.</value>
   </data>
+  <data name="PropertyNameRequired" xml:space="preserve">
+    <value>The property name is required.</value>
+  </data>
+  <data name="PropertyNameTooLong" xml:space="preserve">
+    <value>The property name can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyDescriptionTooLong" xml:space="preserve">
+    <value>The description can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyAddressRequired" xml:space="preserve">
+    <value>The address is required.</value>
+  </data>
+  <data name="PropertyAddressTooLong" xml:space="preserve">
+    <value>The address can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyCityRequired" xml:space="preserve">
+    <value>The city is required.</value>
+  </data>
+  <data name="PropertyCityTooLong" xml:space="preserve">
+    <value>The city can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyPostalCodeTooLong" xml:space="preserve">
+    <value>The postal code can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyBedroomsRange" xml:space="preserve">
+    <value>Bedrooms must be a whole number between {1} and {2} (0 for a studio).</value>
+  </data>
+  <data name="PropertyBathroomsRange" xml:space="preserve">
+    <value>Bathrooms must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyMaxGuestsRange" xml:space="preserve">
+    <value>The maximum number of guests must be between {1} and {2}.</value>
+  </data>
+  <data name="PropertyNightlyRateRange" xml:space="preserve">
+    <value>The nightly rate must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyCleaningFeeRange" xml:space="preserve">
+    <value>The cleaning fee must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyDamageDepositRange" xml:space="preserve">
+    <value>The damage deposit must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyHouseRulesTooLong" xml:space="preserve">
+    <value>The house rules can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyTimezoneInvalid" xml:space="preserve">
+    <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>
+  </data>
+  <data name="PropertySlugTooLong" xml:space="preserve">
+    <value>The web address (slug) can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
+    <value>The selected cancellation policy does not exist: reload the page and choose another one.</value>
+  </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>The property cannot be activated yet: complete the required points listed.</value>
   </data>
@@ -802,7 +856,7 @@
     <value>You must accept the terms of service.</value>
   </data>
   <data name="ActivationBaseDataIncomplete" xml:space="preserve">
-    <value>Complete the basic details of the property: name, address, city, bedrooms, guests and rate.</value>
+    <value>Complete the basic details of the property: name, address, city, guests and rate.</value>
   </data>
   <data name="ActivationCinMissing" xml:space="preserve">
     <value>Enter the CIN code of the property.</value>
@@ -875,5 +929,14 @@
   </data>
   <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
     <value>The checklist was changed at the same time by another session: reload the page and try again.</value>
+  </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
+  </data>
+  <data name="ServiceRequestBookingMismatch" xml:space="preserve">
+    <value>The booking is not a stay of this property.</value>
+  </data>
+  <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
+    <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
   </data>
 </root>

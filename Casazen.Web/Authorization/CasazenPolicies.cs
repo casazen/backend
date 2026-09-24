@@ -70,6 +70,16 @@ public static class CasazenPolicies
     public const string OtaRead = ShortRent + "ota.read";
     public const string OtaWrite = ShortRent + "ota.write";
 
+    /// <summary>
+    /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
+    /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
+    /// <see cref="LongRentPropertyOperations"/>.
+    /// </summary>
+    public const string LongRentPropertyRead = LongRent + "property.read";
+
+    /// <summary>Change a property's long-term side (see <see cref="LongRentPropertyRead"/>). Long-rent context only.</summary>
+    public const string LongRentPropertyWrite = LongRent + "property.write";
+
     public const string LeaseRead = LongRent + "lease.read";
     public const string LeaseCreate = LongRent + "lease.create";
     public const string LeaseSign = LongRent + "lease.sign";
@@ -87,6 +97,7 @@ public static class CasazenPolicies
         PaymentRead, PaymentWrite,
         GuestRead, GuestWrite,
         OtaRead, OtaWrite,
+        LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
     ];
 

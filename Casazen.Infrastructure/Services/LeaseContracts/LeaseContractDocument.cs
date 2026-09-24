@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Text;
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
@@ -9,7 +9,8 @@ namespace Casazen.Infrastructure.Services.LeaseContracts;
 /// <summary>
 /// Builds the text of a lease contract from a template and the lease data (LT-03, A7-03). The clause texts come only
 /// from the template file; this class adds the computed data, and in the preview the BOZZA markers and the
-/// "missing" markers. The contract is an Italian document: its labels are Italian.
+/// "missing" markers. The contract is an Italian document: its labels are Italian. The PDF is laid out by
+/// <see cref="IPdfDocumentRenderer"/> (LT-09): A4, wrapped, paginated, no length limit.
 /// </summary>
 internal static class LeaseContractDocument
 {
@@ -17,6 +18,12 @@ internal static class LeaseContractDocument
     public const string ApprovedPreviewMarker = "ANTEPRIMA - documento non valido per la firma";
     public const string MissingClauseMarker = "[TESTO DELLA CLAUSOLA NON FORNITO]";
     public const string MissingTitleMarker = "[TITOLO DEL CONTRATTO NON FORNITO]";
+
+    /// <summary>Watermark of every page of the preview of a template that is not approved.</summary>
+    public const string DraftWatermark = "BOZZA";
+
+    /// <summary>Watermark of every page of the preview of an approved template: still not the document to sign.</summary>
+    public const string ApprovedPreviewWatermark = "ANTEPRIMA";
 
     private static readonly NumberFormatInfo ItalianNumbers = new()
     {
@@ -74,35 +81,41 @@ internal static class LeaseContractDocument
             .Where(p => string.IsNullOrWhiteSpace(data.GetValueOrDefault(p)))
             .ToList();
 
-    /// <summary>Body of the final contract: only the sections of the approved template, with every placeholder filled.</summary>
-    public static string BuildFinalBody(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
+    /// <summary>
+    /// The final contract: the approved title, then only the sections of the approved template (heading and text, line
+    /// breaks kept), with every placeholder filled.
+    /// </summary>
+    public static PdfDocumentContent BuildFinalDocument(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
     {
-        var sb = new StringBuilder();
+        var blocks = new List<PdfBlock>();
         foreach (var section in state.Sections)
         {
-            sb.AppendLine(Heading(state.Regime, section));
-            sb.AppendLine(Fill(section.Text, data, missing => throw new InvalidOperationException(
-                $"Placeholder {missing} has no value: check MissingData before building the final contract.")));
-            sb.AppendLine();
+            blocks.Add(new PdfHeading(Heading(state.Regime, section)));
+            blocks.AddRange(PdfBlocks.FromPlainText(Fill(section.Text, data, missing => throw new InvalidOperationException(
+                $"Placeholder {missing} has no value: check MissingData before building the final contract."))));
         }
 
-        return sb.ToString().TrimEnd();
+        return new PdfDocumentContent(state.Title!, blocks);
     }
 
     /// <summary>
-    /// Body of the preview: state of the template, then every section (those of the file in their order, then the
-    /// required ones the file lacks) with the missing texts and data marked. Never sent to signature or registration.
+    /// The preview: state of the template, then every section (those of the file in their order, then the required ones
+    /// the file lacks) with the missing texts and data marked, and a watermark on every page (<see cref="DraftWatermark"/>,
+    /// or <see cref="ApprovedPreviewWatermark"/> for an approved template). Never sent to signature or registration.
     /// </summary>
-    public static string BuildPreviewBody(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
+    public static PdfDocumentContent BuildPreviewDocument(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine(string.Create(
-            CultureInfo.InvariantCulture,
-            $"Modello: {state.Regime}, versione {state.VersionId ?? "nessuna"}, stato: {StatusLabel(state.Status)}."));
+        var marker = state.IsApproved ? ApprovedPreviewMarker : DraftMarker;
+        var status = new List<string>
+        {
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Modello: {state.Regime}, versione {state.VersionId ?? "nessuna"}, stato: {StatusLabel(state.Status)}."),
+        };
         if (state.MissingSections.Count > 0)
-            sb.AppendLine($"Sezioni senza testo: {string.Join(", ", state.MissingSections)}.");
+            status.Add($"Sezioni senza testo: {string.Join(", ", state.MissingSections)}.");
         if (state.Status == LeaseContractTemplateStatus.Incomplete && state.Issues.Count > 0)
-            sb.AppendLine($"Problemi di formato del modello: {state.Issues.Count} (dettagli nei log dell'API).");
+            status.Add($"Problemi di formato del modello: {state.Issues.Count} (dettagli nei log dell'API).");
 
         var required = LeaseContractTemplateStructure.RequiredSections(state.Regime);
         var missingData = state.Sections.SelectMany(s => s.Placeholders)
@@ -111,46 +124,51 @@ internal static class LeaseContractDocument
             .Where(p => string.IsNullOrWhiteSpace(data.GetValueOrDefault(p)))
             .ToList();
         if (missingData.Count > 0)
-            sb.AppendLine($"Dati mancanti: {string.Join(", ", missingData)}.");
+            status.Add($"Dati mancanti: {string.Join(", ", missingData)}.");
 
-        sb.AppendLine();
-        sb.AppendLine(state.Title ?? MissingTitleMarker);
-        sb.AppendLine();
+        var blocks = new List<PdfBlock>
+        {
+            new PdfParagraph(string.Join('\n', status)),
+            new PdfHeading(state.Title ?? MissingTitleMarker),
+        };
 
         foreach (var section in state.Sections)
         {
-            sb.AppendLine(Heading(state.Regime, section));
+            blocks.Add(new PdfHeading(Heading(state.Regime, section), Level: 3));
             if (section.Text.Length == 0)
             {
                 var definition = required.FirstOrDefault(d => d.Id == section.Id);
-                AppendMissingClause(sb, definition?.DataPlaceholders ?? [], data);
+                blocks.Add(MissingClause(definition?.DataPlaceholders ?? [], data));
             }
             else
             {
-                sb.AppendLine(Fill(section.Text, data, missing => $"[DATO MANCANTE: {missing}]"));
+                blocks.AddRange(PdfBlocks.FromPlainText(Fill(section.Text, data, missing => $"[DATO MANCANTE: {missing}]")));
             }
-
-            sb.AppendLine();
         }
 
         foreach (var definition in required.Where(d => state.Sections.All(s => s.Id != d.Id)))
         {
-            sb.AppendLine(definition.DefaultHeading);
-            AppendMissingClause(sb, definition.DataPlaceholders, data);
-            sb.AppendLine();
+            blocks.Add(new PdfHeading(definition.DefaultHeading, Level: 3));
+            blocks.Add(MissingClause(definition.DataPlaceholders, data));
         }
 
-        return sb.ToString().TrimEnd();
+        blocks.Add(new PdfParagraph(marker, Bold: true));
+        return new PdfDocumentContent(marker, blocks)
+        {
+            Watermark = state.IsApproved ? ApprovedPreviewWatermark : DraftWatermark,
+        };
     }
 
-    private static void AppendMissingClause(StringBuilder sb, IEnumerable<string> dataPlaceholders, IReadOnlyDictionary<string, string?> data)
+    private static PdfParagraph MissingClause(IEnumerable<string> dataPlaceholders, IReadOnlyDictionary<string, string?> data)
     {
-        sb.AppendLine(MissingClauseMarker);
+        var lines = new List<string> { MissingClauseMarker };
         foreach (var placeholder in dataPlaceholders)
         {
             var value = data.GetValueOrDefault(placeholder);
-            sb.AppendLine($"- {DataLabels[placeholder]}: {(string.IsNullOrWhiteSpace(value) ? $"[DATO MANCANTE: {placeholder}]" : value)}");
+            lines.Add($"- {DataLabels[placeholder]}: {(string.IsNullOrWhiteSpace(value) ? $"[DATO MANCANTE: {placeholder}]" : value)}");
         }
+
+        return new PdfParagraph(string.Join('\n', lines));
     }
 
     private static string Heading(FiscalRegime regime, LeaseContractTemplateSection section) =>

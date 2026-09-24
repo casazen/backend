@@ -1,8 +1,9 @@
-# Runbook: supplier invites, self-serve registration and claim
+# Runbook: supplier invites, self-serve registration, claim and service requests
 
 Task SU-01 (audit defects A4-03, A4-04, A4-21, A4-24) and SU-02 (claim after login, supplier onboarding, no link by
 unverified email: A4-02, A4-23, A1-13). The code is in place; the product owner sets the pilot comuni (section 3),
-checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment.
+checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
+service request is tied to (task SU-07, decision D2).
 
 ## 1. How a supplier joins
 
@@ -182,6 +183,76 @@ no public rate limit.
 - [ ] Signed in with another account on a fresh invite: the page asks to switch account; the API answers
       `supplier_invite_email_mismatch`.
 
+## 7. Service requests: per stay (short-rent) or per property (long-rent) — SU-07
+
+Decision D2 (`Sessions/risanamento/DECISIONI.md`), audit A4-13 / A4-33, issue #340. Before SU-07 the web created
+requests without a booking and listed a booking's requests by property, while the app listed them by booking: a
+request created on the web never showed in the app.
+
+### 7.1 Rules
+
+| Context | Tied to | API (host side) | Rule (422, ProblemDetails `code`) |
+|---|---|---|---|
+| **Short-rent** (`RentalContext = ShortRent`, 0) | One stay: `BookingId` + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | `bookingId` missing → `service_request_booking_required`; a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
+| **Long-rent** (`RentalContext = LongRent`, 1) | The property only (`BookingId` null) | `api/long-rent/service-requests` (policies `property.read` / `property.write` **in long-rent**) | a `bookingId` → `service_request_booking_not_allowed` |
+
+- The context is stored on the request (`ServiceRequests.RentalContext`) and is never inferred from `BookingId`.
+- The host endpoints of one context never reach the other context's requests: a short-rent `GET`/`mark-paid` of a
+  long-rent request is 404, and vice versa; a user with only the long-rent context gets 403 on every
+  `api/service-requests` host endpoint (LT-05: long-rent shares only the property core).
+- The supplier side (inbox, `take`, `complete`, `reject` on `api/service-requests`) is the same for both contexts.
+- `bookingId` / `propertyId` of another org: 404 (`booking_not_found`, `property_not_found`), on lists too.
+
+### 7.2 Same queries on web and app
+
+| Where | Query |
+|---|---|
+| Web booking detail, app booking screen | `GET /api/service-requests?bookingId={id}&pageSize=50` |
+| Web property detail (short-rent), overview with a link to each stay | `GET /api/service-requests?propertyId={id}` |
+| Web marketplace, "Le tue richieste" | `GET /api/service-requests` (every short-rent request in scope) |
+| Web long-rent property detail | `GET /api/long-rent/service-requests?propertyId={id}` |
+
+Creating: web booking detail and app booking screen send the booking (`bookingId`) and its property; the web
+marketplace asks which stay of the property (current and upcoming first, cancelled ones never offered); the long-rent
+property page sends `POST /api/long-rent/service-requests` with the property only. Long-rent endpoints:
+
+| Endpoint | Policy | Notes |
+|---|---|---|
+| `GET /api/long-rent/service-requests?propertyId=` | long-rent `property.read` | the long-rent requests in scope (owner or org-wide role) |
+| `GET /api/long-rent/service-requests/suppliers?propertyId=&category=` | long-rent `property.read` | active suppliers of the property's comune (same answer as `GET /api/suppliers?propertyId=`) |
+| `POST /api/long-rent/service-requests` | long-rent `property.write` | body as the short-rent one, without `bookingId` |
+| `POST /api/long-rent/service-requests/{id}/mark-paid` | long-rent `property.write` | completed long-rent request only |
+
+### 7.3 Existing requests (migration `AddServiceRequestRentalContext`)
+
+- Every existing request becomes short-rent: before SU-07 requests were created only in the short-rent context.
+- Short-rent requests **without** `BookingId` are tied to a stay **only when it is unique**: the request's creation day
+  (Europe/Rome) falls within exactly one non-cancelled booking of the same property and org (check-in and check-out
+  days included). Requests created between stays, on a turnover day shared by two stays, or on a property without
+  stays are **left on their property** (`BookingId` null): they show in the property overview ("Senza soggiorno
+  (richiesta precedente)") and in no booking, on the web and in the app. Nothing is deleted, `UpdatedAt` is unchanged.
+- The migration logs `AddServiceRequestRentalContext: N short-rent requests tied to their stay, M left on their
+  property` (`RAISE NOTICE`). To see the ones left after the deploy:
+
+  ```sql
+  SELECT "Id", "OrgId", "PropertyId", "CreatedAt" FROM "ServiceRequests"
+  WHERE "RentalContext" = 0 AND "BookingId" IS NULL ORDER BY "CreatedAt";
+  ```
+
+  They stay valid as property-level requests; there is no manual fix to apply (and the rule "no manual DB
+  workarounds" applies: do not guess their stay by hand).
+
+### 7.4 After a deploy
+
+- [ ] Migration log shows the NOTICE above with plausible counts.
+- [ ] Web: from a booking detail, *Richiedi fornitore* → choose supplier → the request appears under the booking;
+      open the same booking in the app → same request.
+- [ ] App: *Richiedi fornitore* from a booking → the request appears in the web booking detail and in the property
+      overview with *Vai al soggiorno*.
+- [ ] Web marketplace: the dialog asks the stay; without one *Invia richiesta* stays disabled.
+- [ ] Long-rent: from `/app/long-rent/properties/{id}`, *Richiedi fornitore* → the request is listed there and not in
+      the short-rent property overview; the supplier sees it in the inbox.
+
 ## Known limits (other tasks)
 
 - The admin repair `fix-orphaned` still matches users and profiles by email (task SU-14, "fix-orphaned sicuro").
@@ -191,3 +262,6 @@ no public rate limit.
 - A supplier-only user who then completes the host onboarding keeps using the supplier org as `User.OrgId`
   (A1-40, task PL-05).
 - The activation requirements (only the ToS today) are task SU-05.
+- Service requests: the supplier still sees no address, dates or host contact (SU-08); host timeline, rejection
+  reason and "paid" confirmation are SU-09; the app's supplier choice (today the first result) is MO-10 and its
+  error states MO-07. `chargeToGuest` is still always refused, also for long-rent (open product point).

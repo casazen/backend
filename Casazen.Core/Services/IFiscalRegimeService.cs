@@ -107,6 +107,7 @@ public interface IFiscalReportingService
     Task<WithholdingReport> GetWithholdingReportAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default);
     byte[] ToCsv(AnnualIncomeReport report);
     byte[] ToCsv(WithholdingReport report);
+    /// <summary>A4 PDF of <paramref name="title"/> and a plain text body (blank line = new paragraph), via <c>IPdfDocumentRenderer</c>.</summary>
     byte[] ToPdf(string title, string body);
 }
 

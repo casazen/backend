@@ -47,7 +47,7 @@ public class ApeDocumentInspectorTests
     [Fact]
     public void Inspect_OfficialApePdf_IsValid()
     {
-        var pdf = FiscalPdfWriter.Write(
+        var pdf = LiteralTextPdf.Build(
             "ATTESTATO DI PRESTAZIONE ENERGETICA",
             "Classe energetica D. EPgl,nren 95. SIAPE. Certificatore energetico. D.Lgs. 192/2005.");
 
@@ -60,7 +60,7 @@ public class ApeDocumentInspectorTests
     [Fact]
     public void Inspect_NonApePdf_IsContentMismatch()
     {
-        var pdf = FiscalPdfWriter.Write("Contratto di locazione", "Canone mensile e deposito cauzionale.");
+        var pdf = LiteralTextPdf.Build("Contratto di locazione", "Canone mensile e deposito cauzionale.");
 
         using var stream = new MemoryStream(pdf);
         var result = _sut.Inspect(stream);

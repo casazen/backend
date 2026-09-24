@@ -192,6 +192,56 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
     }
 
+    [Fact]
+    public async Task UpdatePropertyAsync_UnknownCancellationPolicy_ThrowsDomainRuleExceptionWithoutSaving()
+    {
+        var policyId = Guid.NewGuid();
+        var property = new Property { Id = Guid.NewGuid(), OrgId = Guid.NewGuid(), Name = "Villa", CancellationPolicyId = policyId };
+        _mockRepository.Setup(x => x.CancellationPolicyExistsAsync(policyId)).ReturnsAsync(false);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.UpdatePropertyAsync(property));
+
+        Assert.Equal("cancellation_policy_not_found", ex.Code);
+        Assert.Equal("PropertyCancellationPolicyNotFound", ex.MessageKey);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_ExistingCancellationPolicy_Saves()
+    {
+        var policyId = Guid.NewGuid();
+        var property = new Property { Id = Guid.NewGuid(), OrgId = Guid.NewGuid(), Name = "Villa", CancellationPolicyId = policyId };
+        _mockRepository.Setup(x => x.CancellationPolicyExistsAsync(policyId)).ReturnsAsync(true);
+        _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
+
+        await _service.UpdatePropertyAsync(property);
+
+        _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_UnknownCancellationPolicy_ThrowsDomainRuleExceptionWithoutSaving()
+    {
+        var property = new Property { OrgId = Guid.NewGuid(), Name = "Villa", Slug = "villa", CancellationPolicyId = Guid.NewGuid() };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("cancellation_policy_not_found", ex.Code);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetPropertyRecordAsync_ReadsTheRowWithoutRelations()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa" };
+        _mockRepository.Setup(x => x.GetRecordAsync(property.Id)).ReturnsAsync(property);
+
+        var result = await _service.GetPropertyRecordAsync(property.Id);
+
+        Assert.Same(property, result);
+        _mockRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
     // Image Management Tests
 
     [Fact]

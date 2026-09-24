@@ -1,7 +1,7 @@
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Services.LeaseContracts;
 using Microsoft.Extensions.Logging;
 
@@ -10,10 +10,12 @@ namespace Casazen.Infrastructure.External;
 /// <summary>
 /// Lease contract PDF from the template of the lease's fiscal regime (LT-03, A7-03). The final contract, the one sent
 /// to signature and then to registration, exists only when the template is complete and approved by a lawyer and every
-/// datum it uses is known; otherwise 422. The preview is always available and marked BOZZA.
+/// datum it uses is known; otherwise 422. The preview is always available, marked BOZZA and watermarked. Both are
+/// rendered by <see cref="IPdfDocumentRenderer"/> (LT-09, A7-14): A4, wrapped and paginated, never truncated.
 /// </summary>
 public class LeaseContractTemplateService(
     ILeaseContractTemplateCatalog catalog,
+    IPdfDocumentRenderer pdfRenderer,
     ILogger<LeaseContractTemplateService> logger) : ILeaseTemplateService
 {
     public const string TemplateNotApprovedCode = "contract_template_not_approved";
@@ -27,7 +29,7 @@ public class LeaseContractTemplateService(
             "Generating final lease contract PDF. LeaseId={LeaseId} FiscalRegime={Regime} TemplateVersion={Version}",
             lease.Id, lease.FiscalRegime, template.VersionId);
 
-        return Task.FromResult(FiscalPdfWriter.Write(template.Title!, LeaseContractDocument.BuildFinalBody(template, data)));
+        return Task.FromResult(pdfRenderer.Render(LeaseContractDocument.BuildFinalDocument(template, data)));
     }
 
     public void EnsureFinalContractAvailable(LeaseContract lease) => ResolveApprovedTemplate(lease);
@@ -70,13 +72,12 @@ public class LeaseContractTemplateService(
     public Task<byte[]> GeneratePreviewPdfAsync(LeaseContract lease)
     {
         var template = catalog.Get(lease.FiscalRegime);
-        var marker = template.IsApproved ? LeaseContractDocument.ApprovedPreviewMarker : LeaseContractDocument.DraftMarker;
-        var body = LeaseContractDocument.BuildPreviewBody(template, LeaseContractDocument.ResolveData(lease));
+        var document = LeaseContractDocument.BuildPreviewDocument(template, LeaseContractDocument.ResolveData(lease));
 
         logger.LogInformation(
             "Generating lease contract preview. LeaseId={LeaseId} FiscalRegime={Regime} TemplateStatus={Status}",
             lease.Id, lease.FiscalRegime, template.Status);
 
-        return Task.FromResult(FiscalPdfWriter.Write(marker, $"{body}\n\n{marker}"));
+        return Task.FromResult(pdfRenderer.Render(document));
     }
 }

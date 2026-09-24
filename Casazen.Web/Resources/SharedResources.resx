@@ -795,6 +795,60 @@
   <data name="GuestDocumentScanMissing" xml:space="preserve">
     <value>Nessuna scansione del documento disponibile per questo ospite.</value>
   </data>
+  <data name="PropertyNameRequired" xml:space="preserve">
+    <value>Il nome dell'immobile è obbligatorio.</value>
+  </data>
+  <data name="PropertyNameTooLong" xml:space="preserve">
+    <value>Il nome dell'immobile può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyDescriptionTooLong" xml:space="preserve">
+    <value>La descrizione può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyAddressRequired" xml:space="preserve">
+    <value>L'indirizzo è obbligatorio.</value>
+  </data>
+  <data name="PropertyAddressTooLong" xml:space="preserve">
+    <value>L'indirizzo può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyCityRequired" xml:space="preserve">
+    <value>La città è obbligatoria.</value>
+  </data>
+  <data name="PropertyCityTooLong" xml:space="preserve">
+    <value>La città può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyPostalCodeTooLong" xml:space="preserve">
+    <value>Il CAP può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyBedroomsRange" xml:space="preserve">
+    <value>Le camere devono essere un numero intero tra {1} e {2} (0 per un monolocale).</value>
+  </data>
+  <data name="PropertyBathroomsRange" xml:space="preserve">
+    <value>I bagni devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyMaxGuestsRange" xml:space="preserve">
+    <value>Il numero massimo di ospiti deve essere tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyNightlyRateRange" xml:space="preserve">
+    <value>Il prezzo per notte deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyCleaningFeeRange" xml:space="preserve">
+    <value>Il costo delle pulizie deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyDamageDepositRange" xml:space="preserve">
+    <value>Il deposito cauzionale deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyHouseRulesTooLong" xml:space="preserve">
+    <value>Le regole della casa possono avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyTimezoneInvalid" xml:space="preserve">
+    <value>Fuso orario non valido: usa un identificativo IANA, ad esempio Europe/Rome.</value>
+  </data>
+  <data name="PropertySlugTooLong" xml:space="preserve">
+    <value>L'indirizzo web (slug) può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
+    <value>La policy di cancellazione scelta non esiste: ricarica la pagina e scegline un'altra.</value>
+  </data>
   <data name="PropertyActivationBlocked" xml:space="preserve">
     <value>L'immobile non può ancora essere attivato: completa i punti obbligatori elencati.</value>
   </data>
@@ -802,7 +856,7 @@
     <value>Devi accettare i termini di servizio.</value>
   </data>
   <data name="ActivationBaseDataIncomplete" xml:space="preserve">
-    <value>Completa i dati base dell'immobile: nome, indirizzo, città, camere, ospiti e tariffa.</value>
+    <value>Completa i dati base dell'immobile: nome, indirizzo, città, ospiti e tariffa.</value>
   </data>
   <data name="ActivationCinMissing" xml:space="preserve">
     <value>Inserisci il codice CIN dell'immobile.</value>
@@ -875,5 +929,14 @@
   </data>
   <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
     <value>La checklist è stata modificata nello stesso momento da un'altra sessione: ricarica la pagina e riprova.</value>
+  </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
+  </data>
+  <data name="ServiceRequestBookingMismatch" xml:space="preserve">
+    <value>La prenotazione indicata non è un soggiorno di questo immobile.</value>
+  </data>
+  <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
+    <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
   </data>
 </root>
