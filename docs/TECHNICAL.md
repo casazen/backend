@@ -274,7 +274,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email via SMTP); 409 pending invite; 502 email failure rolls back |
-| `POST` | `/api/suppliers/register` | Anonymous | Self-serve or invite-token registration |
+| `POST` | `/api/suppliers/register` | Anonymous (rate limited) | Self-serve registration for a pilot comune, or invite acceptance by the signed-in invited account (SU-01) |
+| `POST` | `/api/suppliers/invites/lookup` | Anonymous (rate limited) | Invite of a link token (email, comune, expiry) for the web registration page |
+| `GET` | `/api/suppliers/registration-options` | Anonymous (rate limited) | Self-serve on/off and pilot comuni (`Suppliers:PilotComuni`) |
 | `GET` | `/api/suppliers?comune=&category=` | JWT | List **Active** suppliers for host picker |
 | `GET` | `/api/supplier/profile` | Supplier | Supplier profile for current org |
 | `PUT` | `/api/supplier/profile` | Supplier | Update profile fields |
@@ -300,9 +302,8 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/api/service-requests/{id}/complete` | Supplier | Complete request |
 | `POST` | `/api/service-requests/{id}/reject` | Supplier | Reject request |
 | `POST` | `/api/service-requests/{id}/mark-paid` | JWT | Mark request paid |
-| `GET` | `/register` | Anonymous | Supplier register page (MVC) |
 
-**Invite email:** `SupplierService.CreateInviteAsync` persists `SupplierInviteRecords`, then sends via `IEmailService` (MailKit SMTP) with HTML from `SupplierInviteEmailBuilder`. Signup URL: `{App:PublicSiteBaseUrl}/login?inviteToken={id}&email={email}&comune={comuneCode}`. Skipped in Testing/Development when no email config is present.
+**Invite email:** `SupplierService.CreateInviteAsync` stores the invite with the SHA-256 of a random token, then queues the email (`EmailTemplates.SupplierInvite`, Hangfire). Signup URL: `{App:PublicSiteBaseUrl}/register?inviteToken={token}` (web app page; the backend no longer serves a `/register` page). Runbook: `docs/runbooks/suppliers.md`.
 
 **Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier`. Default route: `/supplier/inbox`.
 
