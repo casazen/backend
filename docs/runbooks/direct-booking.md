@@ -44,6 +44,8 @@ panel "Richieste da approvare" and badges in the bookings list.
 | `DirectBooking__PendingTtlMinutes` | Checkout hold of online payments (BK-21, BK-04) | 30 | unchanged |
 | `RateLimiting__PublicBookingCreate__PermitLimit` | Checkouts per client IP per minute (FD-10) | 10 | applies to "pay at the property" too |
 | `RateLimiting__PublicBookingLookup__PermitLimit` | Includes `confirm-email` | 30 | |
+| `RateLimiting__PublicGuestBookingLookup__PermitLimit` / `__WindowSeconds` | "Le mie prenotazioni": lookups and check-in link requests per client IP (§ 8) | 10 per 300 s | BK-11 |
+| `RateLimiting__GuestBookingLookupPerEmail__PermitLimit` / `__WindowSeconds` | Same, per email address, whatever the IP (§ 8) | 5 per 900 s | BK-11 |
 | `App__PublicSiteBaseUrl`, `Email__*` | Links and delivery of the emails | — | required, see [email.md](email.md) |
 
 A changed value applies to new requests and new confirmations: a request already waiting keeps the deadline stored in
@@ -238,3 +240,89 @@ Code: `Casazen.Core/Services/CheckoutOutcomes.cs`, `DirectBookingPaymentRules.cs
 `checkout-page.tsx`, `src/lib/pending-checkout.ts`. Tests: `DirectCheckoutIntegrationTests` (outcome, token, resume,
 codes, payment options), `CheckoutOutcomesTests`, `DirectBookingPaymentRulesTests`, `BookingServiceTests`; vitest
 `checkout-outcome-page.test.tsx`, `checkout-outcome.test.ts`, `checkout-page.test.tsx`.
+
+## 8. "Le mie prenotazioni" with the booking code (BK-11)
+
+Task BK-11 (audit defects A3-10, R-06, P1). The page `/book/{orgSlug}/my-bookings`, linked from the confirmation email
+and from the site menu, sent only `{ email }` while the API required a `bookingId`: every search answered 400 and the page
+showed "Nessuna prenotazione trovata" plus an error.
+
+### 8.1 Booking code
+
+- Every booking has a **`Bookings.BookingCode`** (migration `AddBookingCode`): 10 random characters of the Crockford
+  base32 alphabet (digits and letters without I, L, O, U: 50 bits), shown as **`XXXXX-XXXXX`**, unique per org (index
+  `IX_Bookings_OrgId_BookingCode`). It is not the booking id: the id is logged, in the host's links and in Stripe metadata,
+  so it is no secret. `Casazen.Core/Services/BookingCodes.cs` (frontend mirror `src/lib/booking-code.ts`).
+- The migration gives existing bookings a random code of the same form (`gen_random_uuid()` bytes, PostgreSQL 13+).
+- Where the guest reads it: the **confirmation email** (BK-10, "Codice prenotazione", with the button "Le mie prenotazioni"
+  that opens `/book/{orgSlug}/my-bookings?code=XXXXX-XXXXX`) and the **checkout outcome page** (BK-07, "Codice prenotazione"
+  with the same link). The host's "new booking" email shows the same code.
+- What the guest types is normalized like the code is read aloud: spaces and dashes ignored, lower case accepted, `O` read
+  as `0`, `I` and `L` as `1`.
+
+### 8.2 Lookup
+
+| Endpoint | Body | Answers |
+|---|---|---|
+| `POST /api/public/bookings/lookup` | `{ orgSlug, bookingCode, email }` | 200: `bookingCode`, `status`, `paymentOption`, property (id, slug, name, city), `checkInDate`, `checkOutDate`, adults/children, `lodging`, `cleaningFee`, `touristTax`, `totalPrice`, `paidAmount`, `refundedAmount`, `currency`, `expiresAt`, `deferredChargeDate`, `host { name, email }`, `checkIn { status, opensOn, linkSentAt }`. 400 `validation_error`; **404 `guest_booking_not_found`**; 429 `rate_limited` |
+| `POST /api/public/bookings/lookup/check-in-link` | same | **202**: a new online check-in link (CO-02) emailed to the address of the booking; 404 `guest_booking_not_found`; 409 `guest_check_in_link_unavailable`; 429 |
+
+- **No enumeration.** Org of the site (`orgSlug`), code and email (trimmed, case-insensitive) are matched in one query. A
+  code that does not exist, a malformed code (the booking id, for instance), a code of another org's site and a wrong
+  email all get the same 404 `guest_booking_not_found`, same body except the trace id. Only bookings of the public checkout
+  (`Source = Direct`): the guests who receive a code. Code and email travel in the body, never in an API URL; nothing of
+  them is logged (the per-email limiter keys on a hash).
+- **Rate limits (FD-10).** Per client IP: policy `PublicGuestBookingLookup` (10 requests per 5 minutes, both endpoints
+  together). Per email, whatever the IP: `GuestBookingLookupPerEmail` (5 per 15 minutes, both endpoints), counted on
+  every attempt, found or not, in memory per replica. A code has 2^50 values: with the email limit an attacker who knows a
+  guest's email gets 480 tries a day.
+- **What the page shows.** `status`: the states of the outcome page (§ 7.1: `Confirmed`, `AwaitingPayment`,
+  `PaymentProcessing`, `PaymentFailed`, `AwaitingGuestEmail`, `AwaitingHostApproval`, `Expired`, `Declined`,
+  `DatesUnavailable`, `Cancelled`) plus `StayInProgress` (checked in) and `StayCompleted` (checked out). Amounts as
+  recorded on the booking (BK-03 tax, PC-07 cleaning); paid and refunded from the Stripe payments. The host's contact is
+  the one of the site footer and of the confirmation email (`Org.DisplayName`, `Org.ContactEmail`). **No personal data**:
+  no guest name, email, phone, no booking id; the guest already knows who they are.
+- **Online check-in (CO-02).** The raw check-in link is never stored (only its hash) nor shown on the page: the page
+  offers **"Inviami il link"**, which emails a new link to the address of the booking (the same steps as the host's "resend
+  link": the older links of the booking stop working). `checkIn.status`:
+
+| `checkIn.status` | When | Page |
+|---|---|---|
+| `NotApplicable` | booking not confirmed / checked in, or the stay is over | nothing |
+| `NotYetOpen` | confirmed, arrival more than `CheckIn:SendWindowDays` (3) days away | "the link arrives by email on {opensOn}" (the daily job `GuestCheckInSendJob` sends it) |
+| `Open` | from `opensOn` until the departure day | "link sent on {linkSentAt}" when one still works, and the button to get it (again) |
+| `Completed` | the guests' data were sent, or the Alloggiati Web communication is done (receipt or declared sent) | "online check-in completed" |
+
+  The button is not offered before `opensOn` on purpose: a check-in session expires 7 days after it is created and the
+  daily job does not send a new one while an old one exists, so a link asked weeks before the arrival would be dead on
+  the day.
+
+### 8.3 Checks
+
+1. Test mode: complete a checkout, open the confirmation email, click "Le mie prenotazioni": the page opens with the code
+   filled in and shows nothing until the email is typed. With the email: state, dates, amounts, host.
+2. Same code with another email, a changed character, or on another org's site: "Nessuna prenotazione corrisponde…" (404
+   `guest_booking_not_found`), identical in the three cases.
+3. Six attempts in a row for the same email (from any IP): the sixth answers 429 with `Retry-After`.
+4. A confirmed booking arriving within 3 days: "Inviami il link" → the guest receives the check-in email; the page shows
+   "link sent".
+
+```sql
+-- Bookings without a code: must be empty after the migration
+SELECT count(*) FROM casazen_prod."Bookings" WHERE "BookingCode" = '';
+```
+
+Logs: `Rate limit exceeded: policy GuestBookingLookupPerEmail on POST …` / `policy PublicGuestBookingLookup` (no email,
+no IP), `Check-in link sent again at the request of the guest of booking {BookingId}`.
+
+Not done (DUBBI BK-11): a "magic link" (the guest types only the email and receives the links of their bookings). The
+code + email lookup covers the confirmation email's link; a magic link needs a new token per booking, a new email and a
+per-address cool-down against mail bombing.
+
+Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
+`Casazen.Infrastructure/Services/GuestBookingLookupService.cs`, `Casazen.Web/Infrastructure/GuestBookingEmailRateLimiter.cs`,
+`PublicBookingsController.cs`, `BookingNotifier.cs`, `PublicSiteLinks.GuestBookings`. Frontend:
+`src/features/public-booking/guest-bookings-page.tsx`, `src/lib/booking-code.ts`, `checkout-outcome-page.tsx`
+(`BookingReference`). Tests: `GuestBookingLookupPostgresTests`, `BookingCodesTests`, `DirectCheckoutIntegrationTests`,
+`BookingEmailsPostgresTests`, `BookingNotifierTests`, `PublicSiteLinksTests`; vitest `guest-bookings-page.test.tsx`,
+`booking-code.test.ts`, `checkout-outcome-page.test.tsx`.

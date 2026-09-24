@@ -509,7 +509,7 @@ public enum BookingConfirmationKind
 /// <summary>
 /// What the booking emails show of a booking (BK-10), in euro as recorded on it: <see cref="Lodging"/> is the nightly
 /// part (<c>BasePrice - CleaningFee</c>), <see cref="Total"/> includes cleaning and the tourist tax (BK-03).
-/// <see cref="BookingCode"/> is the code "Le mie prenotazioni" asks for (the booking id).
+/// <see cref="BookingCode"/> is the code "Le mie prenotazioni" asks for (<c>Booking.BookingCode</c>, formatted, BK-11).
 /// </summary>
 public sealed record BookingEmailSummary(
     string BookingCode,

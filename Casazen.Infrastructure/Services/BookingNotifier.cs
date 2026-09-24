@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -68,7 +69,7 @@ public sealed class BookingNotifier(
                 data.PaidAmount,
                 data.FreeRefundDeadline,
                 data.HostContact,
-                links.GuestBookings(data.OrgSlug)));
+                links.GuestBookings(data.OrgSlug, data.Summary.BookingCode)));
 
         if (kind != BookingConfirmationKind.OnSite)
             AlertHostOfNewBooking(data, kind);
@@ -156,6 +157,7 @@ public sealed class BookingNotifier(
             .Select(b => new
             {
                 b.Id,
+                b.BookingCode,
                 b.Status,
                 GuestFirstName = b.Guest.FirstName,
                 GuestLastName = b.Guest.LastName,
@@ -179,7 +181,7 @@ public sealed class BookingNotifier(
             return null;
 
         var summary = new BookingEmailSummary(
-            row.Id.ToString("D"),
+            BookingCodes.Format(row.BookingCode),
             row.PropertyName,
             row.CheckInDate,
             row.CheckOutDate,
