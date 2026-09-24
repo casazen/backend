@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.Infrastructure;
@@ -14,7 +13,7 @@ public interface IOrgContextResolver
 }
 
 public sealed class OrgContextResolver(
-    ITenantContext tenantContext,
+    IRequestTenantContext tenantContext,
     IHttpContextAccessor httpContextAccessor,
     IUserService userService,
     IOrgService orgService,
@@ -37,10 +36,16 @@ public sealed class OrgContextResolver(
         // Upsert user row first — EnsureOrgForUserAsync requires the User to exist (#217).
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         if (user.OrgId is Guid linked)
+        {
+            // Linked after the tenant was resolved (e.g. by a parallel first request): scope this request to it.
+            tenantContext.SetOrgId(linked);
             return linked;
+        }
 
         logger.LogInformation("Auto-provisioning Starter org for user {UserId}", sub);
         var org = await orgService.EnsureOrgForUserAsync(sub, email, displayName, cancellationToken);
+        // A1-20: the next queries of this request (tenant filter, resource checks) see the new org.
+        tenantContext.SetOrgId(org.Id);
         return org.Id;
     }
 

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
@@ -98,7 +99,7 @@ builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
 builder.Services.AddScoped<ILeaseRegistrationService, OpenapiLeaseRegistrationProvider>();
 builder.Services.AddHttpClient("Openapi");
 
-// OTA Integrations with resilience patterns
+// OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
 // Localization — Italian (default) and English.
@@ -130,8 +131,8 @@ builder.Services.AddCasazenAuthorization();
 // Health checks: /api/health/live, /api/health/ready (database, Hangfire, configuration), /api/health (FD-12)
 builder.Services.AddCasazenHealthChecks();
 
-// CORS
-builder.Services.AddCasazenCors(builder.Configuration);
+// CORS: configured origins only, no credentials (FD-17, docs/runbooks/cors-security-headers.md)
+builder.Services.AddCasazenCors();
 
 // Client IP behind the Railway proxy (UseForwardedHeaders, first middleware) and per-IP rate limiting (FD-10, #273).
 builder.Services.AddCasazenForwardedHeaders();
@@ -280,14 +281,14 @@ if (app.Environment.IsDevelopment())
     logger.LogInformation("====================================================");
 }
 
+// Security headers on every response, static files included (FD-17): before anything that can short-circuit.
+app.UseSecurityHeaders();
+
 // Static files (wwwroot test feeds; never the legacy /uploads folder). Uploads live in object storage.
 app.UseCasazenStaticFiles();
 
-// Security headers — early in pipeline
-app.UseSecurityHeaders();
-
 // CORS (must be before Authentication)
-app.UseCors("AllowFrontend");
+app.UseCors(CasazenCorsPolicyProvider.PolicyName);
 
 // Localization middleware — reads Accept-Language header, sets culture for downstream components
 app.UseRequestLocalization();
@@ -295,8 +296,13 @@ app.UseRequestLocalization();
 // Global error handling — must be early in pipeline to catch all exceptions
 app.UseErrorHandling();
 
+// Endpoints behind a disabled feature flag answer 404 before authentication, like a missing route (FD-20)
+app.UseFeatureGates();
+
 // Authentication & Authorization (must be in this order)
 app.UseAuthentication();
+// Loads the caller's OrgId asynchronously once per request, before policies and the EF tenant filter read it (A1-20).
+app.UseTenantResolution();
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -322,7 +328,7 @@ if (hangfireStorage is not null)
             .LogInformation("Hangfire storage schema: {HangfireSchema}", hangfireStorage.Schema);
         using var scope = app.Services.CreateScope();
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-        RecurringJobsRegistration.Configure(recurringJobManager);
+        RecurringJobsRegistration.Configure(recurringJobManager, scope.ServiceProvider.GetRequiredService<IFeatureFlags>());
     });
 }
 

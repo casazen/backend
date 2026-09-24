@@ -1,4 +1,3 @@
-using System.Data;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -27,7 +26,7 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         var storedTier = org?.PlanTier ?? PlanTier.Starter;
         var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
         var maxProperties = ResolveMaxProperties(effectiveTier);
-        var propertyCount = await dbContext.Properties.CountAsync(p => p.OrgId == orgId, cancellationToken);
+        var propertyCount = await CountPropertiesAsync(orgId, cancellationToken);
 
         return new EntitlementResult(orgId, effectiveTier.ToString(), maxProperties, propertyCount, propertyCount < maxProperties);
     }
@@ -35,36 +34,35 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
     public async Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         (await GetEntitlementAsync(orgId, cancellationToken)).CanAddProperty;
 
-    public async Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<Property?> CreatePropertyWithinLimitAsync(
+        Guid orgId,
+        Func<Task<Property>> createProperty,
+        CancellationToken cancellationToken = default)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-        try
-        {
-            var org = await dbContext.Orgs.AsNoTracking()
-                .Where(o => o.Id == orgId)
-                .Select(o => new { o.PlanTier, o.SubscriptionStatus, o.PastDueSince })
-                .FirstOrDefaultAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(createProperty);
 
-            var storedTier = org?.PlanTier ?? PlanTier.Starter;
-            var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
-            var maxProperties = ResolveMaxProperties(effectiveTier);
-            var propertyCount = await dbContext.Properties.CountAsync(p => p.OrgId == orgId, cancellationToken);
+        // A1-21: the count and the insert share one transaction and a per-org advisory lock, so two parallel
+        // creates cannot both take the last slot. Disposing without commit rolls back (limit reached or error).
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            dbContext,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.OrgPropertySlot, orgId.ToString("N")));
 
-            if (propertyCount >= maxProperties)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+        if (!(await GetEntitlementAsync(orgId, cancellationToken)).CanAddProperty)
+            return null;
 
+        var created = await createProperty();
+        if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
-            return true;
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
+        return created;
     }
+
+    // IgnoreQueryFilters (tenant only): usage belongs to the org passed in, whoever the caller is. The admin plan
+    // change reads another org (it showed usage=0), and the limit check must count every row of the org (A1-21).
+    private Task<int> CountPropertiesAsync(Guid orgId, CancellationToken cancellationToken) =>
+        dbContext.Properties
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .CountAsync(p => p.OrgId == orgId, cancellationToken);
 
     public async Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default)
     {

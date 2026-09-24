@@ -61,7 +61,7 @@ public class UserServiceTests
 
         // Assert
         Assert.Equal(existing, result);
-        _repoMock.Verify(r => r.AddAsync(It.IsAny<User>()), Times.Never);
+        _repoMock.Verify(r => r.AddIfAbsentAsync(It.IsAny<User>()), Times.Never);
     }
 
     [Fact]
@@ -86,8 +86,8 @@ public class UserServiceTests
         // Arrange
         var sub = "auth0|newuser456";
         _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync((User?)null);
-        _repoMock.Setup(r => r.AddAsync(It.IsAny<User>()))
-                 .ReturnsAsync((User u) => u);
+        _repoMock.Setup(r => r.AddIfAbsentAsync(It.IsAny<User>()))
+                 .ReturnsAsync((User u) => (u, true));
 
         // Act
         var result = await _service.GetCurrentUserAsync(sub, "new@example.com", "Luigi", "Verdi");
@@ -97,7 +97,23 @@ public class UserServiceTests
         Assert.Equal("new@example.com", result.Email);
         Assert.Equal("Luigi", result.FirstName);
         Assert.True(result.IsActive);
-        _repoMock.Verify(r => r.AddAsync(It.Is<User>(u => u.Id == sub)), Times.Once);
+        _repoMock.Verify(r => r.AddIfAbsentAsync(It.Is<User>(u => u.Id == sub)), Times.Once);
+        _cacheMock.Verify(c => c.Invalidate(sub), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCurrentUserAsync_ParallelFirstRequestInsertedTheUser_ReturnsTheStoredUser()
+    {
+        // A1-14: the insert lost the race; the repository returns the row of the parallel request.
+        var sub = "auth0|race789";
+        var stored = new User { Id = sub, Email = "first@example.com", FirstName = "Anna", LastName = "Neri", OrgId = Guid.NewGuid() };
+        _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync((User?)null);
+        _repoMock.Setup(r => r.AddIfAbsentAsync(It.IsAny<User>())).ReturnsAsync((stored, false));
+
+        var result = await _service.GetCurrentUserAsync(sub, "first@example.com", "Anna", "Neri");
+
+        Assert.Same(stored, result);
+        Assert.Equal(stored.OrgId, result.OrgId);
     }
 
     // ─── ChangeRoleAsync ────────────────────────────────────────────────────

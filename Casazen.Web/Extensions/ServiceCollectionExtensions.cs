@@ -1,11 +1,13 @@
 // File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
@@ -19,6 +21,8 @@ using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Polly;
 
@@ -198,56 +202,24 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddCasazenCors(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// CORS restricted to the configured origins (<c>Cors:AllowedOrigins</c>, optional <c>Cors:VercelPreviewPattern</c>),
+    /// without credentials (FD-17, A3-29 / A9-28). No origin in code (decision D3): see
+    /// <c>docs/runbooks/cors-security-headers.md</c>. Custom host domains plug in through <see cref="ICorsOriginSource"/>.
+    /// </summary>
+    public static IServiceCollection AddCasazenCors(this IServiceCollection services)
     {
-        var allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://localhost:5175",
-            "https://casazen.app",
-            "https://casazen-app.vercel.app",
-        };
+        // Read from the final configuration (IConfiguration from DI), and validated when the host starts.
+        services.AddOptions<CorsOriginOptions>()
+            .Configure<IConfiguration>((options, configuration) =>
+                CorsOriginOptions.Configure(options, configuration.GetSection(CorsOriginOptions.SectionName)))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<CorsOriginOptions>, CorsOriginOptionsValidator>();
+        services.AddSingleton<CorsOriginAllowList>();
 
-        var configOrigins = configuration["Cors:AllowedOrigins"];
-        if (!string.IsNullOrWhiteSpace(configOrigins))
-        {
-            foreach (var origin in configOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                allowedOrigins.Add(origin);
-            }
-        }
-
-        services.AddCors(options =>
-        {
-            options.AddPolicy("AllowFrontend", policy =>
-            {
-                policy
-                    .SetIsOriginAllowed(origin =>
-                    {
-                        if (allowedOrigins.Contains(origin))
-                        {
-                            return true;
-                        }
-
-                        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
-                        {
-                            return false;
-                        }
-
-                        return uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
-                    })
-                    .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                    .WithHeaders(
-                        "Authorization",
-                        "Content-Type",
-                        "Accept",
-                        "X-Requested-With",
-                        "X-Hangfire-ApiKey")
-                    .AllowCredentials();
-            });
-        });
+        services.AddCors();
+        // Replaces the default provider registered by AddCors; scoped so an ICorsOriginSource may use the DbContext.
+        services.Replace(ServiceDescriptor.Scoped<ICorsPolicyProvider, CasazenCorsPolicyProvider>());
         return services;
     }
 
@@ -271,6 +243,8 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenServices(this IServiceCollection services)
     {
+        // Features:* flags (FD-20, docs/runbooks/feature-flags.md)
+        services.AddSingleton<IFeatureFlags, ConfigurationFeatureFlags>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IBookingService, BookingService>();
@@ -290,7 +264,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
-        services.AddScoped<ITenantContext, TenantContext>();
+        // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
+        services.AddScoped<TenantContext>();
+        services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        services.AddScoped<IRequestTenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
@@ -355,10 +332,16 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
+        // Always registered: OtaManager depends on it (DynamicPricingJob uses OtaManager). With the flag off it has no
+        // adapter to return, so nothing can call an OTA partner API.
+        services.AddScoped<IChannelFactory, ChannelFactory>();
+
+        // OTA partner API in freeze (D10): adapters, HTTP clients and rate limiter only with Features:OtaPartnerApi on.
+        if (!ConfigurationFeatureFlags.IsEnabled(configuration, FeatureFlags.OtaPartnerApi))
+            return services;
+
         // Register rate limiter as singleton (shared across all OTA adapters)
         services.AddSingleton<OtaRateLimiter>();
-
-        services.AddScoped<IChannelFactory, ChannelFactory>();
 
         // Configure HttpClients for each OTA adapter with Polly policies
         ConfigureOtaHttpClient<AirbnbAdapter>(services, configuration, "Airbnb");
