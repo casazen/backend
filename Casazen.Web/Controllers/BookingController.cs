@@ -26,7 +26,6 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.BookingRead)]
 public class BookingsController(
     IBookingService bookingService,
-    ITouristTaxQuoteService touristTaxQuoteService,
     IAlloggiatiWebService alloggiatiWebService,
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
@@ -133,42 +132,46 @@ public class BookingsController(
                 property.MaxGuests);
         }
 
-        var checkIn = request.CheckInDate.Date;
-        var checkOut = request.CheckOutDate.Date;
-        if (checkOut <= checkIn || (checkOut - checkIn).Days > TouristTaxCalculator.MaxNights)
-            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.InvalidDates, "BookingInvalidDates");
+        // Same pricing as the change of a manual booking and the host quote (PC-07): nightly rate x nights + cleaning
+        // fee, tourist tax of BK-03 with the minors and their ages when the rates of the comune depend on them. Unknown
+        // rate: no tax, never an invented one.
+        var adults = request.NumberOfGuests - request.NumberOfChildren;
+        var price = await bookingService.PriceHostStayAsync(
+            property,
+            request.CheckInDate,
+            request.CheckOutDate,
+            adults,
+            request.NumberOfChildren,
+            request.ChildrenAges,
+            HttpContext.RequestAborted);
+        if (price.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                DirectBookingErrorCodes.ChildAgesRequired,
+                "TouristTaxChildAgesRequired");
+        }
 
         logger.LogInformation("Creating manual booking for property {PropertyId}", request.PropertyId);
-
-        var nights = (checkOut - checkIn).Days;
-        var basePrice = property.NightlyRate * nights + property.CleaningFee;
 
         var booking = new Booking
         {
             PropertyId = request.PropertyId,
             OrgId = property.OrgId,
-            CheckInDate = checkIn,
-            CheckOutDate = checkOut,
+            CheckInDate = price.CheckInDate,
+            CheckOutDate = price.CheckOutDate,
             NumberOfGuests = request.NumberOfGuests,
+            NumberOfAdults = adults,
+            NumberOfChildren = request.NumberOfChildren,
             SpecialRequests = request.SpecialRequests ?? string.Empty,
-            BasePrice = basePrice,
+            BasePrice = price.BasePrice,
+            CleaningFee = price.CleaningFee,
+            TouristTax = price.TouristTax.AmountOrZero,
+            TouristTaxAmount = price.TouristTax.AmountOrZero,
+            TotalPrice = price.TotalPrice,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
-
-        // Single tourist tax engine (BK-03). The host form has the number of guests only, without ages: every guest
-        // counts as an adult, so the amount is the most the stay can owe. Unknown rate: no tax, never an invented one.
-        var touristTax = await touristTaxQuoteService.QuoteAsync(
-            TouristTaxComune.ForProperty(property),
-            new TouristTaxStay(
-                RomeCalendar.DateInRome(checkIn),
-                RomeCalendar.DateInRome(checkOut),
-                Adults: request.NumberOfGuests,
-                Children: 0,
-                NightlyPrice: property.NightlyRate));
-        booking.TouristTax = touristTax.AmountOrZero;
-        booking.TouristTaxAmount = touristTax.AmountOrZero;
-        booking.TotalPrice = booking.BasePrice + booking.TouristTax;
 
         // Status (Confirmed), source (Manual), guest snapshot and the overlap check (409) are the service's job.
         var created = await bookingService.CreateManualBookingAsync(booking, NewGuestSnapshot(property.OrgId, request.Guest));
@@ -176,46 +179,6 @@ public class BookingsController(
         var response = loaded is null ? BookingMapper.ToResponse(created) : BookingMapper.ToResponse(loaded);
         logger.LogInformation("Manual booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, response);
-    }
-
-    [HttpPut("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] Booking booking)
-    {
-        var existing = await bookingService.GetBookingAsync(id);
-        if (existing == null)
-            return NotFound();
-
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, existing.PropertyId, GetUserRoles()))
-            return NotFound();
-
-        booking.Id = id;
-        booking.PropertyId = existing.PropertyId;
-        booking.OrgId = existing.OrgId;
-        booking.GuestId = existing.GuestId;
-        booking.Status = existing.Status;
-        booking.Source = existing.Source;
-        booking.ExternalId = existing.ExternalId;
-        booking.BasePrice = existing.BasePrice;
-        booking.TouristTax = existing.TouristTax;
-        booking.TouristTaxAmount = existing.TouristTaxAmount;
-        booking.TotalPrice = existing.TotalPrice;
-        booking.PaymentOption = existing.PaymentOption;
-        booking.FreeRefundDeadline = existing.FreeRefundDeadline;
-        booking.StripeSetupIntentId = existing.StripeSetupIntentId;
-        booking.StripePaymentMethodId = existing.StripePaymentMethodId;
-        booking.StripeCustomerId = existing.StripeCustomerId;
-        booking.CheckInToken = existing.CheckInToken;
-        booking.CheckInTokenExpiresAt = existing.CheckInTokenExpiresAt;
-        booking.CheckoutReminderJobId = existing.CheckoutReminderJobId;
-        booking.CheckoutWizardStartedAt = existing.CheckoutWizardStartedAt;
-        booking.CreatedAt = existing.CreatedAt;
-        await bookingService.UpdateBookingAsync(booking);
-        return NoContent();
     }
 
     [HttpGet("calendar")]
@@ -466,47 +429,6 @@ public class BookingsController(
         {
             return Conflict(new { error = ex.Message });
         }
-    }
-
-    [HttpPost("{id}/check-out")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<IActionResult> CheckOut(Guid id)
-    {
-        var booking = await bookingService.GetBookingAsync(id);
-        if (booking == null)
-            return NotFound();
-
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized();
-
-        if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
-            return NotFound();
-
-        // Validate status transition
-        if (booking.Status != BookingStatus.CheckedIn)
-        {
-            return BadRequest(new
-            {
-                Error = "Invalid status transition",
-                Message = $"Can only check-out bookings with CheckedIn status. Current status: {booking.Status}"
-            });
-        }
-
-        // Validate date
-        if (booking.CheckOutDate.Date > _clock.TodayInRome())
-        {
-            return BadRequest(new
-            {
-                Error = "Check-out date not reached",
-                Message = $"Cannot check-out before check-out date: {booking.CheckOutDate:yyyy-MM-dd}"
-            });
-        }
-
-        booking.Status = BookingStatus.CheckedOut;
-        await bookingService.UpdateBookingAsync(booking);
-        var updated = await bookingService.GetBookingAsync(id);
-        return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
     }
 
     [HttpGet("{id}/alloggiati-status")]

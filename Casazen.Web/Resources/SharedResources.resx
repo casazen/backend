@@ -633,4 +633,31 @@
   <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
     <value>Il file non è valido e nessun codice è stato importato: correggi le righe indicate e riprova.</value>
   </data>
+  <data name="BookingGuestsInvalid" xml:space="preserve">
+    <value>Serve almeno un adulto: i minori devono essere meno degli ospiti.</value>
+  </data>
+  <data name="BookingNotEditable" xml:space="preserve">
+    <value>Una prenotazione annullata non si può modificare.</value>
+  </data>
+  <data name="BookingStayLocked" xml:space="preserve">
+    <value>Il soggiorno è già iniziato o concluso: date e ospiti non si possono più cambiare.</value>
+  </data>
+  <data name="BookingUpdateSourceLocked" xml:space="preserve">
+    <value>Date e ospiti si possono cambiare solo nelle prenotazioni inserite da te: questa arriva dal sito di prenotazione o da un canale, con prezzo e pagamento già definiti. Puoi modificare le note.</value>
+  </data>
+  <data name="BookingCheckInInPast" xml:space="preserve">
+    <value>Il check-in non può essere spostato a un giorno già passato.</value>
+  </data>
+  <data name="BookingNotPending" xml:space="preserve">
+    <value>La prenotazione non è più in attesa di conferma: ricarica la pagina.</value>
+  </data>
+  <data name="BookingNotConfirmable" xml:space="preserve">
+    <value>Puoi confermare solo le prenotazioni in attesa inserite da te: le altre si confermano con il pagamento dell'ospite o con la risposta alla richiesta.</value>
+  </data>
+  <data name="BookingNotCheckedIn" xml:space="preserve">
+    <value>Il check-out si registra solo per un soggiorno con check-in registrato.</value>
+  </data>
+  <data name="BookingCheckOutTooEarly" xml:space="preserve">
+    <value>Il check-out si può registrare dal giorno di partenza.</value>
+  </data>
 </root>

@@ -135,6 +135,21 @@
   <data name="GuestRefundConfirmed_Timing" xml:space="preserve">
     <value>When the credit shows on your statement depends on your bank or card issuer.</value>
   </data>
+  <data name="GuestBookingCancelled_Subject" xml:space="preserve">
+    <value>Booking cancelled - {0}</value>
+  </data>
+  <data name="GuestBookingCancelled_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestBookingCancelled_Body" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; has been cancelled by the host.</value>
+  </data>
+  <data name="GuestBookingCancelled_Refund" xml:space="preserve">
+    <value>A refund of &lt;strong&gt;€{0}&lt;/strong&gt; has been started to the payment method used for the booking: you will get another email once it is confirmed.</value>
+  </data>
+  <data name="GuestBookingCancelled_Contact" xml:space="preserve">
+    <value>For any question, please contact the host of the property directly.</value>
+  </data>
   <data name="GuestLatePaymentConfirmed_Subject" xml:space="preserve">
     <value>Booking confirmed - {0}</value>
   </data>
