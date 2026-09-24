@@ -530,7 +530,7 @@ erDiagram
 |---|---|---|---|
 | Auth0 | Microsoft JWT Bearer middleware | `appsettings.json → Auth0` | JWT validation on all `/api` endpoints |
 | Stripe | Stripe .NET SDK | `appsettings.json → Stripe` | Payment processing and refunds |
-| MailKit (SMTP) | MailKit + SMTP client | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for relay) | Transactional emails |
+| Resend | `Resend` SDK (`ResendEmailService`, the only `IEmailService`) | `Email` section (`Email__Provider`, `Email__ApiKey`, `Email__FromAddress`, `Email__FromName`); see `docs/runbooks/email.md` | Transactional emails (queued on Hangfire) |
 | Alloggiati Web | Custom HTTP client | `AlloggiatiWebService.cs` | Italian police guest registration |
 | OTA platforms (6) | `IChannelAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
 | Public holidays API | `PublicHolidayService` | Configured in service | Feeds AI pricing seasonality |

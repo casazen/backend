@@ -1,5 +1,9 @@
 name: CI/CD Pipeline
 
+# Backend gates: NuGet vulnerability gate, build, tests on PostgreSQL, format; deploy verification on push.
+# There is no backend Golden Journey E2E gate yet: the former e2e-golden-journey.yml only ran `echo` and was
+# removed (FD-02, A9-24). The real end-to-end gate arrives with task FN-03. Runbook: docs/runbooks/ci-backend.md.
+
 on:
   push:
     branches: [develop, main]
@@ -39,8 +43,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # NuGet audit (FD-02, A9-26): Directory.Build.props turns NU1903 (High) and NU1904 (Critical) into errors,
+      # so restore fails on a vulnerable package, direct or transitive.
       - name: Restore dependencies
         run: dotnet restore
+
+      # Explicit gate + full report. Runs even when restore failed on NU1903/NU1904: NuGet still writes
+      # project.assets.json, so the report lists every vulnerable package. Runbook: docs/runbooks/ci-backend.md.
+      - name: Vulnerable packages (fails on High/Critical, including transitive)
+        if: ${{ !cancelled() }}
+        run: bash scripts/check-vulnerable-packages.sh Casazen.sln
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
