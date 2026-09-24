@@ -113,6 +113,23 @@ Adding the certificate later is safe: keys already stored in clear text stay rea
 
 Note: OTA secrets encrypted **before** FD-07 used keys that were lost with the old containers, so they cannot be recovered. Those integrations must be configured again (the OTA partner APIs are hidden behind a feature flag anyway, decision D10).
 
+### Encrypted database columns (one mechanism)
+
+Every encrypted column uses the same mechanism: the EF value converter `EncryptedStringConverter`
+(`Casazen.Infrastructure/Data/Encryption`), built in `AppDbContext.OnModelCreating` from the context's Data Protection
+provider with **one purpose per column family** (never change a purpose: stored values would become unreadable).
+Columns today: `OtaIntegrations.ApiKey/ApiSecret` (purpose `Casazen.OtaIntegration.Secrets`, FD-20) and
+`PropertyICalFeeds.ImportUrl` (purpose `Casazen.PropertyICalFeed.ImportUrl`, PC-11).
+
+- **Adding a column**: `HasConversion(new EncryptedStringConverter(EncryptionProvider, "<purpose>"))` inside the
+  `if (EncryptionProvider is not null)` block, a column wide enough for the payload (about 4/3 of the clear text plus
+  ~90 characters), reads and writes through EF only.
+- **Values already stored in clear**: pass a predicate that recognizes them (`isLegacyPlaintext`, e.g.
+  `PropertyICalFeedUrlEncryption.IsLegacyPlaintext`): they stay readable, and a startup step rewrites them through EF
+  (model: `PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync`, called after the migrations in `Program.cs`).
+- **Model cache**: the model is cached per Data Protection provider (`DataProtectionModelCacheKeyFactory`), so a
+  context never encrypts with another context's provider (the FD-20 limit, fixed in PC-11).
+
 ## 5. Migrating files from the old local storage (optional)
 
 On Railway there has never been a volume, so the old files were most likely lost at the first redeploy. The command is still useful for any environment that kept the files, such as a volume, a local machine or a backup copy.
