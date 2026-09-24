@@ -271,7 +271,8 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
                 BookingId = bookingId,
                 GuestId = guestId,
                 OrgId = property.OrgId,
-                Status = AlloggiatiWebStatus.Confirmed,
+                Status = AlloggiatiWebStatus.InviatoManualmente,
+                ReportedAt = DateTime.UtcNow.Date.AddDays(-10),
             });
             await db.SaveChangesAsync();
         }

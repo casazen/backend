@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +26,8 @@ public class AuthController(
                 request.LastName,
                 request.Password);
 
-            logger.LogInformation("User registered successfully: {Email}", user.Email);
+            logger.LogInformation(
+                "User {UserId} registered: {MaskedEmail}", user.Id, LogRedaction.MaskEmail(user.Email));
 
             return Ok(new RegisterResponse
             {
@@ -38,12 +40,12 @@ public class AuthController(
         }
         catch (InvalidOperationException ex)
         {
-            logger.LogWarning("Registration failed: {Error}", ex.Message);
+            logger.LogWarning("Registration failed: {Error}", LogRedaction.MaskEmails(ex.Message));
             return BadRequest(new { error = ex.Message });
         }
         catch (ArgumentException ex)
         {
-            logger.LogWarning("Registration validation failed: {Error}", ex.Message);
+            logger.LogWarning("Registration validation failed: {Error}", LogRedaction.MaskEmails(ex.Message));
             return BadRequest(new { error = ex.Message });
         }
     }

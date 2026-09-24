@@ -224,16 +224,6 @@ public class GuestCheckInService(
         };
     }
 
-    public async Task MarkAlloggiatiEnqueuedAsync(Guid sessionId)
-    {
-        var session = await db.GuestCheckInSessions.FindAsync(sessionId);
-        if (session is null) return;
-
-        session.Status = GuestCheckInSessionStatus.AlloggiatiInviato;
-        session.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-    }
-
     public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId)
     {
         var activeSessions = await db.GuestCheckInSessions

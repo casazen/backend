@@ -131,8 +131,8 @@ builder.Services.AddCasazenAuthorization();
 // Health checks: /api/health/live, /api/health/ready (database, Hangfire, configuration), /api/health (FD-12)
 builder.Services.AddCasazenHealthChecks();
 
-// CORS
-builder.Services.AddCasazenCors(builder.Configuration);
+// CORS: configured origins only, no credentials (FD-17, docs/runbooks/cors-security-headers.md)
+builder.Services.AddCasazenCors();
 
 // Client IP behind the Railway proxy (UseForwardedHeaders, first middleware) and per-IP rate limiting (FD-10, #273).
 builder.Services.AddCasazenForwardedHeaders();
@@ -158,6 +158,7 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<GuestCheckInReminderJob>();
 builder.Services.AddScoped<CheckoutReminderJob>();
 builder.Services.AddScoped<ICheckoutReminderScheduler, CheckoutReminderScheduler>();
+builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
@@ -281,14 +282,14 @@ if (app.Environment.IsDevelopment())
     logger.LogInformation("====================================================");
 }
 
+// Security headers on every response, static files included (FD-17): before anything that can short-circuit.
+app.UseSecurityHeaders();
+
 // Static files (wwwroot test feeds; never the legacy /uploads folder). Uploads live in object storage.
 app.UseCasazenStaticFiles();
 
-// Security headers — early in pipeline
-app.UseSecurityHeaders();
-
 // CORS (must be before Authentication)
-app.UseCors("AllowFrontend");
+app.UseCors(CasazenCorsPolicyProvider.PolicyName);
 
 // Localization middleware — reads Accept-Language header, sets culture for downstream components
 app.UseRequestLocalization();
