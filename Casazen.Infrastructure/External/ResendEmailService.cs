@@ -1,3 +1,4 @@
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Email;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -69,14 +70,24 @@ public sealed class ResendEmailService(
             return new EmailSendResult(false, "resend_error", IsTransient: true);
         }
 
+        // The provider message can quote an address (e.g. the account owner's on a 403): only its masked form is
+        // logged, and the exception object is not passed to the logger for the same reason (FD-17, A9-36).
+        var detail = LogRedaction.MaskEmails(ex.Message);
         logger.LogError(
-            ex,
-            "Resend API call failed: {ErrorType} (HTTP {StatusCode}, transient={IsTransient})",
+            "Resend API call failed: {ErrorType} (HTTP {StatusCode}, transient={IsTransient}): {Error}",
             ex.ErrorType,
             (int?)ex.StatusCode,
-            ex.IsTransient);
+            ex.IsTransient,
+            detail);
         return new EmailSendResult(false, Truncate($"{ex.ErrorType}: {ex.Message}"), IsTransient: ex.IsTransient);
     }
 
-    private static string Truncate(string value) => value.Length > 200 ? value[..200] : value;
+    /// <summary>
+    /// The detail travels to the email queue logs and to the Hangfire retry message: bounded, without addresses.
+    /// </summary>
+    private static string Truncate(string value)
+    {
+        var masked = LogRedaction.MaskEmails(value);
+        return masked.Length > 200 ? masked[..200] : masked;
+    }
 }

@@ -17,6 +17,8 @@ using Casazen.Web.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Polly;
 
@@ -227,56 +229,24 @@ public static class ServiceCollectionExtensions
         }
     }
 
-    public static IServiceCollection AddCasazenCors(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// CORS restricted to the configured origins (<c>Cors:AllowedOrigins</c>, optional <c>Cors:VercelPreviewPattern</c>),
+    /// without credentials (FD-17, A3-29 / A9-28). No origin in code (decision D3): see
+    /// <c>docs/runbooks/cors-security-headers.md</c>. Custom host domains plug in through <see cref="ICorsOriginSource"/>.
+    /// </summary>
+    public static IServiceCollection AddCasazenCors(this IServiceCollection services)
     {
-        var allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://localhost:5175",
-            "https://casazen.app",
-            "https://casazen-app.vercel.app",
-        };
+        // Read from the final configuration (IConfiguration from DI), and validated when the host starts.
+        services.AddOptions<CorsOriginOptions>()
+            .Configure<IConfiguration>((options, configuration) =>
+                CorsOriginOptions.Configure(options, configuration.GetSection(CorsOriginOptions.SectionName)))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<CorsOriginOptions>, CorsOriginOptionsValidator>();
+        services.AddSingleton<CorsOriginAllowList>();
 
-        var configOrigins = configuration["Cors:AllowedOrigins"];
-        if (!string.IsNullOrWhiteSpace(configOrigins))
-        {
-            foreach (var origin in configOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                allowedOrigins.Add(origin);
-            }
-        }
-
-        services.AddCors(options =>
-        {
-            options.AddPolicy("AllowFrontend", policy =>
-            {
-                policy
-                    .SetIsOriginAllowed(origin =>
-                    {
-                        if (allowedOrigins.Contains(origin))
-                        {
-                            return true;
-                        }
-
-                        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
-                        {
-                            return false;
-                        }
-
-                        return uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
-                    })
-                    .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                    .WithHeaders(
-                        "Authorization",
-                        "Content-Type",
-                        "Accept",
-                        "X-Requested-With",
-                        "X-Hangfire-ApiKey")
-                    .AllowCredentials();
-            });
-        });
+        services.AddCors();
+        // Replaces the default provider registered by AddCors; scoped so an ICorsOriginSource may use the DbContext.
+        services.Replace(ServiceDescriptor.Scoped<ICorsPolicyProvider, CasazenCorsPolicyProvider>());
         return services;
     }
 

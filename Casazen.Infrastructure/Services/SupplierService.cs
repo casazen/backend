@@ -99,7 +99,7 @@ public class SupplierService(
 
         await db.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Supplier org {OrgId} registered for {Email}", org.Id, email);
+        logger.LogInformation("Supplier org {OrgId} registered for {MaskedEmail}", org.Id, LogRedaction.MaskEmail(email));
         return (org, profile);
     }
 
@@ -287,7 +287,9 @@ public class SupplierService(
         if (!emailQueue.Enqueue(invite.Email, inviteEmail, EmailTemplates.Names.SupplierInvite))
             logger.LogWarning("Supplier invite {InviteId} created but its email was not queued", invite.Id);
 
-        logger.LogInformation("Admin invite created for {Email}, expires {ExpiresAt}", email, invite.ExpiresAt);
+        logger.LogInformation(
+            "Admin invite {InviteId} created for {MaskedEmail}, expires {ExpiresAt}",
+            invite.Id, LogRedaction.MaskEmail(email), invite.ExpiresAt);
         return new SupplierInvite(invite.Id, invite.ExpiresAt);
     }
 
@@ -392,8 +394,8 @@ public class SupplierService(
 
         // Step 3: Auto-provisioning — last resort
         logger.LogWarning(
-            "Auto-provisioning supplier org for user {UserId} (email={Email}, name={FirstName} {LastName})",
-            userId, resolvedEmail, firstName, lastName);
+            "Auto-provisioning supplier org for user {UserId} (email={MaskedEmail})",
+            userId, LogRedaction.MaskEmail(resolvedEmail));
 
         var displayName = $"{firstName} {lastName}".Trim();
         if (string.IsNullOrWhiteSpace(displayName))

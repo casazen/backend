@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
@@ -75,7 +76,8 @@ public class SuppliersController(
                 userId,
                 cancellationToken);
 
-            logger.LogInformation("Supplier registered: {OrgId} for {Email}", org.Id, request.Email);
+            logger.LogInformation(
+                "Supplier registered: {OrgId} for {MaskedEmail}", org.Id, LogRedaction.MaskEmail(request.Email));
 
             // Registration is the moment the supplier link is created: assign the Supplier role in
             // Auth0 once, here (additive — host/admin roles are preserved). The outcome is returned
