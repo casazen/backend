@@ -12,7 +12,8 @@ public record ImuNotificationExportResult(byte[] PdfBytes, string FileName);
 
 public interface IComuneImuNotificationService
 {
-    Task<ImuNotificationExportResult?> ExportAsync(Guid leaseId, string ownerId, CancellationToken cancellationToken = default);
+    /// <summary>IMU notification draft of the lease, or <c>null</c> when it is not visible. The caller authorizes the lease first (TN-3).</summary>
+    Task<ImuNotificationExportResult?> ExportAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
     Task<bool?> MarkSentAsync(Guid leaseId, string ownerId, CancellationToken cancellationToken = default);
 }

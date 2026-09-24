@@ -14,9 +14,11 @@ using Microsoft.Extensions.Localization;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Long-term leases. Reads need <c>lease.read</c>, each write its own lease permission. The migrated actions (list,
-/// detail, create, registration, checklist) authorize the row as a <see cref="HostResource"/> of the lease's property
-/// (TN-3): another org's lease is invisible (404), a lease of the org the caller may not handle answers 403.
+/// Long-term leases. Reads need <c>lease.read</c>, each write its own lease permission. Creation and every read (list,
+/// detail, registration, checklist, advisory, receipt, exports) authorize the row as a <see cref="HostResource"/> of
+/// the lease's property (TN-3): the property owner or an org-wide member of its org with the lease permission; another
+/// org's lease is invisible (404), a lease of the org the caller may not handle answers 403. Signing, filing and the
+/// IMU "sent" attestation still act for the property owner only (services).
 /// Responses are DTOs (LT-11, A7-17): never EF entities, no clear personal data of the parties.
 /// </summary>
 [ApiController]
@@ -64,7 +66,7 @@ public class LeasesController(
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<IActionResult> Create([FromBody] CreateLeaseDto dto)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        if (GetOwnerId() is null) return Unauthorized();
 
         var property = await hostResources.ForPropertyAsync(dto.PropertyId, HttpContext.RequestAborted);
         if (property is null)
@@ -94,7 +96,7 @@ public class LeasesController(
                         dto.CanoneConcordato.ZoneName,
                         dto.CanoneConcordato.CadastralSheet));
 
-            var lease = await leaseService.CreateDraftAsync(dto.PropertyId, ownerId, request);
+            var lease = await leaseService.CreateDraftAsync(dto.PropertyId, request);
             var created = await leaseService.GetLeaseDetailAsync(lease.Id) ?? lease;
             return CreatedAtAction(nameof(GetById), new { id = lease.Id }, LeaseDtoMapper.ToDetail(created));
         }
@@ -108,10 +110,6 @@ public class LeasesController(
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -188,8 +186,11 @@ public class LeasesController(
     [HttpGet("{id:guid}/rli/advisory")]
     public async Task<IActionResult> GetRliAdvisory(Guid id, CancellationToken cancellationToken)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        var result = await cedolareAdvisory.EvaluateAsync(id, ownerId, cancellationToken);
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var result = await cedolareAdvisory.EvaluateAsync(id, cancellationToken);
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -197,8 +198,11 @@ public class LeasesController(
     [Authorize(Policy = CasazenPolicies.LeaseRegister)]
     public async Task<IActionResult> ExportRli(Guid id, CancellationToken cancellationToken)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        var result = await rliExport.ExportAsync(id, ownerId, cancellationToken);
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var result = await rliExport.ExportAsync(id, cancellationToken);
         return result is null
             ? NotFound()
             : File(result.PdfBytes, "application/pdf", result.FileName);
@@ -239,19 +243,18 @@ public class LeasesController(
     [HttpGet("{id:guid}/registration/receipt")]
     public async Task<IActionResult> GetReceipt(Guid id)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
         try
         {
-            var stream = await leaseService.GetRegistrationReceiptAsync(id, ownerId);
+            var stream = await leaseService.GetRegistrationReceiptAsync(id);
             return File(stream, "application/pdf", $"receipt-{id}.pdf");
         }
         catch (InvalidOperationException ex)
         {
             return NotFound(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -259,10 +262,13 @@ public class LeasesController(
     [HttpGet("{id:guid}/canone-concordato/imu-notification/export")]
     public async Task<IActionResult> ExportImuNotification(Guid id, CancellationToken cancellationToken)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
         try
         {
-            var result = await imuNotification.ExportAsync(id, ownerId, cancellationToken);
+            var result = await imuNotification.ExportAsync(id, cancellationToken);
             return result is null
                 ? NotFound()
                 : File(result.PdfBytes, "application/pdf", result.FileName);

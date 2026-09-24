@@ -1,4 +1,5 @@
-﻿using Casazen.Core.DTOs;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
@@ -21,6 +22,12 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     public async Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId)
     {
         return await repository.GetByOwnerAsync(ownerId);
+    }
+
+    public async Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        return await repository.GetByScopeAsync(scope);
     }
 
     public async Task<IEnumerable<Property>> GetAllPropertiesAsync()
@@ -321,6 +328,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         Id = d.Id,
         FileName = d.FileName,
         FileType = ResolveFileType(d),
+        DocumentType = d.DocumentType,
         UploadedAt = d.UploadedAt,
         // Documents live in the private bucket: the only way to read one is the authenticated
         // download endpoint (bearer token + tenant/ownership check), never the storage reference.

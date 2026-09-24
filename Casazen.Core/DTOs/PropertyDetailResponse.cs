@@ -38,6 +38,9 @@ public class PropertyDocumentDto
     public Guid Id { get; set; }
     public string FileName { get; set; } = string.Empty;
     public string FileType { get; set; } = string.Empty;
+
+    /// <summary>Kind of document (e.g. <c>Ape</c>): the lease form needs it to know whether the APE is on file (A7-06).</summary>
+    public DocumentType DocumentType { get; set; }
     public DateTime UploadedAt { get; set; }
 
     /// <summary>

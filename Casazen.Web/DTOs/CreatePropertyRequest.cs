@@ -49,12 +49,18 @@ public class CreatePropertyRequest
     [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
     public int Bathrooms { get; set; }
 
-    /// <summary>Maximum number of guests allowed (1–100).</summary>
-    [Range(1, 100, ErrorMessage = "Max guests must be between 1 and 100")]
+    /// <summary>
+    /// Maximum number of guests of a short stay (0–100). <c>0</c> = not set: a property kept only for long-term leases
+    /// has none (A7-06); the short-stay listing cannot be activated until it is set (activation wizard).
+    /// </summary>
+    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
     public int MaxGuests { get; set; }
 
-    /// <summary>Base nightly rate in euros (€0.01–€100,000).</summary>
-    [Range(0.01, 100000, ErrorMessage = "Nightly rate must be between €0.01 and €100,000")]
+    /// <summary>
+    /// Base nightly rate in euros (€0–€100,000). <c>0</c> = no short-stay rate (long-term only property, A7-06); the
+    /// short-stay listing cannot be activated until it is set (activation wizard).
+    /// </summary>
+    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
     public decimal NightlyRate { get; set; }
 
     /// <summary>One-time cleaning fee in euros (€0–€10,000).</summary>

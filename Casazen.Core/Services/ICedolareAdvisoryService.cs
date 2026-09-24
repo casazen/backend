@@ -5,7 +5,11 @@ namespace Casazen.Core.Services;
 
 public interface ICedolareAdvisoryService
 {
-    Task<CedolareAdvisoryResult?> EvaluateAsync(Guid leaseId, string ownerId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Advisory of the lease, or <c>null</c> when it does not exist in the caller's org (tenant filter). No ownership
+    /// check: the caller authorizes the lease first (TN-3).
+    /// </summary>
+    Task<CedolareAdvisoryResult?> EvaluateAsync(Guid leaseId, CancellationToken cancellationToken = default);
 }
 
 public record CedolareAdvisoryResult(
@@ -21,7 +25,8 @@ public record CedolareAdvisoryResult(
 
 public interface IRliExportService
 {
-    Task<RliExportResult?> ExportAsync(Guid leaseId, string ownerId, CancellationToken cancellationToken = default);
+    /// <summary>RLI prefill of the lease, or <c>null</c> when it is not visible. The caller authorizes the lease first (TN-3).</summary>
+    Task<RliExportResult?> ExportAsync(Guid leaseId, CancellationToken cancellationToken = default);
 }
 
 public record RliExportResult(byte[] PdfBytes, string FileName);
