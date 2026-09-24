@@ -31,7 +31,8 @@ public static class HangfireServiceCollectionExtensions
                 options => options.UseNpgsqlConnection(connectionString),
                 settings.CreateStorageOptions()));
 
-        services.AddHangfireServer();
+        // Explicit name: the readiness check recognizes this process's server by its id (FD-12).
+        services.AddHangfireServer(options => options.ServerName = HangfireServerIdentity.ServerName);
         return settings;
     }
 }

@@ -84,6 +84,14 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties.AnyAsync(p => p.Id == id);
     }
 
+    public async Task<Guid?> GetOrgIdAsync(Guid id)
+    {
+        return await context.Properties
+            .Where(p => p.Id == id)
+            .Select(p => (Guid?)p.OrgId)
+            .FirstOrDefaultAsync();
+    }
+
     public async Task<Property?> GetPropertyDetailAsync(Guid id)
     {
         return await context.Properties

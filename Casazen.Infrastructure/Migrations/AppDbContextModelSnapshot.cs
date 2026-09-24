@@ -49,6 +49,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("ManuallyCompleted")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("ReportedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -66,6 +69,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("BookingId");
 
                     b.HasIndex("GuestId");
+
+                    b.HasIndex("OrgId");
 
                     b.ToTable("AlloggiatiWebReports");
                 });
@@ -638,6 +643,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OrgId");
+
                     b.HasIndex("TokenHash")
                         .IsUnique()
                         .HasDatabaseName("UIX_GuestCheckInSessions_TokenHash");
@@ -1040,6 +1047,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1059,6 +1069,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId");
 
@@ -1386,6 +1398,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("NextScheduledRunAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
@@ -1393,6 +1408,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .IsUnique();
@@ -1427,6 +1444,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("OtasSynced")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -1445,6 +1465,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId", "AdaptationDate");
 
@@ -1624,6 +1646,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
@@ -1641,6 +1666,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(255)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .HasDatabaseName("IX_PropertyDocuments_PropertyId");
@@ -2797,6 +2824,12 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Booking");
 
                     b.Navigation("Guest");
@@ -2889,6 +2922,12 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Booking");
                 });
 
@@ -2954,6 +2993,12 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>
                 {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany("OtaIntegrations")
                         .HasForeignKey("PropertyId")
@@ -3017,6 +3062,12 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.PricingAdapterConfig", b =>
                 {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithOne("PricingAdapterConfig")
                         .HasForeignKey("Casazen.Core.Entities.PricingAdapterConfig", "PropertyId")
@@ -3028,6 +3079,12 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.PricingHistory", b =>
                 {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
@@ -3056,6 +3113,12 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyDocument", b =>
                 {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany("PropertyDocuments")
                         .HasForeignKey("PropertyId")

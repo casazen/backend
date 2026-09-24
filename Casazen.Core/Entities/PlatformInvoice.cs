@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
 [Table("PlatformInvoices")]
-public class PlatformInvoice
+public class PlatformInvoice : ITenantOwned
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();

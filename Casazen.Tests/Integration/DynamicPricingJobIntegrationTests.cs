@@ -84,12 +84,15 @@ public class DynamicPricingJobIntegrationTests : IAsyncLifetime
     {
         // Arrange
         var propertyId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
         var property = CreateTestProperty(propertyId, "Test Property", "IT-ABC123-DEF456", 100m);
+        property.OrgId = orgId;
 
         var config = new PricingAdapterConfig
         {
             Id = Guid.NewGuid(),
             PropertyId = propertyId,
+            OrgId = orgId,
             IsEnabled = true,
             IncludeSeasonality = true,
             IncludePublicHolidays = false,
@@ -124,6 +127,7 @@ public class DynamicPricingJobIntegrationTests : IAsyncLifetime
         Assert.All(historyRecords, h =>
         {
             Assert.Equal(propertyId, h.PropertyId);
+            Assert.Equal(orgId, h.OrgId); // TN-2: history rows carry the config's (property's) org
             Assert.Equal(120m, h.NewPrice); // 100 * 1.2
             Assert.Equal(100m, h.PreviousPrice);
             Assert.Equal("Pending", h.SyncStatus);

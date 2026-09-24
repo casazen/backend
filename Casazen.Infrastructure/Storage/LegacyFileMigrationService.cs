@@ -20,6 +20,7 @@ namespace Casazen.Infrastructure.Storage;
 /// Re-running it is safe: migrated references are no longer legacy paths, and objects already in the
 /// storage are not uploaded again. References whose file is missing on disk and in the storage are
 /// left unchanged and reported. Command: <c>dotnet Casazen.Web.dll storage:migrate-legacy [--dry-run]</c>.
+/// Its queries use <c>IgnoreQueryFilters()</c>: a maintenance command over the files of every org (TN-2).
 /// </summary>
 public sealed class LegacyFileMigrationService(
     AppDbContext db,

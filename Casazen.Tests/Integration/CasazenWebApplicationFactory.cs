@@ -308,12 +308,14 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var orgId = await db.Properties.Where(p => p.Id == propertyId).Select(p => p.OrgId).SingleAsync();
 
         for (var i = 0; i < count; i++)
         {
             db.PricingHistories.Add(new PricingHistory
             {
                 PropertyId = propertyId,
+                OrgId = orgId,
                 AdaptationDate = DateTime.UtcNow.AddDays(-i),
                 PreviousPrice = 100m,
                 NewPrice = 110m + i,

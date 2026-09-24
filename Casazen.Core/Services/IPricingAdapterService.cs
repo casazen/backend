@@ -26,10 +26,11 @@ public interface IPricingAdapterService
     Task<PricingAdapterConfig> SaveConfigAsync(PricingAdapterConfig config);
 
     /// <summary>
-    /// Record a pricing history entry for a property.
+    /// Record a pricing history entry for a property; <paramref name="orgId"/> is the property's org.
     /// </summary>
     Task<PricingHistory> RecordPricingChangeAsync(
         Guid propertyId,
+        Guid orgId,
         decimal previousPrice,
         decimal newPrice,
         string changeReason,

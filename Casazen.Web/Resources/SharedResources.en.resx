@@ -204,6 +204,24 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
+  <data name="CheckInFieldRequired" xml:space="preserve">
+    <value>This field is required.</value>
+  </data>
+  <data name="CheckInFieldMaxLength" xml:space="preserve">
+    <value>Enter at most {1} characters.</value>
+  </data>
+  <data name="CheckInGenderInvalid" xml:space="preserve">
+    <value>Select male or female: these are the only values Alloggiati Web accepts.</value>
+  </data>
+  <data name="CheckInDocumentTypeInvalid" xml:space="preserve">
+    <value>Invalid document type.</value>
+  </data>
+  <data name="CheckInGdprConsentRequired" xml:space="preserve">
+    <value>You must consent to data processing to complete the check-in.</value>
+  </data>
+  <data name="CheckInAlreadySubmitted" xml:space="preserve">
+    <value>The check-in has already been completed.</value>
+  </data>
   <data name="DocumentFileMissing" xml:space="preserve">
     <value>The file of this document is no longer available: please upload it again.</value>
   </data>

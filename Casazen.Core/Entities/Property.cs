@@ -2,13 +2,14 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
 [Table("Properties")]
-public class Property
+public class Property : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

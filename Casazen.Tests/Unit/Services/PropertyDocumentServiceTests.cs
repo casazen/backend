@@ -50,7 +50,8 @@ public class PropertyDocumentServiceTests
             UploadedAt = DateTime.UtcNow
         };
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        var orgId = Guid.NewGuid();
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(orgId);
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(expectedDocument);
@@ -62,7 +63,8 @@ public class PropertyDocumentServiceTests
         Assert.NotNull(result);
         Assert.Equal(expectedDocument.Id, result.Id);
         Assert.Equal(propertyId, result.PropertyId);
-        _mockDocumentRepository.Verify(x => x.AddAsync(It.IsAny<PropertyDocument>()), Times.Once);
+        // TN-2: the stored row carries the property's org (tenant filter + FK).
+        _mockDocumentRepository.Verify(x => x.AddAsync(It.Is<PropertyDocument>(d => d.OrgId == orgId && d.PropertyId == propertyId)), Times.Once);
     }
 
     [Fact]
@@ -72,7 +74,7 @@ public class PropertyDocumentServiceTests
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("test-doc.pdf");
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(false);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync((Guid?)null);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -92,7 +94,7 @@ public class PropertyDocumentServiceTests
         var storageUrl = "/uploads/properties/floor-plan.png";
         var savedDocument = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId };
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(savedDocument);
@@ -190,7 +192,7 @@ public class PropertyDocumentServiceTests
         var mockFile = CreateMockFile("ape.pdf");
         var saved = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId, DocumentType = DocumentType.Ape };
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync("/ape.pdf");
         _mockApeCompliance.Setup(x => x.EnsureUploadedFileIsOfficialApeAsync(mockFile.Object)).Returns(Task.CompletedTask);
@@ -207,7 +209,7 @@ public class PropertyDocumentServiceTests
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("not-an-ape.pdf");
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockApeCompliance.Setup(x => x.EnsureUploadedFileIsOfficialApeAsync(mockFile.Object))
             .ThrowsAsync(ApeComplianceException.InvalidContent());

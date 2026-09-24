@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -312,8 +313,6 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseRegistrationAuthorization>()
             .HasIndex(a => a.LeaseContractId);
         modelBuilder.Entity<LeaseRegistrationAuthorization>().HasIndex(a => a.OrgId);
-        modelBuilder.Entity<LeaseRegistrationAuthorization>()
-            .HasQueryFilter(a => !_tenant.FilterEnabled || a.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<RentSchedule>()
             .HasOne(s => s.LeaseContract)
@@ -439,6 +438,12 @@ public class AppDbContext(
         modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
         modelBuilder.Entity<User>().HasIndex(u => u.OrgId);
         modelBuilder.Entity<Guest>().HasIndex(g => g.OrgId);
+        // TN-2: child rows that controllers expose carry their parent's OrgId.
+        modelBuilder.Entity<PropertyDocument>().HasIndex(d => d.OrgId);
+        modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.OrgId);
+        modelBuilder.Entity<PricingAdapterConfig>().HasIndex(c => c.OrgId);
+        modelBuilder.Entity<PricingHistory>().HasIndex(h => h.OrgId);
+        modelBuilder.Entity<AlloggiatiWebReport>().HasIndex(r => r.OrgId);
 
         // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
         // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
@@ -483,18 +488,27 @@ public class AppDbContext(
         modelBuilder.Entity<Guest>()
             .HasOne(g => g.Org).WithMany().HasForeignKey(g => g.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        // Global tenant query filter (AC7): every read of a tenant-scoped table is scoped
-        // to the caller's OrgId. Fail-closed when the caller has no org; disabled for
-        // anonymous/system contexts (background jobs, design-time, unit tests).
-        modelBuilder.Entity<Property>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<Booking>().HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<LeaseContract>().HasQueryFilter(l => !_tenant.FilterEnabled || l.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<Payment>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<PropertyFiscalYear>().HasQueryFilter(y => !_tenant.FilterEnabled || y.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<RentSchedule>().HasQueryFilter(s => !_tenant.FilterEnabled || s.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<RentLedgerEntry>().HasQueryFilter(e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<Guest>().HasQueryFilter(g => !_tenant.FilterEnabled || g.OrgId == _tenant.OrgId);
+        // TN-2: child rows copy the OrgId of their parent (property or booking) when they are created.
+        // Restrict like every other OrgId FK; no navigation, the org is never loaded through a child.
+        modelBuilder.Entity<PropertyDocument>()
+            .HasOne<Org>().WithMany().HasForeignKey(d => d.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OtaIntegration>()
+            .HasOne<Org>().WithMany().HasForeignKey(o => o.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PricingAdapterConfig>()
+            .HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PricingHistory>()
+            .HasOne<Org>().WithMany().HasForeignKey(h => h.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<GuestCheckInSession>()
+            .HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<GuestCheckInSession>().HasIndex(s => s.OrgId);
 
         modelBuilder.Entity<AppContextEntity>()
             .HasKey(c => c.Key);
@@ -617,9 +631,6 @@ public class AppDbContext(
             .HasIndex(b => new { b.PropertyId, b.ExternalUid })
             .IsUnique();
 
-        modelBuilder.Entity<CalendarBlock>()
-            .HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
-
         modelBuilder.Entity<PropertyICalFeed>()
             .HasOne(f => f.Property)
             .WithMany()
@@ -639,9 +650,6 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyICalFeed>()
             .HasIndex(f => f.ExportToken)
             .IsUnique();
-
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasQueryFilter(f => !_tenant.FilterEnabled || f.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
@@ -730,5 +738,39 @@ public class AppDbContext(
             entity.HasIndex(d => d.UserId)
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
         });
+
+        ApplyTenantQueryFilters(modelBuilder);
     }
+
+    /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
+    public const string TenantQueryFilter = "Tenant";
+
+    private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
+        .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    /// <summary>
+    /// Global tenant query filter (AC7, TN-2): every read of an <see cref="ITenantOwned"/> entity is scoped
+    /// to the caller's OrgId. Fail-closed when an authenticated caller has no org; disabled for
+    /// anonymous/system contexts (public endpoints, background jobs, design-time, unit tests), where
+    /// every query filters explicitly. Registered for every ITenantOwned entity of the model, so a new
+    /// tenant entity cannot be left unfiltered by forgetting a line here.
+    /// </summary>
+    private void ApplyTenantQueryFilters(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (entityType.BaseType is null
+                && !entityType.IsOwned()
+                && typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType))
+            {
+                ApplyTenantQueryFilterMethod.MakeGenericMethod(entityType.ClrType).Invoke(this, [modelBuilder]);
+            }
+        }
+    }
+
+    // The lambda reads _tenant through this context instance, so EF re-evaluates it for every query.
+    private void ApplyTenantQueryFilter<TEntity>(ModelBuilder modelBuilder)
+        where TEntity : class, ITenantOwned =>
+        modelBuilder.Entity<TEntity>()
+            .HasQueryFilter(TenantQueryFilter, e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
 }
