@@ -52,6 +52,7 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.StartDate,
                 l.EndDate,
                 l.MonthlyRent,
+                l.StipulaDate,
                 l.RegistrationDeadline,
                 l.Parties.Count,
                 l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),

@@ -40,13 +40,17 @@ public interface IRliChecklistService
     Task<RliChecklistResult> GetAsync(LeaseContract lease, CancellationToken cancellationToken = default);
 }
 
+/// <param name="RegistrationDeadline">
+/// <c>min(stipula, start) + 30</c> days (LT-04, <c>RliRegistrationDeadline</c>); null while it is to be determined.
+/// </param>
+/// <param name="DaysRemaining">Days to the deadline on the Rome calendar: 0 on the deadline day, negative after it; null with no deadline.</param>
 /// <param name="ProviderFilingAvailable">
 /// The provider path exists (<c>Features:RliProvider</c> on and a configured provider): only then the delega item is
 /// listed and the frontend offers "submit through the provider". Otherwise the landlord registers manually (LT-01).
 /// </param>
 public record RliChecklistResult(
-    DateTime RegistrationDeadline,
-    int DaysRemaining,
+    DateTime? RegistrationDeadline,
+    int? DaysRemaining,
     string TosVersion,
     string AttestationText,
     bool ProviderFilingAvailable,

@@ -18,6 +18,9 @@ public class OrgDomainController(
     IOrgContextResolver orgContextResolver,
     IOrgDomainService orgDomainService) : ControllerBase
 {
+    /// <summary>422: subdomain mode requested while <c>PublicHost__BaseDomain</c> is not configured (D3, no default).</summary>
+    public const string SubdomainsNotConfiguredCode = "subdomains_not_configured";
+
     [HttpGet]
     [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -67,6 +70,10 @@ public class OrgDomainController(
                 new { code = "plan_required", requiredPlan = "Pro" }),
             SetOrgDomainOutcome.Conflict => Conflict(new { error = "Domain or subdomain already in use" }),
             SetOrgDomainOutcome.ValidationError => BadRequest(new { error = result.ErrorMessage }),
+            SetOrgDomainOutcome.SubdomainsNotConfigured => this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                SubdomainsNotConfiguredCode,
+                "OrgDomainSubdomainsNotConfigured"),
             _ => BadRequest(new { error = result.ErrorMessage ?? "Invalid domain configuration" }),
         };
     }

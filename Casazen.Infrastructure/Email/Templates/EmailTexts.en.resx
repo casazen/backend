@@ -174,6 +174,9 @@
   <data name="RliDeadlineOverdue_Body" xml:space="preserve">
     <value>The RLI registration deadline of the lease for &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{1}&lt;/strong&gt; and the registration is not complete.</value>
   </data>
+  <data name="RliDeadline_NotSignedYet" xml:space="preserve">
+    <value>The contract has not been signed by every party in CasaZen yet. Its start date has already passed: the registration period counts from that date.</value>
+  </data>
   <data name="RliDeadline_Responsibility" xml:space="preserve">
     <value>CasaZen does not file unattended. Filing remains the responsibility of the landlord or an authorized intermediary. Draft wording pending counsel.</value>
   </data>

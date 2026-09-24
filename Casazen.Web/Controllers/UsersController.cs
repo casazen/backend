@@ -110,6 +110,29 @@ public class UsersController(
     public Task<ActionResult<OnboardingResponseDto>> PutOnboarding([FromBody] OnboardingRequestDto dto) =>
         CompleteOnboardingAsync(dto, requireConsents: false);
 
+    /// <summary>
+    /// Records where the caller's signup came from (SE-03): UTM parameters, comune of the SEO page, landing path and
+    /// referrer host, sent by the web app after the first onboarding. Idempotent: only the first attribution of the org
+    /// is kept (<c>recorded: false</c> afterwards). 422 <c>signup_attribution_onboarding_required</c> before the
+    /// onboarding, 400 <c>validation_error</c> for a value outside the rules (nothing stored).
+    /// </summary>
+    [HttpPost("me/signup-attribution")]
+    [ProducesResponseType(typeof(SignupAttributionResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SignupAttributionResultDto>> RecordSignupAttribution(
+        [FromBody] SignupAttributionRequestDto dto,
+        [FromServices] ISignupAttributionService signupAttributionService,
+        CancellationToken cancellationToken)
+    {
+        var sub = GetSub();
+        if (sub == null)
+            return Unauthorized();
+
+        var recorded = await signupAttributionService.RecordAsync(sub, dto.ToInput(), cancellationToken);
+        return Ok(new SignupAttributionResultDto { Recorded = recorded });
+    }
+
     /// <summary>Updates the caller's own profile (first name, last name, phone).</summary>
     [HttpPut("me")]
     public async Task<ActionResult<UserDetailDto>> UpdateMe([FromBody] UpdateProfileDto dto)

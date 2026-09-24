@@ -5,8 +5,8 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
@@ -23,7 +23,7 @@ public partial class OrgDomainService(
     IDomainVerificationService domainVerificationService,
     IPublicHostResolver publicHostResolver,
     IOptions<PublicHostOptions> options,
-    IConfiguration configuration) : IOrgDomainService
+    PublicSiteLinks publicSiteLinks) : IOrgDomainService
 {
     private const string DefaultDomainRequiredMessage = "Il dominio personalizzato è obbligatorio per questa modalità.";
     private const string SubdomainRequiredMessage = "Il sottodominio è obbligatorio per questa modalità.";
@@ -54,7 +54,7 @@ public partial class OrgDomainService(
             return new SetOrgDomainResult(SetOrgDomainOutcome.NotFound, null);
 
         var previousCustomDomain = org.CustomDomain;
-        var previousSubdomainHost = org.Subdomain is null ? null : $"{org.Subdomain}.{options.Value.BaseDomain}";
+        var previousSubdomainHost = SubdomainHost(org.Subdomain);
 
         switch (hostMode)
         {
@@ -92,6 +92,10 @@ public partial class OrgDomainService(
 
             case PublicHostMode.CasazenSubdomain:
                 {
+                    // D3: no default base domain; without PublicHost:BaseDomain there is no subdomain to publish on.
+                    if (options.Value.NormalizedBaseDomain is null)
+                        return new SetOrgDomainResult(SetOrgDomainOutcome.SubdomainsNotConfigured, null);
+
                     var candidateLabel = string.IsNullOrWhiteSpace(subdomain) ? org.Slug : subdomain;
                     if (string.IsNullOrWhiteSpace(candidateLabel))
                         return new SetOrgDomainResult(SetOrgDomainOutcome.ValidationError, null, SubdomainRequiredMessage);
@@ -145,8 +149,8 @@ public partial class OrgDomainService(
             publicHostResolver.InvalidateCacheForHost(previousSubdomainHost);
         if (org.CustomDomain is not null)
             publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
-        if (org.Subdomain is not null)
-            publicHostResolver.InvalidateCacheForHost($"{org.Subdomain}.{options.Value.BaseDomain}");
+        if (SubdomainHost(org.Subdomain) is { } subdomainHost)
+            publicHostResolver.InvalidateCacheForHost(subdomainHost);
 
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
         return new SetOrgDomainResult(SetOrgDomainOutcome.Success, BuildConfig(org, canUseCustomDomain));
@@ -202,12 +206,19 @@ public partial class OrgDomainService(
 
     private PublicUrls BuildPublicUrls(Org org)
     {
-        var baseUrl = (configuration["App:PublicSiteBaseUrl"] ?? "https://casazen.app").TrimEnd('/');
-        var pathUrl = $"{baseUrl}/book/{org.Slug}";
-        var subdomainUrl = org.Subdomain is null ? null : $"https://{org.Subdomain}.{options.Value.BaseDomain}";
+        // On App:PublicSiteBaseUrl (D3, no fallback domain); a relative path only when it is not configured
+        // (Development/Testing: elsewhere the startup fails).
+        var path = $"/book/{Uri.EscapeDataString(org.Slug)}";
+        var pathUrl = publicSiteLinks.TryPublicPage(path) ?? path;
+        var subdomainHost = SubdomainHost(org.Subdomain);
+        var subdomainUrl = subdomainHost is null ? null : $"https://{subdomainHost}";
         var customDomainUrl = org.CustomDomain is null ? null : $"https://{org.CustomDomain}";
         return new PublicUrls(pathUrl, subdomainUrl, customDomainUrl);
     }
+
+    /// <summary>Host of an org subdomain, <c>null</c> without a label or without <c>PublicHost:BaseDomain</c>.</summary>
+    private string? SubdomainHost(string? label) =>
+        label is null || options.Value.NormalizedBaseDomain is not { } baseDomain ? null : $"{label}.{baseDomain}";
 
     private static string GenerateVerificationToken()
     {
@@ -242,8 +253,9 @@ public partial class OrgDomainService(
         if (System.Net.IPAddress.TryParse(candidate, out _))
             return false;
 
-        var baseDomain = options.Value.BaseDomain.Trim().ToLowerInvariant();
-        if (candidate == baseDomain || candidate.EndsWith($".{baseDomain}", StringComparison.Ordinal))
+        var baseDomain = options.Value.NormalizedBaseDomain;
+        if (baseDomain is not null
+            && (candidate == baseDomain || candidate.EndsWith($".{baseDomain}", StringComparison.Ordinal)))
             return false;
 
         if (!HostnameRegex().IsMatch(candidate) || !candidate.Contains('.'))
