@@ -54,6 +54,7 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(FiscalController), CasazenPolicies.PropertyRead)]
     [InlineData(typeof(LeasesController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(CanoneConcordatoController), CasazenPolicies.LeaseRead)]
+    [InlineData(typeof(LongRentServiceRequestsController), CasazenPolicies.LongRentPropertyRead)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)
     {
         var classPolicies = controllerType
@@ -89,6 +90,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Complete), "RequireSupplier")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Reject), "RequireSupplier")]
     [InlineData(typeof(SuppliersController), nameof(SuppliersController.GetSuppliers), "RequireContext:short-rent:property.read")]
+    [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.Create), "RequireContext:long-rent:property.write")]
+    [InlineData(typeof(LongRentServiceRequestsController), nameof(LongRentServiceRequestsController.MarkPaid), "RequireContext:long-rent:property.write")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
     public void SensitiveAction_MustRequireExpectedContextPolicy(
         Type controllerType,

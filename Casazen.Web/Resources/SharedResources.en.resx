@@ -738,4 +738,13 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
   </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
+  </data>
+  <data name="ServiceRequestBookingMismatch" xml:space="preserve">
+    <value>The booking is not a stay of this property.</value>
+  </data>
+  <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
+    <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
+  </data>
 </root>

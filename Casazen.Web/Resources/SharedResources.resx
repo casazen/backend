@@ -738,4 +738,13 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
+  </data>
+  <data name="ServiceRequestBookingMismatch" xml:space="preserve">
+    <value>La prenotazione indicata non è un soggiorno di questo immobile.</value>
+  </data>
+  <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
+    <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
+  </data>
 </root>
