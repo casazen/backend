@@ -16,6 +16,7 @@ public class PublicBookingsController(
     IBookingService bookingService,
     IOnSiteBookingRequestService onSiteRequests,
     ICheckoutOutcomeService checkoutOutcomes,
+    IGuestBookingLookupService guestBookings,
     TimeProvider? timeProvider = null) : ControllerBase
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -106,34 +107,58 @@ public class PublicBookingsController(
         return Ok(CheckoutPaymentSessionResponse.From(session));
     }
 
+    /// <summary>
+    /// "Le mie prenotazioni" (BK-11, A3-10, R-06): the booking of this site with the booking code of the confirmation email
+    /// and the email the booking was made with; state, stay, amounts, online check-in and the host's contact, no personal
+    /// data. A code that does not exist, a code of another site and a wrong email all get the same 404
+    /// <c>guest_booking_not_found</c>. Rate limited per client IP (<see cref="RateLimitPolicies.PublicGuestBookingLookup"/>)
+    /// and per email (<see cref="GuestBookingEmailRateLimiter"/>): 429 <c>rate_limited</c>.
+    /// </summary>
     [HttpPost("lookup")]
-    [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
-    public async Task<ActionResult<GuestBookingLookupResponse>> LookupGuestBookings(
-        [FromBody] GuestBookingLookupRequest request)
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [GuestBookingEmailRateLimit]
+    [ProducesResponseType(typeof(GuestBookingLookupResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<GuestBookingLookupResponse>> LookupGuestBooking(
+        [FromBody] GuestBookingLookupRequest request,
+        CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var booking = await bookingService.GetBookingAsync(request.BookingId!.Value);
-        if (booking is null ||
-            booking.Status == BookingStatus.Cancelled ||
-            !string.Equals(booking.Guest.Email, request.Email, StringComparison.OrdinalIgnoreCase))
-        {
-            return Ok(new GuestBookingLookupResponse([]));
-        }
-
-        return Ok(new GuestBookingLookupResponse([
-            new GuestBookingItem(
-                booking.Id,
-                booking.Property.Name,
-                booking.Property.City,
-                booking.CheckInDate,
-                booking.CheckOutDate,
-                booking.Status,
-                booking.PaymentOption,
-                booking.FreeRefundDeadline ?? booking.CheckInDate.AddDays(-7))
-        ]));
+        var booking = await guestBookings.FindAsync(Credentials(request), cancellationToken);
+        return Ok(GuestBookingLookupResponse.From(booking));
     }
+
+    /// <summary>
+    /// "Le mie prenotazioni": emails the online check-in link (CO-02) again to the address of the booking, with the same
+    /// code + email check and limits as the lookup. 202 when queued; 404 <c>guest_booking_not_found</c>; 409
+    /// <c>guest_check_in_link_unavailable</c> when the check-in is not open (not confirmed, too early, completed, over).
+    /// The link is never in the answer: only the guest's mailbox receives it.
+    /// </summary>
+    [HttpPost("lookup/check-in-link")]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [GuestBookingEmailRateLimit]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> SendGuestCheckInLink(
+        [FromBody] GuestBookingLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        await guestBookings.SendCheckInLinkAsync(Credentials(request), cancellationToken);
+        return Accepted();
+    }
+
+    private static GuestBookingCredentials Credentials(GuestBookingLookupRequest request) =>
+        new(request.OrgSlug, request.BookingCode, request.Email);
 
     /// <summary>
     /// Price of a stay before booking (BK-03, A3-02, R-05): lodging, cleaning and the tourist tax computed by the only

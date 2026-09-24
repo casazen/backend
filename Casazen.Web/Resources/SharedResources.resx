@@ -699,4 +699,25 @@
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
     <value>Il check-out si può registrare dal giorno di partenza.</value>
   </data>
+  <data name="GuestBookingNotFound" xml:space="preserve">
+    <value>Nessuna prenotazione corrisponde a questo codice e a questo indirizzo email. Controlla il codice nell'email di conferma e usa l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
+    <value>Il link per il check-in online non può essere inviato ora: la prenotazione non è confermata, il check-in è già completato oppure non è ancora il momento.</value>
+  </data>
+  <data name="GuestBookingOrgRequired" xml:space="preserve">
+    <value>Il sito di prenotazione non è indicato: apri di nuovo «Le mie prenotazioni» dal sito della struttura.</value>
+  </data>
+  <data name="GuestBookingCodeRequired" xml:space="preserve">
+    <value>Inserisci il codice prenotazione.</value>
+  </data>
+  <data name="GuestBookingCodeInvalid" xml:space="preserve">
+    <value>Il codice prenotazione non è valido: controlla l'email di conferma.</value>
+  </data>
+  <data name="GuestBookingEmailRequired" xml:space="preserve">
+    <value>Inserisci l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="GuestBookingEmailInvalid" xml:space="preserve">
+    <value>Indirizzo email non valido.</value>
+  </data>
 </root>

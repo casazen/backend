@@ -159,6 +159,15 @@ public class Booking : ITenantOwned
     [MaxLength(64)]
     public string? CheckoutTokenHash { get; set; }
 
+    /// <summary>
+    /// Booking code of the guest (BK-11, A3-10): shown in the confirmation email and on the checkout outcome page, and
+    /// asked with the guest's email by "Le mie prenotazioni". Random, readable, unique per org, never the booking id
+    /// (<see cref="Services.BookingCodes"/>). Stored without separator, shown as <c>XXXXX-XXXXX</c>.
+    /// </summary>
+    [Required]
+    [MaxLength(Services.BookingCodes.Length)]
+    public string BookingCode { get; set; } = Services.BookingCodes.New();
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

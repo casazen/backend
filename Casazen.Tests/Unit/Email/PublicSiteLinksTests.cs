@@ -66,6 +66,17 @@ public class PublicSiteLinksTests
     }
 
     [Fact]
+    public void GuestBookings_WithBookingCode_PrefillsTheCodeOnly()
+    {
+        var links = EmailTestHelpers.Links("https://app.example.org/");
+
+        // BK-11: the page opens with the code filled in and still asks for the email; no booking id, email or token.
+        Assert.Equal(
+            "https://app.example.org/book/villa-rosa/my-bookings?code=K7M4Q-9XP2H",
+            links.GuestBookings("villa-rosa", "K7M4Q-9XP2H"));
+    }
+
+    [Fact]
     public void HostBooking_BookingId_PointsToConsoleBookingDetail()
     {
         var links = EmailTestHelpers.Links("https://app.example.org");

@@ -350,6 +350,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOnSiteBookingRequestService, OnSiteBookingRequestService>();
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
+        services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
         services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
