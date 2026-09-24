@@ -36,7 +36,7 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         { 3, "GET", "/api/properties/search?city=Nowhere", null },
         { 4, "GET", "/api/properties/0b6a1f0e-5c1d-4d7e-9a51-3f2c1e0a1001/public", null },
         { 5, "GET", "/api/public/bookings/property/0b6a1f0e-5c1d-4d7e-9a51-3f2c1e0a1002/availability", null },
-        { 6, "GET", "/api/public/bookings/0b6a1f0e-5c1d-4d7e-9a51-3f2c1e0a1003/status", null },
+        { 6, "POST", "/api/public/bookings/0b6a1f0e-5c1d-4d7e-9a51-3f2c1e0a1003/confirm-email", "{}" },
         { 7, "POST", "/api/public/bookings/lookup", "{}" },
         { 8, "POST", "/api/public/bookings", "{}" },
         { 9, "GET", "/api/public/checkin/missing-token", null },

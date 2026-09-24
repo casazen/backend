@@ -1,7 +1,7 @@
 ﻿using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,7 +50,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null)
     {
         var query = context.Properties.AsQueryable()
-            .Where(p => p.IsActive && p.ComplianceStatus == PropertyComplianceStatus.Active);
+            .Where(PublicListing.IsPublished);
 
         if (orgId.HasValue)
             query = query.Where(p => p.OrgId == orgId.Value);
