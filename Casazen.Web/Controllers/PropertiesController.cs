@@ -33,14 +33,6 @@ public class PropertiesController(
     IComplianceWizardService complianceWizardService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
-    [HttpGet("health")]
-    [AllowAnonymous]
-    public IActionResult HealthCheck()
-    {
-        logger.LogInformation("Health check called - backend is working!");
-        return Ok(new { status = "healthy", message = "Backend is running", timestamp = DateTime.UtcNow });
-    }
-
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Property>>> GetAll()
     {

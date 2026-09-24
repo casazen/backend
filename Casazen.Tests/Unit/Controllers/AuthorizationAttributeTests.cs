@@ -59,17 +59,6 @@ public class AuthorizationAttributeTests
         );
     }
 
-    [Fact]
-    public void HealthController_ShouldNotHaveAuthorizeAttribute()
-    {
-        // HealthController is intentionally public — verify it stays that way
-        var authorizeAttr = typeof(HealthController)
-            .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
-            .FirstOrDefault();
-
-        Assert.Null(authorizeAttr);
-    }
-
     [Theory]
     [InlineData(typeof(GdprController), nameof(GdprController.ExportGuestData), "RequireContext:short-rent:guest.read")]
     [InlineData(typeof(GdprController), nameof(GdprController.DeleteGuestData), "RequireContext:short-rent:guest.write")]

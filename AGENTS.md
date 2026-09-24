@@ -46,7 +46,7 @@ dotnet format --verify-no-changes
 
 ### Health / smoke checks
 
-- `GET http://localhost:5000/api/health` → **200** (public)
+- `GET http://localhost:5000/api/health/live` → **200**; `/api/health/ready` (and `/api/health`) → **200** `degraded` when Stripe/email/Auth0 M2M are not configured locally, **503** when the database or Hangfire is down (`docs/runbooks/health-checks.md`)
 - `GET http://localhost:5000/api/properties` → **401** (auth gate)
 - Swagger: `http://localhost:5000/swagger`
 
