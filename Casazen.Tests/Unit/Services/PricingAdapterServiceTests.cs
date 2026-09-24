@@ -211,6 +211,7 @@ public class PricingAdapterServiceTests
     {
         // Arrange
         var propertyId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
         var previousPrice = 100m;
         var newPrice = 130m;
         var reason = "High season adjustment";
@@ -224,6 +225,7 @@ public class PricingAdapterServiceTests
         // Act
         var result = await _service.RecordPricingChangeAsync(
             propertyId,
+            orgId,
             previousPrice,
             newPrice,
             reason,
@@ -232,6 +234,7 @@ public class PricingAdapterServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal(propertyId, result.PropertyId);
+        Assert.Equal(orgId, result.OrgId);
         Assert.Equal(previousPrice, result.PreviousPrice);
         Assert.Equal(newPrice, result.NewPrice);
         Assert.Equal(reason, result.ChangeReason);
@@ -255,6 +258,7 @@ public class PricingAdapterServiceTests
         // Act
         var result = await _service.RecordPricingChangeAsync(
             propertyId,
+            Guid.NewGuid(),
             100m,
             130m,
             "Test",

@@ -16,8 +16,8 @@ public class PropertyDocumentService(
 {
     public async Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
     {
-        var exists = await propertyRepository.ExistsAsync(propertyId);
-        if (!exists)
+        var orgId = await propertyRepository.GetOrgIdAsync(propertyId);
+        if (orgId is null)
         {
             throw new InvalidOperationException($"Property {propertyId} not found");
         }
@@ -37,6 +37,7 @@ public class PropertyDocumentService(
             var document = new PropertyDocument
             {
                 PropertyId = propertyId,
+                OrgId = orgId.Value,
                 FileName = file.FileName,
                 StorageUrl = storageUrl,
                 DocumentType = documentType,

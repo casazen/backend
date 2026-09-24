@@ -87,6 +87,9 @@ public class OnboardingService(
         var orgProvisioned = user.OrgId.HasValue;
         var orgId = user.OrgId;
 
+        // IgnoreQueryFilters below: every query is scoped explicitly to the caller's own org, read from
+        // Users just now. The tenant filter may still hold the null org cached before OrgContextResolver
+        // provisioned the org earlier in this same request, and would then hide the caller's own rows.
         var consentsAccepted = false;
         if (orgId.HasValue)
         {
@@ -112,7 +115,7 @@ public class OnboardingService(
         Org? org = null;
         if (orgId.HasValue)
         {
-            org = await db.Orgs.AsNoTracking().IgnoreQueryFilters()
+            org = await db.Orgs.AsNoTracking()
                 .FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         }
 

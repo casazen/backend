@@ -104,7 +104,7 @@ public class DynamicPricingJob
         var dailyMultipliers = await ComputeDailyMultipliersAsync(startDate, endDate, config);
 
         // Record PricingHistory entries for adapted dates
-        await RecordPricingHistoryAsync(config.PropertyId, dailyMultipliers);
+        await RecordPricingHistoryAsync(config.PropertyId, config.OrgId, dailyMultipliers);
 
         // Update config timestamps
         config.LastAdaptedAt = DateTime.UtcNow;
@@ -177,6 +177,7 @@ public class DynamicPricingJob
     /// </summary>
     private async Task RecordPricingHistoryAsync(
         Guid propertyId,
+        Guid orgId,
         Dictionary<DateTime, decimal> dailyMultipliers)
     {
         foreach (var kvp in dailyMultipliers)
@@ -192,6 +193,7 @@ public class DynamicPricingJob
             var history = new Core.Entities.PricingHistory
             {
                 PropertyId = propertyId,
+                OrgId = orgId,
                 AdaptationDate = date,
                 PreviousPrice = basePrice,
                 NewPrice = newPrice,

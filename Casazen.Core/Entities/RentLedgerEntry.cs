@@ -1,11 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
 [Table("RentLedgerEntries")]
-public class RentLedgerEntry
+public class RentLedgerEntry : ITenantOwned
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();

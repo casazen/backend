@@ -42,6 +42,7 @@ public class MigrationSqlTests
         {
             "AddStrFiscalRegime2026", "AddTerritorialRentAgreements", "AddLeaseRegistrationAuthorization",
             "AddLongRentPropertyPermissions", "AddGuestOrgIdNullable", "BackfillGuestOrgIds", "MakeGuestOrgIdRequired",
+            "AddChildEntityOrgIdNullable", "BackfillChildEntityOrgIds", "MakeChildEntityOrgIdsRequired",
         }.Select(name => keys.FindIndex(k => k.EndsWith(name, StringComparison.Ordinal))).ToList();
         Assert.All(ordered, index => Assert.True(index >= 0));
         Assert.Equal(ordered.Order(), ordered);
@@ -242,5 +243,41 @@ public class MigrationSqlTests
         Assert.True(guard >= 0 && notNull > guard, "The pre-flight guard must precede the NOT NULL flip");
         Assert.Contains("FK_Guests_Orgs_OrgId", step3);
         Assert.Contains("ON DELETE RESTRICT", step3);
+    }
+
+    [Fact]
+    public void ChildEntityOrgMigrations_AddNullableThenBackfillFromParentThenGuardBeforeNotNullAndRestrictFk() // TN-2
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var addNullable = keys.Single(k => k.EndsWith("AddChildEntityOrgIdNullable", StringComparison.Ordinal));
+        var backfill = keys.Single(k => k.EndsWith("BackfillChildEntityOrgIds", StringComparison.Ordinal));
+        var makeRequired = keys.Single(k => k.EndsWith("MakeChildEntityOrgIdsRequired", StringComparison.Ordinal));
+        var migrator = db.GetService<IMigrator>();
+        var previous = keys[keys.IndexOf(addNullable) - 1];
+
+        var step1 = migrator.GenerateScript(fromMigration: previous, toMigration: addNullable);
+        var step2 = migrator.GenerateScript(fromMigration: addNullable, toMigration: backfill);
+        var step3 = migrator.GenerateScript(fromMigration: backfill, toMigration: makeRequired);
+        var down3 = migrator.GenerateScript(fromMigration: makeRequired, toMigration: backfill);
+
+        string[] children = ["PropertyDocuments", "OtaIntegrations", "PricingAdapterConfigs", "PricingHistories", "AlloggiatiWebReports"];
+        Assert.All(children, table => Assert.Contains($"ALTER TABLE \"{table}\" ADD \"OrgId\" uuid;", step1));
+        Assert.DoesNotContain("SET NOT NULL", step1);
+
+        Assert.Contains("FROM \"Properties\" p", step2);
+        Assert.Contains("UPDATE \"AlloggiatiWebReports\" r", step2);
+        Assert.Contains("UPDATE \"GuestCheckInSessions\" s", step2);
+        Assert.Contains("IS DISTINCT FROM", step2);
+        Assert.Contains("RAISE NOTICE 'BackfillChildEntityOrgIds", step2);
+
+        var guard = step3.IndexOf("Pre-flight failed", StringComparison.Ordinal);
+        var notNull = step3.IndexOf("ALTER COLUMN \"OrgId\" SET NOT NULL", StringComparison.Ordinal);
+        Assert.True(guard >= 0 && notNull > guard, "The pre-flight guard must precede the NOT NULL flip");
+        Assert.All(children.Append("GuestCheckInSessions"), table => Assert.Contains($"FK_{table}_Orgs_OrgId", step3));
+        Assert.DoesNotContain("ON DELETE CASCADE", step3);
+
+        Assert.Contains("DROP CONSTRAINT \"FK_PropertyDocuments_Orgs_OrgId\"", down3);
+        Assert.Contains("DROP NOT NULL", down3);
     }
 }

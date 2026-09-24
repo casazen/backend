@@ -1,11 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
 [Table("ConsentRecords")]
-public class ConsentRecord
+public class ConsentRecord : ITenantOwned
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();

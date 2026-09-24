@@ -269,6 +269,7 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
             {
                 BookingId = bookingId,
                 GuestId = guestId,
+                OrgId = property.OrgId,
                 Status = AlloggiatiWebStatus.Confirmed,
             });
             await db.SaveChangesAsync();

@@ -35,8 +35,8 @@ public class AdminService(
         var now = DateTime.UtcNow;
         var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Platform-wide admin read (AdminOnly). The EF global tenant filter scopes the four tenant
-        // tables to the caller's org; admins typically have no org, so the dashboard would silently
+        // Platform-wide admin read (AdminOnly). The EF global tenant filter scopes every tenant
+        // table to the caller's org; admins typically have no org, so the dashboard would silently
         // go empty. Per design §Security Notes this AdminOnly path BYPASSES the filter with
         // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
@@ -65,11 +65,12 @@ public class AdminService(
             .SumAsync(p => (decimal?)p.Amount) ?? 0m;
 
         // OTA sync health — server-side aggregates; DateTime.MinValue means never synced
+        // (filter bypassed — platform-wide; OtaIntegrations is tenant-scoped since TN-2)
         var otaSyncCutoff = now - OtaSyncThreshold;
-        var otaNever = await dbContext.OtaIntegrations.CountAsync(o => o.LastSyncAt == default);
-        var otaSynced = await dbContext.OtaIntegrations.CountAsync(o =>
+        var otaNever = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o => o.LastSyncAt == default);
+        var otaSynced = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o =>
             o.LastSyncAt != default && o.LastSyncAt >= otaSyncCutoff);
-        var otaFailed = await dbContext.OtaIntegrations.CountAsync(o =>
+        var otaFailed = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o =>
             o.LastSyncAt != default && o.LastSyncAt < otaSyncCutoff);
 
         return new AdminStats(
