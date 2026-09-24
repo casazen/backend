@@ -34,6 +34,7 @@ public class EndpointAuthorizationArchitectureTests
         ["UsersController.RecordSignupAttribution"] = "Signup attribution of the org the caller's own first onboarding created (SE-03); the service reads the org from the caller's user row.",
         ["DevicesController.Register"] = "Push token of the caller's own device (hosts and suppliers alike); rows keyed by the caller's UserId.",
         ["DevicesController.Unregister"] = "Removes the caller's own push token.",
+        ["SuppliersController.Claim"] = "Links the caller's own account to the supplier profile it registered (claim token or verified email, SU-02): the Supplier role does not exist yet.",
 
         // Catalogs without tenant data.
         ["BillingController.GetPlans"] = "Public plan catalog from configuration; every billing change is RequireOrgBillingAdmin.",
