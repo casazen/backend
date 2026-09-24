@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -63,12 +64,12 @@ public class SeoContentServiceTests
     }
 
     [Fact]
-    public async Task GeneratePages_StopsWhenPlatformAiBudgetExceeded()
+    public async Task GeneratePagesForComuneBatchAsync_BudgetExhausted_StopsBatchAtFirstRefusedCall()
     {
+        // A8-07: the budget guard refuses the call BEFORE the provider (AiBudgetExceededException); the batch must stop
+        // instead of trying (and paying for) every remaining page.
         var seoRepo = new Mock<ISeoContentRepository>();
         seoRepo.Setup(r => r.CountAllPagesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
-        seoRepo.Setup(r => r.GetOrCreatePlatformAiBudgetAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlatformAiBudget { MonthlyTokenCap = 100, TokensUsedThisMonth = 95 });
         seoRepo.Setup(r => r.GetPublishedPageAsync(
                 It.IsAny<SeoPageType>(),
                 It.IsAny<string>(),
@@ -77,30 +78,63 @@ public class SeoContentServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((SeoContentPage?)null);
 
-        var touristTaxRepo = new Mock<ITouristTaxRateRepository>();
-        touristTaxRepo
-            .Setup(r => r.GetActiveByCityAsync("Como", It.IsAny<DateTime>()))
-            .ReturnsAsync(new TouristTaxRate { City = "Como", RatePerPersonPerNight = 2m, IsActive = true });
-
-        var aiProvider = new StubAiProvider(Mock.Of<ILogger<StubAiProvider>>());
-        var config = new ConfigurationBuilder().Build();
-        var logger = new Mock<ILogger<SeoContentService>>();
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiBudgetExceededException());
 
         var service = new SeoContentService(
             seoRepo.Object,
-            touristTaxRepo.Object,
+            Mock.Of<ITouristTaxRateRepository>(),
             Mock.Of<ITouristTaxService>(),
-            aiProvider,
-            config,
-            logger.Object);
+            aiProvider.Object,
+            new ConfigurationBuilder().Build(),
+            Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
-            ["013075"],
-            [SeoPageType.ComplianceGuide],
+            ItalianComuneRegistry.AllCodes.Take(3).ToList(),
+            [SeoPageType.ComplianceGuide, SeoPageType.TouristTaxCalc],
             forceRegenerate: true);
 
         Assert.Equal(0, generated);
+        aiProvider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
         seoRepo.Verify(r => r.AddRevisionAsync(It.IsAny<SeoContentRevision>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RefreshStalePagesAsync_BudgetExhausted_StopsAtFirstRefusedCall()
+    {
+        var codes = ItalianComuneRegistry.AllCodes.Take(3).ToList();
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetPagesNeedingRefreshAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(codes.Select(code => new SeoContentPage
+            {
+                Id = Guid.NewGuid(),
+                ComuneCode = code,
+                PageType = SeoPageType.ComplianceGuide,
+            }).ToList());
+
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiBudgetExceededException());
+
+        var service = new SeoContentService(
+            seoRepo.Object,
+            Mock.Of<ITouristTaxRateRepository>(),
+            Mock.Of<ITouristTaxService>(),
+            aiProvider.Object,
+            new ConfigurationBuilder().Build(),
+            Mock.Of<ILogger<SeoContentService>>());
+
+        var refreshed = await service.RefreshStalePagesAsync();
+
+        Assert.Equal(0, refreshed);
+        aiProvider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

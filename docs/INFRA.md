@@ -387,12 +387,13 @@ Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
 Hangfire__Schema=hangfire_casazen_test
 Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
-# AI supplier discovery (DeepSeek) — replaces Google Places
-Ai__Provider=DeepSeek
-Ai__ApiKey=sk-...
-Ai__Model=deepseek-v4-flash
-Ai__AnthropicBaseUrl=https://api.deepseek.com/anthropic
-Ai__OpenAiBaseUrl=https://api.deepseek.com
+# AI provider — OPTIONAL, default Stub (no external call). Before enabling DeepSeek read docs/runbooks/ai.md:
+# it becomes a subprocessor (legal details to fill in), every call is capped by the platform AI budget.
+# AI supplier discovery stays off (Features__AiSupplierDiscovery, decision D11).
+# Ai__Provider=DeepSeek
+# Ai__ApiKey=sk-...
+# Ai__Subprocessor__Region=[verified processing location]
+# Ai__Subprocessor__TransferMechanism=[legal basis of the transfer outside the EEA]
 # Object storage — Supabase Storage (S3 API), REQUIRED: the API does not start without it (docs/runbooks/storage.md)
 Storage__Provider=S3
 Storage__PublicBaseUrl=https://YOUR_REF.supabase.co/storage/v1/object/public/casazen-<env>-public
@@ -435,6 +436,8 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `Cors__AllowedOrigins` | when the web app is not on a built-in origin | browser calls rejected by CORS | this file |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
+| `Ai__Provider`, `Ai__ApiKey`, `Ai__Subprocessor__*` | no (default `Stub`, no external call) | — | [`ai.md`](runbooks/ai.md) |
+| `Features__OtaPartnerApi`, `Features__AiSupplierDiscovery` | no: leave unset (off, decisions D10/D11) | — | [`feature-flags.md`](runbooks/feature-flags.md) |
 | `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |
 
 GitHub (backend repo, Actions **variables**): `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` — required, `verify-test` / `verify-prod` fail without them.

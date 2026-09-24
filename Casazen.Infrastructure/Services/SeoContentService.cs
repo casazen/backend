@@ -3,6 +3,7 @@ using System.Text;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -181,6 +182,14 @@ public class SeoContentService(
                     if (created)
                         generated++;
                 }
+                catch (AiBudgetExceededException)
+                {
+                    // A8-07: the provider was not called; every following page would hit the same cap, so stop here.
+                    logger.LogWarning(
+                        "Platform AI budget exhausted: SEO batch stopped at {Comune} {PageType} after {Generated} pages",
+                        comune.Name, pageType, generated);
+                    return generated;
+                }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "SEO generation failed for {Comune} {PageType}", comune.Name, pageType);
@@ -246,6 +255,13 @@ public class SeoContentService(
                 if (created)
                     refreshed++;
             }
+            catch (AiBudgetExceededException)
+            {
+                logger.LogWarning(
+                    "Platform AI budget exhausted: SEO refresh stopped at page {PageId} after {Refreshed} pages",
+                    page.Id, refreshed);
+                return refreshed;
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex, "SEO refresh failed for page {PageId}", page.Id);
@@ -295,9 +311,6 @@ public class SeoContentService(
         int ordinalHint,
         CancellationToken cancellationToken)
     {
-        var budget = await repository.GetOrCreatePlatformAiBudgetAsync(cancellationToken);
-        await ResetBudgetIfNeededAsync(budget, cancellationToken);
-
         var taxRate = await touristTaxRateRepository.GetActiveByCityAsync(comune.Name, DateTime.UtcNow);
         var sourceVersion = BuildSourceDataVersion(comune, taxRate);
 
@@ -321,19 +334,9 @@ public class SeoContentService(
 
         var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}";
         var prompt = BuildPrompt(comune, pageType, taxRate);
+        // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
+        // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
         var aiResult = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
-
-        if (!aiResult.FromCache)
-        {
-            if (budget.TokensUsedThisMonth + aiResult.PromptTokens > budget.MonthlyTokenCap)
-            {
-                logger.LogWarning("Platform AI budget exceeded; stopping SEO batch at {Slug}", slug);
-                return false;
-            }
-
-            budget.TokensUsedThisMonth += aiResult.PromptTokens;
-            await repository.SavePlatformAiBudgetAsync(budget, cancellationToken);
-        }
 
         var page = existing ?? new SeoContentPage
         {
