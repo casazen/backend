@@ -8,13 +8,14 @@ namespace Casazen.Core.Services;
 /// (base data, CIN, required documents, D.L. 145/2023 safety checklist) used by the activation wizard, the activation,
 /// the re-evaluation after every change and the nightly check. Transitions:
 /// <list type="bullet">
-/// <item><see cref="PropertyComplianceStatus.Pending"/> → <see cref="PropertyComplianceStatus.Active"/> and
-/// <see cref="PropertyComplianceStatus.Suspended"/> → <see cref="PropertyComplianceStatus.Active"/>: only by the host's
-/// activation (<see cref="ActivateAsync"/>), when no blocker is left. A suspended property whose blockers are solved is
-/// "ready for reactivation", never published again on its own.</item>
+/// <item><see cref="PropertyComplianceStatus.Pending"/> → <see cref="PropertyComplianceStatus.Active"/>: only by the
+/// host's activation (<see cref="ActivateAsync"/>, terms accepted), when no blocker is left.</item>
 /// <item><see cref="PropertyComplianceStatus.Active"/> → <see cref="PropertyComplianceStatus.Suspended"/>: as soon as a
 /// blocker appears (<see cref="ReevaluateAsync"/>), with the blocker codes as reason and one email to the host. The
 /// bookings of the property are left as they are: nothing is cancelled.</item>
+/// <item><see cref="PropertyComplianceStatus.Suspended"/> → <see cref="PropertyComplianceStatus.Active"/>: as soon as
+/// no blocker is left (<see cref="ReevaluateAsync"/> after the change that completes the requirements, the nightly check,
+/// or the host's activation).</item>
 /// </list>
 /// </summary>
 public interface IPropertyComplianceStatusService
@@ -29,11 +30,11 @@ public interface IPropertyComplianceStatusService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Re-evaluates an <see cref="PropertyComplianceStatus.Active"/> property after a change of its CIN, documents,
-    /// checklist or base data, or at the nightly check: with a blocker it becomes
-    /// <see cref="PropertyComplianceStatus.Suspended"/> and the host gets one email. A pending or suspended property is
-    /// left unchanged (never activated here). Idempotent and safe under concurrency: only the call that suspends the
-    /// property notifies the host.
+    /// Re-evaluates a property after a change of its CIN, documents, checklist or base data, or at the nightly check: an
+    /// <see cref="PropertyComplianceStatus.Active"/> one with a blocker becomes <see cref="PropertyComplianceStatus.Suspended"/>
+    /// and the host gets one email; a suspended one without blockers becomes active again; a pending one is left
+    /// unchanged (never activated here). Idempotent and safe under concurrency: only the call that suspends the property
+    /// notifies the host.
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">The property does not exist (or belongs to another org).</exception>
     Task<PropertyComplianceCheck> ReevaluateAsync(Guid propertyId, CancellationToken cancellationToken = default);
@@ -46,8 +47,8 @@ public interface IPropertyComplianceStatusService
     Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Re-evaluates every <see cref="PropertyComplianceStatus.Active"/> property (nightly job, one-shot command of the
-    /// historic recalculation). One run at a time: returns null when another run holds the lock. A property that fails
+    /// Re-evaluates every <see cref="PropertyComplianceStatus.Active"/> or <see cref="PropertyComplianceStatus.Suspended"/>
+    /// property (nightly job, one-shot command of the historic recalculation). One run at a time: returns null when another run holds the lock. A property that fails
     /// is logged and counted, the run goes on. With <paramref name="dryRun"/> nothing is written and no email is queued:
     /// the report says what a real run would do.
     /// </summary>
@@ -58,7 +59,7 @@ public interface IPropertyComplianceStatusService
 /// <param name="PropertyId">The property.</param>
 /// <param name="PreviousStatus">Status before the evaluation.</param>
 /// <param name="Status">Status after the evaluation.</param>
-/// <param name="IncompleteSteps">Blocking steps still incomplete (empty when not evaluated: pending or suspended).</param>
+/// <param name="IncompleteSteps">Blocking steps still incomplete (empty when not evaluated: pending).</param>
 /// <param name="HostNotified">True when this call queued the suspension email to the host.</param>
 public sealed record PropertyComplianceCheck(
     Guid PropertyId,
@@ -69,12 +70,16 @@ public sealed record PropertyComplianceCheck(
 {
     /// <summary>This call moved the property from active to suspended.</summary>
     public bool Suspended => PreviousStatus == PropertyComplianceStatus.Active && Status == PropertyComplianceStatus.Suspended;
+
+    /// <summary>This call moved the property from suspended back to active.</summary>
+    public bool Reactivated => PreviousStatus == PropertyComplianceStatus.Suspended && Status == PropertyComplianceStatus.Active;
 }
 
 /// <summary>Report of <see cref="IPropertyComplianceStatusService.RecalculateAllAsync"/>.</summary>
 /// <param name="DryRun">Nothing was written.</param>
-/// <param name="Checked">Active properties evaluated.</param>
+/// <param name="Checked">Active and suspended properties evaluated.</param>
 /// <param name="Suspended">Properties suspended (or that a real run would suspend).</param>
+/// <param name="Reactivated">Suspended properties active again (or that a real run would reactivate).</param>
 /// <param name="HostsNotified">Suspension emails queued (or that a real run would queue).</param>
 /// <param name="Failed">Properties whose evaluation failed (logged); the run went on.</param>
 /// <param name="SuspendedByBlocker">Suspended properties per blocker code (a property counts once per code).</param>
@@ -82,6 +87,7 @@ public sealed record PropertyComplianceRecalculation(
     bool DryRun,
     int Checked,
     int Suspended,
+    int Reactivated,
     int HostsNotified,
     int Failed,
     IReadOnlyDictionary<string, int> SuspendedByBlocker);

@@ -17,8 +17,9 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// CO-06 (A5-20, A5-36): the compliance status of a property follows its activation blockers. An active property that
-/// loses a requirement is suspended with the reason and one email to the host; a suspended one is republished only by the
-/// host's activation; the first check of a historic property emails only when configured.
+/// loses a requirement is suspended with the reason and one email to the host; a suspended one is reactivated as soon as
+/// its requirements are complete again; a pending one is activated only by the host; the first check of a historic
+/// property emails only when configured.
 /// </summary>
 public class PropertyComplianceStatusServiceTests
 {
@@ -99,9 +100,9 @@ public class PropertyComplianceStatusServiceTests
     }
 
     [Fact]
-    public async Task ReevaluateAsync_SuspendedPropertyWithCinBack_StaysSuspendedUntilTheHostReactivates()
+    public async Task ReevaluateAsync_SuspendedPropertyWithCinBack_ReactivatedWithoutSecondEmail()
     {
-        await using var db = CreateDb(nameof(ReevaluateAsync_SuspendedPropertyWithCinBack_StaysSuspendedUntilTheHostReactivates));
+        await using var db = CreateDb(nameof(ReevaluateAsync_SuspendedPropertyWithCinBack_ReactivatedWithoutSecondEmail));
         var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
         await SetAsync(db, property.Id, p => p.CinCode = null);
         var service = CreateService(db);
@@ -109,20 +110,53 @@ public class PropertyComplianceStatusServiceTests
 
         await SetAsync(db, property.Id, p => p.CinCode = "IT058091C27G5FFZDZ");
         var afterFix = await service.ReevaluateAsync(property.Id);
-        var blockingSteps = await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id));
 
-        Assert.Equal(PropertyComplianceStatus.Suspended, afterFix.Status);
-        Assert.All(blockingSteps, s => Assert.Equal("complete", s.Status)); // ready for reactivation
-
-        var activation = await service.ActivateAsync(property.Id);
-
-        Assert.Equal(PropertyComplianceStatus.Active, activation.Status);
+        Assert.True(afterFix.Reactivated);
+        Assert.False(afterFix.Suspended);
+        Assert.Empty(afterFix.IncompleteSteps);
         var stored = await ReloadAsync(db, property.Id);
         Assert.Equal(PropertyComplianceStatus.Active, stored.ComplianceStatus);
         Assert.Null(stored.ComplianceSuspendedAt);
         Assert.Null(stored.ComplianceSuspensionReasons);
         Assert.Equal(Now, stored.ComplianceCompletedAt);
+        Assert.Equal(Now, stored.ComplianceCheckedAt);
+        Assert.Single(_emails.Snapshot()); // only the suspension
+    }
+
+    [Fact]
+    public async Task ReevaluateAsync_SuspendedPropertyWithOneOfTwoBlockersSolved_StaysSuspendedWithItsReasons()
+    {
+        await using var db = CreateDb(nameof(ReevaluateAsync_SuspendedPropertyWithOneOfTwoBlockersSolved_StaysSuspendedWithItsReasons));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
+        await SetAsync(db, property.Id, p => p.CinCode = null);
+        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        var service = CreateService(db);
+        await service.ReevaluateAsync(property.Id);
+
+        await SetAsync(db, property.Id, p => p.CinCode = "IT058091C27G5FFZDZ");
+        var check = await service.ReevaluateAsync(property.Id);
+
+        Assert.Equal(PropertyComplianceStatus.Suspended, check.Status);
+        Assert.False(check.Reactivated);
+        Assert.False(check.HostNotified);
+        Assert.Equal(["safety"], check.IncompleteSteps.Select(s => s.Id));
+        Assert.Equal(
+            ["activation_cin_missing", "safety_confirmation_missing"],
+            (await ReloadAsync(db, property.Id)).ComplianceSuspensionReasons);
         Assert.Single(_emails.Snapshot());
+    }
+
+    [Fact]
+    public async Task ActivateAsync_SuspendedPropertyWithoutBlockers_Active()
+    {
+        await using var db = CreateDb(nameof(ActivateAsync_SuspendedPropertyWithoutBlockers_Active));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Suspended);
+
+        var check = await CreateService(db).ActivateAsync(property.Id);
+
+        Assert.True(check.Reactivated);
+        Assert.Equal(PropertyComplianceStatus.Active, (await ReloadAsync(db, property.Id)).ComplianceStatus);
+        Assert.Empty(_emails.Snapshot());
     }
 
     [Fact]
@@ -167,17 +201,23 @@ public class PropertyComplianceStatusServiceTests
         var checkedBefore = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
         await SetChecklistAsync(db, checkedBefore.Id, c => c.ConfirmedAt = null);
         await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
+        var suspendedComplete = await SeedCompliantAsync(db, PropertyComplianceStatus.Suspended);
 
         var report = await CreateService(db).RecalculateAllAsync(dryRun: true);
 
         Assert.NotNull(report);
         Assert.True(report.DryRun);
-        Assert.Equal((3, 2, 1, 0), (report.Checked, report.Suspended, report.HostsNotified, report.Failed));
+        Assert.Equal(
+            (4, 2, 1, 1, 0),
+            (report.Checked, report.Suspended, report.Reactivated, report.HostsNotified, report.Failed));
         Assert.Equal(1, report.SuspendedByBlocker["activation_cin_missing"]);
         Assert.Equal(1, report.SuspendedByBlocker["safety_confirmation_missing"]);
         Assert.Empty(_emails.Snapshot());
         db.ChangeTracker.Clear();
-        Assert.All(await db.Properties.ToListAsync(), p => Assert.Equal(PropertyComplianceStatus.Active, p.ComplianceStatus));
+        Assert.All(
+            await db.Properties.Where(p => p.Id != suspendedComplete.Id).ToListAsync(),
+            p => Assert.Equal(PropertyComplianceStatus.Active, p.ComplianceStatus));
+        Assert.Equal(PropertyComplianceStatus.Suspended, (await ReloadAsync(db, suspendedComplete.Id)).ComplianceStatus);
         Assert.Null((await ReloadAsync(db, historic.Id)).ComplianceCheckedAt);
     }
 
@@ -194,10 +234,34 @@ public class PropertyComplianceStatusServiceTests
         var first = await service.RecalculateAllAsync(dryRun: false);
         var second = await service.RecalculateAllAsync(dryRun: false);
 
-        Assert.Equal((1, 1, 1), (first!.Checked, first.Suspended, first.HostsNotified));
-        Assert.Equal((0, 0, 0), (second!.Checked, second.Suspended, second.HostsNotified));
+        // The pending property is never evaluated; the suspended one is evaluated again but stays suspended silently.
+        Assert.Equal((1, 1, 0, 1), (first!.Checked, first.Suspended, first.Reactivated, first.HostsNotified));
+        Assert.Equal((1, 0, 0, 0), (second!.Checked, second.Suspended, second.Reactivated, second.HostsNotified));
         Assert.Contains("dati di base incompleti", Assert.Single(_emails.Snapshot()).Content.HtmlBody);
+        Assert.Equal(PropertyComplianceStatus.Suspended, (await ReloadAsync(db, property.Id)).ComplianceStatus);
         Assert.Equal(PropertyComplianceStatus.Pending, (await ReloadAsync(db, pending.Id)).ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task RecalculateAllAsync_SuspendedPropertyCompleteAgain_ReactivatedOnceWithoutEmail()
+    {
+        await using var db = CreateDb(nameof(RecalculateAllAsync_SuspendedPropertyCompleteAgain_ReactivatedOnceWithoutEmail));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
+        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        var service = CreateService(db);
+        await service.RecalculateAllAsync(dryRun: false);
+        // Requirement completed again without a request that re-evaluates it (e.g. a row fixed by hand).
+        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = Now);
+
+        var first = await service.RecalculateAllAsync(dryRun: false);
+        var second = await service.RecalculateAllAsync(dryRun: false);
+
+        Assert.Equal((1, 0, 1, 0), (first!.Checked, first.Suspended, first.Reactivated, first.HostsNotified));
+        Assert.Equal((1, 0, 0, 0), (second!.Checked, second.Suspended, second.Reactivated, second.HostsNotified));
+        var stored = await ReloadAsync(db, property.Id);
+        Assert.Equal(PropertyComplianceStatus.Active, stored.ComplianceStatus);
+        Assert.Null(stored.ComplianceSuspendedAt);
+        Assert.Single(_emails.Snapshot()); // only the suspension
     }
 
     private PropertyComplianceStatusService CreateService(AppDbContext db, bool notifyOnFirstCheck = false) =>

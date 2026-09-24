@@ -15,7 +15,7 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// Every change of the CIN or of the property row (base data, city, CIN sent with the PATCH) re-evaluates the compliance
 /// status (<see cref="IPropertyComplianceStatusService.ReevaluateAsync"/>, CO-06): an active property that loses a
-/// requirement is suspended from the booking site.
+/// requirement is suspended from the booking site, a suspended one whose requirements are complete again is reactivated.
 /// </remarks>
 public class PropertyService(
     IPropertyRepository repository,
@@ -451,7 +451,8 @@ public class PropertyService(
 
         property.CinCode = normalized;
         await repository.UpdateAsync(property);
-        // A removed CIN suspends an active property (CO-06, A5-20); a CIN entered again never republishes it on its own.
+        // A removed CIN suspends an active property (CO-06, A5-20); a valid CIN entered again reactivates a suspended one
+        // whose other requirements are complete.
         await complianceStatus.ReevaluateAsync(propertyId);
     }
 

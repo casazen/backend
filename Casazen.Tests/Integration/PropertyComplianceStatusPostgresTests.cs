@@ -23,9 +23,9 @@ namespace Casazen.Tests.Integration;
 /// <summary>
 /// CO-06 (A5-20, A5-36) on PostgreSQL, through the API and the nightly job: an active property that loses its CIN, a
 /// required document or its safety checklist is suspended at once (not published, reason stored, one email to the host,
-/// bookings kept); a CIN entered again makes it ready for reactivation, and the host's activation publishes it again; the
-/// nightly check and the recalculation of the historic properties suspend what the backfill had published, without
-/// duplicate emails.
+/// bookings kept); a CIN entered again reactivates and publishes it again; the nightly check and the recalculation of the
+/// historic properties suspend what the backfill had published, and reactivate what is complete again, without duplicate
+/// emails.
 /// </summary>
 public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyComplianceStatusPostgresTests.EmailsFactory>
 {
@@ -64,33 +64,25 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
     }
 
     [PostgresFact]
-    public async Task UpdateCin_EnteredAgain_ReadyForReactivationThenActiveAfterHostActivation()
+    public async Task UpdateCin_EnteredAgain_ReactivatedAndPublishedAgain()
     {
         var seeded = await SeedActiveCompliantPropertyAsync("cin-back");
         using var client = _factory.CreateAuthenticatedClient(seeded.HostId, "PropertyOwner");
+        using var anonymous = _factory.CreateClient();
         await client.PutAsJsonAsync($"/api/properties/{seeded.PropertyId}/cin", new { cinCode = (string?)null });
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/api/properties/{seeded.PropertyId}/public")).StatusCode);
 
         var reinserted = await client.PutAsJsonAsync($"/api/properties/{seeded.PropertyId}/cin", new { cinCode = UniqueCin() });
 
         Assert.Equal(HttpStatusCode.NoContent, reinserted.StatusCode);
-        // Not republished on its own: the host reactivates it, as at the first activation.
-        Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadPropertyAsync(seeded.PropertyId)).ComplianceStatus);
-        var wizard = await ReadJsonAsync(await client.GetAsync($"/api/properties/{seeded.PropertyId}/compliance/activation"));
-        Assert.All(
-            wizard.GetProperty("steps").EnumerateArray().Where(s => s.GetProperty("blocker").GetBoolean()),
-            s => Assert.Equal("complete", s.GetProperty("status").GetString()));
-
-        var activation = await client.PostAsJsonAsync(
-            $"/api/properties/{seeded.PropertyId}/compliance/activation/complete", new { tosAccepted = true });
-
-        Assert.Equal(HttpStatusCode.OK, activation.StatusCode);
-        Assert.Equal("Active", (await ReadJsonAsync(activation)).GetProperty("complianceStatus").GetString());
         var property = await LoadPropertyAsync(seeded.PropertyId);
         Assert.Equal(PropertyComplianceStatus.Active, property.ComplianceStatus);
         Assert.Null(property.ComplianceSuspendedAt);
         Assert.Null(property.ComplianceSuspensionReasons);
-        using var anonymous = _factory.CreateClient();
         Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/api/properties/{seeded.PropertyId}/public")).StatusCode);
+        var wizard = await ReadJsonAsync(await client.GetAsync($"/api/properties/{seeded.PropertyId}/compliance/activation"));
+        Assert.Equal("Active", wizard.GetProperty("complianceStatus").GetString());
+        Assert.Empty(wizard.GetProperty("suspensionReasons").EnumerateArray());
         Assert.Single(EmailsTo(seeded.HostEmail)); // only the suspension
     }
 
@@ -195,9 +187,24 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         Assert.Single(EmailsTo(bySuspendedRequest.HostEmail));
         Assert.Single(EmailsTo(lostOutsideTheApi.HostEmail));
         Assert.Empty(EmailsTo(stillCompliant.HostEmail));
+        Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadPropertyAsync(bySuspendedRequest.PropertyId)).ComplianceStatus);
         Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).ComplianceStatus);
         Assert.Equal(["safety_confirmation_missing"], (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).ComplianceSuspensionReasons);
         Assert.Equal(PropertyComplianceStatus.Active, (await LoadPropertyAsync(stillCompliant.PropertyId)).ComplianceStatus);
+
+        // The requirement back without any request: the next night reactivates it, silently and once.
+        await WithDbAsync(db => db.PropertySafetyChecklists
+            .IgnoreQueryFilters() // test scope without an org
+            .Where(c => c.PropertyId == lostOutsideTheApi.PropertyId)
+            .ExecuteUpdateAsync(set => set.SetProperty(c => c.ConfirmedAt, (DateTime?)SafetyChecklistTestData.ConfirmedAt)));
+        await RunNightlyJobAsync();
+        await RunNightlyJobAsync();
+
+        var reactivated = await LoadPropertyAsync(lostOutsideTheApi.PropertyId);
+        Assert.Equal(PropertyComplianceStatus.Active, reactivated.ComplianceStatus);
+        Assert.Null(reactivated.ComplianceSuspensionReasons);
+        Assert.Single(EmailsTo(lostOutsideTheApi.HostEmail));
+        Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadPropertyAsync(bySuspendedRequest.PropertyId)).ComplianceStatus);
     }
 
     [PostgresFact]
@@ -365,10 +372,10 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var feed = new PropertyICalFeed { PropertyId = property.PropertyId, OrgId = property.OrgId };
-        db.PropertyICalFeeds.Add(feed);
+        var export = new PropertyICalExport { PropertyId = property.PropertyId, OrgId = property.OrgId };
+        db.PropertyICalExports.Add(export);
         await db.SaveChangesAsync();
-        return feed.ExportToken;
+        return export.ExportToken;
     }
 
     private async Task RunNightlyJobAsync()

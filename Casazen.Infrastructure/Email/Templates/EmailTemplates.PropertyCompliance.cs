@@ -26,7 +26,7 @@ public static partial class EmailTemplates
     /// <summary>
     /// The property was suspended from the booking site because an activation requirement is missing, to the host: one
     /// line per incomplete step (<paramref name="stepIds"/>), the confirmed bookings stay valid, link to the activation
-    /// wizard where the details and the reactivation are.
+    /// wizard where the requirements are completed (the property is published again as soon as they are all complete).
     /// </summary>
     public static EmailContent PropertyComplianceSuspended(
         CultureInfo culture,

@@ -139,7 +139,8 @@ public class Property : ITenantOwned
     public List<string>? ComplianceSuspensionReasons { get; set; }
 
     /// <summary>
-    /// UTC instant of the last evaluation of the status of an active property by the compliance status service (CO-06).
+    /// UTC instant of the last evaluation of the status of an active or suspended property by the compliance status
+    /// service (CO-06).
     /// Null = never evaluated: the property was published before CO-06 (backfill of A5-36 or old checklist), and its first
     /// evaluation follows <c>Compliance:StatusCheck:NotifyOnFirstCheck</c> for the email to the host.
     /// </summary>

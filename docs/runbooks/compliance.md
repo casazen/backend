@@ -27,15 +27,13 @@ The tourist tax and the iCal feed are warnings: they never block, never suspend.
 |---|---|---|
 | `Pending` | `Active` | the host completes the activation wizard (`POST …/compliance/activation/complete`, terms accepted) and no blocker is left |
 | `Active` | `Suspended` | a blocker appears: at once after a change made through the API, at the latest at the nightly check |
-| `Suspended` | `Active` | **only** the host's activation, as above, when no blocker is left |
-| `Suspended` | `Suspended` | the blockers are solved: the property is **ready for reactivation** (every blocking step of the wizard is `complete`), not published |
+| `Suspended` | `Active` | no blocker is left: at once after the change that completes the requirements (CIN, document, checklist, base data), at the latest at the nightly check; also the host's activation |
+| `Suspended` | `Suspended` | some blocker is still there: nothing changes, no new email |
 
-**Decision (reactivation).** A suspended property is never republished on its own. Publishing a listing is the host's
-act (the CIN shown to guests, the safety declaration, the terms accepted at the activation): after a suspension the
-host goes back to the wizard, which shows what was missing, and presses "Attiva" again. This also covers the historic
-properties, which never went through the activation, and avoids a listing that goes online and offline without the
-host knowing. The frontend needs no change: the wizard already accepts a suspended property and the cockpit lists it
-among the properties to activate.
+**Reactivation.** A suspended property is published again **as soon as its requirements are complete again**, without
+a new activation: the host had already activated it and accepted the terms, the suspension only covers the missing
+requirement. A `Pending` property is never published by a re-evaluation: its first publication is always the host's
+activation. The frontend needs no change: the wizard shows the current status and blockers after every save.
 
 ### What triggers a re-evaluation
 
@@ -46,13 +44,14 @@ among the properties to activate.
 | Document uploaded or deleted | `PropertyDocumentService` |
 | Safety checklist saved (`PUT …/compliance/safety-checklist`) | `PropertySafetyChecklistService.SaveAsync` |
 | Activation completed with blockers left | `ComplianceWizardService.CompleteActivationAsync` → `ActivateAsync` |
-| Every night, every active property | job `property-compliance-check` ([hangfire.md §10](hangfire.md#10-property-compliance-check-co-06)) |
+| Every night, every active or suspended property | job `property-compliance-check` ([hangfire.md §10](hangfire.md#10-property-compliance-check-co-06)) |
 
-Only an `Active` property can change on a re-evaluation; a pending or suspended one is left as it is.
+Only an `Active` property (suspension) or a `Suspended` one (reactivation) can change on a re-evaluation; a pending one
+is left as it is.
 
 Saving the safety checklist **without** the final confirmation clears the confirmation (CO-07, SC-08): on an active
-property that is a missing requirement, so the property is suspended until the host confirms and reactivates. The
-checklist form of the wizard asks for the confirmation at every save.
+property that is a missing requirement, so the property is suspended until the host saves it again with the
+confirmation (which reactivates it). The checklist form of the wizard asks for the confirmation at every save.
 
 ## 2. What "suspended" means
 
@@ -65,9 +64,9 @@ checklist form of the wizard asks for the confirmation at every save.
 | iCal export to the OTAs (`/api/public/ical/{token}`) | Still served, exactly as for a never-published property: it only lists busy nights (confirmed stays, blocks), never availability. Stopping it would free on Airbnb/Booking.com the nights of the stays that remain valid (double bookings) |
 | Host console | Wizard: `complianceStatus: "Suspended"`, `suspendedAt`, `suspensionReasons` (blocker codes at the suspension) and the current blockers in `steps`; cockpit: listed among the properties to activate; check-out wizard: "compliance" step as a warning |
 
-Stored on `Properties`: `ComplianceSuspendedAt` and `ComplianceSuspensionReasons` (blocker codes, `text[]`), cleared by
-the reactivation; `ComplianceCheckedAt` = last evaluation of an active property (`NULL` = never evaluated, i.e.
-published before CO-06). Migration `AddPropertyComplianceSuspension` adds the three columns, nullable, without data
+Stored on `Properties`: `ComplianceSuspendedAt` and `ComplianceSuspensionReasons` (blocker codes at the suspension,
+`text[]`), cleared by the reactivation; `ComplianceCheckedAt` = last evaluation of an active or suspended property
+(`NULL` = never evaluated, i.e. published before CO-06). Migration `AddPropertyComplianceSuspension` adds the three columns, nullable, without data
 changes.
 
 ## 3. Email to the host
@@ -80,26 +79,31 @@ Italian by default ([email.md](email.md#language)).
 
 - **Once per suspension.** Only the evaluation that moves the property from `Active` to `Suspended` queues it, under the
   PostgreSQL advisory lock `PropertyComplianceStatus` (1030) on the property: a host request and the nightly job, or
-  two requests, never send it twice. A suspended property is not evaluated again, so the next nights send nothing.
+  two requests, never send it twice. A suspended property that is still incomplete stays as it is, so the next nights
+  send nothing.
 - A delivery that fails is retried by `EmailDeliveryJob`; the suspension is never undone because of the email.
-- No email when the property goes back to `Active` (the host did it).
+- No email when the property goes back to `Active`: the reactivation follows the host's own change and the console
+  shows it at once. A reactivation by the nightly check (e.g. a required-document list made shorter) is only logged
+  (`Property … compliance status Suspended -> Active`).
 
 ## 4. Nightly check
 
 Recurring job `property-compliance-check`, `0 4 * * *` UTC (05:00/06:00 in Italy), `[DisableConcurrentExecution]` plus
 the session advisory lock `PropertyComplianceCheckRun` (1031): the job and the one-shot command never run together
-(a second run logs `Property compliance check skipped: another run is in progress`). Every `Active` property is
-evaluated in turn; a property that fails is logged (`Compliance check of property … failed`) and the run goes on.
+(a second run logs `Property compliance check skipped: another run is in progress`). Every `Active` or `Suspended`
+property is evaluated in turn (suspension or reactivation); a property that fails is logged
+(`Compliance check of property … failed`) and the run goes on.
 
 Why a nightly check when every change re-evaluates at once: no requirement of the current model expires with time (the
 documents and the checklist have no expiry that blocks), so it is a safety net for what no request sees: a new
 required-document list or rule deployed, a new declaration text (`SafetyChecklistRules.DeclarationTextVersion`: every
 checklist confirmed with the old text stops being complete), a row changed outside the API. **A change of those rules
 suspends, the following night, every active property that no longer meets them, with one email each**: announce it
-to the hosts before deploying it (same procedure as section 5).
+to the hosts before deploying it (same procedure as section 5). A rule made looser reactivates, the following night,
+the suspended properties that now meet it.
 
 Summary line at the end of each run:
-`Property compliance check completed: N active properties checked, S suspended, E hosts notified, F failed, blockers …`.
+`Property compliance check completed: N active or suspended properties checked, S suspended, R reactivated, E hosts notified, F failed, blockers …`.
 
 ## 5. Recalculation of the historic properties (A5-36)
 
@@ -161,7 +165,7 @@ dotnet Casazen.Web.dll compliance:recalculate --dry-run
 dotnet run --project Casazen.Web -- compliance:recalculate --dry-run
 ```
 
-Output: `compliance:recalculate (dry run, nothing changed): checked=… suspended=… hostsNotified=… failed=… blockers=activation_documents_missing:…,safety_confirmation_missing:…`.
+Output: `compliance:recalculate (dry run, nothing changed): checked=… suspended=… reactivated=… hostsNotified=… failed=… blockers=activation_documents_missing:…,safety_confirmation_missing:…`.
 Like `storage:migrate-legacy`, the command applies pending EF migrations first: run it locally only against a schema
 that already has the release deployed.
 
@@ -171,7 +175,7 @@ that already has the release deployed.
 2. Before merging the release to `main`: run the SQL above on `casazen_prod`, write to the hosts of the second query
    (outside CasaZen, from the product owner's mailbox or newsletter tool): what changes, that the listing on the direct
    booking site will be suspended until the new safety checklist is confirmed (and the CIN and CIN certificate are in
-   place), that confirmed bookings are not touched, and the date of the release.
+   place) and published again as soon as it is, that confirmed bookings are not touched, and the date of the release.
 3. Choose the email of the first check:
    - hosts already warned → leave `Compliance__StatusCheck__NotifyOnFirstCheck` unset (`false`);
    - not warned, or a reminder is wanted → Railway `production` → service `casazen/backend` → Variables →
@@ -183,8 +187,9 @@ that already has the release deployed.
 5. After the recalculation the setting has no more effect on those properties (they have `ComplianceCheckedAt`); it
    can be removed.
 
-Rollback: to publish again a property suspended by mistake the host completes the wizard; there is no bulk
-"unsuspend". Reverting the migration only drops the three columns (the statuses stay).
+Rollback: a property suspended by mistake (a wrong rule) is reactivated by the nightly check once the rule is fixed
+and deployed, or right away with `compliance:recalculate`; there is no other bulk "unsuspend". Reverting the migration
+only drops the three columns (the statuses stay).
 
 ## 6. Configuration (Railway variables, optional)
 
@@ -198,8 +203,8 @@ Rollback: to publish again a property suspended by mistake the host completes th
 
 1. Active test property with every requirement: remove the CIN from the property page → the wizard shows
    "Suspended", the public page `GET /api/properties/{id}/public` answers `404`, the host receives "Annuncio sospeso"
-   with the CIN line, the confirmed bookings are still there. Enter the CIN again → still suspended, every blocking step
-   complete → "Attiva" → `Active`, public page `200`.
+   with the CIN line, the confirmed bookings are still there. Enter the CIN again → `Active` at once, public page
+   `200`, no second email.
 2. Logs of the first night (or of the command): the summary line of section 4; no `failed`.
 3. SQL:
 
@@ -221,6 +226,7 @@ SELECT "Id" FROM casazen_prod."Properties" WHERE "ComplianceStatus" = 1 AND "Com
 - The web app shows the "Suspended" badge and the current blockers, but not yet `suspendedAt` / `suspensionReasons`
   nor a warning on the checklist form that saving without confirmation suspends a published property (frontend
   follow-up).
+- No email on the reactivation (section 3).
 - The iCal export keeps exporting the busy nights of a suspended property (section 2). Whether it should also close the
   whole calendar on the OTAs while the CIN is missing is a product decision (DUBBI CO-06).
 - Required documents per region: A5-19 (SU-04).

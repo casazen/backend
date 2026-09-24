@@ -493,7 +493,7 @@
     <value>Bookings already confirmed remain valid: no booking has been cancelled.</value>
   </data>
   <data name="PropertyComplianceSuspended_Action" xml:space="preserve">
-    <value>Complete the missing requirements and reactivate the listing from the activation of the property.</value>
+    <value>Complete the missing requirements from the activation of the property: the listing is published again as soon as they are all complete.</value>
   </data>
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Open the activation</value>

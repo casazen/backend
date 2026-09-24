@@ -4,10 +4,11 @@ using Hangfire;
 namespace Casazen.Web.BackgroundJobs;
 
 /// <summary>
-/// Nightly compliance check of every published property (CO-06, A5-20, A5-36): each
-/// <see cref="Core.Entities.Enums.PropertyComplianceStatus.Active"/> property is evaluated again with the activation
-/// blockers (<see cref="IPropertyComplianceStatusService.RecalculateAllAsync"/>); one that lost a requirement is
-/// suspended and its host gets one email. Safety net for what no request re-evaluates (a rule, required-document
+/// Nightly compliance check of every published or suspended property (CO-06, A5-20, A5-36): each
+/// <see cref="Core.Entities.Enums.PropertyComplianceStatus.Active"/> or
+/// <see cref="Core.Entities.Enums.PropertyComplianceStatus.Suspended"/> property is evaluated again with the activation
+/// blockers (<see cref="IPropertyComplianceStatusService.RecalculateAllAsync"/>); an active one that lost a requirement
+/// is suspended and its host gets one email, a suspended one whose requirements are complete again is reactivated. Safety net for what no request re-evaluates (a rule, required-document
 /// list or declaration text changed by a deploy, a row changed outside the API). Its first run after the CO-06 deploy is
 /// the recalculation of the historic properties. Also runnable once from the command line,
 /// <c>compliance:recalculate [--dry-run]</c>. Runbooks: <c>docs/runbooks/compliance.md</c>,
@@ -23,7 +24,8 @@ public class PropertyComplianceCheckJob(IPropertyComplianceStatusService complia
     public const string CommandName = "compliance:recalculate";
     public const string DryRunFlag = "--dry-run";
 
-    // Idempotent: a property already suspended is not evaluated again, so a retry or a manual run sends no second email.
+    // Idempotent: only the Active -> Suspended transition emails the host, so a retry or a manual run sends no second
+    // email for a property already suspended.
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken) =>
         await complianceStatus.RecalculateAllAsync(dryRun: false, cancellationToken);
@@ -52,7 +54,8 @@ public class PropertyComplianceCheckJob(IPropertyComplianceStatusService complia
 
             Console.WriteLine(
                 $"{CommandName}{(dryRun ? " (dry run, nothing changed)" : string.Empty)}: " +
-                $"checked={report.Checked} suspended={report.Suspended} hostsNotified={report.HostsNotified} " +
+                $"checked={report.Checked} suspended={report.Suspended} reactivated={report.Reactivated} " +
+                $"hostsNotified={report.HostsNotified} " +
                 $"failed={report.Failed} blockers={string.Join(",", report.SuspendedByBlocker.Select(b => $"{b.Key}:{b.Value}"))}");
             return report.Failed > 0 ? 1 : 0;
         }

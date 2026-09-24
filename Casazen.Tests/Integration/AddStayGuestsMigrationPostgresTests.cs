@@ -88,10 +88,9 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs and Guests are written through the model (same schema before and after the migration). Properties and
-    /// Bookings are inserted with SQL, only with the columns that exist before the migration: later migrations add
-    /// columns to them (e.g. BK-06 AddOnSiteRequestApproval, CO-06 AddPropertyComplianceSuspension) that the model would
-    /// write.
+    /// Orgs, Properties and Guests are written through the model (same schema before and after the migration). Bookings
+    /// are inserted with SQL, only with the columns that exist before the migration: later migrations add columns to
+    /// Bookings (e.g. BK-06 AddOnSiteRequestApproval) that the model would write.
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -102,6 +101,19 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
             DisplayName = "Org CO-12",
             ContactEmail = "co12@example.com",
             PlanTier = PlanTier.Starter,
+            IsActive = true,
+        };
+        var property = new Property
+        {
+            OwnerId = "auth0|co12",
+            OrgId = org.Id,
+            Name = "Casa CO-12",
+            Description = "Casa",
+            Address = "Via Roma 1",
+            City = "Roma",
+            PostalCode = "00100",
+            MaxGuests = 4,
+            NightlyRate = 100m,
             IsActive = true,
         };
         var complete = new Guest
@@ -143,18 +155,6 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
                 ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, now(), now());
             """);
 
-        // The property with SQL too: later migrations add columns to Properties (e.g. CO-06
-        // AddPropertyComplianceSuspension) that do not exist yet at this point of the history.
-        var propertyId = Guid.NewGuid();
-        await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO "Properties" (
-                "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
-                "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
-                "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "CreatedAt", "UpdatedAt")
-            VALUES ({propertyId}, 'auth0|co12', {org.Id}, 'Casa CO-12', 'Casa', 'Via Roma 1', 'Roma', '00100', 0, 0, 0, 1, 4, 100, 0, 0,
-                ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, now(), now());
-            """);
-
         async Task<Guid> InsertBookingAsync(Guest guest, int guests)
         {
             var id = Guid.NewGuid();
@@ -165,7 +165,7 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
                 INSERT INTO "Bookings" ("Id", "PropertyId", "OrgId", "GuestId", "CheckInDate", "CheckOutDate",
                     "NumberOfGuests", "NumberOfAdults", "NumberOfChildren", "Status", "Source", "ExternalId", "BasePrice",
                     "TouristTax", "TotalPrice", "TouristTaxAmount", "SpecialRequests", "PaymentOption", "CreatedAt", "UpdatedAt")
-                VALUES ({id}, {propertyId}, {org.Id}, {guest.Id}, {checkIn}, {checkOut},
+                VALUES ({id}, {property.Id}, {org.Id}, {guest.Id}, {checkIn}, {checkOut},
                     {guests}, {guests}, 0, {(int)BookingStatus.Confirmed}, {(int)BookingSource.Direct}, '', 0,
                     0, 0, 0, '', {(int)PaymentOption.Immediate}, {now}, {now})
                 """);

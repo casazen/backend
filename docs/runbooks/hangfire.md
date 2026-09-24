@@ -446,13 +446,14 @@ provider's dashboard (Resend → Emails, filter by subject).
 Audit defects A5-20 (P1) and A5-36. Full procedure, rules and SQL: [compliance.md](compliance.md).
 
 **What runs**: `property-compliance-check`, daily at 04:00 UTC: `PropertyComplianceCheckJob` →
-`IPropertyComplianceStatusService.RecalculateAllAsync`. Every property with `ComplianceStatus = Active` is evaluated
-with the activation blockers (base data, CIN, required documents, D.L. 145/2023 safety checklist); one with a blocker
-becomes `Suspended` (not published, reason stored) and its host gets one `property-compliance-suspended` email. Nothing
-else changes: pending and suspended properties are not touched, bookings are never cancelled.
+`IPropertyComplianceStatusService.RecalculateAllAsync`. Every property with `ComplianceStatus` `Active` or `Suspended`
+is evaluated with the activation blockers (base data, CIN, required documents, D.L. 145/2023 safety checklist): an
+active one with a blocker becomes `Suspended` (not published, reason stored) and its host gets one
+`property-compliance-suspended` email; a suspended one without blockers becomes `Active` again (no email). Nothing else
+changes: pending properties are not touched, bookings are never cancelled.
 
-- **Idempotent**: a suspended property is not evaluated again, so a retry, a manual trigger or the next night sends no
-  second email. The transition of each property runs under the advisory lock `PropertyComplianceStatus` (1030): a host
+- **Idempotent**: only the `Active` → `Suspended` transition emails the host, and a suspended property still
+  incomplete stays as it is, so a retry, a manual trigger or the next night sends no second email. The transition of each property runs under the advisory lock `PropertyComplianceStatus` (1030): a host
   request suspending the same property at the same time sends one email in total.
 - **One run at a time**: `[DisableConcurrentExecution]` plus the session advisory lock `PropertyComplianceCheckRun`
   (1031), shared with the one-shot command `dotnet Casazen.Web.dll compliance:recalculate [--dry-run]`; a run that
@@ -462,5 +463,5 @@ else changes: pending and suspended properties are not touched, bookings are nev
   by Hangfire and is safe to repeat.
 - **First run after the CO-06 deploy** = recalculation of the historic properties: the email of that first evaluation
   follows `Compliance__StatusCheck__NotifyOnFirstCheck` (default `false`), see [compliance.md §5](compliance.md#5-recalculation-of-the-historic-properties-a5-36).
-- **Log**: `Property compliance check completed: N active properties checked, S suspended, E hosts notified, F failed,
-  blockers …`.
+- **Log**: `Property compliance check completed: N active or suspended properties checked, S suspended, R reactivated,
+  E hosts notified, F failed, blockers …`.

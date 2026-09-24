@@ -148,31 +148,39 @@ public class PropertyComplianceStatusService(
             return null;
         }
 
-        // Background run: no tenant context, every org's properties. Only an active property can change here.
+        // Background run: no tenant context, every org's properties. Only an active property (suspension) or a suspended
+        // one (reactivation) can change here; a pending property waits for the host's activation.
         var propertyIds = await db.Properties
             .AsNoTracking()
-            .Where(p => p.ComplianceStatus == PropertyComplianceStatus.Active)
+            .Where(p => p.ComplianceStatus == PropertyComplianceStatus.Active
+                        || p.ComplianceStatus == PropertyComplianceStatus.Suspended)
             .OrderBy(p => p.Id)
             .Select(p => p.Id)
             .ToListAsync(cancellationToken);
 
-        int suspended = 0, notified = 0, failed = 0;
+        int suspended = 0, reactivated = 0, notified = 0, failed = 0;
         var byBlocker = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach (var propertyId in propertyIds)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var (suspends, notifies, codes) = dryRun
+                var outcome = dryRun
                     ? await PreviewAsync(propertyId, cancellationToken)
                     : await ApplyAsync(propertyId, cancellationToken);
-                if (!suspends)
+                if (outcome.Reactivates)
+                {
+                    reactivated++;
+                    continue;
+                }
+
+                if (!outcome.Suspends)
                     continue;
 
                 suspended++;
-                if (notifies)
+                if (outcome.Notifies)
                     notified++;
-                foreach (var code in codes)
+                foreach (var code in outcome.Codes)
                     byBlocker[code] = byBlocker.GetValueOrDefault(code) + 1;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -187,38 +195,44 @@ public class PropertyComplianceStatusService(
         }
 
         var report = new PropertyComplianceRecalculation(
-            dryRun, propertyIds.Count, suspended, notified, failed, byBlocker);
+            dryRun, propertyIds.Count, suspended, reactivated, notified, failed, byBlocker);
         logger.LogInformation(
-            "Property compliance check {Mode}: {Checked} active properties checked, {Suspended} suspended, {Notified} hosts notified, {Failed} failed, blockers {Blockers}",
+            "Property compliance check {Mode}: {Checked} active or suspended properties checked, {Suspended} suspended, {Reactivated} reactivated, {Notified} hosts notified, {Failed} failed, blockers {Blockers}",
             dryRun ? "(dry run, nothing changed)" : "completed",
             report.Checked,
             report.Suspended,
+            report.Reactivated,
             report.HostsNotified,
             report.Failed,
             string.Join(", ", byBlocker.Select(b => $"{b.Key}={b.Value}")));
         return report;
     }
 
-    private async Task<(bool Suspends, bool Notifies, IReadOnlyList<string> Codes)> PreviewAsync(
-        Guid propertyId,
-        CancellationToken cancellationToken)
+    private sealed record Outcome(bool Suspends, bool Reactivates, bool Notifies, IReadOnlyList<string> Codes)
     {
-        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken);
-        if (property is null || property.ComplianceStatus != PropertyComplianceStatus.Active)
-            return (false, false, []);
-
-        var incomplete = Incomplete(await GetBlockingStepsAsync(property, cancellationToken));
-        return incomplete.Count == 0
-            ? (false, false, [])
-            : (true, ShouldNotify(firstCheck: property.ComplianceCheckedAt is null), BlockerCodes(incomplete));
+        public static readonly Outcome None = new(false, false, false, []);
     }
 
-    private async Task<(bool Suspends, bool Notifies, IReadOnlyList<string> Codes)> ApplyAsync(
-        Guid propertyId,
-        CancellationToken cancellationToken)
+    private async Task<Outcome> PreviewAsync(Guid propertyId, CancellationToken cancellationToken)
+    {
+        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken);
+        if (property is null || property.ComplianceStatus == PropertyComplianceStatus.Pending)
+            return Outcome.None;
+
+        var incomplete = Incomplete(await GetBlockingStepsAsync(property, cancellationToken));
+        return property.ComplianceStatus switch
+        {
+            PropertyComplianceStatus.Active when incomplete.Count > 0 => new Outcome(
+                true, false, ShouldNotify(firstCheck: property.ComplianceCheckedAt is null), BlockerCodes(incomplete)),
+            PropertyComplianceStatus.Suspended when incomplete.Count == 0 => new Outcome(false, true, false, []),
+            _ => Outcome.None,
+        };
+    }
+
+    private async Task<Outcome> ApplyAsync(Guid propertyId, CancellationToken cancellationToken)
     {
         var check = await EvaluateAsync(propertyId, activate: false, cancellationToken);
-        return (check.Suspended, check.HostNotified, BlockerCodes(check.IncompleteSteps));
+        return new Outcome(check.Suspended, check.Reactivated, check.HostNotified, BlockerCodes(check.IncompleteSteps));
     }
 
     private async Task<PropertyComplianceCheck> EvaluateAsync(
@@ -237,8 +251,8 @@ public class PropertyComplianceStatusService(
                 ?? throw new NotFoundException($"Property {propertyId} not found");
             previous = property.ComplianceStatus;
 
-            // A pending or suspended property is never published by a re-evaluation: only the host's activation does it.
-            if (!activate && previous != PropertyComplianceStatus.Active)
+            // A pending property is published only by the host's activation (terms accepted), never by a re-evaluation.
+            if (!activate && previous == PropertyComplianceStatus.Pending)
                 return new PropertyComplianceCheck(propertyId, previous, previous, [], false);
 
             incomplete = Incomplete(await GetBlockingStepsAsync(property, cancellationToken));
@@ -247,7 +261,8 @@ public class PropertyComplianceStatusService(
 
             if (incomplete.Count == 0)
             {
-                if (activate)
+                // The activation, or the reactivation of a suspended property whose requirements are complete again.
+                if (activate || previous == PropertyComplianceStatus.Suspended)
                 {
                     property.ComplianceStatus = PropertyComplianceStatus.Active;
                     property.ComplianceCompletedAt = now;

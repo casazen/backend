@@ -61,7 +61,8 @@ compliance page.
 - **Guest (public site, search):** only a valid CIN is shown, as plain text ("CIN IT058091C27G5FFZDZ"). No
   "invalid" or "missing" badge is shown to guests.
 - Publication (CO-06, [compliance.md](compliance.md)): a missing or invalid CIN blocks the activation; removing the CIN
-  of an active property suspends it from the booking site at once, and the host reactivates it from the wizard.
+  of an active property suspends it from the booking site at once; a valid CIN entered again publishes it again (when
+  the other requirements are complete).
 
 ## Not done yet
 

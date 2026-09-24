@@ -10,7 +10,8 @@ namespace Casazen.Infrastructure.Services;
 
 /// <remarks>
 /// Uploading or deleting a document re-evaluates the compliance status of the property (CO-06): an active property whose
-/// required document is deleted is suspended from the booking site.
+/// required document is deleted is suspended from the booking site, a suspended one is reactivated by the upload that
+/// completes its requirements.
 /// </remarks>
 public class PropertyDocumentService(
     IPropertyDocumentRepository documentRepository,

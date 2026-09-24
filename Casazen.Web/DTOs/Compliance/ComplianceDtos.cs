@@ -75,8 +75,8 @@ public class PropertyActivationWizardDto
 
     /// <summary>
     /// Blocker codes that suspended the property, as they were at the suspension (e.g. <c>activation_cin_missing</c>);
-    /// empty unless suspended. The current blockers are in <see cref="Steps"/>: when none is left the property is ready
-    /// for reactivation (<c>POST …/compliance/activation/complete</c>).
+    /// empty unless suspended. The current blockers are in <see cref="Steps"/>: the change that solves the last one
+    /// reactivates the property.
     /// </summary>
     public IReadOnlyList<string> SuspensionReasons { get; set; } = [];
 

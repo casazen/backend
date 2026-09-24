@@ -493,7 +493,7 @@
     <value>Le prenotazioni già confermate restano valide: nessuna prenotazione è stata cancellata.</value>
   </data>
   <data name="PropertyComplianceSuspended_Action" xml:space="preserve">
-    <value>Completa i requisiti mancanti e riattiva l'annuncio dalla procedura di attivazione della struttura.</value>
+    <value>Completa i requisiti mancanti dalla procedura di attivazione della struttura: l'annuncio torna visibile appena sono tutti completi.</value>
   </data>
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Apri l'attivazione</value>
