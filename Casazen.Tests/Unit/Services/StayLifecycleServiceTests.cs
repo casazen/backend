@@ -181,7 +181,8 @@ public class StayLifecycleServiceTests
     {
         _serviceRequests
             .Setup(s => s.CreateAsync(It.IsAny<CreateServiceRequestCommand>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new ServiceRequestStateException("Il fornitore non è attivo."));
+            .ThrowsAsync(new DomainRuleException(
+                ServiceRequestErrorCodes.SupplierInactive, ServiceRequestErrorCodes.SupplierInactiveMessageKey));
         await using var db = CreateDb();
         var booking = await SeedAsync(db, BookingStatus.CheckedIn, October1, October3);
 

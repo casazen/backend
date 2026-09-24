@@ -54,6 +54,13 @@ public class ServiceRequest
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// Optimistic concurrency token (A4-19): mapped to PostgreSQL's <c>xmin</c> system column, which changes with every
+    /// update of the row (no column of its own). Two transitions that read the same state cannot both be saved: the
+    /// second save fails and the caller gets 409 <c>service_request_state_changed</c>.
+    /// </summary>
+    public uint Version { get; set; }
+
     [ForeignKey(nameof(OrgId))]
     public Org Org { get; set; } = null!;
 

@@ -936,4 +936,46 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
   </data>
+  <data name="ServiceRequestPropertyRequired" xml:space="preserve">
+    <value>Indica l'immobile della richiesta.</value>
+  </data>
+  <data name="ServiceRequestBookingInvalid" xml:space="preserve">
+    <value>La prenotazione indicata non è valida.</value>
+  </data>
+  <data name="ServiceRequestSupplierRequired" xml:space="preserve">
+    <value>Scegli il fornitore a cui inviare la richiesta.</value>
+  </data>
+  <data name="ServiceRequestNotesTooLong" xml:space="preserve">
+    <value>Le note possono avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del rifiuto.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonTooLong" xml:space="preserve">
+    <value>Il motivo del rifiuto può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestSupplierInactive" xml:space="preserve">
+    <value>Il fornitore non è attivo e non può ricevere richieste.</value>
+  </data>
+  <data name="ServiceRequestSupplierOutsideComune" xml:space="preserve">
+    <value>Il fornitore non opera nel comune dell'immobile.</value>
+  </data>
+  <data name="ServiceRequestChargeToGuestNotAllowed" xml:space="preserve">
+    <value>L'addebito all'ospite non è disponibile per le richieste ai fornitori.</value>
+  </data>
+  <data name="ServiceRequestCannotTake" xml:space="preserve">
+    <value>La richiesta non può essere presa in carico nello stato attuale.</value>
+  </data>
+  <data name="ServiceRequestCannotReject" xml:space="preserve">
+    <value>La richiesta non può essere rifiutata nello stato attuale: si può rifiutare solo una richiesta nuova.</value>
+  </data>
+  <data name="ServiceRequestCannotComplete" xml:space="preserve">
+    <value>La richiesta non può essere completata nello stato attuale: prima va presa in carico.</value>
+  </data>
+  <data name="ServiceRequestCannotMarkPaid" xml:space="preserve">
+    <value>Solo le richieste completate possono essere segnate come pagate.</value>
+  </data>
+  <data name="ServiceRequestStateChanged" xml:space="preserve">
+    <value>La richiesta è stata appena modificata da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
+  </data>
 </root>
