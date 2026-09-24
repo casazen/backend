@@ -62,7 +62,8 @@ public record DirectBookingCreateResult(
     string? SetupIntentClientSecret = null,
     DateTime? FreeRefundDeadline = null,
     PaymentOption PaymentOption = PaymentOption.Immediate,
-    TouristTaxQuoteStatus TouristTaxStatus = TouristTaxQuoteStatus.Calculated);
+    TouristTaxQuoteStatus TouristTaxStatus = TouristTaxQuoteStatus.Calculated,
+    DateTime? OnSiteRequestExpiresAt = null);
 
 public class DirectBookingException(string message, string ErrorCode) : Exception(message)
 {

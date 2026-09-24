@@ -7,8 +7,10 @@ namespace Casazen.Web.BackgroundJobs;
 /// Recurring expiry of the public checkout holds past <c>DirectBooking:PendingTtlMinutes</c> (BK-21, A3-13): cancels
 /// their PaymentIntent or SetupIntent on the host's connected account, then the booking
 /// (<c>CancellationReason = CheckoutHoldExpired</c>). A hold whose guest has already paid or is paying is left to the
-/// payment webhook. "Pay at the property" requests (D5) and host bookings are never touched. Runbook:
-/// <c>docs/runbooks/hangfire.md</c>.
+/// payment webhook. Host bookings are never touched. "Pay at the property" requests (D5, BK-06) past their own deadline
+/// (<c>Booking.RequestExpiresAt</c>: email not confirmed in time, or no answer from the host) are cancelled by the same
+/// routine, and the guest of an unanswered request gets an email. Runbooks: <c>docs/runbooks/hangfire.md</c>,
+/// <c>docs/runbooks/direct-booking.md</c>.
 /// </summary>
 public class CheckoutHoldExpiryJob(ICheckoutHoldExpiryService expiryService, ILogger<CheckoutHoldExpiryJob> logger)
 {

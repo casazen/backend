@@ -197,7 +197,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         Guid propertyId,
         DateTime checkInDate,
         DateTime checkOutDate,
-        DateTime? pendingCutoff = null,
+        HoldExpiryCutoff? pendingCutoff = null,
         Guid? excludeBookingId = null)
     {
         // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
@@ -215,9 +215,9 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return await query.AnyAsync();
     }
 
-    private static DateTime? ExpiredHoldCutoff(int? directPendingTtlMinutes) =>
+    private static HoldExpiryCutoff? ExpiredHoldCutoff(int? directPendingTtlMinutes) =>
         directPendingTtlMinutes.HasValue
-            ? CheckoutHolds.ExpiryCutoffUtc(DateTime.UtcNow, directPendingTtlMinutes.Value)
+            ? CheckoutHolds.CutoffAt(DateTime.UtcNow, directPendingTtlMinutes.Value)
             : null;
 
     private async Task<IDbContextTransaction?> BeginPropertyGuardTransactionAsync(Guid propertyId)

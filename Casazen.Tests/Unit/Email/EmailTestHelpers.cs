@@ -20,14 +20,22 @@ internal static class EmailTestHelpers
         });
 }
 
-/// <summary>In-memory <see cref="IEmailQueue"/> that records what would be queued.</summary>
+/// <summary>In-memory <see cref="IEmailQueue"/> that records what would be queued (safe for concurrent requests).</summary>
 internal sealed class RecordingEmailQueue : IEmailQueue
 {
     public List<(string? To, EmailContent Content, string Template)> Queued { get; } = [];
 
     public bool Enqueue(string? to, EmailContent content, string template)
     {
-        Queued.Add((to, content, template));
+        lock (Queued)
+            Queued.Add((to, content, template));
         return true;
+    }
+
+    /// <summary>A copy of what was queued so far.</summary>
+    public IReadOnlyList<(string? To, EmailContent Content, string Template)> Snapshot()
+    {
+        lock (Queued)
+            return Queued.ToList();
     }
 }

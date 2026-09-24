@@ -231,4 +231,73 @@
   <data name="ServiceCategory_excursions" xml:space="preserve">
     <value>Excursions</value>
   </data>
+  <data name="OnSiteRequest_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="OnSiteRequest_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="OnSiteRequest_NoCharge" xml:space="preserve">
+    <value>You have not been charged anything. If you wish, you can send a new request from the property's website.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Subject" xml:space="preserve">
+    <value>Confirm your booking request - {0}</value>
+  </data>
+  <data name="OnSiteRequestReceived_Body" xml:space="preserve">
+    <value>we have received your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;, paying &lt;strong&gt;€{3}&lt;/strong&gt; at the property.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Action" xml:space="preserve">
+    <value>Confirm your email address to send the request to the host. Without confirmation by &lt;strong&gt;{0}&lt;/strong&gt; (Italian time) the request is cancelled and the dates become available again.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Cta" xml:space="preserve">
+    <value>Confirm and send the request</value>
+  </data>
+  <data name="OnSiteRequestReceived_NotConfirmedYet" xml:space="preserve">
+    <value>The booking is not confirmed yet: it will be only when the host accepts the request. You will receive an email with the host's answer.</value>
+  </data>
+  <data name="OnSiteRequestReceived_NotYou" xml:space="preserve">
+    <value>If you did not send this request, ignore this email: without confirmation it will be cancelled.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Subject" xml:space="preserve">
+    <value>New booking request to approve - {0}</value>
+  </data>
+  <data name="OnSiteRequestToHost_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; asks to book &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt; for {4} guests, paying &lt;strong&gt;€{5}&lt;/strong&gt; at the property. The guest has confirmed their email address.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Action" xml:space="preserve">
+    <value>Accept or decline the request by &lt;strong&gt;{0}&lt;/strong&gt; (Italian time): after that the request expires and the dates become available again.</value>
+  </data>
+  <data name="OnSiteRequestToHost_NotConfirmedYet" xml:space="preserve">
+    <value>Until you accept it, it is not a confirmed booking and it is not sent to the portals (Airbnb, Booking.com) through the iCal calendar.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Cta" xml:space="preserve">
+    <value>Open the requests</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Subject" xml:space="preserve">
+    <value>Booking confirmed - {0}</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Body" xml:space="preserve">
+    <value>the host has accepted your request: your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; is confirmed.</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Payment" xml:space="preserve">
+    <value>You will pay &lt;strong&gt;€{0}&lt;/strong&gt; directly at the property.</value>
+  </data>
+  <data name="OnSiteRequestAccepted_Reference" xml:space="preserve">
+    <value>Booking reference: {0}</value>
+  </data>
+  <data name="OnSiteRequestDeclined_Subject" xml:space="preserve">
+    <value>Booking request not accepted - {0}</value>
+  </data>
+  <data name="OnSiteRequestDeclined_Body" xml:space="preserve">
+    <value>the host has not accepted your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OnSiteRequestDeclined_MessageLabel" xml:space="preserve">
+    <value>Message from the host:</value>
+  </data>
+  <data name="OnSiteRequestExpired_Subject" xml:space="preserve">
+    <value>Booking request expired - {0}</value>
+  </data>
+  <data name="OnSiteRequestExpired_Body" xml:space="preserve">
+    <value>the host did not answer your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; in time: the request has expired and the dates are available again.</value>
+  </data>
 </root>
