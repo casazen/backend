@@ -48,8 +48,14 @@ public record ComplianceSummaryItem(Guid Id, string Label, string RouteLink);
 
 public record ComplianceSummarySection(int Count, IReadOnlyList<ComplianceSummaryItem> Items);
 
+/// <param name="AlloggiatiFailures">Alloggiati communications in error or rejected.</param>
+/// <param name="AlloggiatiManualRequired">
+/// Alloggiati communications the host must send on the Questura portal (CasaZen does not transmit): never counted
+/// as done (CO-11).
+/// </param>
 public record ComplianceSummaryResult(
     ComplianceSummarySection PropertiesPending,
     ComplianceSummarySection GuestCheckInsIncomplete,
     ComplianceSummarySection CheckoutsDue,
-    ComplianceSummarySection AlloggiatiFailures);
+    ComplianceSummarySection AlloggiatiFailures,
+    ComplianceSummarySection AlloggiatiManualRequired);

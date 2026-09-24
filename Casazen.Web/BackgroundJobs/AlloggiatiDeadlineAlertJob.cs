@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Hangfire;
@@ -29,10 +30,12 @@ public class AlloggiatiDeadlineAlertJob(
             return;
 
         var bookingIds = candidates.Select(b => b.Id).ToList();
-        var reports = await context.AlloggiatiWebReports
-            .AsNoTracking()
-            .Where(r => bookingIds.Contains(r.BookingId))
-            .ToDictionaryAsync(r => r.BookingId);
+        var reports = (await context.AlloggiatiWebReports
+                .AsNoTracking()
+                .Where(r => bookingIds.Contains(r.BookingId))
+                .ToListAsync())
+            .GroupBy(r => r.BookingId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.UpdatedAt).First());
 
         foreach (var booking in candidates)
         {
@@ -40,9 +43,13 @@ public class AlloggiatiDeadlineAlertJob(
             reports.TryGetValue(booking.Id, out var report);
             var reportStatus = report?.Status;
 
+            // Sent, or declared sent by the host: nothing left to do for this booking.
+            if (reportStatus is { } stored && AlloggiatiStatusRules.IsSent(stored))
+                continue;
+
             var withinAlertWindow = booking.CheckInDate <= now.AddHours(24);
-            var needsAlert = alloggiatiWebService.IsOverdue(booking.CheckInDate, dataComplete, reportStatus)
-                || (withinAlertWindow && (!dataComplete || reportStatus == AlloggiatiWebStatus.Failed));
+            var needsAlert = alloggiatiWebService.IsOverdue(booking, reportStatus)
+                || (withinAlertWindow && (!dataComplete || reportStatus is { } failed && AlloggiatiStatusRules.IsFailure(failed)));
 
             if (!needsAlert)
                 continue;

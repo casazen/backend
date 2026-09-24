@@ -66,11 +66,12 @@ public class GuestCheckInSendJob(
             .Distinct()
             .ToListAsync();
 
+        // Communication already sent (receipt) or declared sent by the host: no guest data to collect.
         var completedReportBookingIds = await db.AlloggiatiWebReports
             .Where(r =>
                 bookingIds.Contains(r.BookingId) &&
-                (r.Status == AlloggiatiWebStatus.Submitted ||
-                 r.Status == AlloggiatiWebStatus.Confirmed))
+                (r.Status == AlloggiatiWebStatus.Inviato ||
+                 r.Status == AlloggiatiWebStatus.InviatoManualmente))
             .Select(r => r.BookingId)
             .Distinct()
             .ToListAsync();

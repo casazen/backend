@@ -33,7 +33,7 @@ public class ComplianceWizardServiceTests
             })
             .Build();
 
-    private static ComplianceWizardService CreateService(AppDbContext db)
+    private static ComplianceWizardService CreateService(AppDbContext db, TimeProvider? timeProvider = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.ValidateGuestDataAsync(It.IsAny<Guid>())).ReturnsAsync(false);
@@ -43,7 +43,8 @@ public class ComplianceWizardServiceTests
             CreateConfig(),
             alloggiati.Object,
             Mock.Of<IServiceRequestService>(),
-            Mock.Of<ILogger<ComplianceWizardService>>());
+            Mock.Of<ILogger<ComplianceWizardService>>(),
+            timeProvider);
     }
 
     [Fact]
@@ -161,6 +162,55 @@ public class ComplianceWizardServiceTests
 
         Assert.True(summary.PropertiesPending.Count >= 1);
         Assert.True(summary.CheckoutsDue.Count >= 1);
+    }
+
+    [Fact]
+    public async Task Summary_AlloggiatiNotTransmitted_CountsAsToSendManuallyNeverAsDone()
+    {
+        await using var db = CreateDb(nameof(Summary_AlloggiatiNotTransmitted_CountsAsToSendManuallyNeverAsDone));
+        var property = await SeedPropertyAsync(db);
+        var today = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 10, 10, 9, 0, 0, TimeSpan.Zero));
+
+        Booking Stay(string name, DateTime checkIn, BookingStatus status = BookingStatus.Confirmed)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkIn.AddDays(2), status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+
+        void Report(Booking booking, AlloggiatiWebStatus status) => db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = booking.Id,
+            GuestId = booking.GuestId,
+            Status = status,
+            ReportedAt = status == AlloggiatiWebStatus.InviatoManualmente ? today : null,
+        });
+
+        var noReport = Stay("NoReport", today);
+        var jobNotRunYet = Stay("JobPending", today);
+        Report(jobNotRunYet, AlloggiatiWebStatus.DaInviare);
+        var manual = Stay("Manual", today.AddDays(-1), BookingStatus.CheckedIn);
+        Report(manual, AlloggiatiWebStatus.DaInviareManualmente);
+        var declared = Stay("Declared", today.AddDays(-1), BookingStatus.CheckedIn);
+        Report(declared, AlloggiatiWebStatus.InviatoManualmente);
+        var rejected = Stay("Rejected", today.AddDays(-1));
+        Report(rejected, AlloggiatiWebStatus.Rifiutato);
+        var future = Stay("Future", today.AddDays(1));
+        Report(future, AlloggiatiWebStatus.DaInviare);
+        Stay("Cancelled", today, BookingStatus.Cancelled);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, clock).GetSummaryAsync(property.OrgId);
+
+        Assert.Equal(
+            new[] { noReport.Id, jobNotRunYet.Id, manual.Id }.OrderBy(id => id),
+            summary.AlloggiatiManualRequired.Items.Select(i => i.Id).OrderBy(id => id));
+        Assert.Equal(3, summary.AlloggiatiManualRequired.Count);
+        Assert.Equal(rejected.Id, Assert.Single(summary.AlloggiatiFailures.Items).Id);
+        Assert.Equal($"/bookings/{manual.Id}/alloggiati", summary.AlloggiatiManualRequired.Items.Single(i => i.Id == manual.Id).RouteLink);
     }
 
     [Fact]

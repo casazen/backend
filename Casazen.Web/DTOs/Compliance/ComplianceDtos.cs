@@ -53,6 +53,9 @@ public class ComplianceSummaryDto
     public ComplianceSummarySectionDto GuestCheckInsIncomplete { get; set; } = new();
     public ComplianceSummarySectionDto CheckoutsDue { get; set; } = new();
     public ComplianceSummarySectionDto AlloggiatiFailures { get; set; } = new();
+
+    /// <summary>Alloggiati communications the host must send on the Questura portal (CasaZen does not transmit).</summary>
+    public ComplianceSummarySectionDto AlloggiatiManualRequired { get; set; } = new();
 }
 
 public class CheckoutWizardDto

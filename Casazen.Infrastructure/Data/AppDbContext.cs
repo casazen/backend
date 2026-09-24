@@ -134,6 +134,12 @@ public class AppDbContext(
             .HasForeignKey(r => r.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // CO-11: "Inviato" only with a real receipt, never as a simulation.
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_AlloggiatiWebReports_SentRequiresReceipt",
+                $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
+
         modelBuilder.Entity<PropertyQuesturaCredentials>()
             .HasOne(c => c.Property)
             .WithMany()

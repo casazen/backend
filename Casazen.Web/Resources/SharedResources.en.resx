@@ -240,4 +240,16 @@
   <data name="CinAlreadyAssigned" xml:space="preserve">
     <value>This CIN is already assigned to another property.</value>
   </data>
+  <data name="AlloggiatiManualDateBeforeArrival" xml:space="preserve">
+    <value>The sending date cannot be before the check-in date: the Alloggiati Web portal does not accept future arrivals.</value>
+  </data>
+  <data name="AlloggiatiManualDateInFuture" xml:space="preserve">
+    <value>The sending date cannot be later than today.</value>
+  </data>
+  <data name="AlloggiatiAlreadySent" xml:space="preserve">
+    <value>The Alloggiati communication of this booking is already recorded as sent.</value>
+  </data>
+  <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
+    <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
+  </data>
 </root>

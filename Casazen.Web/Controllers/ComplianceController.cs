@@ -36,6 +36,7 @@ public class ComplianceController(
         GuestCheckInsIncomplete = MapSection(summary.GuestCheckInsIncomplete),
         CheckoutsDue = MapSection(summary.CheckoutsDue),
         AlloggiatiFailures = MapSection(summary.AlloggiatiFailures),
+        AlloggiatiManualRequired = MapSection(summary.AlloggiatiManualRequired),
     };
 
     private static ComplianceSummarySectionDto MapSection(ComplianceSummarySection section) => new()
