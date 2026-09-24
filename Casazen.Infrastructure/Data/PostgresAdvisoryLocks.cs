@@ -40,6 +40,9 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Cancellation of one booking: a double click cancels and refunds once (BK-02).</summary>
         BookingCancellation = 1_006,
+
+        /// <summary>Acceptance of one supplier invite (key: token hash): an invite is used at most once (SU-01).</summary>
+        SupplierInvite = 1_007,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -10,6 +10,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -135,6 +136,7 @@ public class SupplierMatchServiceTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Mock.Of<ISafeExternalHttpClient>(),
+            Options.Create(new SupplierRegistrationOptions()),
             Mock.Of<ILogger<SupplierService>>());
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.AiSupplierDiscovery)).Returns(aiEnabled);

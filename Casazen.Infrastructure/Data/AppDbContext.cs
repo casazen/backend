@@ -611,6 +611,11 @@ public class AppDbContext(
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => new { i.Email, i.IsUsed });
 
+        modelBuilder.Entity<SupplierInviteRecord>()
+            .HasIndex(i => i.TokenHash)
+            .IsUnique()
+            .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
+
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()
             .HasOne(sr => sr.Org)

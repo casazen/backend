@@ -23,10 +23,15 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/checkin/{Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>Supplier registration page of the web app, pre-filled from the invite.</summary>
-    public string SupplierInviteSignup(Guid inviteId, string email, string comuneCode) =>
-        Build(
-            $"/register?inviteToken={inviteId}&email={Uri.EscapeDataString(email)}&comune={Uri.EscapeDataString(comuneCode)}");
+    /// <summary>
+    /// Supplier registration page of the web app for an invite (SU-01). Only the token is in the link: the page reads
+    /// email and comune from the API, so no personal data ends up in URLs and logs.
+    /// </summary>
+    public string SupplierInviteSignup(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return Build($"/register?inviteToken={Uri.EscapeDataString(inviteToken)}");
+    }
 
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
