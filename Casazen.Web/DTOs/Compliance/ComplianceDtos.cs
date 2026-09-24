@@ -67,7 +67,19 @@ public class ActivationTouristTaxRateDto
 
 public class PropertyActivationWizardDto
 {
+    /// <summary><c>Pending</c>, <c>Active</c> or <c>Suspended</c> (CO-06: an active property that lost a requirement).</summary>
     public string ComplianceStatus { get; set; } = string.Empty;
+
+    /// <summary>When the property was suspended (UTC); null unless <see cref="ComplianceStatus"/> is <c>Suspended</c>.</summary>
+    public DateTime? SuspendedAt { get; set; }
+
+    /// <summary>
+    /// Blocker codes that suspended the property, as they were at the suspension (e.g. <c>activation_cin_missing</c>);
+    /// empty unless suspended. The current blockers are in <see cref="Steps"/>: the change that solves the last one
+    /// reactivates the property.
+    /// </summary>
+    public IReadOnlyList<string> SuspensionReasons { get; set; } = [];
+
     public IEnumerable<ComplianceActivationStepDto> Steps { get; set; } = [];
 }
 

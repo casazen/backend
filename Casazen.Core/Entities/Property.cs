@@ -127,6 +127,27 @@ public class Property : ITenantOwned
     public DateTime? ComplianceCompletedAt { get; set; }
 
     /// <summary>
+    /// UTC instant the property went from <see cref="PropertyComplianceStatus.Active"/> to
+    /// <see cref="PropertyComplianceStatus.Suspended"/> because an activation blocker appeared (CO-06, A5-20); null when
+    /// it is not suspended. Cleared by the reactivation.
+    /// </summary>
+    public DateTime? ComplianceSuspendedAt { get; set; }
+
+    /// <summary>
+    /// Stable codes of the activation blockers that suspended the property (e.g. <c>activation_cin_missing</c>,
+    /// <c>safety_confirmation_missing</c>), as they were at the suspension; null when it is not suspended.
+    /// </summary>
+    public List<string>? ComplianceSuspensionReasons { get; set; }
+
+    /// <summary>
+    /// UTC instant of the last evaluation of the status of an active or suspended property by the compliance status
+    /// service (CO-06).
+    /// Null = never evaluated: the property was published before CO-06 (backfill of A5-36 or old checklist), and its first
+    /// evaluation follows <c>Compliance:StatusCheck:NotifyOnFirstCheck</c> for the email to the host.
+    /// </summary>
+    public DateTime? ComplianceCheckedAt { get; set; }
+
+    /// <summary>
     /// Codice fiscale of the taxpayer who lets this apartment (titolare fiscale, CO-18): the short-rental threshold and the
     /// one 21% cedolare unit are per taxpayer, not per org (fiscale.md C4). Null: the org's own tax profile. Normalized
     /// (16 characters, upper case). Personal data: never serialized with the property, only masked by the fiscal API.

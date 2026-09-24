@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -12,11 +13,12 @@ namespace Casazen.Tests.Unit.Services;
 public class PropertyServiceCinTests
 {
     private readonly Mock<IPropertyRepository> _repository = new();
+    private readonly Mock<IPropertyComplianceStatusService> _complianceStatus = new();
     private readonly PropertyService _service;
 
     public PropertyServiceCinTests()
     {
-        _service = new PropertyService(_repository.Object, Mock.Of<ILogger<PropertyService>>());
+        _service = new PropertyService(_repository.Object, _complianceStatus.Object, Mock.Of<ILogger<PropertyService>>());
     }
 
     [Fact]
@@ -100,6 +102,8 @@ public class PropertyServiceCinTests
         await _service.UpdatePropertyCinAsync(propertyId, "  ");
 
         Assert.Null(property.CinCode);
+        // CO-06 (A5-20): the removed CIN is re-evaluated after the save, so an active property is suspended.
+        _complianceStatus.Verify(s => s.ReevaluateAsync(propertyId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

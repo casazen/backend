@@ -94,6 +94,7 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `alloggiati-overdue` | host | Alloggiati Web deadline passed without the communication, then at most `StayAlerts__MaxOverdueReminders` daily reminders | same |
 | `alloggiati-failed` | host | Alloggiati Web communication rejected or failed | same, once per stay |
 | `checkout-reminder` | host | check-out day of a confirmed or checked-in stay, 20:00 property time | same, once per check-out date |
+| `property-compliance-suspended` | host | an active property lost an activation requirement (CIN, required document, safety checklist, base data) and was suspended from the booking site; the first check of a property published before CO-06 only with `Compliance__StatusCheck__NotifyOnFirstCheck=true` ([compliance.md](compliance.md#3-email-to-the-host)) | `PropertyComplianceStatusService` (request or `property-compliance-check` job), queued, once per suspension |
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |

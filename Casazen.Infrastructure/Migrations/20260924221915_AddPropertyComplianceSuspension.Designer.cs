@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924230005_AddPropertyTaxpayerFiscalCode")]
-    partial class AddPropertyTaxpayerFiscalCode
+    [Migration("20260924221915_AddPropertyComplianceSuspension")]
+    partial class AddPropertyComplianceSuspension
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1871,11 +1871,20 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime?>("ComplianceCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("ComplianceCompletedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ComplianceStatus")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ComplianceSuspendedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.PrimitiveCollection<List<string>>("ComplianceSuspensionReasons")
+                        .HasColumnType("text[]");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1937,10 +1946,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
-
-                    b.Property<string>("TaxpayerFiscalCode")
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("Timezone")
                         .IsRequired()
@@ -2054,7 +2059,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId");
 
-                    b.HasIndex("OrgId", "TaxYear");
+                    b.HasIndex("OrgId", "TaxYear")
+                        .IsUnique()
+                        .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
 
                     b.HasIndex("PropertyId", "TaxYear")
                         .IsUnique();
