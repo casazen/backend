@@ -170,16 +170,17 @@ public class PropertiesControllerTests
 
         var propertyId = Guid.NewGuid();
         var property = new Property { Id = propertyId, Name = "Test Property", OwnerId = userId };
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(property);
 
         // Act
         var result = await _controller.GetById(propertyId);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var returnedProperty = Assert.IsType<Property>(okResult.Value);
+        var returnedProperty = Assert.IsType<PropertyResponse>(okResult.Value);
         Assert.Equal(propertyId, returnedProperty.Id);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
         VerifyHostAuthorization(property, SharedPropertyOperations.Read);
     }
 
@@ -190,14 +191,14 @@ public class PropertiesControllerTests
         SetupUserClaims("auth0|owner_user_123");
 
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act
         var result = await _controller.GetById(propertyId);
 
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
     }
 
     [Fact]
@@ -208,7 +209,7 @@ public class PropertiesControllerTests
         SetupUserClaims(attackerId);
 
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId))
             .ReturnsAsync(new Property { Id = propertyId, OwnerId = ownerId, Name = "Owner Property" });
         _mockAuthz
             .Setup(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()))
@@ -217,7 +218,7 @@ public class PropertiesControllerTests
         var result = await _controller.GetById(propertyId);
 
         Assert.IsType<ForbidResult>(result.Result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
     }
 
     [Fact]
@@ -231,7 +232,7 @@ public class PropertiesControllerTests
         var result = await _controller.GetById(Guid.NewGuid());
 
         Assert.IsType<UnauthorizedResult>(result.Result);
-        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
@@ -474,7 +475,7 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
 
@@ -483,7 +484,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<NoContentResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId)), Times.Once);
     }
@@ -498,14 +499,14 @@ public class PropertiesControllerTests
         var propertyId = Guid.NewGuid();
         var request = new UpdatePropertyRequest { Name = "Updated", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act
         var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<NotFoundResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
@@ -535,7 +536,7 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
 
@@ -544,7 +545,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<NoContentResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         // ApplyTo mutates existingProperty in place; OwnerId and Id are preserved
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId && p.OwnerId == userId)), Times.Once);
@@ -577,7 +578,7 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockLeaseContractRepository
             .Setup(x => x.GetByPropertyAsync(propertyId))
             .ReturnsAsync(new[]
@@ -626,7 +627,7 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
         _mockLeaseContractRepository
@@ -676,14 +677,14 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
 
         // Act
         var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<ForbidResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
@@ -707,7 +708,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 

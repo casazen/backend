@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
+using Casazen.Core.Entities;
 using Casazen.Web.DTOs.ServiceRequests;
 
 namespace Casazen.Web.DTOs.Supplier;
@@ -234,6 +236,8 @@ public class GetSuppliersQuery
 
 public class SupplierPickerDto
 {
+    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+
     public Guid OrgId { get; set; }
     public string LegalName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
@@ -242,6 +246,19 @@ public class SupplierPickerDto
     public IEnumerable<string> Comuni { get; set; } = [];
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
+
+    /// <summary>The supplier as a host sees it when choosing one (short-rent and long-rent search alike).</summary>
+    public static SupplierPickerDto From(SupplierProfile sp) => new()
+    {
+        OrgId = sp.OrgId,
+        LegalName = sp.LegalName,
+        Phone = sp.Phone,
+        Email = sp.Email,
+        Categories = JsonSerializer.Deserialize<IEnumerable<string>>(sp.CategoriesJson, JsonOpts) ?? [],
+        Comuni = JsonSerializer.Deserialize<IEnumerable<string>>(sp.ComuniJson, JsonOpts) ?? [],
+        Bio = sp.Bio,
+        PhotoUrls = JsonSerializer.Deserialize<IEnumerable<string>>(sp.PhotoUrlsJson, JsonOpts) ?? [],
+    };
 }
 
 // ─── Calendar Sync ─────────────────────────────────────────────────────────────

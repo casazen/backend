@@ -14,9 +14,26 @@ namespace Casazen.Infrastructure.Services;
 
 public class PropertyService(IPropertyRepository repository, ILogger<PropertyService> logger) : IPropertyService
 {
+    /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
+    public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
+
     public async Task<Property?> GetPropertyAsync(Guid id)
     {
         return await repository.GetByIdAsync(id);
+    }
+
+    public async Task<Property?> GetPropertyRecordAsync(Guid id)
+    {
+        return await repository.GetRecordAsync(id);
+    }
+
+    public async Task<IReadOnlyList<CancellationPolicyOptionDto>> GetCancellationPoliciesAsync()
+    {
+        var policies = await repository.GetCancellationPoliciesAsync();
+        return policies
+            .Select(p => new CancellationPolicyOptionDto(
+                p.Id, p.Name, p.Description, p.FullRefundHours, p.PartialRefundPercent, p.PartialRefundHours))
+            .ToList();
     }
 
     public async Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId)
@@ -40,6 +57,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         logger.LogInformation("Creating property: {Name}", property.Name);
         property.CinCode = CinFormat.Normalize(property.CinCode);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
+        await EnsureCancellationPolicyExistsAsync(property);
         return await repository.AddAsync(property);
     }
 
@@ -54,7 +72,15 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
                 throw new DomainConflictException("duplicate_property_slug", "PropertySlugTaken");
         }
 
+        await EnsureCancellationPolicyExistsAsync(property);
         return await repository.UpdateAsync(property);
+    }
+
+    /// <summary>An unknown policy id would otherwise fail on the foreign key as a 500 (A2-04).</summary>
+    private async Task EnsureCancellationPolicyExistsAsync(Property property)
+    {
+        if (property.CancellationPolicyId is { } policyId && !await repository.CancellationPolicyExistsAsync(policyId))
+            throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
     public async Task<bool> DeletePropertyAsync(Guid id)

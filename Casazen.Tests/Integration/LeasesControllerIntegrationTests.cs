@@ -8,6 +8,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Documents;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Resources;
@@ -723,7 +724,10 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var property = await db.Properties.SingleAsync(p => p.Id == propertyId);
-        property.SafetyChecklistJson = "{\"secret-checklist\":true}";
+        // CO-07: the safety checklist has its own table; its data must not leak through the lease either.
+        var checklist = SafetyChecklistTestData.CompleteAllElectric(property.Id, property.OrgId);
+        checklist.LegacyChecklistJson = "{\"secret-checklist\":true}";
+        db.PropertySafetyChecklists.Add(checklist);
         await db.SaveChangesAsync();
     }
 
