@@ -8,11 +8,17 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <remarks>
+/// Uploading or deleting a document re-evaluates the compliance status of the property (CO-06): an active property whose
+/// required document is deleted is suspended from the booking site, a suspended one is reactivated by the upload that
+/// completes its requirements.
+/// </remarks>
 public class PropertyDocumentService(
     IPropertyDocumentRepository documentRepository,
     IImageStorageService storageService,
     IPropertyRepository propertyRepository,
     IApeComplianceService apeCompliance,
+    IPropertyComplianceStatusService complianceStatus,
     ILogger<PropertyDocumentService> logger) : IPropertyDocumentService
 {
     public async Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
@@ -33,6 +39,7 @@ public class PropertyDocumentService(
 
         var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
 
+        PropertyDocument saved;
         try
         {
             var document = new PropertyDocument
@@ -49,7 +56,7 @@ public class PropertyDocumentService(
             logger.LogInformation("Uploading document {FileName} of type {DocumentType} for property {PropertyId} by {UploadedBy}",
                 file.FileName, documentType, propertyId, uploadedBy);
 
-            return await documentRepository.AddAsync(document);
+            saved = await documentRepository.AddAsync(document);
         }
         catch
         {
@@ -58,6 +65,9 @@ public class PropertyDocumentService(
             await storageService.DeleteDocumentAsync(storageUrl);
             throw;
         }
+
+        await complianceStatus.ReevaluateAsync(propertyId);
+        return saved;
     }
 
     public async Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId)
@@ -82,6 +92,7 @@ public class PropertyDocumentService(
 
         await documentRepository.DeleteAsync(documentId);
         await storageService.DeleteDocumentAsync(document.StorageUrl);
+        await complianceStatus.ReevaluateAsync(document.PropertyId);
     }
 
     public Task<Stream?> OpenContentAsync(PropertyDocument document) =>

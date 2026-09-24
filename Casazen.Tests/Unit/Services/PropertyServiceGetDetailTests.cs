@@ -2,6 +2,7 @@ using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -17,7 +18,10 @@ public class PropertyServiceGetDetailTests
     public PropertyServiceGetDetailTests()
     {
         _mockRepository = new Mock<IPropertyRepository>();
-        _service = new PropertyService(_mockRepository.Object, new Mock<ILogger<PropertyService>>().Object);
+        _service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new Mock<ILogger<PropertyService>>().Object);
     }
 
     /// <summary>
@@ -31,7 +35,11 @@ public class PropertyServiceGetDetailTests
     public async Task GetPropertyDetailAsync_StaysAroundToday_SummarizesByRomeDateAtAnyHourUtc(string utcNow)
     {
         var clock = new FixedTimeProvider(DateTimeOffset.Parse(utcNow, CultureInfo.InvariantCulture));
-        var service = new PropertyService(_mockRepository.Object, Mock.Of<ILogger<PropertyService>>(), clock);
+        var service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            Mock.Of<ILogger<PropertyService>>(),
+            clock);
         var today = new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);
         var propertyId = Guid.NewGuid();
         var property = new Property { Id = propertyId, OwnerId = "auth0|owner123", Name = "Villa Roma" };

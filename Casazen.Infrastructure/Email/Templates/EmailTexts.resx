@@ -471,4 +471,31 @@
   <data name="GuestBookingCancelled_NoCharge" xml:space="preserve">
     <value>Non ti è stato addebitato nulla.</value>
   </data>
+  <data name="PropertyComplianceSuspended_Subject" xml:space="preserve">
+    <value>Annuncio sospeso - {0}</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Body" xml:space="preserve">
+    <value>L'annuncio di &lt;strong&gt;{0}&lt;/strong&gt; è stato sospeso: non è più visibile né prenotabile sul sito di prenotazione diretta, perché manca un requisito obbligatorio per la pubblicazione:</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepBaseData" xml:space="preserve">
+    <value>dati di base incompleti (nome, indirizzo, città, numero di ospiti o prezzo per notte);</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepCin" xml:space="preserve">
+    <value>codice identificativo nazionale (CIN) mancante o non valido;</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepDocuments" xml:space="preserve">
+    <value>documenti obbligatori mancanti;</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepSafety" xml:space="preserve">
+    <value>checklist di sicurezza (D.L. 145/2023) incompleta o non confermata.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_BookingsKept" xml:space="preserve">
+    <value>Le prenotazioni già confermate restano valide: nessuna prenotazione è stata cancellata.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Action" xml:space="preserve">
+    <value>Completa i requisiti mancanti dalla procedura di attivazione della struttura: l'annuncio torna visibile appena sono tutti completi.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
+    <value>Apri l'attivazione</value>
+  </data>
 </root>
