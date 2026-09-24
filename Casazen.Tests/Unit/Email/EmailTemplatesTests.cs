@@ -25,6 +25,7 @@ public class EmailTemplatesTests
         "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
         "late-payment-confirmed", "late-payment-refunded", "rli-reminder", "rli-overdue", "rli-extra-eu", "onsite-received",
         "onsite-to-host", "onsite-accepted", "onsite-declined", "onsite-expired", "booking-cancelled",
+        "deferred-failed-guest", "deferred-failed-host", "deferred-cancelled-guest", "deferred-cancelled-host",
     };
 
     [Theory]
@@ -368,6 +369,49 @@ public class EmailTemplatesTests
         Assert.Contains("L'importo torna sul metodo di pagamento usato per la prenotazione.", content.HtmlBody);
     }
 
+    [Fact]
+    public void GuestDeferredChargeFailed_Italian_GivesAmountStayLinkAndLastDayToPay()
+    {
+        const string payUrl = "https://casazen-app.test/book/villa/booking/1?token=abc";
+        var content = EmailTemplates.GuestDeferredChargeFailed(
+            EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m, payUrl, CheckIn.AddDays(-5));
+        var withoutDeadline = EmailTemplates.GuestDeferredChargeFailed(
+            EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m, payUrl, null);
+
+        Assert.Equal("Pagamento non riuscito, completa il pagamento - Villa Rosa", content.Subject);
+        Assert.Contains("Gentile Anna,", content.HtmlBody);
+        Assert.Contains("<strong>1.234,50 €</strong>", content.HtmlBody);
+        Assert.Contains("dal <strong>05/10/2026</strong> al <strong>08/10/2026</strong>", content.HtmlBody);
+        Assert.Contains("Non ti è stato addebitato nulla.", content.HtmlBody);
+        Assert.Contains("entro il <strong>30/09/2026</strong>, la prenotazione verrà annullata", content.HtmlBody);
+        Assert.Contains($"href=\"{payUrl}\"", content.HtmlBody);
+        Assert.DoesNotContain("verrà annullata", withoutDeadline.HtmlBody);
+    }
+
+    [Fact]
+    public void HostDeferredChargeFailed_GuestNotAskedAndNoCancellation_TellsTheHostToAct()
+    {
+        var content = EmailTemplates.HostDeferredChargeFailed(
+            EmailTemplates.DefaultCulture, "Anna Verdi", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 99m, false, null, Link);
+
+        Assert.Equal("Addebito non riuscito - Villa Rosa (arrivo 05/10/2026)", content.Subject);
+        Assert.Contains("<strong>Anna Verdi</strong>", content.HtmlBody);
+        Assert.Contains("contatta l'ospite per il pagamento", content.HtmlBody);
+        Assert.Contains("non verrà annullata automaticamente", content.HtmlBody);
+        Assert.DoesNotContain("Abbiamo inviato all'ospite", content.HtmlBody);
+    }
+
+    [Fact]
+    public void GuestDeferredChargeCancelled_English_SaysNothingWasCharged()
+    {
+        var content = EmailTemplates.GuestDeferredChargeCancelled(
+            CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3));
+
+        Assert.Equal("Booking cancelled, payment not completed - Villa Rosa", content.Subject);
+        Assert.Contains("You have not been charged.", content.HtmlBody);
+        Assert.Contains("from <strong>5 October 2026</strong> to <strong>8 October 2026</strong>", content.HtmlBody);
+    }
+
     private static EmailContent Render(string template, string cultureName, string value)
     {
         var culture = CultureInfo.GetCultureInfo(cultureName);
@@ -396,6 +440,12 @@ public class EmailTemplatesTests
             "onsite-accepted" => EmailTemplates.OnSiteRequestAccepted(culture, value, value, CheckIn, CheckIn.AddDays(3), 450m, value),
             "onsite-declined" => EmailTemplates.OnSiteRequestDeclined(culture, value, value, CheckIn, CheckIn.AddDays(3), value),
             "onsite-expired" => EmailTemplates.OnSiteRequestExpired(culture, value, value, CheckIn, CheckIn.AddDays(3)),
+            "deferred-failed-guest" => EmailTemplates.GuestDeferredChargeFailed(
+                culture, value, value, CheckIn, CheckIn.AddDays(3), 1234.5m, Link, CheckIn.AddDays(-5)),
+            "deferred-failed-host" => EmailTemplates.HostDeferredChargeFailed(
+                culture, value, value, CheckIn, CheckIn.AddDays(3), 1234.5m, true, CheckIn.AddDays(-4), Link),
+            "deferred-cancelled-guest" => EmailTemplates.GuestDeferredChargeCancelled(culture, value, value, CheckIn, CheckIn.AddDays(3)),
+            "deferred-cancelled-host" => EmailTemplates.HostDeferredChargeCancelled(culture, value, value, CheckIn, CheckIn.AddDays(3), Link),
             _ => throw new ArgumentOutOfRangeException(nameof(template)),
         };
     }

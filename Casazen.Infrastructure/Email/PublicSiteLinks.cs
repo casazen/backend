@@ -75,6 +75,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Host console: the "pay at the property" requests to accept or decline (BK-06).</summary>
     public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
 
+    /// <summary>
+    /// Checkout outcome page of the booking site (BK-07) with a checkout token: the guest of a failed deferred charge pays
+    /// there (BK-08). Only the booking id and the random token are in the link, no personal data.
+    /// </summary>
+    public string CheckoutOutcome(string orgSlug, Guid bookingId, string checkoutToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkoutToken);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}?token={Uri.EscapeDataString(checkoutToken)}");
+    }
+
+    /// <summary>Host console: detail page of one booking.</summary>
+    public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
+
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
     private string BaseUrl()

@@ -43,6 +43,9 @@ public sealed class CheckoutOutcomeService(
         var booking = await LoadAsync(bookingId, token, cancellationToken);
         var ttlMinutes = CheckoutHolds.GetTtlMinutes(configuration);
         var state = CheckoutOutcomes.StateOf(booking, CutoffNow(ttlMinutes));
+        var deferredPayment = booking.PaymentOption == PaymentOption.OnCancellationDeadline
+            ? DeferredCharges.FindPayment(booking, booking.Payments)
+            : null;
 
         return new CheckoutOutcome(
             booking.Id,
@@ -57,8 +60,11 @@ public sealed class CheckoutOutcomeService(
             booking.NumberOfChildren,
             booking.TotalPrice,
             Currency,
-            CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes),
-            booking.PaymentOption == PaymentOption.OnCancellationDeadline && booking.FreeRefundDeadline is { } deadline
+            CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes, DeferredCharges.GetCancelAfterDays(configuration)),
+            // Once the deferred charge is collected the page shows "paid online", not a charge still to come (BK-08).
+            booking.PaymentOption == PaymentOption.OnCancellationDeadline &&
+            booking.FreeRefundDeadline is { } deadline &&
+            (deferredPayment is null || !DeferredCharges.IsCollected(deferredPayment.Status))
                 ? RomeCalendar.DateInRome(deadline)
                 : null);
     }
@@ -78,7 +84,31 @@ public sealed class CheckoutOutcomeService(
             throw NotResumable();
 
         var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
-        var expiresAt = CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes)!.Value;
+        var expiresAt = CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes, DeferredCharges.GetCancelAfterDays(configuration));
+
+        if (DeferredCharges.AwaitsGuestPayment(booking))
+        {
+            // Confirmed "Paga alla scadenza" whose off-session charge failed (BK-08): the guest confirms the same
+            // PaymentIntent on-session (3-D Secure, or another payment method), so it can never be paid twice.
+            var deferredPayment = DeferredCharges.FindPayment(booking, booking.Payments)!;
+            var deferredAccount = deferredPayment.StripeAccountId ?? booking.Org.StripeConnectedAccountId;
+            if (PaymentRefundService.PaymentIntentIdOf(deferredPayment) is not { } deferredIntentId ||
+                string.IsNullOrWhiteSpace(deferredAccount))
+                throw NotResumable();
+
+            var deferredIntent = await stripeService.GetPaymentIntentAsync(deferredIntentId, deferredAccount, cancellationToken);
+            if (deferredIntent.Status is null || !PayableIntentStatuses.Contains(deferredIntent.Status))
+            {
+                logger.LogInformation(
+                    "Checkout {BookingId}: deferred charge not resumed, the intent is {IntentStatus}",
+                    booking.Id,
+                    deferredIntent.Status ?? "unknown");
+                throw NotResumable();
+            }
+
+            return new CheckoutPaymentSession(
+                booking.Id, booking.PaymentOption, deferredIntent.ClientSecret, null, publishableKey, deferredAccount, expiresAt);
+        }
 
         if (booking.PaymentOption == PaymentOption.OnCancellationDeadline)
         {

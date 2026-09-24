@@ -34,6 +34,10 @@ public static class EmailTemplates
         public const string OnSiteRequestAccepted = "onsite-request-accepted";
         public const string OnSiteRequestDeclined = "onsite-request-declined";
         public const string OnSiteRequestExpired = "onsite-request-expired";
+        public const string GuestDeferredChargeFailed = "guest-deferred-charge-failed";
+        public const string HostDeferredChargeFailed = "host-deferred-charge-failed";
+        public const string GuestDeferredChargeCancelled = "guest-deferred-charge-cancelled";
+        public const string HostDeferredChargeCancelled = "host-deferred-charge-cancelled";
     }
 
     /// <summary>EmailTexts key of the label of a <see cref="ServiceCategories"/> code.</summary>
@@ -362,6 +366,101 @@ public static class EmailTemplates
             .Paragraph("OnSiteRequestExpired_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("OnSiteRequest_NoCharge")
             .Build("OnSiteRequestExpired_Subject", propertyName);
+
+    /// <summary>
+    /// "Paga alla scadenza": the deferred charge failed (authentication required, card declined), to the guest (BK-08,
+    /// A3-14). <paramref name="payUrl"/> opens the checkout outcome page with a new checkout token, where the guest pays the
+    /// same PaymentIntent. <paramref name="payByDay"/> is the last day to pay before the automatic cancellation, when one
+    /// applies. <paramref name="amountEur"/> is in euro.
+    /// </summary>
+    public static EmailContent GuestDeferredChargeFailed(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal amountEur,
+        string payUrl,
+        DateTime? payByDay)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("DeferredChargeGuest_Greeting", guestName)
+            .Paragraph("GuestDeferredChargeFailed_Body", amountEur.ToString("N2", culture), propertyName, checkInDate, checkOutDate)
+            .Paragraph("GuestDeferredChargeFailed_Action");
+        if (payByDay is { } day)
+            builder.Paragraph("GuestDeferredChargeFailed_Deadline", day);
+
+        return builder
+            .Button("GuestDeferredChargeFailed_Cta", payUrl)
+            .LinkFallback("GuestDeferredChargeFailed_LinkFallback", payUrl)
+            .Muted("GuestDeferredChargeFailed_Personal")
+            .Build("GuestDeferredChargeFailed_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// "Paga alla scadenza": the deferred charge failed, to the host (BK-08, A3-14). <paramref name="guestAsked"/>: the
+    /// guest got the link to pay (otherwise Stripe could not attempt the charge and the host must contact the guest).
+    /// <paramref name="cancelOnDay"/>: the day of the automatic cancellation, when one applies.
+    /// </summary>
+    public static EmailContent HostDeferredChargeFailed(
+        CultureInfo culture,
+        string guestFullName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal amountEur,
+        bool guestAsked,
+        DateTime? cancelOnDay,
+        string bookingUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph(
+                "HostDeferredChargeFailed_Body",
+                amountEur.ToString("N2", culture),
+                guestFullName,
+                propertyName,
+                checkInDate,
+                checkOutDate)
+            .Paragraph(guestAsked ? "HostDeferredChargeFailed_GuestAsked" : "HostDeferredChargeFailed_ContactGuest");
+        if (cancelOnDay is { } day)
+            builder.Paragraph("HostDeferredChargeFailed_Cancellation", day);
+        else
+            builder.Paragraph("HostDeferredChargeFailed_NoCancellation");
+
+        return builder
+            .Button("HostDeferredCharge_Cta", bookingUrl)
+            .Build("HostDeferredChargeFailed_Subject", propertyName, checkInDate);
+    }
+
+    /// <summary>
+    /// "Paga alla scadenza" not paid in time: the booking was cancelled and nothing was collected, to the guest (BK-08).
+    /// </summary>
+    public static EmailContent GuestDeferredChargeCancelled(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("DeferredChargeGuest_Greeting", guestName)
+            .Paragraph("GuestDeferredChargeCancelled_Body", propertyName, checkInDate, checkOutDate)
+            .Paragraph("GuestDeferredChargeCancelled_NoCharge")
+            .Muted("GuestDeferredChargeCancelled_Contact")
+            .Build("GuestDeferredChargeCancelled_Subject", propertyName);
+
+    /// <summary>"Paga alla scadenza" not paid in time: the booking was cancelled and its dates released, to the host (BK-08).</summary>
+    public static EmailContent HostDeferredChargeCancelled(
+        CultureInfo culture,
+        string guestFullName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        string bookingUrl) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("HostDeferredChargeCancelled_Body", guestFullName, propertyName, checkInDate, checkOutDate)
+            .Paragraph("HostDeferredChargeCancelled_Dates")
+            .Button("HostDeferredCharge_Cta", bookingUrl)
+            .Build("HostDeferredChargeCancelled_Subject", propertyName, checkInDate);
 
     /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
     public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>

@@ -1,150 +1,33 @@
-using Casazen.Core.Entities;
-using Casazen.Core.Repositories;
-using Casazen.Core.Services;
-using Casazen.Core.Utilities;
-using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Services;
 using Hangfire;
-using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
 
-public class DirectBookingChargeJob(
-    AppDbContext context,
-    IPaymentRepository paymentRepository,
-    IStripeService stripeService,
-    IOrgService orgService,
-    ILogger<DirectBookingChargeJob> logger,
-    TimeProvider? timeProvider = null)
+/// <summary>
+/// Daily deferred charge of "Paga alla scadenza" bookings (recurring job <c>direct-booking-charge</c>, 06:00 UTC), task
+/// BK-08 (A3-14): off-session charge on the host's connected account from the free refund deadline, payment state from
+/// Stripe, emails and limited attempts on failure, cancellation of what stays unpaid. See <see cref="DeferredChargeService"/>
+/// and <c>docs/runbooks/direct-booking.md</c> § 8.
+/// </summary>
+/// <remarks>
+/// <see cref="DisableConcurrentExecutionAttribute"/> keeps two runs (a retry, a manual trigger) from overlapping; each
+/// booking is also locked in PostgreSQL, so a second run or instance never charges it twice, and at most one attempt per
+/// booking per Europe/Rome day is made. Errors of one booking are logged and never stop the others; the job does not
+/// throw for them, so Hangfire does not rerun the whole batch.
+/// </remarks>
+public class DirectBookingChargeJob(DeferredChargeService deferredCharges, ILogger<DirectBookingChargeJob> logger)
 {
-    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-
-    private const string DeadlineChargeDescription = "Direct checkout - deferred payment (charged at deadline)";
-    private const string LegacyDeadlineChargeDescription = "Direct booking - charged at deadline";
-
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)] // never two charging runs at once
     public async Task ExecuteAsync()
     {
-        var today = _clock.TodayInRome();
-
-        var pendingBookings = await context.Bookings
-            .Where(b => b.PaymentOption == PaymentOption.OnCancellationDeadline &&
-                        b.FreeRefundDeadline <= today &&
-                        (b.Status == BookingStatus.Confirmed ||
-                         b.Status == BookingStatus.CheckedIn ||
-                         b.Status == BookingStatus.CheckedOut) &&
-                        !context.Payments.Any(p =>
-                            p.BookingId == b.Id &&
-                            p.Status == PaymentStatus.Completed &&
-                            (p.Description == DeadlineChargeDescription || p.Description == LegacyDeadlineChargeDescription)))
-            .Include(b => b.Org)
-            .Include(b => b.Property)
-            .ToListAsync();
-
-        logger.LogInformation("Direct booking charge job: {Count} booking(s) ready for deadline charging", pendingBookings.Count);
-
-        foreach (var booking in pendingBookings)
-        {
-            await ChargeBookingAsync(booking);
-        }
+        var run = await deferredCharges.RunDueChargesAsync(CancellationToken.None);
+        logger.LogInformation(
+            "Direct booking charge job: {Succeeded} paid, {Processing} processing, {AwaitingGuest} waiting for the guest, {Cancelled} cancelled, {Errors} error(s), {Skipped} skipped",
+            run.Succeeded,
+            run.Processing,
+            run.AwaitingGuest,
+            run.Cancelled,
+            run.Errors,
+            run.Skipped);
     }
-
-    private async Task ChargeBookingAsync(Booking booking)
-    {
-        try
-        {
-            var existingPayments = (await paymentRepository.GetByBookingAsync(booking.Id)).ToList();
-            if (HasCompletedDeadlineCharge(existingPayments))
-            {
-                logger.LogInformation("Booking {BookingId} already has a completed deadline charge", booking.Id);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(booking.StripePaymentMethodId))
-            {
-                logger.LogWarning("Booking {BookingId} has no saved payment method", booking.Id);
-                return;
-            }
-
-            var org = await orgService.GetByIdAsync(booking.OrgId);
-            if (org?.StripeConnectedAccountId is null)
-            {
-                logger.LogWarning("Org {OrgId} not ready for charging", booking.OrgId);
-                return;
-            }
-
-            var amountCents = (long)Math.Round(booking.TotalPrice * 100m, MidpointRounding.AwayFromZero);
-            var metadata = new Dictionary<string, string>
-            {
-                ["bookingId"] = booking.Id.ToString(),
-                ["propertyId"] = booking.PropertyId.ToString(),
-                ["orgId"] = booking.OrgId.ToString(),
-                ["kind"] = "direct-booking-deadline-charge",
-            };
-
-            var paymentIntent = await stripeService.ChargePaymentMethodAsync(
-                org.StripeConnectedAccountId,
-                booking.StripeCustomerId ?? string.Empty,
-                booking.StripePaymentMethodId,
-                amountCents,
-                "eur",
-                metadata,
-                $"direct-booking-deadline:{booking.Id}");
-
-            logger.LogInformation("Charged booking {BookingId}: {PaymentIntentId}", booking.Id, paymentIntent.Id);
-
-            var existingPaymentIntent = await paymentRepository.GetByTransactionIdAsync(paymentIntent.Id);
-            if (existingPaymentIntent is not null)
-            {
-                logger.LogInformation(
-                    "Payment intent {PaymentIntentId} was already recorded for booking {BookingId}",
-                    paymentIntent.Id,
-                    booking.Id);
-                return;
-            }
-
-            var deferredPayment = existingPayments
-                .FirstOrDefault(p =>
-                    p.Status == PaymentStatus.Pending &&
-                    (p.TransactionId == booking.StripeSetupIntentId || p.Description == DeadlineChargeDescription));
-
-            if (deferredPayment is not null)
-            {
-                deferredPayment.Status = PaymentStatus.Completed;
-                deferredPayment.TransactionId = paymentIntent.Id;
-                deferredPayment.StripePaymentIntentId = paymentIntent.Id;
-                deferredPayment.StripeAccountId = org.StripeConnectedAccountId;
-                deferredPayment.ProcessedAt = DateTime.UtcNow;
-                deferredPayment.UpdatedAt = DateTime.UtcNow;
-                await paymentRepository.UpdateAsync(deferredPayment);
-                return;
-            }
-
-            var payment = new Payment
-            {
-                BookingId = booking.Id,
-                OrgId = booking.OrgId,
-                Amount = booking.TotalPrice,
-                Status = PaymentStatus.Completed,
-                Method = PaymentMethod.CreditCard,
-                TransactionId = paymentIntent.Id,
-                StripePaymentIntentId = paymentIntent.Id,
-                StripeAccountId = org.StripeConnectedAccountId,
-                Description = DeadlineChargeDescription,
-                ProcessedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            };
-            await paymentRepository.AddAsync(payment);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error charging booking {BookingId} at deadline", booking.Id);
-        }
-    }
-
-    private static bool HasCompletedDeadlineCharge(IEnumerable<Payment> payments) =>
-        payments.Any(p =>
-            p.Status == PaymentStatus.Completed &&
-            (p.Description == DeadlineChargeDescription || p.Description == LegacyDeadlineChargeDescription));
 }

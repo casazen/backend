@@ -64,7 +64,7 @@ Task BK-02 (audit defects A3-05 P0, A9-15 payments part; issue #51). Before it, 
 ### Charge model (verified in the code)
 
 The checkout creates the guest's PaymentIntent **on the host's connected account** (`StripeService.CreateConnectedAccountPaymentIntentAsync`
-and, for the deferred option, `ChargePaymentMethodAsync`, both with the `Stripe-Account` header and `application_fee_amount = 0`):
+and, for the deferred option, `ChargePaymentMethodAsync` (off-session, BK-08, section "Deferred charge" below), both with the `Stripe-Account` header and `application_fee_amount = 0`):
 **direct charges**. Consequences for refunds:
 
 | Parameter | Value | Why |
@@ -247,6 +247,79 @@ key needs **Refunds: Write** (BK-02).
    the first booking stays cancelled, the connected account shows a full refund, the first guest receives
    "Date non più disponibili". Repeat without the second booking: the first booking becomes `Confirmed` and the guest
    receives "Prenotazione confermata".
+
+## Deferred charge of "Paga più tardi" (BK-08)
+
+Task BK-08 (audit defect A3-14, P1). Before it the deferred charge job marked the payment `Completed` whatever the
+PaymentIntent status, without `off_session`: with an EU card and 3-D Secure the PaymentIntent stayed `requires_action`,
+CasaZen said "paid" and the guest arrived without paying. Errors were only logged and the job retried every day forever;
+the webhook ignored the `direct-booking-deadline-charge` kind on the platform endpoint. The booking side (attempts, emails,
+cancellation, settings) is in [direct-booking.md](direct-booking.md) § 8; this section covers the Stripe calls.
+
+### Stripe parameters (checked 2026-09-24)
+
+`StripeService.ChargePaymentMethodAsync` creates the PaymentIntent **on the connected account the card was saved on**
+(`Payments.StripeAccountId` of the deferred payment, written at checkout with the SetupIntent; the org's current account
+only for rows without it): `Stripe-Account` header, `customer` and `payment_method` of the booking, `amount` = the
+booking total in cents, `confirm=true`, **`off_session=true`**, `metadata.kind = direct-booking-deadline-charge`,
+`metadata.bookingId`. A failed attempt is retried (next days) by confirming **the same** PaymentIntent again
+(`ConfirmPaymentIntentOffSessionAsync`: `payment_method`, `off_session=true`), so one booking never has two payable
+deferred PaymentIntents.
+
+| Parameter | Choice | Why (sources) |
+|---|---|---|
+| `off_session` | `true` | The guest is not in the checkout. Stripe.net 50.1 API reference (`PaymentIntentCreateOptions.OffSession`): "the customer isn't in your checkout flow during this payment attempt and can't authenticate… only with `confirm=true`". Stripe docs "Save a customer's payment method" / "Charge the saved payment method later": a failed off-session attempt answers **HTTP 402** and leaves the PaymentIntent in `requires_payment_method`; for `authentication_required` bring the customer back and confirm the same PaymentIntent on-session |
+| `error_on_requires_action` | **not sent** | Stripe changelog 2023-08-16 "automatic payment methods" (our API version `2025-12-15.clover` is later): PaymentIntents use automatic payment methods by default and `error_on_requires_action` is accepted only with explicit `payment_method_types`. Restricting `payment_method_types` (e.g. `card`) would refuse the other methods the SetupIntent (automatic payment methods, `usage=off_session`) may have saved, such as SEPA Debit. With `off_session=true` an authentication request already fails the attempt, so the flag adds nothing. PR #447 was discarded for sending it without `payment_method_types` |
+| `return_url` | **not sent** | Same changelog: confirming requires a `return_url` **unless `off_session=true`**; nobody is redirected off-session. The on-session payment of the guest (outcome page) sends its own `return_url` from Stripe.js |
+| `payment_method_types` | not sent | automatic payment methods, like the checkout |
+| `application_fee_amount` | `0`, unchanged | left to task BK-19 (A3-40) |
+| Idempotency key (creation) | `direct-booking-deadline:{bookingId}:{deadline yyyyMMdd}:{attempt}` | bound to the booking, its deadline and the attempt: a Hangfire retry or a crash before the commit sends the same key and gets the same PaymentIntent |
+| Idempotency key (retry) | `direct-booking-deadline-confirm:{PaymentIntentId}:{attempt}` | one confirmation per attempt |
+| Before a creation | `GET /v1/payment_intents?customer=…` on the connected account | Stripe keeps idempotency keys for 24 hours and the job runs daily: a PaymentIntent of an attempt whose answer was lost (timeout) is found by `metadata.bookingId` + `kind` and used instead of creating a second charge |
+
+Status mapping (`DeferredCharges.StatusOf`): `succeeded` → payment `Completed`; `processing` (SEPA) / `requires_capture` →
+`Processing`, completed by the webhook; `requires_action`, `requires_payment_method`, `requires_confirmation` (and the 402
+answer) → `Failed`, the guest must act; `canceled` → `Canceled` (canceled outside CasaZen: no new attempt, see
+direct-booking.md § 8).
+
+### Webhooks
+
+`StripeWebhookHandler` sends every `payment_intent.*` event whose `metadata.kind` is `direct-booking-deadline-charge` to
+`DeferredChargeService`, from the **Connect endpoint** and from the **platform endpoint when the event carries `account`**
+(an endpoint that also listens to connected accounts). A platform event without `account` is ignored (deferred charges
+never live on the platform account), as is an event whose `account` differs from the one stored on the payment.
+
+| Event | Effect |
+|---|---|
+| `payment_intent.succeeded` | payment `Completed` (amount of the PaymentIntent), failure cleared. On a booking no longer confirmed it is settled as a late payment (BK-04): confirmed again or refunded in full, never "Completed" on a cancelled booking |
+| `payment_intent.processing` | payment `Processing` (**add this event to the Connect endpoint**, `docs/INFRA.md`; without it the job reads the status again every day) |
+| `payment_intent.payment_failed` | payment `Failed`; the first failure of a confirmed booking emails the guest (link to pay) and the host, once |
+| `payment_intent.canceled` | payment `Canceled` |
+
+Exactly once like every event (PL-10). The handler takes the BK-02 booking-cancellation and payment-refund locks of the
+booking, the same as the job, so an event that arrives while the job is charging waits for the job's commit and sees its
+result (no second email).
+
+### Stripe settings to check (product owner)
+
+1. Connect endpoint: add `payment_intent.processing` (optional but recommended for SEPA).
+2. Restricted key only (`rk_…`): **PaymentIntents: Write** (create, confirm, list, cancel), **PaymentMethods: Write**
+   (detach at the automatic cancellation), on connected accounts.
+3. Customer emails: the deferred PaymentIntent has a `customer` (the one of the SetupIntent). Stripe sends its own
+   receipt only if "Successful payments" emails are enabled for the account and the customer has an email: see the open
+   question on the receipt in direct-booking.md § 8.
+
+### Verification
+
+1. Automated: `StripeServiceDeferredChargeTests` (mocked `IStripeClient`: `Stripe-Account`, `off_session`, `confirm`, no
+   `error_on_requires_action` / `payment_method_types` / `return_url`, idempotency keys), `DirectBookingChargeJobTests`,
+   `DeferredChargePostgresTests` (webhook on both endpoints, foreign account ignored).
+2. Test mode, connected test account: book with "Paga più tardi" and the card `4000 0027 6000 3184` (always asks for
+   3-D Secure), set the booking's `FreeRefundDeadline` to today in the SQL editor, trigger `direct-booking-charge` from the
+   Hangfire dashboard: Stripe shows the PaymentIntent `requires_payment_method` with `authentication_required`, the payment
+   is "Fallito", the guest receives "Pagamento non riuscito" and the host "Addebito non riuscito". Open the link, complete
+   3-D Secure: after `payment_intent.succeeded` the payment is "Completato". Repeat with `4242 4242 4242 4242`: completed at
+   the first run, no email. `4000 0000 0000 9995` (insufficient funds): failed, retried on the next days.
 
 ## Operations
 

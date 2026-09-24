@@ -1092,7 +1092,8 @@ internal sealed class FakeStripeService : IStripeService
         long amountCents,
         string currency,
         Dictionary<string, string> metadata,
-        string? idempotencyKey = null)
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
     {
         LastPaymentIntentId = $"pi_test_{Guid.NewGuid():N}";
         return Task.FromResult(new PaymentIntent
@@ -1101,6 +1102,21 @@ internal sealed class FakeStripeService : IStripeService
             Amount = amountCents,
             Currency = currency,
             Metadata = metadata,
+            Status = StatusOf(LastPaymentIntentId, "succeeded"),
         });
     }
+
+    public Task<PaymentIntent> ConfirmPaymentIntentOffSessionAsync(
+        string paymentIntentId,
+        string connectedAccountId,
+        string paymentMethodId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = StatusOf(paymentIntentId, "succeeded") });
+
+    public Task<IReadOnlyList<PaymentIntent>> ListCustomerPaymentIntentsAsync(
+        string customerId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<PaymentIntent>>([]);
 }

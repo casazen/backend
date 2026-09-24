@@ -265,6 +265,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
         services.AddScoped<CheckoutPaymentSettlementService>();
+        // Deferred charge of "Paga alla scadenza" bookings: job and webhooks (BK-08, docs/runbooks/direct-booking.md § 8).
+        services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");

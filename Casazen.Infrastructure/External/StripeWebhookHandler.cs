@@ -25,12 +25,10 @@ public class StripeWebhookHandler(
     IRentBillingService rentBillingService,
     IPaymentRefundService paymentRefundService,
     CheckoutPaymentSettlementService checkoutPayments,
+    DeferredChargeService deferredCharges,
     ILogger<StripeWebhookHandler> logger)
 {
     private const string DirectBookingKind = "direct-booking";
-    private const string DirectBookingDeadlineChargeKind = "direct-booking-deadline-charge";
-    private const string DeadlineChargeDescription = "Direct checkout - deferred payment (charged at deadline)";
-    private const string LegacyDeadlineChargeDescription = "Direct booking - charged at deadline";
     private const string RentChargeKind = "rent-charge";
 
     public Task HandleEventAsync(Event stripeEvent) =>
@@ -70,10 +68,19 @@ public class StripeWebhookHandler(
         IReadOnlyList<Guid> succeededRefunds = [];
         // Booking payment confirmed again or refunded (BK-04): Stripe call and email once the event is committed.
         CheckoutPaymentSettlement? checkoutSettlement = null;
+        // Deferred charge failed (BK-08): guest and host emails once the event is committed.
+        DeferredChargeNotice? deferredChargeNotice = null;
         try
         {
             switch (stripeEvent.Type)
             {
+                case "payment_intent.succeeded" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.processing" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.payment_failed" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.canceled" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
+                    (checkoutSettlement, deferredChargeNotice) = await HandleDeferredChargeAsync(
+                        (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
+                    break;
                 case "payment_intent.succeeded":
                     checkoutSettlement = await HandlePaymentSucceededAsync(
                         stripeEvent.Data.Object as PaymentIntent, source, stripeEvent.Account);
@@ -148,6 +155,9 @@ public class StripeWebhookHandler(
 
         if (checkoutSettlement is not null)
             await checkoutPayments.CompleteAsync(checkoutSettlement);
+
+        if (deferredChargeNotice is not null)
+            await deferredCharges.CompleteAsync(deferredChargeNotice);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -531,8 +541,8 @@ public class StripeWebhookHandler(
     }
 
     /// <summary>
-    /// A PaymentIntent succeeded. Rent charges and deferred deadline charges have their own handlers; the checkout's
-    /// PaymentIntents (<c>direct-booking</c>) on the Connect endpoint, and every booking payment reported by the platform
+    /// A PaymentIntent succeeded. Rent charges have their own handler (deferred charges too, see
+    /// <see cref="HandleDeferredChargeAsync"/>); the checkout's PaymentIntents (<c>direct-booking</c>) on the Connect endpoint, and every booking payment reported by the platform
     /// endpoint, are settled by <see cref="CheckoutPaymentSettlementService"/>: the booking is confirmed, confirmed again
     /// when the dates are still free, or refunded in full when they are not (BK-04, A3-04). Never "Completed" on a
     /// cancelled booking without one of the two.
@@ -551,12 +561,6 @@ public class StripeWebhookHandler(
                 await rentBillingService.HandleRentPaymentSucceededAsync(entryId);
             return null;
         }
-        if (string.Equals(kind, DirectBookingDeadlineChargeKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
-        {
-            await HandleDirectBookingDeadlineChargeSucceededAsync(paymentIntent, account);
-            return null;
-        }
-
         // On the Connect endpoint only the checkout's own PaymentIntents: the host's other charges are not CasaZen's.
         if (source == WebhookSource.Connected && !string.Equals(kind, DirectBookingKind, StringComparison.Ordinal))
             return null;
@@ -624,73 +628,27 @@ public class StripeWebhookHandler(
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
     }
 
-    private async Task HandleDirectBookingDeadlineChargeSucceededAsync(PaymentIntent paymentIntent, string? account)
+    private static bool IsDeferredCharge(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        TryGetMetadataKind(paymentIntent, out var kind) &&
+        string.Equals(kind, DeferredCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// An event of a deferred charge PaymentIntent ("Paga alla scadenza", BK-08, A3-14), from the Connect endpoint or the
+    /// platform endpoint listening to connected accounts: succeeded, processing, failed (guest and host emailed once) or
+    /// canceled. A success on a booking that is no longer confirmed is settled like a late checkout payment (BK-04).
+    /// </summary>
+    private async Task<(CheckoutPaymentSettlement? Settlement, DeferredChargeNotice? Notice)> HandleDeferredChargeAsync(
+        PaymentIntent paymentIntent,
+        string eventType,
+        WebhookSource source,
+        string? account)
     {
-        logger.LogInformation("Direct booking deadline charge succeeded: {PaymentIntentId}", paymentIntent.Id);
+        var result = await deferredCharges.ApplyPaymentIntentEventAsync(paymentIntent, eventType, source, account);
+        if (result.Outcome == DeferredChargeWebhookOutcome.SettleAsCheckoutPayment)
+            return (await checkoutPayments.SettleSucceededPaymentAsync(paymentIntent.Id, source, account), null);
 
-        var existingPaymentIntent = await paymentRepository.GetByTransactionIdAsync(paymentIntent.Id);
-        if (existingPaymentIntent is not null)
-        {
-            if (existingPaymentIntent.Status != PaymentStatus.Completed)
-            {
-                existingPaymentIntent.Status = PaymentStatus.Completed;
-                existingPaymentIntent.StripePaymentIntentId = paymentIntent.Id;
-                existingPaymentIntent.StripeAccountId ??= account;
-                existingPaymentIntent.ProcessedAt = DateTime.UtcNow;
-                existingPaymentIntent.UpdatedAt = DateTime.UtcNow;
-                await paymentRepository.UpdateAsync(existingPaymentIntent);
-            }
-            return;
-        }
-
-        if (!paymentIntent.Metadata.TryGetValue("bookingId", out var bookingIdRaw) ||
-            !Guid.TryParse(bookingIdRaw, out var bookingId))
-        {
-            logger.LogWarning("Deadline charge payment intent has no bookingId metadata: {PaymentIntentId}", paymentIntent.Id);
-            return;
-        }
-
-        var booking = await bookingRepository.GetByIdAsync(bookingId);
-        if (booking is null)
-        {
-            logger.LogWarning("No booking found for deadline charge payment intent: {BookingId}", bookingId);
-            return;
-        }
-
-        var payments = (await paymentRepository.GetByBookingAsync(booking.Id)).ToList();
-        var deferredPayment = payments.FirstOrDefault(p =>
-            p.Status == PaymentStatus.Pending &&
-            (p.TransactionId == booking.StripeSetupIntentId ||
-             p.Description == DeadlineChargeDescription ||
-             p.Description == LegacyDeadlineChargeDescription));
-
-        if (deferredPayment is not null)
-        {
-            deferredPayment.Status = PaymentStatus.Completed;
-            deferredPayment.TransactionId = paymentIntent.Id;
-            deferredPayment.StripePaymentIntentId = paymentIntent.Id;
-            deferredPayment.StripeAccountId ??= account;
-            deferredPayment.ProcessedAt = DateTime.UtcNow;
-            deferredPayment.UpdatedAt = DateTime.UtcNow;
-            await paymentRepository.UpdateAsync(deferredPayment);
-            return;
-        }
-
-        await paymentRepository.AddAsync(new Payment
-        {
-            BookingId = booking.Id,
-            OrgId = booking.OrgId,
-            Amount = booking.TotalPrice,
-            Status = PaymentStatus.Completed,
-            Method = Casazen.Core.Entities.PaymentMethod.CreditCard,
-            TransactionId = paymentIntent.Id,
-            StripePaymentIntentId = paymentIntent.Id,
-            StripeAccountId = account,
-            Description = DeadlineChargeDescription,
-            ProcessedAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        });
+        return (null, result.Notice);
     }
 
     private async Task HandlePaymentFailedAsync(PaymentIntent? paymentIntent, WebhookSource source, string eventType)

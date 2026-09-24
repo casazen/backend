@@ -303,4 +303,70 @@
   <data name="OnSiteRequestExpired_Body" xml:space="preserve">
     <value>the host did not answer your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; in time: the request has expired and the dates are available again.</value>
   </data>
+  <data name="DeferredChargeGuest_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Subject" xml:space="preserve">
+    <value>Payment failed, please complete your payment - {0}</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Body" xml:space="preserve">
+    <value>the payment of &lt;strong&gt;€{0}&lt;/strong&gt; for your booking at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;, due with the payment method you saved, did not go through: your bank asks for a confirmation or the payment was declined.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Action" xml:space="preserve">
+    <value>You have not been charged. Complete the payment from the link below: you can confirm it with your bank or use another payment method.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Deadline" xml:space="preserve">
+    <value>If the payment is not completed by &lt;strong&gt;{0}&lt;/strong&gt;, the booking will be cancelled and the dates will become available again.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Cta" xml:space="preserve">
+    <value>Complete the payment</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Personal" xml:space="preserve">
+    <value>This link is personal: do not forward it. If you have already completed the payment, please ignore this email.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_Subject" xml:space="preserve">
+    <value>Charge failed - {0} (arrival {1})</value>
+  </data>
+  <data name="HostDeferredChargeFailed_Body" xml:space="preserve">
+    <value>The automatic charge of &lt;strong&gt;€{0}&lt;/strong&gt; for the booking of &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{2}&lt;/strong&gt; from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt; ("Pay later" option) failed: the payment was not collected.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_GuestAsked" xml:space="preserve">
+    <value>We sent the guest an email with the link to complete the payment.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_ContactGuest" xml:space="preserve">
+    <value>The charge could not be attempted on the payment method saved by the guest: please contact the guest about the payment.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_Cancellation" xml:space="preserve">
+    <value>If the guest does not pay, the booking will be cancelled automatically on &lt;strong&gt;{0}&lt;/strong&gt; and the dates will become available again.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_NoCancellation" xml:space="preserve">
+    <value>The booking stays confirmed and will not be cancelled automatically: if the guest does not pay, you can cancel it from the booking page.</value>
+  </data>
+  <data name="HostDeferredCharge_Cta" xml:space="preserve">
+    <value>Open the booking</value>
+  </data>
+  <data name="GuestDeferredChargeCancelled_Subject" xml:space="preserve">
+    <value>Booking cancelled, payment not completed - {0}</value>
+  </data>
+  <data name="GuestDeferredChargeCancelled_Body" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; has been cancelled because the payment was not completed by the deadline. The dates are available again.</value>
+  </data>
+  <data name="GuestDeferredChargeCancelled_NoCharge" xml:space="preserve">
+    <value>You have not been charged.</value>
+  </data>
+  <data name="GuestDeferredChargeCancelled_Contact" xml:space="preserve">
+    <value>For any question, please contact the host of the property directly.</value>
+  </data>
+  <data name="HostDeferredChargeCancelled_Subject" xml:space="preserve">
+    <value>Booking cancelled, not paid - {0} (arrival {1})</value>
+  </data>
+  <data name="HostDeferredChargeCancelled_Body" xml:space="preserve">
+    <value>The booking of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt; has been cancelled automatically: the guest did not complete the payment after the failed charge.</value>
+  </data>
+  <data name="HostDeferredChargeCancelled_Dates" xml:space="preserve">
+    <value>Nothing was collected. The dates are available again on the booking site and in the calendar exported to the OTAs.</value>
+  </data>
 </root>

@@ -7,6 +7,7 @@ using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace Casazen.Tests.Integration;
@@ -47,4 +48,30 @@ internal static class TestCheckoutPaymentSettlement
             NullLogger<CheckoutPaymentSettlementService>.Instance,
             timeProvider);
     }
+}
+
+/// <summary>
+/// Builds the <see cref="DeferredChargeService"/> of a <c>StripeWebhookHandler</c> made by hand in tests, on the same
+/// context as the handler (BK-08).
+/// </summary>
+internal static class TestDeferredCharges
+{
+    public const string PublicSiteBaseUrl = "https://casazen-app.test";
+
+    private static readonly IConfiguration EmptyConfiguration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+
+    public static DeferredChargeService Create(
+        AppDbContext db,
+        IStripeService? stripe = null,
+        IEmailQueue? emails = null,
+        IConfiguration? configuration = null,
+        TimeProvider? timeProvider = null) =>
+        new(
+            db,
+            stripe ?? Mock.Of<IStripeService>(),
+            emails ?? Mock.Of<IEmailQueue>(),
+            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSiteBaseUrl })),
+            configuration ?? EmptyConfiguration,
+            NullLogger<DeferredChargeService>.Instance,
+            timeProvider);
 }
