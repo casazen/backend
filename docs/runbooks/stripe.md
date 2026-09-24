@@ -464,6 +464,81 @@ result (no second email).
    3-D Secure: after `payment_intent.succeeded` the payment is "Completato". Repeat with `4242 4242 4242 4242`: completed at
    the first run, no email. `4000 0000 0000 9995` (insufficient funds): failed, retried on the next days.
 
+## Connect onboarding: the linked account survives Stripe errors (BK-09)
+
+Task BK-09 (audit defects A3-19 P1, A3-42). Before it any Stripe error while reading the org's connected account
+(rate limit, timeout, key problem) was taken for a "stale" account: `StripeConnectedAccountId` was cleared and a new
+Express account created, without idempotency key. A host who clicked "Collega Stripe" during a 429 lost the verified
+account: checkouts answered 409 and the deferred charges (customer and card saved on the old account) failed. The
+controller also used `property.write` and sent the host back to the `returnUrl` / `refreshUrl` chosen by the client.
+
+### What unlinks an account, and what does not
+
+`StripeConnectGateway` turns every failure into a `StripeConnectException` with one `StripeConnectFailure`
+(`Casazen.Core/Exceptions/StripeConnectException.cs`). Stripe.net 50.1 (`SystemNetHttpClient`) has already retried
+connection errors, 409, 5xx and the 429 marked `Stripe-Should-Retry` before this point.
+
+| Stripe answer | Failure | `POST /api/connect/account`, `/onboarding-link` | `GET /api/connect/status?refresh=true` |
+|---|---|---|---|
+| error code `resource_missing` (404) or `account_invalid` (e.g. 403 "does not have access to account … Application access may have been revoked") | `AccountUnavailable` | a **new** account replaces it (log `… does not exist or was revoked …; creating a replacement`) | capabilities set to false (checkout gate closed); the id stays until the onboarding replaces it |
+| 429 (`rate_limit`, `lock_timeout`), 409, any 5xx, network error, HTTP timeout | `Transient` | **503 `stripe_connect_unavailable`** + `Retry-After: 10`, account untouched | same |
+| 401, 403 without `account_invalid`, `api_key_expired`, `platform_api_key_expired`, `secret_key_required`, key missing or placeholder | `Configuration` | **503 `stripe_connect_not_configured`**, account untouched | same |
+| any other refusal (400 `invalid_request_error`, `idempotency_error`) | `Rejected` | **502 `stripe_connect_failed`**, account untouched | same |
+| account gone between the read and the Account Link | `AccountUnavailable` | 409 `stripe_connect_account_unavailable`: the next click replaces it | – |
+
+The error codes are values of the `ErrorCode` list that the official SDK generates from Stripe's OpenAPI spec
+(stripe-go `error.go`, checked 2026-09-24: `resource_missing`, `account_invalid`, `rate_limit`, `lock_timeout`,
+`api_key_expired`, `platform_api_key_expired`, `secret_key_required`); descriptions in https://docs.stripe.com/error-codes.
+Stripe.net 50.1 has no constants for them. A network failure reaches the gateway as `HttpRequestException` or as the
+timeout's `OperationCanceledException`, not as `StripeException` (`SystemNetHttpClient.SendHttpRequest`).
+
+The payments page of the web app shows the message of the code with **"Riprova"** for `stripe_connect_unavailable`,
+`stripe_connect_account_unavailable` and network / generic 5xx errors, never a "Non collegato" state it did not read.
+
+### One account per org
+
+- **Lock**: `EnsureExpressAccountAsync` runs under the advisory lock `OrgConnectAccount` (1012, key = org id), Stripe
+  calls included: a second click waits, then reads the account the first one created.
+- **Idempotency key** of `POST /v1/accounts`: `connect-account:{orgId}` for the first account,
+  `connect-account:{orgId}:replaces:{oldAccountId}` for the replacement of an unavailable one (the first key would
+  return the old account). A retry whose answer was lost gets the same account from Stripe. Stripe keeps a key for at
+  least 24 hours: a creation retried later may create a second account, visible in Dashboard → Connect → Accounts (the
+  org links only the last one).
+- The e-mail sent to Stripe is the org's contact e-mail, else its oldest user's: stable across retries (a different
+  e-mail under the same key answers `idempotency_error`).
+
+### Who may start it, and where Stripe sends the host back (A3-42)
+
+| Endpoint | Policy |
+|---|---|
+| `POST /api/connect/account`, `POST /api/connect/onboarding-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
+| `GET /api/connect/status` | `payment.read` in short-rent |
+
+The Account Link pages are built by the API from `App__PublicSiteBaseUrl` (decision D3, same helper `PublicSiteLinks`
+as the billing return pages of PL-11): `return_url` =
+`{App__PublicSiteBaseUrl}/app/short-rent/settings/payments?stripe_return=1`, `refresh_url` = `…?stripe_refresh=1`. A
+request body with `returnUrl` / `refreshUrl` is ignored. Without `App__PublicSiteBaseUrl` (possible only in
+Development/Testing) `POST /api/connect/onboarding-link` answers **503 `connect_return_url_not_configured`** before any
+Stripe call.
+
+### Stripe settings to check (product owner)
+
+1. Nothing new on the Dashboard. Keep the platform key in the mode of the environment (PL-11 stops a `Production` start
+   with a test key): with a key of the other mode Stripe answers `resource_missing` for every existing account, and the
+   next "Collega Stripe" of each host would link a new account of that mode.
+2. Restricted key only (`rk_…`): **Accounts: Write** and **Account Links: Write** (Connect).
+
+### Verification
+
+1. Automated: `StripeConnectGatewayTests` (mocked `IStripeClient`: 404 `resource_missing` / 403 `account_invalid` →
+   unavailable, 429 / 409 / 5xx / network / timeout → transient, 401 / 403 / key → configuration, idempotency key and
+   Account Link URLs sent), `ConnectOnboardingServiceTests` (429 → account unchanged, `resource_missing` → replacement
+   with its key), `ConnectOnboardingIntegrationTests` (429 → 503 with the account unchanged, two parallel clicks → one
+   account on PostgreSQL, `Staff` collaborator → 403, server-side URLs), web `payments-page.test.tsx`.
+2. Test mode: connect a test account, then delete it in the Stripe Dashboard (Connect → Accounts → the account →
+   Delete): the next "Collega Stripe" links a new account (log `creating a replacement`). Set an invalid secret key on
+   the API and click "Collega Stripe": 503 `stripe_connect_not_configured`, `Orgs.StripeConnectedAccountId` unchanged.
+
 ## Operations
 
 | Situation | What to do |

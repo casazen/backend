@@ -63,6 +63,12 @@ internal static class PostgresAdvisoryLocks
         /// same alerts at once, even outside Hangfire's own lock (CO-10, A5-11).
         /// </summary>
         StayAlertsRun = 1_011,
+
+        /// <summary>
+        /// Stripe Connect account of one org (key: org id): two clicks on "Collega Stripe" create one Express account
+        /// (BK-09, A3-19).
+        /// </summary>
+        OrgConnectAccount = 1_012,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -99,6 +99,21 @@
   <data name="PaymentProviderUnavailableDetail" xml:space="preserve">
     <value>The payment service did not respond correctly. Please try again later.</value>
   </data>
+  <data name="StripeConnectUnavailable" xml:space="preserve">
+    <value>Stripe is not responding right now. Your connected Stripe account was not changed: try again in a moment.</value>
+  </data>
+  <data name="StripeConnectNotConfigured" xml:space="preserve">
+    <value>Stripe payments are not configured correctly on the server. Your connected account was not changed: contact CasaZen support.</value>
+  </data>
+  <data name="StripeConnectFailed" xml:space="preserve">
+    <value>Stripe refused the request. Your connected account was not changed: try again later or contact CasaZen support.</value>
+  </data>
+  <data name="StripeConnectAccountUnavailable" xml:space="preserve">
+    <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
+  </data>
+  <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
+    <value>The public address of the app is not configured on the server: the Stripe connection cannot be started.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Request failed</value>
   </data>

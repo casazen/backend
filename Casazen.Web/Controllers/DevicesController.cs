@@ -77,6 +77,11 @@ public class DevicesController(
         return CreatedAtAction(nameof(Register), new { id = existing.Id }, Map(existing));
     }
 
+    /// <summary>
+    /// Removes the caller's registration of device <paramref name="deviceId"/> (the app calls it at logout, MO-05): that
+    /// device stops receiving the caller's pushes. Only the caller's own row: the same device id under another account
+    /// answers 404 and is left untouched.
+    /// </summary>
     [HttpDelete("{deviceId}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -87,8 +92,12 @@ public class DevicesController(
         if (userId is null)
             return Unauthorized();
 
+        // The path is percent-decoded before routing except for "%2F", which ASP.NET Core leaves encoded so a segment
+        // cannot become two: Android device ids are build fingerprints full of '/', sent encoded by the app.
+        var id = deviceId.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase).Trim();
+
         var registration = await db.DeviceRegistrations
-            .FirstOrDefaultAsync(d => d.UserId == userId && d.DeviceId == deviceId, cancellationToken);
+            .FirstOrDefaultAsync(d => d.UserId == userId && d.DeviceId == id, cancellationToken);
 
         if (registration is null)
             return NotFound();
