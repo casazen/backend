@@ -3,8 +3,9 @@ namespace Casazen.Core.Services;
 /// <summary>
 /// Expires the holds of the public checkout past <c>DirectBooking:PendingTtlMinutes</c> (<see cref="CheckoutHolds.IsExpired"/>),
 /// one at a time under a row lock, so two runs never expire the same hold twice (BK-21, A3-13). For each hold the
-/// PaymentIntent or SetupIntent is cancelled on the host's connected account first; only then the booking is cancelled
-/// with <see cref="Entities.BookingCancellationReason.CheckoutHoldExpired"/>. When Stripe says the guest has already paid
+/// PaymentIntent or SetupIntent is cancelled first, on the connected account it was created on; only then the booking is
+/// cancelled with <see cref="Entities.BookingCancellationReason.CheckoutHoldExpired"/> and its uncollected payments
+/// <see cref="Entities.PaymentStatus.Canceled"/>. When Stripe says the guest has already paid
 /// or is paying (<c>succeeded</c>, <c>processing</c>, <c>requires_capture</c>) the booking is left to the payment
 /// webhook and its payment row is marked <see cref="Entities.PaymentStatus.Processing"/>, which keeps the dates taken.
 /// </summary>

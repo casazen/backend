@@ -278,18 +278,20 @@ checks: `Pending` + source `Direct` + payment option not `OnSite` + a PaymentInt
   cancel anything.
 - **Job `checkout-hold-expiry`**, every 5 minutes (`CheckoutHoldExpiryJob` → `CheckoutHoldExpiryService`). For each
   expired hold, in its own transaction holding the booking row (`FOR UPDATE SKIP LOCKED`: a concurrent run skips it):
-  1. reads the intent on the org's connected account (`Stripe-Account` header);
+  1. reads the intent on the connected account it was created on (`Stripe-Account` header: the payment row's
+     `StripeAccountId`, stored since BK-02, else the org's current account);
   2. `succeeded`, `processing` or `requires_capture` (PaymentIntent) / `succeeded`, `processing` (SetupIntent): the
      guest has paid or is paying. The booking is **not** cancelled; the payment row becomes `Processing`, so the hold
      keeps its dates, and the payment webhook confirms it (a later failure makes it expire at the next run).
      Log: `Checkout hold {BookingId} not expired: payment intent … is succeeded; left to the payment webhook`;
   3. otherwise cancels the intent (`cancellation_reason=abandoned`, idempotency key
      `checkout-hold-expiry:<bookingId>:<intentId>:<status>:<latest attempt>`), then sets the booking `Cancelled`
-     with `CancellationReason = CheckoutHoldExpired` (1) and its pending payment rows `Failed`.
+     with `CancellationReason = CheckoutHoldExpired` (1) and its uncollected payment rows `Canceled`, as a host
+     cancellation does (BK-02).
      Log: `Checkout hold {BookingId} expired: intent cancelled on Stripe, dates released`;
   4. a Stripe error leaves the hold untouched; the next run retries it (log `could not be expired`). An intent that is
-     not found on the org's current account (`resource_missing`), or an org without a connected account, releases the
-     dates with a warning.
+     not found on that account (`resource_missing`), or no connected account at all, releases the dates with a
+     warning.
 - **Before a new booking** of the same dates (public checkout or host booking) the same routine runs on the
   overlapping expired holds only: a late payment keeps the dates (the new request gets 409), otherwise the hold is
   cancelled with its intent.

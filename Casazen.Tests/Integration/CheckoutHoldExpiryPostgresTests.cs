@@ -68,7 +68,7 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         var stored = await LoadBookingAsync(hold);
         Assert.Equal(BookingStatus.Cancelled, stored.Status);
         Assert.Equal(BookingCancellationReason.CheckoutHoldExpired, stored.CancellationReason);
-        Assert.Equal(PaymentStatus.Failed, Assert.Single(stored.Payments).Status);
+        Assert.Equal(PaymentStatus.Canceled, Assert.Single(stored.Payments).Status);
     }
 
     [PostgresFact]

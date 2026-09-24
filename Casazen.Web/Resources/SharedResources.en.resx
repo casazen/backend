@@ -360,6 +360,48 @@
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Enter the property's city in the basic details to see the tourist tax rate. This does not block the activation.</value>
   </data>
+  <data name="PaymentNotRefundable" xml:space="preserve">
+    <value>This payment cannot be refunded: only collected payments can be refunded.</value>
+  </data>
+  <data name="PaymentRefundOffline" xml:space="preserve">
+    <value>This payment did not go through Stripe (cash, bank transfer or manual record): refund it outside CasaZen.</value>
+  </data>
+  <data name="PaymentRefundAccountMissing" xml:space="preserve">
+    <value>The host's Stripe account is not available: complete or reconnect Stripe in the payment settings and try again.</value>
+  </data>
+  <data name="PaymentNothingToRefund" xml:space="preserve">
+    <value>There is nothing left to refund on this payment.</value>
+  </data>
+  <data name="RefundAmountInvalid" xml:space="preserve">
+    <value>Enter a valid refund amount, greater than zero and with at most two decimals.</value>
+  </data>
+  <data name="RefundAmountExceedsRefundable" xml:space="preserve">
+    <value>The amount is more than what can still be refunded (€{0:N2}).</value>
+  </data>
+  <data name="RefundReasonTooLong" xml:space="preserve">
+    <value>The refund reason can be at most 500 characters long.</value>
+  </data>
+  <data name="BookingAlreadyCancelled" xml:space="preserve">
+    <value>The booking is already cancelled.</value>
+  </data>
+  <data name="BookingNotCancellable" xml:space="preserve">
+    <value>A booking whose stay has ended cannot be cancelled: to give money back, refund the payment.</value>
+  </data>
+  <data name="BookingCancelNothingToRefund" xml:space="preserve">
+    <value>This booking has no payment collected through Stripe to refund.</value>
+  </data>
+  <data name="BookingCancelRefundRequired" xml:space="preserve">
+    <value>The booking has been paid: choose how much to refund to the guest (from 0 to €{0:N2}).</value>
+  </data>
+  <data name="BookingCancelRefundBelowMinimum" xml:space="preserve">
+    <value>Under the cancellation terms shown to the guest the refund must be at least €{0:N2}.</value>
+  </data>
+  <data name="BookingPaymentInProgress" xml:space="preserve">
+    <value>The guest's payment is being confirmed: wait a moment, reload the booking and try again.</value>
+  </data>
+  <data name="BookingCancelPaymentPermissionRequired" xml:space="preserve">
+    <value>Cancelling a booking with payments requires the permission to manage payments.</value>
+  </data>
   <data name="ServiceCategoryInvalid" xml:space="preserve">
     <value>The service category "{0}" is not valid: choose one from the list of available categories.</value>
   </data>

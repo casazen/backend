@@ -13,6 +13,19 @@ public interface IStripeService
         Dictionary<string, string> metadata);
     Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
 
+    /// <summary>
+    /// Creates a refund of a PaymentIntent (BK-02). Direct charges live on the connected account, so the request carries
+    /// its <c>Stripe-Account</c> header (<see cref="StripeRefundCreateRequest.ConnectedAccountId"/>); null only for a
+    /// PaymentIntent of the platform account. Always sent with the idempotency key of the refund row.
+    /// </summary>
+    Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Every refund of a PaymentIntent, on the connected account when <paramref name="connectedAccountId"/> is set.</summary>
+    Task<IReadOnlyList<Refund>> ListRefundsAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<PaymentIntent> GetPaymentIntentAsync(
         string paymentIntentId,
         string? connectedAccountId,
@@ -37,7 +50,12 @@ public interface IStripeService
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 
-    Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null);
+    /// <summary>Detaches a saved card from its customer, so it can no longer be charged off-session.</summary>
+    Task DetachPaymentMethodAsync(
+        string paymentMethodId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
         string connectedAccountId,
         Dictionary<string, string> metadata,
@@ -53,10 +71,23 @@ public interface IStripeService
         string? idempotencyKey = null);
 }
 
+/// <summary>Refund of <paramref name="AmountCents"/> of <paramref name="PaymentIntentId"/>.</summary>
+/// <param name="PaymentIntentId">PaymentIntent to refund.</param>
+/// <param name="AmountCents">Amount in cents (EUR).</param>
+/// <param name="ConnectedAccountId">Account the PaymentIntent was created on (direct charge); null for the platform.</param>
+/// <param name="IdempotencyKey">Stable key of the refund row: a retry returns the same Stripe refund.</param>
+/// <param name="Metadata">Ids that let the webhooks find the refund row (<c>paymentRefundId</c>, <c>paymentId</c>, …).</param>
+public sealed record StripeRefundCreateRequest(
+    string PaymentIntentId,
+    string? ConnectedAccountId,
+    long AmountCents,
+    string IdempotencyKey,
+    IReadOnlyDictionary<string, string> Metadata);
+
 /// <summary>
-/// Stripe calls of the booking payments. The intent reads and cancellations go through <see cref="IStripeClient"/>: the
-/// global client configured from <c>Stripe:SecretKey</c> at startup, or the one passed in (tests check the path, the
-/// options and the <c>Stripe-Account</c> / idempotency headers on a mocked client).
+/// Stripe calls of the booking payments. Requests go through <see cref="IStripeClient"/>: the global client configured
+/// from <c>Stripe:SecretKey</c> at startup, or the one passed in (tests check the path, the options and the
+/// <c>Stripe-Account</c> / idempotency headers on a mocked client).
 /// </summary>
 public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeClient = null) : IStripeService
 {
@@ -73,7 +104,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
                 Metadata = metadata
             };
 
-            var service = new PaymentIntentService();
+            var service = new PaymentIntentService(Client);
             var paymentIntent = await service.CreateAsync(options);
             logger.LogInformation("Payment intent created: {PaymentIntentId}", paymentIntent.Id);
             return paymentIntent;
@@ -106,7 +137,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             };
 
             var requestOptions = new RequestOptions { StripeAccount = connectedAccountId };
-            var service = new PaymentIntentService();
+            var service = new PaymentIntentService(Client);
             var paymentIntent = await service.CreateAsync(options, requestOptions);
             logger.LogInformation(
                 "Connected-account payment intent created: {PaymentIntentId} on {AccountId}",
@@ -125,7 +156,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
     {
         try
         {
-            var service = new PaymentIntentService();
+            var service = new PaymentIntentService(Client);
             var paymentIntent = await service.ConfirmAsync(paymentIntentId);
             logger.LogInformation("Payment confirmed: {PaymentIntentId}", paymentIntentId);
             return paymentIntent;
@@ -135,6 +166,50 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             logger.LogError(ex, "Error confirming payment");
             throw;
         }
+    }
+
+    public async Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.IdempotencyKey);
+
+        // Direct charge on the connected account: the refund is created there (Stripe-Account header) and paid from
+        // that account's balance. No reverse_transfer (there is no transfer to reverse) and no refund_application_fee
+        // (the checkout takes no application fee): see docs/runbooks/stripe.md "Refunds".
+        var options = new RefundCreateOptions
+        {
+            PaymentIntent = request.PaymentIntentId,
+            Amount = request.AmountCents,
+            Metadata = new Dictionary<string, string>(request.Metadata),
+        };
+
+        var refund = await new RefundService(Client).CreateAsync(
+            options,
+            RequestOptionsFor(request.ConnectedAccountId, request.IdempotencyKey),
+            cancellationToken);
+        logger.LogInformation(
+            "Refund {RefundId} created for {PaymentIntentId} on {AccountId}: {Status}",
+            refund.Id,
+            request.PaymentIntentId,
+            request.ConnectedAccountId ?? "platform",
+            refund.Status);
+        return refund;
+    }
+
+    public async Task<IReadOnlyList<Refund>> ListRefundsAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        var refunds = new List<Refund>();
+        var options = new RefundListOptions { PaymentIntent = paymentIntentId, Limit = 100 };
+        await foreach (var refund in new RefundService(Client)
+                           .ListAutoPagingAsync(options, RequestOptionsFor(connectedAccountId), cancellationToken))
+        {
+            refunds.Add(refund);
+        }
+
+        return refunds;
     }
 
     public Task<PaymentIntent> GetPaymentIntentAsync(
@@ -190,33 +265,24 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
         return setupIntent;
     }
 
+    public async Task DetachPaymentMethodAsync(
+        string paymentMethodId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        await new PaymentMethodService(Client).DetachAsync(
+            paymentMethodId,
+            options: null,
+            RequestOptionsFor(connectedAccountId),
+            cancellationToken);
+        logger.LogInformation("Payment method {PaymentMethodId} detached on {AccountId}", paymentMethodId, connectedAccountId);
+    }
+
     private static RequestOptions RequestOptionsFor(string? connectedAccountId, string? idempotencyKey = null) => new()
     {
         StripeAccount = string.IsNullOrWhiteSpace(connectedAccountId) ? null : connectedAccountId,
         IdempotencyKey = idempotencyKey,
     };
-
-    public async Task<Refund> RefundPaymentAsync(string paymentIntentId, long? amount = null)
-    {
-        try
-        {
-            var options = new RefundCreateOptions
-            {
-                PaymentIntent = paymentIntentId,
-                Amount = amount
-            };
-
-            var service = new RefundService();
-            var refund = await service.CreateAsync(options);
-            logger.LogInformation("Refund created: {RefundId}", refund.Id);
-            return refund;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error refunding payment");
-            throw;
-        }
-    }
 
     public async Task<SetupIntent> CreateConnectedAccountSetupIntentAsync(
         string connectedAccountId,
@@ -244,7 +310,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
                 },
             };
 
-            var service = new SetupIntentService();
+            var service = new SetupIntentService(Client);
             var setupIntent = await service.CreateAsync(options, requestOptions);
             logger.LogInformation(
                 "Connected-account setup intent created: {SetupIntentId} on {AccountId}",
@@ -273,7 +339,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             Metadata = metadata,
         };
 
-        var service = new CustomerService();
+        var service = new CustomerService(Client);
         var customer = await service.CreateAsync(options, requestOptions);
         logger.LogInformation(
             "Connected-account customer created: {CustomerId} on {AccountId}",
@@ -310,7 +376,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
                 StripeAccount = connectedAccountId,
                 IdempotencyKey = idempotencyKey,
             };
-            var service = new PaymentIntentService();
+            var service = new PaymentIntentService(Client);
             var paymentIntent = await service.CreateAsync(options, requestOptions);
             logger.LogInformation(
                 "Off-session payment intent created: {PaymentIntentId} on {AccountId}",

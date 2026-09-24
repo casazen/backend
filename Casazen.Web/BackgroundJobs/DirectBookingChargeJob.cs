@@ -113,6 +113,7 @@ public class DirectBookingChargeJob(
                 deferredPayment.Status = PaymentStatus.Completed;
                 deferredPayment.TransactionId = paymentIntent.Id;
                 deferredPayment.StripePaymentIntentId = paymentIntent.Id;
+                deferredPayment.StripeAccountId = org.StripeConnectedAccountId;
                 deferredPayment.ProcessedAt = DateTime.UtcNow;
                 deferredPayment.UpdatedAt = DateTime.UtcNow;
                 await paymentRepository.UpdateAsync(deferredPayment);
@@ -128,6 +129,7 @@ public class DirectBookingChargeJob(
                 Method = PaymentMethod.CreditCard,
                 TransactionId = paymentIntent.Id,
                 StripePaymentIntentId = paymentIntent.Id,
+                StripeAccountId = org.StripeConnectedAccountId,
                 Description = DeadlineChargeDescription,
                 ProcessedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,

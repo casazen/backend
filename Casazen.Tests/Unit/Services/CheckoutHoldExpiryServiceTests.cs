@@ -65,7 +65,22 @@ public class CheckoutHoldExpiryServiceTests
         var stored = await ReloadAsync(hold.Id);
         Assert.Equal(BookingStatus.Cancelled, stored.Status);
         Assert.Equal(BookingCancellationReason.CheckoutHoldExpired, stored.CancellationReason);
-        Assert.Equal(PaymentStatus.Failed, Assert.Single(stored.Payments).Status);
+        Assert.Equal(PaymentStatus.Canceled, Assert.Single(stored.Payments).Status);
+    }
+
+    [Fact]
+    public async Task ExpireDueHoldsAsync_IntentCreatedOnPreviousAccount_CancelsItOnThatAccount()
+    {
+        // The org replaced its connected account after the checkout: the intent lives on the account stored on the
+        // payment row (BK-02), not on the org's current one.
+        var hold = await SeedHoldAsync(minutesAgo: 20, paymentIntentId: "pi_old_account", paymentAccountId: "acct_previous");
+
+        await Service().ExpireDueHoldsAsync();
+
+        _stripe.Verify(s => s.GetPaymentIntentAsync("pi_old_account", "acct_previous", It.IsAny<CancellationToken>()), Times.Once);
+        _stripe.Verify(s => s.CancelPaymentIntentAsync(
+            "pi_old_account", "acct_previous", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(BookingStatus.Cancelled, (await ReloadAsync(hold.Id)).Status);
     }
 
     [Fact]
@@ -243,7 +258,8 @@ public class CheckoutHoldExpiryServiceTests
         string? setupIntentId = null,
         DateTime? checkIn = null,
         DateTime? checkOut = null,
-        Action<Booking>? configure = null)
+        Action<Booking>? configure = null,
+        string? paymentAccountId = null)
     {
         var createdAt = DateTime.UtcNow.AddMinutes(-minutesAgo);
         var start = checkIn ?? new DateTime(2026, 11, 1).AddDays(_db.Bookings.Count() * 10);
@@ -272,6 +288,7 @@ public class CheckoutHoldExpiryServiceTests
                 Amount = booking.TotalPrice,
                 Status = PaymentStatus.Pending,
                 StripePaymentIntentId = paymentIntentId,
+                StripeAccountId = paymentAccountId,
                 TransactionId = paymentIntentId,
                 CreatedAt = createdAt,
                 UpdatedAt = createdAt,

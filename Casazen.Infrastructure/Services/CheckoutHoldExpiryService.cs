@@ -134,12 +134,13 @@ public sealed class CheckoutHoldExpiryService(
             if (booking is null)
                 return HoldOutcome.Skipped;
 
-            var connectedAccountId = await db.Orgs
+            // Fallback for payment rows recorded before BK-02 stored the account of their intent.
+            var orgAccountId = await db.Orgs
                 .Where(o => o.Id == booking.OrgId)
                 .Select(o => o.StripeConnectedAccountId)
                 .SingleOrDefaultAsync(cancellationToken);
 
-            var (release, inFlightPaymentIntentIds) = await ReleaseIntentsAsync(booking, connectedAccountId, cancellationToken);
+            var (release, inFlightPaymentIntentIds) = await ReleaseIntentsAsync(booking, orgAccountId, cancellationToken);
             switch (release)
             {
                 case IntentRelease.Released:
@@ -172,23 +173,24 @@ public sealed class CheckoutHoldExpiryService(
 
     private async Task<(IntentRelease Release, IReadOnlyCollection<string> InFlightPaymentIntentIds)> ReleaseIntentsAsync(
         Booking booking,
-        string? connectedAccountId,
+        string? orgAccountId,
         CancellationToken cancellationToken)
     {
         var inFlight = new List<string>();
         var failed = false;
 
-        // Intents a guest may still pay: the payment rows not settled otherwise (Failed = declined, retryable on the same intent).
-        var paymentIntentIds = booking.Payments
-            .Where(p => p.StripePaymentIntentId != null &&
-                        (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Failed))
-            .Select(p => p.StripePaymentIntentId!)
-            .Distinct(StringComparer.Ordinal)
+        // Intents a guest may still pay: the payment rows not settled otherwise (Failed = declined, retryable on the same
+        // intent), each on the connected account it was created on (direct charge).
+        var paymentIntents = booking.Payments
+            .Where(p => p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Failed)
+            .Select(p => (Id: PaymentRefundService.PaymentIntentIdOf(p), Account: p.StripeAccountId ?? orgAccountId))
+            .Where(intent => intent.Id is not null)
+            .DistinctBy(intent => intent.Id, StringComparer.Ordinal)
             .ToList();
 
-        foreach (var paymentIntentId in paymentIntentIds)
+        foreach (var (paymentIntentId, connectedAccountId) in paymentIntents)
         {
-            switch (await ReleasePaymentIntentAsync(booking.Id, paymentIntentId, connectedAccountId, cancellationToken))
+            switch (await ReleasePaymentIntentAsync(booking.Id, paymentIntentId!, connectedAccountId, cancellationToken))
             {
                 case IntentRelease.InFlight:
                     inFlight.Add(paymentIntentId);
@@ -202,7 +204,9 @@ public sealed class CheckoutHoldExpiryService(
         var setupInFlight = false;
         if (!string.IsNullOrWhiteSpace(booking.StripeSetupIntentId))
         {
-            switch (await ReleaseSetupIntentAsync(booking.Id, booking.StripeSetupIntentId, connectedAccountId, cancellationToken))
+            var setupAccountId = booking.Payments
+                .FirstOrDefault(p => p.TransactionId == booking.StripeSetupIntentId)?.StripeAccountId ?? orgAccountId;
+            switch (await ReleaseSetupIntentAsync(booking.Id, booking.StripeSetupIntentId, setupAccountId, cancellationToken))
             {
                 case IntentRelease.InFlight:
                     setupInFlight = true;
@@ -377,10 +381,10 @@ public sealed class CheckoutHoldExpiryService(
         booking.CancellationReason = BookingCancellationReason.CheckoutHoldExpired;
         booking.UpdatedAt = now;
 
-        // Nothing is collected any more: same state the payment_intent.canceled webhook records.
-        foreach (var payment in booking.Payments.Where(p => p.Status == PaymentStatus.Pending))
+        // Never collected: same state as a host cancellation (BK-02) and the payment_intent.canceled webhook.
+        foreach (var payment in booking.Payments.Where(p => p.Status is PaymentStatus.Pending or PaymentStatus.Failed))
         {
-            payment.Status = PaymentStatus.Failed;
+            payment.Status = PaymentStatus.Canceled;
             payment.UpdatedAt = now;
         }
     }

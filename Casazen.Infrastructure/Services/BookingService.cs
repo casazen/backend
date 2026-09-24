@@ -293,6 +293,7 @@ public class BookingService(
             Method = Core.Entities.PaymentMethod.CreditCard,
             TransactionId = paymentIntent.Id,
             StripePaymentIntentId = paymentIntent.Id,
+            StripeAccountId = stripeConnectedAccountId,
             Description = "Direct checkout - immediate payment",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -346,6 +347,7 @@ public class BookingService(
             Status = PaymentStatus.Pending,
             Method = Core.Entities.PaymentMethod.CreditCard,
             TransactionId = setupIntent.Id,
+            StripeAccountId = stripeConnectedAccountId,
             Description = "Direct checkout - deferred payment (charged at deadline)",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -410,19 +412,6 @@ public class BookingService(
         {
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
-    }
-
-    public async Task<bool> CancelBookingAsync(Guid bookingId)
-    {
-        var booking = await repository.GetByIdAsync(bookingId);
-        if (booking == null)
-            return false;
-
-        booking.Status = BookingStatus.Cancelled;
-        booking.CheckoutReminderJobId = null;
-        await repository.UpdateAsync(booking);
-        logger.LogInformation("Booking {Id} cancelled", bookingId);
-        return true;
     }
 
     public async Task<bool> IsPropertyAvailableAsync(
