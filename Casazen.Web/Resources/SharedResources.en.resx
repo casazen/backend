@@ -738,4 +738,58 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
   </data>
+  <data name="PropertyNameRequired" xml:space="preserve">
+    <value>The property name is required.</value>
+  </data>
+  <data name="PropertyNameTooLong" xml:space="preserve">
+    <value>The property name can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyDescriptionTooLong" xml:space="preserve">
+    <value>The description can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyAddressRequired" xml:space="preserve">
+    <value>The address is required.</value>
+  </data>
+  <data name="PropertyAddressTooLong" xml:space="preserve">
+    <value>The address can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyCityRequired" xml:space="preserve">
+    <value>The city is required.</value>
+  </data>
+  <data name="PropertyCityTooLong" xml:space="preserve">
+    <value>The city can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyPostalCodeTooLong" xml:space="preserve">
+    <value>The postal code can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyBedroomsRange" xml:space="preserve">
+    <value>Bedrooms must be a whole number between {1} and {2} (0 for a studio).</value>
+  </data>
+  <data name="PropertyBathroomsRange" xml:space="preserve">
+    <value>Bathrooms must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyMaxGuestsRange" xml:space="preserve">
+    <value>The maximum number of guests must be between {1} and {2}.</value>
+  </data>
+  <data name="PropertyNightlyRateRange" xml:space="preserve">
+    <value>The nightly rate must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyCleaningFeeRange" xml:space="preserve">
+    <value>The cleaning fee must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyDamageDepositRange" xml:space="preserve">
+    <value>The damage deposit must be between {1} and {2} euros.</value>
+  </data>
+  <data name="PropertyHouseRulesTooLong" xml:space="preserve">
+    <value>The house rules can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyTimezoneInvalid" xml:space="preserve">
+    <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>
+  </data>
+  <data name="PropertySlugTooLong" xml:space="preserve">
+    <value>The web address (slug) can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
+    <value>The selected cancellation policy does not exist: reload the page and choose another one.</value>
+  </data>
 </root>

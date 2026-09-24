@@ -6,6 +6,12 @@ namespace Casazen.Core.Repositories;
 public interface IPropertyRepository
 {
     Task<Property?> GetByIdAsync(Guid id);
+
+    /// <summary>
+    /// The property row alone, tracked, without bookings, OTA integrations or documents (A2-32): what the record
+    /// endpoints read and update. Saving it never rewrites rows of other aggregates (A2-04).
+    /// </summary>
+    Task<Property?> GetRecordAsync(Guid id);
     Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId);
 
     /// <summary>
@@ -30,4 +36,9 @@ public interface IPropertyRepository
     Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId);
     Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);
     Task<bool> SlugExistsInOrgAsync(Guid orgId, string slug, Guid? excludePropertyId = null);
+
+    /// <summary>The cancellation policies a property can reference (global catalog), by name.</summary>
+    Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync();
+
+    Task<bool> CancellationPolicyExistsAsync(Guid id);
 }

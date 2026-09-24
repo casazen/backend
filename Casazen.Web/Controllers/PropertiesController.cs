@@ -69,14 +69,24 @@ public class PropertiesController(
         return Ok(properties);
     }
 
+    /// <summary>
+    /// The record of one property (<see cref="PropertyResponse"/>): no bookings (nor their check-in tokens), OTA
+    /// integrations or documents (A2-32). Another org's property is 404 (tenant filter).
+    /// </summary>
+    /// <response code="200">The property record.</response>
+    /// <response code="403">The caller may not read this property (TN-3).</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("{id}")]
-    public async Task<ActionResult<Property>> GetById(Guid id)
+    [ProducesResponseType(typeof(PropertyResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyResponse>> GetById(Guid id)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var property = await propertyService.GetPropertyAsync(id);
+        var property = await propertyService.GetPropertyRecordAsync(id);
         if (property == null)
             return NotFound();
 
@@ -85,7 +95,19 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "Property.Read");
 
-        return Ok(property);
+        return Ok(PropertyResponse.From(property));
+    }
+
+    /// <summary>
+    /// The cancellation policies a short-stay property can reference (<see cref="UpdatePropertyRequest.CancellationPolicyId"/>),
+    /// by name. The catalog is global, not per org.
+    /// </summary>
+    [HttpGet("cancellation-policies")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(IReadOnlyList<CancellationPolicyOptionDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<CancellationPolicyOptionDto>>> GetCancellationPolicies()
+    {
+        return Ok(await propertyService.GetCancellationPoliciesAsync());
     }
 
     /// <summary>
@@ -167,29 +189,38 @@ public class PropertiesController(
     }
 
     /// <summary>
-    /// Updates an existing property. Only the property owner may perform this operation.
+    /// Updates a property with <b>PATCH semantics</b> (A2-04): only the fields present in the body change, a field left
+    /// out (or null) keeps its stored value; the nullable CIN, slug and cancellation policy are cleared by sending null.
+    /// The web forms send every field they show, so both a partial and a complete body are safe.
     /// </summary>
     /// <remarks>
-    /// <c>OwnerId</c> is never accepted from the request body; ownership is always verified
-    /// against the authenticated caller's JWT <c>sub</c> claim. Sending an <c>OwnerId</c> field
-    /// in the body has no effect and will not change the property owner.
+    /// <c>OwnerId</c> and <c>OrgId</c> are never accepted from the request body. The row is authorized with
+    /// <see cref="SharedPropertyOperations.Write"/> (TN-3); another org's property is 404.
     /// </remarks>
     /// <param name="id">The unique identifier of the property to update.</param>
-    /// <param name="request">Updated property details. See <see cref="UpdatePropertyRequest"/> for available fields.</param>
-    /// <returns>No content on success.</returns>
-    /// <response code="204">Property updated successfully.</response>
-    /// <response code="401">The caller is not authenticated.</response>
-    /// <response code="403">The caller is not the owner of this property.</response>
-    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    /// <param name="request">The fields to change. See <see cref="UpdatePropertyRequest"/>.</param>
+    /// <response code="204">Property updated.</response>
+    /// <response code="400"><c>validation_error</c>: a field sent is not valid (errors by field).</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="409">Slug already used in the org, or city change after a canone concordato registration.</response>
+    /// <response code="422"><c>cancellation_policy_not_found</c>: the cancellation policy does not exist.</response>
     [HttpPut("{id}")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var existing = await propertyService.GetPropertyAsync(id);
+        // The row alone: saving it must not write back the bookings or OTA integrations of the property (A2-04).
+        var existing = await propertyService.GetPropertyRecordAsync(id);
         if (existing == null)
             return NotFound();
 
@@ -203,7 +234,7 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Update");
 
-        if (IsCityChange(existing.City, request.City) && await HasSubmittedCanoneConcordatoLeaseAsync(id))
+        if (request.City is { } city && IsCityChange(existing.City, city) && await HasSubmittedCanoneConcordatoLeaseAsync(id))
         {
             return Conflict(new
             {

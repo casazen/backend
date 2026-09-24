@@ -738,4 +738,58 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="PropertyNameRequired" xml:space="preserve">
+    <value>Il nome dell'immobile è obbligatorio.</value>
+  </data>
+  <data name="PropertyNameTooLong" xml:space="preserve">
+    <value>Il nome dell'immobile può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyDescriptionTooLong" xml:space="preserve">
+    <value>La descrizione può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyAddressRequired" xml:space="preserve">
+    <value>L'indirizzo è obbligatorio.</value>
+  </data>
+  <data name="PropertyAddressTooLong" xml:space="preserve">
+    <value>L'indirizzo può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyCityRequired" xml:space="preserve">
+    <value>La città è obbligatoria.</value>
+  </data>
+  <data name="PropertyCityTooLong" xml:space="preserve">
+    <value>La città può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyPostalCodeTooLong" xml:space="preserve">
+    <value>Il CAP può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyBedroomsRange" xml:space="preserve">
+    <value>Le camere devono essere un numero intero tra {1} e {2} (0 per un monolocale).</value>
+  </data>
+  <data name="PropertyBathroomsRange" xml:space="preserve">
+    <value>I bagni devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyMaxGuestsRange" xml:space="preserve">
+    <value>Il numero massimo di ospiti deve essere tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyNightlyRateRange" xml:space="preserve">
+    <value>Il prezzo per notte deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyCleaningFeeRange" xml:space="preserve">
+    <value>Il costo delle pulizie deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyDamageDepositRange" xml:space="preserve">
+    <value>Il deposito cauzionale deve essere tra {1} e {2} euro.</value>
+  </data>
+  <data name="PropertyHouseRulesTooLong" xml:space="preserve">
+    <value>Le regole della casa possono avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyTimezoneInvalid" xml:space="preserve">
+    <value>Fuso orario non valido: usa un identificativo IANA, ad esempio Europe/Rome.</value>
+  </data>
+  <data name="PropertySlugTooLong" xml:space="preserve">
+    <value>L'indirizzo web (slug) può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyCancellationPolicyNotFound" xml:space="preserve">
+    <value>La policy di cancellazione scelta non esiste: ricarica la pagina e scegline un'altra.</value>
+  </data>
 </root>

@@ -315,10 +315,10 @@ public class ComplianceWizardService(
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
+        // Bedrooms are not checked: 0 is a studio flat (monolocale, A2-27).
         var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
-            && property.Bedrooms > 0
             && property.MaxGuests > 0
             && property.NightlyRate > 0;
 
