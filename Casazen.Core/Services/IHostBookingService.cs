@@ -1,0 +1,49 @@
+using Casazen.Core.Entities;
+
+namespace Casazen.Core.Services;
+
+/// <summary>
+/// Changes the host makes to an existing booking from the console (PC-07, A2-07, A2-08): edit of the fields the host
+/// owns, confirmation of a pending booking entered by hand, check-out. Cancellation (refunds and intents on Stripe) is
+/// <see cref="IBookingCancellationService"/>. Each change runs under the lock of the booking that the cancellation
+/// takes, so a change and a cancellation sent together never overwrite each other. Callers authorize the booking first:
+/// the service never checks roles. Errors are <see cref="Exceptions.DomainRuleException"/> (422),
+/// <see cref="Exceptions.DomainConflictException"/> (409) and <see cref="Exceptions.NotFoundException"/> with the codes
+/// of <see cref="BookingErrorCodes"/>.
+/// </summary>
+public interface IHostBookingService
+{
+    /// <summary>
+    /// Applies <paramref name="update"/>. Status, source, prices, guest and payment fields are never taken from the
+    /// caller. Dates and guests change only for a booking entered by the host (<see cref="BookingSource.Manual"/>)
+    /// before its check-in; new dates are checked against the other bookings and the imported calendar blocks (409
+    /// <see cref="BookingErrorCodes.DatesUnavailable"/>) and the price, tourist tax included, is computed again.
+    /// </summary>
+    Task<Booking> UpdateAsync(HostBookingUpdate update, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirms a <see cref="BookingStatus.Pending"/> booking entered by the host (the old code stored them Pending: PC-01
+    /// marked them <see cref="BookingSource.Manual"/> without confirming them). Its dates must still be free.
+    /// </summary>
+    Task<Booking> ConfirmAsync(Guid bookingId, CancellationToken cancellationToken = default);
+
+    /// <summary>Check-out of a <see cref="BookingStatus.CheckedIn"/> booking, from its check-out day (Europe/Rome).</summary>
+    Task<Booking> CheckOutAsync(Guid bookingId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What the host may change on a booking.</summary>
+/// <param name="BookingId">The booking.</param>
+/// <param name="CheckInDate">Check-in day.</param>
+/// <param name="CheckOutDate">Check-out day.</param>
+/// <param name="NumberOfGuests">All guests, minors included.</param>
+/// <param name="NumberOfChildren">Minors among <paramref name="NumberOfGuests"/> (under 18).</param>
+/// <param name="ChildrenAges">Age of each minor at check-in, when the tourist tax of the comune depends on it.</param>
+/// <param name="SpecialRequests">Notes of the booking.</param>
+public sealed record HostBookingUpdate(
+    Guid BookingId,
+    DateTime CheckInDate,
+    DateTime CheckOutDate,
+    int NumberOfGuests,
+    int NumberOfChildren,
+    IReadOnlyList<int>? ChildrenAges,
+    string? SpecialRequests);

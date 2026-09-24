@@ -3,6 +3,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public class BookingCancellationServiceTests : IDisposable
         .Options);
 
     private readonly Mock<IStripeService> _stripe = new();
+    private readonly Mock<IEmailQueue> _emails = new();
     private readonly List<StripeRefundCreateRequest> _refunds = [];
     private string _refundStatus = "succeeded";
 
@@ -174,6 +176,44 @@ public class BookingCancellationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CancelAsync_PaidBookingWithReason_KeepsReasonForHostAndEmailsGuestTheRefundWithoutIt()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: -1);
+        var sent = new List<(string? To, EmailContent Content, string Template)>();
+        _emails
+            .Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
+            .Callback<string?, EmailContent, string>((to, content, template) => sent.Add((to, content, template)))
+            .Returns(true);
+
+        await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 150m, "  Caldaia guasta, nota interna  ", "auth0|host"));
+
+        var booking = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        Assert.Equal("Caldaia guasta, nota interna", booking.CancellationNote);
+        var email = Assert.Single(sent, e => e.Template == EmailTemplates.Names.GuestBookingCancelled);
+        Assert.Equal("guest@example.com", email.To);
+        Assert.Contains("Villa Rosa", email.Content.Subject);
+        Assert.Contains("150,00 €", email.Content.HtmlBody);
+        Assert.DoesNotContain("Caldaia", email.Content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task CancelAsync_NothingPaid_EmailsGuestWithoutRefundLine()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 250m, transactionId: "", paymentIntent: null);
+        var sent = new List<EmailContent>();
+        _emails
+            .Setup(q => q.Enqueue("guest@example.com", It.IsAny<EmailContent>(), EmailTemplates.Names.GuestBookingCancelled))
+            .Callback<string?, EmailContent, string>((_, content, _) => sent.Add(content))
+            .Returns(true);
+
+        await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, null, null, "auth0|host"));
+
+        var email = Assert.Single(sent);
+        Assert.DoesNotContain("rimborso", email.HtmlBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Null((await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).CancellationNote);
+    }
+
+    [Fact]
     public async Task CancelAsync_RefundPendingOnStripe_BookingCancelledButPaymentNotRefundedYet()
     {
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: 10);
@@ -271,7 +311,7 @@ public class BookingCancellationServiceTests : IDisposable
             NullLogger<PaymentRefundService>.Instance,
             new FixedTimeProvider(Now));
         return new BookingCancellationService(
-            _db, refunds, _stripe.Object, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
+            _db, refunds, _stripe.Object, _emails.Object, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
     }
 
     private sealed record Seed(Guid BookingId, Guid PaymentId, string PaymentIntentId);

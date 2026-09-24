@@ -47,8 +47,16 @@ public class Booking : ITenantOwned
     [MaxLength(500)]
     public string ExternalId { get; set; } = string.Empty;
 
+    /// <summary>Lodging (nightly rate x nights) plus <see cref="CleaningFee"/>; tourist tax excluded.</summary>
     [Precision(18, 2)]
     public decimal BasePrice { get; set; }
+
+    /// <summary>
+    /// Cleaning fee included in <see cref="BasePrice"/>, as priced when the booking was made or last repriced (PC-07):
+    /// the lodging of the stay is <c>BasePrice - CleaningFee</c>, whatever the property's fee is today.
+    /// </summary>
+    [Precision(18, 2)]
+    public decimal CleaningFee { get; set; }
 
     [Precision(18, 2)]
     public decimal TouristTax { get; set; }
@@ -111,6 +119,12 @@ public class Booking : ITenantOwned
     /// Lets the payment webhook and support tell an expired checkout hold from a real cancellation (BK-21).
     /// </summary>
     public BookingCancellationReason? CancellationReason { get; set; }
+
+    /// <summary>
+    /// Reason written by the host who cancelled the booking (PC-07, A2-08). Private to the host: never sent to the guest.
+    /// </summary>
+    [MaxLength(500)]
+    public string? CancellationNote { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

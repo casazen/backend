@@ -23,7 +23,7 @@ public class EmailTemplatesTests
     public static TheoryData<string> TemplateNames => new()
     {
         "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
-        "rli-reminder", "rli-overdue", "rli-extra-eu",
+        "rli-reminder", "rli-overdue", "rli-extra-eu", "booking-cancelled",
     };
 
     [Theory]
@@ -204,6 +204,25 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void GuestBookingCancelled_ItalianAndEnglish_ShowStayAndRefundOnlyWhenStarted()
+    {
+        var italian = EmailTemplates.GuestBookingCancelled(
+            CultureInfo.GetCultureInfo("it-IT"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m);
+        var english = EmailTemplates.GuestBookingCancelled(
+            CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m);
+        var withoutRefund = EmailTemplates.GuestBookingCancelled(
+            CultureInfo.GetCultureInfo("it-IT"), "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), null);
+
+        Assert.Equal("Prenotazione annullata - Villa Rosa", italian.Subject);
+        Assert.Contains("1.234,50 €", italian.HtmlBody);
+        Assert.Contains("05/10/2026", italian.HtmlBody);
+        Assert.Contains("08/10/2026", italian.HtmlBody);
+        Assert.Equal("Booking cancelled - Villa Rosa", english.Subject);
+        Assert.Contains("€1,234.50", english.HtmlBody);
+        Assert.DoesNotContain("rimborso", withoutRefund.HtmlBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RliDeadlineReminder_Italian_ShowsPropertyDeadlineAndDaysWithoutTechnicalCodes()
     {
         var content = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
@@ -284,6 +303,7 @@ public class EmailTemplatesTests
             "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
             "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
             "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),
+            "booking-cancelled" => EmailTemplates.GuestBookingCancelled(culture, value, value, CheckIn, CheckIn.AddDays(3), 99.5m),
             _ => throw new ArgumentOutOfRangeException(nameof(template)),
         };
     }

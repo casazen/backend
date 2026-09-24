@@ -28,6 +28,10 @@ public interface IBookingCancellationService
 /// Amount to refund of what was paid through Stripe; required (0 allowed) when something was paid, and at least
 /// <see cref="BookingCancellationQuote.MinimumRefundAmount"/>.
 /// </param>
+/// <param name="Reason">
+/// The host's reason, kept on the booking (<see cref="Booking.CancellationNote"/>) and on its refunds; never sent to the
+/// guest.
+/// </param>
 public sealed record BookingCancellationRequest(
     Guid BookingId,
     decimal? RefundAmount,

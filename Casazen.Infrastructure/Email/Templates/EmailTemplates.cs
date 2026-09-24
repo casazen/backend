@@ -23,6 +23,7 @@ public static class EmailTemplates
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
+        public const string GuestBookingCancelled = "guest-booking-cancelled";
         public const string RliDeadlineReminder = "rli-deadline-reminder";
         public const string RliDeadlineOverdue = "rli-deadline-overdue";
         public const string RliExtraEuNotice = "rli-extra-eu-notice";
@@ -153,6 +154,28 @@ public static class EmailTemplates
             .Paragraph("GuestRefundConfirmed_Method")
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestRefundConfirmed_Subject", propertyName);
+
+    /// <summary>
+    /// The host cancelled the booking, to the guest (PC-07, A2-08). <paramref name="refundStartedEur"/> is the refund
+    /// sent to Stripe, in euro, when there is one: its confirmation is <see cref="GuestRefundConfirmed"/>.
+    /// </summary>
+    public static EmailContent GuestBookingCancelled(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal? refundStartedEur)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("GuestBookingCancelled_Greeting", guestName)
+            .Paragraph("GuestBookingCancelled_Body", propertyName, checkInDate, checkOutDate);
+        if (refundStartedEur is > 0m)
+            builder.Paragraph("GuestBookingCancelled_Refund", refundStartedEur.Value.ToString("N2", culture));
+        return builder
+            .Muted("GuestBookingCancelled_Contact")
+            .Build("GuestBookingCancelled_Subject", propertyName);
+    }
 
     /// <summary>RLI registration deadline approaching, to the landlord (LT-11, A7-26).</summary>
     public static EmailContent RliDeadlineReminder(

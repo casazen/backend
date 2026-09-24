@@ -87,7 +87,7 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
         return all[index - 1];
     }
 
-    /// <summary>Rows written through the model: Orgs, Properties, Guests and Bookings have the same schema before and after the migration.</summary>
+    /// <summary>Orgs, Properties and Guests written through the model (same schema before and after); Bookings with SQL.</summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
         var org = new OrgEntity
@@ -137,28 +137,35 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
             DocumentNumber = "X1",
         };
 
-        Booking NewBooking(Guest guest, int guests) => new()
-        {
-            PropertyId = property.Id,
-            OrgId = org.Id,
-            GuestId = guest.Id,
-            CheckInDate = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc),
-            CheckOutDate = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc),
-            NumberOfGuests = guests,
-            Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
-        };
-
-        var single = NewBooking(complete, 1);
-        var family = NewBooking(otherValues, 3);
-        var noneDeclared = NewBooking(complete, 0);
-
         db.Orgs.Add(org);
         db.Properties.Add(property);
         db.Guests.AddRange(complete, otherValues);
-        db.Bookings.AddRange(single, family, noneDeclared);
         await db.SaveChangesAsync();
 
-        return new Seed(org.Id, complete.Id, otherValues.Id, single.Id, family.Id, noneDeclared.Id);
+        var single = await InsertBookingAsync(db, org.Id, property.Id, complete.Id, guests: 1);
+        var family = await InsertBookingAsync(db, org.Id, property.Id, otherValues.Id, guests: 3);
+        var noneDeclared = await InsertBookingAsync(db, org.Id, property.Id, complete.Id, guests: 0);
+
+        return new Seed(org.Id, complete.Id, otherValues.Id, single, family, noneDeclared);
+    }
+
+    /// <summary>
+    /// A confirmed direct booking written with the columns Bookings has before the migration: later migrations add
+    /// columns to Bookings (PC-07), so the current model cannot write it at that schema.
+    /// </summary>
+    private static async Task<Guid> InsertBookingAsync(AppDbContext db, Guid orgId, Guid propertyId, Guid guestId, int guests)
+    {
+        var id = Guid.NewGuid();
+        var checkIn = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+        var checkOut = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc);
+        var now = DateTime.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Bookings" ("Id", "PropertyId", "OrgId", "GuestId", "CheckInDate", "CheckOutDate", "NumberOfGuests",
+                "Status", "Source", "ExternalId", "BasePrice", "TouristTax", "TotalPrice", "TouristTaxAmount",
+                "NumberOfAdults", "NumberOfChildren", "SpecialRequests", "PaymentOption", "CreatedAt", "UpdatedAt")
+            VALUES ({id}, {propertyId}, {orgId}, {guestId}, {checkIn}, {checkOut}, {guests},
+                {(int)BookingStatus.Confirmed}, {(int)BookingSource.Direct}, '', 0, 0, 0, 0, 0, 0, '', 0, {now}, {now})
+            """);
+        return id;
     }
 }
