@@ -90,13 +90,20 @@ Computed from the lease at generation time; nothing is written in the template o
 | `data_decorrenza`, `data_scadenza` | start and end date of the lease | `01/09/2026` |
 | `durata` | actual term from the dates, end date inclusive: whole years, otherwise months, then days | `4 anni`, `3 anni`, `18 mesi`, `2 mesi e 10 giorni` |
 | `canone_mensile`, `canone_annuo` | monthly rent and 12 × monthly rent, **without currency** (write `euro {{canone_mensile}}`) | `1.200,00` |
-| `dati_catastali` | cadastral data of the unit | **not in the data model yet** |
-| `ape_estremi` | APE identification (code, energy class, date) | **not in the data model yet** |
-| `deposito_cauzionale` | security deposit | **not in the data model yet** |
+| `dati_catastali` | cadastral data of the property (LT-10): sheet, parcel, subaltern when present, category and income; present only when sheet, parcel, category and income are all set | `Foglio 12, particella 345, subalterno 6, categoria A/2, rendita catastale euro 512,30` |
+| `ape_estremi` | code and energy class of the **latest APE document** of the property (LT-10) | `codice 1510800012345, classe energetica B` |
+| `deposito_cauzionale` | security deposit of the lease, **without currency** (LT-10) | `2.400,00` |
 
-A template may use the last three, but until the data model has them every final contract of that regime answers
-`422 contract_data_missing` (the preview shows `[DATO MANCANTE: …]`). Adding those fields (lease/property, API,
-form) is a separate task.
+The last three are entered by the landlord (LT-10): the cadastral data on the property page
+(`PUT /api/properties/{id}/cadastral`), the APE code and class on the APE document (`PUT
+/api/properties/{id}/documents/{docId}/ape`), the deposit in the lease form (`securityDeposit`). Only lengths and, for
+the energy class, 1-3 letters/digits/"+" are checked: no pattern is imposed on the codes. While a datum used by the
+template is missing, the final contract answers `422 contract_data_missing` and the preview shows
+`[DATO MANCANTE: …]`.
+
+**Transitorio leases** (LT-10): the contract type exists (1-18 months) but has no template, whatever the tax regime:
+the final contract answers `422 contract_template_not_approved` and the preview is a BOZZA. The template of a
+regime is a 4+4 or 3+2 contract and must not be used for them. Student leases are not modelled.
 
 ### Required sections (checklist)
 

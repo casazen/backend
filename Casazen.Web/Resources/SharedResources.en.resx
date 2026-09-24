@@ -738,4 +738,52 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
   </data>
+  <data name="LeaseEndBeforeStart" xml:space="preserve">
+    <value>The lease end date must be after the start date.</value>
+  </data>
+  <data name="LeaseTermTooShortLibero" xml:space="preserve">
+    <value>A free-rent lease (4+4) must last at least 4 years. For a shorter term use a transitional lease, if its conditions apply.</value>
+  </data>
+  <data name="LeaseTermTooShortConcordato" xml:space="preserve">
+    <value>An agreed-rent lease (canone concordato, 3+2) must last at least 3 years.</value>
+  </data>
+  <data name="LeaseTermOutOfRangeTransitorio" xml:space="preserve">
+    <value>A transitional lease must last from 1 to 18 months.</value>
+  </data>
+  <data name="LeaseContractTypeRequired" xml:space="preserve">
+    <value>Choose the contract type (free rent, agreed rent or transitional).</value>
+  </data>
+  <data name="LeaseTaxRegimeRequired" xml:space="preserve">
+    <value>Choose the tax regime of the lease (cedolare secca or ordinary regime).</value>
+  </data>
+  <data name="ConcordatoCharacteristicsRequired" xml:space="preserve">
+    <value>An agreed-rent lease needs the characteristics of the property (surface, zone, elements) to compute the allowed rent.</value>
+  </data>
+  <data name="ConcordatoRentOutOfRange" xml:space="preserve">
+    <value>The monthly rent is outside the agreed-rent range computed for this property ({0:0.00} – {1:0.00} euros a month).</value>
+  </data>
+  <data name="ConcordatoRangeUnavailable" xml:space="preserve">
+    <value>The agreed-rent range is not available for the comune of this property: check the rent with an organization that signed the territorial agreement.</value>
+  </data>
+  <data name="ConcordatoZoneRequired" xml:space="preserve">
+    <value>Enter the zone or the cadastral sheet: the comune has more zones in the territorial agreement.</value>
+  </data>
+  <data name="ConcordatoZoneNotFound" xml:space="preserve">
+    <value>The zone or cadastral sheet entered is not in the territorial agreement for this comune.</value>
+  </data>
+  <data name="ConcordatoInvalidSurface" xml:space="preserve">
+    <value>The surface of the property is not valid.</value>
+  </data>
+  <data name="ConcordatoSurfaceOutOfBands" xml:space="preserve">
+    <value>The surface of the property is not in the bands of the territorial agreement.</value>
+  </data>
+  <data name="ConcordatoInvalidElementCounts" xml:space="preserve">
+    <value>The D elements that count for sub-fascia 3 cannot be more than the D elements.</value>
+  </data>
+  <data name="DocumentNotApe" xml:space="preserve">
+    <value>The document is not an APE.</value>
+  </data>
+  <data name="ApeIdentificationInvalid" xml:space="preserve">
+    <value>Enter the APE code and the energy class (1 to 3 letters, digits or "+", for example A4 or G).</value>
+  </data>
 </root>

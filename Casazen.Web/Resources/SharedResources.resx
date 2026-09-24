@@ -738,4 +738,52 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="LeaseEndBeforeStart" xml:space="preserve">
+    <value>La data di fine del contratto deve essere successiva alla data di inizio.</value>
+  </data>
+  <data name="LeaseTermTooShortLibero" xml:space="preserve">
+    <value>Un contratto a canone libero (4+4) deve durare almeno 4 anni. Per una durata più breve usa il contratto transitorio, se ne ricorrono i presupposti.</value>
+  </data>
+  <data name="LeaseTermTooShortConcordato" xml:space="preserve">
+    <value>Un contratto a canone concordato (3+2) deve durare almeno 3 anni.</value>
+  </data>
+  <data name="LeaseTermOutOfRangeTransitorio" xml:space="preserve">
+    <value>Un contratto transitorio deve durare da 1 a 18 mesi.</value>
+  </data>
+  <data name="LeaseContractTypeRequired" xml:space="preserve">
+    <value>Indica il tipo di contratto (canone libero, canone concordato o transitorio).</value>
+  </data>
+  <data name="LeaseTaxRegimeRequired" xml:space="preserve">
+    <value>Indica il regime fiscale del contratto (cedolare secca o regime ordinario).</value>
+  </data>
+  <data name="ConcordatoCharacteristicsRequired" xml:space="preserve">
+    <value>Per un contratto a canone concordato servono le caratteristiche dell'immobile (superficie, zona, elementi) per calcolare il canone ammesso.</value>
+  </data>
+  <data name="ConcordatoRentOutOfRange" xml:space="preserve">
+    <value>Il canone mensile è fuori dal range del canone concordato calcolato per questo immobile ({0:0.00} – {1:0.00} euro al mese).</value>
+  </data>
+  <data name="ConcordatoRangeUnavailable" xml:space="preserve">
+    <value>Il range del canone concordato non è disponibile per il comune di questo immobile: verifica il canone con un'associazione firmataria dell'accordo territoriale.</value>
+  </data>
+  <data name="ConcordatoZoneRequired" xml:space="preserve">
+    <value>Indica la zona o il foglio catastale: il comune ha più zone nell'accordo territoriale.</value>
+  </data>
+  <data name="ConcordatoZoneNotFound" xml:space="preserve">
+    <value>La zona o il foglio catastale indicati non sono previsti dall'accordo territoriale per questo comune.</value>
+  </data>
+  <data name="ConcordatoInvalidSurface" xml:space="preserve">
+    <value>La superficie dell'immobile non è valida.</value>
+  </data>
+  <data name="ConcordatoSurfaceOutOfBands" xml:space="preserve">
+    <value>La superficie dell'immobile non rientra nelle fasce dell'accordo territoriale.</value>
+  </data>
+  <data name="ConcordatoInvalidElementCounts" xml:space="preserve">
+    <value>Gli elementi D qualificanti per la sub-fascia 3 non possono essere più degli elementi D.</value>
+  </data>
+  <data name="DocumentNotApe" xml:space="preserve">
+    <value>Il documento non è un APE.</value>
+  </data>
+  <data name="ApeIdentificationInvalid" xml:space="preserve">
+    <value>Indica il codice dell'APE e la classe energetica (da 1 a 3 caratteri tra lettere, cifre e "+", per esempio A4 o G).</value>
+  </data>
 </root>

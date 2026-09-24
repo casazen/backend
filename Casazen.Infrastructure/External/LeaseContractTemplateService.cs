@@ -1,4 +1,6 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -34,7 +36,7 @@ public class LeaseContractTemplateService(
 
     public string? GetFinalContractBlocker(LeaseContract lease)
     {
-        var template = catalog.Get(lease.FiscalRegime);
+        var template = TemplateFor(lease);
         if (!template.IsApproved)
             return TemplateNotApprovedCode;
 
@@ -45,7 +47,7 @@ public class LeaseContractTemplateService(
 
     private (LeaseContractTemplateState Template, IReadOnlyDictionary<string, string?> Data) ResolveApprovedTemplate(LeaseContract lease)
     {
-        var template = catalog.Get(lease.FiscalRegime);
+        var template = TemplateFor(lease);
         if (!template.IsApproved)
         {
             logger.LogWarning(
@@ -67,9 +69,21 @@ public class LeaseContractTemplateService(
         return (template, data);
     }
 
+    /// <summary>
+    /// Template of the lease: the one of its legacy fiscal regime, except for a transitorio lease (LT-10), which has no
+    /// template yet (its clauses and transitory needs are not modelled): the regime's template would be a 4+4 contract.
+    /// </summary>
+    private LeaseContractTemplateState TemplateFor(LeaseContract lease) =>
+        lease.ContractType == LeaseContractType.Transitorio
+            ? new LeaseContractTemplateState(
+                lease.FiscalRegime, null, LeaseContractTemplateStatus.Missing, null, [],
+                LeaseContractTemplateStructure.RequiredSections(lease.FiscalRegime).Select(s => s.Id).ToList(),
+                ["no template for transitorio leases"], false, [])
+            : catalog.Get(lease.FiscalRegime);
+
     public Task<byte[]> GeneratePreviewPdfAsync(LeaseContract lease)
     {
-        var template = catalog.Get(lease.FiscalRegime);
+        var template = TemplateFor(lease);
         var marker = template.IsApproved ? LeaseContractDocument.ApprovedPreviewMarker : LeaseContractDocument.DraftMarker;
         var body = LeaseContractDocument.BuildPreviewBody(template, LeaseContractDocument.ResolveData(lease));
 

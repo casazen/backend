@@ -334,6 +334,10 @@ public class AppDbContext(
             .Property(l => l.MonthlyRent)
             .HasPrecision(18, 2);
 
+        // Canone concordato characteristics and range of the lease (LT-10): same table, optional.
+        modelBuilder.Entity<LeaseContract>().OwnsOne(l => l.ConcordatoAssessment);
+        modelBuilder.Entity<LeaseContract>().Navigation(l => l.ConcordatoAssessment).IsRequired(false);
+
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
 

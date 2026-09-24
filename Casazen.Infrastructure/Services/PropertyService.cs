@@ -330,6 +330,8 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         FileType = ResolveFileType(d),
         DocumentType = d.DocumentType,
         UploadedAt = d.UploadedAt,
+        ApeCode = d.DocumentType == DocumentType.Ape ? d.ApeCode : null,
+        ApeEnergyClass = d.DocumentType == DocumentType.Ape ? d.ApeEnergyClass : null,
         // Documents live in the private bucket: the only way to read one is the authenticated
         // download endpoint (bearer token + tenant/ownership check), never the storage reference.
         DownloadUrl = DocumentDownloadPath(d.PropertyId, d.Id)
@@ -413,6 +415,23 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
 
         property.CinCode = normalized;
         await repository.UpdateAsync(property);
+    }
+
+    public async Task UpdateCadastralDataAsync(Guid propertyId, PropertyCadastralData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        var property = await repository.GetByIdAsync(propertyId)
+            ?? throw new KeyNotFoundException($"Property {propertyId} not found");
+
+        property.CadastralSheet = Clean(data.Sheet);
+        property.CadastralParcel = Clean(data.Parcel);
+        property.CadastralSubaltern = Clean(data.Subaltern);
+        property.CadastralCategory = Clean(data.Category)?.ToUpperInvariant();
+        property.CadastralIncome = data.Income;
+        property.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(property);
+
+        static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private async Task<string> ResolveSlugForCreateAsync(Guid orgId, string name, string? requestedSlug)

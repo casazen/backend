@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Leases;
 
 namespace Casazen.Infrastructure.Services.LeaseContracts;
@@ -42,8 +43,9 @@ internal static class LeaseContractDocument
     };
 
     /// <summary>
-    /// Value of every placeholder for <paramref name="lease"/>; null when the lease has no such data. Cadastral data,
-    /// APE identification and security deposit are not in the data model yet, so they are always null.
+    /// Value of every placeholder for <paramref name="lease"/>; null when the lease has no such data. Cadastral data come
+    /// from the property (sheet, parcel, category and income; subaltern when present), the APE identification from the
+    /// latest APE document of the property (code and energy class, LT-10), the security deposit from the lease.
     /// </summary>
     public static IReadOnlyDictionary<string, string?> ResolveData(LeaseContract lease)
     {
@@ -55,11 +57,11 @@ internal static class LeaseContractDocument
             [LeaseContractPlaceholders.Tenants] = FormatParties(lease.Parties, PartyRole.Tenant),
             [LeaseContractPlaceholders.PropertyAddress] = FormatAddress(lease.Property),
             [LeaseContractPlaceholders.PropertyComune] = NullIfBlank(lease.Property?.City),
-            [LeaseContractPlaceholders.CadastralData] = null,
-            [LeaseContractPlaceholders.ApeData] = null,
+            [LeaseContractPlaceholders.CadastralData] = FormatCadastralData(lease.Property),
+            [LeaseContractPlaceholders.ApeData] = FormatApe(lease.Property),
             [LeaseContractPlaceholders.MonthlyRent] = lease.MonthlyRent > 0 ? FormatAmount(lease.MonthlyRent) : null,
             [LeaseContractPlaceholders.AnnualRent] = lease.MonthlyRent > 0 ? FormatAmount(lease.MonthlyRent * 12) : null,
-            [LeaseContractPlaceholders.SecurityDeposit] = null,
+            [LeaseContractPlaceholders.SecurityDeposit] = lease.SecurityDeposit is { } deposit ? FormatAmount(deposit) : null,
             [LeaseContractPlaceholders.StartDate] = hasDates ? FormatDate(lease.StartDate) : null,
             [LeaseContractPlaceholders.EndDate] = hasDates ? FormatDate(lease.EndDate) : null,
             [LeaseContractPlaceholders.Term] = hasDates && term is { } t && (t.Months > 0 || t.Days > 0) ? t.ToItalianText() : null,
@@ -195,6 +197,39 @@ internal static class LeaseContractDocument
 
         var locality = $"{property.PostalCode} {property.City}".Trim();
         return locality.Length == 0 ? property.Address.Trim() : $"{property.Address.Trim()}, {locality}";
+    }
+
+    /// <summary>"Foglio 12, particella 345, subalterno 6, categoria A/2, rendita catastale euro 512,30"; null when incomplete.</summary>
+    private static string? FormatCadastralData(Property? property)
+    {
+        if (property is null || !property.HasCadastralData)
+            return null;
+
+        var parts = new List<string>
+        {
+            $"Foglio {property.CadastralSheet!.Trim()}",
+            $"particella {property.CadastralParcel!.Trim()}",
+        };
+        if (!string.IsNullOrWhiteSpace(property.CadastralSubaltern))
+            parts.Add($"subalterno {property.CadastralSubaltern.Trim()}");
+        parts.Add($"categoria {property.CadastralCategory!.Trim()}");
+        parts.Add($"rendita catastale euro {FormatAmount(property.CadastralIncome!.Value)}");
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Code and energy class of the latest APE document of the property; null when there is none or its identification
+    /// was not entered (the contract then waits for it).
+    /// </summary>
+    private static string? FormatApe(Property? property)
+    {
+        var ape = property?.PropertyDocuments?
+            .Where(d => d.DocumentType == DocumentType.Ape)
+            .OrderByDescending(d => d.UploadedAt)
+            .FirstOrDefault();
+        return ape is { HasApeIdentification: true }
+            ? $"codice {ape.ApeCode!.Trim()}, classe energetica {ape.ApeEnergyClass!.Trim()}"
+            : null;
     }
 
     private static string FormatAmount(decimal amount) => amount.ToString("N2", ItalianNumbers);
