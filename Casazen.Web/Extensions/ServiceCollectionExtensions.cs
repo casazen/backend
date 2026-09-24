@@ -256,6 +256,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IBookingService, BookingService>();
+        // Public availability of the booking site, same nights as the booking checks (BK-05).
+        services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
@@ -268,6 +270,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
         services.AddScoped<CheckoutPaymentSettlementService>();
+        // Booking confirmation (guest + host) and cancellation emails (BK-10, docs/runbooks/email.md).
+        services.AddScoped<BookingNotifier>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();

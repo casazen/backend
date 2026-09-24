@@ -296,12 +296,15 @@ public sealed class PaymentRefundService(
     /// <summary>
     /// Sends a pending refund to Stripe with its idempotency key and applies the answer. A 4xx answer fails the refund
     /// (Stripe did not create it); a timeout or a 5xx keeps it pending and schedules a retry, or rethrows when
-    /// <paramref name="throwOnTransientFailure"/> (the retry job itself).
+    /// <paramref name="throwOnTransientFailure"/> (the retry job itself). A refund Stripe confirms at once is emailed to
+    /// the guest, unless <paramref name="notifyGuest"/> is false: the host cancellation tells the guest itself, in one
+    /// email (BK-10), and claims the refund's notification with <see cref="ClaimGuestNotificationAsync"/>.
     /// </summary>
     internal async Task<PaymentRefund> SubmitAsync(
         PaymentRefund refund,
         bool throwOnTransientFailure,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool notifyGuest = true)
     {
         if (refund.Status != PaymentRefundStatus.Pending || refund.StripeRefundId is not null)
             return refund;
@@ -355,7 +358,7 @@ public sealed class PaymentRefundService(
         await RecomputePaymentAsync(payment, cancellationToken);
         await db.SaveChangesAsync(CancellationToken.None);
 
-        if (succeeded)
+        if (succeeded && notifyGuest)
             await NotifyGuestAsync(refund.Id, CancellationToken.None);
 
         return refund;
@@ -539,7 +542,11 @@ public sealed class PaymentRefundService(
         return null;
     }
 
-    private async Task<bool> ClaimGuestNotificationAsync(Guid refundId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Marks a succeeded refund as told to the guest, once: false when it is not succeeded or was already claimed (by the
+    /// synchronous answer, the webhook or a host cancellation email).
+    /// </summary>
+    internal async Task<bool> ClaimGuestNotificationAsync(Guid refundId, CancellationToken cancellationToken)
     {
         var now = UtcNow;
         if (db.Database.IsRelational())

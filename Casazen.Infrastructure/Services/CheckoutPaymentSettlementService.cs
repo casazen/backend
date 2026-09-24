@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +11,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>What the payment webhook did with a succeeded PaymentIntent of a booking payment (BK-04).</summary>
+/// <summary>
+/// What the payment webhook did with a succeeded PaymentIntent of a booking payment (BK-04), or with the SetupIntent of
+/// a deferred payment (<see cref="ConfirmedWithSavedCard"/>, BK-10).
+/// </summary>
 public enum CheckoutPaymentOutcome
 {
     /// <summary>No payment row for the PaymentIntent, or the event came from another Stripe account: nothing changed.</summary>
@@ -32,6 +34,12 @@ public enum CheckoutPaymentOutcome
 
     /// <summary>The dates were no longer free: booking cancelled, full refund reserved (sent to Stripe after the commit).</summary>
     Refunding,
+
+    /// <summary>
+    /// Deferred payment: the guest's card was saved (<c>setup_intent.succeeded</c>) and the booking confirmed; it is
+    /// charged at the free-cancellation deadline (BK-10).
+    /// </summary>
+    ConfirmedWithSavedCard,
 }
 
 /// <summary>Result of <see cref="CheckoutPaymentSettlementService.SettleSucceededPaymentAsync"/>.</summary>
@@ -60,14 +68,16 @@ public sealed record CheckoutPaymentSettlement(CheckoutPaymentOutcome Outcome, G
 /// checkout of the same dates waits and then sees the outcome), the booking-cancellation and payment-refund advisory
 /// locks of BK-02 (a host cancellation waits), and the booking row (<c>FOR UPDATE</c>: the hold-expiry job skips it).
 /// The Stripe refund call and the emails happen after the commit (<see cref="CompleteAsync"/>); a refund whose call does
-/// not happen then is resent by <c>PaymentRefundSubmitJob</c>, scheduled before the commit.
+/// not happen then is resent by <c>PaymentRefundSubmitJob</c>, scheduled before the commit. The emails follow the
+/// transition, not the event: a duplicate or later event of a payment already settled is <see cref="CheckoutPaymentOutcome.AlreadySettled"/>
+/// and sends nothing.
 /// </remarks>
 public sealed class CheckoutPaymentSettlementService(
     AppDbContext db,
     IPaymentRepository paymentRepository,
     PaymentRefundService refundService,
     IPaymentRefundRetryScheduler refundRetryScheduler,
-    IEmailQueue emailQueue,
+    BookingNotifier notifier,
     IConfiguration configuration,
     ILogger<CheckoutPaymentSettlementService> logger,
     TimeProvider? timeProvider = null)
@@ -217,8 +227,8 @@ public sealed class CheckoutPaymentSettlementService(
 
     /// <summary>
     /// After the webhook event is committed: sends the reserved refund to Stripe (the guest is emailed when Stripe
-    /// confirms it) or queues the confirmation email of a booking confirmed again. Never throws: a refund that could not
-    /// be sent is resent by the job scheduled with it.
+    /// confirms it) or queues the emails of a booking that has just been confirmed (BK-10). Never throws: a refund that
+    /// could not be sent is resent by the job scheduled with it.
     /// </summary>
     public async Task CompleteAsync(CheckoutPaymentSettlement settlement, CancellationToken cancellationToken = default)
     {
@@ -227,8 +237,14 @@ public sealed class CheckoutPaymentSettlementService(
         {
             switch (settlement.Outcome)
             {
+                case CheckoutPaymentOutcome.Confirmed when settlement.BookingId is { } bookingId:
+                    await notifier.BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline, cancellationToken);
+                    break;
                 case CheckoutPaymentOutcome.Reconfirmed when settlement.BookingId is { } bookingId:
-                    await EmailReconfirmedGuestAsync(bookingId, cancellationToken);
+                    await notifier.BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnlineLate, cancellationToken);
+                    break;
+                case CheckoutPaymentOutcome.ConfirmedWithSavedCard when settlement.BookingId is { } bookingId:
+                    await notifier.BookingConfirmedAsync(bookingId, BookingConfirmationKind.DeferredCharge, cancellationToken);
                     break;
                 case CheckoutPaymentOutcome.Refunding when settlement.RefundId is { } refundId:
                     await SubmitRefundAsync(refundId, settlement.BookingId, cancellationToken);
@@ -239,7 +255,7 @@ public sealed class CheckoutPaymentSettlementService(
         {
             logger.LogError(
                 ex,
-                "Late payment of booking {BookingId}: {Outcome} committed, follow-up failed (refund {RefundId} is resent by its job)",
+                "Payment of booking {BookingId}: {Outcome} committed, follow-up failed (a refund {RefundId} is resent by its job)",
                 settlement.BookingId,
                 settlement.Outcome,
                 settlement.RefundId);
@@ -270,35 +286,6 @@ public sealed class CheckoutPaymentSettlementService(
                 bookingId,
                 refund.FailureReason);
         }
-    }
-
-    private async Task EmailReconfirmedGuestAsync(Guid bookingId, CancellationToken cancellationToken)
-    {
-        var details = await db.Bookings
-            .AsNoTracking()
-            .Where(b => b.Id == bookingId)
-            .Select(b => new
-            {
-                b.Id,
-                b.CheckInDate,
-                b.CheckOutDate,
-                GuestFirstName = b.Guest.FirstName,
-                GuestEmail = b.Guest.Email,
-                PropertyName = b.Property.Name,
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-        if (details is null)
-            return;
-
-        var email = EmailTemplates.GuestLatePaymentConfirmed(
-            EmailTemplates.DefaultCulture,
-            details.GuestFirstName,
-            details.PropertyName,
-            details.CheckInDate,
-            details.CheckOutDate,
-            details.Id.ToString());
-        if (!emailQueue.Enqueue(details.GuestEmail, email, EmailTemplates.Names.GuestLatePaymentConfirmed))
-            logger.LogWarning("Booking {BookingId} confirmed again but the guest email was not queued", bookingId);
     }
 
     /// <summary>

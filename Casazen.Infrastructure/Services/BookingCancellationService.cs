@@ -2,8 +2,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Email;
-using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -18,14 +16,15 @@ namespace Casazen.Infrastructure.Services;
 /// deadlock): the refund decision is validated, the intents not paid yet are canceled on the connected account, the
 /// booking is set Cancelled and the refunds are reserved, all in one transaction. The refunds are then sent to Stripe
 /// with their idempotency keys; one that Stripe rejects stays visible as failed and can be retried from the payment.
-/// Finally the guest gets the "booking cancelled" email (PC-07, A2-08); the host's reason is kept on the booking and
-/// never sent to the guest.
+/// Finally the guest gets one "booking cancelled" email (PC-07, A2-08) that includes the refund: as made when Stripe
+/// confirmed it at once (its separate "refund confirmed" email is then not sent, BK-10), as started otherwise (the
+/// confirmation follows). The host's reason is kept on the booking and never sent to the guest.
 /// </remarks>
 public sealed class BookingCancellationService(
     AppDbContext db,
     PaymentRefundService refundService,
     IStripeService stripeService,
-    IEmailQueue emailQueue,
+    BookingNotifier notifier,
     ILogger<BookingCancellationService> logger,
     TimeProvider? timeProvider = null) : IBookingCancellationService
 {
@@ -117,46 +116,43 @@ public sealed class BookingCancellationService(
 
         var submitted = new List<PaymentRefund>();
         foreach (var refund in reserved)
-            submitted.Add(await refundService.SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken));
+            submitted.Add(await refundService.SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken, notifyGuest: false));
 
-        await NotifyGuestAsync(booking, submitted, cancellationToken);
+        await NotifyGuestAsync(booking.Id, submitted, cancellationToken);
         return new BookingCancellationResult(booking, submitted, canceledIntents);
     }
 
     /// <summary>
-    /// Queues the "booking cancelled" email to the guest (IT, like every guest email for now), with the refund started
-    /// when there is one: its confirmation arrives separately, once Stripe reports it succeeded. The cancellation is
-    /// already saved: a failure here is logged and never undoes it.
+    /// One "booking cancelled" email to the guest with the refund: what Stripe confirmed at once (whose own "refund
+    /// confirmed" email is claimed here, so the guest does not get two) and what is still in progress (confirmed by a
+    /// later email). The cancellation is already saved: a failure here is logged and never undoes it.
     /// </summary>
-    private async Task NotifyGuestAsync(Booking booking, IReadOnlyList<PaymentRefund> refunds, CancellationToken cancellationToken)
+    private async Task NotifyGuestAsync(Guid bookingId, IReadOnlyList<PaymentRefund> refunds, CancellationToken cancellationToken)
     {
+        var refunded = 0m;
+        var started = 0m;
         try
         {
-            var guest = await db.Guests.AsNoTracking()
-                .Where(g => g.Id == booking.GuestId)
-                .Select(g => new { g.FirstName, g.Email })
-                .FirstOrDefaultAsync(cancellationToken);
-            if (guest is null)
-                return;
-
-            var refundStarted = refunds
-                .Where(r => r.Status is not (PaymentRefundStatus.Failed or PaymentRefundStatus.Canceled))
-                .Sum(r => r.Amount);
-            var email = EmailTemplates.GuestBookingCancelled(
-                EmailTemplates.DefaultCulture,
-                guest.FirstName,
-                booking.Property?.Name ?? string.Empty,
-                booking.CheckInDate,
-                booking.CheckOutDate,
-                refundStarted > 0 ? refundStarted : null);
-
-            if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestBookingCancelled))
-                logger.LogWarning("Booking {BookingId} cancelled but the guest email was not queued", booking.Id);
+            foreach (var refund in refunds)
+            {
+                if (refund.Status == PaymentRefundStatus.Succeeded)
+                {
+                    // Claimed by a webhook already: the guest also got "refund confirmed", the amount is still refunded.
+                    await refundService.ClaimGuestNotificationAsync(refund.Id, cancellationToken);
+                    refunded += refund.Amount;
+                }
+                else if (refund.Status is PaymentRefundStatus.Pending or PaymentRefundStatus.RequiresAction)
+                {
+                    started += refund.Amount;
+                }
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Guest email of cancelled booking {BookingId} could not be queued", booking.Id);
+            logger.LogError(ex, "Refund notifications of cancelled booking {BookingId} could not be claimed", bookingId);
         }
+
+        await notifier.BookingCancelledByHostAsync(bookingId, refunded, started, cancellationToken);
     }
 
     private static bool IsCancellable(BookingStatus status) =>

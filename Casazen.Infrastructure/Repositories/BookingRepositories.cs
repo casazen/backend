@@ -201,12 +201,10 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         Guid? excludeBookingId = null)
     {
         // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
-        // property lock before an insert or update) every booking that is not cancelled does.
+        // property lock before an insert or update) every booking that is not cancelled does. The nights are those of the
+        // public availability (PropertyOccupancy, BK-05).
         var query = context.Bookings
-            .Where(b =>
-                b.PropertyId == propertyId &&
-                b.CheckInDate.Date < checkOutDate &&
-                b.CheckOutDate.Date > checkInDate)
+            .Where(PropertyOccupancy.BookingTakesNightIn(propertyId, checkInDate, checkOutDate))
             .Where(CheckoutHolds.OccupiesDates(pendingCutoff));
 
         if (excludeBookingId.HasValue)

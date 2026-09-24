@@ -43,7 +43,7 @@ graph TD
 | Authentication | Auth0 + JWT Bearer | — | `sub` claim used as user ID |
 | Background jobs | Hangfire | 1.8.x | PostgreSQL storage; dashboard at `/hangfire` |
 | Payment processing | Stripe .NET SDK | — | Webhook signature verification required |
-| Email | MailKit (SMTP) | — | Any SMTP server; Gmail free tier recommended for dev |
+| Email | Resend SDK (`ResendEmailService`) | — | Only provider; emails queued on Hangfire, templates IT/EN (`docs/runbooks/email.md`) |
 | OTA resilience | Polly | — | Retry, circuit breaker, timeout, rate limiting per platform |
 | Test framework | xUnit | — | `Casazen.Tests/` |
 | API docs | Swashbuckle / Swagger | — | Swagger UI at `/swagger` (dev only) |
@@ -186,7 +186,13 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
 | `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
 | `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
-| `POST` | `/api/leases/{id}/signing` | lease.sign | Start / advance e-sign flow |
+| `GET` | `/api/leases/{id}/contract.pdf` | lease.sign | Final contract to sign offline (approved template only, LT-02/LT-03) |
+| `GET` | `/api/leases/{id}/contract/preview` | lease.sign | Contract preview marked BOZZA / ANTEPRIMA (never valid for signature) |
+| `POST` | `/api/leases/{id}/signed-document` | lease.sign | Offline signature: signed PDF + stipula date; lease Signed (LT-02) |
+| `GET` | `/api/leases/{id}/signed-document` | lease.read | Signed contract (private bucket) |
+| `POST` | `/api/leases/{id}/stipula` | lease.sign | Declare the stipula date of a lease signed before LT-02 (once) |
+| `GET` | `/api/leases/{id}/signers` | lease.read | Signature panel: persisted signers, provider availability, contract availability |
+| `POST` | `/api/leases/{id}/signing` | lease.sign | E-sign provider path, behind `Features:ESignProvider` (off, 404) and a configured provider |
 | `POST` | `/api/leases/{id}/registration` | lease.register | Submit lease registration |
 | `GET` | `/api/leases/{id}/registration` | lease.read | Registration status |
 | `GET` | `/api/leases/{id}/registration/receipt` | lease.read | Registration receipt |
@@ -273,7 +279,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email via SMTP); 409 pending invite; 502 email failure rolls back |
+| `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email queued on Hangfire, Resend); 409 pending invite |
 | `POST` | `/api/suppliers/register` | Anonymous (rate limited) | Self-serve registration for a pilot comune, or invite acceptance by the signed-in invited account (SU-01) |
 | `POST` | `/api/suppliers/claim` | JWT (own account) | Links the caller to a profile registered anonymously: claim token of that registration, or verified email without token; assigns the `Supplier` role (SU-02) |
 | `POST` | `/api/suppliers/invites/lookup` | Anonymous (rate limited) | Invite of a link token (email, comune, expiry) for the web registration page |
@@ -518,7 +524,7 @@ erDiagram
 ### Configuration
 
 - **Config files**: `Casazen.Web/appsettings.json` (committed defaults), `appsettings.Development.json` (local secrets — **never commit**)
-- **Key sections**: `Auth0`, `Stripe`, `Email` (SMTP), `OTA` (per-platform credentials and resilience settings)
+- **Key sections**: `Auth0`, `Stripe`, `Email` (Resend), `OTA` (per-platform credentials and resilience settings)
 
 ### Background jobs
 
@@ -529,7 +535,7 @@ erDiagram
 | `DynamicPricingJob` | Daily at 02:00 UTC | AI-driven nightly rate adaptation |
 | `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
-| `EmailQueueProcessor` | Continuous | Process queued email notifications via SMTP |
+| `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment

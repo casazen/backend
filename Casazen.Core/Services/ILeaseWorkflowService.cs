@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
+/// <summary>Lease drafts and reads. The signature is <see cref="ILeaseSigningService"/> (LT-02), the RLI registration <see cref="IRliRegistrationService"/> (LT-01).</summary>
 public interface ILeaseWorkflowService
 {
     /// <summary>
@@ -12,8 +13,6 @@ public interface ILeaseWorkflowService
     /// property for <c>lease.create</c> (TN-3: the owner or an org-wide member of its org).
     /// </summary>
     Task<LeaseContract> CreateDraftAsync(Guid propertyId, CreateLeaseRequest request);
-    Task<SigningInitiatedResult> InitiateSigningAsync(Guid leaseId, string ownerId);
-    Task HandleESignEventAsync(string providerPayload);
 
     /// <summary>Lease list of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
     Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null);
@@ -40,15 +39,3 @@ public record CreatePartyRequest(
     string FiscalCode,
     string Citizenship,
     string ContactEmail);
-
-public record SigningInitiatedResult(
-    Guid LeaseId,
-    LeaseStatus Status,
-    IEnumerable<SignerInfo> Signers);
-
-public record SignerInfo(
-    Guid PartyId,
-    PartyRole Role,
-    string Name,
-    string SigningUrl,
-    DateTime ExpiresAt);

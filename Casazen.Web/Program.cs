@@ -95,7 +95,8 @@ builder.Services.AddCasazenAiProvider(builder.Configuration);
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 // Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
 builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
-builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
+// Signature: offline by default, provider only with Features:ESignProvider on and a configured provider (LT-02)
+builder.Services.AddCasazenLeaseSigning(builder.Configuration);
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
