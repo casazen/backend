@@ -1,4 +1,4 @@
-# Runbook: frontend CI (casazen/frontend)
+# Runbook: frontend CI (casazen/frontend, casazen/mobile)
 
 Workflows in `casazen/frontend/.github/workflows/` (task FD-01, audit defects A9-23, A9-24/A6-04 frontend part).
 
@@ -49,6 +49,34 @@ The secrets are exposed as job-level `env` and the steps test `env.E2E_AUTH0_EMA
 1. Open a PR against `develop`: the checks list shows `Lint, typecheck, unit tests, build`, `E2E L2 (demo)` and `GJ web suite`, each with real jobs (not "0 jobs").
 2. Locally, the same commands as CI: `npm ci && npm run lint && npm run typecheck && npm test && npm run build`.
 3. Optional workflow syntax check: `pip install actionlint-py && actionlint .github/workflows/*.yml` (reports context errors such as `secrets` in a step `if:`).
+
+## 4. Mobile app (casazen/mobile)
+
+Workflow `casazen/mobile/.github/workflows/ci.yml` (task FD-03, audit defects A9-24 mobile part and A6-30 CI part), on PR and push to `develop` / `main`. One job, check name **`Typecheck, lint, unit tests, bundle`**:
+
+| Step | Command |
+|---|---|
+| Install | `npm ci` |
+| Typecheck | `npm run typecheck` (`tsc --noEmit`) |
+| Lint | `npm run lint` (`eslint .`, flat config `eslint-config-expo/flat` + `eslint-plugin-react-hooks`, 0 errors) |
+| Unit tests | `npm test -- --ci` (jest, preset `jest-expo`) |
+| Bundle | `npx expo export --platform android --output-dir dist` (Metro + Hermes bytecode, no native build, no EAS account) |
+
+Make it required on `develop` and `main` as in section 1, with the check name above:
+
+```bash
+for b in develop main; do
+  gh api -X PATCH "repos/casazen/mobile/branches/$b/protection/required_status_checks" \
+    -F strict=true -f 'contexts[]=Typecheck, lint, unit tests, bundle'
+done
+```
+
+No secrets or variables are needed. The bundle is built without `EXPO_PUBLIC_*`, so it only proves that the app bundles; it is not a release artifact. Not in CI yet: native / EAS builds, and the Maestro flows on an emulator (task FN-04).
+
+Mobile-specific notes (details in `casazen/mobile/README.md`, section CI):
+
+- Keep `"lint": "eslint ."`. `expo lint` on SDK 52 does not see the flat config and would generate a legacy `.eslintrc.js`.
+- `expo-asset` must stay a direct dependency: otherwise npm nests it under `expo/` and `expo export` / `expo start` fail with "The required package `expo-asset` cannot be found".
 
 ## Rules for future changes
 
