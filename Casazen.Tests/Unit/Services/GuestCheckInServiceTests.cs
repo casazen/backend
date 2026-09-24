@@ -182,6 +182,81 @@ public class GuestCheckInServiceTests
         Assert.Equal("YA1234567", guest!.DocumentNumber);
         Assert.Equal(Gender.Male, guest.Gender);
         Assert.Equal(DateTime.UtcNow.Year + 7, guest.DataRetentionUntil.Year);
+
+        // CO-12: the stay's guest line, linked to the booker.
+        var stayGuest = await seed.Db.StayGuests.SingleAsync();
+        Assert.Equal(StayGuestType.SingleGuest, stayGuest.Type);
+        Assert.Equal(0, stayGuest.Position);
+        Assert.Equal(seed.GuestId, stayGuest.GuestId);
+        Assert.Equal(seed.OrgId, stayGuest.OrgId);
+        Assert.Equal("Roma", stayGuest.BirthComuneName);
+        Assert.Equal("RM", stayGuest.BirthProvince);
+    }
+
+    [Fact]
+    public async Task Submit_FamilyOfThree_SavesOneRowPerGuestInOrderAndDocumentOnlyForTheHead()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(type: "HeadOfFamily");
+        request.Guests =
+        [
+            request.Guests[0],
+            Member("Anna", documentNumber: "IGNORED123"),
+            Member("Luca", dateOfBirth: new DateTime(2019, 6, 1)),
+        ];
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success, string.Join(", ", result.ValidationErrors.Select(e => $"{e.Index}.{e.Field}")));
+        var rows = await seed.Db.StayGuests.OrderBy(s => s.Position).ToListAsync();
+        Assert.Equal(
+            new[] { StayGuestType.HeadOfFamily, StayGuestType.FamilyMember, StayGuestType.FamilyMember },
+            rows.Select(r => r.Type));
+        Assert.Equal(new[] { "Luigi", "Anna", "Luca" }, rows.Select(r => r.FirstName));
+        Assert.Equal("YA1234567", rows[0].DocumentNumber);
+        Assert.All(rows.Skip(1), r =>
+        {
+            Assert.Equal(string.Empty, r.DocumentNumber);
+            Assert.Null(r.DocumentType);
+            Assert.Null(r.GuestId);
+        });
+    }
+
+    [Fact]
+    public async Task Submit_HeadOfFamilyWithoutDocument_ReturnsDocumentErrorsOnTheHeadOnly()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(type: "HeadOfFamily", documentType: "", documentNumber: "");
+        request.Guests = [request.Guests[0], Member("Anna")];
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        Assert.Equal(
+            new[] { "0.DocumentType", "0.DocumentNumber" },
+            result.ValidationErrors.Select(e => $"{e.Index}.{e.Field}"));
+        Assert.Empty(seed.Db.StayGuests);
+    }
+
+    [Fact]
+    public async Task Submit_MemberWithoutHead_ReturnsCompositionError()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.Guests = [request.Guests[0], Member("Anna")];
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        var error = Assert.Single(result.ValidationErrors);
+        Assert.Equal((1, "Type", CheckInValidationKeys.MemberWithoutHead), (error.Index, error.Field, error.MessageKey));
+        Assert.Equal("Guests[1].Type", error.ModelStateKey("Guests"));
     }
 
     [Fact]
@@ -196,8 +271,7 @@ public class GuestCheckInServiceTests
 
         Assert.False(result.Success);
         Assert.False(result.Duplicate);
-        Assert.Equal(nameof(GuestCheckInSubmitRequest.DocumentType), result.ValidationField);
-        Assert.Equal(CheckInValidationKeys.DocumentTypeInvalid, result.ValidationErrorKey);
+        AssertSingleError(result, 0, nameof(StayGuestInput.DocumentType), CheckInValidationKeys.DocumentTypeInvalid);
 
         var session = await seed.Db.GuestCheckInSessions.FirstAsync();
         Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
@@ -307,8 +381,7 @@ public class GuestCheckInServiceTests
 
         Assert.False(result.Success);
         Assert.False(result.Duplicate);
-        Assert.Equal(nameof(GuestCheckInSubmitRequest.GdprConsent), result.ValidationField);
-        Assert.Equal(CheckInValidationKeys.GdprConsentRequired, result.ValidationErrorKey);
+        AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.GdprConsent), CheckInValidationKeys.GdprConsentRequired);
     }
 
     [Fact]
@@ -317,14 +390,12 @@ public class GuestCheckInServiceTests
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
-        var request = BuildValidSubmitRequest();
-        request.Gender = null;
+        var request = BuildValidSubmitRequest(gender: null);
 
         var result = await svc.SubmitAsync(token, request);
 
         Assert.False(result.Success);
-        Assert.Equal(nameof(GuestCheckInSubmitRequest.Gender), result.ValidationField);
-        Assert.Equal(CheckInValidationKeys.FieldRequired, result.ValidationErrorKey);
+        AssertSingleError(result, 0, nameof(StayGuestInput.Gender), CheckInValidationKeys.FieldRequired);
     }
 
     [Fact]
@@ -333,14 +404,12 @@ public class GuestCheckInServiceTests
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
-        var request = BuildValidSubmitRequest();
-        request.Gender = Gender.Other;
+        var request = BuildValidSubmitRequest(gender: Gender.Other);
 
         var result = await svc.SubmitAsync(token, request);
 
         Assert.False(result.Success);
-        Assert.Equal(nameof(GuestCheckInSubmitRequest.Gender), result.ValidationField);
-        Assert.Equal(CheckInValidationKeys.GenderInvalid, result.ValidationErrorKey);
+        AssertSingleError(result, 0, nameof(StayGuestInput.Gender), CheckInValidationKeys.GenderInvalid);
         var session = await seed.Db.GuestCheckInSessions.FirstAsync();
         Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
@@ -364,10 +433,15 @@ public class GuestCheckInServiceTests
         Assert.False(view.IsCompleted);
         Assert.Equal(GuestCheckInSessionStatus.InCompilazione, view.Status);
         Assert.Equal("Test Property", view.PropertyName);
-        Assert.NotNull(view.GuestPrefill);
-        Assert.Equal("Mario", view.GuestPrefill.FirstName);
-        Assert.Equal(Gender.Female, view.GuestPrefill.Gender);
-        Assert.Equal("*****567", view.GuestPrefill.DocumentNumberMasked);
+        Assert.Equal(1, view.DeclaredGuests);
+        Assert.NotNull(view.Guests);
+        var prefill = Assert.Single(view.Guests);
+        Assert.Equal(StayGuestType.SingleGuest, prefill.Type);
+        Assert.Equal("Mario", prefill.FirstName);
+        Assert.Equal(Gender.Female, prefill.Gender);
+        Assert.Equal("*****567", prefill.DocumentNumberMasked);
+        Assert.NotNull(view.AvailableCodeTables);
+        Assert.Empty(view.AvailableCodeTables);
     }
 
     [Fact]
@@ -388,7 +462,7 @@ public class GuestCheckInServiceTests
         Assert.Null(view.PropertyName);
         Assert.Null(view.CheckInDate);
         Assert.Null(view.CheckOutDate);
-        Assert.Null(view.GuestPrefill);
+        Assert.Null(view.Guests);
     }
 
     [Fact]
@@ -519,17 +593,50 @@ public class GuestCheckInServiceTests
         return bookingId;
     }
 
-    private static GuestCheckInSubmitRequest BuildValidSubmitRequest(string documentType = "Passport") => new()
+    private static void AssertSingleError(GuestCheckInSubmitResult result, int? index, string field, string key)
     {
-        FirstName = "Luigi",
+        var error = Assert.Single(result.ValidationErrors);
+        Assert.Equal((index, field, key), (error.Index, error.Field, error.MessageKey));
+    }
+
+    private static GuestCheckInSubmitRequest BuildValidSubmitRequest(
+        string type = "SingleGuest",
+        string documentType = "Passport",
+        string documentNumber = "YA1234567",
+        Gender? gender = Gender.Male) => new()
+        {
+            Guests =
+        [
+            new StayGuestInput
+            {
+                Type = type,
+                FirstName = "Luigi",
+                LastName = "Verdi",
+                DateOfBirth = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
+                Gender = gender,
+                BornInItaly = true,
+                BirthComuneName = "Roma",
+                BirthProvince = "rm",
+                CitizenshipName = "Italia",
+                DocumentType = documentType,
+                DocumentNumber = documentNumber,
+                DocumentIssuePlaceName = "Roma",
+            },
+        ],
+            GdprConsent = true,
+        };
+
+    private static StayGuestInput Member(string firstName, string? documentNumber = null, DateTime? dateOfBirth = null) => new()
+    {
+        Type = "FamilyMember",
+        FirstName = firstName,
         LastName = "Verdi",
-        DateOfBirth = new DateTime(1990, 5, 15),
-        Nationality = "Italiana",
-        Gender = Gender.Male,
-        DocumentType = documentType,
-        DocumentNumber = "YA1234567",
-        DocumentIssuingCountry = "Italia",
-        PlaceOfBirth = "Roma",
-        GdprConsent = true,
+        DateOfBirth = dateOfBirth ?? new DateTime(1992, 1, 20, 0, 0, 0, DateTimeKind.Utc),
+        Gender = Gender.Female,
+        BornInItaly = false,
+        BirthCountryName = "Francia",
+        CitizenshipName = "Italia",
+        DocumentType = documentNumber is null ? null : "Passport",
+        DocumentNumber = documentNumber,
     };
 }

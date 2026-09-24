@@ -483,4 +483,40 @@
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>Self-registration is not available for this municipality: choose one from the list or ask for an invitation.</value>
   </data>
+  <data name="CheckInGuestsCount" xml:space="preserve">
+    <value>Enter from 1 to {0} guests.</value>
+  </data>
+  <data name="CheckInGuestTypeInvalid" xml:space="preserve">
+    <value>Invalid kind of guest.</value>
+  </data>
+  <data name="CheckInMemberWithoutHead" xml:space="preserve">
+    <value>A family or group member must come after their head of family or group.</value>
+  </data>
+  <data name="CheckInHeadWithoutMembers" xml:space="preserve">
+    <value>A head of family or group needs at least one family or group member: otherwise choose “Single guest”.</value>
+  </data>
+  <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
+    <value>The date of birth cannot be in the future.</value>
+  </data>
+  <data name="CheckInProvinceInvalid" xml:space="preserve">
+    <value>Enter the two-letter province code (e.g. RM).</value>
+  </data>
+  <data name="CheckInCodeInvalid" xml:space="preserve">
+    <value>This code is not valid for Alloggiati Web.</value>
+  </data>
+  <data name="CheckInCodeUnknown" xml:space="preserve">
+    <value>This code is not in the official Alloggiati table: pick it from the list.</value>
+  </data>
+  <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
+    <value>The document number may contain only letters and digits, at most {0}.</value>
+  </data>
+  <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
+    <value>Unknown code list: use comuni, stati, documenti or luoghi.</value>
+  </data>
+  <data name="AlloggiatiCodeTableUnknown" xml:space="preserve">
+    <value>Unknown table: use Comuni, Stati, Documenti or TipiAlloggiato.</value>
+  </data>
+  <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
+    <value>The file is not valid and no code was imported: fix the listed lines and try again.</value>
+  </data>
 </root>
