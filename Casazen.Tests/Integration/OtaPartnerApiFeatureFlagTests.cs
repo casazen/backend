@@ -4,8 +4,6 @@ using System.Text.Json;
 using Casazen.Infrastructure.OTA;
 using Hangfire.Common;
 using Hangfire.States;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
@@ -101,8 +99,7 @@ public class OtaPartnerApiFeatureFlagTests(CasazenWebApplicationFactory factory)
 /// (<c>PUT pricing</c> rewrote <c>NightlyRate</c> unvalidated, <c>validate?apiKey=</c> put the key in the URL,
 /// <c>sync-platform</c> had no ownership check: A9-17).
 /// </summary>
-public class OtaPartnerApiFlagOnTests(OtaPartnerApiFlagOnTests.OtaPartnerApiOnFactory factory)
-    : IClassFixture<OtaPartnerApiFlagOnTests.OtaPartnerApiOnFactory>
+public class OtaPartnerApiFlagOnTests(OtaPartnerApiEnabledFactory factory) : IClassFixture<OtaPartnerApiEnabledFactory>
 {
     [Fact]
     public async Task GetIntegrations_FlagOnAsOwner_Returns200()
@@ -170,15 +167,5 @@ public class OtaPartnerApiFlagOnTests(OtaPartnerApiFlagOnTests.OtaPartnerApiOnFa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.True(body.RootElement.GetProperty("otaPartnerApi").GetBoolean());
-    }
-
-    public sealed class OtaPartnerApiOnFactory : CasazenWebApplicationFactory
-    {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            base.ConfigureWebHost(builder);
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:OtaPartnerApi"] = "true" }));
-        }
     }
 }

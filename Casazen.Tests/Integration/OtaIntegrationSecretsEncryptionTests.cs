@@ -23,6 +23,7 @@ public class OtaIntegrationSecretsEncryptionTests(CasazenWebApplicationFactory f
         var integration = new OtaIntegration
         {
             PropertyId = property.Id,
+            OrgId = property.OrgId,
             Platform = "Airbnb",
             ExternalPropertyId = "listing-fd20",
             ApiKey = "sk_live_fd20_api_key",
