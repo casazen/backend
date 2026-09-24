@@ -147,7 +147,7 @@ fino a …" although the guest cannot cancel by themselves.
 |---|---|---|
 | `Confirmed` | booking `Confirmed` / `CheckedIn` / `CheckedOut` | "Prenotazione confermata!", stay, payment (paid online / card charged on the deadline day / at the property) |
 | `PaymentProcessing` | `Pending` with a payment `Processing` or `Completed` (webhook not processed yet; SEPA for a few days) | "Pagamento in elaborazione", polling |
-| `PaymentFailed` | hold valid, last PaymentIntent attempt `Failed` (`payment_intent.payment_failed`) | "Pagamento non riuscito" + "Riprova il pagamento" on the same hold, until `expiresAt` |
+| `PaymentFailed` | hold valid, last PaymentIntent attempt `Failed` (`payment_intent.payment_failed`); or a confirmed "Paga più tardi" booking whose deferred charge failed (§ 9) | "Pagamento non riuscito" + "Riprova il pagamento" on the same hold (or the same deferred PaymentIntent), until `expiresAt` (for § 9: the automatic cancellation, `null` when none applies) |
 | `AwaitingPayment` | hold valid, nothing paid | "Pagamento da completare" + "Completa il pagamento" |
 | `AwaitingGuestEmail` / `AwaitingHostApproval` | "pay at the property" request (§ 1) | next steps, deadline `expiresAt`, polling |
 | `Expired` | cancelled `CheckoutHoldExpired`, `OnSiteRequestExpired`, `OnSiteEmailNotConfirmed`, or a hold past the TTL (`CheckoutHolds.IsExpired`, the same rule that released the dates) | "Tempo scaduto" + "Prenota di nuovo" (property page with the same stay) |
@@ -209,7 +209,7 @@ its own translation of the code (`apiErrors.codes.*`, `getProblemMessage`). `Boo
   a `CancellationPolicy` on the property, the last whole day (Europe/Rome) at least `FullRefundHours` before the start of
   the check-in day, i.e. the same full refund window `CancellationRefundPolicy` applies (e.g. 48 h → check-in − 3 days);
   without a policy, the existing rule **check-in − 7 days**. It is also the day the deferred payment is charged
-  (`DirectBookingChargeJob`, unchanged: the robust deferred charge is task BK-08).
+  (`DirectBookingChargeJob`, § 9).
 - **"Paga alla scadenza"** is offered, and accepted by the API, only when that day is **after today in Europe/Rome**: with
   the default rule only for an arrival more than 7 days away, whatever the number of nights (10 nights from tomorrow: not
   offered, 422 if forced). The quote (`POST /api/public/bookings/quote`) answers
@@ -326,3 +326,114 @@ Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
 (`BookingReference`). Tests: `GuestBookingLookupPostgresTests`, `BookingCodesTests`, `DirectCheckoutIntegrationTests`,
 `BookingEmailsPostgresTests`, `BookingNotifierTests`, `PublicSiteLinksTests`; vitest `guest-bookings-page.test.tsx`,
 `booking-code.test.ts`, `checkout-outcome-page.test.tsx`.
+
+## 9. Deferred charge of "Paga più tardi" (BK-08)
+
+Task BK-08 (audit defect A3-14, P1). A booking with `PaymentOption = OnCancellationDeadline` saves the guest's payment
+method at checkout (SetupIntent on the host's connected account) and is charged from its `FreeRefundDeadline` (§ 7.5) by
+the recurring job **`direct-booking-charge`** (06:00 UTC, `[DisableConcurrentExecution]`). Before BK-08 the job marked the
+payment `Completed` without looking at the PaymentIntent status, did not charge off-session (EU cards with 3-D Secure
+stayed `requires_action`), only logged errors and retried every day forever. Stripe parameters and webhooks:
+[stripe.md](stripe.md) "Deferred charge".
+
+### 9.1 What happens
+
+| Stripe answer | Payment (`Payments` row of the deferred payment) | Booking | Emails |
+|---|---|---|---|
+| `succeeded` | `Completed` | stays `Confirmed` | none: the confirmation was sent when the card was saved (BK-10); a "payment received" email for the deferred charge is an open question (DUBBI BK-08, [email.md](email.md#payment-receipt-choice-bk-10)) |
+| `processing` (SEPA Debit) | `Processing`, then `Completed` / `Failed` from the webhook (the job also reads it again daily) | `Confirmed` | none, or as `Failed` below |
+| `requires_action`, `requires_payment_method` (authentication required, card declined: HTTP 402) | `Failed`, never `Completed` | `Confirmed`, `DeferredChargeFailedAt` set | **once**: guest "Pagamento non riuscito, completa il pagamento" with the link to pay; host "Addebito non riuscito" (`Org.ContactEmail`) |
+| no PaymentIntent (Stripe unreachable, 5xx, invalid request, no saved card) | unchanged | `Confirmed` | after the last attempt only: host "Addebito non riuscito", "contatta l'ospite" (the guest has nothing to pay online) |
+| still unpaid on the cancellation day | `Canceled` (PaymentIntent canceled and card detached on the connected account) | `Cancelled`, `CancellationReason = 6` (`DeferredPaymentNotCompleted`): dates released on the site, in the host calendar and in the iCal export | guest: the standard "Prenotazione annullata" (BK-10) with its own cause, "il pagamento non è stato completato… non ti è stato addebitato nulla"; host "Prenotazione annullata per mancato pagamento" |
+
+- **Attempts**: at most one per booking per Europe/Rome day (`Bookings.DeferredChargeLastAttemptOn`) and
+  `DirectBooking:DeferredChargeMaxAttempts` in total (`Bookings.DeferredChargeAttempts`). A failed attempt is retried on
+  the next days by confirming the same PaymentIntent off-session (a declined card may pass later); the guest's link is
+  valid meanwhile. After the last attempt the job only waits: no infinite retries.
+- **Link to pay**: `/book/{orgSlug}/booking/{bookingId}?token=…`, the checkout outcome page of § 7 with a **new checkout
+  token** (256 bits; only its SHA-256 replaces `Bookings.CheckoutTokenHash`, so the token of the checkout tab stops
+  working). The page shows `PaymentFailed` with `expiresAt` = the start of the cancellation day, and "Riprova il
+  pagamento" mounts the Payment Element on **the same deferred PaymentIntent** (`payment-session` returns its
+  `clientSecret`): the guest completes 3-D Secure or uses another method, and the PaymentIntent can never be paid twice.
+  After `payment_intent.succeeded` the page shows "Prenotazione confermata" with "pagato online".
+- **Automatic cancellation**: on the day of the first failure + `DirectBooking:DeferredChargeCancelAfterDays`, **only
+  if that day is before the check-in day** and the booking is still `Confirmed`. From the check-in day on the stay may
+  have started: nothing is cancelled automatically, the host decides (the emails say so). Before cancelling, the job
+  reads the PaymentIntent once more: a payment made meanwhile (`succeeded`, `processing`) wins.
+- **Concurrency and idempotency**: each booking is handled under the BK-02 advisory locks (booking cancellation + payment
+  refund) in its own transaction, the attempt recorded with its result; a second run, another instance, the payment
+  webhook and a host cancellation of the same booking wait for it and read the new state. Idempotency keys and the lookup
+  of lost PaymentIntents: stripe.md.
+- **Host cancellation** (BK-02) of a booking whose deferred charge failed now also cancels that PaymentIntent on Stripe.
+- Checked-in / checked-out bookings are still charged (PR #438); they are never cancelled automatically.
+
+### 9.2 Configuration (Railway variables, per environment)
+
+| Variable | Meaning | Default | Status |
+|---|---|---|---|
+| `DirectBooking__DeferredChargeMaxAttempts` | Off-session attempts in total, one per day (values below 1 are read as 1) | **3** | **PROVISIONAL technical default**, not a product rule (DUBBI BK-08): bounds the retries of a declined card |
+| `DirectBooking__DeferredChargeCancelAfterDays` | Days from the first failure to the automatic cancellation; **`0` disables it** (the booking stays confirmed and unpaid, the host decides) | **3** | **PROVISIONAL**: equal to the attempts, so every attempt runs first. The product owner decides the real value (DUBBI BK-08) |
+
+A change applies from the next run, also to bookings already failing (the cancellation day is computed from
+`DeferredChargeFailedAt`). The emails need `App__PublicSiteBaseUrl` and `Email__*` ([email.md](email.md)).
+
+### 9.3 After the deploy (one time)
+
+Migration `AddBookingDeferredChargeTracking` adds `DeferredChargeAttempts` (0), `DeferredChargeLastAttemptOn` and
+`DeferredChargeFailedAt` to `Bookings`. Deferred charges marked `Completed` **before BK-08** were never checked against
+Stripe: check each PaymentIntent in the Stripe Dashboard (connected account → Payments → the `pi_…`); one that is not
+`Succeeded` was never collected: set that payment back to `Failed` in the SQL editor
+(`UPDATE … SET "Status" = 3 WHERE "Id" = '…'`) and the next run of the job retries it and emails the guest.
+
+```sql
+SELECT b."Id" AS booking_id, b."CheckInDate", p."Id" AS payment_id, p."StripePaymentIntentId", p."StripeAccountId", p."ProcessedAt"
+FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
+WHERE b."PaymentOption" = 1 AND p."Status" = 2 AND p."StripePaymentIntentId" IS NOT NULL
+  AND p."Description" IN ('Direct checkout - deferred payment (charged at deadline)', 'Direct booking - charged at deadline')
+ORDER BY b."CheckInDate";
+```
+
+### 9.4 Checks
+
+```sql
+-- Deferred charges waiting for the guest, with the day of the first failure
+SELECT b."Id", b."CheckInDate", b."DeferredChargeAttempts", b."DeferredChargeFailedAt", p."StripePaymentIntentId"
+FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
+WHERE b."PaymentOption" = 1 AND b."Status" = 1 AND b."DeferredChargeFailedAt" IS NOT NULL AND p."Status" = 3;
+
+-- Deadline passed, confirmed, attempts left, nothing collected: should be empty after 06:00 UTC
+SELECT b."Id", b."FreeRefundDeadline", b."DeferredChargeAttempts", b."DeferredChargeLastAttemptOn"
+FROM casazen_prod."Bookings" b
+WHERE b."PaymentOption" = 1 AND b."Status" = 1 AND b."FreeRefundDeadline" < date_trunc('day', now())
+  AND b."DeferredChargeLastAttemptOn" IS NULL
+  AND NOT EXISTS (SELECT 1 FROM casazen_prod."Payments" p WHERE p."BookingId" = b."Id" AND p."Status" IN (2, 4, 5, 6));
+
+-- Automatic cancellations of the last 30 days
+SELECT count(*) FROM casazen_prod."Bookings" WHERE "CancellationReason" = 6 AND "UpdatedAt" > now() - interval '30 days';
+```
+
+Logs (booking and Stripe ids only): `Deferred charge of booking {BookingId}: attempt {Attempt}, payment intent … {Status}`,
+`… failed (attempt …): authentication_required …`, `… attempt {Attempt} of {MaxAttempts} without payment (…)`,
+`Booking {BookingId} cancelled: deferred payment not completed …`, and the summary
+`Direct booking charge job: … paid, … processing, … waiting for the guest, … cancelled, … error(s)`.
+
+### 9.5 Troubleshooting
+
+| Symptom | Cause / action |
+|---|---|
+| Payment `Processing` for days | SEPA Debit takes up to a few business days. Without `payment_intent.processing` / `succeeded` on the Connect endpoint the job reads the status again every morning |
+| Guest says the link is invalid (`checkout_link_invalid`) | An older email: each failure episode issues a new token. The latest email works; the host can also cancel and ask for a new booking |
+| Host email "contatta l'ospite" | Every attempt ended without a PaymentIntent: look for `not attempted on Stripe` in the logs (Connect account disconnected, card detached, Stripe errors). Fix the cause, then set `DeferredChargeAttempts = 0` on the booking to let the job try again |
+| Log `second succeeded deferred charge` | Two deferred PaymentIntents succeeded for one booking (should not happen): refund one from the payment page (BK-02) |
+| `canceled on Stripe: no further attempt` | Someone canceled the PaymentIntent in the Stripe Dashboard: the job stops; the host decides (cancel the booking or collect otherwise) |
+
+Emails: `BookingNotifier` (BK-10) with the shared booking texts (greeting, code, summary, host contact, link fallback); list in
+[email.md](email.md#complete-list-of-emails).
+
+Code: `Casazen.Core/Services/DeferredCharges.cs` (rules, settings), `Casazen.Infrastructure/Services/DeferredChargeService.cs`
+(job, webhook), `StripeService.ChargePaymentMethodAsync` / `ConfirmPaymentIntentOffSessionAsync` /
+`ListCustomerPaymentIntentsAsync`, `StripeWebhookHandler`, `CheckoutOutcomes` / `CheckoutOutcomeService` (link to pay),
+`Casazen.Web/BackgroundJobs/DirectBookingChargeJob.cs`. Tests: `DeferredChargePostgresTests` (success, `requires_action`
+with emails and the link, `processing` then webhook, failures then cancellation with dates released, guest paid before
+the cancellation, two concurrent runs → one PaymentIntent, webhook kind on Connect and platform), `DirectBookingChargeJobTests`,
+`DeferredChargesTests`, `StripeServiceDeferredChargeTests`, `EmailTemplatesTests`.
