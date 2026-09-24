@@ -1,6 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Infrastructure.ICalSpike;
+using Casazen.Infrastructure.Services.ICal;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -11,11 +11,11 @@ public class ICalExportService
 {
     public string BuildPropertyFeed(IEnumerable<Booking> bookings, IEnumerable<CalendarBlock> blocks)
     {
-        var slices = new List<CalendarBlockSlice>();
+        var events = new List<ICalFeedEvent>();
 
         foreach (var booking in bookings.Where(b => b.Status != BookingStatus.Cancelled))
         {
-            slices.Add(new CalendarBlockSlice(
+            events.Add(new ICalFeedEvent(
                 $"booking-{booking.Id}",
                 booking.CheckInDate,
                 booking.CheckOutDate,
@@ -24,13 +24,13 @@ public class ICalExportService
 
         foreach (var block in blocks)
         {
-            slices.Add(new CalendarBlockSlice(
+            events.Add(new ICalFeedEvent(
                 block.ExternalUid,
                 block.StartUtc,
                 block.EndUtc,
                 string.IsNullOrWhiteSpace(block.Summary) ? "Occupato" : block.Summary));
         }
 
-        return ICalImportSpike.BuildExportFeed(slices, "CasaZen Availability");
+        return ICalFeedWriter.Write(events);
     }
 }

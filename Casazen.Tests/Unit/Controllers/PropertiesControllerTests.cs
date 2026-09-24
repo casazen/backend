@@ -95,13 +95,7 @@ public class PropertiesControllerTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["App:ApiBaseUrl"] = "https://api.test" })
             .Build();
-        return new PropertyICalSyncService(
-            db,
-            Mock.Of<ISafeExternalHttpClient>(),
-            new ICalImportService(),
-            new ICalExportService(),
-            configuration,
-            Mock.Of<ILogger<PropertyICalSyncService>>());
+        return ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration);
     }
 
     private static readonly Guid DefaultOrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");

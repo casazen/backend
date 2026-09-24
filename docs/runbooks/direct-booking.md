@@ -1,4 +1,4 @@
-# Runbook: direct booking — "Paga in struttura" requests approved by the host
+# Runbook: direct booking — "Paga in struttura" requests, checkout outcome page, payment options
 
 Task BK-06 (audit defects A3-06 P0, R-11), decision **D5** of the product owner: a "pay at the property" booking
 (`PaymentOption = OnSite`) **must always be confirmed by the host**. It stays waiting until the host accepts it; once
@@ -57,7 +57,7 @@ and the guest reads "Questa struttura non accetta ancora prenotazioni online. Co
 
 | Endpoint | Auth | Answers |
 |---|---|---|
-| `POST /api/public/bookings` (`paymentOption: "OnSite"`) | anonymous, rate limited | 200 with `emailConfirmationExpiresAt`; 422 `onsite_request_too_many_nights`, `direct_booking_invalid_stay`, `booking_too_many_guests`, `direct_booking_consent_outdated`, `direct_booking_invalid_payment_option`; 409 `booking_dates_unavailable`, `direct_booking_payments_not_ready`; 400 `direct_booking_consent_required`; 404 `not_found` |
+| `POST /api/public/bookings` (`paymentOption: "OnSite"`) | anonymous, rate limited | 200 with `emailConfirmationExpiresAt` and `checkoutToken` (§ 7); 422 `onsite_request_too_many_nights`, `direct_booking_invalid_stay`, `booking_too_many_guests`, `direct_booking_consent_outdated`, `direct_booking_invalid_payment_option`; 409 `booking_dates_unavailable`, `direct_booking_payments_not_ready`; 400 `direct_booking_consent_required`; 404 `not_found` |
 | `POST /api/public/bookings/{id}/confirm-email` `{ token }` | anonymous, rate limited | 200 `{ bookingId, status, state, requestExpiresAt }`; 404 `onsite_request_link_invalid`; 409 `onsite_request_expired` |
 | `GET /api/bookings/approval-requests` | `booking.read`, filtered in SQL by org (and owned properties for non org-wide roles) | requests waiting for the host, soonest deadline first |
 | `POST /api/bookings/{id}/approve` | `booking.write` on the booking's property (TN-3) | 200 booking; 404 (other org / no permission); 409 `onsite_request_not_pending`, `onsite_request_expired`, `onsite_request_email_not_confirmed`, `onsite_request_dates_blocked`; 422 `booking_not_onsite_request` |
@@ -116,3 +116,125 @@ host until …`, `accepted by the host`, `declined by the host`, `On-site reques
 | The host never got the "new request" email | `Org.ContactEmail` empty or wrong (log `Email onsite-request-to-host … skipped: no recipient address`). The request is visible anyway in the console panel "Richieste da approvare" |
 | Accept answers 409 `onsite_request_dates_blocked` | An OTA booking was imported for the same dates while the request was waiting: decline the request |
 | Guests get "link expired" too often | Raise `DirectBooking__OnSiteEmailVerificationMinutes` |
+
+## 7. Checkout outcome page, Stripe redirects, error codes, payment options (BK-07)
+
+Task BK-07 (audit defects A3-15 and A3-16, P1). Before it the checkout showed "Prenotazione confermata!" right after
+`stripe.confirmPayment`, before the webhook (a SEPA debit still `processing`, or a webhook that never came, ended as a
+"confirmed" booking cancelled by the hold expiry); a redirect method (iDEAL, Bancontact, Klarna…) came back to
+`window.location.href`, an empty checkout whose new booking the guest's own hold blocked (409); "Paga alla scadenza" was
+offered for stays of more than 7 nights even with the arrival tomorrow, and every option promised "Cancellazione gratuita
+fino a …" although the guest cannot cancel by themselves.
+
+### 7.1 Outcome page
+
+- Route of the booking site: **`/book/{orgSlug}/booking/{bookingId}?token={checkoutToken}`**. The checkout goes there after
+  the payment (or the "pay at the property" request), and it is the Stripe **`return_url`** of `confirmPayment` /
+  `confirmSetup`: a redirect method brings the guest back to their booking. Stripe appends `payment_intent`,
+  `payment_intent_client_secret` (or `setup_intent…`) and `redirect_status`; the page reads `redirect_status` once and
+  removes the Stripe parameters (the client secret among them) from the address bar.
+- The state shown is **always the backend's** (`POST /api/public/bookings/{id}/outcome`). "Prenotazione confermata" only
+  for `Confirmed`. A payment that Stripe.js reports as succeeded is "Pagamento in elaborazione" until the webhook confirms
+  the booking.
+- The page polls with a backoff (2 s, 3 s, 4.5 s … up to 30 s, 20 polls ≈ 7 minutes) while the state is intermediate
+  (payment being confirmed, request waiting for the email or the host, expired hold whose guest has paid: BK-04 may
+  confirm it again); then it offers "Aggiorna lo stato". Final states stop the polling.
+- States (`state` of the answer):
+
+| `state` | When | Page |
+|---|---|---|
+| `Confirmed` | booking `Confirmed` / `CheckedIn` / `CheckedOut` | "Prenotazione confermata!", stay, payment (paid online / card charged on the deadline day / at the property) |
+| `PaymentProcessing` | `Pending` with a payment `Processing` or `Completed` (webhook not processed yet; SEPA for a few days) | "Pagamento in elaborazione", polling |
+| `PaymentFailed` | hold valid, last PaymentIntent attempt `Failed` (`payment_intent.payment_failed`) | "Pagamento non riuscito" + "Riprova il pagamento" on the same hold, until `expiresAt` |
+| `AwaitingPayment` | hold valid, nothing paid | "Pagamento da completare" + "Completa il pagamento" |
+| `AwaitingGuestEmail` / `AwaitingHostApproval` | "pay at the property" request (§ 1) | next steps, deadline `expiresAt`, polling |
+| `Expired` | cancelled `CheckoutHoldExpired`, `OnSiteRequestExpired`, `OnSiteEmailNotConfirmed`, or a hold past the TTL (`CheckoutHolds.IsExpired`, the same rule that released the dates) | "Tempo scaduto" + "Prenota di nuovo" (property page with the same stay) |
+| `Declined` | request declined by the host | "Richiesta non accettata" |
+| `DatesUnavailable` | payment arrived when the dates were taken (BK-04): cancelled and refunded in full | "Date non più disponibili", refund email when Stripe confirms it |
+| `Cancelled` | any other cancellation (host) | "Prenotazione annullata" |
+
+### 7.2 Checkout token (security)
+
+- `POST /api/public/bookings` answers a **`checkoutToken`** (256 random bits, URL-safe) once; the database keeps only its
+  SHA-256 in **`Bookings.CheckoutTokenHash`** (migration `AddBookingCheckoutTokenHash`). The token travels in the URL of the
+  page (the guest's own link) and in the **body** of the API calls, never in an API URL, so it does not land in access logs.
+- A wrong booking id, a wrong token, a booking not from the public checkout and a booking created before BK-07 all answer
+  the same **404 `checkout_link_invalid`**: the booking id alone (visible to the host, in emails, in links) reveals nothing
+  and ids cannot be enumerated. The answer has no personal data of the guest (property, dates, guests count, total, state).
+- The old anonymous **`GET /api/public/bookings/{id}/status`**, which answered the status of any booking id, is removed.
+- Rate limit: `RateLimiting__PublicBookingLookup__PermitLimit` (30 per minute per IP) covers `outcome` and
+  `payment-session`; the page polls at most about 7 times in its first minute.
+- Bookings created before the deploy have no token: their guests use the emails; nothing to migrate.
+
+### 7.3 Paying the same hold again (no 409 from the guest's own hold)
+
+- `POST /api/public/bookings/{id}/payment-session` `{ token }` reads the booking's **own** PaymentIntent (or SetupIntent
+  for "Paga alla scadenza") from Stripe, on the connected account, and returns its client secret: the page mounts the
+  Payment Element again on the same hold. Answers: 200; 404 `checkout_link_invalid`; **409 `checkout_hold_expired`** (hold
+  past the TTL, or intent `canceled` by the expiry job: dates released); **409 `checkout_payment_not_resumable`** (already
+  paid or being paid: intent `succeeded` / `processing`, booking confirmed or cancelled, "pay at the property" request).
+- The checkout remembers, in `sessionStorage` of the tab, the booking it just created: if the guest goes back to the form
+  and books the same dates again, the 409 `booking_dates_unavailable` comes with "Riprendi la prenotazione" (link to the
+  outcome page) instead of a dead end.
+
+### 7.4 Error codes of the checkout
+
+All the checkout errors are ProblemDetails with a stable `code` and a localized `detail` (IT/EN resx); the frontend shows
+its own translation of the code (`apiErrors.codes.*`, `getProblemMessage`). `BookingService` throws
+`DomainRuleException` / `DomainConflictException` / `NotFoundException` / `PaymentProcessingException` (the old
+`DirectBookingException` with English messages and the controller mapping are gone).
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `validation_error` | malformed body (field errors) |
+| 400 | `direct_booking_consent_required` | no data processing consent |
+| 404 | `not_found` | property missing, inactive or not compliant |
+| 409 | `booking_dates_unavailable` | dates taken (another booking, a valid hold, an iCal block) |
+| 409 | `direct_booking_payments_not_ready` | the host has not completed Stripe Connect |
+| 422 | `direct_booking_invalid_stay` | check-in in the past, check-out not after check-in, too long (quote too; it used to answer `booking_invalid_dates`) |
+| 422 | `booking_too_many_guests` | over the capacity |
+| 422 | `direct_booking_consent_outdated` | consent text changed |
+| 422 | `direct_booking_invalid_payment_option` | unknown option |
+| 422 | **`direct_booking_deferred_payment_unavailable`** | "Paga alla scadenza" for a stay whose charge day is not after today (§ 7.5) |
+| 422 | `tourist_tax_child_ages_required` | ages of the minors missing (BK-03) |
+| 422 | `onsite_request_too_many_nights` | § 2 |
+| 429 | `rate_limited` | FD-10 |
+| 503 | `payment_provider_error` | Stripe could not create the intent (the hold is cancelled) |
+
+### 7.5 Payment options (A3-16)
+
+- **Free refund deadline** of a stay (`Bookings.FreeRefundDeadline`, `DirectBookingPaymentRules.FreeRefundDeadline`): with
+  a `CancellationPolicy` on the property, the last whole day (Europe/Rome) at least `FullRefundHours` before the start of
+  the check-in day, i.e. the same full refund window `CancellationRefundPolicy` applies (e.g. 48 h → check-in − 3 days);
+  without a policy, the existing rule **check-in − 7 days**. It is also the day the deferred payment is charged
+  (`DirectBookingChargeJob`, unchanged: the robust deferred charge is task BK-08).
+- **"Paga alla scadenza"** is offered, and accepted by the API, only when that day is **after today in Europe/Rome**: with
+  the default rule only for an arrival more than 7 days away, whatever the number of nights (10 nights from tomorrow: not
+  offered, 422 if forced). The quote (`POST /api/public/bookings/quote`) answers
+  `paymentOptions: { deferredPaymentAvailable, deferredChargeDate, freeCancellationUntil }` and the checkout shows the
+  button "Paga più tardi: la carta viene salvata ora e addebitata il {data}" only from it.
+- **"Cancellazione gratuita fino a …"** is not shown anywhere: the guest has **no self-service cancellation** (only the host
+  cancels, BK-02), so `freeCancellationUntil` is always `null` (`DirectBookingPaymentRules.GuestSelfCancellationAvailable`
+  = false). The guest booking page shows "Pagamento previsto per {data}" for the deferred payment instead. When a guest
+  cancellation exists, set the flag and the checkout shows the text again from the quote.
+- The refund floor of a host cancellation (BK-02) keeps using `FreeRefundDeadline`: for new bookings of a property with a
+  policy it now coincides with the policy's full refund window instead of check-in − 7.
+
+### 7.6 Checks
+
+1. Test mode, card `4242 4242 4242 4242`: after "Paga ora" the page is `/book/{org}/booking/{id}?token=…`, shows
+   "Pagamento in elaborazione" for a moment and "Prenotazione confermata!" once the webhook `payment_intent.succeeded` is
+   processed. Without the Connect webhook (misconfigured endpoint) it stays in elaboration: that is the real state.
+2. Test mode, a redirect method (e.g. iDEAL / Bancontact test page): "Fail test payment" brings back to the outcome page with
+   "Pagamento non riuscito" and "Riprova il pagamento" on the same booking (no 409); "Authorize" ends as confirmed.
+3. SEPA Debit test IBAN `DE89370400440532013000`: "Pagamento in elaborazione" until Stripe settles it.
+4. Checkout with check-in tomorrow and 10 nights: no "Paga più tardi" button; check-in in 30 days: the button shows
+   check-in − 7 (or the policy's day).
+5. `POST /api/public/bookings/{id}/outcome` with another token: 404 `checkout_link_invalid`.
+
+Code: `Casazen.Core/Services/CheckoutOutcomes.cs`, `DirectBookingPaymentRules.cs`, `ICheckoutOutcomeService.cs`,
+`Casazen.Infrastructure/Services/CheckoutOutcomeService.cs`, `BookingService.cs`, `PublicBookingsController.cs`. Frontend:
+`src/features/public-booking/checkout-outcome-page.tsx`, `checkout-outcome.ts`, `components/stripe-intent-payment.tsx`,
+`checkout-page.tsx`, `src/lib/pending-checkout.ts`. Tests: `DirectCheckoutIntegrationTests` (outcome, token, resume,
+codes, payment options), `CheckoutOutcomesTests`, `DirectBookingPaymentRulesTests`, `BookingServiceTests`; vitest
+`checkout-outcome-page.test.tsx`, `checkout-outcome.test.ts`, `checkout-page.test.tsx`.

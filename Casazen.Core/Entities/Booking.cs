@@ -93,7 +93,11 @@ public class Booking : ITenantOwned
     [Required]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
 
-    /// <summary>Deadline for free refund (check-in - 7 days). After this date, cancellation is charged.</summary>
+    /// <summary>
+    /// Last day (Europe/Rome) of the full refund: from the property's cancellation policy when it has one, otherwise
+    /// check-in − 7 days (<see cref="Services.DirectBookingPaymentRules.FreeRefundDeadline"/>). Also the day the
+    /// deferred payment is charged.
+    /// </summary>
     public DateTime? FreeRefundDeadline { get; set; }
 
     /// <summary>Stripe SetupIntent ID for OnCancellationDeadline payments (to save payment method for future charge).</summary>
@@ -146,6 +150,14 @@ public class Booking : ITenantOwned
     /// (<c>DirectBooking:OnSiteApprovalHours</c>). Past it the <c>checkout-hold-expiry</c> job cancels the request.
     /// </summary>
     public DateTime? RequestExpiresAt { get; set; }
+
+    /// <summary>
+    /// Public checkout only (BK-07): SHA-256 (hex) of the checkout token returned once by <c>POST /api/public/bookings</c>.
+    /// The token lets the guest who made the checkout read its outcome and complete the payment again
+    /// (<c>/book/{orgSlug}/booking/{id}?token=…</c>); the booking id alone does not.
+    /// </summary>
+    [MaxLength(64)]
+    public string? CheckoutTokenHash { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -218,7 +230,10 @@ public enum PaymentOption
     /// <summary>Pay immediately via Stripe (default, current flow).</summary>
     Immediate,
 
-    /// <summary>Pay on the free cancellation deadline (7 days before check-in) via Stripe SetupIntent + deferred charge.</summary>
+    /// <summary>
+    /// Pay on the free refund deadline (<see cref="Booking.FreeRefundDeadline"/>) via Stripe SetupIntent + deferred charge.
+    /// Offered only when that day is after today (<see cref="Services.DirectBookingPaymentRules.IsDeferredPaymentOffered"/>).
+    /// </summary>
     OnCancellationDeadline,
 
     /// <summary>

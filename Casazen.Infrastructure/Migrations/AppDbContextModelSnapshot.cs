@@ -240,6 +240,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("CheckoutTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime?>("CheckoutWizardStartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3155,6 +3159,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid?>("SupplierOrgId")
                         .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<string>>("SuspendedAuth0Roles")
+                        .HasColumnType("text[]");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

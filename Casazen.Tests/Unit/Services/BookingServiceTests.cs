@@ -3,6 +3,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Http;
@@ -61,13 +62,7 @@ public class BookingServiceTests
 
     private static PropertyICalSyncService CreatePropertyICalSyncService(AppDbContext db, IConfiguration configuration)
     {
-        return new PropertyICalSyncService(
-            db,
-            Mock.Of<ISafeExternalHttpClient>(),
-            new ICalImportService(),
-            new ICalExportService(),
-            configuration,
-            Mock.Of<ILogger<PropertyICalSyncService>>());
+        return ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration);
     }
 
     [Fact]
@@ -90,10 +85,10 @@ public class BookingServiceTests
             null,
             (PaymentOption)999);
 
-        var ex = await Assert.ThrowsAsync<DirectBookingException>(() =>
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
             _service.CreateDirectBookingAsync(input));
 
-        Assert.Equal(DirectBookingErrorCodes.InvalidPaymentOption, ex.ErrorCode);
+        Assert.Equal(DirectBookingErrorCodes.InvalidPaymentOption, ex.Code);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
         _mockHoldExpiry.Verify(x => x.ExpireOverlappingHoldsAsync(
             It.IsAny<Guid>(),
@@ -202,7 +197,97 @@ public class BookingServiceTests
         // Only the hash is stored; the raw token is only in the email.
         Assert.NotEqual(link.Groups[1].Value, stored.GuestEmailVerificationTokenHash);
         Assert.True(OnSiteRequests.EmailVerificationTokenMatches(stored.GuestEmailVerificationTokenHash, link.Groups[1].Value));
+        // BK-07: the checkout token of the outcome page is returned once; only its hash is stored.
+        Assert.False(string.IsNullOrWhiteSpace(result.CheckoutToken));
+        Assert.NotEqual(result.CheckoutToken, stored.CheckoutTokenHash);
+        Assert.True(CheckoutOutcomes.TokenMatches(stored.CheckoutTokenHash, result.CheckoutToken));
     }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_DeferredPaymentWithArrivalTomorrow_Throws422RuleBeforePersisting()
+    {
+        // A3-16: 10 nights from tomorrow used to be offered "Paga alla scadenza" with a deadline already past.
+        var property = ConnectReadyProperty();
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(1);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreateDirectBookingAsync(
+            DirectInput(property.Id, checkIn, checkIn.AddDays(10), PaymentOption.OnCancellationDeadline)));
+
+        Assert.Equal(DirectBookingErrorCodes.DeferredPaymentUnavailable, ex.Code);
+        Assert.Equal("DirectBookingDeferredPaymentUnavailable", ex.MessageKey);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+        _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task QuoteDirectBookingAsync_PropertyWithCancellationPolicy_ChargesTheDeferredPaymentOnItsLastFullRefundDay()
+    {
+        var property = ConnectReadyProperty();
+        property.CancellationPolicy = new CancellationPolicy { Name = "Moderata", FullRefundHours = 14 * 24 };
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var quote = await _service.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(3), 2, 0));
+
+        // 14 days before the start of the check-in day: the last whole day is the 15th day before.
+        Assert.Equal(checkIn.AddDays(-15), quote.FreeRefundDeadline);
+        Assert.True(quote.PaymentOptions.DeferredPaymentAvailable);
+        Assert.Equal(checkIn.AddDays(-15), quote.PaymentOptions.DeferredChargeDate);
+        Assert.Null(quote.PaymentOptions.FreeCancellationUntil);
+    }
+
+    [Fact]
+    public async Task QuoteDirectBookingAsync_ArrivalTomorrowForTenNights_DoesNotOfferTheDeferredPayment()
+    {
+        var property = ConnectReadyProperty();
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(1);
+
+        var quote = await _service.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(10), 2, 0));
+
+        Assert.False(quote.PaymentOptions.DeferredPaymentAvailable);
+        Assert.Null(quote.PaymentOptions.DeferredChargeDate);
+    }
+
+    private Property ConnectReadyProperty()
+    {
+        var property = new Property
+        {
+            OrgId = Guid.NewGuid(),
+            Name = "Villa Rosa",
+            IsActive = true,
+            ComplianceStatus = Core.Entities.Enums.PropertyComplianceStatus.Active,
+            MaxGuests = 4,
+            NightlyRate = 100m,
+        };
+        _mockPropertyRepository.Setup(x => x.GetByIdAsync(property.Id)).ReturnsAsync(property);
+        _mockOrgService.Setup(x => x.GetByIdAsync(property.OrgId)).ReturnsAsync(new OrgEntity
+        {
+            Id = property.OrgId,
+            StripeConnectedAccountId = "acct_deferred",
+            ConnectChargesEnabled = true,
+        });
+        _mockTouristTax
+            .Setup(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, null, 10, 0, false, [], []));
+        _mockRepository.Setup(x => x.IsAvailableAsync(
+                It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int?>()))
+            .ReturnsAsync(true);
+        return property;
+    }
+
+    private static DirectBookingCreateInput DirectInput(
+        Guid propertyId, DateTime checkIn, DateTime checkOut, PaymentOption paymentOption) => new(
+        propertyId,
+        checkIn,
+        checkOut,
+        2,
+        0,
+        new DirectBookingGuestInput("Ada", "Lovelace", "guest@example.com", null, "IT"),
+        "2026-06-direct-checkout-v1",
+        "127.0.0.1",
+        null,
+        paymentOption);
 
     private static DirectBookingCreateInput OnSiteInput(Guid propertyId, DateTime checkIn, DateTime checkOut) => new(
         propertyId,

@@ -33,8 +33,26 @@ public interface IAuth0ManagementService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Blocks or unblocks the Auth0 account (<c>PATCH /users/{id}</c> with <c>blocked</c>, scope <c>update:users</c>).
+    /// A blocked user cannot log in and gets no new access token, not even through a refresh token (PL-03).
+    /// </summary>
+    Task<Auth0SyncResult> SetBlockedAsync(string userId, bool blocked, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The CasaZen roles the user holds in Auth0 (<c>GET /users/{id}/roles</c>); roles of other applications of the
+    /// tenant are left out. Used before a deactivation removes them, so the reactivation gives back exactly those.
+    /// </summary>
+    Task<Auth0UserRolesResult> GetUserRolesAsync(string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches email, name and <c>email_verified</c> from Auth0 (not cached). Returns null when Management API is not
     /// configured or the call fails.
     /// </summary>
     Task<Auth0UserProfile?> GetUserProfileAsync(string userId);
+}
+
+/// <summary>Outcome of <see cref="IAuth0ManagementService.GetUserRolesAsync"/>: <see cref="Roles"/> is empty unless it succeeded.</summary>
+public sealed record Auth0UserRolesResult(Auth0SyncResult Sync, IReadOnlyList<UserRole> Roles)
+{
+    public static Auth0UserRolesResult Failed(Auth0SyncResult sync) => new(sync, []);
 }
