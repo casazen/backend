@@ -15,7 +15,7 @@ namespace Casazen.Web.Controllers;
 public class PublicBookingsController(
     IBookingService bookingService,
     IOnSiteBookingRequestService onSiteRequests,
-    ILogger<PublicBookingsController> logger,
+    ICheckoutOutcomeService checkoutOutcomes,
     TimeProvider? timeProvider = null) : ControllerBase
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -57,18 +57,53 @@ public class PublicBookingsController(
         }
     }
 
-    [HttpGet("{bookingId}/status")]
+    /// <summary>
+    /// Outcome of a public checkout for its outcome page (BK-07, A3-15): the real state of the booking (confirmed, payment
+    /// in progress or failed, "pay at the property" request waiting, expired…), polled by the page until it is final. Needs
+    /// the checkout token returned by <c>POST /api/public/bookings</c>: the booking id alone reveals nothing, and a wrong
+    /// id or token gets the same 404 <c>checkout_link_invalid</c>. No personal data of the guest in the answer.
+    /// (Replaces <c>GET /api/public/bookings/{id}/status</c>, which answered for any booking id.)
+    /// </summary>
+    [HttpPost("{bookingId:guid}/outcome")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
-    public async Task<ActionResult<BookingStatusResponse>> GetBookingStatus(Guid bookingId)
+    [ProducesResponseType(typeof(CheckoutOutcomeResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CheckoutOutcomeResponse>> GetCheckoutOutcome(
+        Guid bookingId,
+        [FromBody] CheckoutTokenRequest request,
+        CancellationToken cancellationToken)
     {
-        var booking = await bookingService.GetBookingAsync(bookingId);
-        if (booking is null)
-            return NotFound();
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
 
-        return Ok(new BookingStatusResponse(
-            booking.Id,
-            booking.Status,
-            booking.PaymentOption));
+        var outcome = await checkoutOutcomes.GetOutcomeAsync(bookingId, request.Token, cancellationToken);
+        return Ok(CheckoutOutcomeResponse.From(outcome));
+    }
+
+    /// <summary>
+    /// The guest completes the payment of the same hold again (BK-07, A3-15): after a failed card, a redirect method that
+    /// came back failed, or a page closed before paying. Answers the client secret of the booking's own PaymentIntent /
+    /// SetupIntent, so the guest never books again and hits their own hold (409 on the dates). 409
+    /// <c>checkout_hold_expired</c> once the dates were released, 409 <c>checkout_payment_not_resumable</c> when there is
+    /// nothing left to pay (already paid or being paid, confirmed, cancelled, pay at the property).
+    /// </summary>
+    [HttpPost("{bookingId:guid}/payment-session")]
+    [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
+    [ProducesResponseType(typeof(CheckoutPaymentSessionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CheckoutPaymentSessionResponse>> ResumeCheckoutPayment(
+        Guid bookingId,
+        [FromBody] CheckoutTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        var session = await checkoutOutcomes.ResumePaymentAsync(bookingId, request.Token, cancellationToken);
+        return Ok(CheckoutPaymentSessionResponse.From(session));
     }
 
     [HttpPost("lookup")]
@@ -105,6 +140,8 @@ public class PublicBookingsController(
     /// tourist tax engine, from the <c>TouristTaxRates</c> of the property's comune. The booking created afterwards
     /// records the same amounts. A comune without rate answers 200 with <c>touristTax.status = RateUnavailable</c>
     /// (tax not included, checkout not blocked); <c>ChildAgesRequired</c> asks the ages of the minors.
+    /// <c>paymentOptions</c> says whether "Paga alla scadenza" can be offered and whether a free cancellation can be
+    /// promised (A3-16). Errors: 422 <c>booking_too_many_guests</c>, <c>direct_booking_invalid_stay</c>; 404.
     /// </summary>
     [HttpPost("quote")]
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
@@ -119,38 +156,27 @@ public class PublicBookingsController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        try
-        {
-            var quote = await bookingService.QuoteDirectBookingAsync(
-                new DirectBookingQuoteInput(
-                    request.PropertyId,
-                    request.CheckInDate,
-                    request.CheckOutDate,
-                    request.NumberOfAdults,
-                    request.NumberOfChildren,
-                    request.ChildrenAges),
-                cancellationToken);
-            return Ok(DirectBookingQuoteResponse.From(quote));
-        }
-        catch (DirectBookingException ex)
-        {
-            logger.LogInformation("Direct booking quote rejected: {ErrorCode}", ex.ErrorCode);
-            return ex.ErrorCode switch
-            {
-                DirectBookingErrorCodes.TooManyGuests => this.ApiProblem(
-                    StatusCodes.Status422UnprocessableEntity,
-                    BookingErrorCodes.TooManyGuests,
-                    "BookingTooManyGuests",
-                    ex.MessageArgs),
-                DirectBookingErrorCodes.InvalidDates => this.ApiProblem(
-                    StatusCodes.Status422UnprocessableEntity,
-                    BookingErrorCodes.InvalidDates,
-                    "BookingInvalidDates"),
-                _ => this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"),
-            };
-        }
+        var quote = await bookingService.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(
+                request.PropertyId,
+                request.CheckInDate,
+                request.CheckOutDate,
+                request.NumberOfAdults,
+                request.NumberOfChildren,
+                request.ChildrenAges),
+            cancellationToken);
+        return Ok(DirectBookingQuoteResponse.From(quote));
     }
 
+    /// <summary>
+    /// Public checkout (spec-direct-checkout, BK-06, BK-07). Every error is a ProblemDetails with a stable code and a
+    /// localized message (R-11): 400 <c>direct_booking_consent_required</c>; 404 <c>not_found</c>; 409
+    /// <c>booking_dates_unavailable</c>, <c>direct_booking_payments_not_ready</c>; 422 <c>direct_booking_invalid_stay</c>,
+    /// <c>booking_too_many_guests</c>, <c>direct_booking_consent_outdated</c>, <c>direct_booking_invalid_payment_option</c>,
+    /// <c>direct_booking_deferred_payment_unavailable</c>, <c>tourist_tax_child_ages_required</c>,
+    /// <c>onsite_request_too_many_nights</c>; 503 <c>payment_provider_error</c>. The answer carries the
+    /// <c>checkoutToken</c> of the outcome page (BK-07): the only time it is given.
+    /// </summary>
     [HttpPost]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingCreate)]
     public async Task<ActionResult<DirectBookingResponse>> CreateDirectBooking(
@@ -163,58 +189,51 @@ public class PublicBookingsController(
         {
             return this.ApiProblem(
                 StatusCodes.Status400BadRequest,
-                DirectBookingProblemCodes.ConsentRequired,
+                DirectBookingErrorCodes.ConsentRequired,
                 "DirectBookingConsentRequired");
         }
 
         var consentIp = ClientIp.GetString(HttpContext) ?? string.Empty;
         var guest = request.Guest;
 
-        try
-        {
-            var result = await bookingService.CreateDirectBookingAsync(new DirectBookingCreateInput(
-                request.PropertyId,
-                request.CheckInDate,
-                request.CheckOutDate,
-                request.NumberOfAdults,
-                request.NumberOfChildren,
-                new DirectBookingGuestInput(
-                    guest.FirstName,
-                    guest.LastName,
-                    guest.Email,
-                    guest.Phone,
-                    guest.Country),
-                request.Consent.ConsentVersion,
-                consentIp,
-                request.SpecialRequests,
-                request.PaymentOption,
-                request.ChildrenAges));
+        var result = await bookingService.CreateDirectBookingAsync(new DirectBookingCreateInput(
+            request.PropertyId,
+            request.CheckInDate,
+            request.CheckOutDate,
+            request.NumberOfAdults,
+            request.NumberOfChildren,
+            new DirectBookingGuestInput(
+                guest.FirstName,
+                guest.LastName,
+                guest.Email,
+                guest.Phone,
+                guest.Country),
+            request.Consent.ConsentVersion,
+            consentIp,
+            request.SpecialRequests,
+            request.PaymentOption,
+            request.ChildrenAges));
 
-            return Ok(new DirectBookingResponse
-            {
-                BookingId = result.BookingId,
-                ClientSecret = result.PaymentOption == PaymentOption.Immediate ? result.ClientSecret : string.Empty,
-                SetupIntentClientSecret = result.SetupIntentClientSecret,
-                ConnectedAccountPublishableContext = new ConnectedAccountPublishableContext
-                {
-                    PublishableKey = result.PublishableKey,
-                    StripeAccountId = result.StripeAccountId,
-                },
-                Amount = result.Amount,
-                Currency = result.Currency,
-                TouristTaxAmount = result.TouristTaxAmount,
-                BasePrice = result.BasePrice,
-                FreeRefundDeadline = result.FreeRefundDeadline ?? DateTime.UtcNow,
-                PaymentOption = result.PaymentOption,
-                TouristTaxStatus = result.TouristTaxStatus,
-                EmailConfirmationExpiresAt = result.OnSiteRequestExpiresAt,
-            });
-        }
-        catch (DirectBookingException ex)
+        return Ok(new DirectBookingResponse
         {
-            logger.LogWarning(ex, "Direct booking rejected: {ErrorCode}", ex.ErrorCode);
-            return DirectBookingProblem(ex);
-        }
+            BookingId = result.BookingId,
+            ClientSecret = result.PaymentOption == PaymentOption.Immediate ? result.ClientSecret : string.Empty,
+            SetupIntentClientSecret = result.SetupIntentClientSecret,
+            ConnectedAccountPublishableContext = new ConnectedAccountPublishableContext
+            {
+                PublishableKey = result.PublishableKey,
+                StripeAccountId = result.StripeAccountId,
+            },
+            Amount = result.Amount,
+            Currency = result.Currency,
+            TouristTaxAmount = result.TouristTaxAmount,
+            BasePrice = result.BasePrice,
+            FreeRefundDeadline = result.FreeRefundDeadline ?? DateTime.UtcNow,
+            PaymentOption = result.PaymentOption,
+            TouristTaxStatus = result.TouristTaxStatus,
+            EmailConfirmationExpiresAt = result.OnSiteRequestExpiresAt,
+            CheckoutToken = result.CheckoutToken,
+        });
     }
 
     /// <summary>
@@ -239,34 +258,4 @@ public class PublicBookingsController(
         var snapshot = await onSiteRequests.ConfirmGuestEmailAsync(bookingId, request.Token, cancellationToken);
         return Ok(OnSiteRequestConfirmationResponse.From(snapshot));
     }
-
-    /// <summary>
-    /// Public checkout errors as ProblemDetails with a stable code and a localized message (R-11): the guest reads why
-    /// the booking failed (e.g. the host has not enabled payments yet) instead of a generic "checkout failed".
-    /// </summary>
-    private ObjectResult DirectBookingProblem(DirectBookingException ex) => ex.ErrorCode switch
-    {
-        DirectBookingErrorCodes.PropertyNotFound => this.ApiProblem(
-            StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"),
-        DirectBookingErrorCodes.PaymentNotReady => this.ApiProblem(
-            StatusCodes.Status409Conflict, DirectBookingProblemCodes.PaymentsNotReady, "DirectBookingPaymentsNotReady"),
-        DirectBookingErrorCodes.NotAvailable => this.ApiProblem(
-            StatusCodes.Status409Conflict, BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable"),
-        DirectBookingErrorCodes.TooManyGuests => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", ex.MessageArgs),
-        DirectBookingErrorCodes.InvalidDates => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity, DirectBookingProblemCodes.InvalidStay, "DirectBookingInvalidStay"),
-        DirectBookingErrorCodes.InvalidConsentVersion => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity, DirectBookingProblemCodes.ConsentOutdated, "DirectBookingConsentOutdated"),
-        DirectBookingErrorCodes.InvalidPaymentOption => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity,
-            DirectBookingProblemCodes.InvalidPaymentOption,
-            "DirectBookingInvalidPaymentOption"),
-        DirectBookingErrorCodes.ChildAgesRequired => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity, DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired"),
-        DirectBookingErrorCodes.StripeError => this.ApiProblem(
-            StatusCodes.Status503ServiceUnavailable, ProblemCodes.PaymentProviderError, "PaymentProviderUnavailableDetail"),
-        _ => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity, ProblemCodes.BusinessRuleViolation, "BusinessRuleViolationDetail"),
-    };
 }

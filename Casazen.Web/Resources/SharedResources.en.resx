@@ -657,6 +657,21 @@
   <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
     <value>The file is not valid and no code was imported: fix the listed lines and try again.</value>
   </data>
+  <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
+    <value>Paying at the deadline is not available for these dates: the arrival is too close. Choose another payment method.</value>
+  </data>
+  <data name="CheckoutTokenRequired" xml:space="preserve">
+    <value>The booking link is incomplete: open the booking confirmation page again.</value>
+  </data>
+  <data name="CheckoutLinkInvalid" xml:space="preserve">
+    <value>Invalid booking link: open the booking confirmation page again.</value>
+  </data>
+  <data name="CheckoutHoldExpired" xml:space="preserve">
+    <value>The time to complete the payment has run out and the dates have been released. You can book again if they are still available.</value>
+  </data>
+  <data name="CheckoutPaymentNotResumable" xml:space="preserve">
+    <value>There is no payment to complete for this booking: it is already in progress, completed, or the booking is closed.</value>
+  </data>
   <data name="BookingGuestsInvalid" xml:space="preserve">
     <value>At least one adult is needed: minors must be fewer than the guests.</value>
   </data>
