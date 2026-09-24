@@ -100,6 +100,57 @@ public class PublicBookingsController(
         ]));
     }
 
+    /// <summary>
+    /// Price of a stay before booking (BK-03, A3-02, R-05): lodging, cleaning and the tourist tax computed by the only
+    /// tourist tax engine, from the <c>TouristTaxRates</c> of the property's comune. The booking created afterwards
+    /// records the same amounts. A comune without rate answers 200 with <c>touristTax.status = RateUnavailable</c>
+    /// (tax not included, checkout not blocked); <c>ChildAgesRequired</c> asks the ages of the minors.
+    /// </summary>
+    [HttpPost("quote")]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
+    [ProducesResponseType(typeof(DirectBookingQuoteResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<DirectBookingQuoteResponse>> Quote(
+        [FromBody] DirectBookingQuoteRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        try
+        {
+            var quote = await bookingService.QuoteDirectBookingAsync(
+                new DirectBookingQuoteInput(
+                    request.PropertyId,
+                    request.CheckInDate,
+                    request.CheckOutDate,
+                    request.NumberOfAdults,
+                    request.NumberOfChildren,
+                    request.ChildrenAges),
+                cancellationToken);
+            return Ok(DirectBookingQuoteResponse.From(quote));
+        }
+        catch (DirectBookingException ex)
+        {
+            logger.LogInformation("Direct booking quote rejected: {ErrorCode}", ex.ErrorCode);
+            return ex.ErrorCode switch
+            {
+                DirectBookingErrorCodes.TooManyGuests => this.ApiProblem(
+                    StatusCodes.Status422UnprocessableEntity,
+                    BookingErrorCodes.TooManyGuests,
+                    "BookingTooManyGuests",
+                    ex.MessageArgs),
+                DirectBookingErrorCodes.InvalidDates => this.ApiProblem(
+                    StatusCodes.Status422UnprocessableEntity,
+                    BookingErrorCodes.InvalidDates,
+                    "BookingInvalidDates"),
+                _ => this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"),
+            };
+        }
+    }
+
     [HttpPost]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingCreate)]
     public async Task<ActionResult<DirectBookingResponse>> CreateDirectBooking(
@@ -136,7 +187,8 @@ public class PublicBookingsController(
                 request.Consent.ConsentVersion,
                 consentIp,
                 request.SpecialRequests,
-                request.PaymentOption));
+                request.PaymentOption,
+                request.ChildrenAges));
 
             return Ok(new DirectBookingResponse
             {
@@ -154,6 +206,7 @@ public class PublicBookingsController(
                 BasePrice = result.BasePrice,
                 FreeRefundDeadline = result.FreeRefundDeadline ?? DateTime.UtcNow,
                 PaymentOption = result.PaymentOption,
+                TouristTaxStatus = result.TouristTaxStatus,
                 EmailConfirmationExpiresAt = result.OnSiteRequestExpiresAt,
             });
         }
@@ -200,7 +253,7 @@ public class PublicBookingsController(
         DirectBookingErrorCodes.NotAvailable => this.ApiProblem(
             StatusCodes.Status409Conflict, BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable"),
         DirectBookingErrorCodes.TooManyGuests => this.ApiProblem(
-            StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.TooManyGuests, "DirectBookingTooManyGuests"),
+            StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", ex.MessageArgs),
         DirectBookingErrorCodes.InvalidDates => this.ApiProblem(
             StatusCodes.Status422UnprocessableEntity, DirectBookingProblemCodes.InvalidStay, "DirectBookingInvalidStay"),
         DirectBookingErrorCodes.InvalidConsentVersion => this.ApiProblem(
@@ -209,6 +262,8 @@ public class PublicBookingsController(
             StatusCodes.Status422UnprocessableEntity,
             DirectBookingProblemCodes.InvalidPaymentOption,
             "DirectBookingInvalidPaymentOption"),
+        DirectBookingErrorCodes.ChildAgesRequired => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity, DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired"),
         DirectBookingErrorCodes.StripeError => this.ApiProblem(
             StatusCodes.Status503ServiceUnavailable, ProblemCodes.PaymentProviderError, "PaymentProviderUnavailableDetail"),
         _ => this.ApiProblem(

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -8,9 +9,11 @@ using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 
@@ -29,7 +32,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, typeA: 2, typeB: 3, typeC: 0, typeD: 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, typeA: 2, typeB: 3, typeC: 0, typeD: 0));
 
         Assert.NotNull(result);
         Assert.True(result.Available);
@@ -55,7 +58,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, typeA: 2, typeB: 2, typeC: 0, typeD: 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, typeA: 2, typeB: 2, typeC: 0, typeD: 0));
 
         Assert.NotNull(result);
         Assert.Equal(1, result.SubFascia);
@@ -78,7 +81,6 @@ public class CanoneConcordatoEligibilityServiceTests
 
         var result = await sut.CalculateAsync(
             property.Id,
-            OwnerId,
             Characteristics(65, 2, 3, 0, 0, zone: zone, foglio: foglio));
 
         Assert.False(result!.Available);
@@ -96,12 +98,12 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var ata = db.HighTensionAreaComuni.Single(c => c.Comune == "Seveso");
         var sut = CreateSut(db);
-        var unverified = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0));
+        var unverified = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
         Assert.False(unverified!.AtaApplies);
 
         ata.VerifiedDirectly = true;
         await db.SaveChangesAsync();
-        var verified = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0));
+        var verified = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
         Assert.True(verified!.AtaApplies);
     }
 
@@ -115,7 +117,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
 
         Assert.True(result!.Available);
         Assert.False(result.AtaApplies);
@@ -130,7 +132,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
 
         Assert.False(result!.Available);
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
@@ -148,7 +150,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
 
         Assert.False(result!.Available);
         Assert.Equal(CanoneConcordatoCopy.ReasonZoneRequired, result.Reason);
@@ -165,7 +167,7 @@ public class CanoneConcordatoEligibilityServiceTests
         var sut = CreateSut(db);
 
         var result = await sut.CalculateAsync(
-            property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0, zone: "Centrale"));
+            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale"));
 
         Assert.True(result!.Available);
         Assert.Equal("Centrale", result.Zone);
@@ -183,7 +185,7 @@ public class CanoneConcordatoEligibilityServiceTests
         var sut = CreateSut(db);
 
         var result = await sut.CalculateAsync(
-            property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0, zone: "Centrale", foglio: "2"));
+            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale", foglio: "2"));
 
         Assert.False(result!.Available);
         Assert.Null(result.CanoneMinAnnuo);
@@ -201,7 +203,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(sqm, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(sqm, 2, 3, 0, 0));
 
         Assert.False(result!.Available);
         Assert.Equal(CanoneConcordatoCopy.ReasonInvalidSqm, result.Reason);
@@ -210,15 +212,16 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Fact]
-    public async Task Calculate_UnknownOwner_ReturnsNull()
+    public async Task Calculate_UnknownProperty_ReturnsNull()
     {
         await using var db = CreateDb();
-        var property = SeedProperty(db, "Seveso");
+        SeedProperty(db, "Seveso");
         SeedReference(db);
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, "auth0|other", Characteristics(65, 2, 3, 0, 0));
+        // Who may see the property is decided by the controller (TN-3); the service only needs it to exist.
+        var result = await sut.CalculateAsync(Guid.NewGuid(), Characteristics(65, 2, 3, 0, 0));
 
         Assert.Null(result);
     }
@@ -232,7 +235,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, OwnerId, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
 
         Assert.False(result!.Available);
         Assert.Null(result.CanoneMinAnnuo);
@@ -279,7 +282,7 @@ public class CanoneConcordatoEligibilityServiceTests
             new TerritorialRentAgreementRepository(db),
             new PropertyRepository(db));
 
-        var result = await sut.GetSignatoryOrganizationsAsync(property.Id, OwnerId);
+        var result = await sut.GetSignatoryOrganizationsAsync(property.Id);
 
         Assert.NotNull(result);
         Assert.True(result.Organizations.Count >= 1);
@@ -295,46 +298,47 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Fact]
-    public async Task Controller_Eligibility_OtherOwner_Returns404()
+    public async Task Controller_Eligibility_PropertyNotVisible_Returns404PropertyNotFound()
     {
         var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
-        eligibility
-            .Setup(s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CanoneConcordatoEligibilityDto?)null);
-        var controller = new CanoneConcordatoController(eligibility.Object, Mock.Of<IAttestationGuidanceService>());
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim(ClaimTypes.NameIdentifier, OwnerId)], "test")),
-            },
-        };
+        var controller = CreateController(eligibility.Object, resource: null, authorized: true);
 
         var result = await controller.GetEligibility(Guid.NewGuid(), 65, 2, 3, 0, 0, false, 3, null, null, CancellationToken.None);
 
-        Assert.IsType<NotFoundResult>(result);
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        eligibility.Verify(
+            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task Controller_Eligibility_OwnedProperty_ReturnsDtoShape()
+    public async Task Controller_Eligibility_PropertyNotAllowed_Returns403WithoutCalculating()
+    {
+        var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
+        var controller = CreateController(
+            eligibility.Object, new HostResource(Guid.NewGuid(), "auth0|other"), authorized: false);
+
+        var result = await controller.GetEligibility(Guid.NewGuid(), 65, 2, 3, 0, 0, false, 3, null, null, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        eligibility.Verify(
+            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Controller_Eligibility_AuthorizedProperty_ReturnsDtoShape()
     {
         var dto = new CanoneConcordatoEligibilityDto(
             true, null, "Seveso", "Unica", 2, 3445m, 5525m, 287.08m, 460.42m,
             DataCompleteness.Partial, true, false, true, CanoneConcordatoCopy.Disclaimer);
         var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
         eligibility
-            .Setup(s => s.CalculateAsync(It.IsAny<Guid>(), OwnerId, It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(dto);
-        var controller = new CanoneConcordatoController(eligibility.Object, Mock.Of<IAttestationGuidanceService>());
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim(ClaimTypes.NameIdentifier, OwnerId)], "test")),
-            },
-        };
+        var controller = CreateController(
+            eligibility.Object, new HostResource(Guid.NewGuid(), OwnerId), authorized: true);
 
         var result = await controller.GetEligibility(Guid.NewGuid(), 65, 2, 3, 0, 0, false, 3, "Unica", null, CancellationToken.None);
 
@@ -352,6 +356,35 @@ public class CanoneConcordatoEligibilityServiceTests
         Assert.False(body.AtaApplies);
         Assert.True(body.AttestationRequired);
         Assert.Equal(CanoneConcordatoCopy.Disclaimer, body.Disclaimer);
+    }
+
+    private static CanoneConcordatoController CreateController(
+        ICanoneConcordatoEligibilityService eligibility,
+        HostResource? resource,
+        bool authorized)
+    {
+        var hostResources = new Mock<IHostResourceLookup>();
+        hostResources
+            .Setup(h => h.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(resource);
+        var authorization = new Mock<IAuthorizationService>();
+        authorization
+            .Setup(a => a.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(authorized ? AuthorizationResult.Success() : AuthorizationResult.Failed());
+
+        return new CanoneConcordatoController(
+            eligibility, Mock.Of<IAttestationGuidanceService>(), hostResources.Object, authorization.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", OwnerId)], "test")),
+                    RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+                },
+            },
+        };
     }
 
     private static ICanoneConcordatoEligibilityService CreateSut(AppDbContext db) =>

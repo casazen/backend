@@ -19,6 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lease contract templates provided by the product owner (LT-03): shipped with the API. -->
+    <None Update="LeaseTemplates\**\*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Casazen.Core\Casazen.Core.csproj" />
     <ProjectReference Include="..\Casazen.Infrastructure\Casazen.Infrastructure.csproj" />
   </ItemGroup>

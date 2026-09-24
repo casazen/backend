@@ -100,6 +100,68 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     }
 
     [Fact]
+    public async Task InitiateSigning_TemplateNotApproved_Returns422AndLeaseStaysDraft()
+    {
+        // LT-03 (A7-03): RegimeOrdinario keeps the committed default (no approved template) in this factory.
+        var owner = UniqueOwner("template-422");
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+        var created = await ReadJson(await client.PostAsJsonAsync("/api/leases", CreateBody(property.Id, "RegimeOrdinario")));
+        var leaseId = created.GetProperty("id").GetGuid();
+
+        var signing = await client.PostAsync($"/api/leases/{leaseId}/signing", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, signing.StatusCode);
+        var problem = await ReadJson(signing);
+        Assert.Equal("contract_template_not_approved", problem.GetProperty("code").GetString());
+        var lease = await GetLease(client, leaseId);
+        Assert.Equal("Draft", lease.GetProperty("status").GetString());
+        AssertEventSequence(lease, ["Created"]);
+        Assert.DoesNotContain(
+            lease.GetProperty("events").EnumerateArray(),
+            e => e.GetProperty("eventType").GetString() == "SigningInitiated");
+    }
+
+    [Fact]
+    public async Task GetContractPreview_TemplateNotApproved_ReturnsPdfMarkedBozza()
+    {
+        var owner = UniqueOwner("template-preview");
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+        var created = await ReadJson(await client.PostAsJsonAsync("/api/leases", CreateBody(property.Id, "RegimeOrdinario")));
+        var leaseId = created.GetProperty("id").GetGuid();
+
+        var preview = await client.GetAsync($"/api/leases/{leaseId}/contract/preview");
+
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        Assert.Equal("application/pdf", preview.Content.Headers.ContentType?.MediaType);
+        var text = Encoding.ASCII.GetString(await preview.Content.ReadAsByteArrayAsync());
+        Assert.StartsWith("%PDF", text, StringComparison.Ordinal);
+        Assert.Contains("(BOZZA - template non approvato)", text, StringComparison.Ordinal);
+        Assert.Contains("4 anni", text, StringComparison.Ordinal);
+        Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
+        var lease = await GetLease(client, leaseId);
+        Assert.Equal("Draft", lease.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task GetContractPreview_LeaseOfAnotherOrg_Returns404()
+    {
+        var ownerA = UniqueOwner("preview-a");
+        var ownerB = UniqueOwner("preview-b");
+        var property = await _factory.SeedPropertyAsync(ownerA);
+        await _factory.SeedOrgForOwnerAsync(ownerB);
+        using var clientA = LandlordClient(ownerA);
+        var created = await ReadJson(await clientA.PostAsJsonAsync("/api/leases", CreateBody(property.Id)));
+        var leaseId = created.GetProperty("id").GetGuid();
+
+        using var clientB = LandlordClient(ownerB);
+        var preview = await clientB.GetAsync($"/api/leases/{leaseId}/contract/preview");
+
+        Assert.Equal(HttpStatusCode.NotFound, preview.StatusCode);
+    }
+
+    [Fact]
     public async Task AC2_WithoutLongTermLandlord_Returns403()
     {
         var owner = UniqueOwner("rbac-role");
@@ -538,10 +600,10 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
 
     private static string UniqueOwner(string suffix) => $"auth0|lease-{suffix}-{Guid.NewGuid():N}";
 
-    private static object CreateBody(Guid propertyId) => new
+    private static object CreateBody(Guid propertyId, string fiscalRegime = "CedolareSecca") => new
     {
         propertyId,
-        fiscalRegime = "CedolareSecca",
+        fiscalRegime,
         startDate = "2026-09-01T00:00:00Z",
         endDate = "2030-08-31T00:00:00Z",
         monthlyRent = 1200m,

@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -25,7 +26,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.BookingRead)]
 public class BookingsController(
     IBookingService bookingService,
-    ITaxCalculationService taxCalculationService,
+    ITouristTaxQuoteService touristTaxQuoteService,
     IAlloggiatiWebService alloggiatiWebService,
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
@@ -134,7 +135,7 @@ public class BookingsController(
 
         var checkIn = request.CheckInDate.Date;
         var checkOut = request.CheckOutDate.Date;
-        if (checkOut <= checkIn)
+        if (checkOut <= checkIn || (checkOut - checkIn).Days > TouristTaxCalculator.MaxNights)
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.InvalidDates, "BookingInvalidDates");
 
         logger.LogInformation("Creating manual booking for property {PropertyId}", request.PropertyId);
@@ -155,8 +156,18 @@ public class BookingsController(
             UpdatedAt = DateTime.UtcNow,
         };
 
-        booking.TouristTax = await taxCalculationService.CalculateTouristTaxAsync(
-            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
+        // Single tourist tax engine (BK-03). The host form has the number of guests only, without ages: every guest
+        // counts as an adult, so the amount is the most the stay can owe. Unknown rate: no tax, never an invented one.
+        var touristTax = await touristTaxQuoteService.QuoteAsync(
+            TouristTaxComune.ForProperty(property),
+            new TouristTaxStay(
+                RomeCalendar.DateInRome(checkIn),
+                RomeCalendar.DateInRome(checkOut),
+                Adults: request.NumberOfGuests,
+                Children: 0,
+                NightlyPrice: property.NightlyRate));
+        booking.TouristTax = touristTax.AmountOrZero;
+        booking.TouristTaxAmount = touristTax.AmountOrZero;
         booking.TotalPrice = booking.BasePrice + booking.TouristTax;
 
         // Status (Confirmed), source (Manual), guest snapshot and the overlap check (409) are the service's job.

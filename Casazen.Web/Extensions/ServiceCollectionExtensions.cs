@@ -195,9 +195,9 @@ public static class ServiceCollectionExtensions
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
-            var (contextKey, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
+            var (contextKeys, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
             builder.AddPolicy(policyName, policy =>
-                policy.Requirements.Add(new ContextPermissionRequirement(contextKey, permissionKey)));
+                policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
 
         return services;
@@ -236,7 +236,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
-        services.AddScoped<ITaxRateRepository, TaxRateRepository>();
         services.AddScoped<IOtaIntegrationRepository, OtaIntegrationRepository>();
         services.AddScoped<IPropertyDocumentRepository, PropertyDocumentRepository>();
         return services;
@@ -261,6 +260,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
+        services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();

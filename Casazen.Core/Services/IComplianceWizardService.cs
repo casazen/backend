@@ -28,7 +28,14 @@ public record ComplianceActivationStep(string Id, string Label, string Status, b
 /// <param name="PublicPageSlug">
 /// Comune slug of the reviewed public SEO page <c>/p/tassa-soggiorno/{slug}</c>, or null when there is no such page.
 /// </param>
-public record TouristTaxActivationInfo(string City, TouristTaxRate? Rate, string? PublicPageSlug);
+public record TouristTaxActivationInfo(string City, TouristTaxRate? Rate, string? PublicPageSlug)
+{
+    /// <summary>
+    /// True when the comune has rates only for specific accommodation categories (Roma, Venezia): CasaZen does not know
+    /// the category of the property, so it cannot pick one.
+    /// </summary>
+    public bool CategoryRequired { get; init; }
+}
 
 public record PropertySafetyChecklistInput(
     bool SmokeDetector,

@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -34,7 +35,7 @@ namespace Casazen.Tests.Unit.Controllers;
 public class BookingsControllerTests
 {
     private readonly Mock<IBookingService> _mockBookingService;
-    private readonly Mock<ITaxCalculationService> _mockTaxService;
+    private readonly Mock<ITouristTaxQuoteService> _mockTaxService;
     private readonly Mock<IAlloggiatiWebService> _mockAlloggiatiService;
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
@@ -54,7 +55,11 @@ public class BookingsControllerTests
     public BookingsControllerTests()
     {
         _mockBookingService = new Mock<IBookingService>();
-        _mockTaxService = new Mock<ITaxCalculationService>();
+        _mockTaxService = new Mock<ITouristTaxQuoteService>();
+        _mockTaxService
+            .Setup(t => t.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TouristTaxComune _, TouristTaxStay stay, CancellationToken _) =>
+                new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, null, stay.Nights, 0, false, [], []));
         _mockAlloggiatiService = new Mock<IAlloggiatiWebService>();
         _mockPropertyService = new Mock<IPropertyService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
@@ -301,8 +306,13 @@ public class BookingsControllerTests
         Guest? storedGuest = null;
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        _mockTaxService.Setup(t => t.CalculateTouristTaxAsync(PropertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), 2))
-            .ReturnsAsync(12m);
+        // Manual bookings have no ages: every guest counts as an adult (BK-03).
+        _mockTaxService
+            .Setup(t => t.QuoteAsync(
+                It.IsAny<TouristTaxComune>(),
+                It.Is<TouristTaxStay>(stay => stay.Adults == 2 && stay.Children == 0),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 12m, 3, 3, false, [], []));
         _mockBookingService.Setup(b => b.CreateManualBookingAsync(It.IsAny<Booking>(), It.IsAny<Guest>()))
             .Callback<Booking, Guest>((booking, guest) =>
             {
@@ -329,6 +339,8 @@ public class BookingsControllerTests
         Assert.Equal(OrgId, stored!.OrgId);
         Assert.Equal(450m, stored.BasePrice);
         Assert.Equal(462m, stored.TotalPrice);
+        Assert.Equal(12m, stored.TouristTax);
+        Assert.Equal(12m, stored.TouristTaxAmount);
         Assert.NotNull(storedGuest);
         Assert.Equal(OrgId, storedGuest!.OrgId);
         Assert.Equal("Mario", storedGuest.FirstName);

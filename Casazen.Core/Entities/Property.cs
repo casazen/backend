@@ -50,11 +50,13 @@ public class Property : ITenantOwned
     [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
     public int Bathrooms { get; set; }
 
-    [Range(1, 100, ErrorMessage = "Max guests must be between 1 and 100")]
+    /// <summary>Short-stay guests; <c>0</c> = not set (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
+    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
     public int MaxGuests { get; set; }
 
+    /// <summary>Short-stay nightly rate; <c>0</c> = none (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
     [Precision(18, 2)]
-    [Range(0.01, 100000, ErrorMessage = "Nightly rate must be between €0.01 and €100,000")]
+    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
     public decimal NightlyRate { get; set; }
 
     [Precision(18, 2)]

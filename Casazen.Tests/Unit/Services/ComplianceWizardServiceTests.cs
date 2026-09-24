@@ -3,10 +3,12 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -43,6 +45,7 @@ public class ComplianceWizardServiceTests
             CreateConfig(),
             alloggiati.Object,
             Mock.Of<IServiceRequestService>(),
+            new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
             Mock.Of<ILogger<ComplianceWizardService>>(),
             timeProvider);
     }

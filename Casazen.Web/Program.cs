@@ -86,7 +86,7 @@ builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
 builder.Services.AddCasazenAuth0Management();
 builder.Services.AddScoped<IAdminService, AdminService>();
-builder.Services.AddScoped<ITaxCalculationService, TaxCalculationService>();
+builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
@@ -94,7 +94,8 @@ builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
-builder.Services.AddScoped<ILeaseTemplateService, LeaseContractTemplateService>();
+// Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
+builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
 builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
 builder.Services.AddScoped<ILeaseRegistrationService, OpenapiLeaseRegistrationProvider>();
 builder.Services.AddHttpClient("Openapi");
@@ -170,8 +171,6 @@ builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName));
-builder.Services.Configure<Casazen.Core.Options.LeaseTemplateOptions>(
-    builder.Configuration.GetSection(Casazen.Core.Options.LeaseTemplateOptions.SectionName));
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API

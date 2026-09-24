@@ -56,8 +56,9 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("TouristTaxCalc", doc.RootElement.GetProperty("pageType").GetString());
-        Assert.True(doc.RootElement.TryGetProperty("touristTaxRate", out var rate));
+        var rate = Assert.Single(doc.RootElement.GetProperty("touristTaxRates").EnumerateArray());
         Assert.Equal(2.5m, rate.GetProperty("ratePerPersonPerNight").GetDecimal());
+        Assert.Equal("PerPersonPerNight", rate.GetProperty("calculationMethod").GetString());
     }
 
     // "yyyy-MM-dd" dates in the body: on PostgreSQL this returned 500 before FD-06 (R-01 / A9-12).
@@ -78,8 +79,9 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Calculated", doc.RootElement.GetProperty("status").GetString());
         Assert.Equal(20m, doc.RootElement.GetProperty("taxAmount").GetDecimal());
-        Assert.Equal(2.5m, doc.RootElement.GetProperty("ratePerPersonPerNight").GetDecimal());
+        Assert.Equal(4, doc.RootElement.GetProperty("taxableNights").GetInt32());
     }
 
     [Fact]

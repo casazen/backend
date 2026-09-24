@@ -11,10 +11,10 @@ public class RliExportService(
     ILeaseEventRepository events) : IRliExportService
 {
     public async Task<RliExportResult?> ExportAsync(
-        Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
+        Guid leaseId, CancellationToken cancellationToken = default)
     {
         var lease = await leases.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId)
+        if (lease is null || lease.Property is null)
             return null;
 
         var body = BuildBody(lease);

@@ -44,7 +44,7 @@ public class LeaseGdprRetentionTests
             Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
 
-        var result = await sut.CreateDraftAsync(PropertyId, OwnerId, new CreateLeaseRequest(
+        var result = await sut.CreateDraftAsync(PropertyId, new CreateLeaseRequest(
             FiscalRegime.CedolareSecca,
             start,
             start.AddYears(4),

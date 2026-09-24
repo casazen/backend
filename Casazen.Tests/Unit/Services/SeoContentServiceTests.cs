@@ -4,10 +4,12 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -15,52 +17,137 @@ namespace Casazen.Tests.Unit.Services;
 
 public class SeoContentServiceTests
 {
-    [Fact]
-    public async Task CalculateTax_UsesTouristTaxRateEntity_NotHardcoded()
+    private static readonly TimeProvider Today = new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero));
+
+    /// <summary>The real quote service (the only tourist tax engine) over a repository holding <paramref name="rates"/>.</summary>
+    private static TouristTaxQuoteService QuoteService(params TouristTaxRate[] rates)
     {
-        var comune = ItalianComuneRegistry.GetBySlug("como")!;
-        var taxRate = new TouristTaxRate
-        {
-            City = comune.Name,
-            RatePerPersonPerNight = 3.0m,
-            MaxNights = 5,
-            IsActive = true,
-            EffectiveFrom = DateTime.UtcNow.AddYears(-1),
-        };
+        var repository = new Mock<ITouristTaxRateRepository>();
+        repository
+            .Setup(r => r.GetActiveInPeriodAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rates);
+        return new TouristTaxQuoteService(repository.Object, NullLogger<TouristTaxQuoteService>.Instance);
+    }
 
-        var touristTaxRepo = new Mock<ITouristTaxRateRepository>();
-        touristTaxRepo
-            .Setup(r => r.GetActiveByCityAsync(comune.Name, It.IsAny<DateTime>()))
-            .ReturnsAsync(taxRate);
+    private static SeoContentService CreateService(ISeoContentRepository seoRepo, params TouristTaxRate[] rates) =>
+        new(
+            seoRepo,
+            QuoteService(rates),
+            Mock.Of<IAiProvider>(),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Seo:PublicBaseUrl"] = "https://public.test",
+            }).Build(),
+            Mock.Of<ILogger<SeoContentService>>(),
+            Today);
 
-        var touristTaxService = new Mock<ITouristTaxService>();
-        touristTaxService
-            .Setup(s => s.CalculateTouristTaxAsync(comune.Name, 2, 0, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(24m);
+    private static TouristTaxRate ComoRate() => new()
+    {
+        City = "Como",
+        IstatCode = "013075",
+        RatePerPersonPerNight = 3.0m,
+        MaxNights = 4,
+        MinimumAge = 14,
+        IsActive = true,
+        EffectiveFrom = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+    };
 
-        var seoRepo = new Mock<ISeoContentRepository>();
-        var aiProvider = new Mock<IAiProvider>();
-        var config = new ConfigurationBuilder().Build();
-        var logger = new Mock<ILogger<SeoContentService>>();
+    [Fact]
+    public async Task CalculateTouristTaxAsync_ComoRate_UsesTheEngineWithNightsCapAndAgeExemption()
+    {
+        var service = CreateService(Mock.Of<ISeoContentRepository>(), ComoRate());
 
-        var service = new SeoContentService(
-            seoRepo.Object,
-            touristTaxRepo.Object,
-            touristTaxService.Object,
-            aiProvider.Object,
-            config,
-            logger.Object);
-
+        // 5 nights, cap 4; 2 adults + a 13-year-old (exempt under 14) + a 14-year-old: 3 x 3,00 x 4 = 36,00.
         var result = await service.CalculateTouristTaxAsync(new PublicTouristTaxCalculateRequest(
             "como",
             2,
-            0,
+            2,
             new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc)));
+            new DateTime(2026, 7, 6, 0, 0, 0, DateTimeKind.Utc),
+            ChildrenAges: [13, 14]));
 
         Assert.NotNull(result);
-        Assert.Equal(24m, result!.TaxAmount);
-        Assert.Equal(3.0m, result.RatePerPersonPerNight);
+        Assert.Equal(TouristTaxQuoteStatus.Calculated, result!.Status);
+        Assert.Equal(36m, result.TaxAmount);
+        Assert.Equal(5, result.Nights);
+        Assert.Equal(4, result.TaxableNights);
+        Assert.True(result.AgeRulesApply);
+    }
+
+    [Fact]
+    public async Task CalculateTouristTaxAsync_ComuneWithoutRate_ReturnsRateUnavailableNotAnError()
+    {
+        // A8-12: Palermo is in the registry but has no rate: an explicit state, no invented amount.
+        var service = CreateService(Mock.Of<ISeoContentRepository>(), ComoRate());
+
+        var result = await service.CalculateTouristTaxAsync(new PublicTouristTaxCalculateRequest(
+            "palermo",
+            2,
+            0,
+            new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 3, 0, 0, 0, DateTimeKind.Utc)));
+
+        Assert.NotNull(result);
+        Assert.Equal(TouristTaxQuoteStatus.RateUnavailable, result!.Status);
+        Assert.Null(result.TaxAmount);
+    }
+
+    [Fact]
+    public async Task CalculateTouristTaxAsync_UnknownComune_ReturnsNull()
+    {
+        var service = CreateService(Mock.Of<ISeoContentRepository>(), ComoRate());
+
+        var result = await service.CalculateTouristTaxAsync(new PublicTouristTaxCalculateRequest(
+            "atlantide", 1, 0, new DateTime(2026, 7, 1), new DateTime(2026, 7, 2)));
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task BuildComplianceSitemapXmlAsync_CalculatorOfComuneWithoutRate_IsExcluded()
+    {
+        // A8-12: the tourist tax page of Palermo (no rate) is not indexed; its compliance guide still is.
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetReviewedPagesForSitemapAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new SeoContentPage { ComuneCode = "013075", PageType = SeoPageType.TouristTaxCalc, UpdatedAt = DateTime.UtcNow },
+                new SeoContentPage { ComuneCode = "082053", PageType = SeoPageType.TouristTaxCalc, UpdatedAt = DateTime.UtcNow },
+                new SeoContentPage { ComuneCode = "082053", PageType = SeoPageType.ComplianceGuide, UpdatedAt = DateTime.UtcNow },
+            ]);
+        var service = CreateService(seoRepo.Object, ComoRate());
+
+        var xml = await service.BuildComplianceSitemapXmlAsync();
+
+        Assert.Contains("https://public.test/p/tassa-soggiorno/como", xml);
+        Assert.DoesNotContain("https://public.test/p/tassa-soggiorno/palermo", xml);
+        Assert.Contains("https://public.test/p/affitti-brevi/sicilia/palermo", xml);
+    }
+
+    [Fact]
+    public async Task GetTouristTaxPageAsync_RateStoredWithLowerCaseCity_ListsTheRateInForce()
+    {
+        // A8-23: an admin typing "como" must not hide the rate of the "Como" page.
+        var page = new SeoContentPage
+        {
+            Id = Guid.NewGuid(),
+            ComuneCode = "013075",
+            PageType = SeoPageType.TouristTaxCalc,
+            LegalReviewStatus = LegalReviewStatus.Reviewed,
+        };
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetPublishedTouristTaxPageAsync("como", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(page);
+        var rate = ComoRate();
+        rate.City = " como ";
+        rate.IstatCode = null;
+        var service = CreateService(seoRepo.Object, rate);
+
+        var dto = await service.GetTouristTaxPageAsync("como", allowDraft: false);
+
+        var summary = Assert.Single(dto!.TouristTaxRates);
+        Assert.Equal(3.0m, summary.RatePerPersonPerNight);
+        Assert.Equal(14, summary.MinimumAge);
     }
 
     [Fact]
@@ -85,8 +172,7 @@ public class SeoContentServiceTests
 
         var service = new SeoContentService(
             seoRepo.Object,
-            Mock.Of<ITouristTaxRateRepository>(),
-            Mock.Of<ITouristTaxService>(),
+            QuoteService(),
             aiProvider.Object,
             new ConfigurationBuilder().Build(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -123,8 +209,7 @@ public class SeoContentServiceTests
 
         var service = new SeoContentService(
             seoRepo.Object,
-            Mock.Of<ITouristTaxRateRepository>(),
-            Mock.Of<ITouristTaxService>(),
+            QuoteService(),
             aiProvider.Object,
             new ConfigurationBuilder().Build(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -152,8 +237,7 @@ public class SeoContentServiceTests
 
         var service = new SeoContentService(
             seoRepo.Object,
-            Mock.Of<ITouristTaxRateRepository>(),
-            Mock.Of<ITouristTaxService>(),
+            QuoteService(),
             Mock.Of<IAiProvider>(),
             new ConfigurationBuilder().Build(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -201,8 +285,7 @@ public class SeoContentServiceTests
 
         var service = new SeoContentService(
             seoRepo.Object,
-            Mock.Of<ITouristTaxRateRepository>(),
-            Mock.Of<ITouristTaxService>(),
+            QuoteService(),
             aiProvider.Object,
             new ConfigurationBuilder().Build(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -250,8 +333,7 @@ public class SeoContentServiceTests
 
         var service = new SeoContentService(
             seoRepo.Object,
-            Mock.Of<ITouristTaxRateRepository>(),
-            Mock.Of<ITouristTaxService>(),
+            QuoteService(),
             Mock.Of<IAiProvider>(),
             new ConfigurationBuilder().Build(),
             Mock.Of<ILogger<SeoContentService>>());

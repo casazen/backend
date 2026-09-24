@@ -204,6 +204,12 @@
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
   </data>
+  <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
+    <value>Il modello di contratto per questo regime fiscale non è ancora approvato da un legale: è disponibile solo l'anteprima in bozza e il contratto non può essere inviato alla firma.</value>
+  </data>
+  <data name="LeaseContractDataMissing" xml:space="preserve">
+    <value>Mancano dati del contratto richiesti dal modello approvato: {0}. Il contratto non può essere inviato alla firma finché non sono disponibili.</value>
+  </data>
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Contratto di locazione non trovato</value>
   </data>
@@ -337,7 +343,7 @@
     <value>Indica l'età da cui l'imposta è dovuta (0 se non ci sono esenzioni per età).</value>
   </data>
   <data name="TaxRateMinimumAgeOutOfRange" xml:space="preserve">
-    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 120 anni.</value>
+    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 18 anni (gli adulti non sono mai esenti per età).</value>
   </data>
   <data name="TaxRateEffectiveFromRequired" xml:space="preserve">
     <value>Indica la data da cui la tariffa è in vigore.</value>
@@ -359,6 +365,39 @@
   </data>
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
+  </data>
+  <data name="ActivationTouristTaxCategoryRequired" xml:space="preserve">
+    <value>A {0} la tariffa dell'imposta di soggiorno dipende dalla categoria della struttura, che CasaZen non conosce ancora: il calcolo automatico non è disponibile. Non blocca l'attivazione: verifica la tariffa della tua categoria con il comune.</value>
+  </data>
+  <data name="TouristTaxChildAgesRequired" xml:space="preserve">
+    <value>Per calcolare la tassa di soggiorno serve l'età di ogni minore al check-in.</value>
+  </data>
+  <data name="TouristTaxChildAgesInvalid" xml:space="preserve">
+    <value>Indica un'età tra 0 e 17 anni per ogni minore.</value>
+  </data>
+  <data name="TouristTaxQuoteInvalid" xml:space="preserve">
+    <value>Dati del calcolo non validi: controlla date (massimo 366 notti), ospiti, età dei minori e prezzo per notte.</value>
+  </data>
+  <data name="TaxRateIstatCodeInvalid" xml:space="preserve">
+    <value>Il codice ISTAT del comune deve avere 6 cifre.</value>
+  </data>
+  <data name="TaxRateCategoryTooLong" xml:space="preserve">
+    <value>La categoria di struttura può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="TaxRateSeasonInvalid" xml:space="preserve">
+    <value>Indica inizio e fine della stagione nel formato MM-GG (es. 02-01 e 12-31), oppure lascia vuoti entrambi.</value>
+  </data>
+  <data name="TaxRateCalculationMethodInvalid" xml:space="preserve">
+    <value>Il tipo di tariffa non è valido.</value>
+  </data>
+  <data name="TaxRatePercentOutOfRange" xml:space="preserve">
+    <value>Per una tariffa percentuale indica una percentuale tra 0,01 e 100.</value>
+  </data>
+  <data name="TaxRateCapOutOfRange" xml:space="preserve">
+    <value>Il tetto per persona per notte deve essere compreso tra 0,01 e 1000 euro.</value>
+  </data>
+  <data name="TaxRateReducedRateInvalid" xml:space="preserve">
+    <value>Per la tariffa ridotta indica sia l'età massima (tra l'età di esenzione e 17 anni) sia l'importo per persona per notte (tra 0,01 e 1000 euro); solo per tariffe a importo fisso.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>Questo pagamento non è rimborsabile: si possono rimborsare solo i pagamenti incassati.</value>
@@ -476,9 +515,6 @@
   </data>
   <data name="DirectBookingPaymentsNotReady" xml:space="preserve">
     <value>Questa struttura non accetta ancora prenotazioni online. Contatta direttamente l'host.</value>
-  </data>
-  <data name="DirectBookingTooManyGuests" xml:space="preserve">
-    <value>Il numero di ospiti supera la capienza della struttura.</value>
   </data>
   <data name="DirectBookingInvalidStay" xml:space="preserve">
     <value>Date del soggiorno non valide: l'arrivo non può essere nel passato e la partenza deve essere successiva all'arrivo.</value>
