@@ -154,37 +154,31 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
-    public async Task Lookup_RequiresBookingIdAndMatchingEmail()
+    public async Task LookupGuestBooking_CodeOfTheCheckoutAndEmail_ReturnsTheBooking()
     {
         var property = await SeedConnectReadyPropertyAsync();
         var email = $"lookup.{Guid.NewGuid():N}@example.com";
         var client = _factory.CreateClient();
+        var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id, guestEmail: email));
+        var orgSlug = await OrgSlugOfAsync(property.OrgId);
 
-        var createResponse = await PostDirectBookingAsync(client, BuildPayload(property.Id, guestEmail: email));
-        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
-        using var createDoc = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
-        var bookingId = createDoc.RootElement.GetProperty("bookingId").GetGuid();
+        // A3-10 / R-06: the page used to send the email alone and always got a 400.
+        var emailOnly = await PostLookupAsync(client, new { orgSlug, email });
+        Assert.Equal(HttpStatusCode.BadRequest, emailOnly.StatusCode);
 
-        var missingBookingIdResponse = await PostLookupAsync(client, new { email });
-        Assert.Equal(HttpStatusCode.BadRequest, missingBookingIdResponse.StatusCode);
+        // The code the guest sees on the outcome page (and in the confirmation email), typed in lower case.
+        var outcome = await PostWithCheckoutTokenAsync(client, bookingId, "outcome", token);
+        using var outcomeDoc = JsonDocument.Parse(await outcome.Content.ReadAsStringAsync());
+        var bookingCode = outcomeDoc.RootElement.GetProperty("bookingCode").GetString()!;
+        Assert.Matches("^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$", bookingCode);
 
-        var wrongEmailResponse = await PostLookupAsync(client, new
-        {
-            bookingId,
-            email = $"other.{Guid.NewGuid():N}@example.com",
-        });
-        Assert.Equal(HttpStatusCode.OK, wrongEmailResponse.StatusCode);
-        using (var wrongEmailDoc = JsonDocument.Parse(await wrongEmailResponse.Content.ReadAsStringAsync()))
-        {
-            Assert.Empty(wrongEmailDoc.RootElement.GetProperty("bookings").EnumerateArray());
-        }
+        var response = await PostLookupAsync(client, new { orgSlug, bookingCode = bookingCode.ToLowerInvariant(), email = email.ToUpperInvariant() });
 
-        var lookupResponse = await PostLookupAsync(client, new { bookingId, email });
-        Assert.Equal(HttpStatusCode.OK, lookupResponse.StatusCode);
-        using var lookupDoc = JsonDocument.Parse(await lookupResponse.Content.ReadAsStringAsync());
-        var booking = Assert.Single(lookupDoc.RootElement.GetProperty("bookings").EnumerateArray());
-        Assert.Equal(bookingId, booking.GetProperty("bookingId").GetGuid());
-        Assert.Equal("Direct Checkout Villa", booking.GetProperty("propertyName").GetString());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(bookingCode, doc.RootElement.GetProperty("bookingCode").GetString());
+        Assert.Equal("AwaitingPayment", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Direct Checkout Villa", doc.RootElement.GetProperty("propertyName").GetString());
     }
 
     [Fact]
@@ -836,6 +830,13 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             new StringContent(json, Encoding.UTF8, "application/json"));
     }
 
+    private async Task<string> OrgSlugOfAsync(Guid orgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Orgs.AsNoTracking().Where(o => o.Id == orgId).Select(o => o.Slug).SingleAsync();
+    }
+
     private async Task<Property> SeedConnectReadyPropertyAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -1092,7 +1093,8 @@ internal sealed class FakeStripeService : IStripeService
         long amountCents,
         string currency,
         Dictionary<string, string> metadata,
-        string? idempotencyKey = null)
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
     {
         LastPaymentIntentId = $"pi_test_{Guid.NewGuid():N}";
         return Task.FromResult(new PaymentIntent
@@ -1101,6 +1103,21 @@ internal sealed class FakeStripeService : IStripeService
             Amount = amountCents,
             Currency = currency,
             Metadata = metadata,
+            Status = StatusOf(LastPaymentIntentId, "succeeded"),
         });
     }
+
+    public Task<PaymentIntent> ConfirmPaymentIntentOffSessionAsync(
+        string paymentIntentId,
+        string connectedAccountId,
+        string paymentMethodId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PaymentIntent { Id = paymentIntentId, Status = StatusOf(paymentIntentId, "succeeded") });
+
+    public Task<IReadOnlyList<PaymentIntent>> ListCustomerPaymentIntentsAsync(
+        string customerId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<PaymentIntent>>([]);
 }

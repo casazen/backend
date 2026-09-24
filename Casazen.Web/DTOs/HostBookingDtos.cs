@@ -89,3 +89,27 @@ public static class BookingGuestsValidation
             yield return result;
     }
 }
+
+/// <summary>
+/// Answer of <c>POST /api/bookings/{id}/check-in</c> ("Registra arrivo", CO-08): the booking, now checked in, and whether
+/// the guest data of the stay are complete for the Alloggiati communication. Incomplete data never block the arrival: the
+/// host completes them afterwards from the Alloggiati tab of the booking.
+/// </summary>
+public sealed class ArrivalRegisteredResponse : BookingResponseDto
+{
+    /// <summary>False when the data of at least one guest of the stay are missing for the Alloggiati communication.</summary>
+    public bool GuestDataComplete { get; set; }
+}
+
+/// <summary>
+/// Optional body of <c>POST /api/bookings/{id}/check-out</c> and <c>POST /api/bookings/{id}/checkout-wizard/start</c>
+/// (CO-08). No body is the same as <c>registerArrival: false</c>.
+/// </summary>
+public sealed class StayCheckOutRequest
+{
+    /// <summary>
+    /// The host confirms that the guest arrived: a confirmed booking whose arrival was never registered is checked in
+    /// first ("registra arrivo e procedi"). Without it such a booking answers 409 <c>booking_arrival_not_registered</c>.
+    /// </summary>
+    public bool RegisterArrival { get; set; }
+}

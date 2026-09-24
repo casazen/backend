@@ -133,6 +133,8 @@ Do these once per project. Tick in order.
 - [ ] **production**: trigger deploy on push to branch **`main`** (disable autodeploy from `develop`)
 - [ ] (Recommended) Enable **PR deployments** if you want a backend URL per PR; otherwise use shared test URL after merge
 - [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath` and `Hangfire__Schema` (different per environment, see [`runbooks/hangfire.md`](runbooks/hangfire.md))
+- [ ] `ASPNETCORE_ENVIRONMENT`: `Staging` on **test**, `Production` on **production**; Stripe test keys and test prices on test, live keys and live prices on production ([`runbooks/stripe.md`](runbooks/stripe.md#environments-stripe-mode-plan-prices-and-return-pages-pl-11))
+- [ ] Auth0: a separate tenant per environment ([`runbooks/auth0.md`](runbooks/auth0.md) §1)
 - [ ] Enable **Public networking**; copy each environment’s HTTPS URL
 - [ ] First deploy green in Railway dashboard
 
@@ -149,7 +151,7 @@ You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_P
 - [ ] Import repo; preset Vite; build `npm run build`; output `dist`
 - [ ] **Production Branch** = `main` (Settings → Git)
 - [ ] Enable deployments for branch **`develop`** (Preview env vars → Railway test API)
-- [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section)
+- [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section): `VITE_AUTH0_*` of the test tenant on Preview, of the production tenant on Production
 - [ ] Confirm: push `develop` → staging FE; push `main` → production FE (see issue #187 for canonical URL confirmation)
 
 ### 6. Smoke test
@@ -363,20 +365,28 @@ Railway → Project → **Environments** → Create:
 Set in Railway dashboard (Variables tab), per environment:
 
 ```
+# production: Production — test: Staging (PL-11: test-mode Stripe keys, billing testable; every startup check still applies)
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://+:8080
 PORT=8080
 ConnectionStrings__DefaultConnection=Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
 # Auth0 — Domain/Audience REQUIRED (the app does not start without them); M2M client for the role sync (docs/runbooks/auth0.md)
-Auth0__Domain=[your-tenant.auth0.com]
+# One tenant per environment (A1-32): test tenant on test, production tenant on production (docs/runbooks/auth0.md §1)
+Auth0__Domain=[login domain of the Auth0 tenant of THIS environment]
 Auth0__Audience=https://casazen-api
 Auth0__ManagementClientId=[M2M client id]
 Auth0__ManagementClientSecret=[M2M client secret]
-# Stripe — same mode (test keys on test, live keys on production); two webhook endpoints, see "Stripe keys and webhooks"
-Stripe__SecretKey=[sk_live_... or sk_test_...]
-Stripe__PublishableKey=[pk_live_... or pk_test_...]
+# Stripe — live keys only with Production, test keys on test (Staging): the other mode stops the startup (PL-11);
+# two webhook endpoints, see "Stripe keys and webhooks"
+Stripe__SecretKey=[sk_live_... on production, sk_test_... on test]
+Stripe__PublishableKey=[pk_live_... on production, pk_test_... on test]
 Stripe__WebhookSecret=[whsec_... of the platform endpoint /webhooks/stripe]
 Stripe__ConnectWebhookSecret=[whsec_... of the Connect endpoint /webhooks/stripe/connect]
+# Plan prices — Stripe Price ids of the mode of THIS environment, no default (docs/runbooks/stripe.md § Environments).
+# Production with Stripe__SecretKey: all three required, the startup stops without them.
+Billing__Prices__Starter=[price_... of Starter]
+Billing__Prices__Pro=[price_... of Pro]
+Billing__Prices__Scale=[price_... of Scale]
 # Email — Resend (docs/runbooks/email.md). Required in Production: the app does not start without them.
 Email__Provider=Resend
 Email__ApiKey=[re_...]
@@ -426,11 +436,11 @@ Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__Kno
 
 ### Variables required in Production
 
-Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `secrets/railway.test.variables.example.json`), so everything below applies to **test and production**. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment; "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
+The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the test environment with `ASPNETCORE_ENVIRONMENT=Staging` (see `secrets/railway.test.variables.example.json`; switch described in [`runbooks/stripe.md`](runbooks/stripe.md#switching-the-railway-test-environment-to-staging-one-time-product-owner)). Every check below runs outside Development and Testing, so everything applies to **test and production**, except the rows that name Production. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment; "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
 
 | Variable | Required | If missing | Runbook |
 |---|---|---|---|
-| `ASPNETCORE_ENVIRONMENT` | `Production` | Development/Testing skip every startup validation below | this file |
+| `ASPNETCORE_ENVIRONMENT` | `Production` on production, `Staging` on test | Development/Testing skip every startup validation below; a test environment left on `Production` with test Stripe keys does not start (PL-11) | [`stripe.md`](runbooks/stripe.md) § Environments |
 | `ConnectionStrings__DefaultConnection` | yes | startup fails (empty value); unreachable → ready `database: unhealthy` (503) | this file § Supabase |
 | `Hangfire__Schema` | yes (different per environment) | startup fails when the connection string has no SearchPath; never share it | [`hangfire.md`](runbooks/hangfire.md) |
 | `Auth0__Domain`, `Auth0__Audience` | yes | startup fails | [`auth0.md`](runbooks/auth0.md) |
@@ -440,7 +450,8 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `App__PublicSiteBaseUrl` | yes (https, no default in code) | startup fails; also when `Seo__PublicBaseUrl` is set to a different value | [`seo-domain.md`](runbooks/seo-domain.md), [`email.md`](runbooks/email.md) |
 | `Storage__Provider=S3`, `Storage__PublicBaseUrl`, `Storage__S3__ServiceUrl`, `Storage__S3__Region`, `Storage__S3__AccessKeyId`, `Storage__S3__SecretAccessKey`, `Storage__S3__PublicBucket`, `Storage__S3__PrivateBucket` | yes | startup fails | [`storage.md`](runbooks/storage.md) |
 | `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | recommended | warning at startup: Data Protection keys stored unencrypted | [`storage.md`](runbooks/storage.md) §4 |
-| `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe | this file § Stripe |
+| `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe. **Wrong mode stops the startup**: a test key in Production, a live key anywhere else (PL-11) | this file § Stripe, [`stripe.md`](runbooks/stripe.md) § Environments |
+| `Billing__Prices__Starter`, `Billing__Prices__Pro`, `Billing__Prices__Scale` | Production: yes when `Stripe__SecretKey` is set; test: to sell the plans | Production: startup fails (missing, placeholder, not `price_…`, or the same id on two plans). Test: that plan answers 422 `billing_plan_unavailable`, ready `stripe: degraded` | [`stripe.md`](runbooks/stripe.md) § Environments |
 | `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `PublicHost__BaseDomain` | no (no default in code) | the "subdomain" publication mode answers 422 `subdomains_not_configured`; no host is resolved as an org subdomain | [`seo-domain.md`](runbooks/seo-domain.md) |
 | `Legal__Documents__Privacy__DocumentUrl`, `Legal__Documents__Tos__DocumentUrl` | no | the public footer shows no Privacy / Terms link | [`seo-domain.md`](runbooks/seo-domain.md) |
@@ -457,7 +468,7 @@ GitHub (backend repo, Actions **variables**): `RAILWAY_TEST_URL`, `RAILWAY_PROD_
 
 ### Stripe keys and webhooks
 
-Stripe has a **test** and a **live** mode with separate keys, webhook endpoints and signing secrets. Railway `test` uses test mode, `production` uses live mode; never mix them (`stripe: degraded` reports a secret key and a publishable key of different modes).
+Stripe has a **test** and a **live** mode with separate keys, webhook endpoints, signing secrets and prices. Railway `test` (`ASPNETCORE_ENVIRONMENT=Staging`) uses test mode, `production` uses live mode; never mix them. The API refuses to start with a test-mode key in Production or a live-mode key in any other environment, and `stripe: degraded` reports a secret key and a publishable key of different modes. Plan prices (`Billing__Prices__*`), return pages of Checkout and portal (built from `App__PublicSiteBaseUrl`) and the allow-list of client return URLs: [`runbooks/stripe.md`](runbooks/stripe.md#environments-stripe-mode-plan-prices-and-return-pages-pl-11).
 
 **Keys** — Stripe Dashboard → Developers → API keys (in the right mode):
 
@@ -473,7 +484,7 @@ Stripe Dashboard → Developers → Webhooks (Workbench → Event destinations) 
 | Events from | **Your account** | **Connected accounts** |
 | URL | `https://<Railway URL of the environment>/webhooks/stripe` | `https://<Railway URL of the environment>/webhooks/stripe/connect` |
 | API version | `2025-12-15.clover` | `2025-12-15.clover` |
-| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed` |
+| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed` |
 | Signing secret (`whsec_…`, "Reveal") | `Stripe__WebhookSecret` | `Stripe__ConnectWebhookSecret` |
 
 The event lists are the ones handled by `Casazen.Infrastructure/External/StripeWebhookHandler.cs`; other events are acknowledged and ignored. Same result with the API (the `secret` is returned only in the creation response), once per endpoint and mode:
@@ -485,6 +496,7 @@ curl https://api.stripe.com/v1/webhook_endpoints -u "<secret key of the mode>:" 
   -d connect=true \
   -d "enabled_events[]=account.updated" \
   -d "enabled_events[]=payment_intent.succeeded" \
+  -d "enabled_events[]=payment_intent.processing" \
   -d "enabled_events[]=payment_intent.payment_failed" \
   -d "enabled_events[]=payment_intent.canceled" \
   -d "enabled_events[]=setup_intent.succeeded" \
@@ -501,7 +513,7 @@ Check after setting the variables and redeploying:
 2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret or API version; 500 = secret not set on Railway.
 3. Upgrading Stripe.net changes the pinned API version: create both endpoints again with the new version (new secrets), update the two Railway variables, then delete the old endpoints.
 
-Webhook idempotency, subscription states, checkout guard, restricted-key permissions, the Customer portal settings and booking refunds on Connect (BK-02): `docs/runbooks/stripe.md`.
+Webhook idempotency, subscription states, checkout guard, restricted-key permissions, the Customer portal settings, booking refunds on Connect (BK-02) and the deferred charge of "Paga più tardi" (BK-08, `payment_intent.processing`): `docs/runbooks/stripe.md`.
 
 ### Get service URLs → GitHub Variables
 
@@ -534,12 +546,14 @@ In Vercel dashboard → Settings → Environment Variables:
 | Variable | Preview (develop / PR) | Production (main) |
 |---|---|---|
 | `VITE_API_BASE_URL` | `https://casazen-api-test.up.railway.app/api` | `https://casazen-api.up.railway.app/api` |
-| `VITE_AUTH0_DOMAIN` | `dev-mp6wadq7j6bophl5.us.auth0.com` | same until prod Auth0 tenant is ready |
-| `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | same SPA client until prod tenant is ready |
+| `VITE_AUTH0_DOMAIN` | domain of the **test** Auth0 tenant | domain of the **production** Auth0 tenant (never the test one, A1-32) |
+| `VITE_AUTH0_CLIENT_ID` | SPA client id of the test tenant | SPA client id of the production tenant |
 | `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api`** (must match Railway `Auth0__Audience` on **both** environments) |
 | `VITE_PUBLIC_SITE_URL` | not needed | **required**: `https://<public domain>`, same value as Railway production `App__PublicSiteBaseUrl`; the build fails without it |
 
 `robots.txt` is generated by the build from `VERCEL_ENV`: only the Production environment allows indexing and declares `Sitemap: {VITE_PUBLIC_SITE_URL}/sitemap.xml`; Preview (PRs and the `develop` test deployment) is always `Disallow: /`. `/sitemap.xml` is served by the Vercel Function `api/sitemap.ts`, which proxies `{VITE_API_BASE_URL}/public/sitemap.xml` at runtime. Keep "Automatically expose System Environment Variables" on. Details and checks: [`runbooks/seo-domain.md`](runbooks/seo-domain.md).
+
+Auth0 (A1-32): Preview and Production use **two different tenants**. A shared tenant lets a role given to a test user work in production and mixes test users with real ones; steps to separate them, with the Railway, Vercel, EAS and GitHub variables to change: [`runbooks/auth0.md`](runbooks/auth0.md) §1.1.
 
 > **Critical:** Preview and Production must point to **different** `VITE_API_BASE_URL` hosts (test vs prod Railway). If Production accidentally uses the test API URL, staging will look fine while production users hit the wrong backend/schema. After every `main` deploy, CI runs `prod-deploy-smoke` to catch this.
 

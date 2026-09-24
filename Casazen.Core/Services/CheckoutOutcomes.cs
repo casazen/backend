@@ -26,7 +26,10 @@ public static class CheckoutOutcomes
             case BookingStatus.Confirmed:
             case BookingStatus.CheckedIn:
             case BookingStatus.CheckedOut:
-                return CheckoutOutcomeState.Confirmed;
+                // "Paga alla scadenza" whose deferred charge failed (BK-08): the guest must complete the payment.
+                return DeferredCharges.AwaitsGuestPayment(booking)
+                    ? CheckoutOutcomeState.PaymentFailed
+                    : CheckoutOutcomeState.Confirmed;
 
             case BookingStatus.Cancelled:
                 return booking.CancellationReason switch
@@ -73,13 +76,24 @@ public static class CheckoutOutcomes
     /// Until when the guest can still pay (payment hold: creation + checkout TTL) or the request waits (pay at the property:
     /// <see cref="Booking.RequestExpiresAt"/>); <c>null</c> once the outcome no longer waits for anyone.
     /// </summary>
-    public static DateTime? ExpiresAt(Booking booking, CheckoutOutcomeState state, int ttlMinutes) => state switch
-    {
-        CheckoutOutcomeState.AwaitingPayment or CheckoutOutcomeState.PaymentFailed =>
-            DateTime.SpecifyKind(booking.CreatedAt, DateTimeKind.Utc).AddMinutes(ttlMinutes),
-        CheckoutOutcomeState.AwaitingGuestEmail or CheckoutOutcomeState.AwaitingHostApproval => booking.RequestExpiresAt,
-        _ => null,
-    };
+    /// <remarks>
+    /// A failed deferred charge of a confirmed booking (BK-08) waits until its automatic cancellation
+    /// (<see cref="DeferredCharges.PayByUtc"/> with <paramref name="deferredChargeCancelAfterDays"/>); <c>null</c> when none
+    /// applies.
+    /// </remarks>
+    public static DateTime? ExpiresAt(
+        Booking booking,
+        CheckoutOutcomeState state,
+        int ttlMinutes,
+        int? deferredChargeCancelAfterDays = null) => state switch
+        {
+            CheckoutOutcomeState.PaymentFailed when booking.Status != BookingStatus.Pending =>
+                DeferredCharges.PayByUtc(booking, deferredChargeCancelAfterDays),
+            CheckoutOutcomeState.AwaitingPayment or CheckoutOutcomeState.PaymentFailed =>
+                DateTime.SpecifyKind(booking.CreatedAt, DateTimeKind.Utc).AddMinutes(ttlMinutes),
+            CheckoutOutcomeState.AwaitingGuestEmail or CheckoutOutcomeState.AwaitingHostApproval => booking.RequestExpiresAt,
+            _ => null,
+        };
 
     /// <summary>New random checkout token (URL-safe, 256 bits).</summary>
     public static string NewToken() =>
@@ -116,7 +130,10 @@ public enum CheckoutOutcomeState
     /// <summary>Stripe reported the payment as succeeded or in progress (e.g. SEPA): waiting for the confirmation.</summary>
     PaymentProcessing,
 
-    /// <summary>The last payment attempt failed; the hold is still valid, the guest can try again.</summary>
+    /// <summary>
+    /// The last payment attempt failed; the hold is still valid, the guest can try again. Also a confirmed "Paga alla
+    /// scadenza" booking whose deferred charge failed (BK-08): the guest completes the payment before the cancellation.
+    /// </summary>
     PaymentFailed,
 
     /// <summary>"Pay at the property": waiting for the guest to confirm the email (BK-06).</summary>

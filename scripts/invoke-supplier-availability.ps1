@@ -8,8 +8,9 @@ param(
 
     [bool[]]$Available,
     [string]$ApiBase = 'https://casazen-api-test.up.railway.app/api',
-    [string]$Auth0Domain = 'dev-mp6wadq7j6bophl5.us.auth0.com',
-    [string]$Auth0ClientId = 'xmZPesTR04r349c14n77MgJ2iSCeFaJb',
+    # Auth0 tenant of the API called (test tenant for Railway test, docs/runbooks/auth0.md section 1): no default.
+    [string]$Auth0Domain = $env:E2E_AUTH0_DOMAIN,
+    [string]$Auth0ClientId = $env:E2E_AUTH0_CLIENT_ID,
     [string]$Auth0Audience = 'https://casazen-api',
     [string]$SupplierEmail = $env:E2E_AUTH0_SUPPLIER_EMAIL,
     [string]$SupplierPassword = $env:E2E_AUTH0_SUPPLIER_PASSWORD,
@@ -28,6 +29,10 @@ function Get-SupplierAccessToken {
 Supplier JWT required. Set CASAZEN_SUPPLIER_ACCESS_TOKEN or E2E_AUTH0_SUPPLIER_EMAIL + E2E_AUTH0_SUPPLIER_PASSWORD.
 User must have Auth0 role Supplier.
 "@
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Auth0Domain) -or [string]::IsNullOrWhiteSpace($Auth0ClientId)) {
+        throw 'Auth0 tenant required for the password grant: set E2E_AUTH0_DOMAIN and E2E_AUTH0_CLIENT_ID (or -Auth0Domain / -Auth0ClientId) to the tenant of the API you call.'
     }
 
     $tokenBody = @{

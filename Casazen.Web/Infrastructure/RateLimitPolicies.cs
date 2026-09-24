@@ -14,8 +14,14 @@ public static class RateLimitPolicies
     /// <summary>Direct booking creation (<c>POST api/public/bookings</c>).</summary>
     public const string PublicBookingCreate = "PublicBookingCreate";
 
-    /// <summary>Guest booking lookup and status polling, separate from creation.</summary>
+    /// <summary>Checkout outcome polling, payment resume and email confirmation of the public checkout, separate from creation.</summary>
     public const string PublicBookingLookup = "PublicBookingLookup";
+
+    /// <summary>
+    /// "Le mie prenotazioni": booking code + email lookup and check-in link resend (BK-11). Tighter than
+    /// <see cref="PublicBookingLookup"/> and paired with a per-email limit (<see cref="GuestBookingEmailRateLimiter"/>).
+    /// </summary>
+    public const string PublicGuestBookingLookup = "PublicGuestBookingLookup";
 
     /// <summary>Guest check-in form reads (partitioned by IP and token hash).</summary>
     public const string GuestCheckIn = "GuestCheckIn";

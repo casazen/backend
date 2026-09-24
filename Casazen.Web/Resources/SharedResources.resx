@@ -159,6 +159,15 @@
   <data name="BillingVatIdInvalid" xml:space="preserve">
     <value>Partita IVA non valida.</value>
   </data>
+  <data name="BillingReturnUrlNotAllowed" xml:space="preserve">
+    <value>L'indirizzo di ritorno del pagamento deve essere una pagina di questo sito.</value>
+  </data>
+  <data name="BillingReturnUrlNotConfigured" xml:space="preserve">
+    <value>Il pagamento dei piani non è ancora configurato in questo ambiente.</value>
+  </data>
+  <data name="BillingPlanUnavailable" xml:space="preserve">
+    <value>Questo piano non è ancora acquistabile. Riprova più tardi o contatta l'assistenza.</value>
+  </data>
   <data name="StripeWebhookSignatureInvalid" xml:space="preserve">
     <value>Firma del webhook Stripe non valida.</value>
   </data>
@@ -727,10 +736,55 @@
     <value>Puoi confermare solo le prenotazioni in attesa inserite da te: le altre si confermano con il pagamento dell'ospite o con la risposta alla richiesta.</value>
   </data>
   <data name="BookingNotCheckedIn" xml:space="preserve">
-    <value>Il check-out si registra solo per un soggiorno con check-in registrato.</value>
+    <value>Il check-out si registra solo per un soggiorno confermato o con l'arrivo registrato.</value>
   </data>
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
-    <value>Il check-out si può registrare dal giorno di partenza.</value>
+    <value>Il check-out si può registrare dal giorno di arrivo.</value>
+  </data>
+  <data name="BookingAlreadyCheckedOut" xml:space="preserve">
+    <value>Il check-out di questa prenotazione è già registrato: ricarica la pagina.</value>
+  </data>
+  <data name="BookingArrivalNotRegistered" xml:space="preserve">
+    <value>L'arrivo dell'ospite non è stato registrato: conferma l'arrivo per procedere con il check-out.</value>
+  </data>
+  <data name="BookingArrivalNotConfirmed" xml:space="preserve">
+    <value>L'arrivo si registra solo per una prenotazione confermata.</value>
+  </data>
+  <data name="BookingAlreadyCheckedIn" xml:space="preserve">
+    <value>L'arrivo di questa prenotazione è già registrato: ricarica la pagina.</value>
+  </data>
+  <data name="BookingArrivalTooEarly" xml:space="preserve">
+    <value>L'arrivo si può registrare dal giorno di check-in ({0}).</value>
+  </data>
+  <data name="BookingArrivalAfterDeparture" xml:space="preserve">
+    <value>Il giorno di partenza è passato: registra il check-out del soggiorno, che registra anche l'arrivo.</value>
+  </data>
+  <data name="CheckoutDepartureNotConfirmed" xml:space="preserve">
+    <value>Conferma che l'ospite ha lasciato la struttura.</value>
+  </data>
+  <data name="CheckoutServiceRequestInvalid" xml:space="preserve">
+    <value>Impossibile creare la richiesta al fornitore: verifica che il fornitore sia attivo e operi nel comune della struttura. Il check-out non è stato registrato.</value>
+  </data>
+  <data name="GuestBookingNotFound" xml:space="preserve">
+    <value>Nessuna prenotazione corrisponde a questo codice e a questo indirizzo email. Controlla il codice nell'email di conferma e usa l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
+    <value>Il link per il check-in online non può essere inviato ora: la prenotazione non è confermata, il check-in è già completato oppure non è ancora il momento.</value>
+  </data>
+  <data name="GuestBookingOrgRequired" xml:space="preserve">
+    <value>Il sito di prenotazione non è indicato: apri di nuovo «Le mie prenotazioni» dal sito della struttura.</value>
+  </data>
+  <data name="GuestBookingCodeRequired" xml:space="preserve">
+    <value>Inserisci il codice prenotazione.</value>
+  </data>
+  <data name="GuestBookingCodeInvalid" xml:space="preserve">
+    <value>Il codice prenotazione non è valido: controlla l'email di conferma.</value>
+  </data>
+  <data name="GuestBookingEmailRequired" xml:space="preserve">
+    <value>Inserisci l'indirizzo email con cui hai prenotato.</value>
+  </data>
+  <data name="GuestBookingEmailInvalid" xml:space="preserve">
+    <value>Indirizzo email non valido.</value>
   </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>Questo alloggio non è disponibile per la prenotazione online.</value>
