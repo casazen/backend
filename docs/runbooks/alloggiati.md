@@ -1,7 +1,8 @@
 # Runbook: Alloggiati Web, honest status and manual submission
 
-Task CO-11 (audit defects A5-01, A9-05, A5-03, A5-37, A5-35; decision D6) and CO-12 (A5-02: guests of the stay and
-official code tables, sections at the end). CO-11 needs no external configuration; CO-12 needs an admin to import the
+Task CO-11 (audit defects A5-01, A9-05, A5-03, A5-37, A5-35; decision D6), CO-12 (A5-02: guests of the stay and
+official code tables, sections at the end) and CO-09 (A5-26, A5-27: check-in link and host fallback, see
+"Guest check-in link and host fallback"). CO-11 needs no external configuration; CO-12 needs an admin to import the
 official code tables (see "Tabelle codici Alloggiati"). This page explains what the code does, what the migrations
 change and what hosts see. The web service client
 (credentials per host, WSKEY, `Test`/`Send`/`Ricevuta`) is task CO-13; sources in
@@ -103,7 +104,8 @@ The integers are CasaZen's own: the official numeric codes are **not** verified 
   guest). Document numbers on file are still shown masked (`*****` + last 3, CO-02).
 - **Host** (booking detail → tab Alloggiati): one card per guest in record order with its completeness ("Completo",
   "N dati mancanti", "Codici da completare"), minors flagged, the codes found and the button "Modifica ospiti"
-  (`PUT /api/alloggiati/{bookingId}/stay-guests`, `booking.write`) for walk-in guests, corrections and codes.
+  (`PUT /api/alloggiati/{bookingId}/stay-guests`, `booking.write`) for walk-in guests, corrections and codes. Since
+  CO-09 the document number is masked here too, with "Mostra" (see "Guest check-in link and host fallback").
 - **Record export**: the summary reports `dataComplete` and `exportReady`. A missing code blocks only `exportReady`
   (the future record export, CO-13), never the data entry nor the manual submission on the portal. CasaZen still
   generates no record file: positions are not verified (RS-1, CO-13).
@@ -192,6 +194,95 @@ SELECT "Table", "SourceVersion", "RowCount", "ImportedAt" FROM "AlloggiatiCodeTa
 -- The five kinds of guest and Italy must be found by name (expected: 5 and 1 rows).
 SELECT "Code", "Description" FROM "AlloggiatiCodeEntries" WHERE "Table" = 4;
 SELECT "Code", "Description" FROM "AlloggiatiCodeEntries" WHERE "Table" = 2 AND "NormalizedDescription" = 'ITALIA';
+```
+
+## Guest check-in link and host fallback (CO-09)
+
+Task CO-09 (audit defects A5-26, A5-27). No external configuration beyond the optional `CheckIn` settings below.
+Before CO-09 a check-in link whose email failed was expired at once and disappeared (no "send reminder" button), the
+web app said "Link reinviato" even when nothing left, the host had no way to enter the guest data himself, and a link
+expired by time was never marked expired, so the daily job never sent a new one.
+
+### Settings (Railway, optional)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CheckIn__SessionLifetimeDays` | 7 | Validity of a check-in link, 1–60 days (values outside are brought within). The email says until when. |
+| `CheckIn__SendWindowDays` | 3 | The daily job emails the link to confirmed stays starting within this many days (and to checked-in stays not yet checked out). |
+
+### The link, host side (booking detail → tab Ospite, "Stato check-in ospite")
+
+- `GET /api/bookings/{id}/checkin-session` (`booking.read`): the current link (the completed one if the guest has
+  submitted, otherwise the latest), its status (an open link past its expiry reads `Scaduto` even before the job marks
+  it), issue and expiry dates, the email state and `canIssueLink` (booking confirmed or checked in, check-in not
+  completed).
+- `POST /api/bookings/{id}/checkin/resend-link` (`booking.write`): new link emailed to the guest; it is also the
+  reminder. `POST /api/bookings/{id}/checkin/link`: new link to copy, no email. Both answer `{ checkInLink, expiresAt,
+  emailStatus, emailError }` **whatever happens to the email**: the host copies the link and sends it another way
+  (WhatsApp, SMS) when the address is wrong. A new link expires the previous one (only the SHA-256 of a token is
+  stored, so an old link cannot be shown again). 409 `checkin_link_booking_not_eligible` (booking not confirmed or
+  checked in), 409 `checkin_already_completed` (the host corrects the data in the Alloggiati tab). Another org's
+  booking: 404.
+- **Email state** (`GuestCheckInSessions.LinkEmailStatus`, int): `NotRequested` (0, link to copy), `Queued` (1),
+  `Sent` (2, handed to the provider, `SentAt`), `Failed` (3) with `LinkEmailError`: `no_recipient`,
+  `provider_not_configured`, `queue_failed`, `rejected` (refused by the provider, e.g. invalid address, not retried),
+  `not_delivered` (temporary errors on the 4 attempts: now, +1 min, +10 min, +1 h), `link_unavailable`
+  (`App__PublicSiteBaseUrl` missing), `link_not_usable` (the link was replaced or expired before the email left: nothing
+  sent). Null for links issued before CO-09. The web app polls while the email is queued and never says "sent" for
+  anything but `Sent`.
+- The email is sent by `GuestCheckInLinkEmailJob` (Hangfire, queued by the host endpoint or the daily job): it is built
+  when it is sent, with the current guest address, and only while the link is still usable. The job carries the session
+  id and the raw token; a job that fails for other reasons (database) is retried 3 times and then deleted.
+
+### Daily job `guest-checkin-send` (08:00 UTC)
+
+1. Marks `Scaduto` every open link (`Inviato`, `InCompilazione`) whose `ExpiresAt` has passed (A5-27).
+2. Skips a stay with a usable link (open and not expired, **whatever happened to its email**: the host sees the
+   failed email and resends it or copies the link; no daily resend to a wrong address), a completed check-in, a
+   communication `Inviato`/`InviatoManualmente`, or **guest data already complete** (entered by the host).
+3. Otherwise issues a new link and queues its email: a stay whose link expired gets a new one while it is still relevant
+   (confirmed and starting within the window, or checked in and not yet checked out).
+
+### Host entry of the guest data
+
+- "Modifica ospiti" (`PUT /api/alloggiati/{bookingId}/stay-guests`, `booking.write`) is the fallback when the guest
+  cannot use the link: every guest of the stay (identity, birth, citizenship, kind of guest; the document for a single
+  guest or a head of family or group), with **the same validation as the guest portal** (`StayGuestService`: same field
+  errors and messages, official codes when the tables are imported, otherwise names with "codice da completare").
+- **Audit**: every row records who entered it last, `StayGuests.DataSource` (0 `NotRecorded`: copied from the booker or
+  entered before CO-09, 1 `GuestPortal`, 2 `Host`) and, for the host, `EnteredByUserId` (Auth0 `sub`, never returned).
+  The summary shows "Inseriti dall'ospite/dall'host il …". The API logs each host entry with user and booking id.
+- Complete data schedules the communication for the arrival day, as the guest portal does (idempotent), and stops the
+  daily link emails.
+- **Document number**: the summary returns it masked (`documentNumberMasked`, `*****` + last 3, as on the guest portal).
+  "Mostra" (and "Copia tutto", and opening "Modifica ospiti") call
+  `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers[?position=n]` (`booking.read` on the booking and
+  `guest.read`), logged with user, booking and positions, never the numbers. A host without `guest.read` re-enters the
+  number in the form, like the guest.
+
+### Guest document scans (FD-07 open point)
+
+`GET /api/guests/{id}/document-scan` (`guest.read` on the guest's org, TN-3): the scan uploaded by the guest (legacy
+portal, `Guest.DocumentScanUrl`) from the **private** bucket, `Cache-Control: private, no-store`, download logged with
+user and guest. Another org's guest: 404; no scan, a legacy `/uploads/...` path not migrated, or file missing from the
+storage: 404 `guest_document_scan_missing`. Web app: guest detail → Documenti → "Scarica scansione documento". The scans
+are not encrypted yet (CO-14).
+
+### Migration `AddCheckInLinkEmailStatusAndStayGuestSource`
+
+Adds `GuestCheckInSessions.LinkEmailStatus` (int, null = unknown for older links) and `LinkEmailError`, and
+`StayGuests.DataSource` (int, 0 for every existing row: not recorded) and `EnteredByUserId`. No data is rewritten.
+
+```sql
+-- Links still open past their expiry (expected: 0 after the 08:00 UTC run)
+SELECT count(*) FROM "GuestCheckInSessions" WHERE "Status" IN (0, 1) AND "ExpiresAt" < now();
+
+-- Link emails by outcome in the last 7 days (3 = failed: see LinkEmailError)
+SELECT "LinkEmailStatus", "LinkEmailError", count(*) FROM "GuestCheckInSessions"
+WHERE "CreatedAt" > now() - interval '7 days' GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- Guests entered by hosts
+SELECT count(*) FROM "StayGuests" WHERE "DataSource" = 2;
 ```
 
 ## Host alerts (CO-10)

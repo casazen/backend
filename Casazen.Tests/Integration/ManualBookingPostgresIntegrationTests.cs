@@ -142,8 +142,9 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
 
         Assert.Equal(HttpStatusCode.OK, link.StatusCode);
         var linkBody = await link.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(linkBody.GetProperty("success").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(linkBody.GetProperty("checkInLink").GetString()));
+        // No email provider in the test host: the link is returned anyway and the email is reported as failed (CO-09).
+        Assert.Equal("Failed", linkBody.GetProperty("emailStatus").GetString());
 
         var checkIn = await host.PostAsync($"/api/bookings/{bookingId}/check-in", null);
 
@@ -262,15 +263,15 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var feed = new PropertyICalFeed
+        var export = new PropertyICalExport
         {
             PropertyId = property.Id,
             OrgId = property.OrgId,
             ExportToken = Guid.NewGuid(),
         };
-        db.PropertyICalFeeds.Add(feed);
+        db.PropertyICalExports.Add(export);
         await db.SaveChangesAsync();
-        return feed.ExportToken;
+        return export.ExportToken;
     }
 
     /// <summary>Moves the creation time back, as if <paramref name="elapsed"/> had passed since the booking was made.</summary>

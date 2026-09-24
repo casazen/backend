@@ -42,30 +42,47 @@ public class ServiceRequestService(
         var property = await db.Properties
             .IgnoreQueryFilters()
             .Include(p => p.Org)
-            .FirstOrDefaultAsync(p => p.Id == command.PropertyId, cancellationToken)
-            ?? throw new InvalidOperationException("Proprietà non trovata.");
+            .FirstOrDefaultAsync(p => p.Id == command.PropertyId, cancellationToken);
 
-        if (property.OrgId != command.OrgId)
-            throw new InvalidOperationException("Proprietà non appartiene all'organizzazione.");
+        // Another org's property is answered exactly like a missing one.
+        if (property is null || property.OrgId != command.OrgId)
+        {
+            throw new NotFoundException($"Property {command.PropertyId} not found for the service request")
+            {
+                Code = ServiceRequestErrorCodes.PropertyNotFound,
+                MessageKey = ServiceRequestErrorCodes.PropertyNotFoundMessageKey,
+            };
+        }
 
         await EnsureBookingRuleAsync(command, cancellationToken);
 
         if (command.ChargeToGuest)
-            throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.ChargeToGuestNotAllowed, ServiceRequestErrorCodes.ChargeToGuestNotAllowedMessageKey);
+        }
 
         var supplier = await db.SupplierProfiles
             .Include(sp => sp.Org)
-            .FirstOrDefaultAsync(sp => sp.OrgId == command.SupplierOrgId, cancellationToken);
-
-        if (supplier is null)
-            throw new InvalidOperationException("Fornitore non trovato.");
+            .FirstOrDefaultAsync(sp => sp.OrgId == command.SupplierOrgId, cancellationToken)
+            ?? throw new NotFoundException($"Supplier {command.SupplierOrgId} not found")
+            {
+                Code = ServiceRequestErrorCodes.SupplierNotFound,
+                MessageKey = ServiceRequestErrorCodes.SupplierNotFoundMessageKey,
+            };
 
         if (supplier.Status != SupplierStatus.Active)
-            throw new ServiceRequestStateException("Il fornitore non è attivo.");
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.SupplierInactive, ServiceRequestErrorCodes.SupplierInactiveMessageKey);
+        }
 
         var comuni = JsonSerializer.Deserialize<string[]>(supplier.ComuniJson, JsonOpts) ?? [];
         if (!comuni.Any(c => ItalianComuneRegistry.Matches(property.City, c)))
-            throw new ServiceRequestStateException("Il fornitore non opera nel comune della proprietà.");
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.SupplierOutsideComune, ServiceRequestErrorCodes.SupplierOutsideComuneMessageKey);
+        }
 
         var request = new ServiceRequest
         {
@@ -147,17 +164,18 @@ public class ServiceRequestService(
     {
         var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
 
-        if (request.Status != ServiceRequestStatus.Richiesto)
-            throw new ServiceRequestStateException("La richiesta non può essere presa in carico nello stato attuale.");
+        await TransitionAsync(
+            request,
+            ServiceRequestStatus.PresoInCarico,
+            ServiceRequestErrorCodes.CannotTakeMessageKey,
+            r =>
+            {
+                r.TakenAt = DateTime.UtcNow;
+                r.TakenByUserId = userId;
+            },
+            cancellationToken);
 
-        request.Status = ServiceRequestStatus.PresoInCarico;
-        request.TakenAt = DateTime.UtcNow;
-        request.TakenByUserId = userId;
-        request.UpdatedAt = DateTime.UtcNow;
-
-        await repository.SaveChangesAsync(cancellationToken);
         await NotifyHostAsync(request, "presa in carico", cancellationToken);
-
         return request;
     }
 
@@ -169,19 +187,19 @@ public class ServiceRequestService(
     {
         var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
 
-        if (request.Status is not (ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso))
-            throw new ServiceRequestStateException("La richiesta non può essere completata nello stato attuale.");
+        await TransitionAsync(
+            request,
+            ServiceRequestStatus.Completato,
+            ServiceRequestErrorCodes.CannotCompleteMessageKey,
+            r =>
+            {
+                if (!string.IsNullOrWhiteSpace(notes))
+                    r.Notes = notes.Trim();
+                r.CompletedAt = DateTime.UtcNow;
+            },
+            cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(notes))
-            request.Notes = notes.Trim();
-
-        request.Status = ServiceRequestStatus.Completato;
-        request.CompletedAt = DateTime.UtcNow;
-        request.UpdatedAt = DateTime.UtcNow;
-
-        await repository.SaveChangesAsync(cancellationToken);
         await NotifyHostAsync(request, "completata", cancellationToken);
-
         return request;
     }
 
@@ -191,16 +209,17 @@ public class ServiceRequestService(
         string reason,
         CancellationToken cancellationToken = default)
     {
+        // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
 
-        if (request.Status != ServiceRequestStatus.Richiesto)
-            throw new ServiceRequestStateException("La richiesta non può essere rifiutata nello stato attuale.");
+        await TransitionAsync(
+            request,
+            ServiceRequestStatus.Rifiutato,
+            ServiceRequestErrorCodes.CannotRejectMessageKey,
+            r => r.RejectionReason = reason.Trim(),
+            cancellationToken);
 
-        request.Status = ServiceRequestStatus.Rifiutato;
-        request.RejectionReason = reason.Trim();
-        request.UpdatedAt = DateTime.UtcNow;
-
-        await repository.SaveChangesAsync(cancellationToken);
         await QueueHostStatusEmailAsync(request, cancellationToken);
         return request;
     }
@@ -214,23 +233,53 @@ public class ServiceRequestService(
 
         // Another org's request is answered exactly like a missing one.
         if (request is null || request.OrgId != hostOrgId)
-        {
-            throw new NotFoundException($"Service request {id} not found")
-            {
-                Code = "service_request_not_found",
-                MessageKey = "ServiceRequestNotFound",
-            };
-        }
+            throw RequestNotFound(id);
 
-        if (request.Status != ServiceRequestStatus.Completato)
-            throw new ServiceRequestStateException("Solo le richieste completate possono essere segnate come pagate.");
+        await TransitionAsync(
+            request,
+            ServiceRequestStatus.Pagato,
+            ServiceRequestErrorCodes.CannotMarkPaidMessageKey,
+            r => r.PaidAt = DateTime.UtcNow,
+            cancellationToken);
 
-        request.Status = ServiceRequestStatus.Pagato;
-        request.PaidAt = DateTime.UtcNow;
+        return request;
+    }
+
+    /// <summary>
+    /// Moves <paramref name="request"/> to <paramref name="to"/> when <see cref="ServiceRequestStateMachine"/> allows it
+    /// (422 <see cref="ServiceRequestErrorCodes.InvalidTransition"/> otherwise), and saves it only if nobody changed the
+    /// request since it was read (<c>xmin</c>, A4-19). The loser of two concurrent transitions gets 409
+    /// <see cref="ServiceRequestErrorCodes.StateChanged"/>: nothing is saved for it, and since the callers notify only
+    /// after this returns, only the winner's email and push are sent.
+    /// </summary>
+    private async Task TransitionAsync(
+        ServiceRequest request,
+        ServiceRequestStatus to,
+        string refusedMessageKey,
+        Action<ServiceRequest> apply,
+        CancellationToken cancellationToken)
+    {
+        var from = request.Status;
+        if (!ServiceRequestStateMachine.CanTransition(from, to))
+            throw new DomainRuleException(ServiceRequestErrorCodes.InvalidTransition, refusedMessageKey);
+
+        apply(request);
+        request.Status = to;
         request.UpdatedAt = DateTime.UtcNow;
 
-        await repository.SaveChangesAsync(cancellationToken);
-        return request;
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            logger.LogInformation(
+                "ServiceRequest {Id}: transition {From} -> {To} refused, the request changed since it was read",
+                request.Id, from, to);
+            throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
+        }
+
+        logger.LogInformation("ServiceRequest {Id}: {From} -> {To}", request.Id, from, to);
     }
 
     public Task<ServiceRequest?> GetByIdForHostAsync(
@@ -305,14 +354,20 @@ public class ServiceRequestService(
         Guid supplierOrgId,
         CancellationToken cancellationToken)
     {
-        var request = await repository.GetByIdAsync(id, cancellationToken)
-            ?? throw new InvalidOperationException("Richiesta non trovata.");
+        var request = await repository.GetByIdAsync(id, cancellationToken) ?? throw RequestNotFound(id);
 
+        // 403 (FD-05): the request exists but was sent to another supplier.
         if (request.SupplierOrgId != supplierOrgId)
-            throw new UnauthorizedAccessException("Accesso negato.");
+            throw new UnauthorizedAccessException($"Service request {id} belongs to another supplier");
 
         return request;
     }
+
+    private static NotFoundException RequestNotFound(Guid id) => new($"Service request {id} not found")
+    {
+        Code = ServiceRequestErrorCodes.NotFound,
+        MessageKey = ServiceRequestErrorCodes.NotFoundMessageKey,
+    };
 
     /// <summary>The host's org and, for a scope bound to an owner, only the requests on that owner's properties.</summary>
     private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope)

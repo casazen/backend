@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.CheckIn;
 
 namespace Casazen.Web.DTOs.Alloggiati;
@@ -129,12 +130,24 @@ public class AlloggiatiGuestRowDto
     public string Citizenship { get; set; } = string.Empty;
     public bool RequiresDocument { get; set; }
     public GuestDocumentType? DocumentType { get; set; }
-    public string DocumentNumber { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Document number with only its last characters visible (<c>*****567</c>), as on the guest portal (CO-02); null
+    /// when none is on file. The full number: <c>GET /api/alloggiati/{bookingId}/stay-guests/document-numbers</c>.
+    /// </summary>
+    public string? DocumentNumberMasked { get; set; }
+
     public string DocumentIssuePlace { get; set; } = string.Empty;
     public AlloggiatiRowCodesDto Codes { get; set; } = new();
     public IReadOnlyList<string> MissingFields { get; set; } = [];
     public IReadOnlyList<string> CodesToComplete { get; set; } = [];
     public string? CompositionIssue { get; set; }
+
+    /// <summary>Who entered the data (CO-09): <c>GuestPortal</c>, <c>Host</c>, or <c>NotRecorded</c> (booker record, or before CO-09).</summary>
+    public StayGuestDataSource DataSource { get; set; }
+
+    /// <summary>When the data was entered; null for the booker shown before any guest is registered.</summary>
+    public DateTime? EnteredAt { get; set; }
 
     public static AlloggiatiGuestRowDto From(AlloggiatiGuestRow row) => new()
     {
@@ -155,7 +168,7 @@ public class AlloggiatiGuestRowDto
         Citizenship = row.Citizenship,
         RequiresDocument = row.RequiresDocument,
         DocumentType = row.DocumentType,
-        DocumentNumber = row.DocumentNumber,
+        DocumentNumberMasked = GuestCheckInService.MaskDocumentNumber(row.DocumentNumber),
         DocumentIssuePlace = row.DocumentIssuePlace,
         Codes = new AlloggiatiRowCodesDto
         {
@@ -170,6 +183,8 @@ public class AlloggiatiGuestRowDto
         MissingFields = row.MissingFields,
         CodesToComplete = row.CodesToComplete,
         CompositionIssue = row.CompositionIssue,
+        DataSource = row.DataSource,
+        EnteredAt = row.EnteredAt,
     };
 }
 
@@ -183,6 +198,17 @@ public class AlloggiatiRowCodesDto
     public string? DocumentType { get; set; }
     public string? DocumentTypeDescription { get; set; }
     public string? DocumentIssuePlace { get; set; }
+}
+
+/// <summary>Full document number of a guest of the stay (CO-09: shown on an explicit request of the host, audited).</summary>
+public class StayGuestDocumentNumberDto
+{
+    public int Position { get; set; }
+
+    /// <summary>Null for the booker shown before any guest is registered.</summary>
+    public Guid? StayGuestId { get; set; }
+
+    public string DocumentNumber { get; set; } = string.Empty;
 }
 
 /// <summary>Body of <c>PUT /api/alloggiati/{bookingId}/stay-guests</c>: every guest of the stay, in record order.</summary>

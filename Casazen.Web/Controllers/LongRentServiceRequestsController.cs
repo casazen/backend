@@ -107,15 +107,15 @@ public class LongRentServiceRequestsController(
 
     /// <summary>
     /// Sends a long-rent request for the property to the supplier. A <c>bookingId</c> is refused (422
-    /// <c>service_request_booking_not_allowed</c>): in long-term rental the request is for the property.
+    /// <c>service_request_booking_not_allowed</c>): in long-term rental the request is for the property. Same
+    /// validation and errors as the short-rent <c>POST api/service-requests</c> otherwise (400, 404, 422, SU-10).
     /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Create(
         [FromBody] CreateServiceRequestRequest request,
@@ -128,44 +128,36 @@ public class LongRentServiceRequestsController(
         var (_, denied) = await AuthorizePropertyAsync(request.PropertyId, LongRentPropertyOperations.Write, cancellationToken);
         if (denied is not null) return denied;
 
-        try
-        {
-            var created = await serviceRequestService.CreateAsync(
-                new CreateServiceRequestCommand(
-                    orgId.Value,
-                    userId,
-                    request.PropertyId,
-                    request.BookingId,
-                    request.SupplierOrgId,
-                    request.Category,
-                    request.Urgency,
-                    request.Notes,
-                    request.ChargeToGuest,
-                    ServiceRequestRentalContext.LongRent),
-                cancellationToken);
+        var created = await serviceRequestService.CreateAsync(
+            new CreateServiceRequestCommand(
+                orgId.Value,
+                userId,
+                request.PropertyId,
+                request.BookingId,
+                request.SupplierOrgId,
+                request.Category,
+                request.Urgency,
+                request.Notes,
+                request.ChargeToGuest,
+                ServiceRequestRentalContext.LongRent),
+            cancellationToken);
 
-            return Created($"/api/long-rent/service-requests/{created.Id}", ServiceRequestsController.MapDto(created));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        return Created($"/api/long-rent/service-requests/{created.Id}", ServiceRequestsController.MapDto(created));
     }
 
     /// <summary>
     /// The landlord marks a completed long-rent request as paid (manual flag, no Stripe transfer): <c>property.write</c>
-    /// in long-rent on the request's property. A request outside the caller's scope, or a short-rent one, is 404.
+    /// in long-rent on the request's property. A request outside the caller's scope, or a short-rent one, is 404
+    /// <c>service_request_not_found</c>; one that is not completed is 422 <c>service_request_invalid_transition</c>;
+    /// 409 <c>service_request_state_changed</c> on a concurrent change (SU-10).
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> MarkPaid(Guid id, CancellationToken cancellationToken)
     {
         var scope = await GetHostScopeAsync(cancellationToken);
@@ -173,21 +165,14 @@ public class LongRentServiceRequestsController(
 
         var existing = await serviceRequestService.GetByIdForHostAsync(
             id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
-        if (existing?.Property is null) return NotFound();
+        if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
 
         var resource = new HostResource(existing.OrgId, existing.Property.OwnerId);
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
-        try
-        {
-            var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
-            return Ok(ServiceRequestsController.MapDto(updated));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
+        var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
+        return Ok(ServiceRequestsController.MapDto(updated));
     }
 
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)

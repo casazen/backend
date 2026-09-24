@@ -42,6 +42,8 @@ public record AlloggiatiSummaryInfo(
 /// <param name="MissingFields">Record fields missing or not accepted by the record (camelCase names, <c>AlloggiatiRecordRules.Field*</c>).</param>
 /// <param name="CodesToComplete">Record fields whose official code is still to complete: they block only the export.</param>
 /// <param name="CompositionIssue">Why the guest does not fit in the order of the stay (<c>member_without_head</c>, <c>head_without_members</c>); null when it fits.</param>
+/// <param name="DataSource">Who entered the row last (CO-09 audit): guest portal or host; not recorded before CO-09.</param>
+/// <param name="EnteredAt">When the row was entered; null for the booker shown before any guest is registered.</param>
 public record AlloggiatiGuestRow(
     Guid? StayGuestId,
     int Position,
@@ -65,7 +67,9 @@ public record AlloggiatiGuestRow(
     AlloggiatiRowCodes Codes,
     IReadOnlyList<string> MissingFields,
     IReadOnlyList<string> CodesToComplete,
-    string? CompositionIssue);
+    string? CompositionIssue,
+    StayGuestDataSource DataSource = StayGuestDataSource.NotRecorded,
+    DateTime? EnteredAt = null);
 
 /// <summary>
 /// Official codes of a guest's record line, from the imported Alloggiati tables (null when still to complete or not

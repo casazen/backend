@@ -22,6 +22,9 @@ public class StayGuestService(
     /// <summary>Longest name stored for places, citizenship and document labels.</summary>
     public const int MaxLabelLength = 100;
 
+    /// <summary>Length of <see cref="StayGuest.EnteredByUserId"/>.</summary>
+    private const int MaxUserIdLength = 200;
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<IReadOnlyList<StayGuest>> GetForBookingAsync(Booking booking, CancellationToken cancellationToken = default)
@@ -73,9 +76,11 @@ public class StayGuestService(
     public async Task<StayGuestSaveResult> ReplaceAsync(
         Booking booking,
         IReadOnlyList<StayGuestInput> guests,
+        StayGuestAuthor author,
         bool save = true,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(author);
         var (candidates, errors) = await BuildAsync(guests, cancellationToken);
         if (errors.Count > 0)
             return new StayGuestSaveResult([], errors);
@@ -105,6 +110,8 @@ public class StayGuestService(
             CopyData(candidates[position], row);
             // The first line stays linked to the booker, whose contact data and consent live on Guest.
             row.GuestId = position == 0 ? booking.GuestId : null;
+            row.DataSource = author.Source;
+            row.EnteredByUserId = author.UserId is { Length: > MaxUserIdLength } userId ? userId[..MaxUserIdLength] : author.UserId;
             row.UpdatedAt = now;
             saved.Add(row);
         }

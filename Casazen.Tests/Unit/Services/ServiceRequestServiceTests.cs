@@ -174,19 +174,6 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_ChargeToGuest_Throws()
-    {
-        await using var db = CreateDb();
-        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
-        var service = CreateService(db);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
-                "cleaning", ServiceRequestUrgency.Normal, null, true)));
-    }
-
-    [Fact]
     public async Task CreateAsync_ValidRequest_CreatesRichiesto()
     {
         await using var db = CreateDb();
@@ -202,29 +189,82 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_InactiveSupplier_Throws()
+    public async Task CreateAsync_InactiveSupplier_ThrowsSupplierInactive()
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Pending);
         var service = CreateService(db);
 
-        await Assert.ThrowsAsync<ServiceRequestStateException>(() =>
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
                 hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.SupplierInactive, ex.Code);
+        Assert.Empty(db.ServiceRequests);
     }
 
     [Fact]
-    public async Task CreateAsync_SupplierOutsideComune_Throws()
+    public async Task CreateAsync_SupplierOutsideComune_ThrowsSupplierOutsideComune()
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active, supplierComune: "F205");
         var service = CreateService(db);
 
-        await Assert.ThrowsAsync<ServiceRequestStateException>(() =>
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
             service.CreateAsync(new CreateServiceRequestCommand(
                 hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
                 "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.SupplierOutsideComune, ex.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownSupplier_ThrowsSupplierNotFound()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, _, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, Guid.NewGuid(),
+                "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.SupplierNotFound, ex.Code);
+        Assert.Empty(db.ServiceRequests);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PropertyOfAnotherOrg_ThrowsPropertyNotFound()
+    {
+        await using var db = CreateDb();
+        var (_, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                Guid.NewGuid(), TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Equal(ServiceRequestErrorCodes.PropertyNotFound, ex.Code);
+        Assert.Empty(db.ServiceRequests);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ChargeToGuest_ThrowsChargeToGuestNotAllowed()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.CreateAsync(new CreateServiceRequestCommand(
+                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+                "cleaning", ServiceRequestUrgency.Normal, null, ChargeToGuest: true)));
+
+        Assert.Equal(ServiceRequestErrorCodes.ChargeToGuestNotAllowed, ex.Code);
+        Assert.Empty(db.ServiceRequests);
     }
 
     [Fact]
@@ -258,7 +298,7 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
-    public async Task TakeAsync_InvalidState_Throws()
+    public async Task TakeAsync_AlreadyTaken_ThrowsInvalidTransition()
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
@@ -268,8 +308,25 @@ public class ServiceRequestServiceTests
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
 
-        await Assert.ThrowsAsync<ServiceRequestStateException>(() =>
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
             service.TakeAsync(created.Id, supplierOrgId, "supplier-user"));
+
+        Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.CannotTakeMessageKey, ex.MessageKey);
+    }
+
+    [Fact]
+    public async Task TakeAsync_UnknownRequest_ThrowsNotFoundWithCode()
+    {
+        await using var db = CreateDb();
+        var (_, _, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.TakeAsync(Guid.NewGuid(), supplierOrgId, "supplier-user"));
+
+        Assert.Equal(ServiceRequestErrorCodes.NotFound, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.NotFoundMessageKey, ex.MessageKey);
     }
 
     [Fact]
@@ -305,6 +362,83 @@ public class ServiceRequestServiceTests
 
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.NotNull(paid.PaidAt);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_BeforeCompletion_ThrowsInvalidTransitionAndLeavesItTaken()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.MarkPaidAsync(created.Id, hostOrgId));
+
+        Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.CannotMarkPaidMessageKey, ex.MessageKey);
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, (await db.ServiceRequests.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_NewRequest_ThrowsInvalidTransition()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteAsync(created.Id, supplierOrgId, "Fatto"));
+
+        Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.CannotCompleteMessageKey, ex.MessageKey);
+        var stored = await db.ServiceRequests.SingleAsync();
+        Assert.Equal(ServiceRequestStatus.Richiesto, stored.Status);
+        Assert.Null(stored.CompletedAt);
+    }
+
+    [Fact]
+    public async Task RejectAsync_TakenRequest_ThrowsInvalidTransitionWithoutEmailingTheHost()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+        var queuedBefore = queue.Snapshot().Count;
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.RejectAsync(created.Id, supplierOrgId, "Non disponibile"));
+
+        Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, ex.Code);
+        Assert.Equal(ServiceRequestErrorCodes.CannotRejectMessageKey, ex.MessageKey);
+        Assert.Equal(queuedBefore, queue.Snapshot().Count);
+        var stored = await db.ServiceRequests.SingleAsync();
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, stored.Status);
+        Assert.Null(stored.RejectionReason);
+    }
+
+    [Fact]
+    public async Task RejectAsync_ReasonWithSpaces_StoresItTrimmed()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+
+        var rejected = await service.RejectAsync(created.Id, supplierOrgId, "  Non disponibile  ");
+
+        Assert.Equal(ServiceRequestStatus.Rifiutato, rejected.Status);
+        Assert.Equal("Non disponibile", rejected.RejectionReason);
     }
 
     [Fact]

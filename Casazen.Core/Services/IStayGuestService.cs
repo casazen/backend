@@ -27,12 +27,14 @@ public interface IStayGuestService
 
     /// <summary>
     /// Validates and replaces the guests of the booking (the first one stays linked to the booker). Returns the field
-    /// errors and saves nothing when the guests are not valid. Does not call <c>SaveChanges</c> on success when
-    /// <paramref name="save"/> is false, so a caller can commit it with its own changes.
+    /// errors and saves nothing when the guests are not valid. Every row records <paramref name="author"/> (CO-09 audit).
+    /// Does not call <c>SaveChanges</c> on success when <paramref name="save"/> is false, so a caller can commit it with
+    /// its own changes.
     /// </summary>
     Task<StayGuestSaveResult> ReplaceAsync(
         Booking booking,
         IReadOnlyList<StayGuestInput> guests,
+        StayGuestAuthor author,
         bool save = true,
         CancellationToken cancellationToken = default);
 }
@@ -73,6 +75,18 @@ public sealed record StayGuestFieldError(int? Index, string Field, string Messag
 {
     /// <summary>Model state key of the error in a request whose guest list is named <paramref name="listName"/> (e.g. <c>Guests[1].DocumentNumber</c>).</summary>
     public string ModelStateKey(string listName) => Index is { } index ? $"{listName}[{index}].{Field}" : Field;
+}
+
+/// <summary>Who enters the guests of a stay (CO-09): the guest on the portal or a host (user id kept for the audit).</summary>
+public sealed record StayGuestAuthor(StayGuestDataSource Source, string? UserId)
+{
+    public static readonly StayGuestAuthor GuestPortal = new(StayGuestDataSource.GuestPortal, null);
+
+    public static StayGuestAuthor Host(string userId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        return new StayGuestAuthor(StayGuestDataSource.Host, userId);
+    }
 }
 
 public sealed record StayGuestSaveResult(IReadOnlyList<StayGuest> Guests, IReadOnlyList<StayGuestFieldError> Errors)

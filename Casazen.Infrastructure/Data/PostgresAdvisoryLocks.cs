@@ -52,8 +52,9 @@ internal static class PostgresAdvisoryLocks
         UserDeactivation = 1_009,
 
         /// <summary>
-        /// Import of the iCal feed of one property (key: property id): two sync runs (the 15-minute job and the first
-        /// sync of a new URL) never write the same blocks at once (PC-10, A2-12).
+        /// iCal import feeds of one property (key: property id): two sync runs of a feed (the 15-minute job and a first
+        /// sync or "sync now") never write the same blocks at once (PC-10, A2-12); adding a feed (count and duplicate
+        /// check) and removing one never interleave with them (PC-11). Also taken to create the export link.
         /// </summary>
         PropertyICalSync = 1_010,
 
@@ -62,6 +63,12 @@ internal static class PostgresAdvisoryLocks
         /// same alerts at once, even outside Hangfire's own lock (CO-10, A5-11).
         /// </summary>
         StayAlertsRun = 1_011,
+
+        /// <summary>
+        /// Stripe Connect account of one org (key: org id): two clicks on "Collega Stripe" create one Express account
+        /// (BK-09, A3-19).
+        /// </summary>
+        OrgConnectAccount = 1_012,
 
         /// <summary>
         /// STR fiscal regimes and taxpayers of one org (key: org id): the one 21% cedolare unit per taxpayer and tax year is

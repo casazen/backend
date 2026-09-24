@@ -99,6 +99,21 @@
   <data name="PaymentProviderUnavailableDetail" xml:space="preserve">
     <value>Il servizio di pagamento non ha risposto correttamente. Riprova più tardi.</value>
   </data>
+  <data name="StripeConnectUnavailable" xml:space="preserve">
+    <value>Stripe non risponde in questo momento. Il tuo account Stripe collegato non è stato modificato: riprova tra qualche istante.</value>
+  </data>
+  <data name="StripeConnectNotConfigured" xml:space="preserve">
+    <value>I pagamenti Stripe non sono configurati correttamente sul server. Il tuo account collegato non è stato modificato: contatta l'assistenza CasaZen.</value>
+  </data>
+  <data name="StripeConnectFailed" xml:space="preserve">
+    <value>Stripe ha rifiutato la richiesta. Il tuo account collegato non è stato modificato: riprova più tardi o contatta l'assistenza CasaZen.</value>
+  </data>
+  <data name="StripeConnectAccountUnavailable" xml:space="preserve">
+    <value>L'account Stripe collegato non è più disponibile: riprova per collegarne uno nuovo.</value>
+  </data>
+  <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
+    <value>L'indirizzo pubblico dell'app non è configurato sul server: il collegamento con Stripe non può essere avviato.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Richiesta non riuscita</value>
   </data>
@@ -375,11 +390,17 @@
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>La sincronizzazione del calendario non è riuscita: verrà ritentata automaticamente.</value>
   </data>
-  <data name="CheckInLinkEmailQueued" xml:space="preserve">
-    <value>Link check-in rigenerato: l'email all'ospite è in coda di invio.</value>
+  <data name="ICalFeedNotFound" xml:space="preserve">
+    <value>Calendario non trovato: potrebbe essere già stato scollegato.</value>
   </data>
-  <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
-    <value>Link check-in pronto, ma l'email all'ospite non è stata inviata: copia il link e invialo all'ospite.</value>
+  <data name="ICalFeedLimitReached" xml:space="preserve">
+    <value>Hai già collegato il numero massimo di calendari per questa proprietà ({0}): scollegane uno prima di aggiungerne un altro.</value>
+  </data>
+  <data name="ICalFeedDuplicate" xml:space="preserve">
+    <value>Questo calendario è già collegato alla proprietà.</value>
+  </data>
+  <data name="ICalFeedInvalidLabel" xml:space="preserve">
+    <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
   </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
@@ -792,6 +813,15 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="CheckInLinkBookingNotEligible" xml:space="preserve">
+    <value>Il link di check-in è disponibile solo per prenotazioni confermate o in corso.</value>
+  </data>
+  <data name="CheckInAlreadyCompleted" xml:space="preserve">
+    <value>L'ospite ha già completato il check-in: correggi i dati nella scheda Alloggiati.</value>
+  </data>
+  <data name="GuestDocumentScanMissing" xml:space="preserve">
+    <value>Nessuna scansione del documento disponibile per questo ospite.</value>
+  </data>
   <data name="PropertyNameRequired" xml:space="preserve">
     <value>Il nome dell'immobile è obbligatorio.</value>
   </data>
@@ -935,6 +965,48 @@
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
+  </data>
+  <data name="ServiceRequestPropertyRequired" xml:space="preserve">
+    <value>Indica l'immobile della richiesta.</value>
+  </data>
+  <data name="ServiceRequestBookingInvalid" xml:space="preserve">
+    <value>La prenotazione indicata non è valida.</value>
+  </data>
+  <data name="ServiceRequestSupplierRequired" xml:space="preserve">
+    <value>Scegli il fornitore a cui inviare la richiesta.</value>
+  </data>
+  <data name="ServiceRequestNotesTooLong" xml:space="preserve">
+    <value>Le note possono avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del rifiuto.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonTooLong" xml:space="preserve">
+    <value>Il motivo del rifiuto può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestSupplierInactive" xml:space="preserve">
+    <value>Il fornitore non è attivo e non può ricevere richieste.</value>
+  </data>
+  <data name="ServiceRequestSupplierOutsideComune" xml:space="preserve">
+    <value>Il fornitore non opera nel comune dell'immobile.</value>
+  </data>
+  <data name="ServiceRequestChargeToGuestNotAllowed" xml:space="preserve">
+    <value>L'addebito all'ospite non è disponibile per le richieste ai fornitori.</value>
+  </data>
+  <data name="ServiceRequestCannotTake" xml:space="preserve">
+    <value>La richiesta non può essere presa in carico nello stato attuale.</value>
+  </data>
+  <data name="ServiceRequestCannotReject" xml:space="preserve">
+    <value>La richiesta non può essere rifiutata nello stato attuale: si può rifiutare solo una richiesta nuova.</value>
+  </data>
+  <data name="ServiceRequestCannotComplete" xml:space="preserve">
+    <value>La richiesta non può essere completata nello stato attuale: prima va presa in carico.</value>
+  </data>
+  <data name="ServiceRequestCannotMarkPaid" xml:space="preserve">
+    <value>Solo le richieste completate possono essere segnate come pagate.</value>
+  </data>
+  <data name="ServiceRequestStateChanged" xml:space="preserve">
+    <value>La richiesta è stata appena modificata da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
   </data>
   <data name="FiscalShortStayThresholdExceeded" xml:space="preserve">
     <value>Nel {1} questo contribuente destinerebbe alla locazione breve più di {0} appartamenti: oltre questa soglia l'attività si presume d'impresa e non si possono scegliere la cedolare secca né l'IRPEF ordinaria senza partita IVA. Verifica il regime con il tuo commercialista.</value>

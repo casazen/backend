@@ -99,6 +99,21 @@
   <data name="PaymentProviderUnavailableDetail" xml:space="preserve">
     <value>The payment service did not respond correctly. Please try again later.</value>
   </data>
+  <data name="StripeConnectUnavailable" xml:space="preserve">
+    <value>Stripe is not responding right now. Your connected Stripe account was not changed: try again in a moment.</value>
+  </data>
+  <data name="StripeConnectNotConfigured" xml:space="preserve">
+    <value>Stripe payments are not configured correctly on the server. Your connected account was not changed: contact CasaZen support.</value>
+  </data>
+  <data name="StripeConnectFailed" xml:space="preserve">
+    <value>Stripe refused the request. Your connected account was not changed: try again later or contact CasaZen support.</value>
+  </data>
+  <data name="StripeConnectAccountUnavailable" xml:space="preserve">
+    <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
+  </data>
+  <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
+    <value>The public address of the app is not configured on the server: the Stripe connection cannot be started.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Request failed</value>
   </data>
@@ -375,11 +390,17 @@
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>The calendar sync failed: it will be retried automatically.</value>
   </data>
-  <data name="CheckInLinkEmailQueued" xml:space="preserve">
-    <value>Check-in link regenerated: the email to the guest is queued for delivery.</value>
+  <data name="ICalFeedNotFound" xml:space="preserve">
+    <value>Calendar not found: it may have been disconnected already.</value>
   </data>
-  <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
-    <value>Check-in link ready, but the email to the guest was not sent: copy the link and send it to the guest.</value>
+  <data name="ICalFeedLimitReached" xml:space="preserve">
+    <value>This property already has the maximum number of linked calendars ({0}): disconnect one before adding another.</value>
+  </data>
+  <data name="ICalFeedDuplicate" xml:space="preserve">
+    <value>This calendar is already linked to the property.</value>
+  </data>
+  <data name="ICalFeedInvalidLabel" xml:space="preserve">
+    <value>The calendar label can have at most 60 characters, without line breaks.</value>
   </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>The CIN is not in the official format: IT, the 6-digit ISTAT code of the municipality, a 2-character category and up to 8 alphanumeric characters (e.g. IT015146C2ABCDEFGH). Spaces and hyphens are ignored.</value>
@@ -792,6 +813,15 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
   </data>
+  <data name="CheckInLinkBookingNotEligible" xml:space="preserve">
+    <value>The check-in link is available only for confirmed or checked-in bookings.</value>
+  </data>
+  <data name="CheckInAlreadyCompleted" xml:space="preserve">
+    <value>The guest has already completed the check-in: correct the data in the Alloggiati tab.</value>
+  </data>
+  <data name="GuestDocumentScanMissing" xml:space="preserve">
+    <value>No document scan is available for this guest.</value>
+  </data>
   <data name="PropertyNameRequired" xml:space="preserve">
     <value>The property name is required.</value>
   </data>
@@ -935,6 +965,48 @@
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
+  </data>
+  <data name="ServiceRequestPropertyRequired" xml:space="preserve">
+    <value>Select the property of the request.</value>
+  </data>
+  <data name="ServiceRequestBookingInvalid" xml:space="preserve">
+    <value>The booking is not valid.</value>
+  </data>
+  <data name="ServiceRequestSupplierRequired" xml:space="preserve">
+    <value>Choose the supplier to send the request to.</value>
+  </data>
+  <data name="ServiceRequestNotesTooLong" xml:space="preserve">
+    <value>The notes can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonRequired" xml:space="preserve">
+    <value>Enter the reason for the rejection.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonTooLong" xml:space="preserve">
+    <value>The rejection reason can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestSupplierInactive" xml:space="preserve">
+    <value>The supplier is not active and cannot receive requests.</value>
+  </data>
+  <data name="ServiceRequestSupplierOutsideComune" xml:space="preserve">
+    <value>The supplier does not work in the property's comune.</value>
+  </data>
+  <data name="ServiceRequestChargeToGuestNotAllowed" xml:space="preserve">
+    <value>Charging the guest is not available for supplier requests.</value>
+  </data>
+  <data name="ServiceRequestCannotTake" xml:space="preserve">
+    <value>The request cannot be taken in its current status.</value>
+  </data>
+  <data name="ServiceRequestCannotReject" xml:space="preserve">
+    <value>The request cannot be rejected in its current status: only a new request can be rejected.</value>
+  </data>
+  <data name="ServiceRequestCannotComplete" xml:space="preserve">
+    <value>The request cannot be completed in its current status: it must be taken first.</value>
+  </data>
+  <data name="ServiceRequestCannotMarkPaid" xml:space="preserve">
+    <value>Only completed requests can be marked as paid.</value>
+  </data>
+  <data name="ServiceRequestStateChanged" xml:space="preserve">
+    <value>The request was just changed by another operation: reload the page and check its current status.</value>
   </data>
   <data name="FiscalShortStayThresholdExceeded" xml:space="preserve">
     <value>In {1} this taxpayer would let more than {0} apartments short-term: beyond this threshold the activity is presumed to be a business, and neither the cedolare secca flat tax nor ordinary IRPEF without a VAT number can be chosen. Check the regime with your accountant.</value>

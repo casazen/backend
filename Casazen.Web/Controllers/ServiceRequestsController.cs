@@ -68,11 +68,17 @@ public class ServiceRequestsController(
         return Ok(MapMatchResult(result));
     }
 
+    /// <summary>
+    /// Sends a short-rent request for a stay of the property to a supplier. 400 <c>validation_error</c> for a malformed
+    /// body (empty ids, notes over 1000 characters, no category); 404 <c>property_not_found</c> /
+    /// <c>supplier_not_found</c>; 422 for the rules (category code, stay of the property, supplier active and covering
+    /// the comune, <c>chargeToGuest</c>), with the codes of <see cref="ServiceRequestErrorCodes"/>.
+    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Create(
         [FromBody] CreateServiceRequestRequest request,
@@ -85,32 +91,21 @@ public class ServiceRequestsController(
         if (await AuthorizePropertyAsync(request.PropertyId, PropertyOperations.Write, cancellationToken) is { } denied)
             return denied;
 
-        try
-        {
-            var created = await serviceRequestService.CreateAsync(
-                new CreateServiceRequestCommand(
-                    orgId.Value,
-                    userId,
-                    request.PropertyId,
-                    request.BookingId,
-                    request.SupplierOrgId,
-                    request.Category,
-                    request.Urgency,
-                    request.Notes,
-                    request.ChargeToGuest,
-                    ServiceRequestRentalContext.ShortRent),
-                cancellationToken);
+        var created = await serviceRequestService.CreateAsync(
+            new CreateServiceRequestCommand(
+                orgId.Value,
+                userId,
+                request.PropertyId,
+                request.BookingId,
+                request.SupplierOrgId,
+                request.Category,
+                request.Urgency,
+                request.Notes,
+                request.ChargeToGuest,
+                ServiceRequestRentalContext.ShortRent),
+            cancellationToken);
 
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
     }
 
     /// <summary>
@@ -203,51 +198,53 @@ public class ServiceRequestsController(
         }
 
         if (!await SatisfiesAsync(CasazenPolicies.PropertyRead))
-            return isSupplier ? NotFound() : Forbid();
+            return isSupplier ? ServiceRequestNotFound() : Forbid();
 
         var scope = await GetHostScopeAsync(cancellationToken);
         if (scope is null) return Unauthorized();
 
         var hostRequest = await serviceRequestService.GetByIdForHostAsync(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
-        if (hostRequest is null) return NotFound();
+        if (hostRequest is null) return ServiceRequestNotFound();
 
         return Ok(MapDto(hostRequest));
     }
 
+    /// <summary>
+    /// Supplier transitions (<see cref="CasazenPolicies.Supplier"/>, linked supplier org), following
+    /// <see cref="Casazen.Core.Suppliers.ServiceRequestStateMachine"/>: 404 <c>service_request_not_found</c>, 403 for a
+    /// request sent to another supplier, 422 <c>service_request_invalid_transition</c> from a status that does not allow
+    /// it, 409 <c>service_request_state_changed</c> when a concurrent operation changed the request first (A4-19).
+    /// </summary>
     [HttpPost("{id:guid}/take")]
     [Authorize(Policy = CasazenPolicies.Supplier)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Take(Guid id, CancellationToken cancellationToken)
     {
         var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         var userId = User.GetUserId();
         if (supplierOrgId is null || userId is null) return NotFound();
 
-        try
-        {
-            var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, cancellationToken);
-            return Ok(MapDto(updated));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, cancellationToken);
+        return Ok(MapDto(updated));
     }
 
+    /// <summary>
+    /// The supplier completes a request it took; notes sent replace the request's notes (at most 1000 characters,
+    /// 400 otherwise). Same errors as <see cref="Take"/>.
+    /// </summary>
     [HttpPost("{id:guid}/complete")]
     [Authorize(Policy = CasazenPolicies.Supplier)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Complete(
         Guid id,
         [FromBody] CompleteServiceRequestRequest? request,
@@ -256,30 +253,23 @@ public class ServiceRequestsController(
         var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (supplierOrgId is null) return NotFound();
 
-        try
-        {
-            var updated = await serviceRequestService.CompleteAsync(
-                id, supplierOrgId.Value, request?.Notes, cancellationToken);
-            return Ok(MapDto(updated));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var updated = await serviceRequestService.CompleteAsync(
+            id, supplierOrgId.Value, request?.Notes, cancellationToken);
+        return Ok(MapDto(updated));
     }
 
+    /// <summary>
+    /// The supplier refuses a new request: the reason is required, at most 500 characters (400 otherwise, A4-18). Same
+    /// errors as <see cref="Take"/>.
+    /// </summary>
     [HttpPost("{id:guid}/reject")]
     [Authorize(Policy = CasazenPolicies.Supplier)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> Reject(
         Guid id,
         [FromBody] RejectServiceRequestRequest request,
@@ -288,35 +278,23 @@ public class ServiceRequestsController(
         var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (supplierOrgId is null) return NotFound();
 
-        try
-        {
-            var updated = await serviceRequestService.RejectAsync(
-                id, supplierOrgId.Value, request.Reason, cancellationToken);
-            return Ok(MapDto(updated));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var updated = await serviceRequestService.RejectAsync(
+            id, supplierOrgId.Value, request.Reason, cancellationToken);
+        return Ok(MapDto(updated));
     }
 
     /// <summary>
     /// Host marks a completed short-rent request as paid (manual flag, no Stripe transfer): <c>property.write</c> on the
-    /// request's property. A request outside the caller's host scope, or a long-rent one, is 404.
+    /// request's property. A request outside the caller's host scope, or a long-rent one, is 404
+    /// <c>service_request_not_found</c>; a request that is not completed is 422
+    /// <c>service_request_invalid_transition</c>; 409 <c>service_request_state_changed</c> on a concurrent change.
     /// </summary>
     [HttpPost("{id:guid}/mark-paid")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServiceRequestDto>> MarkPaid(Guid id, CancellationToken cancellationToken)
     {
         var scope = await GetHostScopeAsync(cancellationToken);
@@ -324,23 +302,23 @@ public class ServiceRequestsController(
 
         var existing = await serviceRequestService.GetByIdForHostAsync(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
-        if (existing is null) return NotFound();
+        if (existing is null) return ServiceRequestNotFound();
 
         var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId);
         if (existing.Property is null ||
             !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return Forbid();
 
-        try
-        {
-            var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
-            return Ok(MapDto(updated));
-        }
-        catch (ServiceRequestStateException ex)
-        {
-            return Conflict(new ProblemDetails { Title = "Conflitto", Detail = ex.Message, Status = 409 });
-        }
+        var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
+        return Ok(MapDto(updated));
     }
+
+    /// <summary>404 <c>service_request_not_found</c> (FD-05), also for a request outside the caller's scope.</summary>
+    internal static ObjectResult ServiceRequestNotFound(ControllerBase controller) =>
+        controller.ApiProblem(
+            StatusCodes.Status404NotFound, ServiceRequestErrorCodes.NotFound, ServiceRequestErrorCodes.NotFoundMessageKey);
+
+    private ObjectResult ServiceRequestNotFound() => ServiceRequestNotFound(this);
 
     private async Task<bool> SatisfiesAsync(string policy) =>
         (await authorizationService.AuthorizeAsync(User, policy)).Succeeded;
