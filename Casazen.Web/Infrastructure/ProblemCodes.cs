@@ -26,6 +26,13 @@ public static class ProblemCodes
     /// </summary>
     public const string OnboardingRequired = Casazen.Core.Authorization.HostOnboarding.RequiredCode;
 
+    /// <summary>
+    /// 403: the caller's account was deactivated by an admin (PL-03, A1-04). Every authenticated request is refused with
+    /// it, whatever the endpoint and the roles in the token (<see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/>); it takes precedence
+    /// over every authorization outcome. The web app shows the "account disabled" page.
+    /// </summary>
+    public const string AccountInactive = "account_inactive";
+
     /// <summary>429 from a rate limiting policy (with <c>Retry-After</c>), see <c>RateLimitingServiceCollectionExtensions</c>.</summary>
     public const string RateLimited = "rate_limited";
 
