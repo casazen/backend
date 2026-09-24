@@ -88,9 +88,9 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs, Properties and Guests are written through the model (same schema before and after the migration). Bookings
-    /// are inserted with SQL, only with the columns that exist before the migration: later migrations add columns to
-    /// Bookings (e.g. BK-06 AddOnSiteRequestApproval) that the model would write.
+    /// Orgs and Guests are written through the model (same schema before and after the migration). Properties and
+    /// Bookings are inserted with SQL, only with the columns that exist before the migration: later migrations add columns
+    /// to them (e.g. BK-06 AddOnSiteRequestApproval, CO-18 AddPropertyTaxpayerFiscalCode) that the model would write.
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -142,9 +142,9 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
         };
 
         db.Orgs.Add(org);
-        db.Properties.Add(property);
         db.Guests.AddRange(complete, otherValues);
         await db.SaveChangesAsync();
+        await PreviousSchemaSeed.InsertPropertyAsync(db, property);
 
         async Task<Guid> InsertBookingAsync(Guest guest, int guests)
         {

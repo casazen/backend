@@ -111,8 +111,9 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs and Properties are written through the model (the migration drops a column the model no longer has and
-    /// adds none); the old JSON column is written with SQL.
+    /// Orgs are written through the model. Properties are inserted with SQL, only with columns that exist before the
+    /// migration (later migrations add columns the model would write, e.g. CO-18 AddPropertyTaxpayerFiscalCode); the old
+    /// JSON column is written with SQL too.
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -126,8 +127,9 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
             IsActive = true,
         };
         db.Orgs.Add(org);
+        await db.SaveChangesAsync();
 
-        Property NewProperty(string name)
+        async Task<Property> NewPropertyAsync(string name)
         {
             var property = new Property
             {
@@ -143,15 +145,14 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
                 IsActive = true,
                 ComplianceStatus = PropertyComplianceStatus.Active,
             };
-            db.Properties.Add(property);
+            await PreviousSchemaSeed.InsertPropertyAsync(db, property);
             return property;
         }
 
-        var full = NewProperty("Full");
-        var partial = NewProperty("Partial");
-        var malformed = NewProperty("Malformed");
-        var without = NewProperty("Without");
-        await db.SaveChangesAsync();
+        var full = await NewPropertyAsync("Full");
+        var partial = await NewPropertyAsync("Partial");
+        var malformed = await NewPropertyAsync("Malformed");
+        var without = await NewPropertyAsync("Without");
 
         await SetLegacyJsonAsync(db, full.Id, FullLegacyJson);
         await SetLegacyJsonAsync(db, partial.Id, PartialLegacyJson);
