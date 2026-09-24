@@ -11,7 +11,6 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "LongTermLandlord")]
 [Authorize(Policy = "RequireContext:long-rent:lease.read")]
 public class LeasesController(
     ILeaseWorkflowService leaseService,

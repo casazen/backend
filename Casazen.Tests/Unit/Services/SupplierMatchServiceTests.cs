@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
@@ -50,21 +51,17 @@ public class SupplierMatchServiceTests
             db,
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
             Mock.Of<ILogger<SupplierService>>());
-
-        var auth = new Mock<IPropertyAuthorizationService>();
-        auth.Setup(a => a.CanAccessPropertyAsync("user-1", propertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
 
         var service = new SupplierMatchService(
             db,
             supplierService,
             Mock.Of<IAiSupplierDiscoveryService>(),
             Mock.Of<IAiProvider>(),
-            auth.Object,
             Mock.Of<ILogger<SupplierMatchService>>());
 
-        var result = await service.MatchAsync(orgId, "user-1", propertyId, "cleaning", ServiceRequestUrgency.Normal, null);
+        var result = await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal, null);
 
         Assert.NotNull(result.Recommended);
         Assert.Equal(supplierOrgId, result.Recommended!.OrgId);
@@ -106,11 +103,8 @@ public class SupplierMatchServiceTests
             db,
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
             Mock.Of<ILogger<SupplierService>>());
-
-        var auth = new Mock<IPropertyAuthorizationService>();
-        auth.Setup(a => a.CanAccessPropertyAsync("user-1", propertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
 
         var aiProvider = new CachingAiProvider();
         var service = new SupplierMatchService(
@@ -118,19 +112,16 @@ public class SupplierMatchServiceTests
             supplierService,
             Mock.Of<IAiSupplierDiscoveryService>(),
             aiProvider,
-            auth.Object,
             Mock.Of<ILogger<SupplierMatchService>>());
 
         var first = await service.MatchAsync(
             orgId,
-            "user-1",
             propertyId,
             "cleaning",
             ServiceRequestUrgency.Normal,
             "Use entry code alpha");
         var second = await service.MatchAsync(
             orgId,
-            "user-1",
             propertyId,
             "cleaning",
             ServiceRequestUrgency.Normal,

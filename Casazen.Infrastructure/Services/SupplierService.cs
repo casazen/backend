@@ -2,12 +2,14 @@ using System.Data;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -18,6 +20,7 @@ public class SupplierService(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
+    ISafeExternalHttpClient externalHttpClient,
     ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -558,12 +561,20 @@ public class SupplierService(
         string? calendarSyncError,
         CancellationToken cancellationToken = default)
     {
+        // The feed is downloaded by the server: only an external https URL is accepted (FD-16, A4-10 / A9-32).
+        if (icalFeedUrl is not null && !externalHttpClient.TryValidateUrl(icalFeedUrl, out _))
+        {
+            throw new DomainRuleException(
+                ICalErrorCodes.InvalidUrl,
+                ICalErrorCodes.MessageKey(ICalErrorCodes.InvalidUrl));
+        }
+
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
             return null;
 
         profile.CalendarSyncType = syncType;
-        profile.IcalFeedUrl = icalFeedUrl;
+        profile.IcalFeedUrl = icalFeedUrl?.Trim();
         profile.CalendarSyncError = calendarSyncError;
         profile.UpdatedAt = DateTime.UtcNow;
 

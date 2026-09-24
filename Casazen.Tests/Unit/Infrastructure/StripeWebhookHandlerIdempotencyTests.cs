@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
@@ -190,7 +191,7 @@ public class StripeWebhookHandlerIdempotencyTests
 
         public Task<IEnumerable<Payment>> GetByPropertyAsync(Guid propertyId) => throw new NotImplementedException();
 
-        public Task<IEnumerable<Payment>> GetAllAsync() => throw new NotImplementedException();
+        public Task<IEnumerable<Payment>> GetByScopeAsync(HostScope scope) => throw new NotImplementedException();
 
         public Task<Payment> AddAsync(Payment payment) => throw new NotImplementedException();
 

@@ -6,10 +6,12 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -177,56 +179,25 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
         services.AddScoped<IAuthorizationHandler, ContextAuthorizationHandler>();
 
-        var builder = services.AddAuthorizationBuilder()
-            .AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"))
-            .AddPolicy("PropertyOwner", policy => policy.RequireAuthenticatedUser())
-            .AddPolicy("PropertyManagerOrAdmin", policy => policy.RequireRole("PropertyManager", "Admin"))
-            .AddPolicy("LongTermLandlord", policy => policy.RequireRole("LongTermLandlord"))
-            .AddPolicy("RequireSupplier", policy => policy.RequireRole("Supplier"))
-            .AddPolicy("RequireOrgBillingAdmin", policy =>
-                policy.Requirements.Add(new OrgBillingAdminRequirement()));
-
+        services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
 
-        RegisterContextPolicies(builder);
+        // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
+        var builder = services.AddAuthorizationBuilder()
+            .AddPolicy(CasazenPolicies.Authenticated, policy => policy.RequireAuthenticatedUser())
+            .AddPolicy(CasazenPolicies.AdminOnly, policy => policy.RequireRole("Admin"))
+            .AddPolicy(CasazenPolicies.Supplier, policy => policy.RequireRole("Supplier"))
+            .AddPolicy(CasazenPolicies.OrgBillingAdmin, policy =>
+                policy.Requirements.Add(new OrgBillingAdminRequirement()));
+
+        foreach (var policyName in CasazenPolicies.ContextPolicies)
+        {
+            var (contextKey, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
+            builder.AddPolicy(policyName, policy =>
+                policy.Requirements.Add(new ContextPermissionRequirement(contextKey, permissionKey)));
+        }
 
         return services;
-    }
-
-    private static void RegisterContextPolicies(AuthorizationBuilder builder)
-    {
-        var contextPermissions = new Dictionary<string, string[]>
-        {
-            ["short-rent"] =
-            [
-                "property.read", "property.write",
-                "booking.read", "booking.write",
-                "payment.read", "payment.write",
-                "ota.read", "ota.write",
-                "guest.read", "guest.write",
-            ],
-            ["long-rent"] =
-            [
-                "property.read", "property.write",
-                "lease.read", "lease.create", "lease.sign", "lease.register",
-                "rent.read", "rent.manage",
-            ],
-            ["admin"] =
-            [
-                "admin.stats.read", "admin.users.read", "admin.users.manage",
-                "admin.cin.read", "admin.jobs.read", "admin.tax.manage", "admin.seo.read",
-            ],
-        };
-
-        foreach (var pair in contextPermissions)
-        {
-            foreach (var permission in pair.Value)
-            {
-                var policyName = $"RequireContext:{pair.Key}:{permission}";
-                builder.AddPolicy(policyName, policy =>
-                    policy.Requirements.Add(new ContextPermissionRequirement(pair.Key, permission)));
-            }
-        }
     }
 
     /// <summary>
@@ -285,6 +256,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
+        services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
@@ -331,13 +303,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
-        services.AddHttpClient("IcalSync", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-IcalSync/1.0");
-        })
-        .AddPolicyHandler((sp, _) =>
-            PollyPolicies.GetRetryPolicy(2, sp.GetRequiredService<ILoggerFactory>().CreateLogger("IcalSync")));
+
+        // User-chosen URLs (iCal feeds) are downloaded only through the anti-SSRF client (FD-16).
+        services.AddOptions<SafeExternalHttpOptions>().BindConfiguration(SafeExternalHttpOptions.SectionName);
+        services.AddSingleton<IExternalHostResolver, SystemDnsHostResolver>();
+        services.AddSingleton<ISafeExternalHttpClient, SafeExternalHttpClient>();
         return services;
     }
 

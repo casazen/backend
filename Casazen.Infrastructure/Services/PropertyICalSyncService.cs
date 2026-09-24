@@ -1,6 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.ICalSpike;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -11,7 +13,7 @@ namespace Casazen.Infrastructure.Services;
 public class PropertyICalSyncService
 {
     private readonly AppDbContext _db;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ISafeExternalHttpClient _externalHttpClient;
     private readonly ICalImportService _importService;
     private readonly ICalExportService _exportService;
     private readonly IConfiguration _configuration;
@@ -19,14 +21,14 @@ public class PropertyICalSyncService
 
     public PropertyICalSyncService(
         AppDbContext db,
-        IHttpClientFactory httpClientFactory,
+        ISafeExternalHttpClient externalHttpClient,
         ICalImportService importService,
         ICalExportService exportService,
         IConfiguration configuration,
         ILogger<PropertyICalSyncService> logger)
     {
         _db = db;
-        _httpClientFactory = httpClientFactory;
+        _externalHttpClient = externalHttpClient;
         _importService = importService;
         _exportService = exportService;
         _configuration = configuration;
@@ -72,24 +74,31 @@ public class PropertyICalSyncService
     public async Task<int> GetBlockCountAsync(Guid propertyId, CancellationToken ct = default) =>
         await _db.CalendarBlocks.CountAsync(b => b.PropertyId == propertyId, ct);
 
-    public async Task SetImportUrlAndSyncAsync(
+    /// <summary>
+    /// Saves the import URL and marks the feed <see cref="PropertyICalImportStatus.Syncing"/>. It does not download
+    /// the feed: the caller queues <see cref="SyncPropertyFeedAsync"/> in a background job (A2-21), so a slow or
+    /// hostile feed never runs inside the request.
+    /// </summary>
+    /// <exception cref="DomainRuleException">Code <see cref="ICalErrorCodes.InvalidUrl"/>: not an allowed external https URL.</exception>
+    public async Task<PropertyICalFeed> SetImportUrlAsync(
         Guid propertyId,
         Guid orgId,
-        string importUrl,
+        string? importUrl,
         CancellationToken ct = default)
     {
-        if (!Uri.TryCreate(importUrl, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps)
+        if (!_externalHttpClient.TryValidateUrl(importUrl, out _))
         {
-            throw new ArgumentException("Import URL must be a valid HTTPS URL.");
+            throw new DomainRuleException(
+                ICalErrorCodes.InvalidUrl,
+                ICalErrorCodes.MessageKey(ICalErrorCodes.InvalidUrl));
         }
 
         var feed = await GetOrCreateFeedAsync(propertyId, orgId, ct);
-        feed.ImportUrl = importUrl.Trim();
+        feed.ImportUrl = importUrl!.Trim();
+        feed.LastImportStatus = PropertyICalImportStatus.Syncing;
         feed.LastError = null;
         await _db.SaveChangesAsync(ct);
-
-        await SyncPropertyFeedAsync(propertyId, ct);
+        return feed;
     }
 
     public async Task SyncPropertyFeedAsync(Guid propertyId, CancellationToken ct = default)
@@ -100,22 +109,40 @@ public class PropertyICalSyncService
         if (feed is null || string.IsNullOrWhiteSpace(feed.ImportUrl))
             return;
 
+        string icsContent;
         try
         {
-            using var client = _httpClientFactory.CreateClient("IcalSync");
-            var icsContent = await client.GetStringAsync(feed.ImportUrl, ct);
+            // Anti-SSRF download (FD-16): https only, public addresses only, size and time limits.
+            icsContent = await _externalHttpClient.GetStringAsync(feed.ImportUrl, ct);
+        }
+        catch (ExternalFetchException ex)
+        {
+            _logger.LogWarning(ex, "iCal download failed for property {PropertyId} ({Failure})", propertyId, ex.Failure);
+            await SaveFailureAsync(feed, ICalErrorCodes.FromFetchFailure(ex.Failure), ct);
+            return;
+        }
 
+        IReadOnlyList<ParsedCalendarBlock> parsed;
+        try
+        {
             if (!ICalImportSpike.IsValidExportFeed(icsContent))
             {
-                feed.LastImportStatus = PropertyICalImportStatus.Failure;
-                feed.LastError = "iCal feed is not valid or contains no events";
-                feed.LastImportAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync(ct);
                 _logger.LogWarning("Invalid iCal feed for property {PropertyId}", propertyId);
+                await SaveFailureAsync(feed, ICalErrorCodes.InvalidFormat, ct);
                 return;
             }
 
-            var parsed = _importService.Parse(icsContent);
+            parsed = _importService.Parse(icsContent);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Unparsable iCal feed for property {PropertyId}", propertyId);
+            await SaveFailureAsync(feed, ICalErrorCodes.InvalidFormat, ct);
+            return;
+        }
+
+        try
+        {
             var now = DateTime.UtcNow;
             var incomingUids = parsed.Select(p => p.ExternalUid).ToHashSet();
 
@@ -162,14 +189,20 @@ public class PropertyICalSyncService
                 "iCal sync completed for property {PropertyId}: {BlockCount} blocks, {Removed} orphans removed",
                 propertyId, parsed.Count, orphans.Count);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            feed.LastImportStatus = PropertyICalImportStatus.Failure;
-            feed.LastError = ex.Message.Length > 1000 ? ex.Message[..1000] : ex.Message;
-            feed.LastImportAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
             _logger.LogError(ex, "iCal sync failed for property {PropertyId}", propertyId);
+            await SaveFailureAsync(feed, ICalErrorCodes.SyncFailed, ct);
         }
+    }
+
+    // Stores the stable error code, never the exception message (FD-16: no oracle on what the server can reach).
+    private async Task SaveFailureAsync(PropertyICalFeed feed, string errorCode, CancellationToken ct)
+    {
+        feed.LastImportStatus = PropertyICalImportStatus.Failure;
+        feed.LastError = errorCode;
+        feed.LastImportAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task SyncAllFeedsAsync(CancellationToken ct = default)

@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
@@ -169,7 +170,7 @@ public class SupplierServiceRegistrationTests
     }
 
     private static SupplierService CreateService(AppDbContext db) =>
-        new(db, Mock.Of<IEmailQueue>(), EmailTestHelpers.Links(), NullLogger<SupplierService>.Instance);
+        new(db, Mock.Of<IEmailQueue>(), EmailTestHelpers.Links(), Mock.Of<ISafeExternalHttpClient>(), NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()
     {

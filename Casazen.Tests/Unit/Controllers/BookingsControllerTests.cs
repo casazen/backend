@@ -6,6 +6,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Casazen.Web.BackgroundJobs;
@@ -110,7 +111,7 @@ public class BookingsControllerTests
             .Build();
         return new PropertyICalSyncService(
             db,
-            Mock.Of<IHttpClientFactory>(),
+            Mock.Of<ISafeExternalHttpClient>(),
             new ICalImportService(),
             new ICalExportService(),
             configuration,
@@ -995,7 +996,6 @@ public class BookingsControllerTests
             s => s.CompleteCheckoutWizardAsync(
                 It.IsAny<Guid>(),
                 It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
                 It.IsAny<CompleteCheckoutWizardInput>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);

@@ -13,7 +13,6 @@ public class SupplierMatchService(
     ISupplierService supplierService,
     IAiSupplierDiscoveryService aiDiscovery,
     IAiProvider aiProvider,
-    IPropertyAuthorizationService propertyAuthorization,
     ILogger<SupplierMatchService> logger) : ISupplierMatchService
 {
     private static readonly ServiceRequestStatus[] OpenStatuses =
@@ -25,7 +24,6 @@ public class SupplierMatchService(
 
     public async Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
-        string userId,
         Guid propertyId,
         string category,
         ServiceRequestUrgency urgency,
@@ -37,12 +35,10 @@ public class SupplierMatchService(
             .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
             ?? throw new InvalidOperationException("Proprietà non trovata.");
 
+        // Who may match for this property is decided by the caller (policy + host resource handler, TN-3);
+        // the org boundary is enforced here too.
         if (property.OrgId != orgId)
             throw new UnauthorizedAccessException("Proprietà non appartiene all'organizzazione.");
-
-        if (!await propertyAuthorization.CanAccessPropertyAsync(
-                userId, propertyId, ["PropertyOwner", "Admin", "PropertyManager"]))
-            throw new UnauthorizedAccessException("Accesso negato alla proprietà.");
 
         var suppliers = await supplierService.GetActiveByComune(property.City, category, cancellationToken);
         if (suppliers.Count == 0)

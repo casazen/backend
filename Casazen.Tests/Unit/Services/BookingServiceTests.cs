@@ -4,6 +4,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -50,7 +51,7 @@ public class BookingServiceTests
             .Options);
         return new PropertyICalSyncService(
             db,
-            Mock.Of<IHttpClientFactory>(),
+            Mock.Of<ISafeExternalHttpClient>(),
             new ICalImportService(),
             new ICalExportService(),
             configuration,

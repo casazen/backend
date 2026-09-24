@@ -22,7 +22,6 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
 [Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class BookingsController(
     IBookingService bookingService,
@@ -446,8 +445,7 @@ public class BookingsController(
         if (bookingForAuth is null)
             return NotFound();
 
-        var userRoles = GetUserRoles();
-        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, userRoles))
+        if (!await authorizationService.CanAccessPropertyAsync(userId, bookingForAuth.PropertyId, GetUserRoles()))
             return NotFound();
 
         try
@@ -455,7 +453,6 @@ public class BookingsController(
             var (booking, propertyReady) = await complianceWizardService.CompleteCheckoutWizardAsync(
                 id,
                 userId,
-                userRoles,
                 new CompleteCheckoutWizardInput(
                     request.ConfirmDeparture,
                     request.SupplierOrgId,
