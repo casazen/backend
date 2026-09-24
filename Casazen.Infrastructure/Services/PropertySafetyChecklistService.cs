@@ -14,10 +14,13 @@ namespace Casazen.Infrastructure.Services;
 /// Safety checklist of a short-stay property under D.L. 145/2023 art. 13-ter (CO-07, A5-21). Rules in
 /// <see cref="SafetyChecklistRules"/>. A checklist row always holds one row per item of
 /// <see cref="SafetyChecklistRules.Items"/>: it is created with all of them, so concurrent first saves collide on the
-/// unique property index (23505), and the loser re-reads and updates.
+/// unique property index (23505), and the loser re-reads and updates. Every save re-evaluates the compliance status of the
+/// property (CO-06): an active property whose checklist is no longer complete and confirmed is suspended, a suspended one
+/// is reactivated by the save that completes its requirements.
 /// </summary>
 public class PropertySafetyChecklistService(
     AppDbContext db,
+    IPropertyComplianceStatusService complianceStatus,
     ILogger<PropertySafetyChecklistService> logger,
     TimeProvider? timeProvider = null) : IPropertySafetyChecklistService
 {
@@ -72,6 +75,7 @@ public class PropertySafetyChecklistService(
             "Safety checklist of property {PropertyId} saved by {UserId} (confirmed: {Confirmed})",
             propertyId, userId, input.Confirm);
 
+        await complianceStatus.ReevaluateAsync(propertyId, cancellationToken);
         return await ToViewAsync(checklist, cancellationToken);
     }
 

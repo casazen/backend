@@ -75,6 +75,18 @@ internal static class PostgresAdvisoryLocks
         /// configuration save never upsert the same dates at once (PC-15).
         /// </summary>
         SeasonalPriceSuggestions = 1_019,
+
+        /// <summary>
+        /// Compliance status of one property (key: property id): a host request and the nightly check suspend it once
+        /// and email the host once (CO-06, A5-20).
+        /// </summary>
+        PropertyComplianceStatus = 1_030,
+
+        /// <summary>
+        /// One run of the compliance check of every active property (single key, session lock held for the whole run):
+        /// the nightly job and the one-shot command never run together (CO-06, A5-36).
+        /// </summary>
+        PropertyComplianceCheckRun = 1_031,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

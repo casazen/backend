@@ -91,6 +91,13 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(),
             "0 8 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).
+        recurringJobManager.AddOrUpdate<PropertyComplianceCheckJob>(
+            PropertyComplianceCheckJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PropertyComplianceCheckJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
     /// <summary>
