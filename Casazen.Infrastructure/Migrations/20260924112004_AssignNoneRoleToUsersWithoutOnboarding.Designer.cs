@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924105623_AssignNoneRoleToUsersWithoutOnboarding")]
+    [Migration("20260924112004_AssignNoneRoleToUsersWithoutOnboarding")]
     partial class AssignNoneRoleToUsersWithoutOnboarding
     {
         /// <inheritdoc />
@@ -242,6 +242,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("CheckoutReminderJobId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CheckoutTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime?>("CheckoutWizardStartedAt")
                         .HasColumnType("timestamp with time zone");
