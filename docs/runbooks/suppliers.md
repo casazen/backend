@@ -253,6 +253,52 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 - [ ] Long-rent: from `/app/long-rent/properties/{id}`, *Richiedi fornitore* → the request is listed there and not in
       the short-rent property overview; the supplier sees it in the inbox.
 
+## 8. Service requests: validation, errors and concurrent transitions — SU-10
+
+Audit A4-17 / A4-18 / A4-19. Every error of `api/service-requests` and `api/long-rent/service-requests` has the FD-05
+shape (`code` + localized `detail`, IT default, EN with `Accept-Language: en`); none of the audit scenarios answers 500.
+
+### 8.1 States and errors
+
+Allowed transitions (`Casazen.Core/Suppliers/ServiceRequestStateMachine.cs`, the only table):
+`Richiesto → PresoInCarico` (take), `Richiesto → Rifiutato` (reject), `PresoInCarico/InCorso → Completato`
+(complete), `Completato → Pagato` (mark-paid). `Rifiutato` and `Pagato` are final.
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `validation_error` | body: `propertyId` / `supplierOrgId` / `bookingId` equal to `00000000-…`, no `category`, `notes` over 1000 characters (create and complete), reject without `reason` (`{}`, `null`, blank) or over 500 characters. Field errors in `errors` |
+| 404 | `service_request_not_found` | the request does not exist or is outside the caller's scope (also `mark-paid`, short- and long-rent) |
+| 404 | `property_not_found` / `supplier_not_found` | create: property not in the org, supplier without profile |
+| 403 | `forbidden` | a supplier acts on a request sent to another supplier |
+| 422 | `invalid_service_category` | category not a code of `GET /api/service-categories` (SU-03) |
+| 422 | `service_request_supplier_inactive`, `service_request_supplier_outside_comune`, `service_request_charge_to_guest_not_allowed` | create rules (before SU-10: 409 / 400 with free text) |
+| 422 | `service_request_invalid_transition` | the transition is not allowed from the current status (e.g. mark-paid before complete, reject after take; before SU-10: 409) |
+| 409 | `service_request_state_changed` | another operation changed the request between read and save (below) |
+
+The check-out wizard still turns a supplier refused at check-out (missing, not active, outside the comune) into its
+own 422 `checkout_service_request_invalid`.
+
+### 8.2 Concurrent transitions (`xmin`)
+
+`ServiceRequest.Version` is mapped by Npgsql to PostgreSQL's `xmin` system column (optimistic concurrency token, no
+column is added: the migration `AddServiceRequestConcurrencyToken` only updates the EF model). Every transition is an
+`UPDATE … WHERE "Id" = @id AND xmin = @read`: when two members of the supplier org (or two tabs) click *Presa in
+carico* and *Rifiuta* together, one save wins, the other updates no row and answers 409
+`service_request_state_changed`. The host email and the push are queued **after** the save, so only the winning
+transition notifies the host. A second click after the first one completed is a 422 `service_request_invalid_transition`
+(the request is no longer `Richiesto`). Clients reload the request on either code.
+
+Raw SQL that updates `ServiceRequests` (manual fixes are not allowed anyway) changes `xmin` too: a user who had the
+request open simply gets the 409 and reloads.
+
+### 8.3 After a deploy
+
+- [ ] The migration `AddServiceRequestConcurrencyToken` is listed in `__EFMigrationsHistory` (no DDL is run).
+- [ ] Supplier console: reject a new request without a reason → the form shows *Indica il motivo del rifiuto.*
+      (400), the request stays new.
+- [ ] Host: *Segna pagato* on a request that is not completed → 422 with *Solo le richieste completate possono essere
+      segnate come pagate.*
+
 ## Known limits (other tasks)
 
 - The admin repair `fix-orphaned` still matches users and profiles by email (task SU-14, "fix-orphaned sicuro").

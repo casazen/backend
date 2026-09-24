@@ -801,6 +801,12 @@ public class AppDbContext(
         modelBuilder.Entity<ServiceRequest>()
             .HasIndex(sr => new { sr.SupplierOrgId, sr.Status });
 
+        // A4-19 (SU-10): Npgsql maps a uint row version to the xmin system column, so every state transition is saved
+        // only if the row was not changed since it was read.
+        modelBuilder.Entity<ServiceRequest>()
+            .Property(sr => sr.Version)
+            .IsRowVersion();
+
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()
             .HasOne(b => b.Property)

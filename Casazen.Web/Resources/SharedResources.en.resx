@@ -1014,4 +1014,46 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
   </data>
+  <data name="ServiceRequestPropertyRequired" xml:space="preserve">
+    <value>Select the property of the request.</value>
+  </data>
+  <data name="ServiceRequestBookingInvalid" xml:space="preserve">
+    <value>The booking is not valid.</value>
+  </data>
+  <data name="ServiceRequestSupplierRequired" xml:space="preserve">
+    <value>Choose the supplier to send the request to.</value>
+  </data>
+  <data name="ServiceRequestNotesTooLong" xml:space="preserve">
+    <value>The notes can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonRequired" xml:space="preserve">
+    <value>Enter the reason for the rejection.</value>
+  </data>
+  <data name="ServiceRequestRejectReasonTooLong" xml:space="preserve">
+    <value>The rejection reason can be at most {1} characters long.</value>
+  </data>
+  <data name="ServiceRequestSupplierInactive" xml:space="preserve">
+    <value>The supplier is not active and cannot receive requests.</value>
+  </data>
+  <data name="ServiceRequestSupplierOutsideComune" xml:space="preserve">
+    <value>The supplier does not work in the property's comune.</value>
+  </data>
+  <data name="ServiceRequestChargeToGuestNotAllowed" xml:space="preserve">
+    <value>Charging the guest is not available for supplier requests.</value>
+  </data>
+  <data name="ServiceRequestCannotTake" xml:space="preserve">
+    <value>The request cannot be taken in its current status.</value>
+  </data>
+  <data name="ServiceRequestCannotReject" xml:space="preserve">
+    <value>The request cannot be rejected in its current status: only a new request can be rejected.</value>
+  </data>
+  <data name="ServiceRequestCannotComplete" xml:space="preserve">
+    <value>The request cannot be completed in its current status: it must be taken first.</value>
+  </data>
+  <data name="ServiceRequestCannotMarkPaid" xml:space="preserve">
+    <value>Only completed requests can be marked as paid.</value>
+  </data>
+  <data name="ServiceRequestStateChanged" xml:space="preserve">
+    <value>The request was just changed by another operation: reload the page and check its current status.</value>
+  </data>
 </root>
