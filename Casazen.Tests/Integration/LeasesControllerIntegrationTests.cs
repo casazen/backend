@@ -9,6 +9,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
+using Casazen.Tests.Unit.Documents;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
@@ -51,7 +52,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         var contract = await client.GetAsync($"/api/leases/{leaseId}/contract.pdf");
         Assert.Equal(HttpStatusCode.OK, contract.StatusCode);
         Assert.Equal("application/pdf", contract.Content.Headers.ContentType?.MediaType);
-        Assert.DoesNotContain("BOZZA", Encoding.ASCII.GetString(await contract.Content.ReadAsByteArrayAsync()), StringComparison.Ordinal);
+        Assert.DoesNotContain("BOZZA", PdfTestReader.Text(await contract.Content.ReadAsByteArrayAsync()), StringComparison.Ordinal);
 
         var upload = await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId);
         Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
@@ -120,9 +121,11 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
 
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
         Assert.Equal("application/pdf", preview.Content.Headers.ContentType?.MediaType);
-        var text = Encoding.ASCII.GetString(await preview.Content.ReadAsByteArrayAsync());
-        Assert.StartsWith("%PDF", text, StringComparison.Ordinal);
-        Assert.Contains("(BOZZA - template non approvato)", text, StringComparison.Ordinal);
+        var bytes = await preview.Content.ReadAsByteArrayAsync();
+        Assert.Equal("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+        var text = PdfTestReader.Text(bytes);
+        Assert.Contains("BOZZA - template non approvato", text, StringComparison.Ordinal);
+        Assert.All(PdfTestReader.Pages(bytes), page => Assert.Equal("BOZZA", page.Watermark));
         Assert.Contains("4 anni", text, StringComparison.Ordinal);
         Assert.Contains("Mario Rossi", text, StringComparison.Ordinal);
         var lease = await GetLease(client, leaseId);

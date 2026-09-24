@@ -4,7 +4,9 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Documents;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
@@ -32,7 +34,7 @@ public class ComuneImuNotificationServiceTests
         Assert.NotNull(result);
         Assert.True(result.PdfBytes.Length > 4);
         Assert.Equal("%PDF", Encoding.ASCII.GetString(result.PdfBytes, 0, 4));
-        var text = Encoding.ASCII.GetString(result.PdfBytes);
+        var text = PdfTestReader.Text(result.PdfBytes);
         Assert.Contains("Incertezza", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("NON univoco", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("protocollo@comune.seveso.mb.it", text, StringComparison.OrdinalIgnoreCase);
@@ -50,7 +52,7 @@ public class ComuneImuNotificationServiceTests
         var result = await sut.ExportAsync(Guid.NewGuid());
 
         Assert.NotNull(result);
-        var text = Encoding.ASCII.GetString(result.PdfBytes);
+        var text = PdfTestReader.Text(result.PdfBytes);
         Assert.Contains("valore derivato", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("2025", text);
         Assert.Contains("0,78", text);
@@ -268,7 +270,7 @@ public class ComuneImuNotificationServiceTests
         territorialAgreements
             .Setup(r => r.GetByComuneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(agreement ?? BuildAgreement(lease?.Property.City ?? "Seveso"));
-        return (new ComuneImuNotificationService(leases.Object, events.Object, territorialAgreements.Object), events);
+        return (new ComuneImuNotificationService(leases.Object, events.Object, territorialAgreements.Object, new MigraDocPdfDocumentRenderer()), events);
     }
 
     /// <summary>
