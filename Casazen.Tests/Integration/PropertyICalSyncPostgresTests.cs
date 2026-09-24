@@ -16,7 +16,7 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// PC-10 (A2-10, A2-12) on PostgreSQL, where column lengths and the (PropertyId, ExternalUid) unique index are
+/// PC-10 (A2-10, A2-12) on PostgreSQL, where column lengths and the (FeedId, ExternalUid) unique index (PC-11) are
 /// enforced: a failing feed does not stop the others, an empty feed removes the imported blocks, two runs on the same
 /// property do not collide. Downloads go through a scripted <see cref="ISafeExternalHttpClient"/>: no network.
 /// </summary>
@@ -36,7 +36,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         var messy = await SeedFeedAsync($"https://messy-{run}.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddDays(-1));
         var plain = await SeedFeedAsync($"https://plain-{run}.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddHours(-1));
 
-        // A block of another source already holds the UID of the feed: the insert violates the unique index (23505).
+        // A block of another source already holds the UID in the feed: the insert violates the unique index (23505).
         await SeedBlockAsync(clash, "clash-uid", CalendarBlockSource.Manual);
         _factory.Feeds[clash.Url] = () => Feed(Event("clash-uid", "20261010", "20261012"));
         _factory.Feeds[broken.Url] = () => throw new InvalidOperationException("unexpected client failure");
@@ -75,7 +75,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
     }
 
     [PostgresFact]
-    public async Task SyncPropertyFeedAsync_ValidFeedWithoutEvents_RemovesTheImportedBlocks()
+    public async Task SyncFeedAsync_ValidFeedWithoutEvents_RemovesTheImportedBlocks()
     {
         var feed = await SeedFeedAsync($"https://empty-{Guid.NewGuid():N}.example.com/cal.ics", lastImportAt: null);
         await SeedBlockAsync(feed, "cancelled-on-booking", CalendarBlockSource.ICalImport);
@@ -84,7 +84,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
 
         await using (var jobScope = _factory.Services.CreateAsyncScope())
         {
-            await jobScope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncPropertyFeedAsync(feed.PropertyId);
+            await jobScope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncFeedAsync(feed.FeedId);
         }
 
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -98,7 +98,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
     // The 15-minute job and the first sync of a new URL can run on the same property at once: the advisory lock makes
     // the second wait and update the blocks the first inserted, instead of inserting the same UIDs again (23505).
     [PostgresFact]
-    public async Task SyncPropertyFeedAsync_TwoConcurrentRuns_WriteEachBlockOnceAndSucceed()
+    public async Task SyncFeedAsync_TwoConcurrentRuns_WriteEachBlockOnceAndSucceed()
     {
         var feed = await SeedFeedAsync($"https://concurrent-{Guid.NewGuid():N}.example.com/cal.ics", lastImportAt: null);
         var events = Enumerable.Range(0, 30)
@@ -134,7 +134,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         {
             await Task.Yield();
             await using var runScope = _factory.Services.CreateAsyncScope();
-            await runScope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncPropertyFeedAsync(feed.PropertyId);
+            await runScope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncFeedAsync(feed.FeedId);
         }
     }
 
@@ -154,16 +154,16 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         var property = await _factory.SeedPropertyAsync($"auth0|ical-{Guid.NewGuid():N}");
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.PropertyICalFeeds.Add(new PropertyICalFeed
+        var feed = new PropertyICalFeed
         {
             PropertyId = property.Id,
             OrgId = property.OrgId,
             ImportUrl = url,
-            ExportToken = Guid.NewGuid(),
             LastImportAt = lastImportAt,
-        });
+        };
+        db.PropertyICalFeeds.Add(feed);
         await db.SaveChangesAsync();
-        return new SeededFeed(property.Id, property.OrgId, url);
+        return new SeededFeed(feed.Id, property.Id, property.OrgId, url);
     }
 
     private async Task SeedBlockAsync(SeededFeed feed, string externalUid, CalendarBlockSource source)
@@ -174,6 +174,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         {
             PropertyId = feed.PropertyId,
             OrgId = feed.OrgId,
+            FeedId = feed.FeedId,
             Source = source,
             ExternalUid = externalUid,
             StartUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -182,7 +183,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         await db.SaveChangesAsync();
     }
 
-    private sealed record SeededFeed(Guid PropertyId, Guid OrgId, string Url);
+    private sealed record SeededFeed(Guid FeedId, Guid PropertyId, Guid OrgId, string Url);
 
     /// <summary>The integration host with the download client replaced by <see cref="Feeds"/> (URL → body).</summary>
     public sealed class Factory : CasazenWebApplicationFactory

@@ -10,6 +10,7 @@ using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -33,6 +34,9 @@ namespace Casazen.Tests.Integration;
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
     private static int _inMemoryWarningWritten;
+
+    /// <summary>In-memory key ring shared by all the test hosts of the process (see <see cref="ConfigureWebHost"/>).</summary>
+    public static IDataProtectionProvider SharedDataProtectionProvider { get; } = new EphemeralDataProtectionProvider();
 
     private readonly object _databaseLock = new();
     private PostgresTestDatabase? _database;
@@ -129,6 +133,13 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         {
             if (UsesPostgreSql)
                 UseDedicatedPostgresDatabase(services);
+
+            // One Data Protection provider for every test host of the process (PC-11): the EF model is cached per
+            // provider (DataProtectionModelCacheKeyFactory), so the hosts share one model instead of building one each,
+            // and a value encrypted by one host can be read by another. Production has a single host, so a single
+            // provider (docs/runbooks/ical.md).
+            RemoveAllOf<IDataProtectionProvider>(services);
+            services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
 
             RemoveService<IPublicHolidayService>(services);
             var holidayMock = new Mock<IPublicHolidayService>();

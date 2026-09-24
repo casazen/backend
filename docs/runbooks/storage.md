@@ -9,7 +9,7 @@ Task FD-07. Audit defects: A2-03, A2-31, A9-04. Product decision D8: Supabase St
 | Property photos, supplier photos | Container disk (`wwwroot/uploads/properties`), relative URL `/uploads/...` | **Public** bucket, absolute URL `{Storage:PublicBaseUrl}/{key}` |
 | Property documents (APE, CIN certificate, …) | Container disk under `wwwroot`, **downloadable anonymously** | **Private** bucket. The database stores the object key. Read only through `GET /api/properties/{id}/documents/{docId}/download` (JWT, tenant filter, ownership) or a 5-minute signed URL from `GET /api/properties/{id}/documents/{docId}/signed-url` |
 | Guest ID scans (check-in) | Container disk (`uploads/guest-documents`) | **Private** bucket. `Guest.DocumentScanUrl` holds the object key |
-| Data Protection keys (encrypt `OtaIntegration.ApiKey/ApiSecret`) | Container disk, lost on every deploy | Table `DataProtectionKeys` (EF migration `AddDataProtectionKeys`), optionally encrypted with a certificate |
+| Data Protection keys (encrypt `OtaIntegration.ApiKey/ApiSecret` and, since PC-11, the iCal import URLs `PropertyICalFeeds.ImportUrl`) | Container disk, lost on every deploy | Table `DataProtectionKeys` (EF migration `AddDataProtectionKeys`), optionally encrypted with a certificate |
 
 Object keys:
 
@@ -100,7 +100,7 @@ DataProtection__CertificatePfxBase64=<content of dp-$ENV.pfx.b64>
 DataProtection__CertificatePassword=<strong password>
 ```
 
-Store the `.pfx` file and its password in the password manager, then delete the local files. **If the certificate is lost, every key it protects is lost too**, and the OTA secrets must be entered again.
+Store the `.pfx` file and its password in the password manager, then delete the local files. **If the certificate is lost, every key it protects is lost too**, and the OTA secrets and the iCal import links must be entered again (docs/runbooks/ical.md, "Key ring lost").
 
 Certificate rotation:
 
@@ -112,6 +112,23 @@ Certificate rotation:
 Adding the certificate later is safe: keys already stored in clear text stay readable, and new keys are encrypted.
 
 Note: OTA secrets encrypted **before** FD-07 used keys that were lost with the old containers, so they cannot be recovered. Those integrations must be configured again (the OTA partner APIs are hidden behind a feature flag anyway, decision D10).
+
+### Encrypted database columns (one mechanism)
+
+Every encrypted column uses the same mechanism: the EF value converter `EncryptedStringConverter`
+(`Casazen.Infrastructure/Data/Encryption`), built in `AppDbContext.OnModelCreating` from the context's Data Protection
+provider with **one purpose per column family** (never change a purpose: stored values would become unreadable).
+Columns today: `OtaIntegrations.ApiKey/ApiSecret` (purpose `Casazen.OtaIntegration.Secrets`, FD-20) and
+`PropertyICalFeeds.ImportUrl` (purpose `Casazen.PropertyICalFeed.ImportUrl`, PC-11).
+
+- **Adding a column**: `HasConversion(new EncryptedStringConverter(EncryptionProvider, "<purpose>"))` inside the
+  `if (EncryptionProvider is not null)` block, a column wide enough for the payload (about 4/3 of the clear text plus
+  ~90 characters), reads and writes through EF only.
+- **Values already stored in clear**: pass a predicate that recognizes them (`isLegacyPlaintext`, e.g.
+  `PropertyICalFeedUrlEncryption.IsLegacyPlaintext`): they stay readable, and a startup step rewrites them through EF
+  (model: `PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync`, called after the migrations in `Program.cs`).
+- **Model cache**: the model is cached per Data Protection provider (`DataProtectionModelCacheKeyFactory`), so a
+  context never encrypts with another context's provider (the FD-20 limit, fixed in PC-11).
 
 ## 5. Migrating files from the old local storage (optional)
 
