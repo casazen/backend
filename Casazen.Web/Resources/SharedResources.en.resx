@@ -366,12 +366,6 @@
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>The calendar sync failed: it will be retried automatically.</value>
   </data>
-  <data name="CheckInLinkEmailQueued" xml:space="preserve">
-    <value>Check-in link regenerated: the email to the guest is queued for delivery.</value>
-  </data>
-  <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
-    <value>Check-in link ready, but the email to the guest was not sent: copy the link and send it to the guest.</value>
-  </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>The CIN is not in the official format: IT, the 6-digit ISTAT code of the municipality, a 2-character category and up to 8 alphanumeric characters (e.g. IT015146C2ABCDEFGH). Spaces and hyphens are ignored.</value>
   </data>
@@ -737,5 +731,14 @@
   </data>
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
+  </data>
+  <data name="CheckInLinkBookingNotEligible" xml:space="preserve">
+    <value>The check-in link is available only for confirmed or checked-in bookings.</value>
+  </data>
+  <data name="CheckInAlreadyCompleted" xml:space="preserve">
+    <value>The guest has already completed the check-in: correct the data in the Alloggiati tab.</value>
+  </data>
+  <data name="GuestDocumentScanMissing" xml:space="preserve">
+    <value>No document scan is available for this guest.</value>
   </data>
 </root>

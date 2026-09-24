@@ -68,7 +68,8 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(new[] { "Luigi", "Anna", "Marco", "Sofia" }, rows.Select(r => r.GetProperty("firstName").GetString()));
         Assert.Equal(new[] { true, false, false, false }, rows.Select(r => r.GetProperty("requiresDocument").GetBoolean()));
         Assert.Equal(new[] { false, false, true, true }, rows.Select(r => r.GetProperty("isMinor").GetBoolean()));
-        Assert.Equal("YA1234567", rows[0].GetProperty("documentNumber").GetString());
+        Assert.Equal("*****567", rows[0].GetProperty("documentNumberMasked").GetString());
+        Assert.Equal(new[] { "GuestPortal", "GuestPortal", "GuestPortal", "GuestPortal" }, rows.Select(r => r.GetProperty("dataSource").GetString()));
         Assert.All(rows, r => Assert.Equal(0, r.GetProperty("missingFields").GetArrayLength()));
         Assert.True(root.GetProperty("dataComplete").GetBoolean());
 

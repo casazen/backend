@@ -46,7 +46,7 @@ and production never block each other.
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
 | `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
-| `guest-checkin-send` | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
+| `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once.

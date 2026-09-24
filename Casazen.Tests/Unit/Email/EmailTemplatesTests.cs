@@ -177,10 +177,14 @@ public class EmailTemplatesTests
     public void GuestCheckInLink_English_FormatsStayDateUnambiguously()
     {
         var content = EmailTemplates.GuestCheckInLink(
-            CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, "https://casazen-app.test/checkin/abc");
+            CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, "https://casazen-app.test/checkin/abc",
+            new DateTime(2026, 10, 3, 8, 0, 0, DateTimeKind.Utc));
 
         Assert.Equal("Complete the check-in for your stay — Villa Rosa", content.Subject);
         Assert.Contains("starts on <strong>5 October 2026</strong>", content.HtmlBody);
+        // CO-09: the configurable validity is shown as the end of the link, in Italian time.
+        Assert.Contains("The link is valid until", content.HtmlBody);
+        Assert.DoesNotContain("7 days", content.HtmlBody);
     }
 
     [Fact]
@@ -503,7 +507,7 @@ public class EmailTemplatesTests
             "completed" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Completato, value, value),
             "rejected" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Rifiutato, value, value, value),
             "invite" => EmailTemplates.SupplierInvite(culture, value, value, value, Link, DateTime.UtcNow),
-            "checkin-link" => EmailTemplates.GuestCheckInLink(culture, value, value, CheckIn, Link),
+            "checkin-link" => EmailTemplates.GuestCheckInLink(culture, value, value, CheckIn, Link, CheckIn.AddDays(-1)),
             "checkin-incomplete" => EmailTemplates.GuestCheckInIncomplete(culture, value, value, CheckIn),
             "alloggiati" => EmailTemplates.AlloggiatiDeadline(culture, value, value, CheckIn),
             "refund" => EmailTemplates.GuestRefundConfirmed(culture, value, value, CheckIn, 1234.5m),
