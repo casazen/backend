@@ -196,7 +196,8 @@ public class GuestCheckInServiceTests
 
         Assert.False(result.Success);
         Assert.False(result.Duplicate);
-        Assert.Equal("DocumentType is not valid.", result.ValidationError);
+        Assert.Equal(nameof(GuestCheckInSubmitRequest.DocumentType), result.ValidationField);
+        Assert.Equal(CheckInValidationKeys.DocumentTypeInvalid, result.ValidationErrorKey);
 
         var session = await seed.Db.GuestCheckInSessions.FirstAsync();
         Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
@@ -295,7 +296,7 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
-    public async Task Submit_GdprConsentFalse_ReturnsFailure()
+    public async Task Submit_GdprConsentFalse_ReturnsGdprConsentValidationError()
     {
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
@@ -306,6 +307,116 @@ public class GuestCheckInServiceTests
 
         Assert.False(result.Success);
         Assert.False(result.Duplicate);
+        Assert.Equal(nameof(GuestCheckInSubmitRequest.GdprConsent), result.ValidationField);
+        Assert.Equal(CheckInValidationKeys.GdprConsentRequired, result.ValidationErrorKey);
+    }
+
+    [Fact]
+    public async Task Submit_MissingGender_ReturnsFieldRequiredForGender()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.Gender = null;
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        Assert.Equal(nameof(GuestCheckInSubmitRequest.Gender), result.ValidationField);
+        Assert.Equal(CheckInValidationKeys.FieldRequired, result.ValidationErrorKey);
+    }
+
+    [Fact]
+    public async Task Submit_GenderOther_ReturnsGenderInvalidWithoutCompletingSession()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.Gender = Gender.Other;
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        Assert.Equal(nameof(GuestCheckInSubmitRequest.Gender), result.ValidationField);
+        Assert.Equal(CheckInValidationKeys.GenderInvalid, result.ValidationErrorKey);
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, session.Status);
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        Assert.Null(guest!.Gender);
+    }
+
+    [Fact]
+    public async Task GetPublicView_OpenSession_ReturnsContextWithMaskedDocumentNumber()
+    {
+        await using var seed = await SeedAsync();
+        var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
+        guest!.DocumentNumber = "YA1234567";
+        guest.Gender = Gender.Female;
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.False(view.IsCompleted);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, view.Status);
+        Assert.Equal("Test Property", view.PropertyName);
+        Assert.NotNull(view.GuestPrefill);
+        Assert.Equal("Mario", view.GuestPrefill.FirstName);
+        Assert.Equal(Gender.Female, view.GuestPrefill.Gender);
+        Assert.Equal("*****567", view.GuestPrefill.DocumentNumberMasked);
+    }
+
+    [Fact]
+    public async Task GetPublicView_CompletedSession_ReturnsOnlyCompletedStatus()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var submit = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+        Assert.True(submit.Success);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.True(view.IsCompleted);
+        Assert.Equal(GuestCheckInSessionStatus.Completo, view.Status);
+        Assert.Null(view.SessionId);
+        Assert.Null(view.PropertyName);
+        Assert.Null(view.CheckInDate);
+        Assert.Null(view.CheckOutDate);
+        Assert.Null(view.GuestPrefill);
+    }
+
+    [Fact]
+    public async Task GetPublicView_ExpiredToken_ReturnsNull()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var session = await seed.Db.GuestCheckInSessions.FirstAsync();
+        session.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+        await seed.Db.SaveChangesAsync();
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.Null(view);
+    }
+
+    [Theory]
+    [InlineData("YA1234567", "*****567")]
+    [InlineData("  CA12345AB ", "*****5AB")]
+    [InlineData("AB1234", "*****234")]
+    [InlineData("AB123", "*****")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void MaskDocumentNumber_Value_HidesAllButLastCharacters(string? documentNumber, string? expected)
+    {
+        Assert.Equal(expected, GuestCheckInService.MaskDocumentNumber(documentNumber));
     }
 
     [Fact]
