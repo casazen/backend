@@ -9,7 +9,7 @@ namespace Casazen.Web.Authorization;
 /// Resource-based authorization of host rows (TN-3). An operation on a <see cref="HostResource"/> succeeds only when
 /// <list type="number">
 /// <item>the caller's org (the same <see cref="ITenantContext"/> the EF tenant filter uses) is the row's org;</item>
-/// <item>the caller holds the operation's context permission (DB membership or JWT fallback);</item>
+/// <item>the caller holds the operation's permission in one of its contexts (DB membership or JWT fallback);</item>
 /// <item>for rows bound to a property, the caller owns it or has an org-wide role (<see cref="HostRoles.OrgWide"/>).</item>
 /// </list>
 /// Everything else fails closed: no user id, no org, another org, missing permission.
@@ -51,10 +51,14 @@ public sealed class HostResourceAuthorizationHandler(
             return;
         }
 
-        if (!await contextAuthorizationService.HasPermissionAsync(userId, requirement.ContextKey, requirement.PermissionKey))
-            return;
-
-        context.Succeed(requirement);
+        foreach (var contextKey in requirement.ContextKeys)
+        {
+            if (await contextAuthorizationService.HasPermissionAsync(userId, contextKey, requirement.PermissionKey))
+            {
+                context.Succeed(requirement);
+                return;
+            }
+        }
     }
 }
 

@@ -94,7 +94,8 @@ builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
-builder.Services.AddScoped<ILeaseTemplateService, LeaseContractTemplateService>();
+// Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
+builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
 builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
 builder.Services.AddScoped<ILeaseRegistrationService, OpenapiLeaseRegistrationProvider>();
 builder.Services.AddHttpClient("Openapi");
@@ -157,6 +158,7 @@ builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<GuestCheckInReminderJob>();
 builder.Services.AddScoped<CheckoutReminderJob>();
+builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 builder.Services.AddScoped<ICheckoutReminderScheduler, CheckoutReminderScheduler>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
@@ -169,8 +171,6 @@ builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName));
-builder.Services.Configure<Casazen.Core.Options.LeaseTemplateOptions>(
-    builder.Configuration.GetSection(Casazen.Core.Options.LeaseTemplateOptions.SectionName));
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API

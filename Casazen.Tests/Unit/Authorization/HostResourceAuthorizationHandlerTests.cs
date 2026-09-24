@@ -160,6 +160,42 @@ public class HostResourceAuthorizationHandlerTests
     }
 
     [Fact]
+    public async Task Authorize_SharedPropertyOperation_WithLongRentPermissionOnly_Succeeds()
+    {
+        // A long-term landlord holds property.* in long-rent only (A7-06, LT-05).
+        var authorization = HostAuthorizationTestHarness.Create(OrgId, (context, _) => context == "long-rent");
+        var user = HostAuthorizationTestHarness.User(OwnerId);
+        var property = new HostResource(OrgId, OwnerId);
+
+        Assert.True((await authorization.AuthorizeAsync(user, property, SharedPropertyOperations.Read)).Succeeded);
+        Assert.True((await authorization.AuthorizeAsync(user, property, SharedPropertyOperations.Write)).Succeeded);
+        Assert.False((await authorization.AuthorizeAsync(user, property, PropertyOperations.Read)).Succeeded);
+        Assert.False((await authorization.AuthorizeAsync(user, property, PropertyOperations.Write)).Succeeded);
+    }
+
+    [Fact]
+    public async Task Authorize_SharedPropertyOperation_WithoutPropertyPermissionInAnyContext_Fails()
+    {
+        var authorization = HostAuthorizationTestHarness.Create(OrgId, (_, permission) => permission != "property.write");
+
+        var result = await authorization.AuthorizeAsync(
+            HostAuthorizationTestHarness.User(OwnerId), new HostResource(OrgId, OwnerId), SharedPropertyOperations.Write);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task Authorize_SharedPropertyOperation_SameOrgUserNotOwningProperty_Fails()
+    {
+        var authorization = HostAuthorizationTestHarness.Create(OrgId);
+
+        var result = await authorization.AuthorizeAsync(
+            HostAuthorizationTestHarness.User("auth0|colleague"), new HostResource(OrgId, OwnerId), SharedPropertyOperations.Read);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
     public void HostOperationRequirement_IsNotTheContextPolicyRequirement()
     {
         // A context-policy handler must never see a resource operation: it would grant on the permission alone.

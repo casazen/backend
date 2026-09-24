@@ -23,9 +23,15 @@ using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// Properties. The property core (list, record, create/update, documents such as the APE) is shared by short-rent hosts
+/// and long-term landlords (<see cref="CasazenPolicies.SharedPropertyRead"/>, A7-06); everything about short stays
+/// (photos, CIN, iCal calendars, listing activation, detail with bookings and OTA) stays short-rent only
+/// (<see cref="CasazenPolicies.PropertyRead"/>). Shared actions authorize the row with <see cref="SharedPropertyOperations"/>.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "RequireContext:short-rent:property.read")]
+[Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
 public class PropertiesController(
     IPropertyService propertyService,
     IImageStorageService imageStorageService,
@@ -37,8 +43,13 @@ public class PropertiesController(
     IEntitlementService entitlementService,
     PropertyICalSyncService propertyICalSyncService,
     IComplianceWizardService complianceWizardService,
+    IAuthorizationService hostAuthorizationService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
+    /// <summary>
+    /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role, otherwise the ones
+    /// they own, filtered in SQL. Shared by short-rent hosts and long-term landlords (A7-06).
+    /// </summary>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Property>>> GetAll()
     {
@@ -50,7 +61,11 @@ public class PropertiesController(
             return Unauthorized();
         }
 
-        var properties = await propertyService.GetOwnerPropertiesAsync(userId);
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var properties = await propertyService.GetPropertiesAsync(scope);
         return Ok(properties);
     }
 
@@ -65,11 +80,10 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Read))
             return Forbid();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "Property.Read");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "Property.Read");
 
         return Ok(property);
     }
@@ -88,7 +102,7 @@ public class PropertiesController(
     /// <response code="403"><c>plan_limit_reached</c>: the org already has as many properties as its plan allows.</response>
     /// <response code="409">Duplicate active address or slug within the organization.</response>
     [HttpPost]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(typeof(Property), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -168,7 +182,7 @@ public class PropertiesController(
     /// <response code="403">The caller is not the owner of this property.</response>
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPut("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePropertyRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -180,7 +194,7 @@ public class PropertiesController(
             return NotFound();
 
         var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to update property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
@@ -214,7 +228,7 @@ public class PropertiesController(
         !string.Equals(currentCity.Trim(), requestedCity.Trim(), StringComparison.OrdinalIgnoreCase);
 
     [HttpGet("cin-compliance")]
-    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     public async Task<ActionResult<CinComplianceResponse>> GetCinCompliance(
         [FromQuery] string? cinStatus,
         [FromQuery] int page = 1,
@@ -259,7 +273,7 @@ public class PropertiesController(
     }
 
     [HttpPut("{id}/cin")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<IActionResult> UpdateCin(Guid id, [FromBody] UpdatePropertyCinRequest request)
     {
         var userId = GetAuthenticatedUserId();
@@ -284,7 +298,7 @@ public class PropertiesController(
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -336,7 +350,7 @@ public class PropertiesController(
 
     [HttpPost("{id}/images")]
     [Consumes("multipart/form-data")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<ActionResult<Property>> UploadImages(Guid id, [FromForm] List<IFormFile> images)
     {
         var userId = GetAuthenticatedUserId();
@@ -391,6 +405,7 @@ public class PropertiesController(
     }
 
     [HttpGet("{id}/images")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     public async Task<ActionResult<List<string>>> GetImages(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -412,7 +427,7 @@ public class PropertiesController(
     }
 
     [HttpDelete("{id}/images/{imageIndex}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<ActionResult<Property>> DeleteImage(Guid id, int imageIndex)
     {
         var userId = GetAuthenticatedUserId();
@@ -462,7 +477,7 @@ public class PropertiesController(
     }
 
     [HttpPut("{id}/images/order")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     public async Task<ActionResult<Property>> ReorderImages(Guid id, [FromBody] List<string> orderedImageUrls)
     {
         var userId = GetAuthenticatedUserId();
@@ -509,6 +524,7 @@ public class PropertiesController(
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpGet("{id}/detail")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     public async Task<ActionResult<PropertyDetailResponse>> GetDetail(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -554,11 +570,10 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Read))
             return Forbid();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.List");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.List");
 
         var documents = await documentService.GetByPropertyIdAsync(id);
         return Ok(documents.Select(ToDocumentDto));
@@ -578,7 +593,7 @@ public class PropertiesController(
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
     [HttpPost("{id}/documents")]
     [Consumes("multipart/form-data")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     public async Task<ActionResult<PropertyDocumentDto>> UploadDocument(
         Guid id,
         IFormFile file,
@@ -592,14 +607,13 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
             return Forbid();
 
         if (!Enum.TryParse<DocumentType>(documentType, ignoreCase: true, out var docType))
             return BadRequest(new { error = $"Invalid document type: {documentType}" });
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.Upload");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Upload");
 
         try
         {
@@ -627,7 +641,7 @@ public class PropertiesController(
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">Property or document not found.</response>
     [HttpDelete("{id}/documents/{docId}")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     public async Task<IActionResult> DeleteDocument(Guid id, Guid docId)
     {
         var userId = GetAuthenticatedUserId();
@@ -638,15 +652,14 @@ public class PropertiesController(
         if (property == null)
             return NotFound();
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
             return Forbid();
 
         var document = await documentService.GetDocumentAsync(docId);
         if (document == null || document.PropertyId != id)
             return NotFound();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, roles, "PropertyDocument.Delete");
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Delete");
 
         await documentService.DeleteDocumentAsync(docId);
         return NoContent();
@@ -725,8 +738,7 @@ public class PropertiesController(
         if (property == null)
             return (null, NotFound());
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Read))
         {
             logger.LogWarning("User {UserId} denied access to document {DocumentId} of property {PropertyId}",
                 userId, documentId, propertyId);
@@ -737,7 +749,7 @@ public class PropertiesController(
         if (document == null || document.PropertyId != propertyId)
             return (null, NotFound());
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, propertyId, property.OwnerId, roles, auditAction);
+        await AuditPrivilegedAccessIfNeededAsync(userId, propertyId, property.OwnerId, GetUserRoles(), auditAction);
         return (document, null);
     }
 
@@ -819,6 +831,7 @@ public class PropertiesController(
     }
 
     [HttpGet("{id:guid}/ical/status")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     public async Task<ActionResult<PropertyIcalStatusDto>> GetIcalStatus(
         Guid id,
         [FromServices] IAuthorizationService hostAuthorization,
@@ -855,7 +868,7 @@ public class PropertiesController(
     }
 
     [HttpGet("{id:guid}/ical/export-url")]
-    [Authorize(Policy = "RequireContext:short-rent:property.read")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     public async Task<ActionResult<PropertyIcalExportUrlDto>> GetIcalExportUrl(Guid id, CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
@@ -904,6 +917,7 @@ public class PropertiesController(
     // ─── Compliance activation wizard (#295) ───────────────────────────────────
 
     [HttpGet("{id:guid}/compliance/activation")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(PropertyActivationWizardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PropertyActivationWizardDto>> GetComplianceActivation(
@@ -971,7 +985,7 @@ public class PropertiesController(
         };
 
     [HttpPost("{id:guid}/compliance/activation/complete")]
-    [Authorize(Policy = "RequireContext:short-rent:property.write")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(CompletePropertyActivationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]

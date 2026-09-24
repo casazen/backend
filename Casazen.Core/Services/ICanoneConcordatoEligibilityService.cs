@@ -46,9 +46,12 @@ public record CanoneConcordatoEligibilityDto(
 
 public interface ICanoneConcordatoEligibilityService
 {
+    /// <summary>
+    /// Rent band of the property, or <c>null</c> when the property is not visible (tenant filter). No ownership check:
+    /// the caller authorizes the property first (TN-3), so an org member with the lease permission gets it too.
+    /// </summary>
     Task<CanoneConcordatoEligibilityDto?> CalculateAsync(
         Guid propertyId,
-        string ownerId,
         RentBandCharacteristics characteristics,
         CancellationToken cancellationToken = default);
 }

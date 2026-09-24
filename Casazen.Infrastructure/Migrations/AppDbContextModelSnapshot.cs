@@ -132,6 +132,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int?>("CancellationReason")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CheckInDate")
                         .HasColumnType("timestamp with time zone");
 
