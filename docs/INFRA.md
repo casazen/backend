@@ -442,6 +442,7 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
 | `Ai__Provider`, `Ai__ApiKey`, `Ai__Subprocessor__*` | no (default `Stub`, no external call) | — | [`ai.md`](runbooks/ai.md) |
 | `Features__OtaPartnerApi`, `Features__AiSupplierDiscovery` | no: leave unset (off, decisions D10/D11) | — | [`feature-flags.md`](runbooks/feature-flags.md) |
+| `LeaseTemplates__Variants__<Regime>__VersionId`, `__Approved`, `__ApprovalReference`, `__ApprovedAt` | no: leave unset (no approved contract template, signing answers 422) | `Approved=true` with an empty or `dev-stub` version, without reference/date or with a missing/incomplete template file: startup fails | [`lease-contract-templates.md`](runbooks/lease-contract-templates.md) |
 | `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |
 
 GitHub (backend repo, Actions **variables**): `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` — required, `verify-test` / `verify-prod` fail without them.
