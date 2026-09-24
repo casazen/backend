@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924090237_SuspendUserAuth0Roles")]
+    [Migration("20260924094745_SuspendUserAuth0Roles")]
     partial class SuspendUserAuth0Roles
     {
         /// <inheritdoc />
@@ -220,6 +220,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("CancellationNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int?>("CancellationReason")
                         .HasColumnType("integer");
 
@@ -241,6 +245,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime?>("CheckoutWizardStartedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("CleaningFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -841,7 +849,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("RegistrationDeadline")
+                    b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SignedPdfStoragePath")
@@ -853,6 +861,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StipulaDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
