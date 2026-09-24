@@ -125,7 +125,14 @@ public enum BookingSource
     Vrbo,
     TripAdvisor,
     Agoda,
-    Local
+    Local,
+
+    /// <summary>
+    /// Entered by the host (web console, phone or walk-in booking), as opposed to <see cref="Direct"/> which is the
+    /// public checkout of the booking site. Created <see cref="BookingStatus.Confirmed"/>, it occupies its dates at
+    /// once and is never touched by the expiry of abandoned checkout holds (PC-01, A2-01). Stored as 8.
+    /// </summary>
+    Manual
 }
 
 public enum PaymentOption

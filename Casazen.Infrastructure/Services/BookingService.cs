@@ -47,25 +47,51 @@ public class BookingService(
         return await repository.GetAllAsync();
     }
 
-    public async Task<Booking> CreateBookingAsync(Booking booking)
+    public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(guest);
+        if (booking.OrgId == Guid.Empty)
+            throw new ArgumentException("A manual booking must carry the org of its property.", nameof(booking));
+
+        // A booking entered by the host is a confirmed stay from the start: it occupies its dates on the booking site
+        // and in the iCal export, and the checkout hold expiry never cancels it (PC-01, A2-01).
+        booking.Status = BookingStatus.Confirmed;
+        booking.Source = BookingSource.Manual;
+        booking.GuestId = guest.Id;
+        guest.OrgId = booking.OrgId;
+
         var validationResult = BookingValidator.ValidateBooking(booking, today: _clock.TodayInRome());
         if (!validationResult.IsValid)
         {
-            logger.LogWarning("Booking validation failed: {Errors}", validationResult.ErrorMessage);
-            throw new InvalidOperationException($"Booking validation failed: {validationResult.ErrorMessage}");
+            logger.LogWarning(
+                "Manual booking validation failed for property {PropertyId}: {Errors}",
+                booking.PropertyId, validationResult.ErrorMessage);
+            throw new DomainRuleException(BookingErrorCodes.CreateInvalid, "BookingCreateInvalid");
         }
 
         if (!await IsPropertyAvailableAsync(booking.PropertyId, booking.CheckInDate, booking.CheckOutDate))
         {
-            logger.LogWarning(
-                "Property {PropertyId} not available from {CheckIn} to {CheckOut}",
+            logger.LogInformation(
+                "Manual booking rejected: property {PropertyId} not available from {CheckIn:yyyy-MM-dd} to {CheckOut:yyyy-MM-dd}",
                 booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
-            throw new InvalidOperationException("Property not available for selected dates");
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
-        logger.LogInformation("Creating booking for property {PropertyId}", booking.PropertyId);
-        return await repository.AddAsync(booking);
+        // The guest snapshot is written only once the dates are known to be free, and removed again if a concurrent
+        // booking takes them before the insert (the repository re-checks under the property lock).
+        await guestRepository.AddAsync(guest);
+        try
+        {
+            logger.LogInformation("Creating manual booking for property {PropertyId}", booking.PropertyId);
+            return await repository.AddAsync(booking);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
+        {
+            await guestRepository.DeleteAsync(guest.Id);
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
+        }
     }
 
     public async Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input)
@@ -381,7 +407,7 @@ public class BookingService(
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
         {
-            throw new DomainConflictException("booking_dates_unavailable", "BookingDatesUnavailable");
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
     }
 
@@ -405,7 +431,8 @@ public class BookingService(
         int? pendingDirectTtlMinutes = null)
     {
         var effectivePendingTtlMinutes = pendingDirectTtlMinutes ?? GetPendingDirectTtlMinutes();
-        await repository.CancelExpiredPendingDirectBookingsAsync(propertyId, effectivePendingTtlMinutes);
+        await repository.CancelExpiredPendingDirectBookingsAsync(
+            propertyId, checkIn, checkOut, effectivePendingTtlMinutes);
 
         if (!await repository.IsAvailableAsync(propertyId, checkIn, checkOut, effectivePendingTtlMinutes))
             return false;
@@ -413,14 +440,10 @@ public class BookingService(
         return !await propertyICalSyncService.HasOverlappingBlockAsync(propertyId, checkIn, checkOut);
     }
 
-    public async Task<int> CancelExpiredPendingDirectBookingsAsync(Guid propertyId, int pendingDirectTtlMinutes)
-    {
-        return await repository.CancelExpiredPendingDirectBookingsAsync(propertyId, pendingDirectTtlMinutes);
-    }
-
     public async Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate)
     {
-        await repository.CancelExpiredPendingDirectBookingsAsync(propertyId, GetPendingDirectTtlMinutes());
+        await repository.CancelExpiredPendingDirectBookingsAsync(
+            propertyId, startDate, endDate, GetPendingDirectTtlMinutes());
         return await repository.GetByDateRangeAsync(propertyId, startDate, endDate);
     }
 

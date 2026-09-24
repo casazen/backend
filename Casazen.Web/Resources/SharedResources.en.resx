@@ -201,6 +201,15 @@
   <data name="BookingDatesUnavailable" xml:space="preserve">
     <value>The property is not available for the selected dates.</value>
   </data>
+  <data name="BookingCreateInvalid" xml:space="preserve">
+    <value>The booking cannot be created: the check-in cannot be in the past, the check-out must follow the check-in and at least one guest is needed.</value>
+  </data>
+  <data name="BookingInvalidDates" xml:space="preserve">
+    <value>The check-out date must be after the check-in date.</value>
+  </data>
+  <data name="BookingTooManyGuests" xml:space="preserve">
+    <value>This property hosts at most {0} guests.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>

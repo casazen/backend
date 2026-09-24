@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -6,6 +7,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
@@ -22,7 +24,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "RequireContext:short-rent:booking.read")]
+[Authorize(Policy = CasazenPolicies.BookingRead)]
 public class BookingsController(
     IBookingService bookingService,
     ITaxCalculationService taxCalculationService,
@@ -30,7 +32,6 @@ public class BookingsController(
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
-    IGuestService guestService,
     IBackgroundJobClient backgroundJobClient,
     IGuestCheckInService checkInService,
     IComplianceWizardService complianceWizardService,
@@ -91,51 +92,55 @@ public class BookingsController(
         return Ok(BookingMapper.ToResponse(booking));
     }
 
+    /// <summary>
+    /// Booking entered by the host (phone, walk-in, another channel): created <c>Confirmed</c> with source
+    /// <c>Manual</c>, so it occupies its dates on the booking site and in the iCal export at once and is never
+    /// cancelled by the expiry of abandoned checkout holds (PC-01, A2-01). Overlapping dates answer 409
+    /// <c>booking_dates_unavailable</c>.
+    /// </summary>
     [HttpPost]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<ActionResult<BookingResponseDto>> Create([FromBody] CreateBookingRequest request)
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(BookingResponseDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<BookingResponseDto>> Create(
+        [FromBody] CreateBookingRequest request,
+        [FromServices] IAuthorizationService hostAuthorization)
     {
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized();
-
+        // TN-3: the tenant filter hides a property of another org (404); a visible one still needs booking.write on
+        // it (owner or org-wide role), otherwise 403.
         var property = await propertyService.GetPropertyAsync(request.PropertyId);
         if (property == null)
-            return NotFound("Property not found");
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await hostAuthorization.IsAuthorizedAsync(User, HostResource.ForProperty(property), BookingOperations.Write))
+        {
+            logger.LogWarning(
+                "User {UserId} denied booking.write on property {PropertyId}",
+                User.GetUserId(), request.PropertyId);
             return Forbid();
+        }
 
         if (request.NumberOfGuests > property.MaxGuests)
         {
-            return BadRequest(new
-            {
-                error = "Too many guests",
-                message = $"This property allows a maximum of {property.MaxGuests} guests."
-            });
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                BookingErrorCodes.TooManyGuests,
+                "BookingTooManyGuests",
+                property.MaxGuests);
         }
 
-        var checkIn = DateTime.SpecifyKind(request.CheckInDate.Date, DateTimeKind.Utc);
-        var checkOut = DateTime.SpecifyKind(request.CheckOutDate.Date, DateTimeKind.Utc);
+        var checkIn = request.CheckInDate.Date;
+        var checkOut = request.CheckOutDate.Date;
         if (checkOut <= checkIn)
-            return BadRequest("Check-out date must be after check-in date");
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.InvalidDates, "BookingInvalidDates");
 
-        logger.LogInformation("Creating booking for property: {PropertyId}", request.PropertyId);
+        logger.LogInformation("Creating manual booking for property {PropertyId}", request.PropertyId);
 
-        var isAvailable = await bookingService.IsPropertyAvailableAsync(
-            request.PropertyId, checkIn, checkOut);
-
-        if (!isAvailable)
-        {
-            logger.LogWarning("Property not available: {PropertyId} from {CheckIn} to {CheckOut}",
-                request.PropertyId, checkIn, checkOut);
-            return BadRequest("Property not available for these dates");
-        }
-
-        var guest = await ResolveGuestAsync(property.OrgId, request.Guest);
         var nights = (checkOut - checkIn).Days;
         var basePrice = property.NightlyRate * nights + property.CleaningFee;
 
@@ -143,13 +148,10 @@ public class BookingsController(
         {
             PropertyId = request.PropertyId,
             OrgId = property.OrgId,
-            GuestId = guest.Id,
             CheckInDate = checkIn,
             CheckOutDate = checkOut,
             NumberOfGuests = request.NumberOfGuests,
             SpecialRequests = request.SpecialRequests ?? string.Empty,
-            Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
             BasePrice = basePrice,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -159,19 +161,12 @@ public class BookingsController(
             booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
         booking.TotalPrice = booking.BasePrice + booking.TouristTax;
 
-        try
-        {
-            var created = await bookingService.CreateBookingAsync(booking);
-            var loaded = await bookingService.GetBookingAsync(created.Id);
-            var response = loaded is null ? BookingMapper.ToResponse(created) : BookingMapper.ToResponse(loaded);
-            logger.LogInformation("Booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, response);
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning(ex, "Booking creation failed for property {PropertyId}", request.PropertyId);
-            return BadRequest(ex.Message);
-        }
+        // Status (Confirmed), source (Manual), guest snapshot and the overlap check (409) are the service's job.
+        var created = await bookingService.CreateManualBookingAsync(booking, NewGuestSnapshot(property.OrgId, request.Guest));
+        var loaded = await bookingService.GetBookingAsync(created.Id);
+        var response = loaded is null ? BookingMapper.ToResponse(created) : BookingMapper.ToResponse(loaded);
+        logger.LogInformation("Manual booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, response);
     }
 
     [HttpPut("{id}")]
@@ -549,22 +544,17 @@ public class BookingsController(
 
     // One guest snapshot per host booking (#431), owned by the property's org (TN-1): never a lookup by
     // e-mail, so a booking can neither reuse nor reveal a guest of another org.
-    private async Task<Guest> ResolveGuestAsync(Guid orgId, CreateBookingGuestRequest guestInfo)
+    private static Guest NewGuestSnapshot(Guid orgId, CreateBookingGuestRequest guestInfo) => new()
     {
-        var guest = new Guest
-        {
-            OrgId = orgId,
-            FirstName = guestInfo.FirstName,
-            LastName = guestInfo.LastName,
-            Email = guestInfo.Email,
-            PhoneNumber = guestInfo.Phone,
-            Country = guestInfo.Country,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        };
-
-        return await guestService.CreateGuestSnapshotAsync(guest);
-    }
+        OrgId = orgId,
+        FirstName = guestInfo.FirstName,
+        LastName = guestInfo.LastName,
+        Email = guestInfo.Email,
+        PhoneNumber = guestInfo.Phone,
+        Country = guestInfo.Country,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+    };
 
     /// <summary>Regenerates the guest check-in token and resends the email (AC9, US-020).</summary>
     [HttpPost("{id}/checkin/resend-link")]
