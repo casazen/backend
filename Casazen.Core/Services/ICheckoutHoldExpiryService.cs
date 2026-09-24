@@ -8,6 +8,9 @@ namespace Casazen.Core.Services;
 /// <see cref="Entities.PaymentStatus.Canceled"/>. When Stripe says the guest has already paid
 /// or is paying (<c>succeeded</c>, <c>processing</c>, <c>requires_capture</c>) the booking is left to the payment
 /// webhook and its payment row is marked <see cref="Entities.PaymentStatus.Processing"/>, which keeps the dates taken.
+/// "Pay at the property" requests past their deadline (BK-06, <see cref="OnSiteRequests"/>) have no intent: they are
+/// cancelled with <see cref="Entities.BookingCancellationReason.OnSiteEmailNotConfirmed"/> or
+/// <see cref="Entities.BookingCancellationReason.OnSiteRequestExpired"/> (the guest then gets an email).
 /// </summary>
 public interface ICheckoutHoldExpiryService
 {

@@ -25,6 +25,7 @@ public class BookingService(
     IConfiguration configuration,
     ILogger<BookingService> logger,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
+    OnSiteRequestNotifier onSiteNotifier,
     TimeProvider? timeProvider = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -137,6 +138,14 @@ public class BookingService(
         var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
         var (checkIn, checkOut) = ValidateStay(property, input.CheckInDate, input.CheckOutDate, totalGuests);
 
+        // A3-06: a "pay at the property" request holds its dates with no guarantee: its length is capped.
+        if (input.PaymentOption == PaymentOption.OnSite)
+        {
+            var maxNights = OnSiteRequests.GetMaxNights(configuration);
+            if ((checkOut - checkIn).Days > maxNights)
+                throw new DomainRuleException(OnSiteRequestErrorCodes.TooManyNights, "OnSiteRequestTooManyNights", maxNights);
+        }
+
         // Same price as the checkout quote (BK-03, R-05): computed before any write, so a missing age leaves nothing behind.
         var price = await PriceStayAsync(
             property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges);
@@ -188,6 +197,17 @@ public class BookingService(
             UpdatedAt = DateTime.UtcNow,
         };
 
+        // D5 (BK-06): a "pay at the property" request is never confirmed here. It holds its dates until the guest confirms
+        // the email (link in the "request received" email), then until the host answers (OnSiteRequests).
+        string? onSiteEmailToken = null;
+        if (input.PaymentOption == PaymentOption.OnSite)
+        {
+            onSiteEmailToken = OnSiteRequests.NewEmailVerificationToken();
+            booking.GuestEmailVerificationTokenHash = OnSiteRequests.HashEmailVerificationToken(onSiteEmailToken);
+            booking.RequestExpiresAt = _clock.GetUtcNow().UtcDateTime
+                .AddMinutes(OnSiteRequests.GetEmailVerificationMinutes(configuration));
+        }
+
         var validationResult = BookingValidator.ValidateBooking(booking, today: _clock.TodayInRome());
         if (!validationResult.IsValid)
         {
@@ -235,7 +255,7 @@ public class BookingService(
                 break;
 
             case PaymentOption.OnSite:
-                await HandleOnSitePaymentAsync(createdBooking);
+                await OpenOnSiteRequestAsync(createdBooking, onSiteEmailToken!);
                 break;
         }
 
@@ -252,7 +272,8 @@ public class BookingService(
             setupIntentClientSecret,
             freeRefundDeadline,
             input.PaymentOption,
-            price.TouristTax.Status);
+            price.TouristTax.Status,
+            createdBooking.RequestExpiresAt);
     }
 
     public async Task<DirectBookingQuote> QuoteDirectBookingAsync(
@@ -441,12 +462,13 @@ public class BookingService(
         return setupIntent.ClientSecret ?? string.Empty;
     }
 
-    private async Task HandleOnSitePaymentAsync(Booking booking)
+    /// <summary>
+    /// "Pay at the property" (D5, BK-06): the booking stays Pending as a request. The payment row records the amount due
+    /// at the property; the guest gets the "request received" email with the link that confirms the address and sends
+    /// the request to the host.
+    /// </summary>
+    private async Task OpenOnSiteRequestAsync(Booking booking, string emailToken)
     {
-        booking.Status = BookingStatus.Confirmed;
-        booking.UpdatedAt = DateTime.UtcNow;
-        await repository.UpdateAsync(booking);
-
         var payment = new Payment
         {
             BookingId = booking.Id,
@@ -459,6 +481,12 @@ public class BookingService(
             UpdatedAt = DateTime.UtcNow,
         };
         await paymentRepository.AddAsync(payment);
+
+        logger.LogInformation(
+            "On-site request {BookingId} created: waiting for the guest's email confirmation until {RequestExpiresAt:o}",
+            booking.Id,
+            booking.RequestExpiresAt);
+        await onSiteNotifier.RequestReceivedAsync(booking.Id, emailToken);
     }
 
     public async Task<Booking> UpdateBookingAsync(Booking booking)

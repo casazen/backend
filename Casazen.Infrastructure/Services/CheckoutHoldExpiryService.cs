@@ -18,10 +18,13 @@ namespace Casazen.Infrastructure.Services;
 /// the hold is no longer expired when read again. A Stripe failure leaves the hold as it is for the next run. The
 /// idempotency key of a cancellation is derived from the intent and its latest attempt, so a retry never sends a
 /// second cancellation of the same attempt. Without PostgreSQL (EF InMemory in unit tests) nothing is locked.
+/// "Pay at the property" requests past their deadline (BK-06) go through the same routine (they have no intent to cancel)
+/// and are cancelled with their own reason; the guest of a request the host did not answer gets an email.
 /// </remarks>
 public sealed class CheckoutHoldExpiryService(
     AppDbContext db,
     IStripeService stripeService,
+    OnSiteRequestNotifier onSiteNotifier,
     IConfiguration configuration,
     ILogger<CheckoutHoldExpiryService> logger,
     TimeProvider? timeProvider = null) : ICheckoutHoldExpiryService
@@ -77,8 +80,8 @@ public sealed class CheckoutHoldExpiryService(
         Func<IQueryable<Booking>, IQueryable<Booking>>? scope,
         CancellationToken cancellationToken)
     {
-        var cutoffUtc = CheckoutHolds.ExpiryCutoffUtc(UtcNow(), CheckoutHolds.GetTtlMinutes(configuration));
-        var holds = db.Bookings.Where(CheckoutHolds.IsExpired(cutoffUtc));
+        var cutoff = CheckoutHolds.CutoffAt(UtcNow(), CheckoutHolds.GetTtlMinutes(configuration));
+        var holds = db.Bookings.Where(CheckoutHolds.IsExpired(cutoff));
         if (scope is not null)
             holds = scope(holds);
 
@@ -93,7 +96,7 @@ public sealed class CheckoutHoldExpiryService(
         foreach (var bookingId in holdIds)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            switch (await ExpireHoldAsync(bookingId, cutoffUtc, cancellationToken))
+            switch (await ExpireHoldAsync(bookingId, cutoff, cancellationToken))
             {
                 case HoldOutcome.Expired:
                     expired++;
@@ -113,7 +116,19 @@ public sealed class CheckoutHoldExpiryService(
         return new CheckoutHoldExpiryRun(expired, leftToWebhook, skipped, failed);
     }
 
-    private async Task<HoldOutcome> ExpireHoldAsync(Guid bookingId, DateTime cutoffUtc, CancellationToken cancellationToken)
+    private async Task<HoldOutcome> ExpireHoldAsync(Guid bookingId, HoldExpiryCutoff cutoff, CancellationToken cancellationToken)
+    {
+        var outcome = await ExpireHoldLockedAsync(bookingId, cutoff, cancellationToken);
+        if (outcome.NotifyGuestOfExpiredRequest)
+            await onSiteNotifier.ExpiredAsync(bookingId, cancellationToken);
+        return outcome.Outcome;
+    }
+
+    /// <summary>One hold under its row lock; the email of an expired "pay at the property" request is sent after the commit.</summary>
+    private async Task<(HoldOutcome Outcome, bool NotifyGuestOfExpiredRequest)> ExpireHoldLockedAsync(
+        Guid bookingId,
+        HoldExpiryCutoff cutoff,
+        CancellationToken cancellationToken)
     {
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         Booking? booking = null;
@@ -122,17 +137,17 @@ public sealed class CheckoutHoldExpiryService(
             if (!await TryLockBookingAsync(bookingId, cancellationToken))
             {
                 logger.LogInformation("Checkout hold {BookingId} is being expired by another run: skipped", bookingId);
-                return HoldOutcome.Skipped;
+                return (HoldOutcome.Skipped, false);
             }
 
             // Read again under the lock: a concurrent run, the payment webhook or the host may have changed it.
             booking = await db.Bookings
                 .Where(b => b.Id == bookingId)
-                .Where(CheckoutHolds.IsExpired(cutoffUtc))
+                .Where(CheckoutHolds.IsExpired(cutoff))
                 .Include(b => b.Payments)
                 .SingleOrDefaultAsync(cancellationToken);
             if (booking is null)
-                return HoldOutcome.Skipped;
+                return (HoldOutcome.Skipped, false);
 
             // Fallback for payment rows recorded before BK-02 stored the account of their intent.
             var orgAccountId = await db.Orgs
@@ -144,30 +159,42 @@ public sealed class CheckoutHoldExpiryService(
             switch (release)
             {
                 case IntentRelease.Released:
-                    ExpireBooking(booking);
+                    var reason = booking.PaymentOption == PaymentOption.OnSite
+                        ? OnSiteRequests.ExpiryReason(booking)
+                        : BookingCancellationReason.CheckoutHoldExpired;
+                    ExpireBooking(booking, reason);
                     await db.SaveChangesAsync(cancellationToken);
                     if (transaction is not null)
                         await transaction.CommitAsync(cancellationToken);
-                    logger.LogInformation(
-                        "Checkout hold {BookingId} expired: intent cancelled on Stripe, dates released", booking.Id);
-                    return HoldOutcome.Expired;
+                    if (reason == BookingCancellationReason.CheckoutHoldExpired)
+                    {
+                        logger.LogInformation(
+                            "Checkout hold {BookingId} expired: intent cancelled on Stripe, dates released", booking.Id);
+                    }
+                    else
+                    {
+                        logger.LogInformation(
+                            "On-site request {BookingId} expired ({Reason}): dates released", booking.Id, reason);
+                    }
+
+                    return (HoldOutcome.Expired, reason == BookingCancellationReason.OnSiteRequestExpired);
 
                 case IntentRelease.InFlight:
                     MarkPaymentsInFlight(booking, inFlightPaymentIntentIds);
                     await db.SaveChangesAsync(cancellationToken);
                     if (transaction is not null)
                         await transaction.CommitAsync(cancellationToken);
-                    return HoldOutcome.LeftToWebhook;
+                    return (HoldOutcome.LeftToWebhook, false);
 
                 default:
-                    return HoldOutcome.Failed;
+                    return (HoldOutcome.Failed, false);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Checkout hold {BookingId} could not be expired; the next run retries it", bookingId);
             ForgetChanges(booking);
-            return HoldOutcome.Failed;
+            return (HoldOutcome.Failed, false);
         }
     }
 
@@ -375,11 +402,11 @@ public sealed class CheckoutHoldExpiryService(
         return null;
     }
 
-    private void ExpireBooking(Booking booking)
+    private void ExpireBooking(Booking booking, BookingCancellationReason reason)
     {
         var now = UtcNow();
         booking.Status = BookingStatus.Cancelled;
-        booking.CancellationReason = BookingCancellationReason.CheckoutHoldExpired;
+        booking.CancellationReason = reason;
         booking.UpdatedAt = now;
 
         // Never collected: same state as a host cancellation (BK-02) and the payment_intent.canceled webhook.
