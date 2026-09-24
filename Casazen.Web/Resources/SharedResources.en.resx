@@ -483,4 +483,19 @@
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>Self-registration is not available for this municipality: choose one from the list or ask for an invitation.</value>
   </data>
+  <data name="SignupAttributionTooLong" xml:space="preserve">
+    <value>The field {0} can contain at most {1} characters.</value>
+  </data>
+  <data name="SignupAttributionInvalidCharacters" xml:space="preserve">
+    <value>The field {0} contains characters that are not allowed.</value>
+  </data>
+  <data name="SignupAttributionUnknownComune" xml:space="preserve">
+    <value>The given comune (municipality) is not one CasaZen manages.</value>
+  </data>
+  <data name="SignupAttributionOnboardingRequired" xml:space="preserve">
+    <value>The signup source can be recorded only after completing the onboarding.</value>
+  </data>
+  <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
+    <value>CasaZen subdomains are not available yet: use the CasaZen path or a custom domain.</value>
+  </data>
 </root>

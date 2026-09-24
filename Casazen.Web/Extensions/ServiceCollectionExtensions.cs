@@ -310,6 +310,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
+        services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.

@@ -31,6 +31,7 @@ public class EndpointAuthorizationArchitectureTests
         ["UsersController.UpdateMe"] = "Updates the caller's own profile.",
         ["UsersController.PostOnboarding"] = "First onboarding: creates the caller's org and memberships, so no context permission exists yet.",
         ["UsersController.PutOnboarding"] = "Onboarding update of the caller's own account (same reason as PostOnboarding).",
+        ["UsersController.RecordSignupAttribution"] = "Signup attribution of the org the caller's own first onboarding created (SE-03); the service reads the org from the caller's user row.",
         ["DevicesController.Register"] = "Push token of the caller's own device (hosts and suppliers alike); rows keyed by the caller's UserId.",
         ["DevicesController.Unregister"] = "Removes the caller's own push token.",
 

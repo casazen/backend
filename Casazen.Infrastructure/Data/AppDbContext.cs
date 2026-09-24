@@ -82,6 +82,7 @@ public class AppDbContext(
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
+    public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
@@ -584,6 +585,23 @@ public class AppDbContext(
 
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
+
+        // ─── Signup attribution (SE-03 / A8-03) ─────────────────────────────────
+        modelBuilder.Entity<SignupAttribution>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One attribution per org: the first one wins, a parallel insert fails with 23505 and is ignored.
+            entity.HasIndex(a => a.OrgId)
+                .IsUnique()
+                .HasDatabaseName("UIX_SignupAttributions_OrgId");
+
+            entity.HasIndex(a => a.RecordedAt)
+                .HasDatabaseName("IX_SignupAttributions_RecordedAt");
+        });
 
         // ─── Supplier console (US-022 / #292) ────────────────────────────────────
         modelBuilder.Entity<SupplierProfile>()

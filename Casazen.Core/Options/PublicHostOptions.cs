@@ -4,7 +4,17 @@ public class PublicHostOptions
 {
     public const string SectionName = "PublicHost";
 
-    public string BaseDomain { get; set; } = "casazen.it";
+    /// <summary>
+    /// Base domain of the org subdomains (<c>{label}.{BaseDomain}</c>), Railway variable <c>PublicHost__BaseDomain</c>.
+    /// No default (decision D3, SE-03): it is not the public domain of the web app (<c>App__PublicSiteBaseUrl</c>) but
+    /// the domain whose wildcard DNS record points to the web app. When empty, the subdomain publication mode is
+    /// unavailable (runbook <c>docs/runbooks/seo-domain.md</c>).
+    /// </summary>
+    public string? BaseDomain { get; set; }
+
+    /// <summary><see cref="BaseDomain"/> in lower case without surrounding dots; <c>null</c> when not configured.</summary>
+    public string? NormalizedBaseDomain =>
+        string.IsNullOrWhiteSpace(BaseDomain) ? null : BaseDomain.Trim().Trim('.').ToLowerInvariant();
 
     public string[] ReservedSubdomains { get; set; } =
     [
