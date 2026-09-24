@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924141455_AddICalMultiFeed")]
+    [Migration("20260924144813_AddICalMultiFeed")]
     partial class AddICalMultiFeed
     {
         /// <inheritdoc />
@@ -256,6 +256,15 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DeferredChargeAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DeferredChargeFailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeferredChargeLastAttemptOn")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ExternalId")
