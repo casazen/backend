@@ -11,6 +11,10 @@ namespace Casazen.Web.Authorization;
 /// the read permission, each writing action adds the write permission. The policy only says "this user may do this
 /// kind of thing"; the row itself is checked with <c>IAuthorizationService.AuthorizeAsync(User, HostResource, operation)</c>
 /// (<see cref="PropertyOperations"/>), which verifies org, permission and property ownership.</para>
+/// <para><b>Properties.</b> Both rental contexts hold <c>property.*</c>, but a permission counts only in its own
+/// context: the property core a long-term landlord needs (list, record, documents) uses <see cref="SharedPropertyRead"/> /
+/// <see cref="SharedPropertyWrite"/>, everything about short stays uses <see cref="PropertyRead"/> /
+/// <see cref="PropertyWrite"/>, so a landlord with only the long-rent context never reaches bookings, calendars or OTA.</para>
 /// <para><see cref="Authenticated"/> is for user-scoped endpoints only (own profile, own devices, onboarding): every
 /// action whose only policy is <see cref="Authenticated"/> (or a bare <c>[Authorize]</c>) must be listed, with a reason,
 /// in the allow-list of <c>EndpointAuthorizationArchitectureTests</c>.</para>
@@ -32,14 +36,30 @@ public static class CasazenPolicies
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
+    /// <summary>Either rental context: the permission may be held in short-rent or in long-rent (see <see cref="ParseContextPolicy"/>).</summary>
+    private const string AnyRentalContext = "RequireContext:short-rent|long-rent:";
+
+    /// <summary>Separates the alternative contexts of a context policy (<c>RequireContext:a|b:permission</c>).</summary>
+    private const char ContextSeparator = '|';
+
     /// <summary>
-    /// Read a property and its configuration. <c>property.*</c> is shared by the short-rent and long-rent contexts
-    /// (<c>ContextAuthorizationService</c>), so this policy admits both kinds of host.
+    /// Read a property's short-stay side: pricing, iCal calendars, photos, CIN, listing activation, fiscal, service
+    /// requests. Short-rent context only: a long-term landlord (long-rent <c>property.read</c>) does not pass.
     /// </summary>
     public const string PropertyRead = ShortRent + "property.read";
 
-    /// <summary>Change a property and its configuration (pricing, documents, service requests). Both host contexts.</summary>
+    /// <summary>Change a property's short-stay side (see <see cref="PropertyRead"/>). Short-rent context only.</summary>
     public const string PropertyWrite = ShortRent + "property.write";
+
+    /// <summary>
+    /// Read the property core that both kinds of landlord need (A7-06): the property list and record, its documents
+    /// (APE) and the org plan entitlement. Passes with <c>property.read</c> in the short-rent <b>or</b> the long-rent
+    /// context; the row is checked with <see cref="SharedPropertyOperations"/>.
+    /// </summary>
+    public const string SharedPropertyRead = AnyRentalContext + "property.read";
+
+    /// <summary>Create or change the property core (record, documents): <c>property.write</c> in either rental context.</summary>
+    public const string SharedPropertyWrite = AnyRentalContext + "property.write";
 
     public const string BookingRead = ShortRent + "booking.read";
     public const string BookingWrite = ShortRent + "booking.write";
@@ -62,6 +82,7 @@ public static class CasazenPolicies
     public static IReadOnlyList<string> ContextPolicies { get; } =
     [
         PropertyRead, PropertyWrite,
+        SharedPropertyRead, SharedPropertyWrite,
         BookingRead, BookingWrite,
         PaymentRead, PaymentWrite,
         GuestRead, GuestWrite,
@@ -69,8 +90,11 @@ public static class CasazenPolicies
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
     ];
 
-    /// <summary>Splits a context policy name into its context and permission.</summary>
-    public static (string ContextKey, string PermissionKey) ParseContextPolicy(string policyName)
+    /// <summary>
+    /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>
+    /// has one context, <c>RequireContext:short-rent|long-rent:property.read</c> passes with either.
+    /// </summary>
+    public static (IReadOnlyList<string> ContextKeys, string PermissionKey) ParseContextPolicy(string policyName)
     {
         if (!policyName.StartsWith(ContextPolicyPrefix, StringComparison.Ordinal))
             throw new ArgumentException($"'{policyName}' is not a context policy.", nameof(policyName));
@@ -79,6 +103,10 @@ public static class CasazenPolicies
         if (parts.Length != 2 || parts.Any(string.IsNullOrWhiteSpace))
             throw new ArgumentException($"'{policyName}' is not a context policy.", nameof(policyName));
 
-        return (parts[0], parts[1]);
+        var contextKeys = parts[0].Split(ContextSeparator);
+        if (contextKeys.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException($"'{policyName}' is not a context policy.", nameof(policyName));
+
+        return (contextKeys, parts[1]);
     }
 }

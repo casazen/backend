@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -9,9 +10,11 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +37,7 @@ public class PropertiesControllerTests
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IEntitlementService> _mockEntitlementService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
+    private readonly Mock<IAuthorizationService> _mockHostAuthz;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -48,6 +52,12 @@ public class PropertiesControllerTests
         _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockEntitlementService = new Mock<IEntitlementService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
+        // TN-3 resource check of the shared property actions: denied unless a test allows it (as the legacy mock).
+        _mockHostAuthz = new Mock<IAuthorizationService>();
+        _mockHostAuthz
+            .Setup(x => x.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(AuthorizationResult.Failed());
         _mockLogger = new Mock<ILogger<PropertiesController>>();
         _controller = new PropertiesController(
             _mockService.Object,
@@ -60,6 +70,7 @@ public class PropertiesControllerTests
             _mockEntitlementService.Object,
             CreatePropertyICalSyncService(),
             _mockComplianceWizardService.Object,
+            _mockHostAuthz.Object,
             _mockLogger.Object);
 
         // Defaults: caller has an org and is under the plan limit. Create-path tests that need
@@ -95,8 +106,21 @@ public class PropertiesControllerTests
 
     private static readonly Guid DefaultOrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
 
-    private void AllowAuthorization() =>
+    private void AllowAuthorization()
+    {
         _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockHostAuthz
+            .Setup(x => x.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(AuthorizationResult.Success());
+    }
+
+    /// <summary>Verifies the TN-3 resource check of a shared action: this property's resource, this operation.</summary>
+    private void VerifyHostAuthorization(Property property, HostOperationRequirement operation) =>
+        _mockHostAuthz.Verify(x => x.AuthorizeAsync(
+            It.IsAny<ClaimsPrincipal>(),
+            It.Is<object?>(r => Equals(r, HostResource.ForProperty(property))),
+            It.Is<IEnumerable<IAuthorizationRequirement>>(reqs => ReferenceEquals(reqs.Single(), operation))), Times.Once);
 
     [Fact]
     public async Task GetAll_WithAuthenticatedUser_ReturnsUserProperties()
@@ -110,7 +134,7 @@ public class PropertiesControllerTests
             new() { Id = Guid.NewGuid(), Name = "Property 1", OwnerId = userId },
             new() { Id = Guid.NewGuid(), Name = "Property 2", OwnerId = userId }
         };
-        _mockService.Setup(x => x.GetOwnerPropertiesAsync(userId)).ReturnsAsync(properties);
+        _mockService.Setup(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId))).ReturnsAsync(properties);
 
         // Act
         var result = await _controller.GetAll();
@@ -119,7 +143,7 @@ public class PropertiesControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returnedProperties = Assert.IsAssignableFrom<IEnumerable<Property>>(okResult.Value);
         Assert.Equal(2, returnedProperties.Count());
-        _mockService.Verify(x => x.GetOwnerPropertiesAsync(userId), Times.Once);
+        _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
     }
 
     [Fact]
@@ -139,7 +163,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result.Result);
-        _mockService.Verify(x => x.GetOwnerPropertiesAsync(It.IsAny<string>()), Times.Never);
+        _mockService.Verify(x => x.GetPropertiesAsync(It.IsAny<HostScope>()), Times.Never);
     }
 
     [Fact]
@@ -162,7 +186,7 @@ public class PropertiesControllerTests
         var returnedProperty = Assert.IsType<Property>(okResult.Value);
         Assert.Equal(propertyId, returnedProperty.Id);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
-        _mockAuthz.Verify(x => x.CanAccess(userId, userId, It.IsAny<IEnumerable<string>>()), Times.Once);
+        VerifyHostAuthorization(property, SharedPropertyOperations.Read);
     }
 
     [Fact]
@@ -847,14 +871,42 @@ public class PropertiesControllerTests
         var userId = "auth0|specific_user_id_12345";
         SetupUserClaims(userId);
 
-        _mockService.Setup(x => x.GetOwnerPropertiesAsync(userId))
+        _mockService.Setup(x => x.GetPropertiesAsync(It.IsAny<HostScope>()))
             .ReturnsAsync(new List<Property>());
 
         // Act
         await _controller.GetAll();
 
         // Assert
-        _mockService.Verify(x => x.GetOwnerPropertiesAsync(userId), Times.Once);
+        _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAll_AsPropertyManager_ListsTheWholeOrg()
+    {
+        SetupUserClaims("auth0|manager", ["LongTermLandlord", "PropertyManager"]);
+        _mockService.Setup(x => x.GetPropertiesAsync(It.IsAny<HostScope>()))
+            .ReturnsAsync(new List<Property>());
+
+        await _controller.GetAll();
+
+        // Org-wide role: the scope has no owner filter (TN-3), so the manager can pick any property of the org.
+        _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, null)), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAll_WithoutOrg_Returns403WithoutListing()
+    {
+        SetupUserClaims("auth0|no-org");
+        _mockOrgContextResolver
+            .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var result = await _controller.GetAll();
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, problem.StatusCode);
+        _mockService.Verify(x => x.GetPropertiesAsync(It.IsAny<HostScope>()), Times.Never);
     }
 
     [Fact]

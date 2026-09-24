@@ -31,13 +31,12 @@ public class LeaseWorkflowService(
         "HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO","SE","SI","SK"
     ];
 
-    public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, string ownerId, CreateLeaseRequest request)
+    public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, CreateLeaseRequest request)
     {
+        // Who may create a lease on the property (owner or org-wide member with lease.create) is decided by the
+        // caller with the TN-3 resource check; the tenant filter keeps other orgs' properties invisible here.
         var property = await propertyRepository.GetByIdAsync(propertyId)
             ?? throw new InvalidOperationException($"Property {propertyId} not found.");
-
-        if (property.OwnerId != ownerId)
-            throw new UnauthorizedAccessException("Property does not belong to this owner.");
 
         await apeCompliance.EnsurePropertyHasValidApeAsync(propertyId);
 
@@ -47,7 +46,7 @@ public class LeaseWorkflowService(
         EnsureCanoneConcordatoMinimumTerm(request.FiscalRegime, request.StartDate, request.EndDate);
 
         if (request.FiscalRegime == FiscalRegime.CanoneConcordato)
-            await EnsureCanoneConcordatoRentIsValidAsync(propertyId, ownerId, request);
+            await EnsureCanoneConcordatoRentIsValidAsync(propertyId, request);
 
         var parties = request.Parties.ToList();
         if (!parties.Any(p => p.Role == PartyRole.Landlord))
@@ -263,9 +262,8 @@ public class LeaseWorkflowService(
         return registration;
     }
 
-    public async Task<Stream> GetRegistrationReceiptAsync(Guid leaseId, string ownerId)
+    public async Task<Stream> GetRegistrationReceiptAsync(Guid leaseId)
     {
-        await GetVerifiedLeaseAsync(leaseId, ownerId);
         var registration = await registrationRepository.GetByLeaseIdAsync(leaseId)
             ?? throw new InvalidOperationException("No registration found for this lease.");
 
@@ -298,7 +296,6 @@ public class LeaseWorkflowService(
 
     private async Task EnsureCanoneConcordatoRentIsValidAsync(
         Guid propertyId,
-        string ownerId,
         CreateLeaseRequest request)
     {
         if (request.CanoneConcordatoCharacteristics is null)
@@ -307,7 +304,6 @@ public class LeaseWorkflowService(
 
         var eligibility = await canoneConcordatoEligibility.CalculateAsync(
             propertyId,
-            ownerId,
             request.CanoneConcordatoCharacteristics);
 
         if (eligibility is not

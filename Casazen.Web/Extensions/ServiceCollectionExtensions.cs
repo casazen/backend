@@ -194,9 +194,9 @@ public static class ServiceCollectionExtensions
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
-            var (contextKey, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
+            var (contextKeys, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
             builder.AddPolicy(policyName, policy =>
-                policy.Requirements.Add(new ContextPermissionRequirement(contextKey, permissionKey)));
+                policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
 
         return services;

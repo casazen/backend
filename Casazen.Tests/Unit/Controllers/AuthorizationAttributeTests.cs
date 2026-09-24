@@ -40,7 +40,7 @@ public class AuthorizationAttributeTests
     /// (which only required a signed-in user, suppliers included).
     /// </summary>
     [Theory]
-    [InlineData(typeof(PropertiesController), CasazenPolicies.PropertyRead)]
+    [InlineData(typeof(PropertiesController), CasazenPolicies.SharedPropertyRead)]
     [InlineData(typeof(BookingsController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(GuestsController), CasazenPolicies.GuestRead)]
     [InlineData(typeof(PaymentsController), CasazenPolicies.PaymentRead)]

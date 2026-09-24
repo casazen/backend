@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
@@ -21,6 +22,17 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties
             .Where(p => p.OwnerId == ownerId && p.IsActive)
             .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(p => p.OwnerId == ownerId);
+
+        return await query.OrderBy(p => p.Name).ToListAsync();
     }
 
     public async Task<IEnumerable<Property>> GetAllAsync()

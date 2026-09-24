@@ -12,10 +12,10 @@ public class ComuneImuNotificationService(
     ITerritorialRentAgreementRepository territorialAgreements) : IComuneImuNotificationService
 {
     public async Task<ImuNotificationExportResult?> ExportAsync(
-        Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
+        Guid leaseId, CancellationToken cancellationToken = default)
     {
-        var lease = await LoadOwnedLeaseAsync(leaseId, ownerId);
-        if (lease is null)
+        var lease = await leases.GetByIdWithDetailsAsync(leaseId);
+        if (lease?.Property is null)
             return null;
         if (!await IsReadyForImuNotificationAsync(lease, cancellationToken))
             throw new ImuNotificationNotReadyException();

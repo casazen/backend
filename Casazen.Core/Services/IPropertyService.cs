@@ -1,4 +1,5 @@
-﻿using Casazen.Core.DTOs;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
@@ -7,6 +8,9 @@ public interface IPropertyService
 {
     Task<Property?> GetPropertyAsync(Guid id);
     Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId);
+
+    /// <summary>Active properties of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
+    Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope);
     Task<Property> CreatePropertyAsync(Property property);
     Task<Property> UpdatePropertyAsync(Property property);
     Task<bool> DeletePropertyAsync(Guid id);
