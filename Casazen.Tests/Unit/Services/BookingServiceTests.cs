@@ -18,6 +18,7 @@ public class BookingServiceTests
 {
     private readonly Mock<IBookingRepository> _mockRepository;
     private readonly Mock<IGuestRepository> _mockGuestRepository = new();
+    private readonly Mock<ICheckoutHoldExpiryService> _mockHoldExpiry = new();
     private readonly BookingService _service;
 
     public BookingServiceTests()
@@ -42,7 +43,8 @@ public class BookingServiceTests
             new Mock<IPaymentRepository>().Object,
             CreatePropertyICalSyncService(configuration),
             configuration,
-            new Mock<ILogger<BookingService>>().Object);
+            new Mock<ILogger<BookingService>>().Object,
+            _mockHoldExpiry.Object);
     }
 
     private static PropertyICalSyncService CreatePropertyICalSyncService(IConfiguration configuration)
@@ -84,11 +86,11 @@ public class BookingServiceTests
 
         Assert.Equal(DirectBookingErrorCodes.InvalidPaymentOption, ex.ErrorCode);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
-        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(
+        _mockHoldExpiry.Verify(x => x.ExpireOverlappingHoldsAsync(
             It.IsAny<Guid>(),
             It.IsAny<DateTime>(),
             It.IsAny<DateTime>(),
-            It.IsAny<int>()), Times.Never);
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -122,8 +124,8 @@ public class BookingServiceTests
         _mockGuestRepository.Verify(x => x.AddAsync(guest), Times.Once);
         _mockRepository.Verify(x => x.AddAsync(It.Is<Booking>(b =>
             b.Status == BookingStatus.Confirmed && b.Source == BookingSource.Manual)), Times.Once);
-        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(
-            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, 15), Times.Once);
+        _mockHoldExpiry.Verify(x => x.ExpireOverlappingHoldsAsync(
+            booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, It.IsAny<CancellationToken>()), Times.Once);
         _mockRepository.Verify(x => x.IsAvailableAsync(
             booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, 15), Times.Once);
     }
@@ -201,33 +203,42 @@ public class BookingServiceTests
     }
 
     [Fact]
-    public async Task IsPropertyAvailableAsync_WithAvailableProperty_ReturnsTrue()
+    public async Task IsPropertyAvailableAsync_WithAvailableProperty_ExpiresOverlappingHoldsFirstAndReturnsTrue()
     {
         var propertyId = Guid.NewGuid();
         var checkIn = DateTime.Now.AddDays(10);
         var checkOut = DateTime.Now.AddDays(15);
-        _mockRepository.Setup(x => x.IsAvailableAsync(propertyId, checkIn, checkOut, 15)).ReturnsAsync(true);
+        var sequence = new List<string>();
+        _mockHoldExpiry
+            .Setup(x => x.ExpireOverlappingHoldsAsync(propertyId, checkIn, checkOut, It.IsAny<CancellationToken>()))
+            .Callback(() => sequence.Add("expire"))
+            .ReturnsAsync(CheckoutHoldExpiryRun.Empty);
+        _mockRepository.Setup(x => x.IsAvailableAsync(propertyId, checkIn, checkOut, 15))
+            .Callback(() => sequence.Add("availability"))
+            .ReturnsAsync(true);
 
         var result = await _service.IsPropertyAvailableAsync(propertyId, checkIn, checkOut);
 
         Assert.True(result);
-        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(propertyId, checkIn, checkOut, 15), Times.Once);
+        // BK-21: the expired holds of these dates go through the expiry routine (intent cancelled on Stripe) before the check.
+        Assert.Equal(["expire", "availability"], sequence);
     }
 
     [Fact]
-    public async Task GetCalendarAsync_CancelsExpiredPendingDirectBookingsBeforeLoadingCalendar()
+    public async Task GetCalendarAsync_ReadsWithHoldTtlAndCancelsNothing()
     {
         var propertyId = Guid.NewGuid();
         var start = DateTime.UtcNow.Date;
         var end = start.AddDays(30);
-        _mockRepository.Setup(x => x.GetByDateRangeAsync(propertyId, start, end))
+        _mockRepository.Setup(x => x.GetByDateRangeAsync(propertyId, start, end, 15))
             .ReturnsAsync([]);
 
         var result = await _service.GetCalendarAsync(propertyId, start, end);
 
         Assert.Empty(result);
-        _mockRepository.Verify(x => x.CancelExpiredPendingDirectBookingsAsync(propertyId, start, end, 15), Times.Once);
-        _mockRepository.Verify(x => x.GetByDateRangeAsync(propertyId, start, end), Times.Once);
+        // BK-21: expired holds are left out by the read itself; cancelling them is the job's work, never a read's.
+        _mockRepository.Verify(x => x.GetByDateRangeAsync(propertyId, start, end, 15), Times.Once);
+        _mockHoldExpiry.VerifyNoOtherCalls();
     }
 
     [Fact]
