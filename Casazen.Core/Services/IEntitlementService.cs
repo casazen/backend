@@ -44,8 +44,9 @@ public interface IEntitlementService
     /// <summary>
     /// Effective plan tier of an already loaded org, the one every gate and public flag must use (#274):
     /// the stored tier only while a Stripe subscription pays for it (active, trialing, or past due within
-    /// the grace period); Starter otherwise. Fail-closed: no subscription, canceled, past due beyond grace,
-    /// and Stripe states the platform does not map (incomplete, paused…) all resolve to Starter.
+    /// the grace period); Starter otherwise. Fail-closed: no subscription, incomplete (first payment not yet
+    /// succeeded), unpaid, canceled, past due beyond grace, and Stripe states the platform does not map (paused…)
+    /// all resolve to Starter.
     /// </summary>
     PlanTier ResolveEffectiveTier(Org org);
 
