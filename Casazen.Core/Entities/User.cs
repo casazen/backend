@@ -21,8 +21,12 @@ public class User
     [Phone, MaxLength(20)]
     public string PhoneNumber { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Primary role. A new user has <see cref="UserRole.None"/> until the onboarding sets the host role together with
+    /// the legal consents (PL-02, A1-05): no role, no host context.
+    /// </summary>
     [Required]
-    public UserRole Role { get; set; } = UserRole.PropertyOwner;
+    public UserRole Role { get; set; } = UserRole.None;
 
     public RentalType? RentalType { get; set; }
 
@@ -70,7 +74,10 @@ public enum UserRole
     Guest,
     Staff,
     LongTermLandlord, // 5 — append only, do not insert before existing values
-    Supplier // 6
+    Supplier, // 6
+
+    /// <summary>7 — no role yet: default of a new user until the onboarding (PL-02). Stored as 7, append only.</summary>
+    None,
 }
 
 public enum RentalType

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -146,13 +147,44 @@ public class Auth0RoleSyncCallersTests
         Assert.False(context.HasSucceeded);
     }
 
-    private static OrgBillingAdminAuthorizationHandler CreateBillingHandler(string sub, UserAuthorizationSnapshot snapshot)
+    [Fact]
+    public async Task OrgBillingAdmin_AdminWithoutHostOnboarding_FailsWithOnboardingRequired()
+    {
+        const string sub = "auth0|billing-admin-no-onboarding";
+        var handler = CreateBillingHandler(
+            sub,
+            new UserAuthorizationSnapshot(
+                Exists: true,
+                IsActive: true,
+                Role: UserRole.Admin,
+                SupplierOrgId: null,
+                Memberships: [new ContextAccess("admin", "Amministrazione", "platform_admin", ["admin.stats.read"], "/app/admin")]),
+            onboardingComplete: false);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("sub", sub), new Claim(ClaimTypes.Role, "Admin")], "TestAuth"));
+        var context = new AuthorizationHandlerContext([new OrgBillingAdminRequirement()], principal, resource: null);
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+        Assert.True(context.HasFailed);
+        Assert.True(OnboardingRequiredAuthorizationResultHandler.IsOnboardingRequired(
+            AuthorizationFailure.Failed(context.FailureReasons)));
+    }
+
+    private static OrgBillingAdminAuthorizationHandler CreateBillingHandler(
+        string sub,
+        UserAuthorizationSnapshot snapshot,
+        bool onboardingComplete = true)
     {
         var orgResolver = new Mock<IOrgContextResolver>();
         orgResolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Guid.NewGuid());
         var store = new Mock<IUserAuthorizationSnapshotStore>();
         store.Setup(s => s.GetAsync(sub, It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
-        return new OrgBillingAdminAuthorizationHandler(orgResolver.Object, store.Object);
+        var onboarding = new Mock<IHostOnboardingGate>();
+        onboarding.Setup(g => g.GetStatusAsync(sub, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostOnboardingStatus(onboardingComplete, onboardingComplete));
+        return new OrgBillingAdminAuthorizationHandler(orgResolver.Object, store.Object, onboarding.Object);
     }
 
     private static AuthorizationHandlerContext BillingContext(string sub)
@@ -169,7 +201,8 @@ public class Auth0RoleSyncCallersTests
             Mock.Of<IOnboardingService>(),
             Mock.Of<IRequestTenantContext>(),
             NullLogger<UsersController>.Instance,
-            Mock.Of<IEntitlementService>())
+            Mock.Of<IEntitlementService>(),
+            Mock.Of<IHostOnboardingGate>())
         {
             ControllerContext = new ControllerContext
             {

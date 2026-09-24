@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Integration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -18,6 +19,9 @@ namespace Casazen.Tests.Unit.Services;
 public class UserAuthorizationCacheTests
 {
     private const string UserId = "auth0|cache-user";
+
+    /// <summary>Current legal document versions: the defaults, no configuration.</summary>
+    private static readonly LegalDocumentService Legal = new(new ConfigurationBuilder().Build());
 
     [Fact]
     public async Task GetAsync_SameRequestTwice_ReadsDatabaseOnce()
@@ -147,11 +151,17 @@ public class UserAuthorizationCacheTests
         await using var db = await CreateSeededDbAsync();
         // Legacy seed (pre-June): short-rent membership for every PropertyOwner row.
         db.UserContextMemberships.Add(new UserContextMembership { UserId = UserId, ContextKey = "short-rent", RoleId = 1 });
+        // An onboarded host (PL-02): otherwise no host context is granted at all.
+        var org = new OrgEntity { Name = "Cache org", Slug = $"cache-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var user = await db.Users.SingleAsync(u => u.Id == UserId);
+        user.OrgId = org.Id;
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, Legal);
         await db.SaveChangesAsync();
         var cache = new MemoryCache(new MemoryCacheOptions());
         var accessor = Accessor(jwtRoles: ["LongTermLandlord"]);
         var store = CreateStore(db, accessor, cache);
-        var authorization = new ContextAuthorizationService(store, accessor, NullLogger<ContextAuthorizationService>.Instance);
+        var authorization = new ContextAuthorizationService(store, Legal, accessor, NullLogger<ContextAuthorizationService>.Instance);
         Assert.True(await authorization.HasPermissionAsync(UserId, "short-rent", "booking.read"));
 
         var memberships = new UserContextMembershipService(db, store, NullLogger<UserContextMembershipService>.Instance);
@@ -159,7 +169,7 @@ public class UserAuthorizationCacheTests
 
         var nextAccessor = Accessor(jwtRoles: ["LongTermLandlord"]);
         var nextRequest = new ContextAuthorizationService(
-            CreateStore(db, nextAccessor, cache), nextAccessor, NullLogger<ContextAuthorizationService>.Instance);
+            CreateStore(db, nextAccessor, cache), Legal, nextAccessor, NullLogger<ContextAuthorizationService>.Instance);
         Assert.False(await nextRequest.HasPermissionAsync(UserId, "short-rent", "booking.read"));
     }
 

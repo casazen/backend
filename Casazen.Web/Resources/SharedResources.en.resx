@@ -306,6 +306,9 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
+  <data name="OnboardingRequired" xml:space="preserve">
+    <value>To use the host features, complete your account activation: choose your business type and accept the current Terms of Service, Privacy Notice and DPA.</value>
+  </data>
   <data name="OnboardingConsentsRequired" xml:space="preserve">
     <value>To create your organization you must accept the required legal documents.</value>
   </data>
