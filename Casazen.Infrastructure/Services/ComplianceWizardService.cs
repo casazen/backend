@@ -106,7 +106,8 @@ public class ComplianceWizardService(
         var incompleteCheckIns = new List<ComplianceSummaryItem>();
         foreach (var booking in checkInCandidates)
         {
-            var dataComplete = await alloggiatiWebService.ValidateGuestDataAsync(booking.GuestId);
+            // Every guest of the stay, not only the booker (CO-12).
+            var dataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
             if (!dataComplete)
             {
                 incompleteCheckIns.Add(new ComplianceSummaryItem(
