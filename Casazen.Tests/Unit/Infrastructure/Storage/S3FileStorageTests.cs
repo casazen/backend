@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Web;
 using Amazon.S3;
@@ -201,7 +202,8 @@ public class S3FileStorageTests
         Assert.Equal("ref.storage.supabase.co", url.Host);
         Assert.Equal("/storage/v1/s3/casazen-test-private/properties/p/documents/k.pdf", url.AbsolutePath);
         var query = HttpUtility.ParseQueryString(url.Query);
-        Assert.Equal("300", query["X-Amz-Expires"]);
+        // The SDK derives X-Amz-Expires from an absolute expiry, so a slow machine can lose a second.
+        Assert.InRange(int.Parse(query["X-Amz-Expires"]!, CultureInfo.InvariantCulture), 298, 300);
         Assert.Contains("eu-central-1", query["X-Amz-Credential"]);
         Assert.False(string.IsNullOrEmpty(query["X-Amz-Signature"]));
     }

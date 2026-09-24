@@ -28,16 +28,69 @@ Error codes returned to clients: `auth0_management_not_configured`, `auth0_manag
 
 ## 1. Tenants: one for test, one for production
 
-Use two separate Auth0 tenants (for example `casazen-test` and `casazen`, region **EU**). Every step below
-is repeated in both tenants; never point the test environment at the production tenant.
+Task PL-11 (audit defect A1-32). Until now the web app used **the same tenant** for Vercel Preview and Production
+(`secrets/vercel.variables.example.json` had the same `VITE_AUTH0_DOMAIN` in both columns): a role given to a test
+user was valid in production too, and the test users lived next to the real ones. Use two separate Auth0 tenants, in
+the **EU** region, with names chosen by the product owner (this runbook writes `<test tenant>` and
+`<production tenant>`: no tenant name is decided in the code). Every step of sections 2-7 is repeated in both tenants;
+never point the test environment at the production tenant, nor the reverse.
 
 | Environment | Auth0 tenant | Backend (Railway) | Web (Vercel) | Mobile (EAS) |
 |---|---|---|---|---|
-| test | `casazen-test.eu.auth0.com` | Railway environment `test` | Preview + `develop` | profile `preview` |
-| production | `casazen.eu.auth0.com` | Railway environment `production` | Production | profile `production` |
+| test | `<test tenant>` | Railway environment `test` (`ASPNETCORE_ENVIRONMENT=Staging`) | Preview (PRs + `develop`) | profile `preview` |
+| production | `<production tenant>` | Railway environment `production` | Production | profile `production` |
 
-Users, roles and the Action are **not** shared between tenants: create the roles and deploy the Action in
-each one. Test users (E2E, demo) live only in the test tenant.
+Users, roles and the Action are **not** shared between tenants: create the roles and deploy the Action in each one.
+Test users (E2E, demo, Maestro) live only in the test tenant. The code holds no tenant: the backend reads
+`Auth0__*`, the web app `VITE_AUTH0_*`, the mobile app `EXPO_PUBLIC_AUTH0_*`, the helper scripts of `scripts/`
+`E2E_AUTH0_DOMAIN` / `E2E_AUTH0_CLIENT_ID` (or `Auth0__Domain` for `start-backend-local.ps1`).
+
+### 1.1 Separating the tenants (one-time, product owner)
+
+Decide first which of the two environments keeps the tenant used today. Keeping it for **production** keeps the real
+users and their passwords where they are; the test environment then gets a new, empty tenant.
+
+1. Auth0 Dashboard → tenant menu → **Create tenant**, region EU. Set it up with sections 2-7 (API with the same
+   identifier `https://casazen-api`, roles, M2M application, Action, SPA and Native applications).
+2. SPA application of the new tenant (Applications → *Single Page Application*): Allowed Callback URLs, Logout URLs and
+   Web Origins with the web app URLs of **its** environment only (test: the `develop` deployment and, if used, the
+   preview pattern of the Vercel project; production: the production domain). Remove the URLs of the other environment
+   from the old tenant's SPA application.
+3. **Railway** — environment of the new tenant (Variables tab), then redeploy:
+
+   | Variable | New value |
+   |---|---|
+   | `Auth0__Domain` | login domain of the tenant (or its custom domain) |
+   | `Auth0__ManagementApiDomain` | canonical `*.auth0.com` domain of the tenant (only with a custom domain) |
+   | `Auth0__ManagementClientId`, `Auth0__ManagementClientSecret` | M2M application of this tenant (section 4) |
+   | `Auth0__ClientId` | SPA client id of this tenant |
+   | `Auth0__Audience` | unchanged (`https://casazen-api`), unless the API of the new tenant has another identifier |
+
+4. **Vercel** — Settings → Environment Variables, one value per environment (never "All environments"), then redeploy
+   `develop` and the production branch:
+
+   | Variable | Preview | Production |
+   |---|---|---|
+   | `VITE_AUTH0_DOMAIN` | domain of `<test tenant>` | domain of `<production tenant>` |
+   | `VITE_AUTH0_CLIENT_ID` | SPA client id of `<test tenant>` | SPA client id of `<production tenant>` |
+   | `VITE_AUTH0_AUDIENCE` | API identifier (same value as Railway test `Auth0__Audience`) | API identifier (same as Railway production) |
+
+5. **EAS** (mobile): `EXPO_PUBLIC_AUTH0_DOMAIN`, `EXPO_PUBLIC_AUTH0_CLIENT_ID` (Native application of that tenant),
+   `EXPO_PUBLIC_AUTH0_AUDIENCE` per environment (section 7.6).
+6. **GitHub** (frontend repo, Actions variables used by the staging E2E): `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`,
+   `VITE_AUTH0_AUDIENCE` of the **test** tenant; secrets `E2E_AUTH0_EMAIL` / `E2E_AUTH0_PASSWORD` of a user of the test
+   tenant. Local `.env` files of developers: the test (or a personal development) tenant, never production.
+7. **Users**: test users are recreated in the test tenant (section 7.8 for the E2E user). If the existing tenant becomes
+   the test one instead, real users must be moved to the new production tenant (Auth0 user import/export, with
+   passwords only through Auth0's bulk import of password hashes): plan it with Auth0's documentation before switching.
+   CasaZen stores users by their Auth0 `sub` (`Users.Id`), which changes with the tenant: a user moved to another
+   tenant is a new CasaZen user unless the import keeps the same user id.
+8. Remove from the old tenant the roles given to test users, and the test users themselves, once the test environment
+   works on its own tenant.
+
+Check: log in on the test web app → the Auth0 page shows the test tenant domain; log in on production → the production
+domain. A token of the test tenant sent to the production API answers **401** (issuer and signing keys differ), and the
+reverse.
 
 ## 2. API (resource server)
 
@@ -79,7 +132,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
 | `Auth0__Domain` | login domain of the tenant (or its custom domain) | JWT issuer, already set |
 | `Auth0__Audience` | API identifier | already set |
 | `Auth0__ClientId` | SPA client id | used by the supplier registration page |
-| `Auth0__ManagementApiDomain` | canonical tenant domain, e.g. `casazen-test.eu.auth0.com` | **required when `Auth0__Domain` is a custom domain**: the Management API audience is always the canonical domain |
+| `Auth0__ManagementApiDomain` | canonical `*.auth0.com` domain of the tenant (Auth0 Dashboard → Settings → the tenant domain) | **required when `Auth0__Domain` is a custom domain**: the Management API audience is always the canonical domain |
 | `Auth0__ManagementClientId` | M2M client id | secret |
 | `Auth0__ManagementClientSecret` | M2M client secret | secret |
 | `Auth0__ManagementApiToken` | — | **delete it** once the two variables above are set (deprecated) |
@@ -173,10 +226,10 @@ casazen://<EXPO_PUBLIC_AUTH0_DOMAIN>/ios/it.casazen.host/callback
 casazen://<EXPO_PUBLIC_AUTH0_DOMAIN>/android/it.casazen.host/callback
 ```
 
-Test tenant example (`EXPO_PUBLIC_AUTH0_DOMAIN=casazen-test.eu.auth0.com`):
+Test tenant example (`EXPO_PUBLIC_AUTH0_DOMAIN=<test tenant>.eu.auth0.com`, the name chosen in section 1):
 
 ```text
-casazen://casazen-test.eu.auth0.com/ios/it.casazen.host/callback, casazen://casazen-test.eu.auth0.com/android/it.casazen.host/callback
+casazen://<test tenant>.eu.auth0.com/ios/it.casazen.host/callback, casazen://<test tenant>.eu.auth0.com/android/it.casazen.host/callback
 ```
 
 Rules:
@@ -365,7 +418,9 @@ Check on a device (test tenant, test users only):
 ## 8. Web SPA (reminder)
 
 Vercel variables per environment: `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`,
-pointing at the tenant of that environment (Preview/`develop` → test tenant, Production → production tenant).
+pointing at the tenant of that environment (Preview/`develop` → test tenant, Production → production tenant):
+section 1.1 step 4. The web app has no default tenant: without `VITE_AUTH0_DOMAIN` a build fails, a local
+`npm run dev` cannot log in.
 
 ## 9. One-off repair of roles removed by the old sync (A4-01)
 

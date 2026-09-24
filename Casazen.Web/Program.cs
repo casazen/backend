@@ -69,6 +69,9 @@ if (!string.IsNullOrEmpty(stripeSecretKey))
     StripeConfiguration.ApiKey = stripeSecretKey;
 }
 
+// Stripe mode of this environment (live keys only in Production) and plan prices, validated at startup (PL-11).
+builder.Services.AddCasazenBillingConfiguration(builder.Configuration, builder.Environment);
+
 // Services
 builder.Services.AddCasazenServices();
 builder.Services.AddScoped<IGuestService, GuestService>();
