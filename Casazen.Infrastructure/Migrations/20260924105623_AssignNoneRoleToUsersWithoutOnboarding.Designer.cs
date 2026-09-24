@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924100345_AssignNoneRoleToUsersWithoutOnboarding")]
+    [Migration("20260924105623_AssignNoneRoleToUsersWithoutOnboarding")]
     partial class AssignNoneRoleToUsersWithoutOnboarding
     {
         /// <inheritdoc />
@@ -3158,6 +3158,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid?>("SupplierOrgId")
                         .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<string>>("SuspendedAuth0Roles")
+                        .HasColumnType("text[]");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
