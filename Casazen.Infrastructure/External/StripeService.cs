@@ -61,6 +61,13 @@ public interface IStripeService
         Dictionary<string, string> metadata,
         string? customerEmail = null,
         string? customerName = null);
+
+    /// <summary>
+    /// Deferred charge (BK-08): creates and confirms <b>off-session</b> a PaymentIntent on the connected account with the
+    /// customer's saved payment method (<c>off_session=true</c>, <c>confirm=true</c>). A payment that needs the guest
+    /// (authentication required, card declined) makes Stripe answer 402: a <see cref="StripeException"/> whose
+    /// <see cref="StripeError.PaymentIntent"/> is the PaymentIntent left in <c>requires_payment_method</c>.
+    /// </summary>
     Task<PaymentIntent> ChargePaymentMethodAsync(
         string connectedAccountId,
         string customerId,
@@ -68,7 +75,28 @@ public interface IStripeService
         long amountCents,
         string currency,
         Dictionary<string, string> metadata,
-        string? idempotencyKey = null);
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirms again, off-session, a deferred charge PaymentIntent whose previous attempt failed (BK-08), with the saved
+    /// payment method. Same 402 behaviour as <see cref="ChargePaymentMethodAsync"/>.
+    /// </summary>
+    Task<PaymentIntent> ConfirmPaymentIntentOffSessionAsync(
+        string paymentIntentId,
+        string connectedAccountId,
+        string paymentMethodId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// PaymentIntents of a customer of the connected account (most recent first, at most 100): finds a deferred charge
+    /// created by an attempt whose answer was lost (timeout) before a new one is created (BK-08).
+    /// </summary>
+    Task<IReadOnlyList<PaymentIntent>> ListCustomerPaymentIntentsAsync(
+        string customerId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Refund of <paramref name="AmountCents"/> of <paramref name="PaymentIntentId"/>.</summary>
@@ -348,6 +376,23 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
         return customer.Id;
     }
 
+    /// <remarks>
+    /// Parameters (Stripe.net 50.1, API 2025-12-15.clover; checked in the Stripe docs, see docs/runbooks/stripe.md
+    /// "Deferred charge"):
+    /// <list type="bullet">
+    /// <item><c>off_session=true</c> with <c>confirm=true</c>: the guest is not in the checkout. When the issuer asks for
+    /// authentication Stripe does not leave the PaymentIntent in <c>requires_action</c>: it fails the attempt (402,
+    /// <c>authentication_required</c>, status <c>requires_payment_method</c>) and the guest completes it on-session from
+    /// the link of the email, with the same PaymentIntent.</item>
+    /// <item>No <c>error_on_requires_action</c>: since API 2023-08-16 PaymentIntents use automatic payment methods by
+    /// default, and Stripe accepts that flag only with explicit <c>payment_method_types</c>; listing them (e.g. only
+    /// <c>card</c>) would refuse the other methods the SetupIntent may have saved (SEPA Debit). With
+    /// <c>off_session=true</c> it adds nothing: an authentication request already fails the attempt. A
+    /// <c>requires_action</c> answer is still handled as "the guest must act".</item>
+    /// <item>No <c>return_url</c>: Stripe requires it on confirmation only when <c>off_session</c> is not true (redirect
+    /// methods); nobody is redirected off-session.</item>
+    /// </list>
+    /// </remarks>
     public async Task<PaymentIntent> ChargePaymentMethodAsync(
         string connectedAccountId,
         string customerId,
@@ -355,39 +400,78 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
         long amountCents,
         string currency,
         Dictionary<string, string> metadata,
-        string? idempotencyKey = null)
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var options = new PaymentIntentCreateOptions
-            {
-                Amount = amountCents,
-                Currency = currency,
-                Customer = customerId,
-                PaymentMethod = paymentMethodId,
-                ConfirmationMethod = "automatic",
-                Confirm = true,
-                Metadata = metadata,
-                ApplicationFeeAmount = 0,
-            };
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(customerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentMethodId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
 
-            var requestOptions = new RequestOptions
-            {
-                StripeAccount = connectedAccountId,
-                IdempotencyKey = idempotencyKey,
-            };
-            var service = new PaymentIntentService(Client);
-            var paymentIntent = await service.CreateAsync(options, requestOptions);
-            logger.LogInformation(
-                "Off-session payment intent created: {PaymentIntentId} on {AccountId}",
-                paymentIntent.Id,
-                connectedAccountId);
-            return paymentIntent;
-        }
-        catch (Exception ex)
+        var options = new PaymentIntentCreateOptions
         {
-            logger.LogError(ex, "Error creating off-session payment for {AccountId}", connectedAccountId);
-            throw;
-        }
+            Amount = amountCents,
+            Currency = currency,
+            Customer = customerId,
+            PaymentMethod = paymentMethodId,
+            ConfirmationMethod = "automatic",
+            Confirm = true,
+            OffSession = true,
+            Metadata = metadata,
+            ApplicationFeeAmount = 0,
+        };
+
+        var paymentIntent = await new PaymentIntentService(Client).CreateAsync(
+            options,
+            RequestOptionsFor(connectedAccountId, idempotencyKey),
+            cancellationToken);
+        logger.LogInformation(
+            "Off-session payment intent {PaymentIntentId} created on {AccountId}: {Status}",
+            paymentIntent.Id,
+            connectedAccountId,
+            paymentIntent.Status);
+        return paymentIntent;
+    }
+
+    public async Task<PaymentIntent> ConfirmPaymentIntentOffSessionAsync(
+        string paymentIntentId,
+        string connectedAccountId,
+        string paymentMethodId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentIntentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentMethodId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
+        // Same parameters as the creation (see ChargePaymentMethodAsync): off-session, no return_url, no
+        // error_on_requires_action.
+        var paymentIntent = await new PaymentIntentService(Client).ConfirmAsync(
+            paymentIntentId,
+            new PaymentIntentConfirmOptions { PaymentMethod = paymentMethodId, OffSession = true },
+            RequestOptionsFor(connectedAccountId, idempotencyKey),
+            cancellationToken);
+        logger.LogInformation(
+            "Off-session payment intent {PaymentIntentId} confirmed again on {AccountId}: {Status}",
+            paymentIntent.Id,
+            connectedAccountId,
+            paymentIntent.Status);
+        return paymentIntent;
+    }
+
+    public async Task<IReadOnlyList<PaymentIntent>> ListCustomerPaymentIntentsAsync(
+        string customerId,
+        string connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(customerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+
+        var list = await new PaymentIntentService(Client).ListAsync(
+            new PaymentIntentListOptions { Customer = customerId, Limit = 100 },
+            RequestOptionsFor(connectedAccountId),
+            cancellationToken);
+        return list.Data;
     }
 }

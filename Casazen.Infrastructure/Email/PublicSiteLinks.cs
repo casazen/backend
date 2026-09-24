@@ -76,13 +76,30 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
 
     /// <summary>
-    /// "Le mie prenotazioni" of the org's booking site (BK-10): the guest finds a booking there with its code and email.
-    /// The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails link here.
+    /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
+    /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
+    /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
+    /// for the email before showing anything.
     /// </summary>
-    public string GuestBookings(string orgSlug)
+    public string GuestBookings(string orgSlug, string? bookingCode = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
-        return Build($"/book/{Uri.EscapeDataString(orgSlug)}/my-bookings");
+        var path = $"/book/{Uri.EscapeDataString(orgSlug)}/my-bookings";
+        return string.IsNullOrWhiteSpace(bookingCode)
+            ? Build(path)
+            : Build($"{path}?code={Uri.EscapeDataString(bookingCode)}");
+    }
+
+    /// <summary>
+    /// Checkout outcome page of the booking site (BK-07) with a checkout token: the guest of a failed deferred charge pays
+    /// there (BK-08). Only the booking id and the random token are in the link, no personal data.
+    /// </summary>
+    public string CheckoutOutcome(string orgSlug, Guid bookingId, string checkoutToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkoutToken);
+        return Build(
+            $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}?token={Uri.EscapeDataString(checkoutToken)}");
     }
 
     /// <summary>Host console: detail page of one booking (BK-10).</summary>

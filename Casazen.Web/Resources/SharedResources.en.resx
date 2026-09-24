@@ -741,6 +741,27 @@
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
     <value>The check-out can be recorded from the departure day.</value>
   </data>
+  <data name="GuestBookingNotFound" xml:space="preserve">
+    <value>No booking matches this code and email address. Check the code in the confirmation email and use the email address you booked with.</value>
+  </data>
+  <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
+    <value>The online check-in link cannot be sent now: the booking is not confirmed, the check-in is already completed or it is not time yet.</value>
+  </data>
+  <data name="GuestBookingOrgRequired" xml:space="preserve">
+    <value>The booking site is missing: open “My bookings” again from the property's website.</value>
+  </data>
+  <data name="GuestBookingCodeRequired" xml:space="preserve">
+    <value>Enter the booking code.</value>
+  </data>
+  <data name="GuestBookingCodeInvalid" xml:space="preserve">
+    <value>The booking code is not valid: check the confirmation email.</value>
+  </data>
+  <data name="GuestBookingEmailRequired" xml:space="preserve">
+    <value>Enter the email address you booked with.</value>
+  </data>
+  <data name="GuestBookingEmailInvalid" xml:space="preserve">
+    <value>Invalid email address.</value>
+  </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>This property is not available for online booking.</value>
   </data>

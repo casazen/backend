@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -9,7 +10,8 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Emails of the booking status (BK-10, A3-11, #58), rendered from <see cref="EmailTemplates"/> and queued on Hangfire
-/// (<see cref="IEmailQueue"/>): confirmation to the guest and new booking to the host, cancellation to the guest. Called
+/// (<see cref="IEmailQueue"/>): confirmation to the guest and new booking to the host, cancellation to the guest, and the
+/// deferred charge of "Paga più tardi" (BK-08: failed charge with the link to pay, automatic cancellation). Called
 /// once the change is committed, by the code that made the transition (payment webhook, saved card, host acceptance,
 /// host cancellation), so a duplicate webhook that changes nothing sends nothing. A failure is logged with the booking
 /// id only and never undoes the change.
@@ -68,7 +70,7 @@ public sealed class BookingNotifier(
                 data.PaidAmount,
                 data.FreeRefundDeadline,
                 data.HostContact,
-                links.GuestBookings(data.OrgSlug)));
+                links.GuestBookings(data.OrgSlug, data.Summary.BookingCode)));
 
         if (kind != BookingConfirmationKind.OnSite)
             AlertHostOfNewBooking(data, kind);
@@ -115,6 +117,100 @@ public sealed class BookingNotifier(
     }
 
     /// <summary>
+    /// The deferred charge failed and needs the guest (BK-08, A3-14): the guest gets the link to pay on the checkout outcome
+    /// page (<paramref name="checkoutToken"/>, the raw token whose hash was just stored), the host is told. The last day to
+    /// pay is the day before <paramref name="cancellationDay"/> when an automatic cancellation applies.
+    /// </summary>
+    public async Task DeferredChargeFailedAsync(
+        Guid bookingId,
+        string checkoutToken,
+        DateOnly? cancellationDay,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkoutToken);
+        var data = await TryLoadAsync(bookingId, "Deferred charge failure", cancellationToken);
+        if (data is null)
+            return;
+
+        var cancelOn = cancellationDay?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        Queue(bookingId, EmailTemplates.Names.GuestDeferredChargeFailed, data.GuestEmail, () =>
+            EmailTemplates.GuestDeferredChargeFailed(
+                EmailTemplates.DefaultCulture,
+                data.GuestFirstName,
+                data.Summary,
+                links.CheckoutOutcome(data.OrgSlug, data.BookingId, checkoutToken),
+                cancelOn?.AddDays(-1),
+                data.HostContact));
+        AlertHostOfFailedDeferredCharge(data, guestAsked: true, cancelOn);
+    }
+
+    /// <summary>
+    /// Every attempt of the deferred charge ended without a payment the guest could complete (Stripe unreachable, no saved
+    /// payment method): the host only, who handles the payment with the guest (BK-08).
+    /// </summary>
+    public async Task DeferredChargeNotAttemptedAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        var data = await TryLoadAsync(bookingId, "Deferred charge failure", cancellationToken);
+        if (data is not null)
+            AlertHostOfFailedDeferredCharge(data, guestAsked: false, cancelOnDay: null);
+    }
+
+    /// <summary>
+    /// "Paga più tardi" not paid in time: the system cancelled the booking and released its dates (BK-08). The guest gets
+    /// the standard cancellation email with its own cause (nothing charged), the host a notice.
+    /// </summary>
+    public async Task DeferredChargeCancelledAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        var data = await TryLoadAsync(bookingId, "Cancellation", cancellationToken);
+        if (data is null)
+            return;
+
+        Queue(bookingId, EmailTemplates.Names.GuestBookingCancelled, data.GuestEmail, () =>
+            EmailTemplates.GuestBookingCancelled(
+                EmailTemplates.DefaultCulture,
+                data.GuestFirstName,
+                data.Summary.PropertyName,
+                data.Summary.CheckInDate,
+                data.Summary.CheckOutDate,
+                refundedEur: 0m,
+                refundStartedEur: 0m,
+                data.HostContact,
+                BookingCancellationEmailCause.DeferredPaymentNotCompleted));
+        Queue(bookingId, EmailTemplates.Names.HostDeferredChargeCancelled, data.HostEmail, () =>
+            EmailTemplates.HostDeferredChargeCancelled(
+                EmailTemplates.DefaultCulture,
+                $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
+                data.Summary,
+                links.HostBooking(data.BookingId)));
+    }
+
+    private void AlertHostOfFailedDeferredCharge(BookingEmailData data, bool guestAsked, DateTime? cancelOnDay) =>
+        Queue(data.BookingId, EmailTemplates.Names.HostDeferredChargeFailed, data.HostEmail, () =>
+            EmailTemplates.HostDeferredChargeFailed(
+                EmailTemplates.DefaultCulture,
+                $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
+                data.Summary,
+                guestAsked,
+                cancelOnDay,
+                links.HostBooking(data.BookingId)));
+
+    private async Task<BookingEmailData?> TryLoadAsync(Guid bookingId, string what, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var data = await LoadAsync(bookingId, cancellationToken);
+            if (data is null)
+                logger.LogWarning("{What} emails of booking {BookingId} skipped: booking not found", what, bookingId);
+            return data;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "{What} emails of booking {BookingId} could not be prepared", what, bookingId);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The only place where the host learns of a new booking confirmed without their action: today by email to
     /// <c>Org.ContactEmail</c>. Extension point of MO-04: the push "new booking" to the host's devices goes here, next
     /// to the email, so both channels fire once per confirmation.
@@ -156,6 +252,7 @@ public sealed class BookingNotifier(
             .Select(b => new
             {
                 b.Id,
+                b.BookingCode,
                 b.Status,
                 GuestFirstName = b.Guest.FirstName,
                 GuestLastName = b.Guest.LastName,
@@ -179,7 +276,7 @@ public sealed class BookingNotifier(
             return null;
 
         var summary = new BookingEmailSummary(
-            row.Id.ToString("D"),
+            BookingCodes.Format(row.BookingCode),
             row.PropertyName,
             row.CheckInDate,
             row.CheckOutDate,
