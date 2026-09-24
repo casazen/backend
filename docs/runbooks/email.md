@@ -44,7 +44,7 @@ Notes:
 - The old variable `Email__ResendApiKey` is still read when `Email__ApiKey` is empty. Rename it to `Email__ApiKey` and delete the old one. If `Email__ApiKey` already exists with a SendGrid key (`SG.…`), replace it with the Resend key: validation rejects keys that do not start with `re_`.
 - `Email__SendGridApiKey`, `Email__Smtp*`, `SendGrid__ApiKey`, `App__SupplierLoginUrl` and `App__FrontendBaseUrl` are no longer read: delete them.
 - **Set the variables before the release reaches `main`.** From this version the production service does not start without `Email__ApiKey`, `Email__FromAddress` and `App__PublicSiteBaseUrl`: the deploy log shows lines such as `Email__FromAddress is missing: set a sender of the domain verified on Resend.`
-- The Railway `test` service runs with `ASPNETCORE_ENVIRONMENT=Testing`: there the app also starts without email variables (emails are skipped with a warning). Set them anyway to test real delivery.
+- Both Railway services run with `ASPNETCORE_ENVIRONMENT=Production` (`secrets/railway.test.variables.example.json`, [`docs/INFRA.md`](../INFRA.md#variables-required-in-production)): the `test` service needs these variables too. Only `Development` and `Testing` (local runs, CI) start without them, skipping each email with a warning; `/api/health/ready` then reports `email: degraded`.
 
 ## 3. Send test
 

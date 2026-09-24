@@ -220,7 +220,8 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         Assert.Equal("Mario", prefill.GetProperty("firstName").GetString());
         Assert.Equal("Bianchi", prefill.GetProperty("lastName").GetString());
         Assert.Equal(JsonValueKind.Null, prefill.GetProperty("dateOfBirth").ValueKind);
-        Assert.Equal(string.Empty, prefill.GetProperty("documentNumber").GetString());
+        Assert.False(prefill.TryGetProperty("documentNumber", out _));
+        Assert.Equal(JsonValueKind.Null, prefill.GetProperty("documentNumberMasked").ValueKind);
         Assert.Equal(string.Empty, prefill.GetProperty("placeOfBirth").GetString());
     }
 
