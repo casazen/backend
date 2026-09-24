@@ -10,7 +10,9 @@ public interface ISupplierService
     /// is accepted only by a signed-in user whose account email is the invited one, for the invited comune; the invite
     /// is then used up. Without a token (self-serve) the comune must be a configured pilot comune and, when signed in,
     /// the email must be the account email. When <see cref="SupplierRegistration.UserId"/> is set the user is linked to
-    /// the org; a user already linked to a supplier org gets that registration back.
+    /// the org; a user already linked to a supplier org gets that registration back. An anonymous self-serve
+    /// registration gets a claim token (<see cref="SupplierRegistrationResult.Claim"/>, SU-02) instead: the account
+    /// created afterwards links itself with <see cref="ClaimAsync"/>.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Codes <c>supplier_invite_invalid</c>, <c>supplier_invite_expired</c>, <c>supplier_invite_used</c>,
@@ -18,9 +20,33 @@ public interface ISupplierService
     /// <c>supplier_invite_comune_mismatch</c>, <c>supplier_account_email_missing</c>,
     /// <c>supplier_account_email_mismatch</c>, <c>supplier_self_serve_unavailable</c>, <c>supplier_comune_not_pilot</c>.
     /// </exception>
-    Task<(Org Org, SupplierProfile Profile)> RegisterAsync(
+    Task<SupplierRegistrationResult> RegisterAsync(
         SupplierRegistration registration,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Links the signed-in user to a supplier profile registered anonymously (SU-02, A4-02), explicitly and never by an
+    /// unverified email (A4-23, A1-13):
+    /// <list type="bullet">
+    /// <item>with <see cref="SupplierClaim.ClaimToken"/>: the token of that registration, unused by another account and
+    /// not expired, and an account email equal to the profile email (the token proves the registrant);</item>
+    /// <item>without a token: only when Auth0 verified the account email (<see cref="SupplierClaim.AccountEmailVerified"/>),
+    /// the one profile with that email that no account holds yet (registrations whose token was lost or that predate
+    /// SU-02).</item>
+    /// </list>
+    /// A user already linked to a supplier org gets it back (idempotent retry, e.g. after a failed Auth0 role sync).
+    /// The caller assigns the Supplier role; this method only links the account.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Codes <c>supplier_account_email_missing</c>, <c>supplier_claim_invalid</c>, <c>supplier_claim_expired</c>,
+    /// <c>supplier_claim_used</c>, <c>supplier_claim_email_mismatch</c>, <c>supplier_claim_email_unverified</c>,
+    /// <c>supplier_claim_not_found</c>.
+    /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Codes <c>supplier_account_already_linked</c> (the caller holds another supplier org) and
+    /// <c>supplier_claim_ambiguous</c> (several unclaimed profiles with the verified email).
+    /// </exception>
+    Task<SupplierClaimResult> ClaimAsync(SupplierClaim claim, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The invite of a link token, to pre-fill the registration page (SU-01). Nothing is changed.
@@ -104,7 +130,10 @@ public interface ISupplierService
 
     /// <summary>
     /// Resolves the caller's supplier org, provisioning org + profile when a Supplier user has none yet.
-    /// Supports dual-role users whose <c>User.OrgId</c> points at a host org.
+    /// Supports dual-role users whose <c>User.OrgId</c> points at a host org. The org comes only from the user's own
+    /// link (<c>User.SupplierOrgId</c>, or <c>User.OrgId</c> of a supplier org): never from the email, which the
+    /// token does not prove (A4-23, A1-13); an existing profile is joined through an invite or <see cref="ClaimAsync"/>.
+    /// <paramref name="email"/> only fills the contact of a provisioned profile.
     /// </summary>
     Task<Guid?> GetOrProvisionSupplierOrgIdAsync(
         string userId,
@@ -156,6 +185,25 @@ public record UnmappedServiceCategory(string Source, Guid Id, string Value);
 public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
+
+/// <summary>
+/// Outcome of <see cref="ISupplierService.RegisterAsync"/>. <paramref name="Claim"/> is set only for an anonymous
+/// self-serve registration: the secret the web app keeps to link the account created afterwards (SU-02).
+/// </summary>
+public record SupplierRegistrationResult(Org Org, SupplierProfile Profile, SupplierClaimTicket? Claim = null);
+
+/// <summary>A claim token (plain text: returned once, only its hash is stored) and its UTC expiry.</summary>
+public record SupplierClaimTicket(string Token, DateTime ExpiresAt);
+
+/// <summary>
+/// A claim request of the signed-in user <paramref name="UserId"/> (Auth0 <c>sub</c>). <paramref name="AccountEmail"/>
+/// is the account email from the access token or Auth0; <paramref name="AccountEmailVerified"/> is Auth0's
+/// <c>email_verified</c> for it (needed only without <paramref name="ClaimToken"/>).
+/// </summary>
+public record SupplierClaim(string UserId, string? AccountEmail, bool AccountEmailVerified, string? ClaimToken);
+
+/// <summary>The supplier org the caller is linked to; <paramref name="NewlyLinked"/> is false for a repeated claim.</summary>
+public record SupplierClaimResult(Guid OrgId, bool NewlyLinked);
 
 /// <summary>
 /// A supplier registration request. <paramref name="UserId"/> and <paramref name="AccountEmail"/> are the signed-in

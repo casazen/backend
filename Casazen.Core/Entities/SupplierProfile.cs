@@ -65,6 +65,18 @@ public class SupplierProfile
     [MaxLength(100)]
     public string? ShowcaseSlug { get; set; }
 
+    /// <summary>
+    /// SHA-256 (lowercase hex) of the claim token handed out by an anonymous self-serve registration
+    /// (<see cref="Casazen.Core.Suppliers.SupplierClaimTokens"/>, SU-02): the account that signs up afterwards links
+    /// itself to this profile with it. The token itself is never stored. Null for profiles created by a signed-in
+    /// user (linked at once) or before SU-02. Kept after the claim, so a reused token is recognized as used.
+    /// </summary>
+    [MaxLength(64)]
+    public string? ClaimTokenHash { get; set; }
+
+    /// <summary>UTC expiry of <see cref="ClaimTokenHash"/>.</summary>
+    public DateTime? ClaimTokenExpiresAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

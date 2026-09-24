@@ -4,6 +4,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 // OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
@@ -85,8 +86,10 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(5, body.GetProperty("steps").GetArrayLength());
     }
 
+    // SU-02 (A4-23): the dual-role host reaches the supplier profile through its explicit link (User.SupplierOrgId),
+    // not through the email; linking by email alone is covered in SupplierClaimIntegrationTests.
     [Fact]
-    public async Task GetActivation_AsDualRoleHost_FindsSupplierProfileByEmail()
+    public async Task GetActivation_AsDualRoleHostLinkedBySupplierOrgId_FindsItsSupplierProfile()
     {
         var userId = $"auth0|dual-{Guid.NewGuid():N}";
         var email = $"dual-{Guid.NewGuid():N}@test.com";
@@ -124,6 +127,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
                 FirstName = "Dual",
                 LastName = "Role",
                 OrgId = hostOrg.Id,
+                SupplierOrgId = supplierOrg.Id,
                 IsActive = true,
             });
 
@@ -143,6 +147,12 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var response = await client.GetAsync("/api/supplier/profile/activation");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var verify = _factory.Services.CreateScope();
+        var verifyDb = verify.ServiceProvider.GetRequiredService<AppDbContext>();
+        // No second supplier org was provisioned and the host org is kept.
+        Assert.Equal(1, await verifyDb.SupplierProfiles.CountAsync(sp => sp.Email == email));
+        var user = await verifyDb.Users.SingleAsync(u => u.Id == userId);
+        Assert.NotEqual(user.OrgId, user.SupplierOrgId);
     }
 
     [Fact]

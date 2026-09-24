@@ -275,6 +275,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 |---|---|---|---|
 | `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email via SMTP); 409 pending invite; 502 email failure rolls back |
 | `POST` | `/api/suppliers/register` | Anonymous (rate limited) | Self-serve registration for a pilot comune, or invite acceptance by the signed-in invited account (SU-01) |
+| `POST` | `/api/suppliers/claim` | JWT (own account) | Links the caller to a profile registered anonymously: claim token of that registration, or verified email without token; assigns the `Supplier` role (SU-02) |
 | `POST` | `/api/suppliers/invites/lookup` | Anonymous (rate limited) | Invite of a link token (email, comune, expiry) for the web registration page |
 | `GET` | `/api/suppliers/registration-options` | Anonymous (rate limited) | Self-serve on/off and pilot comuni (`Suppliers:PilotComuni`) |
 | `GET` | `/api/suppliers?comune=&category=` | JWT | List **Active** suppliers for host picker |
@@ -305,7 +306,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 **Invite email:** `SupplierService.CreateInviteAsync` stores the invite with the SHA-256 of a random token, then queues the email (`EmailTemplates.SupplierInvite`, Hangfire). Signup URL: `{App:PublicSiteBaseUrl}/register?inviteToken={token}` (web app page; the backend no longer serves a `/register` page). Runbook: `docs/runbooks/suppliers.md`.
 
-**Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier`. Default route: `/supplier/inbox`.
+**Supplier link (SU-02):** an account reaches a supplier org only through its own link (`User.SupplierOrgId`), set by an accepted invite, a signed-in registration or `POST /api/suppliers/claim`; never by matching the email. `GET /api/users/me` returns `supplierOrgId`. Runbook: `docs/runbooks/suppliers.md` §2.
+
+**Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier` (added from the DB supplier link at token validation). Default route: `/supplier/inbox`.
 
 #### Public-facing
 
