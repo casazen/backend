@@ -28,6 +28,11 @@ public static class EmailTemplates
         public const string RliDeadlineReminder = "rli-deadline-reminder";
         public const string RliDeadlineOverdue = "rli-deadline-overdue";
         public const string RliExtraEuNotice = "rli-extra-eu-notice";
+        public const string OnSiteRequestReceived = "onsite-request-received";
+        public const string OnSiteRequestToHost = "onsite-request-to-host";
+        public const string OnSiteRequestAccepted = "onsite-request-accepted";
+        public const string OnSiteRequestDeclined = "onsite-request-declined";
+        public const string OnSiteRequestExpired = "onsite-request-expired";
     }
 
     /// <summary>EmailTexts key of the label of a <see cref="ServiceCategories"/> code.</summary>
@@ -232,6 +237,108 @@ public static class EmailTemplates
             .Paragraph("RliDeadline_Responsibility")
             .Build("RliDeadlineOverdue_Subject", propertyName);
     }
+
+    /// <summary>
+    /// "Pay at the property" request received, to the guest (BK-06, D5): the link confirms the email address and sends the
+    /// request to the host; without it the request is cancelled at <paramref name="confirmByUtc"/> (shown in Italian time).
+    /// </summary>
+    public static EmailContent OnSiteRequestReceived(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal amountEur,
+        string confirmUrl,
+        DateTime confirmByUtc)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("OnSiteRequestReceived_Body", propertyName, checkInDate, checkOutDate, amountEur.ToString("N2", culture))
+            .Paragraph("OnSiteRequestReceived_Action", builder.FormatInstant(confirmByUtc))
+            .Button("OnSiteRequestReceived_Cta", confirmUrl)
+            .LinkFallback("OnSiteRequest_LinkFallback", confirmUrl)
+            .Muted("OnSiteRequestReceived_NotConfirmedYet")
+            .Muted("OnSiteRequestReceived_NotYou")
+            .Build("OnSiteRequestReceived_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// New "pay at the property" request to accept or decline, to the host (BK-06, D5). The answer is due by
+    /// <paramref name="answerByUtc"/> (shown in Italian time); <paramref name="requestsUrl"/> opens the console.
+    /// </summary>
+    public static EmailContent OnSiteRequestToHost(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        int guests,
+        decimal amountEur,
+        DateTime answerByUtc,
+        string requestsUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph(
+                "OnSiteRequestToHost_Body",
+                guestName,
+                propertyName,
+                checkInDate,
+                checkOutDate,
+                guests,
+                amountEur.ToString("N2", culture))
+            .Paragraph("OnSiteRequestToHost_Action", builder.FormatInstant(answerByUtc))
+            .Muted("OnSiteRequestToHost_NotConfirmedYet")
+            .Button("OnSiteRequestToHost_Cta", requestsUrl)
+            .LinkFallback("OnSiteRequest_LinkFallback", requestsUrl)
+            .Build("OnSiteRequestToHost_Subject", propertyName);
+    }
+
+    /// <summary>"Pay at the property" request accepted by the host: the booking is confirmed, to the guest (BK-06, D5).</summary>
+    public static EmailContent OnSiteRequestAccepted(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal amountEur,
+        string bookingReference) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("OnSiteRequestAccepted_Body", propertyName, checkInDate, checkOutDate)
+            .Paragraph("OnSiteRequestAccepted_Payment", amountEur.ToString("N2", culture))
+            .Muted("OnSiteRequestAccepted_Reference", bookingReference)
+            .Build("OnSiteRequestAccepted_Subject", propertyName);
+
+    /// <summary>"Pay at the property" request declined by the host, to the guest (BK-06), with the host's optional message.</summary>
+    public static EmailContent OnSiteRequestDeclined(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        string? hostMessage) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("OnSiteRequestDeclined_Body", propertyName, checkInDate, checkOutDate)
+            .Quote("OnSiteRequestDeclined_MessageLabel", hostMessage)
+            .Paragraph("OnSiteRequest_NoCharge")
+            .Build("OnSiteRequestDeclined_Subject", propertyName);
+
+    /// <summary>"Pay at the property" request not answered by the host in time, to the guest (BK-06).</summary>
+    public static EmailContent OnSiteRequestExpired(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("OnSiteRequestExpired_Body", propertyName, checkInDate, checkOutDate)
+            .Paragraph("OnSiteRequest_NoCharge")
+            .Build("OnSiteRequestExpired_Subject", propertyName);
 
     /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
     public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>

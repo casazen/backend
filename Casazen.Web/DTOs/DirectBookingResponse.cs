@@ -27,4 +27,10 @@ public class DirectBookingResponse
     /// tax is not included in <see cref="Amount"/> (0), it is not known to CasaZen.
     /// </summary>
     public TouristTaxQuoteStatus TouristTaxStatus { get; set; } = TouristTaxQuoteStatus.Calculated;
+
+    /// <summary>
+    /// "Pay at the property" only (BK-06, D5): the booking is a request, not confirmed. The guest must confirm the email
+    /// (link sent by email) by this instant, then the host accepts or declines.
+    /// </summary>
+    public DateTime? EmailConfirmationExpiresAt { get; set; }
 }

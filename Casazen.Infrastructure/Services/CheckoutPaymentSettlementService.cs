@@ -138,7 +138,7 @@ public sealed class CheckoutPaymentSettlementService(
         }
 
         var now = UtcNow;
-        var expiredHoldCutoff = CheckoutHolds.ExpiryCutoffUtc(now, CheckoutHolds.GetTtlMinutes(configuration));
+        var expiredHoldCutoff = CheckoutHolds.CutoffAt(now, CheckoutHolds.GetTtlMinutes(configuration));
 
         // A hold still within its TTL (or whose payment the expiry job saw in flight) kept its dates in the iCal export:
         // only another booking can stand in its way. An expired hold or a cancelled booking had released them.
@@ -307,7 +307,7 @@ public sealed class CheckoutPaymentSettlementService(
     /// </summary>
     private async Task<bool> AreDatesFreeAsync(
         Booking booking,
-        DateTime expiredHoldCutoffUtc,
+        HoldExpiryCutoff expiredHoldCutoff,
         bool checkCalendarBlocks,
         CancellationToken cancellationToken)
     {
@@ -319,7 +319,7 @@ public sealed class CheckoutPaymentSettlementService(
                         b.Id != booking.Id &&
                         b.CheckInDate.Date < checkOut &&
                         b.CheckOutDate.Date > checkIn)
-            .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoffUtc))
+            .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoff))
             .AnyAsync(cancellationToken);
         if (takenByBooking)
             return false;

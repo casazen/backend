@@ -2,10 +2,12 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -19,6 +21,13 @@ public class BookingServiceTests
     private readonly Mock<IBookingRepository> _mockRepository;
     private readonly Mock<IGuestRepository> _mockGuestRepository = new();
     private readonly Mock<ICheckoutHoldExpiryService> _mockHoldExpiry = new();
+    private readonly Mock<IPropertyRepository> _mockPropertyRepository = new();
+    private readonly Mock<IOrgService> _mockOrgService = new();
+    private readonly Mock<ITouristTaxQuoteService> _mockTouristTax = new();
+    private readonly RecordingEmailQueue _emails = new();
+    private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
+        .UseInMemoryDatabase(Guid.NewGuid().ToString())
+        .Options);
     private readonly BookingService _service;
 
     public BookingServiceTests()
@@ -29,29 +38,29 @@ public class BookingServiceTests
             {
                 ["DirectBooking:ConsentVersion"] = "2026-06-direct-checkout-v1",
                 ["DirectBooking:PendingTtlMinutes"] = "15",
+                ["DirectBooking:OnSiteMaxNights"] = "14",
                 ["Stripe:PublishableKey"] = "pk_test",
             })
             .Build();
 
         _service = new BookingService(
             _mockRepository.Object,
-            new Mock<IPropertyRepository>().Object,
-            new Mock<IOrgService>().Object,
+            _mockPropertyRepository.Object,
+            _mockOrgService.Object,
             _mockGuestRepository.Object,
-            new Mock<ITouristTaxQuoteService>().Object,
+            _mockTouristTax.Object,
             new Mock<IStripeService>().Object,
             new Mock<IPaymentRepository>().Object,
-            CreatePropertyICalSyncService(configuration),
+            CreatePropertyICalSyncService(_db, configuration),
             configuration,
             new Mock<ILogger<BookingService>>().Object,
-            _mockHoldExpiry.Object);
+            _mockHoldExpiry.Object,
+            new OnSiteRequestNotifier(
+                _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()));
     }
 
-    private static PropertyICalSyncService CreatePropertyICalSyncService(IConfiguration configuration)
+    private static PropertyICalSyncService CreatePropertyICalSyncService(AppDbContext db, IConfiguration configuration)
     {
-        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options);
         return new PropertyICalSyncService(
             db,
             Mock.Of<ISafeExternalHttpClient>(),
@@ -92,6 +101,120 @@ public class BookingServiceTests
             It.IsAny<DateTime>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_OnSiteStayLongerThanConfiguredMaxNights_Throws422RuleBeforePersisting()
+    {
+        // A3-06: a "pay at the property" request holds dates with no guarantee, so its length is capped
+        // (DirectBooking:OnSiteMaxNights, 14 here).
+        var property = new Property
+        {
+            OrgId = Guid.NewGuid(),
+            IsActive = true,
+            ComplianceStatus = Core.Entities.Enums.PropertyComplianceStatus.Active,
+            MaxGuests = 4,
+            NightlyRate = 100m,
+        };
+        _mockPropertyRepository.Setup(x => x.GetByIdAsync(property.Id)).ReturnsAsync(property);
+        _mockOrgService.Setup(x => x.GetByIdAsync(property.OrgId)).ReturnsAsync(new OrgEntity
+        {
+            Id = property.OrgId,
+            StripeConnectedAccountId = "acct_onsite",
+            ConnectChargesEnabled = true,
+        });
+        var checkIn = DateTime.UtcNow.Date.AddDays(30);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreateDirectBookingAsync(OnSiteInput(
+            property.Id, checkIn, checkIn.AddDays(15))));
+
+        Assert.Equal(OnSiteRequestErrorCodes.TooManyNights, ex.Code);
+        Assert.Equal("OnSiteRequestTooManyNights", ex.MessageKey);
+        Assert.Equal(14, Assert.Single(ex.MessageArgs));
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
+        _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
+        Assert.Empty(_emails.Queued);
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_OnSiteWithinMaxNights_StaysPendingWithEmailTokenAndQueuesConfirmationEmail()
+    {
+        var property = new Property
+        {
+            OrgId = Guid.NewGuid(),
+            Name = "Villa Rosa",
+            IsActive = true,
+            ComplianceStatus = Core.Entities.Enums.PropertyComplianceStatus.Active,
+            MaxGuests = 4,
+            NightlyRate = 100m,
+        };
+        var org = new OrgEntity
+        {
+            Id = property.OrgId,
+            Slug = "villa-rosa",
+            StripeConnectedAccountId = "acct_onsite",
+            ConnectChargesEnabled = true,
+        };
+        _mockPropertyRepository.Setup(x => x.GetByIdAsync(property.Id)).ReturnsAsync(property);
+        _mockOrgService.Setup(x => x.GetByIdAsync(property.OrgId)).ReturnsAsync(org);
+        _mockTouristTax
+            .Setup(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, null, 14, 0, false, [], []));
+        _mockRepository.Setup(x => x.IsAvailableAsync(
+                It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int?>()))
+            .ReturnsAsync(true);
+        // The notifier reads the saved request from the database, as in production.
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) =>
+        {
+            _db.Bookings.Add(b);
+            _db.SaveChanges();
+            return b;
+        });
+        _mockGuestRepository.Setup(x => x.AddAsync(It.IsAny<Guest>())).ReturnsAsync((Guest g) =>
+        {
+            _db.Guests.Add(g);
+            _db.SaveChanges();
+            return g;
+        });
+        _db.Orgs.Add(org);
+        _db.Properties.Add(property);
+        await _db.SaveChangesAsync();
+        var checkIn = DateTime.UtcNow.Date.AddDays(30);
+
+        var result = await _service.CreateDirectBookingAsync(OnSiteInput(property.Id, checkIn, checkIn.AddDays(14)));
+
+        var stored = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == result.BookingId);
+        // D5: never confirmed by the checkout.
+        Assert.Equal(BookingStatus.Pending, stored.Status);
+        Assert.Equal(PaymentOption.OnSite, stored.PaymentOption);
+        Assert.Null(stored.GuestEmailVerifiedAt);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Booking>()), Times.Never);
+        // Email confirmation window = the checkout TTL (15 minutes) when OnSiteEmailVerificationMinutes is not set.
+        Assert.InRange(stored.RequestExpiresAt!.Value, DateTime.UtcNow.AddMinutes(14), DateTime.UtcNow.AddMinutes(16));
+        Assert.Equal(stored.RequestExpiresAt, result.OnSiteRequestExpiresAt);
+
+        var email = Assert.Single(_emails.Queued);
+        Assert.Equal("guest@example.com", email.To);
+        Assert.Equal("onsite-request-received", email.Template);
+        var link = System.Text.RegularExpressions.Regex.Match(
+            email.Content.HtmlBody,
+            $"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/book/villa-rosa/requests/{stored.Id:D}/confirm\\?token=([A-Za-z0-9_-]+)\"");
+        Assert.True(link.Success, "confirmation link missing");
+        // Only the hash is stored; the raw token is only in the email.
+        Assert.NotEqual(link.Groups[1].Value, stored.GuestEmailVerificationTokenHash);
+        Assert.True(OnSiteRequests.EmailVerificationTokenMatches(stored.GuestEmailVerificationTokenHash, link.Groups[1].Value));
+    }
+
+    private static DirectBookingCreateInput OnSiteInput(Guid propertyId, DateTime checkIn, DateTime checkOut) => new(
+        propertyId,
+        checkIn,
+        checkOut,
+        2,
+        0,
+        new DirectBookingGuestInput("Ada", "Lovelace", "guest@example.com", null, "IT"),
+        "2026-06-direct-checkout-v1",
+        "127.0.0.1",
+        null,
+        PaymentOption.OnSite);
 
     [Fact]
     public async Task CreateManualBookingAsync_WithValidBooking_StoresConfirmedManualBookingWithGuestSnapshot()

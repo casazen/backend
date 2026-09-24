@@ -14,6 +14,7 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicBookingsController(
     IBookingService bookingService,
+    IOnSiteBookingRequestService onSiteRequests,
     ILogger<PublicBookingsController> logger,
     TimeProvider? timeProvider = null) : ControllerBase
 {
@@ -160,11 +161,10 @@ public class PublicBookingsController(
 
         if (request.Consent is null || !request.Consent.DataProcessing)
         {
-            return BadRequest(new
-            {
-                error = "Consent required",
-                message = "Data processing consent is required to complete booking.",
-            });
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                DirectBookingProblemCodes.ConsentRequired,
+                "DirectBookingConsentRequired");
         }
 
         var consentIp = ClientIp.GetString(HttpContext) ?? string.Empty;
@@ -207,39 +207,66 @@ public class PublicBookingsController(
                 FreeRefundDeadline = result.FreeRefundDeadline ?? DateTime.UtcNow,
                 PaymentOption = result.PaymentOption,
                 TouristTaxStatus = result.TouristTaxStatus,
+                EmailConfirmationExpiresAt = result.OnSiteRequestExpiresAt,
             });
         }
         catch (DirectBookingException ex)
         {
             logger.LogWarning(ex, "Direct booking rejected: {ErrorCode}", ex.ErrorCode);
-            return ex.ErrorCode switch
-            {
-                DirectBookingErrorCodes.PropertyNotFound => NotFound(new { error = "Property not found" }),
-                DirectBookingErrorCodes.PaymentNotReady => Conflict(new
-                {
-                    error = "Complete Stripe onboarding before accepting guest payments",
-                }),
-                DirectBookingErrorCodes.NotAvailable => Conflict(new
-                {
-                    error = "Property not available for selected dates",
-                }),
-                DirectBookingErrorCodes.TooManyGuests or DirectBookingErrorCodes.InvalidDates
-                    or DirectBookingErrorCodes.InvalidConsentVersion
-                    or DirectBookingErrorCodes.InvalidPaymentOption => BadRequest(new
-                    {
-                        error = ex.ErrorCode,
-                        message = ex.Message,
-                    }),
-                DirectBookingErrorCodes.ChildAgesRequired => this.ApiProblem(
-                    StatusCodes.Status422UnprocessableEntity,
-                    DirectBookingErrorCodes.ChildAgesRequired,
-                    "TouristTaxChildAgesRequired"),
-                DirectBookingErrorCodes.StripeError => StatusCode(500, new
-                {
-                    error = "Payment initialization failed",
-                }),
-                _ => BadRequest(new { error = ex.Message }),
-            };
+            return DirectBookingProblem(ex);
         }
     }
+
+    /// <summary>
+    /// The guest confirms the email of a "pay at the property" request with the token of the link (BK-06, D5, A3-06): only
+    /// then the request goes to the host, who accepts or declines it. Idempotent (a second click answers the current
+    /// state). 404 <c>onsite_request_link_invalid</c> for a wrong link, 409 <c>onsite_request_expired</c> when the time to
+    /// confirm has passed.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/confirm-email")]
+    [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
+    [ProducesResponseType(typeof(OnSiteRequestConfirmationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OnSiteRequestConfirmationResponse>> ConfirmOnSiteRequestEmail(
+        Guid bookingId,
+        [FromBody] ConfirmOnSiteRequestEmailRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        var snapshot = await onSiteRequests.ConfirmGuestEmailAsync(bookingId, request.Token, cancellationToken);
+        return Ok(OnSiteRequestConfirmationResponse.From(snapshot));
+    }
+
+    /// <summary>
+    /// Public checkout errors as ProblemDetails with a stable code and a localized message (R-11): the guest reads why
+    /// the booking failed (e.g. the host has not enabled payments yet) instead of a generic "checkout failed".
+    /// </summary>
+    private ObjectResult DirectBookingProblem(DirectBookingException ex) => ex.ErrorCode switch
+    {
+        DirectBookingErrorCodes.PropertyNotFound => this.ApiProblem(
+            StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"),
+        DirectBookingErrorCodes.PaymentNotReady => this.ApiProblem(
+            StatusCodes.Status409Conflict, DirectBookingProblemCodes.PaymentsNotReady, "DirectBookingPaymentsNotReady"),
+        DirectBookingErrorCodes.NotAvailable => this.ApiProblem(
+            StatusCodes.Status409Conflict, BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable"),
+        DirectBookingErrorCodes.TooManyGuests => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", ex.MessageArgs),
+        DirectBookingErrorCodes.InvalidDates => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity, DirectBookingProblemCodes.InvalidStay, "DirectBookingInvalidStay"),
+        DirectBookingErrorCodes.InvalidConsentVersion => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity, DirectBookingProblemCodes.ConsentOutdated, "DirectBookingConsentOutdated"),
+        DirectBookingErrorCodes.InvalidPaymentOption => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity,
+            DirectBookingProblemCodes.InvalidPaymentOption,
+            "DirectBookingInvalidPaymentOption"),
+        DirectBookingErrorCodes.ChildAgesRequired => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity, DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired"),
+        DirectBookingErrorCodes.StripeError => this.ApiProblem(
+            StatusCodes.Status503ServiceUnavailable, ProblemCodes.PaymentProviderError, "PaymentProviderUnavailableDetail"),
+        _ => this.ApiProblem(
+            StatusCodes.Status422UnprocessableEntity, ProblemCodes.BusinessRuleViolation, "BusinessRuleViolationDetail"),
+    };
 }
