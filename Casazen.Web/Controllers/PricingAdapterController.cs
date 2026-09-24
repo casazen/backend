@@ -56,7 +56,7 @@ public class PricingAdapterController(
         }
 
         var existing = await pricingService.GetConfigAsync(propertyId);
-        var config = existing ?? new PricingAdapterConfig { Id = Guid.Empty, PropertyId = propertyId };
+        var config = existing ?? new PricingAdapterConfig { Id = Guid.Empty, PropertyId = propertyId, OrgId = property.OrgId };
 
         config.IsEnabled = request.IsEnabled;
         config.AdaptationFrequency = request.AdaptationFrequency;

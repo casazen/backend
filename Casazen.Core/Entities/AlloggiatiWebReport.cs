@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
 [Table("AlloggiatiWebReports")]
-public class AlloggiatiWebReport
+public class AlloggiatiWebReport : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -13,6 +14,9 @@ public class AlloggiatiWebReport
     [ForeignKey("Booking")]
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
+
+    /// <summary>Tenant of the row, copied from <see cref="Booking"/> when it is created (TN-2).</summary>
+    public Guid OrgId { get; set; }
 
     [ForeignKey("Guest")]
     public Guid GuestId { get; set; }

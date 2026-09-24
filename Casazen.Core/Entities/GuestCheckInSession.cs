@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
 [Table("GuestCheckInSessions")]
-public class GuestCheckInSession
+public class GuestCheckInSession : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

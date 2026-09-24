@@ -1,10 +1,13 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-public class OtaIntegrationService(IOtaIntegrationRepository repository) : IOtaIntegrationService
+public class OtaIntegrationService(
+    IOtaIntegrationRepository repository,
+    IPropertyRepository propertyRepository) : IOtaIntegrationService
 {
     public async Task<IEnumerable<OtaIntegration>> GetPropertyIntegrationsAsync(Guid propertyId)
     {
@@ -18,9 +21,13 @@ public class OtaIntegrationService(IOtaIntegrationRepository repository) : IOtaI
 
     public async Task<OtaIntegration> CreateIntegrationAsync(Guid propertyId, string platform, string externalPropertyId, string apiKey)
     {
+        var orgId = await propertyRepository.GetOrgIdAsync(propertyId)
+            ?? throw new NotFoundException($"Property {propertyId} not found");
+
         var integration = new OtaIntegration
         {
             PropertyId = propertyId,
+            OrgId = orgId,
             Platform = platform,
             ExternalPropertyId = externalPropertyId,
             ApiKey = apiKey,

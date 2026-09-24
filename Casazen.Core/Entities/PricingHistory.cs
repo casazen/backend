@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
@@ -11,7 +12,7 @@ namespace Casazen.Core.Entities;
 /// Part of Epic: AI-Driven Dynamic Pricing Engine.
 /// </summary>
 [Table("PricingHistories")]
-public class PricingHistory
+public class PricingHistory : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -20,6 +21,9 @@ public class PricingHistory
     [ForeignKey("Property")]
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
+
+    /// <summary>Tenant of the row, copied from <see cref="Property"/> when it is created (TN-2).</summary>
+    public Guid OrgId { get; set; }
 
     /// <summary>
     /// UTC timestamp of when this pricing adaptation was applied.

@@ -63,6 +63,7 @@ public class PricingAdapterService(
 
     public async Task<PricingHistory> RecordPricingChangeAsync(
         Guid propertyId,
+        Guid orgId,
         decimal previousPrice,
         decimal newPrice,
         string changeReason,
@@ -73,6 +74,7 @@ public class PricingAdapterService(
         var history = new PricingHistory
         {
             PropertyId = propertyId,
+            OrgId = orgId,
             AdaptationDate = DateTime.UtcNow,
             PreviousPrice = previousPrice,
             NewPrice = newPrice,
