@@ -164,6 +164,7 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
             new PropertyDocument
             {
                 PropertyId = property.Id,
+                OrgId = org.Id,
                 FileName = "cin.pdf",
                 StorageUrl = "documents/cin.pdf",
                 DocumentType = DocumentType.CinCertificate,
@@ -172,6 +173,7 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
             new PropertyDocument
             {
                 PropertyId = property.Id,
+                OrgId = org.Id,
                 FileName = "safety.pdf",
                 StorageUrl = "documents/safety.pdf",
                 DocumentType = DocumentType.SafetyCompliance,
