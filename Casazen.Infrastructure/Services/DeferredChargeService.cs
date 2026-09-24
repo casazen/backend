@@ -64,7 +64,7 @@ public sealed record DeferredChargeNotice(
 /// The deferred payment of the public checkout, "Paga alla scadenza" (task BK-08, audit defect A3-14): off-session charge
 /// of the saved payment method on the host's connected account, payment state from the PaymentIntent status and the
 /// webhooks, guest and host emails on failure, limited attempts, automatic cancellation. Rules and settings:
-/// <see cref="DeferredCharges"/>; runbooks <c>docs/runbooks/direct-booking.md</c> § 8 and <c>stripe.md</c> "Deferred charge".
+/// <see cref="DeferredCharges"/>; runbooks <c>docs/runbooks/direct-booking.md</c> § 9 and <c>stripe.md</c> "Deferred charge".
 /// </summary>
 /// <remarks>
 /// <para>

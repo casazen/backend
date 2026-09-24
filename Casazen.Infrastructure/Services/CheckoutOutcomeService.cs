@@ -66,7 +66,8 @@ public sealed class CheckoutOutcomeService(
             booking.FreeRefundDeadline is { } deadline &&
             (deferredPayment is null || !DeferredCharges.IsCollected(deferredPayment.Status))
                 ? RomeCalendar.DateInRome(deadline)
-                : null);
+                : null,
+            BookingCodes.Format(booking.BookingCode));
     }
 
     public async Task<CheckoutPaymentSession> ResumePaymentAsync(

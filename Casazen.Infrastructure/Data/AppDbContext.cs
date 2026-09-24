@@ -196,6 +196,11 @@ public class AppDbContext(
             .IsUnique()
             .HasFilter("\"CheckInToken\" IS NOT NULL");
 
+        // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.BookingCode })
+            .IsUnique();
+
         // Precision for GPS coordinates
         modelBuilder.Entity<Property>()
             .Property(p => p.Latitude)

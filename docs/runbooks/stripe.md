@@ -256,7 +256,7 @@ Task BK-08 (audit defect A3-14, P1). Before it the deferred charge job marked th
 PaymentIntent status, without `off_session`: with an EU card and 3-D Secure the PaymentIntent stayed `requires_action`,
 CasaZen said "paid" and the guest arrived without paying. Errors were only logged and the job retried every day forever;
 the webhook ignored the `direct-booking-deadline-charge` kind on the platform endpoint. The booking side (attempts, emails,
-cancellation, settings) is in [direct-booking.md](direct-booking.md) § 8; this section covers the Stripe calls.
+cancellation, settings) is in [direct-booking.md](direct-booking.md) § 9; this section covers the Stripe calls.
 
 ### Stripe parameters (checked 2026-09-24)
 
@@ -282,7 +282,7 @@ deferred PaymentIntents.
 Status mapping (`DeferredCharges.StatusOf`): `succeeded` → payment `Completed`; `processing` (SEPA) / `requires_capture` →
 `Processing`, completed by the webhook; `requires_action`, `requires_payment_method`, `requires_confirmation` (and the 402
 answer) → `Failed`, the guest must act; `canceled` → `Canceled` (canceled outside CasaZen: no new attempt, see
-direct-booking.md § 8).
+direct-booking.md § 9).
 
 ### Webhooks
 

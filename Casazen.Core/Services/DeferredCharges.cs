@@ -19,7 +19,7 @@ namespace Casazen.Core.Services;
 /// cancelled with <see cref="BookingCancellationReason.DeferredPaymentNotCompleted"/> and its dates released.</item>
 /// </list>
 /// The two numbers are PROVISIONAL technical defaults, not product rules: the product owner decides them
-/// (<c>docs/runbooks/direct-booking.md</c> § 8, DUBBI BK-08).
+/// (<c>docs/runbooks/direct-booking.md</c> § 9, DUBBI BK-08).
 /// </summary>
 public static class DeferredCharges
 {

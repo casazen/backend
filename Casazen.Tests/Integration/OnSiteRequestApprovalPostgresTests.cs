@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
@@ -108,7 +109,10 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(stored.Guest.Email, confirmation.To);
         Assert.Contains("l'host ha accettato la tua richiesta", confirmation.Content.HtmlBody);
         Assert.Contains("direttamente in struttura", confirmation.Content.HtmlBody);
-        Assert.Contains($"Codice prenotazione: <strong>{bookingId:D}</strong>", confirmation.Content.HtmlBody);
+        // BK-11: the readable booking code of "Le mie prenotazioni", not the booking id.
+        Assert.Contains(
+            $"Codice prenotazione: <strong>{BookingCodes.Format(stored.BookingCode)}</strong>",
+            confirmation.Content.HtmlBody);
         Assert.Empty(Emails(bookingId, "host-booking-confirmed"));
         var afterwards = await host.GetFromJsonAsync<JsonElement>("/api/bookings/approval-requests");
         Assert.DoesNotContain(afterwards.EnumerateArray(), r => r.GetProperty("id").GetGuid() == bookingId);

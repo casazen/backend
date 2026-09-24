@@ -48,18 +48,23 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
 
         await HandleAsync(PaymentSucceeded(seed.IntentId, host.Account), WebhookSource.Connected);
 
-        Assert.Equal(BookingStatus.Confirmed, (await LoadAsync(seed.BookingId)).Status);
+        var confirmed = await LoadAsync(seed.BookingId);
+        Assert.Equal(BookingStatus.Confirmed, confirmed.Status);
         var guest = Assert.Single(Emails(seed));
         Assert.Equal(EmailTemplates.Names.GuestBookingConfirmed, guest.Template);
         Assert.Equal(seed.GuestEmail, guest.To);
         Assert.Equal($"Prenotazione confermata - {host.PropertyName}", guest.Content.Subject);
-        Assert.Contains($"Codice prenotazione: <strong>{seed.BookingId:D}</strong>", guest.Content.HtmlBody);
+        // BK-11: the readable code of "Le mie prenotazioni", never the booking id.
+        var bookingCode = BookingCodes.Format(confirmed.BookingCode);
+        Assert.Contains($"Codice prenotazione: <strong>{bookingCode}</strong>", guest.Content.HtmlBody);
+        Assert.DoesNotContain(seed.BookingId.ToString("D"), guest.Content.HtmlBody);
         Assert.Contains("<li>Soggiorno: 300,00 €</li>", guest.Content.HtmlBody);
         Assert.Contains("<li>Pulizie: 50,00 €</li>", guest.Content.HtmlBody);
         Assert.Contains("<li>Tassa di soggiorno: 12,00 € (inclusa nel totale)</li>", guest.Content.HtmlBody);
         Assert.Contains("<li>Totale: <strong>362,00 €</strong></li>", guest.Content.HtmlBody);
         Assert.Contains("Pagamento ricevuto: <strong>362,00 €</strong>.", guest.Content.HtmlBody);
-        var myBookings = EmailHtmlBuilder.Encode($"{PublicSite}/book/{Uri.EscapeDataString(host.OrgSlug)}/my-bookings");
+        var myBookings = EmailHtmlBuilder.Encode(
+            $"{PublicSite}/book/{Uri.EscapeDataString(host.OrgSlug)}/my-bookings?code={bookingCode}");
         Assert.Contains($"href=\"{myBookings}\"", guest.Content.HtmlBody);
         Assert.Contains($"contatta <strong>Villa Test Srl</strong> all'indirizzo {host.ContactEmail}.", guest.Content.HtmlBody);
         Assert.DoesNotContain("dopo il tempo previsto", guest.Content.HtmlBody);

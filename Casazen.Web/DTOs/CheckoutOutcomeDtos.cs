@@ -17,7 +17,8 @@ public sealed class CheckoutTokenRequest
 
 /// <summary>
 /// The checkout of a booking as its guest sees it on the outcome page (BK-07, A3-15). <c>state</c> is the real one (see
-/// <see cref="CheckoutOutcomeState"/>); no personal data of the guest.
+/// <see cref="CheckoutOutcomeState"/>); no personal data of the guest. <c>bookingCode</c> is the code of "Le mie
+/// prenotazioni" (BK-11), shown with a link to that page.
 /// </summary>
 public sealed record CheckoutOutcomeResponse(
     Guid BookingId,
@@ -33,7 +34,8 @@ public sealed record CheckoutOutcomeResponse(
     decimal TotalPrice,
     string Currency,
     DateTime? ExpiresAt,
-    DateOnly? DeferredChargeDate)
+    DateOnly? DeferredChargeDate,
+    string BookingCode)
 {
     public static CheckoutOutcomeResponse From(CheckoutOutcome outcome) => new(
         outcome.BookingId,
@@ -49,7 +51,8 @@ public sealed record CheckoutOutcomeResponse(
         outcome.TotalPrice,
         outcome.Currency,
         outcome.ExpiresAt,
-        outcome.DeferredChargeDate);
+        outcome.DeferredChargeDate,
+        outcome.BookingCode);
 }
 
 /// <summary>What the Stripe Payment Element needs to pay the same hold again (BK-07).</summary>

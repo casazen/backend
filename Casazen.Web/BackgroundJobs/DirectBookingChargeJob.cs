@@ -7,7 +7,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// Daily deferred charge of "Paga alla scadenza" bookings (recurring job <c>direct-booking-charge</c>, 06:00 UTC), task
 /// BK-08 (A3-14): off-session charge on the host's connected account from the free refund deadline, payment state from
 /// Stripe, emails and limited attempts on failure, cancellation of what stays unpaid. See <see cref="DeferredChargeService"/>
-/// and <c>docs/runbooks/direct-booking.md</c> § 8.
+/// and <c>docs/runbooks/direct-booking.md</c> § 9.
 /// </summary>
 /// <remarks>
 /// <see cref="DisableConcurrentExecutionAttribute"/> keeps two runs (a retry, a manual trigger) from overlapping; each
