@@ -13,10 +13,17 @@ namespace Casazen.Web.Infrastructure;
 public interface IRequestTenantContext : ITenantContext
 {
     /// <summary>
-    /// Reads the caller's <c>OrgId</c> from <c>Users</c> once per request (idempotent). Anonymous requests
-    /// resolve nothing. Called by <see cref="TenantResolutionMiddleware"/> before authorization and controllers.
+    /// Reads the caller's <c>OrgId</c> and active flag from <c>Users</c> once per request, in one query (idempotent).
+    /// Anonymous requests resolve nothing. Called by <see cref="TenantResolutionMiddleware"/> before authorization and
+    /// controllers.
     /// </summary>
     Task ResolveAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the caller's <c>Users</c> row exists and was deactivated (<c>IsActive = false</c>, PL-03): the request is
+    /// refused by <see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/>. False for anonymous requests and for a first access (no row).
+    /// </summary>
+    bool IsCallerInactive { get; }
 
     /// <summary>
     /// Sets the caller's org after it has been provisioned or linked in this request. The org of a request can
@@ -49,6 +56,7 @@ public sealed class TenantContext(
 {
     private bool _resolved;
     private bool _unresolvedReadLogged;
+    private bool _callerInactive;
     private Guid? _orgId;
 
     public bool FilterEnabled =>
@@ -70,6 +78,8 @@ public sealed class TenantContext(
         }
     }
 
+    public bool IsCallerInactive => _callerInactive;
+
     public async Task ResolveAsync(CancellationToken cancellationToken = default)
     {
         if (_resolved || !FilterEnabled)
@@ -81,10 +91,13 @@ public sealed class TenantContext(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            orgId = await db.Users.AsNoTracking()
+            // One read per request for both the tenant and the active flag (PL-03 reuses it, A1-04).
+            var row = await db.Users.AsNoTracking()
                 .Where(u => u.Id == sub)
-                .Select(u => u.OrgId)
+                .Select(u => new { u.OrgId, u.IsActive })
                 .FirstOrDefaultAsync(cancellationToken);
+            orgId = row?.OrgId;
+            _callerInactive = row is { IsActive: false };
         }
 
         // SetOrgId may have run while the query was in flight; never overwrite it with an older value.

@@ -178,6 +178,94 @@ public class Auth0ManagementServiceTests
         Assert.Empty(_requests);
     }
 
+    [Fact]
+    public async Task SetBlockedAsync_Block_SendsPatchWithBlockedTrueOnly()
+    {
+        RespondToUserUpdate(HttpStatusCode.OK);
+        var service = CreateService();
+
+        var result = await service.SetBlockedAsync(DualRoleUser, blocked: true);
+
+        Assert.True(result.Succeeded);
+        var patch = Assert.Single(_requests);
+        Assert.Equal(HttpMethod.Patch, patch.Method);
+        Assert.EndsWith("/users/auth0%7Chost-and-supplier", patch.Path);
+        var body = JsonDocument.Parse(patch.Body!).RootElement;
+        Assert.True(body.GetProperty("blocked").GetBoolean());
+        // Nothing else of the profile is overwritten.
+        Assert.Equal(["blocked"], body.EnumerateObject().Select(p => p.Name));
+    }
+
+    [Fact]
+    public async Task SetBlockedAsync_Unblock_SendsBlockedFalse()
+    {
+        RespondToUserUpdate(HttpStatusCode.OK);
+        var service = CreateService();
+
+        var result = await service.SetBlockedAsync(DualRoleUser, blocked: false);
+
+        Assert.True(result.Succeeded);
+        Assert.False(JsonDocument.Parse(Assert.Single(_requests).Body!).RootElement.GetProperty("blocked").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SetBlockedAsync_ManagementApiError_ReturnsFailedResult()
+    {
+        RespondToUserUpdate(HttpStatusCode.InternalServerError);
+        var service = CreateService();
+
+        var result = await service.SetBlockedAsync(DualRoleUser, blocked: true);
+
+        Assert.Equal(Auth0SyncResult.ApiErrorCode, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SetBlockedAsync_NotConfigured_ReturnsNotConfiguredWithoutHttpCalls()
+    {
+        _tokenProvider.SetupGet(p => p.IsConfigured).Returns(false);
+        var service = CreateService();
+
+        var result = await service.SetBlockedAsync(DualRoleUser, blocked: true);
+
+        Assert.Equal(Auth0SyncStatus.NotConfigured, result.Status);
+        Assert.Empty(_requests);
+    }
+
+    [Fact]
+    public async Task GetUserRolesAsync_UserWithCasazenAndForeignRoles_ReturnsOnlyCasazenRoles()
+    {
+        _http.When(HttpMethod.Get, $"{ApiBase}/users/*").Respond(async request =>
+        {
+            await Record(request);
+            return JsonResponse(HttpStatusCode.OK, new object[]
+            {
+                new { id = "rol_owner", name = "PropertyOwner", description = "" },
+                new { id = "rol_supplier", name = "supplier", description = "" },
+                new { id = "rol_other", name = "OtherAppEditor", description = "" },
+            });
+        });
+        var service = CreateService();
+
+        var result = await service.GetUserRolesAsync(DualRoleUser);
+
+        Assert.True(result.Sync.Succeeded);
+        Assert.Equal([UserRole.PropertyOwner, UserRole.Supplier], result.Roles.Order());
+        var read = Assert.Single(_requests);
+        Assert.Contains("/users/auth0%7Chost-and-supplier/roles", read.Path);
+    }
+
+    [Fact]
+    public async Task GetUserRolesAsync_ManagementApiError_ReturnsFailedWithoutRoles()
+    {
+        RespondToUserRoles(HttpStatusCode.InternalServerError);
+        var service = CreateService();
+
+        var result = await service.GetUserRolesAsync(DualRoleUser);
+
+        Assert.Equal(Auth0SyncResult.ApiErrorCode, result.Sync.ErrorCode);
+        Assert.Empty(result.Roles);
+    }
+
     private Auth0ManagementService CreateService(IMemoryCache? cache = null)
     {
         var factory = new Mock<IHttpClientFactory>();
@@ -210,6 +298,15 @@ public class Auth0ManagementServiceTests
             });
         }
     }
+
+    private void RespondToUserUpdate(HttpStatusCode status) =>
+        _http.When(HttpMethod.Patch, $"{ApiBase}/users/*").Respond(async request =>
+        {
+            await Record(request);
+            return status == HttpStatusCode.OK
+                ? JsonResponse(status, new { user_id = DualRoleUser, blocked = true })
+                : JsonResponse(status, new { statusCode = (int)status, error = "Internal Server Error", message = "boom" });
+        });
 
     private async Task Record(HttpRequestMessage request)
     {

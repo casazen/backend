@@ -24,6 +24,30 @@
   <data name="ForbiddenDetail" xml:space="preserve">
     <value>Non si dispone dei permessi per accedere a questa risorsa.</value>
   </data>
+  <data name="AccountInactive" xml:space="preserve">
+    <value>Il tuo account CasaZen è stato disattivato da un amministratore: non puoi più usare l'app con questo account. Se pensi che sia un errore, contatta il supporto.</value>
+  </data>
+  <data name="UserCannotDeactivateSelf" xml:space="preserve">
+    <value>Non puoi disattivare il tuo account: chiedi a un altro amministratore.</value>
+  </data>
+  <data name="UserLastActiveAdmin" xml:space="preserve">
+    <value>Non puoi disattivare l'ultimo amministratore attivo: nomina prima un altro amministratore.</value>
+  </data>
+  <data name="UserInactiveRoleChange" xml:space="preserve">
+    <value>L'utente è disattivato: riattivalo prima di cambiarne il ruolo.</value>
+  </data>
+  <data name="UserDeactivated" xml:space="preserve">
+    <value>Utente disattivato: CasaZen rifiuta ogni sua richiesta e su Auth0 l'account è bloccato, senza ruoli.</value>
+  </data>
+  <data name="UserDeactivatedAuth0NotSynced" xml:space="preserve">
+    <value>Utente disattivato: CasaZen rifiuta già ogni sua richiesta. Auth0 però non è stato aggiornato (account non bloccato o ruoli non rimossi): ripeti la disattivazione quando Auth0 è raggiungibile.</value>
+  </data>
+  <data name="UserReactivated" xml:space="preserve">
+    <value>Utente riattivato: su Auth0 l'account è sbloccato e ha di nuovo i suoi ruoli.</value>
+  </data>
+  <data name="UserReactivatedAuth0NotSynced" xml:space="preserve">
+    <value>Utente riattivato in CasaZen, ma Auth0 non è stato aggiornato: l'utente non può accedere finché non ripeti la riattivazione quando Auth0 è raggiungibile.</value>
+  </data>
   <data name="NotFound" xml:space="preserve">
     <value>Non trovato</value>
   </data>
@@ -662,5 +686,32 @@
   </data>
   <data name="LeaseStipulaLeaseNotSigned" xml:space="preserve">
     <value>Il contratto non è ancora firmato: carica il PDF firmato da tutte le parti insieme alla data di stipula.</value>
+  </data>
+  <data name="BookingGuestsInvalid" xml:space="preserve">
+    <value>Serve almeno un adulto: i minori devono essere meno degli ospiti.</value>
+  </data>
+  <data name="BookingNotEditable" xml:space="preserve">
+    <value>Una prenotazione annullata non si può modificare.</value>
+  </data>
+  <data name="BookingStayLocked" xml:space="preserve">
+    <value>Il soggiorno è già iniziato o concluso: date e ospiti non si possono più cambiare.</value>
+  </data>
+  <data name="BookingUpdateSourceLocked" xml:space="preserve">
+    <value>Date e ospiti si possono cambiare solo nelle prenotazioni inserite da te: questa arriva dal sito di prenotazione o da un canale, con prezzo e pagamento già definiti. Puoi modificare le note.</value>
+  </data>
+  <data name="BookingCheckInInPast" xml:space="preserve">
+    <value>Il check-in non può essere spostato a un giorno già passato.</value>
+  </data>
+  <data name="BookingNotPending" xml:space="preserve">
+    <value>La prenotazione non è più in attesa di conferma: ricarica la pagina.</value>
+  </data>
+  <data name="BookingNotConfirmable" xml:space="preserve">
+    <value>Puoi confermare solo le prenotazioni in attesa inserite da te: le altre si confermano con il pagamento dell'ospite o con la risposta alla richiesta.</value>
+  </data>
+  <data name="BookingNotCheckedIn" xml:space="preserve">
+    <value>Il check-out si registra solo per un soggiorno con check-in registrato.</value>
+  </data>
+  <data name="BookingCheckOutTooEarly" xml:space="preserve">
+    <value>Il check-out si può registrare dal giorno di partenza.</value>
   </data>
 </root>

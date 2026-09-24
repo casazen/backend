@@ -126,7 +126,10 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
-        context.Bookings.Update(booking);
+        // A booking loaded by this context is saved with its changed columns only: Update() would mark the whole graph
+        // (property, guest, payments) modified and write back values another request may have changed meanwhile.
+        if (context.Entry(booking).State == EntityState.Detached)
+            context.Bookings.Update(booking);
         await context.SaveChangesAsync();
 
         if (transaction is not null)

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Auth;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,7 +36,8 @@ public class MeController(
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         if (!user.IsActive)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "User account inactive" });
+            // Normally refused earlier by InactiveAccountMiddleware (PL-03); same answer if the flag changed meanwhile.
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.AccountInactive, "AccountInactive");
         }
 
         var contexts = await contextAuthorizationService.GetUserContextsAsync(sub, cancellationToken);

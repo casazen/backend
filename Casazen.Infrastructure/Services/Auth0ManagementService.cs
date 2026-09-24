@@ -69,6 +69,54 @@ public class Auth0ManagementService(
         ChangeRolesAsync(userId, roles, remove: true, cancellationToken);
 
     /// <inheritdoc />
+    public Task<Auth0SyncResult> SetBlockedAsync(
+        string userId,
+        bool blocked,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(
+            blocked ? "block user" : "unblock user",
+            userId,
+            ct => ExecuteAsync(
+                client => client.Users.UpdateAsync(userId, new UserUpdateRequest { Blocked = blocked }, ct),
+                ct),
+            cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<Auth0UserRolesResult> GetUserRolesAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var roles = new List<UserRole>();
+        var sync = await CallAsync(
+            "read roles of user",
+            userId,
+            async ct =>
+            {
+                const int pageSize = 50;
+                for (var page = 0; ; page++)
+                {
+                    var currentPage = page;
+                    var assigned = await ExecuteAsync(
+                        client => client.Users.GetRolesAsync(userId, new PaginationInfo(currentPage, pageSize, false), ct),
+                        ct);
+                    if (assigned is null)
+                        break;
+
+                    roles.AddRange(assigned
+                        .Select(r => RoleNames.FirstOrDefault(n => string.Equals(n.Value, r.Name, StringComparison.OrdinalIgnoreCase)))
+                        .Where(n => n.Value is not null)
+                        .Select(n => n.Key));
+
+                    if (assigned.Count < pageSize)
+                        break;
+                }
+            },
+            cancellationToken);
+
+        return sync.Succeeded
+            ? new Auth0UserRolesResult(sync, roles.Distinct().ToList())
+            : Auth0UserRolesResult.Failed(sync);
+    }
+
+    /// <inheritdoc />
     public async Task<Auth0UserProfile?> GetUserProfileAsync(string userId)
     {
         if (!tokenProvider.IsConfigured)
@@ -170,6 +218,50 @@ public class Auth0ManagementService(
             logger.LogError(ex,
                 "Auth0ManagementService: Failed to {Operation} roles [{Roles}] for user {UserId} (status {StatusCode})",
                 operation, string.Join(", ", roleNames), userId, (ex as ErrorApiException)?.StatusCode);
+            return Auth0SyncResult.Failed(Auth0SyncResult.ApiErrorCode);
+        }
+    }
+
+    /// <summary>
+    /// Runs one Management API <paramref name="call"/> for <paramref name="userId"/> and maps its outcome like the role
+    /// sync: not configured, token failure, rate limit or API error are logged and returned, never thrown.
+    /// </summary>
+    private async Task<Auth0SyncResult> CallAsync(
+        string operation,
+        string userId,
+        Func<CancellationToken, Task> call,
+        CancellationToken cancellationToken)
+    {
+        if (!tokenProvider.IsConfigured)
+        {
+            logger.LogWarning(
+                "Auth0ManagementService: Management API not configured — cannot {Operation} {UserId}", operation, userId);
+            return Auth0SyncResult.NotConfigured;
+        }
+
+        try
+        {
+            await call(cancellationToken);
+            logger.LogInformation("Auth0ManagementService: {Operation} {UserId} succeeded", operation, userId);
+            return Auth0SyncResult.Synced;
+        }
+        catch (Auth0ManagementTokenException ex)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: No Management API token — cannot {Operation} {UserId}", operation, userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+        }
+        catch (RateLimitApiException ex)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Rate limited while trying to {Operation} {UserId}", operation, userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.RateLimitedCode);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex,
+                "Auth0ManagementService: Failed to {Operation} {UserId} (status {StatusCode})",
+                operation, userId, (ex as ErrorApiException)?.StatusCode);
             return Auth0SyncResult.Failed(Auth0SyncResult.ApiErrorCode);
         }
     }

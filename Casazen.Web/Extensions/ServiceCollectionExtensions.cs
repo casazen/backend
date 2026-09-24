@@ -13,6 +13,7 @@ using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.ICal;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
@@ -258,6 +259,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundService>();
         services.AddScoped<IPaymentRefundService>(sp => sp.GetRequiredService<PaymentRefundService>());
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+        // Host changes to a booking: edit, confirm, check-out (PC-07).
+        services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
@@ -331,6 +334,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
+        // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.
+        services.AddOptions<ICalImportOptions>().BindConfiguration(ICalImportOptions.SectionName);
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();

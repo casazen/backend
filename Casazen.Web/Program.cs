@@ -302,6 +302,8 @@ app.UseFeatureGates();
 app.UseAuthentication();
 // Loads the caller's OrgId asynchronously once per request, before policies and the EF tenant filter read it (A1-20).
 app.UseTenantResolution();
+// A deactivated account gets 403 account_inactive on every authenticated request, before any policy (PL-03, A1-04).
+app.UseInactiveAccountBlock();
 app.UseAuthorization();
 app.UseRateLimiter();
 

@@ -32,4 +32,21 @@ public interface IBookingService
     /// <see cref="DirectBookingErrorCodes.InvalidDates"/>.
     /// </exception>
     Task<DirectBookingQuote> QuoteDirectBookingAsync(DirectBookingQuoteInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Price of a stay the host enters or changes in <paramref name="property"/> (manual booking, PC-07): the same
+    /// calculation as <see cref="QuoteDirectBookingAsync"/> (nightly rate x nights + cleaning fee, tourist tax of BK-03),
+    /// without the checks of the public booking site (active listing, compliance). It does not check availability.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="BookingErrorCodes.TooManyGuests"/> or <see cref="BookingErrorCodes.InvalidDates"/>.
+    /// </exception>
+    Task<DirectBookingQuote> PriceHostStayAsync(
+        Property property,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        int numberOfAdults,
+        int numberOfChildren,
+        IReadOnlyList<int>? childrenAges,
+        CancellationToken cancellationToken = default);
 }
