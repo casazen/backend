@@ -1,5 +1,7 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -13,14 +15,22 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "RequireContext:short-rent:guest.read")]
+[Authorize(Policy = CasazenPolicies.GuestRead)]
 public class GuestsController(
     IGuestService guestService,
     IOrgContextResolver orgContextResolver,
+    IFileStorage fileStorage,
+    IAuthorizationService authorizationService,
     ILogger<GuestsController> logger) : ControllerBase
 {
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
+
+    /// <summary>404: the guest has no document scan, or its file is not in the storage.</summary>
+    public const string DocumentScanMissingCode = "guest_document_scan_missing";
+
+    /// <summary>Prefix of the private storage keys of guest document scans (<see cref="StorageKeys.GuestDocument"/>).</summary>
+    private const string GuestDocumentKeyPrefix = "guest-documents/";
 
     [HttpGet]
     public async Task<ActionResult<PagedResultDto<GuestSummaryDto>>> GetAll(
@@ -59,6 +69,44 @@ public class GuestsController(
             return GuestNotFound();
 
         return Ok(GuestDtoMapper.ToDto(guest));
+    }
+
+    /// <summary>
+    /// Downloads the identity document scan the guest uploaded (FD-07 open point, CO-09). The scan lives in the private
+    /// bucket and is read only here: guest of the caller's org (another org's guest answers 404), <c>guest.read</c> on it
+    /// (TN-3, otherwise 403), never cached; every download is logged with the user and the guest (audit).
+    /// </summary>
+    [HttpGet("{id:guid}/document-scan")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadDocumentScan(Guid id)
+    {
+        var guest = await FindGuestInOrgAsync(id);
+        if (guest is null)
+            return GuestNotFound();
+
+        if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForOrg(guest.OrgId), GuestOperations.Read))
+        {
+            logger.LogWarning("User {UserId} denied the document scan of guest {GuestId}", User.GetUserId(), id);
+            return Forbid();
+        }
+
+        var key = guest.DocumentScanUrl;
+        // Only keys of the private bucket: a legacy "/uploads/..." path not migrated yet is never read from disk.
+        if (!StorageKeys.IsValid(key) || !key!.StartsWith(GuestDocumentKeyPrefix, StringComparison.Ordinal))
+            return this.ApiProblem(StatusCodes.Status404NotFound, DocumentScanMissingCode, "GuestDocumentScanMissing");
+
+        var content = await fileStorage.OpenReadAsync(StorageBucket.Private, key, HttpContext.RequestAborted);
+        if (content is null)
+        {
+            logger.LogWarning("Stored document scan missing for guest {GuestId}", id);
+            return this.ApiProblem(StatusCodes.Status404NotFound, DocumentScanMissingCode, "GuestDocumentScanMissing");
+        }
+
+        logger.LogInformation("User {UserId} downloaded the document scan of guest {GuestId}", User.GetUserId(), id);
+        Response.Headers.CacheControl = "private, no-store";
+        var extension = Path.GetExtension(key).ToLowerInvariant();
+        return File(content, StorageKeys.ContentTypeFor(key), $"documento-ospite{extension}");
     }
 
     [HttpGet("email/{email}")]

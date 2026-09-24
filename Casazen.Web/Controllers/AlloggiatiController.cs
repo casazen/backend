@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Alloggiati;
@@ -32,6 +33,7 @@ public class AlloggiatiController(
     IAuthorizationService authorizationService,
     IStayGuestService stayGuestService,
     IAlloggiatiCodeTableService codeTableService,
+    IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IOrgContextResolver orgContextResolver,
     IStringLocalizer<SharedResources> localizer,
     ILogger<AlloggiatiController> logger) : ControllerBase
@@ -87,9 +89,43 @@ public class AlloggiatiController(
     }
 
     /// <summary>
-    /// Replaces the guests of the stay (host entry: walk-in, corrections, codes to complete). Same rules as the guest
-    /// portal: kinds and order, document only for a single guest or a head of family or group. Invalid data → 400
-    /// ValidationProblem keyed <c>Guests[i].Field</c>; answers the updated summary.
+    /// Full document numbers of the guests of the stay (the summary shows them masked, CO-09). Host of the booking with
+    /// <c>guest.read</c> only; every request is logged with the user and the positions (audit), never the numbers.
+    /// <paramref name="position"/> limits the answer to one guest.
+    /// </summary>
+    [HttpGet("{bookingId:guid}/stay-guests/document-numbers")]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    public async Task<ActionResult<IEnumerable<StayGuestDocumentNumberDto>>> GetDocumentNumbers(
+        Guid bookingId,
+        [FromQuery] int? position)
+    {
+        var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var guests = await stayGuestService.GetForBookingAsync(booking!, HttpContext.RequestAborted);
+        var numbers = guests
+            .Where(g => position is null || g.Position == position)
+            .Where(g => AlloggiatiRecordRules.RequiresDocument(g.Type) && !string.IsNullOrWhiteSpace(g.DocumentNumber))
+            .Select(g => new StayGuestDocumentNumberDto
+            {
+                Position = g.Position,
+                StayGuestId = g.Id == Guid.Empty ? null : g.Id,
+                DocumentNumber = g.DocumentNumber,
+            })
+            .ToList();
+
+        logger.LogInformation(
+            "User {UserId} viewed the document numbers of booking {BookingId}, positions {Positions}",
+            User.GetUserId(), bookingId, string.Join(',', numbers.Select(n => n.Position)));
+        return Ok(numbers);
+    }
+
+    /// <summary>
+    /// Replaces the guests of the stay (host entry: walk-in, a guest who cannot use the link, corrections, codes to
+    /// complete). Same rules as the guest portal: kinds and order, document only for a single guest or a head of family
+    /// or group. Invalid data → 400 ValidationProblem keyed <c>Guests[i].Field</c>; answers the updated summary. The rows
+    /// record the host as author (CO-09); complete data schedules the communication like the guest portal does.
     /// </summary>
     [HttpPut("{bookingId:guid}/stay-guests")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -104,9 +140,14 @@ public class AlloggiatiController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
         var result = await stayGuestService.ReplaceAsync(
             booking!,
             request.Guests.Select(g => g.ToInput()).ToList(),
+            StayGuestAuthor.Host(userId),
             cancellationToken: HttpContext.RequestAborted);
         if (!result.Success)
         {
@@ -116,9 +157,24 @@ public class AlloggiatiController(
         }
 
         logger.LogInformation(
-            "Guests of booking {BookingId} replaced by the host: {GuestCount} guests",
-            bookingId, result.Guests.Count);
+            "Guests of booking {BookingId} replaced by the host {UserId}: {GuestCount} guests",
+            bookingId, userId, result.Guests.Count);
         var summary = await alloggiatiWebService.GetGuestSummaryAsync(bookingId);
+
+        // Same as the guest portal: complete data schedules the communication for the arrival day (idempotent). The data
+        // is saved: a scheduling failure is logged, and from the arrival day the booking shows "to send manually" anyway.
+        if (summary.DataComplete)
+        {
+            try
+            {
+                await alloggiatiReportScheduler.EnsureScheduledAsync(bookingId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled after the host entry", bookingId);
+            }
+        }
+
         return Ok(AlloggiatiGuestSummaryDto.From(summary));
     }
 

@@ -64,6 +64,12 @@ internal static class PostgresAdvisoryLocks
         StayAlertsRun = 1_011,
 
         /// <summary>
+        /// Stripe Connect account of one org (key: org id): two clicks on "Collega Stripe" create one Express account
+        /// (BK-09, A3-19).
+        /// </summary>
+        OrgConnectAccount = 1_012,
+
+        /// <summary>
         /// Seasonal price suggestions of one property (key: property id): the nightly job, the manual recalculation and a
         /// configuration save never upsert the same dates at once (PC-15).
         /// </summary>

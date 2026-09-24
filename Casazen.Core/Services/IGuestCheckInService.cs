@@ -17,8 +17,21 @@ public interface IGuestCheckInService
     /// </summary>
     Task<GuestCheckInPublicView?> GetPublicViewAsync(string token);
 
-    /// <summary>Returns the most recent active session for a booking (for host view).</summary>
+    /// <summary>
+    /// The session the host sees for a booking: the completed one if the guest has submitted, otherwise the most recent
+    /// (whatever its status, expired included, CO-09). Null when no link was ever issued. Use
+    /// <see cref="GuestCheckInSession.EffectiveStatus"/> for its status: an open session past its expiry is expired.
+    /// </summary>
     Task<GuestCheckInSession?> GetSessionForBookingAsync(Guid bookingId);
+
+    /// <summary>
+    /// Issues a new link for the booking (host "generate" or "send link", daily send job): every open link of the booking
+    /// is expired, then a session valid for <c>CheckIn:SessionLifetimeDays</c> is created with no email requested yet.
+    /// </summary>
+    Task<IssuedCheckInLink> IssueLinkAsync(Guid bookingId, Guid orgId);
+
+    /// <summary>Marks <see cref="GuestCheckInSessionStatus.Scaduto"/> the open sessions whose expiry has passed (A5-27). Returns how many.</summary>
+    Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Submit guest data. Returns result indicating success or duplicate.</summary>
     Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request);
@@ -32,6 +45,9 @@ public interface IGuestCheckInService
     /// <summary>Expires active sessions for the booking except the session matching the raw token.</summary>
     Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep);
 }
+
+/// <summary>A link just issued: the raw token exists only here (the session stores its hash).</summary>
+public sealed record IssuedCheckInLink(Guid SessionId, string Token, DateTime ExpiresAt);
 
 /// <summary>Data submitted on the guest portal: every guest of the stay (CO-12) plus the booker's consents.</summary>
 public class GuestCheckInSubmitRequest

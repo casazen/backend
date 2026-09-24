@@ -164,6 +164,8 @@ builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.StayAlertOptions.SectionName));
+builder.Services.Configure<Casazen.Core.Options.GuestCheckInOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.GuestCheckInOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(

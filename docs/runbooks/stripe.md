@@ -161,8 +161,40 @@ Stripe Dashboard labels may differ slightly between versions.
 
 1. **Webhook endpoints**: as in `docs/INFRA.md`. The platform endpoint must include `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
 2. **Restricted key** (only if `Stripe__SecretKey` is an `rk_…` key): besides the permissions already used, the checkout now needs **Checkout Sessions: write** (create, list, expire) and **Subscriptions: read** (list the customer's subscriptions). Without them the checkout answers 503 `payment_provider_error`.
-3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there.
+3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there. The web app (PL-12) sends every subscribed org to the portal to **change plan**: turn on the subscription update (plan switch) and list the Starter, Pro and Scale products with the same prices as `Billing__Prices__<Tier>`, otherwise "Cambia dal portale" opens a portal without the plan change.
 4. **Failed payments** (Settings → Billing → Subscriptions and emails → manage failed payments): at the end of the retries the subscription may be canceled or marked unpaid; both end paid access (Canceled / Unpaid).
+
+## Web app: plans, checkout, portal and billing profile (PL-12)
+
+Task PL-12 (audit defect A1-07). Pages of the web app, visible in the menu only to the org billing administrator
+(frontend mirror of the policy `OrgBillingAdmin`: host owner or platform admin; the long-term landlords come with
+PL-16). Anyone else who opens them sees "contatta l'amministratore" and no billing call is made.
+
+| Page | What it does |
+|---|---|
+| `/app/short-rent/settings/plan` ("Piano") | Plans of `GET /api/billing/plans`: name, allowance, features and the price only when the API sends one (`Billing:Display:<Tier>:PriceMonthly` > 0, otherwise "the price is shown on Stripe"). A plan with `purchasable: false` is shown as "Non disponibile". "Scegli piano" asks country and optional VAT id, then `POST /api/billing/checkout-session` and the redirect to Stripe. An org with a live subscription (active, trialing, past due, unpaid, incomplete) gets "Cambia dal portale" instead of a second checkout. |
+| same page, `?checkout=success` | Reads `GET /api/billing/subscription` every 3 s for up to 60 s: "Pagamento confermato" only once the webhook has made it active or trialing; incomplete/unpaid/past due show the payment notice with "Completa il pagamento" (portal); after 60 s without the webhook, "conferma non ancora ricevuta" with a refresh button. The redirect alone never shows success. |
+| same page, `?checkout=cancel` | "Pagamento annullato, nessun addebito" and the real state of the plans. |
+| `/app/short-rent/settings/billing` ("Fatturazione") | Subscription (effective plan, status badge, next due date), "Gestisci pagamenti" → `POST /api/billing/portal-session`, notices for past due (grace), incomplete and unpaid, and the billing profile form (country, VAT id) → `PUT /api/billing/profile`. |
+
+Error codes shown to the user: 409 `already_subscribed` (message with the portal button), 409 `billing_gate_closed`,
+422 `billing_plan_unavailable` (the plans are read again), 503 `billing_return_url_not_configured`,
+503 `payment_provider_error`. The portal answers 400 while the org has no Stripe customer (never started a checkout):
+the web app says the portal is available after the first payment.
+
+VAT id: the web app only checks its shape (letters and digits, 4-20 characters, spaces, dots and dashes removed) and
+says it will be verified. The real check (VIES) and the VAT/OSS treatment are task PL-13: until then a VAT id of a
+country other than Italy is refused by the backend unless `Vies__StubMode=true`.
+
+Return pages: the plan page sends no `successUrl`/`cancelUrl` (the backend default is that same page). A page on another
+route sends its own URLs only when the app runs on `VITE_PUBLIC_SITE_URL`, which must be the same origin as
+`App__PublicSiteBaseUrl`; a Vercel preview sends none.
+
+Verification on the test environment (Staging, test keys): open "Piano" as a host owner, choose Pro, country Italia,
+pay with `4242 4242 4242 4242`; back on the page the banner goes from "Stiamo verificando" to "Pagamento confermato",
+the Pro card shows "Piano attuale" and "Fatturazione" shows Attivo with the next due date. On the same page the other plans
+offer "Cambia dal portale", which opens the Stripe portal. The incomplete, unpaid and past due states are covered by the
+frontend tests (`plans-page.test.tsx`, `billing-settings-page.test.tsx`).
 
 ## Refunds and booking cancellations on Stripe Connect (BK-02)
 
@@ -431,6 +463,81 @@ result (no second email).
    is "Fallito", the guest receives "Pagamento non riuscito" and the host "Addebito non riuscito". Open the link, complete
    3-D Secure: after `payment_intent.succeeded` the payment is "Completato". Repeat with `4242 4242 4242 4242`: completed at
    the first run, no email. `4000 0000 0000 9995` (insufficient funds): failed, retried on the next days.
+
+## Connect onboarding: the linked account survives Stripe errors (BK-09)
+
+Task BK-09 (audit defects A3-19 P1, A3-42). Before it any Stripe error while reading the org's connected account
+(rate limit, timeout, key problem) was taken for a "stale" account: `StripeConnectedAccountId` was cleared and a new
+Express account created, without idempotency key. A host who clicked "Collega Stripe" during a 429 lost the verified
+account: checkouts answered 409 and the deferred charges (customer and card saved on the old account) failed. The
+controller also used `property.write` and sent the host back to the `returnUrl` / `refreshUrl` chosen by the client.
+
+### What unlinks an account, and what does not
+
+`StripeConnectGateway` turns every failure into a `StripeConnectException` with one `StripeConnectFailure`
+(`Casazen.Core/Exceptions/StripeConnectException.cs`). Stripe.net 50.1 (`SystemNetHttpClient`) has already retried
+connection errors, 409, 5xx and the 429 marked `Stripe-Should-Retry` before this point.
+
+| Stripe answer | Failure | `POST /api/connect/account`, `/onboarding-link` | `GET /api/connect/status?refresh=true` |
+|---|---|---|---|
+| error code `resource_missing` (404) or `account_invalid` (e.g. 403 "does not have access to account … Application access may have been revoked") | `AccountUnavailable` | a **new** account replaces it (log `… does not exist or was revoked …; creating a replacement`) | capabilities set to false (checkout gate closed); the id stays until the onboarding replaces it |
+| 429 (`rate_limit`, `lock_timeout`), 409, any 5xx, network error, HTTP timeout | `Transient` | **503 `stripe_connect_unavailable`** + `Retry-After: 10`, account untouched | same |
+| 401, 403 without `account_invalid`, `api_key_expired`, `platform_api_key_expired`, `secret_key_required`, key missing or placeholder | `Configuration` | **503 `stripe_connect_not_configured`**, account untouched | same |
+| any other refusal (400 `invalid_request_error`, `idempotency_error`) | `Rejected` | **502 `stripe_connect_failed`**, account untouched | same |
+| account gone between the read and the Account Link | `AccountUnavailable` | 409 `stripe_connect_account_unavailable`: the next click replaces it | – |
+
+The error codes are values of the `ErrorCode` list that the official SDK generates from Stripe's OpenAPI spec
+(stripe-go `error.go`, checked 2026-09-24: `resource_missing`, `account_invalid`, `rate_limit`, `lock_timeout`,
+`api_key_expired`, `platform_api_key_expired`, `secret_key_required`); descriptions in https://docs.stripe.com/error-codes.
+Stripe.net 50.1 has no constants for them. A network failure reaches the gateway as `HttpRequestException` or as the
+timeout's `OperationCanceledException`, not as `StripeException` (`SystemNetHttpClient.SendHttpRequest`).
+
+The payments page of the web app shows the message of the code with **"Riprova"** for `stripe_connect_unavailable`,
+`stripe_connect_account_unavailable` and network / generic 5xx errors, never a "Non collegato" state it did not read.
+
+### One account per org
+
+- **Lock**: `EnsureExpressAccountAsync` runs under the advisory lock `OrgConnectAccount` (1012, key = org id), Stripe
+  calls included: a second click waits, then reads the account the first one created.
+- **Idempotency key** of `POST /v1/accounts`: `connect-account:{orgId}` for the first account,
+  `connect-account:{orgId}:replaces:{oldAccountId}` for the replacement of an unavailable one (the first key would
+  return the old account). A retry whose answer was lost gets the same account from Stripe. Stripe keeps a key for at
+  least 24 hours: a creation retried later may create a second account, visible in Dashboard → Connect → Accounts (the
+  org links only the last one).
+- The e-mail sent to Stripe is the org's contact e-mail, else its oldest user's: stable across retries (a different
+  e-mail under the same key answers `idempotency_error`).
+
+### Who may start it, and where Stripe sends the host back (A3-42)
+
+| Endpoint | Policy |
+|---|---|
+| `POST /api/connect/account`, `POST /api/connect/onboarding-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
+| `GET /api/connect/status` | `payment.read` in short-rent |
+
+The Account Link pages are built by the API from `App__PublicSiteBaseUrl` (decision D3, same helper `PublicSiteLinks`
+as the billing return pages of PL-11): `return_url` =
+`{App__PublicSiteBaseUrl}/app/short-rent/settings/payments?stripe_return=1`, `refresh_url` = `…?stripe_refresh=1`. A
+request body with `returnUrl` / `refreshUrl` is ignored. Without `App__PublicSiteBaseUrl` (possible only in
+Development/Testing) `POST /api/connect/onboarding-link` answers **503 `connect_return_url_not_configured`** before any
+Stripe call.
+
+### Stripe settings to check (product owner)
+
+1. Nothing new on the Dashboard. Keep the platform key in the mode of the environment (PL-11 stops a `Production` start
+   with a test key): with a key of the other mode Stripe answers `resource_missing` for every existing account, and the
+   next "Collega Stripe" of each host would link a new account of that mode.
+2. Restricted key only (`rk_…`): **Accounts: Write** and **Account Links: Write** (Connect).
+
+### Verification
+
+1. Automated: `StripeConnectGatewayTests` (mocked `IStripeClient`: 404 `resource_missing` / 403 `account_invalid` →
+   unavailable, 429 / 409 / 5xx / network / timeout → transient, 401 / 403 / key → configuration, idempotency key and
+   Account Link URLs sent), `ConnectOnboardingServiceTests` (429 → account unchanged, `resource_missing` → replacement
+   with its key), `ConnectOnboardingIntegrationTests` (429 → 503 with the account unchanged, two parallel clicks → one
+   account on PostgreSQL, `Staff` collaborator → 403, server-side URLs), web `payments-page.test.tsx`.
+2. Test mode: connect a test account, then delete it in the Stripe Dashboard (Connect → Accounts → the account →
+   Delete): the next "Collega Stripe" links a new account (log `creating a replacement`). Set an invalid secret key on
+   the API and click "Collega Stripe": 503 `stripe_connect_not_configured`, `Orgs.StripeConnectedAccountId` unchanged.
 
 ## Operations
 

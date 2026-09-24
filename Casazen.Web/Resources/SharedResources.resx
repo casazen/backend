@@ -99,6 +99,21 @@
   <data name="PaymentProviderUnavailableDetail" xml:space="preserve">
     <value>Il servizio di pagamento non ha risposto correttamente. Riprova più tardi.</value>
   </data>
+  <data name="StripeConnectUnavailable" xml:space="preserve">
+    <value>Stripe non risponde in questo momento. Il tuo account Stripe collegato non è stato modificato: riprova tra qualche istante.</value>
+  </data>
+  <data name="StripeConnectNotConfigured" xml:space="preserve">
+    <value>I pagamenti Stripe non sono configurati correttamente sul server. Il tuo account collegato non è stato modificato: contatta l'assistenza CasaZen.</value>
+  </data>
+  <data name="StripeConnectFailed" xml:space="preserve">
+    <value>Stripe ha rifiutato la richiesta. Il tuo account collegato non è stato modificato: riprova più tardi o contatta l'assistenza CasaZen.</value>
+  </data>
+  <data name="StripeConnectAccountUnavailable" xml:space="preserve">
+    <value>L'account Stripe collegato non è più disponibile: riprova per collegarne uno nuovo.</value>
+  </data>
+  <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
+    <value>L'indirizzo pubblico dell'app non è configurato sul server: il collegamento con Stripe non può essere avviato.</value>
+  </data>
   <data name="RequestFailed" xml:space="preserve">
     <value>Richiesta non riuscita</value>
   </data>
@@ -374,12 +389,6 @@
   </data>
   <data name="ICalSyncFailed" xml:space="preserve">
     <value>La sincronizzazione del calendario non è riuscita: verrà ritentata automaticamente.</value>
-  </data>
-  <data name="CheckInLinkEmailQueued" xml:space="preserve">
-    <value>Link check-in rigenerato: l'email all'ospite è in coda di invio.</value>
-  </data>
-  <data name="CheckInLinkEmailNotQueued" xml:space="preserve">
-    <value>Link check-in pronto, ma l'email all'ospite non è stata inviata: copia il link e invialo all'ospite.</value>
   </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
@@ -792,6 +801,15 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="CheckInLinkBookingNotEligible" xml:space="preserve">
+    <value>Il link di check-in è disponibile solo per prenotazioni confermate o in corso.</value>
+  </data>
+  <data name="CheckInAlreadyCompleted" xml:space="preserve">
+    <value>L'ospite ha già completato il check-in: correggi i dati nella scheda Alloggiati.</value>
+  </data>
+  <data name="GuestDocumentScanMissing" xml:space="preserve">
+    <value>Nessuna scansione del documento disponibile per questo ospite.</value>
+  </data>
   <data name="PropertyNameRequired" xml:space="preserve">
     <value>Il nome dell'immobile è obbligatorio.</value>
   </data>
@@ -941,5 +959,14 @@
   </data>
   <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
     <value>I suggerimenti stagionali non sono attivi per questa struttura: attivali prima di ricalcolarli.</value>
+  </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
+  </data>
+  <data name="ServiceRequestBookingMismatch" xml:space="preserve">
+    <value>La prenotazione indicata non è un soggiorno di questo immobile.</value>
+  </data>
+  <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
+    <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
   </data>
 </root>

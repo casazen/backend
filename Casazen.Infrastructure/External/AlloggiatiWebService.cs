@@ -196,7 +196,9 @@ public class AlloggiatiWebService(
                 codes.DocumentIssuePlace.Code),
             AlloggiatiRecordRules.MissingFields(guest),
             codes.CodesToComplete,
-            compositionIssue);
+            compositionIssue,
+            guest.DataSource,
+            guest.Id == Guid.Empty ? null : guest.UpdatedAt);
     }
 
     public async Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId)

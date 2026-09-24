@@ -57,6 +57,20 @@ public class PublicSiteLinksTests
     }
 
     [Fact]
+    public void ConnectOnboardingReturnAndRefresh_PointToConsolePaymentsPageOnConfiguredDomain()
+    {
+        var links = EmailTestHelpers.Links("https://staging.example.org/");
+
+        // BK-09 (A3-42): the Stripe Account Link always sends the host back to the web app, never to a client URL.
+        Assert.Equal(
+            "https://staging.example.org/app/short-rent/settings/payments?stripe_return=1",
+            links.ConnectOnboardingReturn());
+        Assert.Equal(
+            "https://staging.example.org/app/short-rent/settings/payments?stripe_refresh=1",
+            links.ConnectOnboardingRefresh());
+    }
+
+    [Fact]
     public void GuestBookings_OrgSlug_PointsToMyBookingsOfTheBookingSite()
     {
         var links = EmailTestHelpers.Links("https://app.example.org/");

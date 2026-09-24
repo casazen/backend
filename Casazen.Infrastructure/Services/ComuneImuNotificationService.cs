@@ -1,4 +1,5 @@
 using System.Text;
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
@@ -9,7 +10,8 @@ namespace Casazen.Infrastructure.Services;
 public class ComuneImuNotificationService(
     ILeaseContractRepository leases,
     ILeaseEventRepository events,
-    ITerritorialRentAgreementRepository territorialAgreements) : IComuneImuNotificationService
+    ITerritorialRentAgreementRepository territorialAgreements,
+    IPdfDocumentRenderer pdfRenderer) : IComuneImuNotificationService
 {
     public async Task<ImuNotificationExportResult?> ExportAsync(
         Guid leaseId, CancellationToken cancellationToken = default)
@@ -22,9 +24,9 @@ public class ComuneImuNotificationService(
 
         var city = lease.Property.City;
         var body = BuildBody(lease, city);
-        var pdf = FiscalPdfWriter.Write(
+        var pdf = pdfRenderer.Render(PdfDocumentContent.FromPlainText(
             "Bozza comunicazione IMU canone concordato — da rivedere e inviare autonomamente",
-            body);
+            body));
 
         await events.AddAsync(new LeaseEvent
         {

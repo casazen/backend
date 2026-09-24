@@ -204,7 +204,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
     }
 
     private static object CreateRequestBody(Scenario scenario) =>
-        new { propertyId = scenario.PropertyId, supplierOrgId = scenario.SupplierOrgId, category = "cleaning" };
+        new { propertyId = scenario.PropertyId, bookingId = scenario.BookingId, supplierOrgId = scenario.SupplierOrgId, category = "cleaning" };
 
     private static object MatchBody(Scenario scenario) =>
         new { propertyId = scenario.PropertyId, category = "cleaning" };
