@@ -68,8 +68,9 @@ public class PropertiesControllerTests
             .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(DefaultOrgId);
         _mockEntitlementService
-            .Setup(x => x.ReservePropertySlotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(x => x.CreatePropertyWithinLimitAsync(
+                It.IsAny<Guid>(), It.IsAny<Func<Task<Property>>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Guid _, Func<Task<Property>> create, CancellationToken _) => (Property?)await create());
         _mockLeaseContractRepository
             .Setup(x => x.GetByPropertyAsync(It.IsAny<Guid>()))
             .ReturnsAsync(Array.Empty<LeaseContract>());
@@ -275,6 +276,36 @@ public class PropertiesControllerTests
 
         _mockService.Verify(x => x.CreatePropertyAsync(It.Is<Property>(
             p => p.OwnerId == userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Create_WhenPlanLimitReached_Returns403PlanLimitReachedWithoutCreating()
+    {
+        SetupUserClaims("auth0|test_user_123");
+        _mockEntitlementService
+            .Setup(x => x.CreatePropertyWithinLimitAsync(
+                It.IsAny<Guid>(), It.IsAny<Func<Task<Property>>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Property?)null);
+        _mockEntitlementService
+            .Setup(x => x.GetEntitlementAsync(DefaultOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EntitlementResult(DefaultOrgId, "Starter", 3, 3, false));
+
+        var result = await _controller.Create(new CreatePropertyRequest
+        {
+            Name = "Over limit",
+            City = "Roma",
+            Address = "Via Roma 3",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        });
+
+        var forbidden = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, forbidden.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(forbidden.Value);
+        Assert.Equal("plan_limit_reached", problem.Extensions["code"]);
+        _mockService.Verify(x => x.CreatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
     [Fact]

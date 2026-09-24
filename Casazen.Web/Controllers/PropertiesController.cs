@@ -42,21 +42,8 @@ public class PropertiesController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Property>>> GetAll()
     {
-        logger.LogInformation("GetAll properties called");
-        logger.LogInformation($"User authenticated: {User.Identity?.IsAuthenticated}");
-        logger.LogInformation($"User identity name: {User.Identity?.Name}");
-
-        // Try multiple claim types to find user ID
+        // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
-
-        logger.LogInformation($"User ID from claims: {userId}");
-
-        // DEBUG: Log all claims
-        foreach (var claim in User.Claims)
-        {
-            logger.LogInformation($"Claim: {claim.Type} = {claim.Value}");
-        }
-
         if (string.IsNullOrEmpty(userId))
         {
             logger.LogWarning("No user ID claim found in token");
@@ -98,6 +85,7 @@ public class PropertiesController(
     /// <returns>The newly created property with its assigned <c>Id</c> and <c>OwnerId</c>.</returns>
     /// <response code="201">Property created successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="403"><c>plan_limit_reached</c>: the org already has as many properties as its plan allows.</response>
     /// <response code="409">Duplicate active address or slug within the organization.</response>
     [HttpPost]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
@@ -123,31 +111,28 @@ public class PropertiesController(
             });
         }
 
-        // AC8: enforce the org's plan limit server-side before insert. Client-side gating is
-        // advisory; this is the source of truth (a stale client cannot exceed the limit).
-        if (!await entitlementService.ReservePropertySlotAsync(orgId.Value))
-        {
-            var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value);
-            logger.LogWarning(
-                "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
-                orgId, entitlement.PlanTier, entitlement.MaxProperties);
-
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = "Plan limit reached",
-                code = "plan_limit_reached",
-                planTier = entitlement.PlanTier,
-                limit = entitlement.MaxProperties
-            });
-        }
-
         logger.LogInformation("Creating property for user: {UserId}", userId);
         var property = request.ToProperty(userId);
         // AC7: tenant key is server-set from the caller's org, never client-supplied.
         property.OrgId = orgId.Value;
         try
         {
-            var created = await propertyService.CreatePropertyAsync(property);
+            // AC8: the org's plan limit is enforced server-side, and the check and the insert are one atomic
+            // step (A1-21): parallel creates cannot exceed the limit. Client-side gating is advisory.
+            var created = await entitlementService.CreatePropertyWithinLimitAsync(
+                orgId.Value,
+                () => propertyService.CreatePropertyAsync(property),
+                HttpContext.RequestAborted);
+            if (created is null)
+            {
+                var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, HttpContext.RequestAborted);
+                logger.LogWarning(
+                    "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
+                    orgId, entitlement.PlanTier, entitlement.MaxProperties);
+
+                return this.ApiProblem(StatusCodes.Status403Forbidden, PlanLimitReachedCode, "PlanLimitReached");
+            }
+
             logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
@@ -1042,6 +1027,9 @@ public class PropertiesController(
             return Conflict(new { error = ex.Message });
         }
     }
+
+    /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
+    internal const string PlanLimitReachedCode = "plan_limit_reached";
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)
     {

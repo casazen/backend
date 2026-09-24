@@ -1,10 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
-using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -21,7 +19,7 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
-    IBackgroundJobClient backgroundJobClient,
+    IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
 {
@@ -71,7 +69,7 @@ public class PublicGuestCheckInController(
     }
 
     /// <summary>
-    /// Accepts guest identity data + GDPR consent. On success enqueues Alloggiati job.
+    /// Accepts guest identity data + GDPR consent. On success schedules the Alloggiati job for the arrival day.
     /// Invalid data → 400 ValidationProblem with the errors keyed by request property;
     /// duplicate submission → 409 <c>checkin_already_submitted</c>.
     /// </summary>
@@ -117,14 +115,21 @@ public class PublicGuestCheckInController(
         if (!result.Success)
             return NotFound();
 
-        // Enqueue Alloggiati Web report (mandatory within 24h of arrival, D.L. 286/1998)
-        if (result.GuestId.HasValue && result.BookingId.HasValue)
+        // Alloggiati Web (art. 109 TULPS): scheduled for the arrival day in Europe/Rome, not now (the portal accepts
+        // only today or yesterday as arrival date). Idempotent with the host check-in. The session stays Completo:
+        // it becomes AlloggiatiInviato only with a real receipt.
+        if (result.BookingId.HasValue)
         {
-            backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
-                job => job.ReportGuestAsync(result.GuestId.Value, result.BookingId.Value));
-
-            if (result.SessionId.HasValue)
-                await checkInService.MarkAlloggiatiEnqueuedAsync(result.SessionId.Value);
+            try
+            {
+                await alloggiatiReportScheduler.EnsureScheduledAsync(result.BookingId.Value);
+            }
+            catch (Exception ex)
+            {
+                // The guest's data is saved: the host check-in schedules it again, and from the arrival day the booking
+                // shows "to send manually" anyway.
+                logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled", result.BookingId);
+            }
         }
 
         logger.LogInformation(

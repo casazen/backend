@@ -41,9 +41,12 @@ public enum GuestCheckInSessionStatus
     Inviato,
     /// <summary>Guest opened the link; form in progress.</summary>
     InCompilazione,
-    /// <summary>Guest submitted all data; pending Alloggiati enqueue.</summary>
+    /// <summary>Guest submitted all data. The session stays here until Alloggiati Web returns a real receipt.</summary>
     Completo,
-    /// <summary>AlloggiatiWebReportJob has been enqueued successfully.</summary>
+    /// <summary>
+    /// The Alloggiati Web communication of the booking has a real receipt (CO-13). Never set on queueing: CO-11
+    /// moved the sessions set that way back to <see cref="Completo"/>.
+    /// </summary>
     AlloggiatiInviato,
     /// <summary>Token expired or manually invalidated (resend-link flow).</summary>
     Scaduto,

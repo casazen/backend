@@ -6,13 +6,11 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
-using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
-using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
@@ -31,7 +29,7 @@ public class BookingsController(
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
     IGuestService guestService,
-    IBackgroundJobClient backgroundJobClient,
+    IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IGuestCheckInService checkInService,
     IComplianceWizardService complianceWizardService,
     ICheckoutReminderScheduler checkoutReminderScheduler,
@@ -364,11 +362,21 @@ public class BookingsController(
         }
 
         booking.Status = BookingStatus.CheckedIn;
+        // Real arrival: the Alloggiati Web term (art. 109 TULPS: 24 hours, 6 for short stays) runs from here.
+        booking.ArrivedAt ??= _clock.GetUtcNow().UtcDateTime;
         await bookingService.UpdateBookingAsync(booking);
 
-        // Mandatory guest registration with police database within 24h (D.L. 286/1998, Art. 7)
-        backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
-            job => job.ReportGuestAsync(booking.GuestId, booking.Id));
+        // Idempotent per booking and guest: if the guest portal already scheduled the report, nothing is queued again.
+        // The check-in is already saved: a scheduling failure is logged, and from the arrival day the booking shows
+        // "to send manually" anyway (derived status), so the host is never told it was sent.
+        try
+        {
+            await alloggiatiReportScheduler.EnsureScheduledAsync(booking.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled at check-in", booking.Id);
+        }
 
         var localCheckoutDate = TimezoneHelper.ConvertUtcToLocal(booking.CheckOutDate, property.Timezone);
         var reminderAtLocal = localCheckoutDate.Date
@@ -380,7 +388,7 @@ public class BookingsController(
         booking.CheckoutReminderJobId = checkoutReminderScheduler.ScheduleReminder(booking.Id, reminderAt);
         await bookingService.UpdateBookingAsync(booking);
 
-        logger.LogInformation("Check-in completed for booking {BookingId}, queued Alloggiati Web report", id);
+        logger.LogInformation("Check-in completed for booking {BookingId}, Alloggiati Web report scheduled", id);
         var updated = await bookingService.GetBookingAsync(id);
         return Ok(updated is null ? BookingMapper.ToResponse(booking) : BookingMapper.ToResponse(updated));
     }
@@ -534,17 +542,7 @@ public class BookingsController(
             return NotFound();
 
         var status = await alloggiatiWebService.GetStatusAsync(id);
-        return Ok(new AlloggiatiStatusDto
-        {
-            BookingId = status.BookingId,
-            Status = status.Status,
-            ConfirmationNumber = status.ConfirmationNumber,
-            ErrorMessage = status.ErrorMessage,
-            ReportedAt = status.ReportedAt,
-            HoursUntilDeadline = status.HoursUntilDeadline,
-            IsOverdue = status.IsOverdue,
-            DataComplete = status.DataComplete,
-        });
+        return Ok(AlloggiatiStatusDto.From(status));
     }
 
     // One guest snapshot per host booking (#431), owned by the property's org (TN-1): never a lookup by
