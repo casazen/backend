@@ -158,6 +158,7 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<GuestCheckInReminderJob>();
 builder.Services.AddScoped<CheckoutReminderJob>();
 builder.Services.AddScoped<ICheckoutReminderScheduler, CheckoutReminderScheduler>();
+builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(

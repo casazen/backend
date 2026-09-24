@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924020632_BackfillManualBookingSource")]
+    [Migration("20260924023820_BackfillManualBookingSource")]
     partial class BackfillManualBookingSource
     {
         /// <inheritdoc />
@@ -55,11 +55,18 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("ReportedAt")
+                    b.Property<DateTime?>("ReportedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ScheduledFor")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ScheduledJobId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -69,13 +76,17 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookingId");
-
                     b.HasIndex("GuestId");
 
                     b.HasIndex("OrgId");
 
-                    b.ToTable("AlloggiatiWebReports");
+                    b.HasIndex("BookingId", "GuestId")
+                        .IsUnique();
+
+                    b.ToTable("AlloggiatiWebReports", t =>
+                        {
+                            t.HasCheckConstraint("CK_AlloggiatiWebReports_SentRequiresReceipt", "\"Status\" <> 2 OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.AppContext", b =>
@@ -116,6 +127,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArrivedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("BasePrice")
                         .HasPrecision(18, 2)

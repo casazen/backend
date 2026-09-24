@@ -16,9 +16,6 @@ using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Resources;
-using Hangfire;
-using Hangfire.Common;
-using Hangfire.States;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -41,7 +38,7 @@ public class BookingsControllerTests
     private readonly Mock<IAlloggiatiWebService> _mockAlloggiatiService;
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
-    private readonly Mock<IBackgroundJobClient> _mockBackgroundJobClient;
+    private readonly Mock<IAlloggiatiReportScheduler> _mockAlloggiatiScheduler;
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
     private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
@@ -61,7 +58,7 @@ public class BookingsControllerTests
         _mockAlloggiatiService = new Mock<IAlloggiatiWebService>();
         _mockPropertyService = new Mock<IPropertyService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
-        _mockBackgroundJobClient = new Mock<IBackgroundJobClient>();
+        _mockAlloggiatiScheduler = new Mock<IAlloggiatiReportScheduler>();
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
         _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
@@ -86,7 +83,7 @@ public class BookingsControllerTests
             _mockPropertyService.Object,
             _mockAuthz.Object,
             CreatePropertyICalSyncService(),
-            _mockBackgroundJobClient.Object,
+            _mockAlloggiatiScheduler.Object,
             _mockGuestCheckInService.Object,
             _mockComplianceWizardService.Object,
             _mockCheckoutReminderScheduler.Object,
@@ -582,7 +579,7 @@ public class BookingsControllerTests
         Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(BookingStatus.Pending, booking.Status);
         _mockBookingService.Verify(b => b.UpdateBookingAsync(It.IsAny<Booking>()), Times.Never);
-        _mockBackgroundJobClient.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
+        _mockAlloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
@@ -633,20 +630,20 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task CheckIn_ConfirmedBooking_EnqueuesAlloggiatiJob()
+    public async Task CheckIn_ConfirmedBooking_RecordsArrivalAndSchedulesAlloggiatiOnce()
     {
-        SetUser(OwnerId);
+        var utcNow = new DateTimeOffset(2026, 10, 10, 14, 30, 0, TimeSpan.Zero);
+        var controller = CreateControllerAt(utcNow);
         var bookingId = Guid.NewGuid();
-        var guestId = Guid.NewGuid();
         var booking = new Booking
         {
             Id = bookingId,
             PropertyId = PropertyId,
             OrgId = OrgId,
-            GuestId = guestId,
+            GuestId = Guid.NewGuid(),
             Status = BookingStatus.Confirmed,
-            CheckInDate = DateTime.UtcNow.Date,
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(2),
+            CheckInDate = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc),
+            CheckOutDate = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc),
             NumberOfGuests = 2,
         };
 
@@ -657,20 +654,13 @@ public class BookingsControllerTests
             .ReturnsAsync((Booking b) => b);
         _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
             .ReturnsAsync(MakeProperty());
-        _mockBackgroundJobClient
-            .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
-            .Returns("job-test");
 
-        var result = await _controller.CheckIn(bookingId);
+        var result = await controller.CheckIn(bookingId);
 
-        _mockBackgroundJobClient.Verify(
-            c => c.Create(
-                It.Is<Job>(j =>
-                    j.Type == typeof(AlloggiatiWebReportJob) &&
-                    j.Method.Name == nameof(AlloggiatiWebReportJob.ReportGuestAsync)),
-                It.IsAny<EnqueuedState>()),
-            Times.Once);
         Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(utcNow.UtcDateTime, booking.ArrivedAt);
+        // The scheduler is idempotent per booking and guest: never a direct Enqueue from the controller.
+        _mockAlloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(bookingId), Times.Once);
     }
 
     [Fact]

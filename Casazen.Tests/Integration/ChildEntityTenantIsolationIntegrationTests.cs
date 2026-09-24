@@ -112,7 +112,7 @@ public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<OtaPartn
             Assert.Equal(0, await dbB.PricingHistories.Where(h => h.PropertyId == s.PropertyA.Id).ExecuteDeleteAsync());
             Assert.Equal(0, await dbB.AlloggiatiWebReports
                 .Where(r => r.Id == s.ReportA)
-                .ExecuteUpdateAsync(u => u.SetProperty(r => r.Status, AlloggiatiWebStatus.Failed)));
+                .ExecuteUpdateAsync(u => u.SetProperty(r => r.Status, AlloggiatiWebStatus.Errore)));
             Assert.Equal(0, await dbB.GuestCheckInSessions
                 .Where(x => x.Id == s.SessionA)
                 .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, GuestCheckInSessionStatus.Scaduto)));
@@ -124,7 +124,7 @@ public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<OtaPartn
         await using var dbA = NewDb(scope, new FixedTenantContext(s.PropertyA.OrgId));
         Assert.NotNull(await dbA.PropertyDocuments.FindAsync(s.DocumentA));
         Assert.Equal(2, await dbA.PricingHistories.CountAsync(h => h.PropertyId == s.PropertyA.Id));
-        Assert.Equal(AlloggiatiWebStatus.Pending, (await dbA.AlloggiatiWebReports.FindAsync(s.ReportA))!.Status);
+        Assert.Equal(AlloggiatiWebStatus.DaInviare, (await dbA.AlloggiatiWebReports.FindAsync(s.ReportA))!.Status);
         Assert.Equal(GuestCheckInSessionStatus.Inviato, (await dbA.GuestCheckInSessions.FindAsync(s.SessionA))!.Status);
         Assert.Null(await dbA.PropertyDocuments.FindAsync(s.DocumentB));
     }
