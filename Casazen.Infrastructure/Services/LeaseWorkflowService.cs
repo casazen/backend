@@ -3,6 +3,7 @@ using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -41,13 +42,15 @@ public class LeaseWorkflowService(
 
         await apeCompliance.EnsurePropertyHasValidApeAsync(propertyId);
 
-        if (request.EndDate <= request.StartDate)
-            throw new InvalidOperationException("Lease end date must be after start date.");
+        var (contractType, taxRegime) = ResolveContractTerms(request);
 
-        EnsureCanoneConcordatoMinimumTerm(request.FiscalRegime, request.StartDate, request.EndDate);
+        // Term from the dates, checked for the contract type (LT-10, A7-13): 4+4, 3+2, transitorio 1-18 months.
+        LeaseContractTerms.EnsureTerm(contractType, request.StartDate, request.EndDate);
+        var term = LeaseTerm.Between(request.StartDate, request.EndDate)!.Value;
 
-        if (request.FiscalRegime == FiscalRegime.CanoneConcordato)
-            await EnsureCanoneConcordatoRentIsValidAsync(propertyId, request);
+        var concordato = contractType == LeaseContractType.Concordato
+            ? await AssessConcordatoRentAsync(propertyId, request, term)
+            : null;
 
         var parties = request.Parties.ToList();
         if (!parties.Any(p => p.Role == PartyRole.Landlord))
@@ -59,10 +62,11 @@ public class LeaseWorkflowService(
         {
             PropertyId = propertyId,
             OrgId = property.OrgId,
-            FiscalRegime = request.FiscalRegime,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             MonthlyRent = request.MonthlyRent,
+            SecurityDeposit = request.SecurityDeposit,
+            ConcordatoAssessment = concordato,
             // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04).
             DataRetentionUntil = request.StartDate.AddYears(10),
             Parties = parties.Select(p => new Party
@@ -76,6 +80,7 @@ public class LeaseWorkflowService(
                 IsExtraEU = !EuCitizenships.Contains(p.Citizenship.ToUpperInvariant())
             }).ToList()
         };
+        lease.SetContractTerms(contractType, taxRegime);
 
         await leaseRepository.AddAsync(lease);
         await eventRepository.AddAsync(new LeaseEvent
@@ -84,7 +89,16 @@ public class LeaseWorkflowService(
             EventType = LeaseEventType.Created
         });
 
-        logger.LogInformation("Lease draft created. LeaseId={LeaseId} PropertyId={PropertyId}", lease.Id, propertyId);
+        if (concordato is { RentWithinRange: false })
+        {
+            // Only an indicative range (Partial data) lets a rent outside it through (A7-23): logged, shown to the host.
+            logger.LogWarning(
+                "Lease draft created with a rent outside the indicative canone concordato range ({Completeness} data). LeaseId={LeaseId} PropertyId={PropertyId}",
+                concordato.DataCompleteness, lease.Id, propertyId);
+        }
+
+        logger.LogInformation("Lease draft created. LeaseId={LeaseId} PropertyId={PropertyId} ContractType={ContractType}",
+            lease.Id, propertyId, contractType);
         return lease;
     }
 
@@ -104,49 +118,94 @@ public class LeaseWorkflowService(
     public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
         => leaseRepository.GetByIdWithDetailsAsync(leaseId);
 
-    private async Task EnsureCanoneConcordatoRentIsValidAsync(
-        Guid propertyId,
-        CreateLeaseRequest request)
+    /// <summary>
+    /// Contract type and tax regime of the request (LT-10): the new fields, or the legacy combined value when a client
+    /// sends only that. 422 when neither is given, or the contract type comes without a tax regime.
+    /// </summary>
+    private static (LeaseContractType Type, LeaseTaxRegime? TaxRegime) ResolveContractTerms(CreateLeaseRequest request)
     {
-        if (request.CanoneConcordatoCharacteristics is null)
-            throw new InvalidOperationException(
-                "Canone concordato characteristics are required for canone concordato leases.");
+        if (request.ContractType is { } contractType)
+        {
+            var taxRegime = request.TaxRegime
+                ?? throw new DomainRuleException(LeaseTermErrorCodes.TaxRegimeRequired, "LeaseTaxRegimeRequired");
+            return (contractType, taxRegime);
+        }
 
-        var eligibility = await canoneConcordatoEligibility.CalculateAsync(
-            propertyId,
-            request.CanoneConcordatoCharacteristics);
+        if (request.FiscalRegime is { } legacy)
+        {
+            var (type, legacyTaxRegime) = LeaseContractTerms.FromLegacy(legacy);
+            return (type, request.TaxRegime ?? legacyTaxRegime);
+        }
 
-        if (eligibility is not
+        throw new DomainRuleException(LeaseTermErrorCodes.ContractTypeRequired, "LeaseContractTypeRequired");
+    }
+
+    /// <summary>
+    /// Canone concordato range recomputed on the server from the declared characteristics and the real term (A7-12).
+    /// Verified agreement data (Complete): a rent outside the range is refused (422). Unconfirmed data (Partial): the
+    /// range is indicative, the lease is created and the assessment records that the rent is outside it (A7-23).
+    /// </summary>
+    private async Task<LeaseConcordatoAssessment> AssessConcordatoRentAsync(
+        Guid propertyId, CreateLeaseRequest request, LeaseTerm term)
+    {
+        if (request.CanoneConcordatoCharacteristics is not { } characteristics)
+            throw new DomainRuleException(ConcordatoErrorCodes.CharacteristicsRequired, "ConcordatoCharacteristicsRequired");
+
+        var range = await canoneConcordatoEligibility.CalculateAsync(propertyId, characteristics, term)
+            ?? throw new NotFoundException($"Property {propertyId} not found.") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
+
+        if (range is not
             {
                 Available: true,
+                SubFascia: int subFascia,
+                CanoneMinAnnuo: decimal minAnnual,
+                CanoneMaxAnnuo: decimal maxAnnual,
                 CanoneMinMensile: decimal minMonthly,
-                CanoneMaxMensile: decimal maxMonthly
+                CanoneMaxMensile: decimal maxMonthly,
             })
         {
-            throw new InvalidOperationException("Canone concordato rent band is unavailable for this property.");
+            var (code, key) = ConcordatoErrorCodes.ForReason(range.ReasonCode);
+            throw new DomainRuleException(code, key);
         }
 
-        if (request.MonthlyRent < minMonthly || request.MonthlyRent > maxMonthly)
+        var annualRent = request.MonthlyRent * 12m;
+        var withinRange = annualRent >= minAnnual && annualRent <= maxAnnual;
+        if (!withinRange && !range.Indicative)
         {
-            throw new InvalidOperationException(
-                "Monthly rent must be within the calculated canone concordato range.");
+            throw new DomainRuleException(
+                ConcordatoErrorCodes.RentOutOfRange, "ConcordatoRentOutOfRange", minMonthly, maxMonthly);
         }
+
+        return new LeaseConcordatoAssessment
+        {
+            Sqm = characteristics.Sqm,
+            GarageSqm = characteristics.GarageSqm,
+            BalconySqm = characteristics.BalconySqm,
+            OtherAppurtenanceSqm = characteristics.OtherAppurtenanceSqm,
+            PrivateGreenSqm = characteristics.PrivateGreenSqm,
+            TypeAElementCount = characteristics.TypeAElementCount,
+            TypeBElementCount = characteristics.TypeBElementCount,
+            TypeCElementCount = characteristics.TypeCElementCount,
+            TypeDElementCount = characteristics.TypeDElementCount,
+            QualifyingTypeDElementCount = characteristics.QualifyingTypeDElementCount,
+            StoveHeating = characteristics.StoveHeating,
+            IsFurnished = characteristics.IsFurnished,
+            AirConditioning = characteristics.AirConditioning,
+            ZoneName = NullIfBlank(characteristics.ZoneName),
+            CadastralSheet = NullIfBlank(characteristics.CadastralSheet),
+            ContractYears = range.ContractYears ?? term.Months / 12,
+            UsableSqm = range.UsableSqm ?? characteristics.Sqm,
+            Zone = range.Zone ?? string.Empty,
+            SubFascia = subFascia,
+            CanoneMinAnnuo = minAnnual,
+            CanoneMaxAnnuo = maxAnnual,
+            CanoneMinMensile = minMonthly,
+            CanoneMaxMensile = maxMonthly,
+            DataCompleteness = range.DataCompleteness ?? DataCompleteness.Missing,
+            RentWithinRange = withinRange,
+            CalculatedAt = _clock.GetUtcNow().UtcDateTime,
+        };
     }
 
-    /// <summary>Canone concordato leases cover at least the initial 3-year term (contratto tipo 3+2).</summary>
-    internal static void EnsureCanoneConcordatoMinimumTerm(
-        FiscalRegime fiscalRegime,
-        DateTime startDate,
-        DateTime endDate)
-    {
-        if (fiscalRegime != FiscalRegime.CanoneConcordato)
-            return;
-
-        var minimumEndDate = startDate.Date.AddYears(3).AddDays(-1);
-        if (endDate.Date < minimumEndDate)
-        {
-            throw new InvalidOperationException(
-                "Canone concordato leases must cover at least the initial 3-year term required for contratto tipo 3+2.");
-        }
-    }
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

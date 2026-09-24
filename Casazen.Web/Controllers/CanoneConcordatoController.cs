@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -22,28 +24,28 @@ public class CanoneConcordatoController(
 {
     private const string PropertyNotFoundCode = "property_not_found";
 
-    /// <summary>Calculate canone concordato eligibility and rent range for a property.</summary>
+    /// <summary>
+    /// Canone concordato range of the property (LT-10) for the unit characteristics and the lease dates: the term, and so
+    /// the minimum 3 years and the 4/5/6-year uplifts, comes from <c>startDate</c>/<c>endDate</c> (end inclusive), never
+    /// from a client-side year count (A7-12). The lease creation recomputes the same range on the server. <c>indicative</c>
+    /// with the <c>partial_data</c> warning: the agreement data are not confirmed and the range is only a guide (A7-23).
+    /// </summary>
     [HttpGet("eligibility")]
     public async Task<IActionResult> GetEligibility(
         Guid propertyId,
-        [FromQuery] decimal sqm,
-        [FromQuery] int typeACount,
-        [FromQuery] int typeBCount,
-        [FromQuery] int typeCCount,
-        [FromQuery] int typeDCount,
-        [FromQuery] bool furnished,
-        [FromQuery] int years,
-        [FromQuery] string? zone,
-        [FromQuery] string? foglio,
+        [FromQuery] CanoneConcordatoRangeQuery query,
         CancellationToken cancellationToken)
     {
         if (await AuthorizePropertyAsync(propertyId, cancellationToken) is { } denied)
             return denied;
 
-        var result = await eligibility.CalculateAsync(
-            propertyId,
-            new RentBandCharacteristics(sqm, typeACount, typeBCount, typeCCount, typeDCount, furnished, years, zone, foglio),
-            cancellationToken);
+        if (LeaseTerm.Between(query.StartDate!.Value, query.EndDate!.Value) is not { } term
+            || query.EndDate.Value.Date <= query.StartDate.Value.Date)
+        {
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, LeaseTermErrorCodes.EndBeforeStart, "LeaseEndBeforeStart");
+        }
+
+        var result = await eligibility.CalculateAsync(propertyId, query.ToCharacteristics(), term, cancellationToken);
 
         return result is null ? NotFound() : Ok(result);
     }
@@ -70,4 +72,82 @@ public class CanoneConcordatoController(
 
         return await authorizationService.IsAuthorizedAsync(User, property, LeaseOperations.Read) ? null : Forbid();
     }
+}
+
+/// <summary>
+/// Query of <c>GET /api/properties/{id}/canone-concordato/eligibility</c> (LT-10): the unit characteristics and the lease
+/// dates. Appurtenances in square metres; element counts as defined by the territorial agreement.
+/// </summary>
+public sealed class CanoneConcordatoRangeQuery
+{
+    [Range(0, 10_000)]
+    public decimal Sqm { get; set; }
+
+    [Range(0, 10_000)]
+    public decimal GarageSqm { get; set; }
+
+    [Range(0, 10_000)]
+    public decimal BalconySqm { get; set; }
+
+    [Range(0, 10_000)]
+    public decimal OtherAppurtenanceSqm { get; set; }
+
+    [Range(0, 100_000)]
+    public decimal PrivateGreenSqm { get; set; }
+
+    [Range(0, 100)]
+    public int TypeACount { get; set; }
+
+    [Range(0, 100)]
+    public int TypeBCount { get; set; }
+
+    [Range(0, 100)]
+    public int TypeCCount { get; set; }
+
+    [Range(0, 100)]
+    public int TypeDCount { get; set; }
+
+    /// <summary>D-elements among those the agreement lists for sub-fascia 3.</summary>
+    [Range(0, 100)]
+    public int QualifyingTypeDCount { get; set; }
+
+    public bool Furnished { get; set; }
+
+    public bool AirConditioning { get; set; }
+
+    public bool StoveHeating { get; set; }
+
+    [MaxLength(100)]
+    public string? Zone { get; set; }
+
+    /// <summary>Cadastral sheet; when empty the property's own sheet is used.</summary>
+    [MaxLength(20)]
+    public string? Foglio { get; set; }
+
+    /// <summary>Start of the lease (date).</summary>
+    [Required]
+    public DateTime? StartDate { get; set; }
+
+    /// <summary>End of the lease (date, inclusive).</summary>
+    [Required]
+    public DateTime? EndDate { get; set; }
+
+    public RentBandCharacteristics ToCharacteristics() => new()
+    {
+        Sqm = Sqm,
+        GarageSqm = GarageSqm,
+        BalconySqm = BalconySqm,
+        OtherAppurtenanceSqm = OtherAppurtenanceSqm,
+        PrivateGreenSqm = PrivateGreenSqm,
+        TypeAElementCount = TypeACount,
+        TypeBElementCount = TypeBCount,
+        TypeCElementCount = TypeCCount,
+        TypeDElementCount = TypeDCount,
+        QualifyingTypeDElementCount = QualifyingTypeDCount,
+        StoveHeating = StoveHeating,
+        IsFurnished = Furnished,
+        AirConditioning = AirConditioning,
+        ZoneName = Zone,
+        CadastralSheet = Foglio,
+    };
 }

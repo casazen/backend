@@ -24,13 +24,26 @@ public interface ILeaseWorkflowService
     Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId);
 }
 
+/// <summary>
+/// A new lease. <see cref="ContractType"/> with <see cref="TaxRegime"/> (LT-10) replace the legacy
+/// <see cref="FiscalRegime"/>, still accepted alone from older clients. For a canone concordato lease the characteristics
+/// are required: the server computes the range from them and from the dates (A7-12).
+/// </summary>
 public record CreateLeaseRequest(
-    FiscalRegime FiscalRegime,
+    FiscalRegime? FiscalRegime,
     DateTime StartDate,
     DateTime EndDate,
     decimal MonthlyRent,
     IEnumerable<CreatePartyRequest> Parties,
-    RentBandCharacteristics? CanoneConcordatoCharacteristics = null);
+    RentBandCharacteristics? CanoneConcordatoCharacteristics = null)
+{
+    public LeaseContractType? ContractType { get; init; }
+
+    public LeaseTaxRegime? TaxRegime { get; init; }
+
+    /// <summary>Security deposit in euros; null when not declared.</summary>
+    public decimal? SecurityDeposit { get; init; }
+}
 
 public record CreatePartyRequest(
     PartyRole Role,

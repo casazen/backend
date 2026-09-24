@@ -38,4 +38,18 @@ public interface IPropertyService
     Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId);
     Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(string ownerId, string? cinStatus, int page, int pageSize);
     Task UpdatePropertyCinAsync(Guid propertyId, string? cinCode);
+
+    /// <summary>
+    /// Sets the cadastral identification of the unit (LT-10): trimmed, empty values cleared, category upper-case.
+    /// Only lengths are checked; the formats are not validated.
+    /// </summary>
+    Task UpdateCadastralDataAsync(Guid propertyId, PropertyCadastralData data);
 }
+
+/// <summary>Cadastral identification of a property (catasto fabbricati): foglio, particella, subalterno, categoria, rendita.</summary>
+public sealed record PropertyCadastralData(
+    string? Sheet,
+    string? Parcel,
+    string? Subaltern,
+    string? Category,
+    decimal? Income);

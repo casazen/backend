@@ -111,7 +111,8 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The org is written through the model; the properties and the old JSON column with SQL.
+    /// Orgs are written through the model; Properties and the old JSON column with SQL (later migrations add columns to
+    /// the current Property entity).
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -128,8 +129,7 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
 
         await db.SaveChangesAsync();
 
-        // Properties with SQL: later migrations add columns (e.g. AddPropertyComplianceSuspension, CO-06) that do not
-        // exist yet at this point of the history, so the current model cannot insert them.
+        // Property rows in SQL: the current Property entity has columns that later migrations add (LT-10).
         async Task<Guid> NewPropertyAsync(string name)
         {
             var id = Guid.NewGuid();
@@ -139,8 +139,8 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
                     "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
                     "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
                     "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "ComplianceStatus", "CreatedAt", "UpdatedAt")
-                VALUES ({id}, 'auth0|co07', {org.Id}, {name}, 'Casa', {address}, 'Roma', '00100', 0, 0, 0, 1, 4, 100, 0, 0,
-                    ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, 1, now(), now());
+                VALUES ({id}, 'auth0|co07', {org.Id}, {name}, 'Casa', {address}, 'Roma', '00100', 0, 0, 0, 0, 4, 100, 0, 0,
+                    ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, {(int)PropertyComplianceStatus.Active}, now(), now());
                 """);
             return id;
         }

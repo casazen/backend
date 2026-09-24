@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.Http;
@@ -98,4 +99,28 @@ public class PropertyDocumentService(
 
     public Task<SignedFileUrl?> GetSignedDownloadUrlAsync(PropertyDocument document) =>
         storageService.GetDocumentSignedUrlAsync(document.StorageUrl, document.FileName);
+
+    public async Task<PropertyDocument> UpdateApeIdentificationAsync(PropertyDocument document, string? code, string? energyClass)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (document.DocumentType != DocumentType.Ape)
+            throw new DomainRuleException("document_not_ape", "DocumentNotApe");
+
+        // Shape only (no invented pattern on the code, whose format is not documented): a non-empty code within the
+        // column, a short class of letters, digits or "+" (A4...G, older A+).
+        var normalizedCode = code?.Trim();
+        var normalizedClass = energyClass?.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(normalizedCode) || normalizedCode.Length > ApeDocumentLimits.CodeMaxLength
+            || string.IsNullOrEmpty(normalizedClass) || normalizedClass.Length > ApeDocumentLimits.EnergyClassMaxLength
+            || !normalizedClass.All(c => c is (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '+'))
+        {
+            throw new DomainRuleException("ape_identification_invalid", "ApeIdentificationInvalid");
+        }
+
+        document.ApeCode = normalizedCode;
+        document.ApeEnergyClass = normalizedClass;
+        logger.LogInformation("APE identification updated. DocumentId={DocumentId} PropertyId={PropertyId}",
+            document.Id, document.PropertyId);
+        return await documentRepository.UpdateAsync(document);
+    }
 }

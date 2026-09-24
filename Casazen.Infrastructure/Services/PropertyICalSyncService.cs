@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -9,10 +10,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-public class PropertyICalSyncService
+public partial class PropertyICalSyncService
 {
     private readonly AppDbContext _db;
     private readonly ISafeExternalHttpClient _externalHttpClient;
@@ -20,6 +22,7 @@ public class PropertyICalSyncService
     private readonly ICalExportService _exportService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
+    private readonly IOptions<ICalImportOptions> _importOptions;
     private readonly ILogger<PropertyICalSyncService> _logger;
 
     public PropertyICalSyncService(
@@ -29,6 +32,7 @@ public class PropertyICalSyncService
         ICalExportService exportService,
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
+        IOptions<ICalImportOptions> importOptions,
         ILogger<PropertyICalSyncService> logger)
     {
         _db = db;
@@ -37,38 +41,67 @@ public class PropertyICalSyncService
         _exportService = exportService;
         _scopeFactory = scopeFactory;
         _configuration = configuration;
+        _importOptions = importOptions;
         _logger = logger;
     }
 
-    public async Task<PropertyICalFeed> GetOrCreateFeedAsync(Guid propertyId, Guid orgId, CancellationToken ct = default)
+    /// <summary>Import feeds of the property, oldest first (PC-11). Read-only.</summary>
+    public async Task<IReadOnlyList<PropertyICalFeed>> ListFeedsAsync(Guid propertyId, CancellationToken ct = default) =>
+        await _db.PropertyICalFeeds
+            .AsNoTracking()
+            .Where(f => f.PropertyId == propertyId)
+            .OrderBy(f => f.CreatedAt)
+            .ThenBy(f => f.Id)
+            .ToListAsync(ct);
+
+    /// <summary>Number of blocks imported by each feed of the property (feeds without blocks are missing).</summary>
+    public async Task<IReadOnlyDictionary<Guid, int>> GetBlockCountsByFeedAsync(Guid propertyId, CancellationToken ct = default) =>
+        await _db.CalendarBlocks
+            .Where(b => b.PropertyId == propertyId && b.FeedId != null)
+            .GroupBy(b => b.FeedId!.Value)
+            .Select(g => new { FeedId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.FeedId, x => x.Count, ct);
+
+    /// <summary>
+    /// The export link of the property, created on first use. Created under the property's advisory lock: two
+    /// concurrent first requests get the same token.
+    /// </summary>
+    public async Task<PropertyICalExport> GetOrCreateExportAsync(Guid propertyId, Guid orgId, CancellationToken ct = default)
     {
-        var feed = await _db.PropertyICalFeeds
-            .FirstOrDefaultAsync(f => f.PropertyId == propertyId, ct);
+        var export = await _db.PropertyICalExports.FirstOrDefaultAsync(e => e.PropertyId == propertyId, ct);
+        if (export is not null)
+            return export;
 
-        if (feed is not null)
-            return feed;
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            _db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()));
 
-        feed = new PropertyICalFeed
+        export = await _db.PropertyICalExports.FirstOrDefaultAsync(e => e.PropertyId == propertyId, ct);
+        if (export is null)
         {
-            PropertyId = propertyId,
-            OrgId = orgId,
-            ExportToken = Guid.NewGuid(),
-        };
-        _db.PropertyICalFeeds.Add(feed);
-        await _db.SaveChangesAsync(ct);
-        return feed;
+            export = new PropertyICalExport
+            {
+                PropertyId = propertyId,
+                OrgId = orgId,
+                ExportToken = Guid.NewGuid(),
+                CreatedAt = DateTime.UtcNow,
+            };
+            _db.PropertyICalExports.Add(export);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        return export;
     }
 
-    public async Task<PropertyICalFeed?> GetFeedAsync(Guid propertyId, CancellationToken ct = default) =>
-        await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.PropertyId == propertyId, ct);
-
     // IgnoreQueryFilters (here and in BuildPublicExportAsync): the public export is authorized by the
-    // unguessable ExportToken, not by a user, and is scoped to that feed's property.
-    public async Task<PropertyICalFeed?> GetFeedByExportTokenAsync(Guid exportToken, CancellationToken ct = default) =>
-        await _db.PropertyICalFeeds
+    // unguessable ExportToken, not by a user, and is scoped to that export's property.
+    public async Task<PropertyICalExport?> GetExportByTokenAsync(Guid exportToken, CancellationToken ct = default) =>
+        await _db.PropertyICalExports
             .IgnoreQueryFilters()
-            .Include(f => f.Property)
-            .FirstOrDefaultAsync(f => f.ExportToken == exportToken, ct);
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.ExportToken == exportToken, ct);
 
     public string BuildExportUrl(Guid exportToken)
     {
@@ -80,57 +113,156 @@ public class PropertyICalSyncService
         await _db.CalendarBlocks.CountAsync(b => b.PropertyId == propertyId, ct);
 
     /// <summary>
-    /// Saves the import URL and marks the feed <see cref="PropertyICalImportStatus.Syncing"/>. It does not download
-    /// the feed: the caller queues <see cref="SyncPropertyFeedAsync"/> in a background job (A2-21), so a slow or
-    /// hostile feed never runs inside the request.
+    /// Adds an import feed to the property and marks it <see cref="PropertyICalImportStatus.Syncing"/> (PC-11). It does
+    /// not download the feed: the caller queues <see cref="SyncFeedAsync"/> in a background job (A2-21), so a slow or
+    /// hostile feed never runs inside the request. The URL is stored encrypted (A2-20).
     /// </summary>
-    /// <exception cref="DomainRuleException">Code <see cref="ICalErrorCodes.InvalidUrl"/>: not an allowed external https URL.</exception>
-    public async Task<PropertyICalFeed> SetImportUrlAsync(
+    /// <param name="channel">Airbnb, Booking.com or other; null: taken from the host of the URL.</param>
+    /// <param name="label">Optional free text, trimmed (empty: none).</param>
+    /// <exception cref="DomainRuleException">
+    /// <see cref="ICalErrorCodes.InvalidUrl"/>: not an allowed external https URL (FD-16).
+    /// <see cref="ICalFeedErrorCodes.InvalidLabel"/>: label too long or with control characters.
+    /// <see cref="ICalFeedErrorCodes.LimitReached"/>: the property has <c>ICalImport:MaxFeedsPerProperty</c> feeds.
+    /// </exception>
+    /// <exception cref="DomainConflictException"><see cref="ICalFeedErrorCodes.Duplicate"/>: the property already imports that URL.</exception>
+    public async Task<PropertyICalFeed> AddFeedAsync(
         Guid propertyId,
         Guid orgId,
+        ICalFeedChannel? channel,
+        string? label,
         string? importUrl,
         CancellationToken ct = default)
     {
-        if (!_externalHttpClient.TryValidateUrl(importUrl, out _))
+        if (importUrl is null
+            || importUrl.Trim().Length > PropertyICalFeed.ImportUrlMaxLength
+            || !_externalHttpClient.TryValidateUrl(importUrl, out var uri))
         {
             throw new DomainRuleException(
                 ICalErrorCodes.InvalidUrl,
                 ICalErrorCodes.MessageKey(ICalErrorCodes.InvalidUrl));
         }
 
-        var feed = await GetOrCreateFeedAsync(propertyId, orgId, ct);
-        feed.ImportUrl = importUrl!.Trim();
-        feed.LastImportStatus = PropertyICalImportStatus.Syncing;
-        feed.LastError = null;
+        var normalizedLabel = NormalizeLabel(label);
+        var url = importUrl.Trim();
+
+        // Count and duplicate check under the property's lock: two concurrent adds cannot both pass them.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            _db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()));
+
+        var existingUrls = await _db.PropertyICalFeeds
+            .Where(f => f.PropertyId == propertyId)
+            .Select(f => f.ImportUrl)
+            .ToListAsync(ct);
+
+        var maxFeeds = _importOptions.Value.EffectiveMaxFeedsPerProperty;
+        if (existingUrls.Count >= maxFeeds)
+        {
+            throw new DomainRuleException(
+                ICalFeedErrorCodes.LimitReached, ICalFeedErrorCodes.LimitReachedMessageKey, maxFeeds);
+        }
+
+        var key = ComparableUrl(uri);
+        if (existingUrls.Any(existing => existing is not null
+                                         && _externalHttpClient.TryValidateUrl(existing, out var existingUri)
+                                         && ComparableUrl(existingUri) == key))
+        {
+            throw new DomainConflictException(ICalFeedErrorCodes.Duplicate, ICalFeedErrorCodes.DuplicateMessageKey);
+        }
+
+        var feed = new PropertyICalFeed
+        {
+            PropertyId = propertyId,
+            OrgId = orgId,
+            Channel = channel ?? InferChannel(uri),
+            Label = normalizedLabel,
+            ImportUrl = url,
+            CreatedAt = DateTime.UtcNow,
+            LastImportStatus = PropertyICalImportStatus.Syncing,
+        };
+        _db.PropertyICalFeeds.Add(feed);
         await _db.SaveChangesAsync(ct);
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        _logger.LogInformation("iCal feed {FeedId} added to property {PropertyId} ({Channel})", feed.Id, propertyId, feed.Channel);
         return feed;
     }
 
     /// <summary>
-    /// Downloads, reads and applies the import feed of one property; every outcome is stored on the feed, so the
-    /// caller never sees an exception for a bad feed (PC-10, A2-10, A2-12).
+    /// Removes an import feed and every block it imported, and only those (PC-11): the dates it held become free, the
+    /// blocks of the other feeds stay. Under the property's lock, so a sync of the feed running meanwhile writes
+    /// nothing. Returns the number of blocks removed.
+    /// </summary>
+    /// <exception cref="NotFoundException"><see cref="ICalFeedErrorCodes.NotFound"/>: not a feed of the property.</exception>
+    public async Task<int> RemoveFeedAsync(Guid propertyId, Guid feedId, CancellationToken ct = default)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            _db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()));
+
+        var feed = await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.Id == feedId && f.PropertyId == propertyId, ct)
+            ?? throw FeedNotFound(feedId);
+
+        // Also deleted by the FK cascade; removed here so every provider (and the change tracker) agrees.
+        var blocks = await _db.CalendarBlocks.Where(b => b.FeedId == feedId).ToListAsync(ct);
+        _db.CalendarBlocks.RemoveRange(blocks);
+        _db.PropertyICalFeeds.Remove(feed);
+        await _db.SaveChangesAsync(ct);
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        _logger.LogInformation(
+            "iCal feed {FeedId} removed from property {PropertyId} with {BlockCount} blocks", feedId, propertyId, blocks.Count);
+        return blocks.Count;
+    }
+
+    /// <summary>
+    /// "Sync now" of one feed: marks it <see cref="PropertyICalImportStatus.Syncing"/> and tells the caller to queue
+    /// <see cref="SyncFeedAsync"/>. A feed already syncing is left as it is and nothing is queued: repeated clicks
+    /// never pile up downloads (the 15-minute job syncs it anyway).
+    /// </summary>
+    /// <exception cref="NotFoundException"><see cref="ICalFeedErrorCodes.NotFound"/>: not a feed of the property.</exception>
+    public async Task<(PropertyICalFeed Feed, bool Queue)> RequestSyncAsync(Guid propertyId, Guid feedId, CancellationToken ct = default)
+    {
+        var feed = await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.Id == feedId && f.PropertyId == propertyId, ct)
+            ?? throw FeedNotFound(feedId);
+
+        if (feed.LastImportStatus == PropertyICalImportStatus.Syncing)
+            return (feed, false);
+
+        feed.LastImportStatus = PropertyICalImportStatus.Syncing;
+        await _db.SaveChangesAsync(ct);
+        return (feed, true);
+    }
+
+    /// <summary>
+    /// Downloads, reads and applies one import feed; every outcome is stored on the feed, so the caller never sees an
+    /// exception for a bad feed (PC-10, A2-10, A2-12). Only the blocks of this feed are touched (PC-11): the other
+    /// feeds of the property keep theirs whatever happens here.
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
-    /// <item>A valid calendar is a success even with no event: the imported blocks missing from the feed are removed
+    /// <item>A valid calendar is a success even with no event: the blocks of the feed missing from it are removed
     /// (a reservation cancelled on the OTA frees its dates).</item>
     /// <item>Only a download failure (<see cref="ICalErrorCodes.FromFetchFailure"/>), a document that is not a readable
     /// iCalendar (<see cref="ICalErrorCodes.InvalidFormat"/>) or any other failure, e.g. of the database
     /// (<see cref="ICalErrorCodes.SyncFailed"/>), is an error; the existing blocks are then kept.</item>
-    /// <item>The blocks are written in one transaction under a per-property advisory lock: two runs for the same
-    /// property (the 15-minute job and the first sync of a new URL) wait for each other instead of inserting the same
-    /// UIDs twice. A run whose URL was replaced meanwhile writes nothing: the run of the new URL does.</item>
+    /// <item>The blocks are written in one transaction under the property's advisory lock: two runs (the 15-minute job
+    /// and a first sync or "sync now") wait for each other instead of inserting the same UIDs twice. A run whose feed
+    /// was removed or changed meanwhile writes nothing.</item>
     /// <item>After a failed write the context is cleared before the failure is stored (no second save of the same
     /// rejected changes).</item>
     /// </list>
-    /// Logs name the feed and property ids, never the URL (export links carry secret tokens).
+    /// Logs name the feed and property ids, never the URL (import and export links carry secret tokens). An unknown
+    /// id (e.g. a job queued before PC-11 with a property id) does nothing.
     /// </remarks>
-    public async Task SyncPropertyFeedAsync(Guid propertyId, CancellationToken ct = default)
+    public async Task SyncFeedAsync(Guid feedId, CancellationToken ct = default)
     {
         var feed = await _db.PropertyICalFeeds
             .AsNoTracking()
-            .Where(f => f.PropertyId == propertyId)
-            .Select(f => new { f.Id, f.ImportUrl })
+            .Where(f => f.Id == feedId)
+            .Select(f => new { f.Id, f.PropertyId, f.ImportUrl })
             .FirstOrDefaultAsync(ct);
 
         if (feed is null || string.IsNullOrWhiteSpace(feed.ImportUrl))
@@ -138,18 +270,18 @@ public class PropertyICalSyncService
 
         try
         {
-            await SyncFeedAsync(feed.Id, propertyId, feed.ImportUrl, ct);
+            await SyncFeedCoreAsync(feed.Id, feed.PropertyId, feed.ImportUrl, ct);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             // Unexpected failure (database, client, ...): the feed gets its own error state, the blocks are kept.
-            _logger.LogError(ex, "iCal sync failed for feed {FeedId} of property {PropertyId}", feed.Id, propertyId);
+            _logger.LogError(ex, "iCal sync failed for feed {FeedId} of property {PropertyId}", feed.Id, feed.PropertyId);
             _db.ChangeTracker.Clear();
             await SaveFailureAsync(feed.Id, feed.ImportUrl, ICalErrorCodes.SyncFailed, ct);
         }
     }
 
-    private async Task SyncFeedAsync(Guid feedId, Guid propertyId, string importUrl, CancellationToken ct)
+    private async Task SyncFeedCoreAsync(Guid feedId, Guid propertyId, string importUrl, CancellationToken ct)
     {
         string icsContent;
         try
@@ -199,10 +331,10 @@ public class PropertyICalSyncService
     }
 
     /// <summary>
-    /// Replaces the imported blocks of the property with <paramref name="incoming"/> and marks the feed
+    /// Replaces the blocks of the feed with <paramref name="incoming"/> and marks the feed
     /// <see cref="PropertyICalImportStatus.Success"/>. The blocks of <paramref name="unreadableUids"/> (events still in
-    /// the feed that could not be read) are kept. Returns the number of blocks removed, or null when the import URL
-    /// changed during the download (nothing is written).
+    /// the feed that could not be read) are kept. Returns the number of blocks removed, or null when the feed was
+    /// removed or its URL changed during the download (nothing is written).
     /// </summary>
     private async Task<int?> ApplyBlocksAsync(
         Guid feedId,
@@ -225,7 +357,7 @@ public class PropertyICalSyncService
         }
 
         var existing = await _db.CalendarBlocks
-            .Where(b => b.PropertyId == propertyId && b.Source == CalendarBlockSource.ICalImport)
+            .Where(b => b.FeedId == feedId && b.Source == CalendarBlockSource.ICalImport)
             .ToListAsync(ct);
         var existingByUid = existing
             .Where(b => b.ExternalUid is not null)
@@ -248,6 +380,7 @@ public class PropertyICalSyncService
             {
                 PropertyId = propertyId,
                 OrgId = feed.OrgId,
+                FeedId = feedId,
                 Source = CalendarBlockSource.ICalImport,
                 ExternalUid = block.ExternalUid,
                 StartUtc = block.StartUtc,
@@ -257,8 +390,8 @@ public class PropertyICalSyncService
             });
         }
 
-        // An empty feed removes every imported block of the property (A2-10, A9-13). An event still in the feed but
-        // unreadable is not proof that its reservation is gone: its blocks stay.
+        // An empty feed removes every block of this feed (A2-10, A9-13), never those of the property's other feeds. An
+        // event still in the feed but unreadable is not proof that its reservation is gone: its blocks stay.
         var incomingUids = incoming.Select(b => b.ExternalUid).ToHashSet(StringComparer.Ordinal);
         var orphans = existing
             .Where(b => b.ExternalUid is not null
@@ -293,22 +426,22 @@ public class PropertyICalSyncService
     }
 
     /// <summary>
-    /// Syncs every property feed with an import URL, least recently synced first. Each feed runs in its own DI scope
-    /// (its own <see cref="AppDbContext"/>) and its own try/catch: a feed that fails, even unexpectedly, never stops
-    /// the others (A2-12). Only cancellation stops the batch.
+    /// Syncs every import feed with a URL, least recently synced first. Each feed runs in its own DI scope (its own
+    /// <see cref="AppDbContext"/>) and its own try/catch: a feed that fails, even unexpectedly, never stops the others,
+    /// including the other feeds of the same property (A2-12, PC-11). Only cancellation stops the batch.
     /// </summary>
     public async Task SyncAllFeedsAsync(CancellationToken ct = default)
     {
-        var propertyIds = await _db.PropertyICalFeeds
+        var feedIds = await _db.PropertyICalFeeds
             .AsNoTracking()
             .Where(f => f.ImportUrl != null && f.ImportUrl != "")
             .OrderBy(f => f.LastImportAt.HasValue)
             .ThenBy(f => f.LastImportAt)
-            .Select(f => f.PropertyId)
+            .Select(f => f.Id)
             .ToListAsync(ct);
 
         var failed = 0;
-        foreach (var propertyId in propertyIds)
+        foreach (var feedId in feedIds)
         {
             ct.ThrowIfCancellationRequested();
             try
@@ -316,23 +449,71 @@ public class PropertyICalSyncService
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 await scope.ServiceProvider
                     .GetRequiredService<PropertyICalSyncService>()
-                    .SyncPropertyFeedAsync(propertyId, ct);
+                    .SyncFeedAsync(feedId, ct);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 failed++;
-                _logger.LogError(ex, "iCal sync of property {PropertyId} failed; continuing with the next feed", propertyId);
+                _logger.LogError(ex, "iCal sync of feed {FeedId} failed; continuing with the next feed", feedId);
             }
         }
 
         _logger.LogInformation(
-            "Batch property iCal sync completed for {Count} feeds ({Failed} failed unexpectedly)", propertyIds.Count, failed);
+            "Batch property iCal sync completed for {Count} feeds ({Failed} failed unexpectedly)", feedIds.Count, failed);
     }
+
+    /// <summary>
+    /// Channel of a URL whose channel the host did not choose: <c>airbnb.&lt;tld&gt;</c> (and its subdomains) is
+    /// Airbnb, <c>booking.com</c> (and its subdomains) is Booking.com, anything else is Other. The migration
+    /// <c>AddICalMultiFeed</c> applies the same rule to the feeds saved before PC-11. Display only, never a security
+    /// decision.
+    /// </summary>
+    public static ICalFeedChannel InferChannel(Uri url)
+    {
+        var host = url.IdnHost.TrimEnd('.').ToLowerInvariant();
+        if (AirbnbHost().IsMatch(host))
+            return ICalFeedChannel.Airbnb;
+
+        return BookingHost().IsMatch(host) ? ICalFeedChannel.BookingCom : ICalFeedChannel.Other;
+    }
+
+    [GeneratedRegex(@"(^|\.)airbnb\.[a-z]{2,}(\.[a-z]{2,})?$")]
+    private static partial Regex AirbnbHost();
+
+    [GeneratedRegex(@"(^|\.)booking\.com$")]
+    private static partial Regex BookingHost();
+
+    // Label trimmed, empty → none. Control characters (line breaks included) are refused: the label is shown as is.
+    private static string? NormalizeLabel(string? label)
+    {
+        var trimmed = label?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+
+        if (trimmed.Length > PropertyICalFeed.LabelMaxLength || trimmed.Any(char.IsControl))
+        {
+            throw new DomainRuleException(
+                ICalFeedErrorCodes.InvalidLabel, ICalFeedErrorCodes.InvalidLabelMessageKey, PropertyICalFeed.LabelMaxLength);
+        }
+
+        return trimmed;
+    }
+
+    // Same feed for the duplicate check: scheme, host (lower case), port, path and query as written.
+    private static string ComparableUrl(Uri url) =>
+        url.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
+
+    private static NotFoundException FeedNotFound(Guid feedId) =>
+        new($"iCal feed {feedId} not found")
+        {
+            Code = ICalFeedErrorCodes.NotFound,
+            MessageKey = ICalFeedErrorCodes.NotFoundMessageKey,
+        };
 
     public async Task<string> BuildPublicExportAsync(Guid exportToken, CancellationToken ct = default)
     {
-        var feed = await GetFeedByExportTokenAsync(exportToken, ct)
-            ?? throw new InvalidOperationException("Export token not found");
+        var export = await GetExportByTokenAsync(exportToken, ct)
+            ?? throw new NotFoundException("iCal export token not found");
 
         // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21). A pending
         // "pay at the property" request is left out until the host accepts it: an anonymous request must not block the
@@ -340,14 +521,14 @@ public class PropertyICalSyncService
         var expiredHoldCutoff = CheckoutHolds.CutoffAt(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(_configuration));
         var bookings = await _db.Bookings
             .IgnoreQueryFilters()
-            .Where(b => b.PropertyId == feed.PropertyId)
+            .Where(b => b.PropertyId == export.PropertyId)
             .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoff))
             .Where(OnSiteRequests.IsExportedToOtas())
             .ToListAsync(ct);
 
         var blocks = await _db.CalendarBlocks
             .IgnoreQueryFilters()
-            .Where(b => b.PropertyId == feed.PropertyId)
+            .Where(b => b.PropertyId == export.PropertyId)
             .ToListAsync(ct);
 
         return _exportService.BuildPropertyFeed(bookings, blocks);

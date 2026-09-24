@@ -222,10 +222,9 @@ public class ComplianceWizardService(
         var regionCode = await ResolveRegionCodeAsync(property.City, cancellationToken);
         var touristTax = await ResolveTouristTaxAsync(property.City, cancellationToken);
 
-        var icalFeed = await db.PropertyICalFeeds
-            .AsNoTracking()
-            .FirstOrDefaultAsync(f => f.PropertyId == property.Id, cancellationToken);
-        var icalComplete = !string.IsNullOrWhiteSpace(icalFeed?.ImportUrl);
+        // Any import feed of the property (PC-11: Airbnb, Booking.com, ... each its own feed).
+        var icalComplete = await db.PropertyICalFeeds
+            .AnyAsync(f => f.PropertyId == property.Id && f.ImportUrl != null && f.ImportUrl != "", cancellationToken);
 
         return
         [
