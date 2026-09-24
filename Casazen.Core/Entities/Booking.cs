@@ -30,6 +30,12 @@ public class Booking : ITenantOwned
     [Required]
     public DateTime CheckOutDate { get; set; }
 
+    /// <summary>
+    /// Real arrival instant (UTC), recorded when the host registers the check-in. The Alloggiati Web term
+    /// (24 hours, or 6 for short stays) runs from here; without it, from the start of the check-in day in Europe/Rome.
+    /// </summary>
+    public DateTime? ArrivedAt { get; set; }
+
     public int NumberOfGuests { get; set; }
 
     [Required]

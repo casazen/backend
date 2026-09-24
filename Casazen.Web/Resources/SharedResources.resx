@@ -123,6 +123,24 @@
   <data name="BillingNotAvailable" xml:space="preserve">
     <value>Fatturazione non ancora disponibile</value>
   </data>
+  <data name="AlreadySubscribed" xml:space="preserve">
+    <value>L'organizzazione ha già un abbonamento: per cambiare piano o completare il pagamento usa il portale di fatturazione.</value>
+  </data>
+  <data name="BillingPlanTierUnknown" xml:space="preserve">
+    <value>Piano non valido.</value>
+  </data>
+  <data name="BillingCountryInvalid" xml:space="preserve">
+    <value>Paese di fatturazione non valido: indica il codice ISO di 2 lettere.</value>
+  </data>
+  <data name="BillingVatIdInvalid" xml:space="preserve">
+    <value>Partita IVA non valida.</value>
+  </data>
+  <data name="StripeWebhookSignatureInvalid" xml:space="preserve">
+    <value>Firma del webhook Stripe non valida.</value>
+  </data>
+  <data name="StripeWebhookNotConfigured" xml:space="preserve">
+    <value>Webhook Stripe non configurato.</value>
+  </data>
   <data name="PlanLimitReached" xml:space="preserve">
     <value>Hai raggiunto il limite del tuo piano</value>
   </data>
@@ -273,6 +291,18 @@
   <data name="CinAlreadyAssigned" xml:space="preserve">
     <value>Questo CIN è già associato a un altro immobile.</value>
   </data>
+  <data name="AlloggiatiManualDateBeforeArrival" xml:space="preserve">
+    <value>La data di invio non può precedere la data di check-in: il portale Alloggiati Web non accetta arrivi futuri.</value>
+  </data>
+  <data name="AlloggiatiManualDateInFuture" xml:space="preserve">
+    <value>La data di invio non può essere successiva a oggi.</value>
+  </data>
+  <data name="AlloggiatiAlreadySent" xml:space="preserve">
+    <value>La comunicazione Alloggiati di questa prenotazione risulta già inviata.</value>
+  </data>
+  <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
+    <value>CasaZen non trasmette ancora ad Alloggiati Web: invia la schedina dal portale della Questura con il riepilogo dati e segna l'invio come manuale.</value>
+  </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tariffa dell'imposta di soggiorno non trovata.</value>
   </data>
@@ -317,5 +347,14 @@
   </data>
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
+  </data>
+  <data name="AiBudgetExhaustedDetail" xml:space="preserve">
+    <value>Il budget mensile per le funzioni AI della piattaforma è esaurito. Riprova il mese prossimo o contatta il supporto.</value>
+  </data>
+  <data name="ServiceCategoryRequired" xml:space="preserve">
+    <value>Indica la categoria del servizio.</value>
+  </data>
+  <data name="ServiceCategoryNotSupported" xml:space="preserve">
+    <value>Categoria del servizio non supportata.</value>
   </data>
 </root>

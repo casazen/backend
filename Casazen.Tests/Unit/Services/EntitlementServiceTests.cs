@@ -311,6 +311,36 @@ public class EntitlementServiceTests
         Assert.Equal(PlanTier.Starter, service.ResolveEffectiveTier(OrgWith(PlanTier.Pro, SubscriptionStatus.Canceled)));
     }
 
+    [Theory]
+    [InlineData(SubscriptionStatus.Incomplete)]
+    [InlineData(SubscriptionStatus.Unpaid)]
+    public void ResolveEffectiveTier_IncompleteOrUnpaid_ReturnsStarter(SubscriptionStatus status)
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        // A1-11: a first payment not yet succeeded or retries exhausted never grant the paid tier.
+        Assert.Equal(PlanTier.Starter, service.ResolveEffectiveTier(OrgWith(PlanTier.Scale, status)));
+    }
+
+    [Fact]
+    public void ResolveEffectiveTier_PastDueWithoutStartDate_FailsClosedToStarter()
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        Assert.Equal(PlanTier.Starter, service.ResolveEffectiveTier(OrgWith(PlanTier.Pro, SubscriptionStatus.PastDue, pastDueSince: null)));
+    }
+
+    [Fact]
+    public void ResolveEffectiveTier_PastDueWithinGrace_ReturnsStoredTier()
+    {
+        using var db = NewDb();
+        var service = new EntitlementService(db, Config());
+
+        Assert.Equal(PlanTier.Pro, service.ResolveEffectiveTier(OrgWith(PlanTier.Pro, SubscriptionStatus.PastDue, DateTime.UtcNow.AddDays(-1))));
+    }
+
     [Fact]
     public void ResolveEffectiveTier_UnmappedStatus_FailsClosedToStarter()
     {

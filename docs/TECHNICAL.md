@@ -156,9 +156,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `PUT` | `/api/bookings/{id}` | Update a booking |
 | `DELETE` | `/api/bookings/{id}` | Cancel a booking |
 | `GET` | `/api/bookings/calendar` | Calendar view (`?propertyId&startDate&endDate&timezone`) |
-| `POST` | `/api/bookings/{id}/check-in` | Perform check-in (enqueues Alloggiati Web report) |
+| `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
-| `GET` | `/api/bookings/{id}/alloggiati-status` | Get Alloggiati Web submission status |
+| `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
 
 #### Guests & digital check-in
 
@@ -204,9 +204,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/billing/plans` | JWT | Stripe plan catalogue |
-| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session |
+| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session; one per org at a time, same open session reused, 409 `already_subscribed` when a subscription exists (A1-10, `docs/runbooks/stripe.md`) |
 | `POST` | `/api/billing/portal-session` | OrgBillingAdmin | Create Stripe Customer Portal session |
-| `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription |
+| `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription; `status`: `none`, `trialing`, `active`, `past_due`, `unpaid`, `incomplete`, `canceled` |
 | `PUT` | `/api/billing/profile` | OrgBillingAdmin | Update billing profile |
 
 #### Pricing Adapter (AI Dynamic Pricing)
@@ -240,10 +240,12 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/compliance/summary` | PropertyOwner | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati failures) |
+| `GET` | `/api/compliance/summary` | PropertyOwner | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually) |
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
-| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Manually send / retry Alloggiati report |
+| `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
+| `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
+| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable` until the web service client (CO-13) |
 | `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors list |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
@@ -341,8 +343,8 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/webhooks/stripe` | Anonymous (signature) | Stripe platform webhook |
-| `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook |
+| `POST` | `/webhooks/stripe` | Anonymous (signature) | Stripe platform webhook; processed once per event id (`docs/runbooks/stripe.md`) |
+| `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook; processed once per event id |
 | `POST` | `/webhooks/ota/{platform}` | Anonymous | OTA inbound webhook |
 | `POST` | `/webhooks/esign` | Anonymous | E-sign provider webhook |
 | `GET` | `/api/health/live` | Anonymous | Liveness: the process answers (always 200) |
@@ -514,7 +516,7 @@ erDiagram
 | `OtaSyncJob` | Hourly | Full OTA availability and booking sync |
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
 | `DynamicPricingJob` | Daily at 02:00 UTC | AI-driven nightly rate adaptation |
-| `AlloggiatiWebReportJob` | On check-in (enqueued) | Submit guest identity to Italian police system |
+| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailQueueProcessor` | Continuous | Process queued email notifications via SMTP |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
@@ -531,7 +533,7 @@ erDiagram
 | Auth0 | Microsoft JWT Bearer middleware | `appsettings.json → Auth0` | JWT validation on all `/api` endpoints |
 | Stripe | Stripe .NET SDK | `appsettings.json → Stripe` | Payment processing and refunds |
 | Resend | `Resend` SDK (`ResendEmailService`, the only `IEmailService`) | `Email` section (`Email__Provider`, `Email__ApiKey`, `Email__FromAddress`, `Email__FromName`); see `docs/runbooks/email.md` | Transactional emails (queued on Hangfire) |
-| Alloggiati Web | Custom HTTP client | `AlloggiatiWebService.cs` | Italian police guest registration |
+| Alloggiati Web | None yet (manual submission, CO-13 adds the SOAP client) | `AlloggiatiWebService.cs`, `docs/runbooks/alloggiati.md` | Italian police guest registration |
 | OTA platforms (6) | `IChannelAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
 | Public holidays API | `PublicHolidayService` | Configured in service | Feeds AI pricing seasonality |
 

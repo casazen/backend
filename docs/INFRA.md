@@ -390,12 +390,13 @@ Hangfire__Schema=hangfire_casazen_test
 Cors__AllowedOrigins=[https://<web app host of this environment>]
 # Optional, test environment only: regex for the Vercel previews of our own project (empty = no preview allowed)
 Cors__VercelPreviewPattern=[e.g. casazen-app-git-[a-z0-9-]+-<team-slug>]
-# AI supplier discovery (DeepSeek) — replaces Google Places
-Ai__Provider=DeepSeek
-Ai__ApiKey=sk-...
-Ai__Model=deepseek-v4-flash
-Ai__AnthropicBaseUrl=https://api.deepseek.com/anthropic
-Ai__OpenAiBaseUrl=https://api.deepseek.com
+# AI provider — OPTIONAL, default Stub (no external call). Before enabling DeepSeek read docs/runbooks/ai.md:
+# it becomes a subprocessor (legal details to fill in), every call is capped by the platform AI budget.
+# AI supplier discovery stays off (Features__AiSupplierDiscovery, decision D11).
+# Ai__Provider=DeepSeek
+# Ai__ApiKey=sk-...
+# Ai__Subprocessor__Region=[verified processing location]
+# Ai__Subprocessor__TransferMechanism=[legal basis of the transfer outside the EEA]
 # Object storage — Supabase Storage (S3 API), REQUIRED: the API does not start without it (docs/runbooks/storage.md)
 Storage__Provider=S3
 Storage__PublicBaseUrl=https://YOUR_REF.supabase.co/storage/v1/object/public/casazen-<env>-public
@@ -439,6 +440,8 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
+| `Ai__Provider`, `Ai__ApiKey`, `Ai__Subprocessor__*` | no (default `Stub`, no external call) | — | [`ai.md`](runbooks/ai.md) |
+| `Features__OtaPartnerApi`, `Features__AiSupplierDiscovery` | no: leave unset (off, decisions D10/D11) | — | [`feature-flags.md`](runbooks/feature-flags.md) |
 | `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |
 
 GitHub (backend repo, Actions **variables**): `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` — required, `verify-test` / `verify-prod` fail without them.
@@ -484,6 +487,8 @@ Check after setting the variables and redeploying:
 1. `GET /api/health/ready` with an admin token: `stripe` is `healthy` (anonymous callers see only the status).
 2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret or API version; 500 = secret not set on Railway.
 3. Upgrading Stripe.net changes the pinned API version: create both endpoints again with the new version (new secrets), update the two Railway variables, then delete the old endpoints.
+
+Webhook idempotency, subscription states, checkout guard, restricted-key permissions and the Customer portal settings: `docs/runbooks/stripe.md`.
 
 ### Get service URLs → GitHub Variables
 

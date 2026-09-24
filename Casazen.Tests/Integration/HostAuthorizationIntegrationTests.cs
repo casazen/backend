@@ -14,11 +14,15 @@ namespace Casazen.Tests.Integration;
 /// TN-3 (A3-38 and the A9 endpoint inventory) over the real pipeline: context policies decide who may call a host
 /// endpoint, the host resource handler decides on the row (org, permission, ownership).
 /// </summary>
-public class HostAuthorizationIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
+/// <remarks>
+/// Runs with <c>Features:AiSupplierDiscovery</c> on (FD-21): <c>match-supplier</c> is 404 while the flag is off, and
+/// its authorization must stay covered for when it is turned on.
+/// </remarks>
+public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscoveryEnabledFactory>
 {
-    private readonly CasazenWebApplicationFactory _factory;
+    private readonly AiSupplierDiscoveryEnabledFactory _factory;
 
-    public HostAuthorizationIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
+    public HostAuthorizationIntegrationTests(AiSupplierDiscoveryEnabledFactory factory) => _factory = factory;
 
     /// <summary>Host endpoints: an authenticated supplier (no host context) gets 403 on every one of them.</summary>
     public static TheoryData<string, string> HostEndpoints() => new()

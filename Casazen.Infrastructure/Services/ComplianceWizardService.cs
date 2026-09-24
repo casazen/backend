@@ -129,18 +129,7 @@ public class ComplianceWizardService(
                 $"/bookings/{b.Id}/checkout-wizard"))
             .ToList();
 
-        var alloggiatiFailures = await db.AlloggiatiWebReports
-            .AsNoTracking()
-            .Include(r => r.Booking)
-            .ThenInclude(b => b.Guest)
-            .Where(r => r.Booking.OrgId == orgId)
-            .Where(r => r.Status == AlloggiatiWebStatus.Failed)
-            .OrderByDescending(r => r.UpdatedAt)
-            .Select(r => new ComplianceSummaryItem(
-                r.BookingId,
-                $"{r.Booking.Guest.FirstName} {r.Booking.Guest.LastName}".Trim(),
-                $"/bookings/{r.BookingId}/alloggiati"))
-            .ToListAsync(cancellationToken);
+        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
 
         return new ComplianceSummaryResult(
             new ComplianceSummarySection(
@@ -149,7 +138,71 @@ public class ComplianceWizardService(
                     p.Id, p.Name, $"/properties/{p.Id}/compliance/activation")).ToList()),
             new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns),
             new ComplianceSummarySection(checkoutDue.Count, checkoutDue),
-            new ComplianceSummarySection(alloggiatiFailures.Count, alloggiatiFailures));
+            alloggiatiFailures,
+            alloggiatiManualRequired);
+    }
+
+    /// <summary>Most recent items listed per Alloggiati section; the count covers all of them.</summary>
+    internal const int AlloggiatiSectionMaxItems = 10;
+
+    /// <summary>
+    /// Alloggiati sections of the cockpit (CO-11): errors/rejections, and communications the host must send on the
+    /// portal. Every stay whose arrival day has come is counted until it is sent with a receipt or declared sent by
+    /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own.
+    /// </summary>
+    private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
+        Guid orgId,
+        DateTime today,
+        CancellationToken cancellationToken)
+    {
+        var stays = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == orgId)
+            .Where(b => b.Status == BookingStatus.Confirmed
+                || b.Status == BookingStatus.CheckedIn
+                || b.Status == BookingStatus.CheckedOut)
+            .Where(b => b.CheckInDate <= today)
+            .Select(b => new
+            {
+                b.Id,
+                b.GuestId,
+                b.CheckInDate,
+                GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
+            })
+            .ToListAsync(cancellationToken);
+
+        var stayIds = stays.Select(b => b.Id).ToList();
+        var reports = (await db.AlloggiatiWebReports
+                .AsNoTracking()
+                .Where(r => stayIds.Contains(r.BookingId))
+                .Select(r => new { r.BookingId, r.GuestId, r.Status, r.UpdatedAt })
+                .ToListAsync(cancellationToken))
+            .ToLookup(r => r.BookingId);
+
+        var failures = new List<(DateTime CheckIn, ComplianceSummaryItem Item)>();
+        var manual = new List<(DateTime CheckIn, ComplianceSummaryItem Item)>();
+        foreach (var stay in stays)
+        {
+            var ofStay = reports[stay.Id].ToList();
+            var report = ofStay.FirstOrDefault(r => r.GuestId == stay.GuestId)
+                ?? ofStay.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
+            var status = AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today);
+            var item = new ComplianceSummaryItem(stay.Id, stay.GuestName, $"/bookings/{stay.Id}/alloggiati");
+
+            if (AlloggiatiStatusRules.IsFailure(status))
+                failures.Add((stay.CheckInDate, item));
+            else if (status == AlloggiatiWebStatus.DaInviareManualmente)
+                manual.Add((stay.CheckInDate, item));
+        }
+
+        return (Section(failures), Section(manual));
+
+        static ComplianceSummarySection Section(List<(DateTime CheckIn, ComplianceSummaryItem Item)> items) =>
+            new(items.Count, items
+                .OrderByDescending(i => i.CheckIn)
+                .Take(AlloggiatiSectionMaxItems)
+                .Select(i => i.Item)
+                .ToList());
     }
 
     public async Task<(Booking Booking, IReadOnlyList<ComplianceActivationStep> Steps)> StartCheckoutWizardAsync(

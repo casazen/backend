@@ -119,7 +119,8 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         using var json = JsonDocument.Parse(body);
         var root = json.RootElement;
         Assert.True(root.GetProperty("completed").GetBoolean());
-        Assert.Contains(root.GetProperty("status").GetString(), new[] { "Completo", "AlloggiatiInviato" });
+        // Alloggiati is only scheduled for the arrival day: without a receipt the session stays Completo (CO-11).
+        Assert.Equal("Completo", root.GetProperty("status").GetString());
         var properties = root.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(new[] { "completed", "status" }, properties);
     }

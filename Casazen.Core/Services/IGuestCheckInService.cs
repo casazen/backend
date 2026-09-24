@@ -23,9 +23,6 @@ public interface IGuestCheckInService
     /// <summary>Submit guest data. Returns result indicating success or duplicate.</summary>
     Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request);
 
-    /// <summary>Marks the session as AlloggiatiInviato after the job is enqueued.</summary>
-    Task MarkAlloggiatiEnqueuedAsync(Guid sessionId);
-
     /// <summary>Expires any active session for the booking and creates a fresh one.</summary>
     Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId);
 

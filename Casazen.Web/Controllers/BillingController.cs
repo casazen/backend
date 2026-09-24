@@ -1,11 +1,10 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Billing;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
@@ -15,10 +14,10 @@ public class BillingController(
     IOrgContextResolver orgContextResolver,
     IOrgService orgService,
     IStripeBillingService stripeBillingService,
+    IBillingCheckoutService billingCheckoutService,
     IBillingEntryGate billingEntryGate,
     IViesService viesService,
-    IConfiguration configuration,
-    AppDbContext dbContext) : ControllerBase
+    IConfiguration configuration) : ControllerBase
 {
     [HttpGet("plans")]
     [Authorize]
@@ -34,21 +33,31 @@ public class BillingController(
             StripePriceId = configuration[$"Billing:Prices:{e.Tier}"] ?? string.Empty,
         }));
 
+    /// <summary>
+    /// Starts the Stripe Checkout of a paid plan. An org that already has a subscription (active, trialing, past due,
+    /// unpaid or waiting for its first payment, stored or already on Stripe) gets 409 <c>already_subscribed</c>: it
+    /// changes plan or pays from the billing portal (<c>POST /api/billing/portal-session</c>), never through a second
+    /// subscription (A1-10). A repeated request (double click) returns the same open session.
+    /// </summary>
     [HttpPost("checkout-session")]
-    [Authorize(Policy = "RequireOrgBillingAdmin")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(CheckoutSessionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CheckoutSessionResponse>> CreateCheckoutSession(
         [FromBody] CreateCheckoutSessionRequest request,
         CancellationToken ct)
     {
         if (!PlanCatalog.TryParseTier(request.PlanTier, out var planTier))
-            return BadRequest(new { error = $"Unknown planTier: {request.PlanTier}", code = "validation_error" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
-            return BadRequest(new { error = "Invalid billing country", code = "validation_error" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingCountryInvalid");
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         try
         {
@@ -56,7 +65,20 @@ public class BillingController(
         }
         catch (BillingGateClosedException)
         {
-            return Conflict(new { error = "Fatturazione non ancora disponibile", code = "billing_gate_closed" });
+            return this.ApiProblem(StatusCodes.Status409Conflict, "billing_gate_closed", "BillingNotAvailable");
+        }
+
+        var org = await orgService.GetByIdAsync(orgId.Value, ct);
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        // Refused before the billing profile changes; BillingCheckoutService checks again under the org lock and on Stripe.
+        if (BillingSubscriptionPolicy.BlocksNewCheckout(org))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                BillingSubscriptionPolicy.AlreadySubscribedCode,
+                BillingSubscriptionPolicy.AlreadySubscribedMessageKey);
         }
 
         DateTime? vatValidatedAt = null;
@@ -68,25 +90,17 @@ public class BillingController(
                     request.VatId.Replace(" ", string.Empty),
                     ct))
             {
-                return BadRequest(new { error = "Invalid VAT id", code = "validation_error" });
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingVatIdInvalid");
             }
 
             vatValidatedAt = DateTime.UtcNow;
         }
 
-        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId.Value, ct);
-        if (org is null)
-            return NotFound(new { error = "No organization assigned" });
-
         await orgService.UpdateBillingProfileAsync(org.Id, request.BillingCountry, request.VatId, vatValidatedAt, ct);
-        org = await dbContext.Orgs.FirstAsync(o => o.Id == orgId.Value, ct);
-        org.StripeCustomerId = await stripeBillingService.EnsureCustomerAsync(org, ct);
-        org.UpdatedAt = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(ct);
 
         var successUrl = request.SuccessUrl ?? "https://app.casazen.app/settings/billing?checkout=success";
         var cancelUrl = request.CancelUrl ?? "https://app.casazen.app/settings/billing/plans?checkout=cancel";
-        var url = await stripeBillingService.CreateCheckoutSessionAsync(org, planTier, successUrl, cancelUrl, ct);
+        var url = await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
         return Ok(new CheckoutSessionResponse { CheckoutUrl = url });
     }
 
@@ -179,6 +193,8 @@ public class BillingController(
             SubscriptionStatus.Active => "active",
             SubscriptionStatus.PastDue => "past_due",
             SubscriptionStatus.Canceled => "canceled",
+            SubscriptionStatus.Incomplete => "incomplete",
+            SubscriptionStatus.Unpaid => "unpaid",
             _ => "none",
         },
         CurrentPeriodEnd = org.CurrentPeriodEnd,

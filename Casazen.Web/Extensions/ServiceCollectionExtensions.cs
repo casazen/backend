@@ -277,6 +277,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
+        services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
         services.AddScoped<IVatCalculationService, VatCalculationService>();
         services.AddScoped<IViesService, ViesService>();
         services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();
@@ -315,18 +316,6 @@ public static class ServiceCollectionExtensions
         services.AddOptions<SafeExternalHttpOptions>().BindConfiguration(SafeExternalHttpOptions.SectionName);
         services.AddSingleton<IExternalHostResolver, SystemDnsHostResolver>();
         services.AddSingleton<ISafeExternalHttpClient, SafeExternalHttpClient>();
-        return services;
-    }
-
-    public static IServiceCollection AddCasazenExternalServices(this IServiceCollection services, IConfiguration configuration)
-    {
-        // Note: Auth0Service was removed as dead code (never used)
-        // JWT authentication is handled directly by AddCasazenAuthentication()
-        services.AddScoped<StripeService>();
-        services.AddCasazenAiProvider(configuration);
-        services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
-        services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
-        services.AddScoped<StripeWebhookHandler>();
         return services;
     }
 
