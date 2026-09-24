@@ -134,6 +134,25 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         VerifyFirstSyncQueued(property.Id, Times.Once());
     }
 
+    // TN-3 schema on the actions touched by FD-16: a host of another org does not see the property.
+    [Fact]
+    public async Task ImportUrl_HostOfAnotherOrg_Returns404AndQueuesNothing()
+    {
+        var property = await _factory.SeedPropertyAsync($"auth0|host-{Guid.NewGuid():N}");
+        var otherHost = $"auth0|other-host-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(otherHost);
+
+        using var client = _factory.CreateAuthenticatedClient(otherHost, "PropertyOwner");
+        var save = await client.PostAsJsonAsync(
+            $"/api/properties/{property.Id}/ical/import-url",
+            new { importUrl = "https://www.airbnb.it/calendar/ical/1.ics" });
+        var status = await client.GetAsync($"/api/properties/{property.Id}/ical/status");
+
+        Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, status.StatusCode);
+        VerifyFirstSyncQueued(property.Id, Times.Never());
+    }
+
     // FD-16 (A2-21): a stored error is shown as a code plus localized text, never as the exception message.
     [Fact]
     public async Task GetStatus_WithStoredErrorCode_ReturnsCodeAndLocalizedMessage()
