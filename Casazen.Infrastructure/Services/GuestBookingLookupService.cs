@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
-using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -21,7 +20,7 @@ namespace Casazen.Infrastructure.Services;
 public sealed class GuestBookingLookupService(
     AppDbContext db,
     IGuestCheckInService checkInService,
-    IEmailQueue emailQueue,
+    IGuestCheckInLinkEmailQueue linkEmails,
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<GuestBookingLookupService> logger,
@@ -87,19 +86,20 @@ public sealed class GuestBookingLookupService(
         // A missing App:PublicSiteBaseUrl is a configuration error (500) before any session is created.
         links.EnsureConfigured();
 
-        // The same steps as the host's "resend link": a new session, its link only in the email, the older links expired.
+        // A new session, its link only in the email, the older links expired once the email is queued. The email goes
+        // through the check-in link email job, which records its real outcome for the host (CO-09).
         var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
-        var email = EmailTemplates.GuestCheckInLink(
-            EmailTemplates.DefaultCulture,
-            booking.Guest.FirstName,
-            booking.Property.Name,
-            booking.CheckInDate,
-            links.GuestCheckIn(token));
-
-        if (!emailQueue.Enqueue(booking.Guest.Email, email, EmailTemplates.Names.GuestCheckInLink))
+        var tokenHash = GuestCheckInService.HashToken(token);
+        var sessionId = await db.GuestCheckInSessions
+            .Where(s => s.TokenHash == tokenHash)
+            .Select(s => s.Id)
+            .SingleAsync(cancellationToken);
+        var email = await linkEmails.QueueAsync(sessionId, token, cancellationToken);
+        if (email.Status == GuestCheckInLinkEmailStatus.Failed)
         {
             await checkInService.ExpireTokenAsync(token);
-            logger.LogError("Check-in link requested by the guest of booking {BookingId} was not queued", booking.Id);
+            logger.LogError(
+                "Check-in link requested by the guest of booking {BookingId} was not queued: {Reason}", booking.Id, email.Error);
             throw new EmailConfigurationException("The check-in link email could not be queued.");
         }
 

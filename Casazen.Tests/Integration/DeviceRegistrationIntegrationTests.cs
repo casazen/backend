@@ -81,6 +81,92 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
+    public async Task UnregisterDevice_OwnDevice_RemovesOnlyThatDevice()
+    {
+        // MO-05: the app logout deregisters the current device only; the user's other devices keep their pushes.
+        var userId = $"auth0|device-{Guid.NewGuid():N}";
+        await SeedHostAsync(userId);
+
+        using var client = _factory.CreateAuthenticatedClient(userId, "PropertyOwner");
+        await RegisterAsync(client, "phone-installation", "ExponentPushToken[phone]");
+        await RegisterAsync(client, "tablet-installation", "ExponentPushToken[tablet]");
+
+        var response = await client.DeleteAsync("/api/devices/phone-installation");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var remaining = await db.DeviceRegistrations
+            .Where(d => d.UserId == userId)
+            .Select(d => d.DeviceId)
+            .ToListAsync();
+        Assert.Equal(["tablet-installation"], remaining);
+    }
+
+    [Fact]
+    public async Task UnregisterDevice_DeviceOfAnotherUser_Returns404AndKeepsIt()
+    {
+        // MO-05: the same device id under another account (a second host on the same phone, or a guessed id) is not
+        // the caller's: 404, and the other user's registration and pushes stay untouched.
+        var ownerId = $"auth0|device-owner-{Guid.NewGuid():N}";
+        var otherId = $"auth0|device-other-{Guid.NewGuid():N}";
+        await SeedHostAsync(ownerId);
+        await SeedHostAsync(otherId);
+
+        using (var ownerClient = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner"))
+            await RegisterAsync(ownerClient, "shared-installation", "ExponentPushToken[owner]");
+
+        using var otherClient = _factory.CreateAuthenticatedClient(otherId, "PropertyOwner");
+        var response = await otherClient.DeleteAsync("/api/devices/shared-installation");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("not_found", problem.GetProperty("code").GetString());
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.True(await db.DeviceRegistrations.AnyAsync(d =>
+            d.UserId == ownerId && d.DeviceId == "shared-installation"));
+    }
+
+    [Fact]
+    public async Task UnregisterDevice_WithoutAuth_Returns401AndKeepsTheDevice()
+    {
+        var userId = $"auth0|device-{Guid.NewGuid():N}";
+        await SeedHostAsync(userId);
+        using (var owner = _factory.CreateAuthenticatedClient(userId, "PropertyOwner"))
+            await RegisterAsync(owner, "anonymous-target", "ExponentPushToken[anonymous-target]");
+
+        using var anonymous = _factory.CreateClient();
+        var response = await anonymous.DeleteAsync("/api/devices/anonymous-target");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.True(await db.DeviceRegistrations.AnyAsync(d => d.UserId == userId));
+    }
+
+    [Fact]
+    public async Task UnregisterDevice_DeviceIdWithReservedCharacters_RemovesTheDevice()
+    {
+        // Device ids sent by the current app are OS build fingerprints on Android ("brand/product/device:13/..."): the
+        // app sends them percent-encoded in the path, and the round trip must find the registration.
+        var userId = $"auth0|device-{Guid.NewGuid():N}";
+        await SeedHostAsync(userId);
+        const string fingerprint = "google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.036/10727383:user/release-keys";
+
+        using var client = _factory.CreateAuthenticatedClient(userId, "PropertyOwner");
+        await RegisterAsync(client, fingerprint, "ExponentPushToken[fingerprint]");
+
+        var response = await client.DeleteAsync($"/api/devices/{Uri.EscapeDataString(fingerprint)}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.DeviceRegistrations.AnyAsync(d => d.UserId == userId));
+    }
+
+    [Fact]
     public async Task RegisterDevice_WhenPushTokenMovesToAnotherUser_RemovesStaleRegistration()
     {
         var previousUserId = $"auth0|device-prev-{Guid.NewGuid():N}";
@@ -133,6 +219,12 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
             deviceId = "x",
         });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private static async Task RegisterAsync(HttpClient client, string deviceId, string pushToken)
+    {
+        var response = await client.PostAsJsonAsync("/api/devices", new { platform = "android", pushToken, deviceId });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
     private async Task SeedHostAsync(string userId)
