@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
@@ -15,7 +14,6 @@ using Casazen.Tests.Unit.Email;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
-using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -38,10 +36,7 @@ public class BookingsControllerTests
     private readonly Mock<IAlloggiatiWebService> _mockAlloggiatiService;
     private readonly Mock<IPropertyService> _mockPropertyService;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
-    private readonly Mock<IAlloggiatiReportScheduler> _mockAlloggiatiScheduler;
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
-    private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
-    private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
     private readonly Mock<IEmailQueue> _mockEmailQueue;
     private readonly List<(string? To, EmailContent Content, string Template)> _queuedEmails = [];
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
@@ -69,40 +64,29 @@ public class BookingsControllerTests
         _mockAlloggiatiService = new Mock<IAlloggiatiWebService>();
         _mockPropertyService = new Mock<IPropertyService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
-        _mockAlloggiatiScheduler = new Mock<IAlloggiatiReportScheduler>();
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
-        _mockComplianceWizardService = new Mock<IComplianceWizardService>();
-        _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
         _mockEmailQueue = new Mock<IEmailQueue>();
         _mockEmailQueue
             .Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
             .Callback<string?, EmailContent, string>((to, content, template) => _queuedEmails.Add((to, content, template)))
             .Returns(true);
-        _mockCheckoutReminderScheduler
-            .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
-            .Returns("job-test");
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = CreateController(EmailTestHelpers.Links("https://public.test"));
     }
 
-    private BookingsController CreateController(PublicSiteLinks publicSiteLinks, TimeProvider? timeProvider = null) =>
+    private BookingsController CreateController(PublicSiteLinks publicSiteLinks) =>
         new(
             _mockBookingService.Object,
             _mockAlloggiatiService.Object,
             _mockPropertyService.Object,
             _mockAuthz.Object,
             CreatePropertyICalSyncService(),
-            _mockAlloggiatiScheduler.Object,
             _mockGuestCheckInService.Object,
-            _mockComplianceWizardService.Object,
-            _mockCheckoutReminderScheduler.Object,
-            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
             _mockEmailQueue.Object,
             publicSiteLinks,
             CreateLocalizer(),
-            _mockLogger.Object,
-            timeProvider);
+            _mockLogger.Object);
 
     private static IStringLocalizer<SharedResources> CreateLocalizer() =>
         new StringLocalizer<SharedResources>(new ResourceManagerStringLocalizerFactory(
@@ -124,38 +108,6 @@ public class BookingsControllerTests
             new ICalExportService(),
             configuration,
             Mock.Of<ILogger<PropertyICalSyncService>>());
-    }
-
-    private BookingsController CreateControllerAt(DateTimeOffset utcNow)
-    {
-        var controller = CreateController(EmailTestHelpers.Links("https://public.test"), new FixedTimeProvider(utcNow));
-        var identity = new ClaimsIdentity(new[] { new Claim("sub", OwnerId) }, "TestAuth");
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) },
-        };
-        return controller;
-    }
-
-    private Booking SetupAccessibleBooking(BookingStatus status, DateTime checkIn, DateTime checkOut)
-    {
-        var booking = new Booking
-        {
-            Id = Guid.NewGuid(),
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            GuestId = Guid.NewGuid(),
-            Status = status,
-            CheckInDate = checkIn,
-            CheckOutDate = checkOut,
-            NumberOfGuests = 2,
-        };
-        _mockBookingService.Setup(b => b.GetBookingAsync(booking.Id)).ReturnsAsync(booking);
-        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) => b);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
-        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        return booking;
     }
 
     private void SetUser(string userId)
@@ -441,103 +393,6 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task CheckIn_PendingBooking_ReturnsBadRequestWithoutMutating()
-    {
-        SetUser(OwnerId);
-        var bookingId = Guid.NewGuid();
-        var booking = new Booking
-        {
-            Id = bookingId,
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            GuestId = Guid.NewGuid(),
-            Status = BookingStatus.Pending,
-            CheckInDate = DateTime.UtcNow.Date,
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(2),
-            NumberOfGuests = 2,
-        };
-
-        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
-        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
-            .ReturnsAsync(MakeProperty());
-
-        var result = await _controller.CheckIn(bookingId);
-
-        Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal(BookingStatus.Pending, booking.Status);
-        _mockBookingService.Verify(b => b.UpdateBookingAsync(It.IsAny<Booking>()), Times.Never);
-        _mockAlloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(It.IsAny<Guid>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task CheckIn_AfterMidnightInRomeOnCheckInDay_ReturnsOk()
-    {
-        // 22:30 UTC on 30/09 is 00:30 on 01/10 in Rome: the check-in day has started.
-        var controller = CreateControllerAt(new DateTimeOffset(2026, 9, 30, 22, 30, 0, TimeSpan.Zero));
-        var booking = SetupAccessibleBooking(
-            BookingStatus.Confirmed,
-            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
-
-        var result = await controller.CheckIn(booking.Id);
-
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(BookingStatus.CheckedIn, booking.Status);
-    }
-
-    [Fact]
-    public async Task CheckIn_LateEveningInRomeBeforeCheckInDay_ReturnsBadRequest()
-    {
-        // 21:30 UTC on 30/09 is 23:30 on 30/09 in Rome: check-in (01/10) not reached yet.
-        var controller = CreateControllerAt(new DateTimeOffset(2026, 9, 30, 21, 30, 0, TimeSpan.Zero));
-        var booking = SetupAccessibleBooking(
-            BookingStatus.Confirmed,
-            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
-
-        var result = await controller.CheckIn(booking.Id);
-
-        Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal(BookingStatus.Confirmed, booking.Status);
-    }
-
-    [Fact]
-    public async Task CheckIn_ConfirmedBooking_RecordsArrivalAndSchedulesAlloggiatiOnce()
-    {
-        var utcNow = new DateTimeOffset(2026, 10, 10, 14, 30, 0, TimeSpan.Zero);
-        var controller = CreateControllerAt(utcNow);
-        var bookingId = Guid.NewGuid();
-        var booking = new Booking
-        {
-            Id = bookingId,
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            GuestId = Guid.NewGuid(),
-            Status = BookingStatus.Confirmed,
-            CheckInDate = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc),
-            CheckOutDate = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc),
-            NumberOfGuests = 2,
-        };
-
-        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(true);
-        _mockBookingService.Setup(b => b.UpdateBookingAsync(It.IsAny<Booking>()))
-            .ReturnsAsync((Booking b) => b);
-        _mockPropertyService.Setup(p => p.GetPropertyAsync(PropertyId))
-            .ReturnsAsync(MakeProperty());
-
-        var result = await controller.CheckIn(bookingId);
-
-        Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(utcNow.UtcDateTime, booking.ArrivedAt);
-        // The scheduler is idempotent per booking and guest: never a direct Enqueue from the controller.
-        _mockAlloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(bookingId), Times.Once);
-    }
-
-    [Fact]
     public async Task ResendCheckInLink_ValidBooking_QueuesEmailWithLinkFromConfigAndExpiresPreviousSessions()
     {
         SetUser(OwnerId);
@@ -751,66 +606,5 @@ public class BookingsControllerTests
 
         _mockGuestCheckInService.Verify(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
         Assert.Empty(_queuedEmails);
-    }
-
-    [Fact]
-    public async Task StartCheckoutWizard_WhenUnauthorizedForProperty_ReturnsNotFoundWithoutStartingWizard()
-    {
-        SetUser(OwnerId);
-        var bookingId = Guid.NewGuid();
-        var booking = new Booking
-        {
-            Id = bookingId,
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            Status = BookingStatus.CheckedIn,
-            CheckOutDate = DateTime.UtcNow.Date,
-            NumberOfGuests = 2,
-        };
-
-        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(false);
-
-        var result = await _controller.StartCheckoutWizard(bookingId);
-
-        Assert.IsType<NotFoundResult>(result.Result);
-        _mockComplianceWizardService.Verify(
-            s => s.StartCheckoutWizardAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task CompleteCheckoutWizard_WhenUnauthorizedForProperty_ReturnsNotFoundWithoutCompletingWizard()
-    {
-        SetUser(OwnerId);
-        var bookingId = Guid.NewGuid();
-        var booking = new Booking
-        {
-            Id = bookingId,
-            PropertyId = PropertyId,
-            OrgId = OrgId,
-            Status = BookingStatus.CheckedIn,
-            CheckOutDate = DateTime.UtcNow.Date,
-            NumberOfGuests = 2,
-        };
-
-        _mockBookingService.Setup(b => b.GetBookingAsync(bookingId)).ReturnsAsync(booking);
-        _mockAuthz.Setup(a => a.CanAccessPropertyAsync(OwnerId, PropertyId, It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(false);
-
-        var result = await _controller.CompleteCheckoutWizard(
-            bookingId,
-            new CompleteCheckoutWizardRequest { ConfirmDeparture = true });
-
-        Assert.IsType<NotFoundResult>(result.Result);
-        _mockComplianceWizardService.Verify(
-            s => s.CompleteCheckoutWizardAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<string>(),
-                It.IsAny<CompleteCheckoutWizardInput>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-        _mockCheckoutReminderScheduler.Verify(s => s.CancelReminder(It.IsAny<string?>()), Times.Never);
     }
 }

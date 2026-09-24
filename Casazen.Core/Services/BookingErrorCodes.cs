@@ -45,9 +45,42 @@ public static class BookingErrorCodes
     /// </summary>
     public const string NotConfirmable = "booking_not_confirmable";
 
-    /// <summary>409: check-out of a booking that is not checked in.</summary>
+    /// <summary>409: check-out of a booking that is neither checked in nor confirmed (pending, cancelled).</summary>
     public const string NotCheckedIn = "booking_not_checked_in";
 
-    /// <summary>422: check-out before the check-out day (Europe/Rome).</summary>
+    /// <summary>
+    /// 422: check-out before the check-in day (Europe/Rome). An early departure of a stay already started is allowed
+    /// (CO-08: one rule for the wizard and <c>POST /check-out</c>).
+    /// </summary>
     public const string CheckOutTooEarly = "booking_checkout_too_early";
+
+    /// <summary>409: the check-out of the booking is already recorded.</summary>
+    public const string AlreadyCheckedOut = "booking_already_checked_out";
+
+    /// <summary>
+    /// 409: check-out of a confirmed booking whose arrival was never registered: the host confirms the arrival
+    /// ("registra arrivo e procedi", <c>registerArrival: true</c>) and the check-out goes on (CO-08).
+    /// </summary>
+    public const string ArrivalNotRegistered = "booking_arrival_not_registered";
+
+    /// <summary>409: the arrival is registered only for a confirmed booking (pending, cancelled, checked out).</summary>
+    public const string NotConfirmed = "booking_not_confirmed";
+
+    /// <summary>409: the arrival of the booking is already registered (double click, another device).</summary>
+    public const string AlreadyCheckedIn = "booking_already_checked_in";
+
+    /// <summary>422: arrival registered before the check-in day (Europe/Rome).</summary>
+    public const string ArrivalTooEarly = "booking_arrival_too_early";
+
+    /// <summary>
+    /// 422: arrival registered after the check-out day (Europe/Rome): the stay is closed with the check-out, which
+    /// registers the arrival too.
+    /// </summary>
+    public const string ArrivalAfterDeparture = "booking_arrival_after_departure";
+
+    /// <summary>422: the check-out wizard is completed without confirming that the guest left.</summary>
+    public const string DepartureNotConfirmed = "checkout_departure_not_confirmed";
+
+    /// <summary>422: the turnover request of the check-out wizard could not be created (supplier, category).</summary>
+    public const string TurnoverRequestInvalid = "checkout_service_request_invalid";
 }

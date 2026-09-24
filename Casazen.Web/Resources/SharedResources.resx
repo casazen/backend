@@ -652,9 +652,33 @@
     <value>Puoi confermare solo le prenotazioni in attesa inserite da te: le altre si confermano con il pagamento dell'ospite o con la risposta alla richiesta.</value>
   </data>
   <data name="BookingNotCheckedIn" xml:space="preserve">
-    <value>Il check-out si registra solo per un soggiorno con check-in registrato.</value>
+    <value>Il check-out si registra solo per un soggiorno confermato o con l'arrivo registrato.</value>
   </data>
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
-    <value>Il check-out si può registrare dal giorno di partenza.</value>
+    <value>Il check-out si può registrare dal giorno di arrivo.</value>
+  </data>
+  <data name="BookingAlreadyCheckedOut" xml:space="preserve">
+    <value>Il check-out di questa prenotazione è già registrato: ricarica la pagina.</value>
+  </data>
+  <data name="BookingArrivalNotRegistered" xml:space="preserve">
+    <value>L'arrivo dell'ospite non è stato registrato: conferma l'arrivo per procedere con il check-out.</value>
+  </data>
+  <data name="BookingArrivalNotConfirmed" xml:space="preserve">
+    <value>L'arrivo si registra solo per una prenotazione confermata.</value>
+  </data>
+  <data name="BookingAlreadyCheckedIn" xml:space="preserve">
+    <value>L'arrivo di questa prenotazione è già registrato: ricarica la pagina.</value>
+  </data>
+  <data name="BookingArrivalTooEarly" xml:space="preserve">
+    <value>L'arrivo si può registrare dal giorno di check-in ({0}).</value>
+  </data>
+  <data name="BookingArrivalAfterDeparture" xml:space="preserve">
+    <value>Il giorno di partenza è passato: registra il check-out del soggiorno, che registra anche l'arrivo.</value>
+  </data>
+  <data name="CheckoutDepartureNotConfirmed" xml:space="preserve">
+    <value>Conferma che l'ospite ha lasciato la struttura.</value>
+  </data>
+  <data name="CheckoutServiceRequestInvalid" xml:space="preserve">
+    <value>Impossibile creare la richiesta al fornitore: verifica che il fornitore sia attivo e operi nel comune della struttura. Il check-out non è stato registrato.</value>
   </data>
 </root>

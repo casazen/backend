@@ -652,9 +652,33 @@
     <value>You can confirm only the pending bookings you entered: the others are confirmed by the guest's payment or by your answer to the request.</value>
   </data>
   <data name="BookingNotCheckedIn" xml:space="preserve">
-    <value>The check-out can be recorded only for a stay whose check-in was recorded.</value>
+    <value>The check-out can be recorded only for a confirmed stay or one whose arrival was registered.</value>
   </data>
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
-    <value>The check-out can be recorded from the departure day.</value>
+    <value>The check-out can be recorded from the arrival day.</value>
+  </data>
+  <data name="BookingAlreadyCheckedOut" xml:space="preserve">
+    <value>The check-out of this booking is already recorded: reload the page.</value>
+  </data>
+  <data name="BookingArrivalNotRegistered" xml:space="preserve">
+    <value>The guest's arrival was not registered: confirm the arrival to go on with the check-out.</value>
+  </data>
+  <data name="BookingArrivalNotConfirmed" xml:space="preserve">
+    <value>The arrival can be registered only for a confirmed booking.</value>
+  </data>
+  <data name="BookingAlreadyCheckedIn" xml:space="preserve">
+    <value>The arrival of this booking is already registered: reload the page.</value>
+  </data>
+  <data name="BookingArrivalTooEarly" xml:space="preserve">
+    <value>The arrival can be registered from the check-in day ({0}).</value>
+  </data>
+  <data name="BookingArrivalAfterDeparture" xml:space="preserve">
+    <value>The departure day has passed: record the check-out of the stay, which registers the arrival too.</value>
+  </data>
+  <data name="CheckoutDepartureNotConfirmed" xml:space="preserve">
+    <value>Confirm that the guest has left the property.</value>
+  </data>
+  <data name="CheckoutServiceRequestInvalid" xml:space="preserve">
+    <value>The supplier request could not be created: check that the supplier is active and works in the property's comune. The check-out was not recorded.</value>
   </data>
 </root>
