@@ -86,11 +86,11 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `ci-cd.yml` | PR, push `develop` / `main` | `dotnet test`, format, build |
+| `ci-cd.yml` | PR, push `develop` / `main` | NuGet vulnerability gate (High/Critical fail, transitive included), build, tests on PostgreSQL, format — `docs/runbooks/ci-backend.md` |
 | `ci-cd.yml` → `verify-test` | Push `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
 | `ci-cd.yml` → `verify-prod` | Push `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
-| `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping |
+| `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping: fails when a configured ping fails, skips with a warning when not configured |
 
 ### What is **not** synced automatically
 
@@ -335,7 +335,7 @@ Migrations applied successfully to casazen_test.
 
 ### Supabase keep-alive (free tier pauses after 7 days)
 
-Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure the keep-alive option.
+Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure the keep-alive option. The workflow `supabase-keepalive.yml` and its variables are described in `docs/runbooks/ci-backend.md` (section "Supabase keep-alive").
 
 ---
 

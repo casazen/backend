@@ -1,6 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Directory.Build.props sets the NuGet vulnerability gate (FD-02): restore fails on High/Critical advisories.
+COPY ["Directory.Build.props", "./"]
 COPY ["Casazen.Web/Casazen.Web.csproj", "Casazen.Web/"]
 COPY ["Casazen.Core/Casazen.Core.csproj", "Casazen.Core/"]
 COPY ["Casazen.Infrastructure/Casazen.Infrastructure.csproj", "Casazen.Infrastructure/"]
