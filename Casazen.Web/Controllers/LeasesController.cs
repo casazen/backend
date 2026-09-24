@@ -115,7 +115,10 @@ public class LeasesController(
         }
     }
 
-    /// <summary>Generate PDF/A and initiate digital signing for a lease in Draft status.</summary>
+    /// <summary>
+    /// Generate the final contract PDF and initiate digital signing for a lease in Draft status. 422
+    /// <c>contract_template_not_approved</c> while the template of the regime is not approved (LT-03).
+    /// </summary>
     [HttpPost("{id:guid}/signing")]
     [Authorize(Policy = CasazenPolicies.LeaseSign)]
     public async Task<IActionResult> InitiateSigning(Guid id)
@@ -134,6 +137,23 @@ public class LeasesController(
         {
             return Forbid();
         }
+    }
+
+    /// <summary>
+    /// Preview of the contract PDF (LT-03, A7-03): marked "BOZZA - template non approvato" until the template of the
+    /// regime is complete and approved, with the missing clause texts and data. Never sent to signature or registration.
+    /// Needs <c>lease.sign</c>: the document carries the parties' full fiscal codes.
+    /// </summary>
+    [HttpGet("{id:guid}/contract/preview")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
+    public async Task<IActionResult> GetContractPreview(Guid id, [FromServices] ILeaseTemplateService contractTemplates)
+    {
+        var (lease, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Sign);
+        if (denied is not null)
+            return denied;
+
+        var pdf = await contractTemplates.GeneratePreviewPdfAsync(lease!);
+        return File(pdf, "application/pdf", $"bozza-contratto-{id}.pdf");
     }
 
     /// <summary>Submit a Signed lease to the filing channel after per-lease delega (async).</summary>

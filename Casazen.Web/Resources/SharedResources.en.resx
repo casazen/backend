@@ -204,6 +204,12 @@
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>The uploaded file is not a valid APE (energy performance certificate). The PDF content does not match an official attestato di prestazione energetica. Upload a valid official APE and try again.</value>
   </data>
+  <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
+    <value>The contract template for this fiscal regime has not been approved by a lawyer yet: only the draft preview is available and the contract cannot be sent for signature.</value>
+  </data>
+  <data name="LeaseContractDataMissing" xml:space="preserve">
+    <value>The contract lacks data required by the approved template: {0}. It cannot be sent for signature until they are available.</value>
+  </data>
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Lease not found</value>
   </data>

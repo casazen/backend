@@ -204,6 +204,12 @@
   <data name="ApeInvalidContent" xml:space="preserve">
     <value>Il file caricato non è un APE valido (attestato di prestazione energetica). Il contenuto del PDF non corrisponde a un attestato ufficiale. Carica l'APE in corso di validità e riprova.</value>
   </data>
+  <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
+    <value>Il modello di contratto per questo regime fiscale non è ancora approvato da un legale: è disponibile solo l'anteprima in bozza e il contratto non può essere inviato alla firma.</value>
+  </data>
+  <data name="LeaseContractDataMissing" xml:space="preserve">
+    <value>Mancano dati del contratto richiesti dal modello approvato: {0}. Il contratto non può essere inviato alla firma finché non sono disponibili.</value>
+  </data>
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Contratto di locazione non trovato</value>
   </data>
