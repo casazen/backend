@@ -283,7 +283,8 @@ public class BookingRepositoryTests
         });
         await _context.SaveChangesAsync();
 
-        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(_propertyId, 15);
+        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(
+            _propertyId, new DateTime(2026, 4, 1), new DateTime(2026, 4, 20), 15);
 
         Assert.Equal(2, cancelled);
         Assert.Equal(BookingStatus.Cancelled, (await _context.Bookings.FindAsync(expired.Id))!.Status);
@@ -310,7 +311,8 @@ public class BookingRepositoryTests
             TotalPrice = 300m
         });
 
-        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(_propertyId, ttlMinutes: 15);
+        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(
+            _propertyId, checkIn, checkOut, ttlMinutes: 15);
 
         Assert.Equal(0, cancelled);
         var reloaded = await _context.Bookings.SingleAsync(b => b.Id == hostBooking.Id);
@@ -351,11 +353,66 @@ public class BookingRepositoryTests
         });
         await _context.SaveChangesAsync();
 
-        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(_propertyId, ttlMinutes: 15);
+        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(
+            _propertyId, new DateTime(2026, 5, 3), new DateTime(2026, 5, 8), ttlMinutes: 15);
 
         Assert.Equal(1, cancelled);
         var reloaded = await _context.Bookings.SingleAsync(b => b.Id == checkoutHold.Id);
         Assert.Equal(BookingStatus.Cancelled, reloaded.Status);
+    }
+
+    [Fact]
+    public async Task CancelExpiredPendingDirectBookingsAsync_ExpiredHoldOfOtherDates_IsLeftPending()
+    {
+        // A2-01: a checkout for 10-12 May has no reason to cancel an abandoned hold of 1-5 May.
+        var otherDatesHold = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            OrgId = Guid.NewGuid(),
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 5, 1),
+            CheckOutDate = new DateTime(2026, 5, 5),
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            StripeSetupIntentId = "seti_other_dates",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-30),
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+
+        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(
+            _propertyId, new DateTime(2026, 5, 5), new DateTime(2026, 5, 12), ttlMinutes: 15);
+
+        Assert.Equal(0, cancelled);
+        var reloaded = await _context.Bookings.SingleAsync(b => b.Id == otherDatesHold.Id);
+        Assert.Equal(BookingStatus.Pending, reloaded.Status);
+    }
+
+    [Fact]
+    public async Task CancelExpiredPendingDirectBookingsAsync_ManualConfirmedBookingOnSameDates_IsNeverCancelled()
+    {
+        var hostBooking = await _repository.AddAsync(new Booking
+        {
+            PropertyId = _propertyId,
+            OrgId = Guid.NewGuid(),
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 10, 1),
+            CheckOutDate = new DateTime(2026, 10, 5),
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Manual,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-30),
+            NumberOfGuests = 2,
+            TotalPrice = 300m
+        });
+
+        var cancelled = await _repository.CancelExpiredPendingDirectBookingsAsync(
+            _propertyId, new DateTime(2026, 10, 1), new DateTime(2026, 10, 5), ttlMinutes: 15);
+
+        Assert.Equal(0, cancelled);
+        var reloaded = await _context.Bookings.SingleAsync(b => b.Id == hostBooking.Id);
+        Assert.Equal(BookingStatus.Confirmed, reloaded.Status);
+        Assert.False(await _repository.IsAvailableAsync(
+            _propertyId, new DateTime(2026, 10, 2), new DateTime(2026, 10, 4), directPendingTtlMinutes: 15));
     }
 
     [Fact]
