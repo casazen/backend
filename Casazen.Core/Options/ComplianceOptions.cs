@@ -4,7 +4,12 @@ public class ComplianceOptions
 {
     public const string SectionName = "Compliance";
 
-    public string CinGuidanceUrl { get; set; } = "https://www.bdsr.it/cin";
+    /// <summary>
+    /// Official BDSR portal page of the Ministero del Turismo (see <c>.claude/context/regulations/cin.md</c>).
+    /// </summary>
+    public const string DefaultCinGuidanceUrl = "https://www.ministeroturismo.gov.it/banca-dati-strutture-ricettive/";
+
+    public string CinGuidanceUrl { get; set; } = DefaultCinGuidanceUrl;
 
     public int CheckoutReminderHourLocal { get; set; } = 20;
 
