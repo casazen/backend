@@ -142,9 +142,18 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
         };
 
         db.Orgs.Add(org);
-        db.Properties.Add(property);
         db.Guests.AddRange(complete, otherValues);
         await db.SaveChangesAsync();
+        // The property row in SQL: the current Property entity has columns that later migrations add (LT-10).
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Properties" (
+                "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
+                "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
+                "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "CreatedAt", "UpdatedAt")
+            VALUES ({property.Id}, {property.OwnerId}, {org.Id}, {property.Name}, {property.Description}, {property.Address},
+                {property.City}, {property.PostalCode}, 0, 0, 0, 0, {property.MaxGuests}, {property.NightlyRate}, 0, 0,
+                ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, now(), now());
+            """);
 
         async Task<Guid> InsertBookingAsync(Guest guest, int guests)
         {

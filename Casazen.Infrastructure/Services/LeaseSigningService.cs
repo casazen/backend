@@ -3,6 +3,7 @@ using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Leases;
 using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -536,10 +537,10 @@ public class LeaseSigningService(
         return signer;
     }
 
-    /// <summary>Checks shared by every signature path: the canone concordato minimum term and a valid APE.</summary>
+    /// <summary>Checks shared by every signature path: the term of the contract type (LT-10, 422) and a valid APE.</summary>
     private async Task EnsureSignableAsync(LeaseContract lease)
     {
-        LeaseWorkflowService.EnsureCanoneConcordatoMinimumTerm(lease.FiscalRegime, lease.StartDate, lease.EndDate);
+        LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
         await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
     }
 

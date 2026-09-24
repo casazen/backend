@@ -36,4 +36,11 @@ public class PropertyDocumentRepository(AppDbContext context) : IPropertyDocumen
             await context.SaveChangesAsync();
         }
     }
+
+    public async Task<PropertyDocument> UpdateAsync(PropertyDocument document)
+    {
+        context.PropertyDocuments.Update(document);
+        await context.SaveChangesAsync();
+        return document;
+    }
 }

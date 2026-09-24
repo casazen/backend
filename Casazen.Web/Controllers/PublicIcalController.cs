@@ -1,3 +1,4 @@
+using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,7 @@ public class PublicIcalController(PropertyICalSyncService syncService) : Control
             var ics = await syncService.BuildPublicExportAsync(exportToken, cancellationToken);
             return Content(ics, "text/calendar; charset=utf-8");
         }
-        catch (InvalidOperationException)
+        catch (NotFoundException)
         {
             return NotFound();
         }

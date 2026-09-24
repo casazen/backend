@@ -40,7 +40,7 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
-    public async Task Create_WithChargeToGuest_Returns400WithoutCreating()
+    public async Task Create_WithChargeToGuest_Returns422WithoutCreating()
     {
         var s = await SeedScenarioAsync();
         using var client = _factory.CreateAuthenticatedClient(s.HostId, "PropertyOwner");
@@ -54,7 +54,9 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
             chargeToGuest = true,
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("service_request_charge_to_guest_not_allowed", problem.GetProperty("code").GetString());
         Assert.Equal(0, await CountRequestsAsync(s.PropertyId));
     }
 

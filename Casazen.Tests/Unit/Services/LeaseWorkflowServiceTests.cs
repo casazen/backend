@@ -1,6 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Leases;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -197,95 +199,225 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
-    public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_ThrowsInvalidOperationException()
+    public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_Throws422EndBeforeStart()
     {
         // Arrange
         var property = BuildProperty(hasApe: true);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
 
-        var request = new CreateLeaseRequest(
-            FiscalRegime: FiscalRegime.CedolareSecca,
-            StartDate: new DateTime(2030, 9, 1, 0, 0, 0, DateTimeKind.Utc),
-            EndDate: new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), // before StartDate
-            MonthlyRent: 1200.00m,
-            Parties:
-            [
-                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com"),
-                new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123X", "IT", "john@example.com")
-            ]);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.CreateDraftAsync(PropertyId, request));
-    }
-
-    [Fact]
-    public async Task CreateDraftAsync_CanoneConcordatoShorterThanThreeYears_ThrowsInvalidOperationException()
-    {
-        // Arrange
-        var property = BuildProperty(hasApe: true);
-        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
-
-        var request = BuildCreateRequest(
-            fiscalRegime: FiscalRegime.CanoneConcordato,
-            monthlyRent: 400m,
-            canoneConcordatoCharacteristics: new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null)) with
+        var request = BuildCreateRequest() with
         {
-            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
-            EndDate = new DateTime(2027, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+            StartDate = new DateTime(2030, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), // before StartDate
         };
 
         // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.CreateDraftAsync(PropertyId, request));
-        Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
+        Assert.Equal(LeaseTermErrorCodes.EndBeforeStart, ex.Code);
+    }
+
+    [Theory]
+    // LT-10 (A7-13): libero 4+4 at least 4 years, concordato 3+2 at least 3 years, transitorio 1-18 months.
+    [InlineData(LeaseContractType.Libero, "2026-09-01", "2030-08-30", "lease_term_too_short")]
+    [InlineData(LeaseContractType.Libero, "2026-09-01", "2027-08-31", "lease_term_too_short")]
+    [InlineData(LeaseContractType.Concordato, "2026-09-01", "2027-08-31", "lease_term_too_short")]
+    [InlineData(LeaseContractType.Concordato, "2026-09-01", "2029-08-30", "lease_term_too_short")]
+    [InlineData(LeaseContractType.Transitorio, "2026-09-01", "2026-09-20", "lease_term_too_short")]
+    [InlineData(LeaseContractType.Transitorio, "2026-09-01", "2028-03-01", "lease_term_too_long")]
+    public async Task CreateDraftAsync_TermNotAllowedForContractType_Throws422(
+        LeaseContractType contractType, string start, string end, string expectedCode)
+    {
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        var request = BuildCreateRequest(monthlyRent: 400m, canoneConcordatoCharacteristics: Characteristics()) with
+        {
+            FiscalRegime = null,
+            ContractType = contractType,
+            TaxRegime = LeaseTaxRegime.CedolareSecca,
+            StartDate = DateTime.Parse(start, System.Globalization.CultureInfo.InvariantCulture),
+            EndDate = DateTime.Parse(end, System.Globalization.CultureInfo.InvariantCulture),
+        };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
+
+        Assert.Equal(expectedCode, ex.Code);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _canoneEligibility.Verify(
+            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(LeaseContractType.Libero, "2026-09-01", "2030-08-31")]
+    [InlineData(LeaseContractType.Transitorio, "2026-09-01", "2026-09-30")]
+    [InlineData(LeaseContractType.Transitorio, "2026-09-01", "2028-02-29")]
+    public async Task CreateDraftAsync_TermAllowedForContractType_PersistsTypeTaxRegimeAndLegacyValue(
+        LeaseContractType contractType, string start, string end)
+    {
+        ArrangeCreation();
+        var request = BuildCreateRequest() with
+        {
+            FiscalRegime = null,
+            ContractType = contractType,
+            TaxRegime = LeaseTaxRegime.Ordinario,
+            SecurityDeposit = 2400m,
+            StartDate = DateTime.Parse(start, System.Globalization.CultureInfo.InvariantCulture),
+            EndDate = DateTime.Parse(end, System.Globalization.CultureInfo.InvariantCulture),
+        };
+
+        var result = await _sut.CreateDraftAsync(PropertyId, request);
+
+        Assert.Equal(contractType, result.ContractType);
+        Assert.Equal(LeaseTaxRegime.Ordinario, result.TaxRegime);
+        Assert.Equal(FiscalRegime.RegimeOrdinario, result.FiscalRegime);
+        Assert.Equal(2400m, result.SecurityDeposit);
+        Assert.Null(result.ConcordatoAssessment);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ContractTypeWithoutTaxRegime_Throws422TaxRegimeRequired()
+    {
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        var request = BuildCreateRequest() with { FiscalRegime = null, ContractType = LeaseContractType.Libero };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
+
+        Assert.Equal(LeaseTermErrorCodes.TaxRegimeRequired, ex.Code);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_LegacyCanoneConcordato_MapsToConcordatoWithUnknownTaxRegime()
+    {
+        ArrangeCreation();
+        ArrangeRange(DataCompleteness.Partial);
+        var request = BuildCreateRequest(
+            fiscalRegime: FiscalRegime.CanoneConcordato, monthlyRent: 400m, canoneConcordatoCharacteristics: Characteristics());
+
+        var result = await _sut.CreateDraftAsync(PropertyId, request);
+
+        Assert.Equal(LeaseContractType.Concordato, result.ContractType);
+        Assert.Null(result.TaxRegime);
+        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ConcordatoUnderOrdinaryRegime_KeepsBothTypeAndRegime()
+    {
+        // A7-13: "concordato + regime ordinario" could not be represented with the combined value.
+        ArrangeCreation();
+        ArrangeRange(DataCompleteness.Complete);
+        var request = ConcordatoRequest(400m) with { TaxRegime = LeaseTaxRegime.Ordinario };
+
+        var result = await _sut.CreateDraftAsync(PropertyId, request);
+
+        Assert.Equal(LeaseContractType.Concordato, result.ContractType);
+        Assert.Equal(LeaseTaxRegime.Ordinario, result.TaxRegime);
+        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ConcordatoWithoutCharacteristics_Throws422CharacteristicsRequired()
+    {
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        var request = ConcordatoRequest(400m) with { CanoneConcordatoCharacteristics = null };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
+
+        Assert.Equal(ConcordatoErrorCodes.CharacteristicsRequired, ex.Code);
         _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
     }
 
     [Fact]
-    public async Task CreateDraftAsync_CanoneConcordatoThreeYearInitialTerm_PersistsLease()
+    public async Task CreateDraftAsync_ConcordatoRange_UsesTheTermOfTheLeaseDates()
     {
-        // Arrange
-        var property = BuildProperty(hasApe: true);
-        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
-        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
-            .ReturnsAsync((LeaseContract l) => l);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
-            .ReturnsAsync((LeaseEvent e) => e);
-        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+        // A7-12: the range is computed with the real term (5 years here), never with a client-side year count.
+        ArrangeCreation();
+        LeaseTerm? usedTerm = null;
         _canoneEligibility
-            .Setup(s => s.CalculateAsync(PropertyId, characteristics, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
-                true,
-                null,
-                "Seveso",
-                "Unica",
-                2,
-                3445m,
-                5525m,
-                287.08m,
-                460.42m,
-                DataCompleteness.Partial,
-                true,
-                false,
-                true,
-                CanoneConcordatoCopy.Disclaimer));
+            .Setup(s => s.CalculateAsync(PropertyId, It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, RentBandCharacteristics _, LeaseTerm term, CancellationToken _) => usedTerm = term)
+            .ReturnsAsync(Range(DataCompleteness.Complete));
+        var request = ConcordatoRequest(400m) with { EndDate = new DateTime(2031, 8, 31, 0, 0, 0, DateTimeKind.Utc) };
 
-        var request = BuildCreateRequest(
-            fiscalRegime: FiscalRegime.CanoneConcordato,
-            monthlyRent: 400m,
-            canoneConcordatoCharacteristics: characteristics) with
+        await _sut.CreateDraftAsync(PropertyId, request);
+
+        Assert.Equal(new LeaseTerm(60, 0), usedTerm);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ConcordatoOutsideRangeWithVerifiedData_Throws422AndDoesNotSave()
+    {
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        ArrangeRange(DataCompleteness.Complete);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, ConcordatoRequest(900m)));
+
+        Assert.Equal(ConcordatoErrorCodes.RentOutOfRange, ex.Code);
+        Assert.Equal(new object[] { 108.34m, 460.41m }, ex.MessageArgs);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ConcordatoOutsideIndicativeRangeWithPartialData_CreatesLeaseWithWarning()
+    {
+        // A7-23: with data not confirmed by a lawyer or a signatory organization the range is a guide, not a block.
+        ArrangeCreation();
+        ArrangeRange(DataCompleteness.Partial);
+
+        var result = await _sut.CreateDraftAsync(PropertyId, ConcordatoRequest(900m));
+
+        var assessment = Assert.IsType<LeaseConcordatoAssessment>(result.ConcordatoAssessment);
+        Assert.True(assessment.Indicative);
+        Assert.False(assessment.RentWithinRange);
+        Assert.Equal(DataCompleteness.Partial, assessment.DataCompleteness);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ConcordatoWithinRange_StoresCharacteristicsAndRange()
+    {
+        ArrangeCreation();
+        ArrangeRange(DataCompleteness.Complete);
+        var characteristics = Characteristics() with { GarageSqm = 12m, StoveHeating = true, CadastralSheet = " 7 " };
+
+        var result = await _sut.CreateDraftAsync(PropertyId, ConcordatoRequest(400m) with
         {
-            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
-            EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
-        };
+            CanoneConcordatoCharacteristics = characteristics,
+        });
 
-        // Act
-        var result = await _sut.CreateDraftAsync(PropertyId, request);
+        var assessment = Assert.IsType<LeaseConcordatoAssessment>(result.ConcordatoAssessment);
+        Assert.Equal(65m, assessment.Sqm);
+        Assert.Equal(12m, assessment.GarageSqm);
+        Assert.True(assessment.StoveHeating);
+        Assert.Equal("7", assessment.CadastralSheet);
+        Assert.Equal("Unica", assessment.Zone);
+        Assert.Equal(2, assessment.SubFascia);
+        Assert.Equal(3, assessment.ContractYears);
+        Assert.Equal(1300m, assessment.CanoneMinAnnuo);
+        Assert.Equal(5525m, assessment.CanoneMaxAnnuo);
+        Assert.True(assessment.RentWithinRange);
+        Assert.False(assessment.Indicative);
+    }
 
-        // Assert
-        Assert.Equal(LeaseStatus.Draft, result.Status);
-        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
+    [Theory]
+    [InlineData(CanoneConcordatoReasonCodes.DataUnavailable, ConcordatoErrorCodes.RangeUnavailable)]
+    [InlineData(CanoneConcordatoReasonCodes.ZoneRequired, ConcordatoErrorCodes.ZoneRequired)]
+    [InlineData(CanoneConcordatoReasonCodes.SurfaceOutOfBands, ConcordatoErrorCodes.SurfaceOutOfBands)]
+    public async Task CreateDraftAsync_ConcordatoRangeNotAvailable_Throws422WithTheReason(string reasonCode, string expectedCode)
+    {
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        _canoneEligibility
+            .Setup(s => s.CalculateAsync(PropertyId, It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
+                false, "reason", "Seveso", null, null, null, null, null, null,
+                DataCompleteness.Partial, false, false, true, CanoneConcordatoCopy.Disclaimer)
+            {
+                ReasonCode = reasonCode,
+            });
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, ConcordatoRequest(400m)));
+
+        Assert.Equal(expectedCode, ex.Code);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
     }
 
     [Fact]
@@ -307,94 +439,45 @@ public class LeaseWorkflowServiceTests
             _sut.CreateDraftAsync(PropertyId, request));
     }
 
-    [Fact]
-    public async Task CreateDraftAsync_CanoneConcordatoWithoutCharacteristics_ThrowsInvalidOperationException()
+    private void ArrangeCreation()
     {
-        var property = BuildProperty(hasApe: true);
-        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
-
-        var request = BuildCreateRequest(fiscalRegime: FiscalRegime.CanoneConcordato);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.CreateDraftAsync(PropertyId, request));
-
-        Assert.Equal("Canone concordato characteristics are required for canone concordato leases.", ex.Message);
-        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>())).ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
     }
 
-    [Fact]
-    public async Task CreateDraftAsync_CanoneConcordatoOutsideCalculatedRange_ThrowsInvalidOperationException()
-    {
-        var property = BuildProperty(hasApe: true);
-        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
-        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
+    private void ArrangeRange(DataCompleteness completeness) =>
         _canoneEligibility
-            .Setup(s => s.CalculateAsync(PropertyId, characteristics, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
-                true,
-                null,
-                "Seveso",
-                "Unica",
-                2,
-                3445m,
-                5525m,
-                287.08m,
-                460.42m,
-                DataCompleteness.Partial,
-                true,
-                false,
-                true,
-                CanoneConcordatoCopy.Disclaimer));
+            .Setup(s => s.CalculateAsync(PropertyId, It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Range(completeness));
 
-        var request = BuildCreateRequest(
-            fiscalRegime: FiscalRegime.CanoneConcordato,
-            monthlyRent: 900m,
-            canoneConcordatoCharacteristics: characteristics);
+    /// <summary>Seveso, 65 mq, sub-fascia 2, 3 years: 1.300,00-5.525,00 euro a year.</summary>
+    private static CanoneConcordatoEligibilityDto Range(DataCompleteness completeness) =>
+        new(true, null, "Seveso", "Unica", 2, 1300m, 5525m, 108.34m, 460.41m,
+            completeness, true, false, true, CanoneConcordatoCopy.Disclaimer)
+        {
+            ContractYears = 3,
+            UsableSqm = 65m,
+            Indicative = completeness != DataCompleteness.Complete,
+        };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.CreateDraftAsync(PropertyId, request));
-
-        Assert.Equal("Monthly rent must be within the calculated canone concordato range.", ex.Message);
-        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task CreateDraftAsync_CanoneConcordatoWithinCalculatedRange_PersistsLease()
+    private static RentBandCharacteristics Characteristics() => new()
     {
-        var property = BuildProperty(hasApe: true);
-        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
-        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
-            .ReturnsAsync((LeaseContract l) => l);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
-            .ReturnsAsync((LeaseEvent e) => e);
-        var characteristics = new RentBandCharacteristics(65, 2, 3, 0, 0, false, 3, "Unica", null);
-        _canoneEligibility
-            .Setup(s => s.CalculateAsync(PropertyId, characteristics, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CanoneConcordatoEligibilityDto(
-                true,
-                null,
-                "Seveso",
-                "Unica",
-                2,
-                3445m,
-                5525m,
-                287.08m,
-                460.42m,
-                DataCompleteness.Partial,
-                true,
-                false,
-                true,
-                CanoneConcordatoCopy.Disclaimer));
+        Sqm = 65m,
+        TypeAElementCount = 2,
+        TypeBElementCount = 3,
+        ZoneName = "Unica",
+    };
 
-        var result = await _sut.CreateDraftAsync(PropertyId, BuildCreateRequest(
-            fiscalRegime: FiscalRegime.CanoneConcordato,
-            monthlyRent: 400m,
-            canoneConcordatoCharacteristics: characteristics));
-
-        Assert.Equal(FiscalRegime.CanoneConcordato, result.FiscalRegime);
-        Assert.Equal(400m, result.MonthlyRent);
-        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Once);
-    }
+    private static CreateLeaseRequest ConcordatoRequest(decimal monthlyRent) =>
+        BuildCreateRequest(monthlyRent: monthlyRent, canoneConcordatoCharacteristics: Characteristics()) with
+        {
+            FiscalRegime = null,
+            ContractType = LeaseContractType.Concordato,
+            TaxRegime = LeaseTaxRegime.CedolareSecca,
+            StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+        };
 
     // Helpers
 

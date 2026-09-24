@@ -21,13 +21,18 @@ internal static class ICalTestServices
         ISafeExternalHttpClient externalHttpClient,
         IConfiguration configuration,
         IServiceScopeFactory? scopeFactory = null,
-        ILogger<PropertyICalSyncService>? logger = null) =>
-        new(
+        ILogger<PropertyICalSyncService>? logger = null,
+        ICalImportOptions? importOptions = null)
+    {
+        var options = Options.Create(importOptions ?? new ICalImportOptions());
+        return new(
             db,
             externalHttpClient,
-            ImportService(),
+            new ICalImportService(TimeProvider.System, options),
             new ICalExportService(),
             scopeFactory ?? Mock.Of<IServiceScopeFactory>(),
             configuration,
+            options,
             logger ?? Mock.Of<ILogger<PropertyICalSyncService>>());
+    }
 }
