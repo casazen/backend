@@ -46,7 +46,7 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     }
 
     [PostgresFact]
-    public async Task CalculateTouristTax_DateOnlyPayloadForComuneWithoutRate_Returns404()
+    public async Task CalculateTouristTax_DateOnlyPayloadForComuneWithoutRate_ReturnsRateUnavailable()
     {
         await WithDbAsync(db => db.TouristTaxRates.Where(r => r.City == "Firenze").ExecuteDeleteAsync());
         using var client = factory.CreateClient();
@@ -60,7 +60,11 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
             checkOutDate = "2026-10-04",
         });
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // BK-03 / A8-12: a comune without rate is an explicit state, not an error.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal("RateUnavailable", body.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("taxAmount").ValueKind);
     }
 
     [PostgresFact]
@@ -159,15 +163,14 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     }
 
     [PostgresFact]
-    public async Task GetActiveByCityAsync_UnspecifiedKindParameter_QueriesTimestamptzWithoutError()
+    public async Task GetActiveInPeriodAsync_UnspecifiedKindParameter_QueriesTimestamptzWithoutError()
     {
         await SeedTouristTaxRateAsync("Napoli", 2.00m);
+        var day = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Unspecified);
 
-        var rate = await WithDbAsync(db => new TouristTaxRateRepository(db).GetActiveByCityAsync(
-            "Napoli",
-            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Unspecified)));
+        var rates = await WithDbAsync(db => new TouristTaxRateRepository(db).GetActiveInPeriodAsync(day, day));
 
-        Assert.NotNull(rate);
+        Assert.Contains(rates, r => r.City == "Napoli");
     }
 
     [PostgresFact]

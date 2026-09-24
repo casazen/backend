@@ -343,7 +343,7 @@
     <value>Enter the age from which the tax is due (0 if there are no age exemptions).</value>
   </data>
   <data name="TaxRateMinimumAgeOutOfRange" xml:space="preserve">
-    <value>The age from which the tax is due must be between 0 and 120.</value>
+    <value>The age from which the tax is due must be between 0 and 18 (adults are never exempt by age).</value>
   </data>
   <data name="TaxRateEffectiveFromRequired" xml:space="preserve">
     <value>Enter the date from which the rate applies.</value>
@@ -365,6 +365,39 @@
   </data>
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Enter the property's city in the basic details to see the tourist tax rate. This does not block the activation.</value>
+  </data>
+  <data name="ActivationTouristTaxCategoryRequired" xml:space="preserve">
+    <value>In {0} the tourist tax rate depends on the accommodation category, which CasaZen does not know yet: the automatic calculation is not available. This does not block the activation: check the rate of your category with the municipality.</value>
+  </data>
+  <data name="TouristTaxChildAgesRequired" xml:space="preserve">
+    <value>The age of every minor at check-in is needed to calculate the tourist tax.</value>
+  </data>
+  <data name="TouristTaxChildAgesInvalid" xml:space="preserve">
+    <value>Enter an age between 0 and 17 for every minor.</value>
+  </data>
+  <data name="TouristTaxQuoteInvalid" xml:space="preserve">
+    <value>Invalid calculation data: check the dates (at most 366 nights), guests, ages of the minors and price per night.</value>
+  </data>
+  <data name="TaxRateIstatCodeInvalid" xml:space="preserve">
+    <value>The ISTAT code of the municipality must have 6 digits.</value>
+  </data>
+  <data name="TaxRateCategoryTooLong" xml:space="preserve">
+    <value>The accommodation category can be at most 100 characters.</value>
+  </data>
+  <data name="TaxRateSeasonInvalid" xml:space="preserve">
+    <value>Enter the start and end of the season as MM-DD (e.g. 02-01 and 12-31), or leave both empty.</value>
+  </data>
+  <data name="TaxRateCalculationMethodInvalid" xml:space="preserve">
+    <value>The rate type is not valid.</value>
+  </data>
+  <data name="TaxRatePercentOutOfRange" xml:space="preserve">
+    <value>For a percentage rate enter a percentage between 0.01 and 100.</value>
+  </data>
+  <data name="TaxRateCapOutOfRange" xml:space="preserve">
+    <value>The cap per person per night must be between 0.01 and 1000 euros.</value>
+  </data>
+  <data name="TaxRateReducedRateInvalid" xml:space="preserve">
+    <value>For the reduced rate enter both the maximum age (between the exemption age and 17) and the amount per person per night (between 0.01 and 1000 euros); fixed-amount rates only.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>This payment cannot be refunded: only collected payments can be refunded.</value>

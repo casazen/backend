@@ -240,7 +240,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
-        services.AddScoped<ITaxRateRepository, TaxRateRepository>();
         services.AddScoped<IOtaIntegrationRepository, OtaIntegrationRepository>();
         services.AddScoped<IPropertyDocumentRepository, PropertyDocumentRepository>();
         return services;
@@ -265,6 +264,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
+        services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();

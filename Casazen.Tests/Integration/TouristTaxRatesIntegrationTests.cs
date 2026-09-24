@@ -223,8 +223,72 @@ public class TouristTaxRatesIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(14, milano.GetProperty("maxNights").GetInt32());
         Assert.Equal(18, milano.GetProperty("minimumAge").GetInt32());
 
-        var notRepresentable = new[] { "Roma", "Venezia", "Bologna", "Torino", "Seveso", "Cesano Maderno" };
-        Assert.False(await WithDbAsync(db => db.TouristTaxRates.AnyAsync(r => notRepresentable.Contains(r.City))));
+        Assert.All(seeded, r => Assert.Equal(TouristTaxRateSeed.IstatCodes[r.GetProperty("city").GetString()!], r.GetProperty("istatCode").GetString()));
+
+        // BK-03: Roma by category and Venezia by cadastral group and season, exactly the official rows.
+        var categoryIds = TouristTaxRateSeed.BuildCategoryAndSeasonRates().Select(r => r.Id).Order().ToArray();
+        var storedCategoryRates = await WithDbAsync(db => db.TouristTaxRates
+            .Where(r => r.City == "Roma" || r.City == "Venezia")
+            .Select(r => r.Id)
+            .ToListAsync());
+        Assert.Equal(categoryIds, storedCategoryRates.Order().ToArray());
+
+        // Still not loaded: percentage per person from third parties (Bologna), third-party amount (Torino), no rate.
+        var notLoaded = new[] { "Bologna", "Torino", "Seveso", "Cesano Maderno" };
+        Assert.False(await WithDbAsync(db => db.TouristTaxRates.AnyAsync(r => notLoaded.Contains(r.City))));
+    }
+
+    [PostgresFact]
+    public async Task Create_PercentageRateWithSeasonAndCategory_StoresTheNewFields()
+    {
+        using var admin = _factory.CreateAuthenticatedClient(AdminId, "Admin");
+
+        var response = await admin.PostAsJsonAsync("/api/tourist-tax-rates", new
+        {
+            city = "Rimini",
+            regionCode = "EMR",
+            istatCode = "099014",
+            accommodationCategory = "Appartamenti",
+            seasonStart = "06-01",
+            seasonEnd = "09-30",
+            calculationMethod = "PercentOfNightlyPrice",
+            ratePerPersonPerNight = 0,
+            percentOfNightlyPrice = 5.5m,
+            capPerPersonPerNight = 3.00m,
+            maxNights = 7,
+            minimumAge = 14,
+            effectiveFrom = "2027-01-01",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var stored = await ReadRateAsync((await ReadJsonAsync(response)).GetProperty("id").GetGuid());
+        Assert.NotNull(stored);
+        Assert.Equal("099014", stored!.IstatCode);
+        Assert.Equal("Appartamenti", stored.AccommodationCategory);
+        Assert.Equal(("06-01", "09-30"), (stored.SeasonStart, stored.SeasonEnd));
+        Assert.Equal(TouristTaxCalculationMethod.PercentOfNightlyPrice, stored.CalculationMethod);
+        Assert.Equal(5.5m, stored.PercentOfNightlyPrice);
+        Assert.Equal(3.00m, stored.CapPerPersonPerNight);
+        Assert.Equal(0m, stored.RatePerPersonPerNight);
+    }
+
+    [PostgresFact]
+    public async Task Create_SeasonWithOneBoundOrMinimumAgeOver18_Returns400WithKeys()
+    {
+        using var admin = _factory.CreateAuthenticatedClient(AdminId, "Admin");
+
+        var response = await admin.PostAsJsonAsync("/api/tourist-tax-rates", new
+        {
+            city = "Season Town",
+            regionCode = "LOM",
+            ratePerPersonPerNight = 2.00m,
+            minimumAge = 30,
+            seasonStart = "02-30",
+            effectiveFrom = "2027-01-01",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.False(await WithDbAsync(db => db.TouristTaxRates.AnyAsync(r => r.City == "Season Town")));
     }
 
     private static object ValidPayload(string city) => new

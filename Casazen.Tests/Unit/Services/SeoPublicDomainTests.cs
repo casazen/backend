@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
@@ -23,13 +24,13 @@ public class SeoPublicDomainTests
     private static readonly XNamespace SitemapNs = "http://www.sitemaps.org/schemas/sitemap/0.9";
 
     private readonly Mock<ISeoContentRepository> _seoRepo = new();
-    private readonly Mock<ITouristTaxRateRepository> _taxRates = new();
+    private readonly Mock<ITouristTaxQuoteService> _taxQuotes = new();
 
     [Fact]
     public async Task BuildComplianceSitemapXmlAsync_ConfiguredPublicSite_EveryUrlIsOnThatDomain()
     {
         SetupPages(Page("013075", SeoPageType.ComplianceGuide), Page("013075", SeoPageType.TouristTaxCalc));
-        SetupRateInForce("Como");
+        SetupRateInForce("013075");
 
         var xml = await CreateService(PublicSite + "/").BuildComplianceSitemapXmlAsync();
 
@@ -108,7 +109,7 @@ public class SeoPublicDomainTests
             Page("013075", SeoPageType.ComplianceGuide, "Affitti brevi a Como"),
             Page("013075", SeoPageType.TouristTaxCalc, "Tassa di soggiorno a Como"),
             Page("013040", SeoPageType.TouristTaxCalc, "Tassa di soggiorno a Bellagio"));
-        SetupRateInForce("Como");
+        SetupRateInForce("013075");
 
         var result = await CreateService(PublicSite).GetPublishedPagesAsync();
 
@@ -136,14 +137,21 @@ public class SeoPublicDomainTests
         Assert.Equal("/p/affitti-brevi/lombardia/como", Assert.Single(result.Pages).Path);
     }
 
+    public SeoPublicDomainTests()
+    {
+        _taxQuotes
+            .Setup(q => q.GetRatesInForceAsync(It.IsAny<TouristTaxComune>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+    }
+
     private SeoContentService CreateService(string? publicSiteBaseUrl) =>
         new(
             _seoRepo.Object,
-            _taxRates.Object,
-            Mock.Of<ITouristTaxService>(),
+            _taxQuotes.Object,
             Mock.Of<IAiProvider>(),
             EmailTestHelpers.Links(publicSiteBaseUrl),
-            Mock.Of<ILogger<SeoContentService>>());
+            Mock.Of<ILogger<SeoContentService>>(),
+            new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero)));
 
     private static SeoContentPage Page(string comuneCode, SeoPageType pageType, string title = "Titolo") =>
         new()
@@ -159,9 +167,13 @@ public class SeoPublicDomainTests
     private void SetupPages(params SeoContentPage[] pages) =>
         _seoRepo.Setup(r => r.GetReviewedPagesForSitemapAsync(It.IsAny<CancellationToken>())).ReturnsAsync(pages);
 
-    private void SetupRateInForce(string city) =>
-        _taxRates.Setup(r => r.GetActiveByCityAsync(city, It.IsAny<DateTime>()))
-            .ReturnsAsync(new TouristTaxRate { City = city, RatePerPersonPerNight = 2m, IsActive = true });
+    private void SetupRateInForce(string istatCode) =>
+        _taxQuotes
+            .Setup(q => q.GetRatesInForceAsync(
+                It.Is<TouristTaxComune>(c => c.IstatCode == istatCode),
+                new DateOnly(2026, 9, 24),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new TouristTaxRate { IstatCode = istatCode, RatePerPersonPerNight = 2m, IsActive = true }]);
 
     private SeoContentPage SetupPublicPage(SeoPageType pageType)
     {

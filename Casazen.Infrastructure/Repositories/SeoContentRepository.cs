@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Regulatory;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -136,8 +137,10 @@ public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
             if (comune is null)
                 continue;
 
+            // Same comune matching as the tourist tax engine (ISTAT code, else normalized name: A8-23).
+            var touristTaxComune = new TouristTaxComune(comune.Code, comune.Name);
             var rate = taxRates
-                .Where(t => t.City.Equals(comune.Name, StringComparison.OrdinalIgnoreCase))
+                .Where(touristTaxComune.Matches)
                 .OrderByDescending(t => t.UpdatedAt)
                 .FirstOrDefault();
 
