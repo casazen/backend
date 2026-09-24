@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Http;
@@ -22,6 +23,7 @@ public class BookingServiceTests
     private readonly Mock<ICheckoutHoldExpiryService> _mockHoldExpiry = new();
     private readonly Mock<IPropertyRepository> _mockPropertyRepository = new();
     private readonly Mock<IOrgService> _mockOrgService = new();
+    private readonly Mock<ITouristTaxQuoteService> _mockTouristTax = new();
     private readonly RecordingEmailQueue _emails = new();
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -46,7 +48,7 @@ public class BookingServiceTests
             _mockPropertyRepository.Object,
             _mockOrgService.Object,
             _mockGuestRepository.Object,
-            new Mock<ITouristTaxQuoteService>().Object,
+            _mockTouristTax.Object,
             new Mock<IStripeService>().Object,
             new Mock<IPaymentRepository>().Object,
             CreatePropertyICalSyncService(_db, configuration),
@@ -154,6 +156,9 @@ public class BookingServiceTests
         };
         _mockPropertyRepository.Setup(x => x.GetByIdAsync(property.Id)).ReturnsAsync(property);
         _mockOrgService.Setup(x => x.GetByIdAsync(property.OrgId)).ReturnsAsync(org);
+        _mockTouristTax
+            .Setup(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.RateUnavailable, null, 14, 0, false, [], []));
         _mockRepository.Setup(x => x.IsAvailableAsync(
                 It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int?>()))
             .ReturnsAsync(true);
