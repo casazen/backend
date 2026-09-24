@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Multitenancy;
@@ -92,6 +93,15 @@ public class Property : ITenantOwned
     public PropertyComplianceStatus ComplianceStatus { get; set; } = PropertyComplianceStatus.Pending;
 
     public DateTime? ComplianceCompletedAt { get; set; }
+
+    /// <summary>
+    /// Codice fiscale of the taxpayer who lets this apartment (titolare fiscale, CO-18): the short-rental threshold and the
+    /// one 21% cedolare unit are per taxpayer, not per org (fiscale.md C4). Null: the org's own tax profile. Normalized
+    /// (16 characters, upper case). Personal data: never serialized with the property, only masked by the fiscal API.
+    /// </summary>
+    [MaxLength(16)]
+    [JsonIgnore]
+    public string? TaxpayerFiscalCode { get; set; }
 
     // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
 
