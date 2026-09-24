@@ -30,8 +30,12 @@ public static class RecurringJobsRegistration
             "0 3 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        recurringJobManager.AddOrUpdate<AlloggiatiDeadlineAlertJob>(
-            "alloggiati-deadline-alert",
+        // CO-10: one hourly job for the stay alerts; the two jobs it replaces are removed from the schedule.
+        foreach (var replaced in StayAlertsJob.ReplacedRecurringJobIds)
+            recurringJobManager.RemoveIfExists(replaced);
+
+        recurringJobManager.AddOrUpdate<StayAlertsJob>(
+            StayAlertsJob.RecurringJobId,
             job => job.ExecuteAsync(),
             Cron.Hourly,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
@@ -86,12 +90,6 @@ public static class RecurringJobsRegistration
             "guest-checkin-send",
             job => job.ExecuteAsync(),
             "0 8 * * *",
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-        recurringJobManager.AddOrUpdate<GuestCheckInReminderJob>(
-            "guest-checkin-reminder",
-            job => job.ExecuteAsync(),
-            "0 10 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

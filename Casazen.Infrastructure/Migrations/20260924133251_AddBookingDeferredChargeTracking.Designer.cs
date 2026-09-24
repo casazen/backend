@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924130429_AddBookingDeferredChargeTracking")]
+    [Migration("20260924133251_AddBookingDeferredChargeTracking")]
     partial class AddBookingDeferredChargeTracking
     {
         /// <inheritdoc />
@@ -238,10 +238,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("CheckOutDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CheckoutReminderJobId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("CheckoutTokenHash")
                         .HasMaxLength(64)
@@ -2624,6 +2620,47 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SignupAttributions");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.StayAlertState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AlertCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastAlertAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ReferenceDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Stage")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId", "Type")
+                        .IsUnique();
+
+                    b.ToTable("StayAlertStates");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.StayGuest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3828,6 +3865,17 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StayAlertState", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.StayGuest", b =>

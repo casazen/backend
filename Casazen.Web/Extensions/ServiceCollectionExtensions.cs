@@ -275,6 +275,7 @@ public static class ServiceCollectionExtensions
         // Deferred charge of "Paga alla scadenza" bookings: job and webhooks (BK-08, docs/runbooks/direct-booking.md § 8).
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IStayAlertService, StayAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();

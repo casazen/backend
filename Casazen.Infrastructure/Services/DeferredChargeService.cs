@@ -467,7 +467,6 @@ public sealed class DeferredChargeService(
 
         booking.Status = BookingStatus.Cancelled;
         booking.CancellationReason = BookingCancellationReason.DeferredPaymentNotCompleted;
-        booking.CheckoutReminderJobId = null;
         booking.UpdatedAt = now;
         logger.LogInformation(
             "Booking {BookingId} cancelled: deferred payment not completed since {FailedAt}; dates released",

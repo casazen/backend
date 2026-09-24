@@ -11,7 +11,7 @@ Task FD-13, audit defects A9-06, A9-16, A4-06, A4-07, A4-08, A5-33, A4-20. Booki
 | `ResendEmailService` | `Casazen.Infrastructure/External/ResendEmailService.cs` | The only `IEmailService`. Sends with the configured sender, unchanged: the old rewrite to `onboarding@resend.dev` is gone. |
 | Templates | `Casazen.Infrastructure/Email/Templates/` | `EmailTexts.resx` (Italian, default) and `EmailTexts.en.resx`; `EmailTemplates` renders every email; every dynamic value (names, notes, property, reasons) is HTML-encoded. |
 | Links | `PublicSiteLinks` | Every link comes from `App__PublicSiteBaseUrl`, the same public domain as the SEO canonical URLs and the sitemap ([`seo-domain.md`](seo-domain.md)). Missing or invalid value = configuration error, never a fallback domain. |
-| Queue | `IEmailQueue` → Hangfire job `EmailDeliveryJob` | Request handlers only queue: a slow or failing provider never turns a saved operation into an error. Transient errors (timeouts, 429, 5xx) are retried 5 times, then the job is deleted. Recurring jobs (check-in link, reminders, Alloggiati alert) already run in Hangfire and send directly. |
+| Queue | `IEmailQueue` → Hangfire job `EmailDeliveryJob` | Request handlers only queue: a slow or failing provider never turns a saved operation into an error. Transient errors (timeouts, 429, 5xx) are retried 5 times, then the job is deleted. Recurring jobs that already run in Hangfire (check-in link) may send directly; the stay alerts (CO-10) queue theirs. |
 
 Every email of the application is listed in [Complete list of emails](#complete-list-of-emails). Recipients have no language preference yet, so emails go out in Italian; the English texts are ready (see [Language](#language)).
 
@@ -89,8 +89,11 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `onsite-request-declined` | guest | the host declined the request (with the host's optional message) | `OnSiteRequestNotifier`, queued |
 | `onsite-request-expired` | guest | the host did not answer in time | `OnSiteRequestNotifier` (expiry job), queued |
 | `guest-checkin-link` | guest | self check-in link: daily job before arrival, or "resend link" by the host | `GuestCheckInSendJob` (job) / `BookingsController` (queued) |
-| `guest-checkin-incomplete` | host | check-in still incomplete close to arrival | `GuestCheckInReminderJob` (job) |
-| `alloggiati-deadline` | host | Alloggiati Web communication close to its deadline | `NotificationService` (job) |
+| `guest-checkin-incomplete` | host | "Dati ospiti mancanti": guest data for Alloggiati Web still incomplete the day before arrival | `stay-alerts` job → `NotificationService`, queued, once per stay (CO-10, [hangfire.md §9](hangfire.md#9-stay-alerts-co-10)) |
+| `alloggiati-deadline` | host | Alloggiati Web communication not sent, deadline approaching | same, once per stay |
+| `alloggiati-overdue` | host | Alloggiati Web deadline passed without the communication, then at most `StayAlerts__MaxOverdueReminders` daily reminders | same |
+| `alloggiati-failed` | host | Alloggiati Web communication rejected or failed | same, once per stay |
+| `checkout-reminder` | host | check-out day of a confirmed or checked-in stay, 20:00 property time | same, once per check-out date |
 | `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
 | `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |

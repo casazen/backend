@@ -37,19 +37,14 @@ public class PushNotificationService(
             await SendToDeviceAsync(device, payload, cancellationToken);
     }
 
-    public async Task SendGuestCheckInIncompleteAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    public async Task SendToBookingHostsAsync(PushNotificationPayload payload, CancellationToken cancellationToken = default)
     {
+        if (payload.BookingId is not Guid bookingId)
+            throw new ArgumentException("A booking push needs the booking id.", nameof(payload));
+
         var booking = await LoadBookingAsync(bookingId, cancellationToken);
         if (booking is null)
             return;
-
-        var route = $"/bookings/{booking.Id}";
-        var payload = new PushNotificationPayload(
-            "Check-in incompleto",
-            $"Check-in non completato per {booking.Property.Name}.",
-            "guest-checkin-incomplete",
-            booking.Id,
-            route);
 
         await SendToPropertyHostsAsync(
             booking.OrgId,

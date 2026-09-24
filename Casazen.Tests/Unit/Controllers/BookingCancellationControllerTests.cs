@@ -26,14 +26,12 @@ public class BookingCancellationControllerTests
     private readonly Mock<IBookingService> _bookings = new();
     private readonly Mock<IBookingCancellationService> _cancellations = new();
     private readonly Mock<IHostResourceLookup> _hostResources = new();
-    private readonly Mock<ICheckoutReminderScheduler> _reminders = new();
     private readonly Booking _booking = new()
     {
         Id = Guid.NewGuid(),
         PropertyId = PropertyId,
         OrgId = OrgId,
         Status = BookingStatus.Confirmed,
-        CheckoutReminderJobId = "reminder-1",
     };
     private Func<string, string, bool>? _permissions;
 
@@ -87,7 +85,7 @@ public class BookingCancellationControllerTests
     }
 
     [Fact]
-    public async Task Cancel_UnpaidBookingWithBookingWriteOnly_CancelsAndDropsCheckoutReminder()
+    public async Task Cancel_UnpaidBookingWithBookingWriteOnly_Cancels()
     {
         GivenQuote(refundable: 0m);
         _permissions = (_, permission) => !permission.StartsWith("payment.", StringComparison.Ordinal);
@@ -99,7 +97,6 @@ public class BookingCancellationControllerTests
         _cancellations.Verify(c => c.CancelAsync(
             It.Is<BookingCancellationRequest>(r => r.BookingId == _booking.Id && r.RefundAmount == null && r.RequestedByUserId == OwnerId),
             It.IsAny<CancellationToken>()), Times.Once);
-        _reminders.Verify(r => r.CancelReminder("reminder-1"), Times.Once);
     }
 
     [Fact]
@@ -145,7 +142,6 @@ public class BookingCancellationControllerTests
     private void VerifyNotCancelled()
     {
         _cancellations.Verify(c => c.CancelAsync(It.IsAny<BookingCancellationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
-        _reminders.Verify(r => r.CancelReminder(It.IsAny<string?>()), Times.Never);
     }
 
     private BookingCancellationController Controller()
@@ -155,7 +151,6 @@ public class BookingCancellationControllerTests
             _cancellations.Object,
             _hostResources.Object,
             HostAuthorizationTestHarness.Create(OrgId, (c, p) => _permissions?.Invoke(c, p) ?? true),
-            _reminders.Object,
             NullLogger<BookingCancellationController>.Instance);
         controller.ControllerContext = new ControllerContext
         {

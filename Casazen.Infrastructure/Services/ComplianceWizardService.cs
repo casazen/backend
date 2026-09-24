@@ -267,7 +267,6 @@ public class ComplianceWizardService(
         }
 
         booking.Status = BookingStatus.CheckedOut;
-        booking.CheckoutReminderJobId = null;
         booking.UpdatedAt = DateTime.UtcNow;
 
         var retentionYears = configuration.GetValue("Compliance:GdprRetentionYears", 7);

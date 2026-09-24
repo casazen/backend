@@ -10,7 +10,8 @@ namespace Casazen.Infrastructure.Data;
 /// <summary>
 /// Transaction-scoped PostgreSQL advisory locks (<c>pg_advisory_xact_lock(int, int)</c>) that serialize a
 /// check-then-insert across requests and API instances (A1-14, A1-21). The lock is released by the
-/// commit or rollback of the transaction that holds it.
+/// commit or rollback of the transaction that holds it. A job run that must not overlap with another run takes a
+/// session-level try lock instead (<see cref="TryAcquireSessionLockAsync"/>).
 /// </summary>
 /// <remarks>
 /// Keys use the two-integer form: the first integer is a <see cref="Scope"/>, the second a stable hash
@@ -55,6 +56,12 @@ internal static class PostgresAdvisoryLocks
         /// sync of a new URL) never write the same blocks at once (PC-10, A2-12).
         /// </summary>
         PropertyICalSync = 1_010,
+
+        /// <summary>
+        /// One run of the hourly stay alerts (single key, session lock held for the whole run): two runs never send the
+        /// same alerts at once, even outside Hangfire's own lock (CO-10, A5-11).
+        /// </summary>
+        StayAlertsRun = 1_011,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
@@ -101,7 +108,70 @@ internal static class PostgresAdvisoryLocks
         return transaction;
     }
 
+    /// <summary>
+    /// Tries the session-level lock <c>pg_try_advisory_lock(scope, hash(key))</c> without waiting and keeps the connection
+    /// open until the returned handle is disposed, which releases it. Returns <c>null</c> when another session holds
+    /// the lock. Outside PostgreSQL there is nothing to lock: a handle that does nothing is returned.
+    /// </summary>
+    /// <remarks>
+    /// Meant for a whole job run that commits several transactions of its own: a transaction-scoped lock would be
+    /// released by the first commit. The lock also dies with the connection if the process crashes.
+    /// </remarks>
+    public static async Task<IAsyncDisposable?> TryAcquireSessionLockAsync(
+        DbContext context,
+        Scope scope,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        if (!IsSupported(context))
+            return NoLock.Instance;
+
+        var scopeId = (int)scope;
+        var keyHash = Hash(key);
+        await context.Database.OpenConnectionAsync(cancellationToken);
+        try
+        {
+            var acquired = await context.Database
+                .SqlQuery<bool>($"SELECT pg_try_advisory_lock({scopeId}, {keyHash}) AS \"Value\"")
+                .SingleAsync(cancellationToken);
+            if (acquired)
+                return new SessionLock(context, scopeId, keyHash);
+        }
+        catch
+        {
+            await context.Database.CloseConnectionAsync();
+            throw;
+        }
+
+        await context.Database.CloseConnectionAsync();
+        return null;
+    }
+
     /// <summary>Stable across processes and releases (unlike <see cref="string.GetHashCode()"/>).</summary>
     internal static int Hash(string key) =>
         BinaryPrimitives.ReadInt32LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+
+    private sealed class SessionLock(DbContext context, int scopeId, int keyHash) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({scopeId}, {keyHash})");
+            }
+            finally
+            {
+                // Back to the pool only after the unlock; if the unlock failed the connection is broken and closing it
+                // ends the session, which releases the lock anyway.
+                await context.Database.CloseConnectionAsync();
+            }
+        }
+    }
+
+    private sealed class NoLock : IAsyncDisposable
+    {
+        public static readonly NoLock Instance = new();
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 }

@@ -77,7 +77,6 @@ public sealed class BookingCancellationService(
             var now = _clock.GetUtcNow().UtcDateTime;
             booking.Status = BookingStatus.Cancelled;
             booking.CancellationNote = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
-            booking.CheckoutReminderJobId = null;
             booking.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
 

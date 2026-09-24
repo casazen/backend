@@ -25,7 +25,6 @@ public class BookingCancellationController(
     IBookingCancellationService cancellationService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
-    ICheckoutReminderScheduler checkoutReminderScheduler,
     ILogger<BookingCancellationController> logger) : ControllerBase
 {
     /// <summary>
@@ -70,12 +69,10 @@ public class BookingCancellationController(
         if (movesMoney && !await authorizationService.IsAuthorizedAsync(User, resource, PaymentOperations.Write))
             return PaymentPermissionMissing();
 
-        var checkoutReminderJobId = booking.CheckoutReminderJobId;
         logger.LogInformation("Cancelling booking {BookingId}", id);
         var result = await cancellationService.CancelAsync(
             new BookingCancellationRequest(id, request?.RefundAmount, request?.Reason, User.GetUserId()),
             HttpContext.RequestAborted);
-        checkoutReminderScheduler.CancelReminder(checkoutReminderJobId);
 
         return Ok(new CancelBookingResponse(
             result.Booking.Id,
