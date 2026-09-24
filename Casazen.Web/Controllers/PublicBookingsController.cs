@@ -20,41 +20,32 @@ public class PublicBookingsController(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    [HttpGet("property/{propertyId}/availability")]
+    /// <summary>
+    /// Nights already taken on the public booking site (BK-05, A3-09, A2-13, A9-39), from <paramref name="startDate"/>
+    /// (included, default today in Europe/Rome) to <paramref name="endDate"/> (excluded, default one year later): the
+    /// same rule that refuses a booking (bookings, holds within their time, "pay at the property" requests waiting for the
+    /// host, iCal and manual blocks), so a free night can be booked and a taken one answers 409. Dates only. 404
+    /// <c>public_property_not_found</c> for a property that does not exist or is not published; 422
+    /// <c>availability_range_invalid</c> for an empty range or one longer than a year; 429 per client IP.
+    /// </summary>
+    [HttpGet("property/{propertyId:guid}/availability")]
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
+    [ProducesResponseType(typeof(PropertyAvailabilityResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<PropertyAvailabilityResponse>> GetPropertyAvailability(
         Guid propertyId,
+        [FromServices] IPublicAvailabilityService publicAvailability,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        CancellationToken cancellationToken = default)
     {
-        var today = _clock.TodayInRome();
-        var start = startDate ?? today;
-        var end = endDate ?? today.AddDays(365);
+        var start = startDate ?? _clock.TodayInRome();
+        var end = endDate ?? start.Date.AddDays(365);
 
-        var bookings = await bookingService.GetCalendarAsync(propertyId, start, end);
-
-        var bookedDates = bookings
-            .Where(b => b.Status != BookingStatus.Cancelled)
-            .SelectMany(b => GetDateRange(b.CheckInDate, b.CheckOutDate))
-            .ToHashSet();
-
-        return Ok(new PropertyAvailabilityResponse
-        {
-            PropertyId = propertyId,
-            StartDate = start,
-            EndDate = end,
-            BookedDates = bookedDates.OrderBy(d => d).ToList(),
-        });
-    }
-
-    private static IEnumerable<string> GetDateRange(DateTime checkIn, DateTime checkOut)
-    {
-        var current = checkIn.Date;
-        while (current < checkOut.Date)
-        {
-            yield return current.ToString("yyyy-MM-dd");
-            current = current.AddDays(1);
-        }
+        var availability = await publicAvailability.GetAsync(propertyId, start, end, cancellationToken);
+        return Ok(PropertyAvailabilityResponse.From(availability));
     }
 
     /// <summary>

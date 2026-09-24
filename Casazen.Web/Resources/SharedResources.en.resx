@@ -732,4 +732,10 @@
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
     <value>The check-out can be recorded from the departure day.</value>
   </data>
+  <data name="PublicPropertyNotFound" xml:space="preserve">
+    <value>This property is not available for online booking.</value>
+  </data>
+  <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
+    <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
+  </data>
 </root>

@@ -732,4 +732,10 @@
   <data name="BookingCheckOutTooEarly" xml:space="preserve">
     <value>Il check-out si può registrare dal giorno di partenza.</value>
   </data>
+  <data name="PublicPropertyNotFound" xml:space="preserve">
+    <value>Questo alloggio non è disponibile per la prenotazione online.</value>
+  </data>
+  <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
+    <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
+  </data>
 </root>
