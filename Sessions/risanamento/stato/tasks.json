@@ -1,0 +1,2797 @@
+[
+ {
+  "id": "PR-1",
+  "title": "Integrare PR Cursor booking/Stripe (#424 #438 #441 #442 #443 #444 #446 #447 #448 #450)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Rivedere ciascuna PR (branch origin/cursor/*), integrarla se corretta, risolvere i conflitti (ordine suggerito 442,448,438,447,450,443,446,441,444,424). Copre parzialmente A1-09 A3-03 A3-13 A3-14 A2-01 A3-04 A2-08: non chiuderli qui, solo integrare."
+ },
+ {
+  "id": "PR-2",
+  "title": "Integrare PR Cursor LTR (#427 #429 #430 #432 #433 #434 #435 #436 #439 #440 #445 #449)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "LTR resta feature attiva (decisione D1): integrare dopo review. Conflitti attesi su LeaseWorkflowService."
+ },
+ {
+  "id": "PR-3",
+  "title": "Integrare PR Cursor compliance/auth (#425 #426 #428 #431 #437)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "#431 (snapshot ospite) e' fix provvisorio di A2-02; la fix definitiva e' TN-1."
+ },
+ {
+  "id": "RS-1",
+  "title": "Ricerca specifiche ufficiali Alloggiati Web (tracciato, tabelle codici, web service)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Solo fonti ufficiali (alloggiatiweb.poliziadistato.it, manuali PDF). Esito in .claude/context/regulations/alloggiati.md con link e data. Se tabelle/tracciato/WS non sono pubblicamente disponibili: scriverlo esplicitamente."
+ },
+ {
+  "id": "RS-2",
+  "title": "Ricerca formato ufficiale del CIN (D.L. 145/2023, BDSR Ministero del Turismo)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Aggiornare .claude/context/regulations/cin.md e .claude/rules/compliance.md con formato verificato + fonti. Se non trovato: dichiararlo e proporre il formato permissivo IT+6 cifre ISTAT+10 alfanumerici."
+ },
+ {
+  "id": "RS-3",
+  "title": "Ricerca obblighi di sicurezza D.L. 145/2023 art. 13-ter (rilevatori gas/CO, estintori)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Aggiornare .claude/context/regulations/sicurezza.md con testo di legge e fonti (Normattiva/Gazzetta Ufficiale)."
+ },
+ {
+  "id": "RS-4",
+  "title": "Ricerca API pubbliche Openapi.it (registrazione RLI) e provider firma elettronica",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Documentazione pubblica, sandbox, autenticazione. Esito: fattibile/non fattibile senza contratto. Scrivere docs/integrations/rli-esign.md."
+ },
+ {
+  "id": "RS-5",
+  "title": "Ricerca regole fiscali: IVA OSS e Stripe Tax, SDI, cedolare/ritenuta OTA con P.IVA, soglia 3 immobili, imposta di registro LTR",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Fonti ufficiali (Agenzia Entrate, EUR-Lex, docs Stripe). Aggiornare .claude/context/regulations/fiscale.md."
+ },
+ {
+  "id": "RS-6",
+  "title": "Dataset ufficiale comuni ISTAT (codice ISTAT, codice catastale, provincia, regione)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Scaricare l'elenco comuni da istat.it (CSV ufficiale) e salvarlo in Casazen.Infrastructure/Data/Seeds/ con fonte e data. Nessun dato scritto a mano."
+ },
+ {
+  "id": "RS-7",
+  "title": "Tariffe imposta di soggiorno dei comuni pilota da fonti ufficiali",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Comuni presenti nel registro/seed SEO (Milano, Roma, Como, Firenze, Napoli, Torino, Venezia, Bologna, Seveso, Cesano Maderno...): tariffe per categoria extralberghiera/locazione breve, esenzioni per eta', tetto notti, con URL e data. File dati in Seeds + imposta_soggiorno.md."
+ },
+ {
+  "id": "RS-8",
+  "title": "Verifica accordi territoriali canone concordato Seveso e Cesano Maderno",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Confrontare Sessions/research-canone-concordato-mb.md con i testi ufficiali degli accordi: fasce, coefficienti, tetti, durate. Aggiornare canone_concordato.md con fonti."
+ },
+ {
+  "id": "RS-9",
+  "title": "Ricerca ISTAT movimentazione turistica (#6) e portali regionali/CIR (#8)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [],
+  "wave": 0,
+  "notes": "Fattibilita': formati e canali ufficiali per regione pilota (Lombardia). Esito documentato; implementazione solo se c'e' uno standard pubblico."
+ },
+ {
+  "id": "FD-01",
+  "title": "CI frontend reale: lint/typecheck/vitest/build obbligatori, e2e.yml valido, eslint a 0 errori",
+  "findings": [
+   "A9-23"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "PR-1"
+  ],
+  "wave": 1,
+  "notes": "Anche parte FE di A9-24 e A6-04 (rimuovere continue-on-error e job echo Maestro)."
+ },
+ {
+  "id": "FD-02",
+  "title": "CI backend: gate pacchetti vulnerabili, aggiornamento pacchetti, rimozione SendGrid e gate echo",
+  "findings": [
+   "A9-26"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "Parte BE di A9-24 (e2e-golden-journey.yml echo)."
+ },
+ {
+  "id": "FD-03",
+  "title": "CI mobile (tsc, eslint configurato, expo export)",
+  "findings": [
+   "A9-24"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [],
+  "wave": 1,
+  "notes": "Anche la parte CI di A6-30."
+ },
+ {
+  "id": "FD-04",
+  "title": "Test d'integrazione su PostgreSQL reale + test migrazioni",
+  "findings": [
+   "A9-11",
+   "A9-35",
+   "A2-37",
+   "A1-43"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "Factory usa TEST_POSTGRES_CONNECTION (locale/CI service) o Testcontainers; isolamento per classe; test apply-all + HasPendingModelChanges; aggiungere servizio postgres a ci-cd.yml."
+ },
+ {
+  "id": "FD-05",
+  "title": "Contratto errori (ProblemDetails + code) e localizzazione backend funzionante",
+  "findings": [
+   "R-07",
+   "A9-07",
+   "A9-08",
+   "A1-24",
+   "A7-19",
+   "A9-09"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "InvalidOperationException non piu' 503 con messaggio interno; UnauthorizedAccessException -> 403; DomainException/NotFoundException; fix percorso SharedResources; helper FE per ProblemDetails e' in FD-08."
+ },
+ {
+  "id": "FD-06",
+  "title": "Date e fusi: normalizzazione UTC globale, 'oggi' in Europe/Rome",
+  "findings": [
+   "R-01",
+   "A9-12",
+   "A2-15",
+   "A5-17",
+   "A7-05"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": ""
+ },
+ {
+  "id": "FD-07",
+  "title": "Storage oggetti Supabase (S3) + chiavi DataProtection persistite + download documenti autenticato",
+  "findings": [
+   "A2-03",
+   "A9-04",
+   "A2-31"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "Decisione D9: Supabase Storage via API S3; bucket pubblico foto, privato documenti con URL firmati. Fallback filesystem SOLO in Development. Runbook docs/runbooks/storage.md."
+ },
+ {
+  "id": "FD-08",
+  "title": "Client HTTP frontend unico: flag public, 401/403, retry, parser ProblemDetails, niente fetch relativi",
+  "findings": [
+   "A9-20",
+   "A9-21",
+   "A9-22",
+   "A4-16"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [],
+  "wave": 1,
+  "notes": "Per A4-16 solo la parte fetch relativo (supplier-showcase); supplier-check-in viene rimosso in SU-11."
+ },
+ {
+  "id": "FD-09",
+  "title": "i18n frontend: parita' it/en, plurali, messaggi Zod tradotti, test di parita' + lint",
+  "findings": [
+   "A9-25",
+   "R-08",
+   "A2-28",
+   "A7-25",
+   "A1-25"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "FD-01"
+  ],
+  "wave": 1,
+  "notes": "Anche parte FE di A3-31, A5-32, A4-27 (le stringhe dei moduli toccati da altri task verranno ricontrollate da FN-02)."
+ },
+ {
+  "id": "FD-10",
+  "title": "Rate limiting per IP reale + UseForwardedHeaders (#273)",
+  "findings": [
+   "A1-12",
+   "A3-12",
+   "A3-30",
+   "A5-10",
+   "A9-10",
+   "A8-22",
+   "A3-41"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": ""
+ },
+ {
+  "id": "FD-11",
+  "title": "Hangfire: schema per ambiente + DisableConcurrentExecution sui job critici",
+  "findings": [
+   "A9-03"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "Runbook: verifica tabella hangfire.server su Supabase."
+ },
+ {
+  "id": "FD-12",
+  "title": "Health check reali + validazione configurazione all'avvio + documentazione variabili Stripe",
+  "findings": [
+   "A9-19",
+   "A3-24"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-05"
+  ],
+  "wave": 1,
+  "notes": ""
+ },
+ {
+  "id": "FD-13",
+  "title": "Servizio email unico: opzioni validate, niente mittente resend.dev forzato, template IT/EN con encoding, invio accodato",
+  "findings": [
+   "A9-06",
+   "A9-16",
+   "A4-06",
+   "A4-07",
+   "A4-08",
+   "A5-33",
+   "A4-20"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-05"
+  ],
+  "wave": 1,
+  "notes": "Rimuovere HttpEmailService/SmtpEmailService/EmailQueueProcessor inutilizzati se non servono; link sempre da App:PublicSiteBaseUrl (dominio configurabile, D3)."
+ },
+ {
+  "id": "FD-14",
+  "title": "Auth0 Management affidabile: token client-credentials in cache, ruoli solo additivi, esito propagato, membership DB, cache claim",
+  "findings": [
+   "A1-02",
+   "A4-01",
+   "A1-29",
+   "A4-30",
+   "A9-31"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "Runbook docs/runbooks/auth0.md (M2M, Action con email/name/email_verified, client Native)."
+ },
+ {
+  "id": "FD-15",
+  "title": "Sanitizzazione HTML ad allowlist (BE HtmlSanitizer + FE DOMPurify)",
+  "findings": [
+   "A8-08",
+   "A9-29"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1"
+  ],
+  "wave": 1,
+  "notes": "A9-29: solo la parte sanitizer; header in FD-17."
+ },
+ {
+  "id": "FD-16",
+  "title": "Fetch sicuro di URL esterni (anti-SSRF) per iCal property e fornitore",
+  "findings": [
+   "A2-21",
+   "A4-10",
+   "A9-32"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1"
+  ],
+  "wave": 1,
+  "notes": ""
+ },
+ {
+  "id": "FD-17",
+  "title": "CORS ristretto, header di sicurezza (HSTS, CSP, frame-ancestors), niente PII/token nei log",
+  "findings": [
+   "A3-29",
+   "A9-28",
+   "A1-34",
+   "A9-36",
+   "A2-32"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-10"
+  ],
+  "wave": 1,
+  "notes": "A9-29 parte header; A2-32 solo la parte log dei claim (DTO GetById in PC-02)."
+ },
+ {
+  "id": "FD-18",
+  "title": "Gating piani (#274): upgrade solo con subscription, tier effettivo ovunque",
+  "findings": [
+   "A1-03",
+   "A3-07",
+   "A9-02",
+   "A3-37",
+   "A1-41"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": ""
+ },
+ {
+  "id": "FD-19",
+  "title": "Pulizia file spazzatura e codice morto evidente (.bak, .idea, playwright-report, classi vuote)",
+  "findings": [
+   "A9-34",
+   "A3-36"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": ""
+ },
+ {
+  "id": "FD-20",
+  "title": "Feature flag + API OTA partner nascoste (menu, rotte, job, endpoint)",
+  "findings": [
+   "A2-09",
+   "A9-17",
+   "R-10",
+   "A8-16"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1",
+   "PR-2",
+   "PR-3"
+  ],
+  "wave": 1,
+  "notes": "Decisione approvata. Anche parte OTA di A8-16 e A9-15 (job ota-sync-all/booking-pull-all). R-10: parte webhook OTA (e availability 404 in BK-05)."
+ },
+ {
+  "id": "FD-21",
+  "title": "Discovery AI fornitori spenta + guard budget/rate limit AI + GDPR prompt",
+  "findings": [
+   "A8-01",
+   "A8-07",
+   "A8-14",
+   "A8-15",
+   "A4-26",
+   "A8-26"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-20"
+  ],
+  "wave": 1,
+  "notes": "Decisione approvata: flag OFF. Anche parte AI di A8-16."
+ },
+ {
+  "id": "TN-1",
+  "title": "Ospite per tenant: Guest.OrgId, migrazione che separa gli ospiti condivisi, filtro, DTO",
+  "findings": [
+   "A9-01",
+   "A2-02",
+   "A5-07",
+   "A2-35",
+   "A1-28"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-04",
+   "FD-05"
+  ],
+  "wave": 2,
+  "notes": ""
+ },
+ {
+  "id": "TN-2",
+  "title": "Filtro tenant automatico (ITenantOwned) + OrgId sulle entita' figlie esposte",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "TN-1"
+  ],
+  "wave": 2,
+  "notes": "Parte residua di A1-28 e sezione 1 di A9 (12 entita' senza filtro). Test architetturale su ogni DbSet."
+ },
+ {
+  "id": "TN-3",
+  "title": "Autorizzazione resource-based e policy di contesto uniformi (Guests, Gdpr, PricingAdapter, Payments, ServiceRequests)",
+  "findings": [
+   "A3-38"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "TN-2"
+  ],
+  "wave": 2,
+  "notes": "Rinominare policy PropertyOwner (oggi = autenticato)."
+ },
+ {
+  "id": "TN-4",
+  "title": "TenantContext asincrono + SetOrgId dopo provisioning + race primo accesso + slot piano atomico",
+  "findings": [
+   "A1-20",
+   "A1-14",
+   "A1-21"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-04"
+  ],
+  "wave": 2,
+  "notes": ""
+ },
+ {
+  "id": "PL-01",
+  "title": "Onboarding senza vicoli ciechi (admin, ruoli senza org, errore transitorio) + demo mode",
+  "findings": [
+   "A1-01",
+   "A1-19",
+   "A1-18",
+   "A9-38"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "FD-05",
+   "FD-14"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-02",
+  "title": "Consensi imposti dal backend (UserRole.None, 403 onboarding_required) + gating mobile",
+  "findings": [
+   "A1-05",
+   "A1-33"
+  ],
+  "repos": [
+   "backend",
+   "mobile",
+   "frontend"
+  ],
+  "deps": [
+   "PL-01",
+   "TN-4"
+  ],
+  "wave": 3,
+  "notes": "A1-33: parte gating; refresh token in MO-05."
+ },
+ {
+  "id": "PL-03",
+  "title": "Utente disattivato davvero bloccato (API + Auth0 + pagina FE)",
+  "findings": [
+   "A1-04"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-14"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-04",
+  "title": "Impostazioni organizzazione: nome, slug leggibile modificabile, email contatto pubblica opt-in",
+  "findings": [
+   "A1-22",
+   "A1-23"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-14",
+   "TN-4"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-05",
+  "title": "Org fornitore separata dall'org host",
+  "findings": [
+   "A1-40"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "TN-4"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-06",
+  "title": "Modifica tipo operatore, step consensi con retry, pagina piano senza promise non gestite",
+  "findings": [
+   "A1-15",
+   "A1-39",
+   "A1-38"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "PL-01"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-07",
+  "title": "Validazione enum (niente 500 su valori numerici)",
+  "findings": [
+   "A1-35",
+   "A7-31"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-05"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-08",
+  "title": "Rimuovere POST /api/auth/register stub",
+  "findings": [
+   "A1-30",
+   "A9-27"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-09",
+  "title": "Admin: rotta audit CIN, multi-ruolo con audit, stati errore, paginazione SQL",
+  "findings": [
+   "A1-16",
+   "A1-17",
+   "A1-26",
+   "A1-27"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-14"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-10",
+  "title": "Webhook Stripe idempotenti (platform e Connect) + billing: niente subscription duplicate, stati incomplete fail-closed",
+  "findings": [
+   "A1-09",
+   "A3-03",
+   "A1-10",
+   "A1-11"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "FD-18"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-11",
+  "title": "Billing: configurazione ambienti (Staging, URL ritorno, price id, allow-list) + tenant Auth0 separati (runbook)",
+  "findings": [
+   "A1-31",
+   "A1-32"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-12"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PL-12",
+  "title": "Billing frontend: piani, checkout, portale, paese e P.IVA, stato",
+  "findings": [
+   "A1-07"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "PL-10",
+   "PL-11"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PL-13",
+  "title": "IVA/OSS corretta con Stripe Tax + provider SDI configurabile",
+  "findings": [
+   "A1-08"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PL-10",
+   "RS-5"
+  ],
+  "wave": 4,
+  "notes": "Nessuna aliquota scritta a mano: Stripe Tax o tabella da fonte ufficiale RS-5."
+ },
+ {
+  "id": "PL-14",
+  "title": "Documenti legali: pagine /legale, versioni, ri-accettazione, sub-responsabili veritieri",
+  "findings": [
+   "A1-06",
+   "A9-40"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PL-02"
+  ],
+  "wave": 4,
+  "notes": "Testi ToS/Privacy/DPA: NON inventarli. Infrastruttura che li legge da file/config; finche' mancano la pagina mostra 'in preparazione' e il consenso usa la versione dichiarata. L'elenco sub-responsabili va reso veritiero dal codice (Resend, Auth0 con regione reale del tenant, Expo, DeepSeek se attivo, Vercel, Railway, Supabase, Stripe)."
+ },
+ {
+  "id": "PL-15",
+  "title": "Checklist di attivazione PLG + flag 'sito pubblicato' reale (anche chargesEnabled)",
+  "findings": [
+   "A1-37",
+   "A3-26"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PL-04"
+  ],
+  "wave": 4,
+  "notes": "Anche PLG-AC10."
+ },
+ {
+  "id": "PL-16",
+  "title": "Piano e billing gestibili dai landlord solo-LTR",
+  "findings": [
+   "A1-36"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-18"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PC-01",
+  "title": "Prenotazioni manuali host: Confirmed + BookingSource.Manual, mai auto-annullate",
+  "findings": [
+   "A2-01"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1",
+   "FD-04"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-02",
+  "title": "Property: PUT con semantica PATCH, campi mancanti nel form, tipi allineati, DTO GetById leggero",
+  "findings": [
+   "A2-04",
+   "A2-27",
+   "A2-32"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-05"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-03",
+  "title": "Pausa/attiva property con endpoint dedicato e lista che mostra le proprieta' in pausa",
+  "findings": [
+   "A2-05"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-02"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-04",
+  "title": "Galleria foto property (upload, ordine, cancellazione) su storage oggetti",
+  "findings": [
+   "A2-26"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "FD-07",
+   "PC-02"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PC-05",
+  "title": "Soft delete property con vincoli su dati fiscali e prenotazioni future",
+  "findings": [
+   "A2-18"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-04"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-06",
+  "title": "Indice indirizzo per org con interno + precisione coordinate",
+  "findings": [
+   "A2-19",
+   "A2-33"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-04",
+   "PC-02"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PC-07",
+  "title": "Ciclo di vita prenotazione da web: DTO di modifica, conferma, annulla, CTA, filtro per proprieta'",
+  "findings": [
+   "A2-07",
+   "A2-08",
+   "A2-30"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-01",
+   "TN-1"
+  ],
+  "wave": 4,
+  "notes": "Il check-in ('Registra arrivo') e' in CO-08. L'annullo con rimborso usa BK-02."
+ },
+ {
+  "id": "PC-08",
+  "title": "Calendario web: range corretto e refetch alla navigazione",
+  "findings": [
+   "A2-06"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "FD-06"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-09",
+  "title": "Blocchi manuali di date (owner, manutenzione)",
+  "findings": [
+   "A2-25"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-08"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PC-10",
+  "title": "iCal robusto: feed vuoto valido, errori isolati per feed, parser fuori da 'Spike', STATUS/RRULE/all-day",
+  "findings": [
+   "A2-10",
+   "A2-12",
+   "A2-23",
+   "A9-13"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-16"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-11",
+  "title": "iCal multi-feed per proprieta' (Airbnb + Booking) con URL cifrata",
+  "findings": [
+   "A2-11",
+   "A2-20"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-10",
+   "FD-07"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PC-12",
+  "title": "Export iCal corretto (VALUE=DATE, niente eco, niente SUMMARY sensibili, token rigenerabile)",
+  "findings": [
+   "A2-22"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PC-10"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "PC-13",
+  "title": "UI iCal: errori leggibili, sincronizza ora, scollega",
+  "findings": [
+   "A2-24"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "PC-11"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "PC-14",
+  "title": "Performance liste prenotazioni e ospiti (niente N+1)",
+  "findings": [
+   "A2-17"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "TN-1"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "PC-15",
+  "title": "Prezzi: 'Suggerimenti stagionali' senza AI finta, basati sul prezzo reale, scheduling corretto",
+  "findings": [
+   "A2-14",
+   "A2-34",
+   "A8-17"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-06"
+  ],
+  "wave": 3,
+  "notes": "Decisione approvata: rinomina."
+ },
+ {
+  "id": "PC-16",
+  "title": "Dashboard host: KPI reali per periodo e widget iCal al posto di OTA",
+  "findings": [
+   "A2-29",
+   "A2-36"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-20",
+   "PC-10"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "BK-01",
+  "title": "Checkout pubblico: passaggio widget->checkout, campi data, precompilazione, validazioni, parametri deep link",
+  "findings": [
+   "A3-01",
+   "R-04",
+   "A3-34",
+   "A3-28"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "FD-09"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-02",
+  "title": "Rimborsi e cancellazioni reali su Stripe Connect (#51), niente 'process payment' finto",
+  "findings": [
+   "A3-05",
+   "A9-15"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-1",
+   "TN-3"
+  ],
+  "wave": 3,
+  "notes": "A9-15: parte pagamenti. Policy di cancellazione -> importo rimborsabile."
+ },
+ {
+  "id": "BK-03",
+  "title": "Tassa di soggiorno unica su TouristTaxRate + endpoint preventivo + esenzioni + calcolatore pubblico",
+  "findings": [
+   "A3-02",
+   "R-05",
+   "A5-16",
+   "A8-12",
+   "A8-23"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-06",
+   "RS-7"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "BK-04",
+  "title": "Pagamento arrivato su prenotazione cancellata: riconferma o rimborso automatico",
+  "findings": [
+   "A3-04"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "BK-02"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "BK-05",
+  "title": "Disponibilita' pubblica per id con blocchi iCal e 404 su property non pubblicate",
+  "findings": [
+   "A3-09",
+   "A2-13",
+   "R-03",
+   "A9-39"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-10"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-06",
+  "title": "'Paga in struttura' sempre soggetta ad approvazione dell'host",
+  "findings": [
+   "A3-06",
+   "R-11"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-01",
+   "FD-13"
+  ],
+  "wave": 4,
+  "notes": "Decisione: la prenotazione OnSite resta 'in attesa di approvazione' finche' l'host non accetta; se accetta e' valida. Dubbio da non inventare: durata dell'attesa prima della scadenza -> renderla configurabile e segnalarla."
+ },
+ {
+  "id": "BK-07",
+  "title": "Esito checkout reale, gestione redirect Stripe, errori per codice, opzioni di pagamento corrette",
+  "findings": [
+   "A3-15",
+   "A3-16"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "BK-01",
+   "BK-03"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "BK-08",
+  "title": "Addebito differito robusto (OffSession, stato PI, notifiche, kind nel webhook)",
+  "findings": [
+   "A3-14"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1",
+   "FD-13"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "BK-09",
+  "title": "Stripe Connect: niente reset su errori transitori, idempotency key, policy admin, URL server-side",
+  "findings": [
+   "A3-19",
+   "A3-42"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "TN-3"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-10",
+  "title": "Email transazionali prenotazione (#58): conferma, ricevuta, cancellazione, rimborso + push host",
+  "findings": [
+   "A3-11"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-13",
+   "BK-02"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "BK-11",
+  "title": "'Le mie prenotazioni' con codice prenotazione",
+  "findings": [
+   "A3-10",
+   "R-06"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "FD-08"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-12",
+  "title": "Branding del sito: API e pagina 'Aspetto sito' (logo, hero, colori, tagline, tema)",
+  "findings": [
+   "A3-17"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-07",
+   "PL-04"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "BK-13",
+  "title": "Temi reali, font, contrasto AA, stati d'errore della landing",
+  "findings": [
+   "A3-18",
+   "A3-32",
+   "A3-35"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "BK-12"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "BK-14",
+  "title": "Pagine privacy e termini dell'operatore sul sito pubblico",
+  "findings": [
+   "A3-21"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "PL-14",
+   "BK-12"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "BK-15",
+  "title": "SEO indicizzabile per /book e /p: prerender, meta, JSON-LD, sitemap per org, robots",
+  "findings": [
+   "A3-20",
+   "A8-29",
+   "A8-09",
+   "A8-20"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "BK-12",
+   "SE-02"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "BK-16",
+  "title": "Sottodominio e dominio custom: route pubblica/middleware e CORS dinamico",
+  "findings": [
+   "A3-08"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "FD-17",
+   "BK-12"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "BK-17",
+  "title": "Domini: Vercel Domains API, verifica CNAME, ricontrollo, step onboarding, runbook",
+  "findings": [
+   "A3-25"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "BK-16"
+  ],
+  "wave": 6,
+  "notes": ""
+ },
+ {
+  "id": "BK-18",
+  "title": "Niente ospiti orfani con PII sui tentativi falliti",
+  "findings": [
+   "A3-33"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "TN-1"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-21",
+  "title": "Job di scadenza delle prenotazioni Pending (annulla PI/SI) + esclusione scaduti da disponibilita' ed export iCal",
+  "findings": [
+   "A3-13"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-19",
+  "title": "Webhook tolleranti alla API version + niente ApplicationFeeAmount=0",
+  "findings": [
+   "A3-39",
+   "A3-40"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-1"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "BK-20",
+  "title": "Ricerca pubblica /search funzionante (link, NaN, shell pubblica)",
+  "findings": [
+   "A3-27",
+   "A8-13"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "BK-12"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "SU-01",
+  "title": "Invito fornitore verso la SPA + registrazione self-serve (token legato all'email, comuni pilota, rate limit)",
+  "findings": [
+   "A4-03",
+   "A4-04",
+   "A4-21",
+   "A4-24"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-13",
+   "FD-10"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SU-02",
+  "title": "Claim del profilo fornitore dopo il login + onboarding fornitore; collegamento solo con email verificata o invito",
+  "findings": [
+   "A4-02",
+   "A4-23",
+   "A1-13"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "SU-01",
+   "FD-14",
+   "PL-01"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "SU-03",
+  "title": "Tassonomia unica delle categorie di servizio (BE, web, app) + migrazione dati",
+  "findings": [
+   "A4-05",
+   "A6-03"
+  ],
+  "repos": [
+   "backend",
+   "frontend",
+   "mobile"
+  ],
+  "deps": [
+   "FD-04"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SU-04",
+  "title": "Anagrafica comuni ISTAT completa + picker + ComuneIstatCode/RegionCode su property e fornitore",
+  "findings": [
+   "A4-12",
+   "A5-34",
+   "A8-24",
+   "A5-19"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "RS-6",
+   "FD-04"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SU-05",
+  "title": "Attivazione fornitore con requisiti reali + wizard 5 step persistito + ToS versionata",
+  "findings": [
+   "A4-09",
+   "A4-31"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "SU-03",
+   "SU-04"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "SU-06",
+  "title": "Pagine fornitore: stati d'errore e i18n",
+  "findings": [
+   "A4-25",
+   "A4-27"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "SU-05"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "SU-07",
+  "title": "Richiesta fornitore legata alla prenotazione (STR) o alla proprieta' (LTR), parita' web/app (#340)",
+  "findings": [
+   "A4-13",
+   "A4-33"
+  ],
+  "repos": [
+   "backend",
+   "frontend",
+   "mobile"
+  ],
+  "deps": [
+   "SU-03",
+   "TN-3"
+  ],
+  "wave": 4,
+  "notes": "Decisione D2: affitti brevi -> bookingId obbligatorio quando c'e' un soggiorno; affitti lunghi -> proprieta'. Aggiornare #340."
+ },
+ {
+  "id": "SU-08",
+  "title": "Fornitore vede indirizzo, data e contatto + pagina dettaglio incarico + storico",
+  "findings": [
+   "A4-14"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "SU-07"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "SU-09",
+  "title": "Timeline host completa, conferma 'Segna pagato', motivo rifiuto, richiedi ad altro fornitore",
+  "findings": [
+   "A4-28"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "SU-07",
+   "FD-13"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "SU-10",
+  "title": "ServiceRequest: concorrenza (xmin), validazione DTO, niente 500 evitabili",
+  "findings": [
+   "A4-17",
+   "A4-18",
+   "A4-19"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-05",
+   "FD-04"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SU-11",
+  "title": "Eliminare SupplierJob e check-in QR; KPI fornitore su ServiceRequest",
+  "findings": [
+   "A4-15"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "SU-10"
+  ],
+  "wave": 4,
+  "notes": "Decisione approvata."
+ },
+ {
+  "id": "SU-12",
+  "title": "Admin fornitori: elenco, sospensione, inviti; transizioni solo per fornitori Active",
+  "findings": [
+   "A4-29"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "SU-01"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "SU-13",
+  "title": "Vetrina pubblica fornitore v0 (slug generato, shell pubblica, anteprima)",
+  "findings": [
+   "A4-16"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-08",
+   "SU-05"
+  ],
+  "wave": 5,
+  "notes": "#303 minimo; parte fetch gia' in FD-08."
+ },
+ {
+  "id": "SU-14",
+  "title": "fix-orphaned sicuro + email fornitore univoca",
+  "findings": [
+   "A4-22"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-04"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SU-15",
+  "title": "Sync calendario fornitore via Hangfire invece di Task.Run",
+  "findings": [
+   "A4-11",
+   "A9-14"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-16"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SU-16",
+  "title": "Codice morto supplier-shell + pagina aiuto iCal dentro la console (#327)",
+  "findings": [
+   "A4-32"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "FD-08"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-01",
+  "title": "Formato CIN ufficiale unico (BE+FE), migrazione dati, regole di progetto",
+  "findings": [
+   "A5-05",
+   "R-02"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "RS-2"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-02",
+  "title": "Portale ospite: campo sesso, errori per campo, prefill mascherato dopo il completamento",
+  "findings": [
+   "A5-04",
+   "A5-28"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "FD-05"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-03",
+  "title": "Step tassa di soggiorno come avviso + create tariffe admin + seed da fonti ufficiali",
+  "findings": [
+   "A5-06",
+   "A8-28"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-06",
+   "RS-7"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-04",
+  "title": "Link del cockpit verso rotte esistenti",
+  "findings": [
+   "A5-09"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-05",
+  "title": "Wizard attivazione property: checklist precompilata, blocker del 409 mostrati, step navigabili",
+  "findings": [
+   "A5-18"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "CO-01",
+   "CO-03"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-06",
+  "title": "Rivalutazione dello stato compliance + Suspended + ricalcolo property storiche",
+  "findings": [
+   "A5-20",
+   "A5-36"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "CO-01"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-07",
+  "title": "Checklist sicurezza conforme a D.L. 145/2023 (con 'non applicabile')",
+  "findings": [
+   "A5-21"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "RS-3"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-08",
+  "title": "'Registra arrivo' (check-in) da web e app + start/complete del check-out allineati",
+  "findings": [
+   "A5-08"
+  ],
+  "repos": [
+   "backend",
+   "frontend",
+   "mobile"
+  ],
+  "deps": [
+   "PC-07"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-09",
+  "title": "Fallback host per i dati ospite: form Alloggiati, link copiabile, invio link sempre possibile, scadenza sessioni",
+  "findings": [
+   "A5-26",
+   "A5-27"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "CO-02"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-10",
+  "title": "Alert deduplicati + reminder check-out via email",
+  "findings": [
+   "A5-11",
+   "A6-07",
+   "A5-25"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-13"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-11",
+  "title": "Alloggiati: stato onesto, schedulazione all'arrivo (Europe/Rome), idempotenza, niente reinvio doppio",
+  "findings": [
+   "A5-01",
+   "A5-03",
+   "A5-37",
+   "A9-05",
+   "A5-35"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-06",
+   "RS-1"
+  ],
+  "wave": 3,
+  "notes": "A5-35: riscrivere i test compliance che certificano simulazioni o mock divergenti. Decisione: se RS-1 trova specifiche pubbliche implementare file/WS in CO-13; qui solo stato onesto + riepilogo dati per ospite."
+ },
+ {
+  "id": "CO-12",
+  "title": "Modello a N ospiti per soggiorno (StayGuest) + tabelle codici",
+  "findings": [
+   "A5-02"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "TN-1",
+   "RS-1"
+  ],
+  "wave": 4,
+  "notes": "Tabelle codici solo da fonte ufficiale RS-1; altrimenti campi strutturati + validazione e segnalazione."
+ },
+ {
+  "id": "CO-13",
+  "title": "Alloggiati: generazione file tracciato e/o client WS se le specifiche ufficiali sono disponibili",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "CO-11",
+   "CO-12",
+   "CO-14"
+  ],
+  "wave": 5,
+  "notes": "Solo se RS-1 conferma specifiche pubbliche; altrimenti chiudere documentando il motivo."
+ },
+ {
+  "id": "CO-14",
+  "title": "Cifratura PII ospite e credenziali Questura (con UI credenziali in sola scrittura)",
+  "findings": [
+   "A5-30"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-07",
+   "TN-1"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-15",
+  "title": "GDPR: anonimizzazione ed export completi, retention per categoria, consensi con versione, niente consenso marketing dall'host",
+  "findings": [
+   "A5-12",
+   "A5-13",
+   "A5-14",
+   "A5-15",
+   "A9-18"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "TN-1",
+   "FD-07"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-16",
+  "title": "Rimuovere il portale check-in legacy /api/checkin",
+  "findings": [
+   "A5-29",
+   "A9-30"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "CO-02"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "CO-17",
+  "title": "Check-out wizard a 5 step (fornitore pulizie, tassa riscossa, property pronta) + cockpit su stati reali",
+  "findings": [
+   "A5-24"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "CO-08",
+   "SU-07",
+   "CO-11"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "CO-18",
+  "title": "Regole fiscali STR corrette (soglia per contribuente, ritenuta vs P.IVA, IRPEF ordinaria)",
+  "findings": [
+   "A5-22"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "RS-5"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-19",
+  "title": "UI fiscale completa + report e PDF tabellari in italiano",
+  "findings": [
+   "A5-23"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "CO-18",
+   "LT-09"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "CO-20",
+  "title": "Alert CIN reale e messaggi dopo la scadenza",
+  "findings": [
+   "A5-31"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-13",
+   "CO-01"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "CO-21",
+  "title": "Soggiorno OTA creato dall'host da un blocco iCal (check-in ospite, Alloggiati, cockpit)",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PC-11",
+   "CO-08",
+   "TN-1"
+  ],
+  "wave": 5,
+  "notes": "Decisione: si'. Copre GC-AC9 (punto pianificato mai sviluppato)."
+ },
+ {
+  "id": "CO-22",
+  "title": "ISTAT (#6) e portali regionali (#8): implementazione solo se RS-9 trova standard pubblici",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "RS-9",
+   "SU-04"
+  ],
+  "wave": 6,
+  "notes": ""
+ },
+ {
+  "id": "MO-01",
+  "title": "Login Auth0 nativo (client Native), rimozione iniezione token e2e, demo solo in __DEV__",
+  "findings": [
+   "A6-01",
+   "A6-21",
+   "A6-31"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "FD-14"
+  ],
+  "wave": 3,
+  "notes": "Runbook Auth0 client Native."
+ },
+ {
+  "id": "MO-02",
+  "title": "Configurazione EAS per profilo, niente fallback localhost, asset e icone",
+  "findings": [
+   "A6-02",
+   "A9-37",
+   "A6-30"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "FD-03"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "MO-03",
+  "title": "Push: registrazione reale, deviceId stabile, cold start dal tap",
+  "findings": [
+   "A6-05",
+   "A6-06",
+   "A6-19"
+  ],
+  "repos": [
+   "mobile",
+   "backend"
+  ],
+  "deps": [
+   "MO-02"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "MO-04",
+  "title": "Push dal backend: notifiche mancanti (rifiuto, nuova prenotazione, nuova richiesta), invio asincrono a batch",
+  "findings": [
+   "A6-08",
+   "A6-29"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FD-13"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "MO-05",
+  "title": "Sessione app: refresh token, logout completo, 401 vs 403",
+  "findings": [
+   "A6-14",
+   "A6-15"
+  ],
+  "repos": [
+   "mobile",
+   "backend"
+  ],
+  "deps": [
+   "MO-01",
+   "FD-05"
+  ],
+  "wave": 4,
+  "notes": "Anche la parte refresh di A1-33."
+ },
+ {
+  "id": "MO-06",
+  "title": "Calendario app: selettore proprieta', blocchi iCal, range corretto, navigazione",
+  "findings": [
+   "A6-10",
+   "A6-11",
+   "A6-12",
+   "A2-16"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "PC-10"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "MO-07",
+  "title": "App: errori espliciti, ProblemDetails, offline graceful",
+  "findings": [
+   "A6-13",
+   "A6-26",
+   "A6-25"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "FD-05"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "MO-08",
+  "title": "Dettaglio prenotazione app: stato check-in ospite, badge compliance, pull-to-refresh, riepilogo compliance",
+  "findings": [
+   "A6-17"
+  ],
+  "repos": [
+   "mobile",
+   "backend"
+  ],
+  "deps": [
+   "CO-08"
+  ],
+  "wave": 5,
+  "notes": "Anche CW-AC15."
+ },
+ {
+  "id": "MO-09",
+  "title": "Check-out rapido app con start e riepilogo",
+  "findings": [
+   "A6-16"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "CO-17"
+  ],
+  "wave": 6,
+  "notes": ""
+ },
+ {
+  "id": "MO-10",
+  "title": "Richiesta fornitore da app con scelta del fornitore",
+  "findings": [
+   "A6-18"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "SU-07"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "MO-11",
+  "title": "Share link con slug dell'org",
+  "findings": [
+   "A6-09",
+   "A3-22"
+  ],
+  "repos": [
+   "mobile",
+   "backend"
+  ],
+  "deps": [
+   "PL-04"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "MO-12",
+  "title": "Proprieta' visibili per ruolo/org (property manager)",
+  "findings": [
+   "A6-20"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "TN-3"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "MO-13",
+  "title": "App: i18n IT/EN, accessibilita', testID, testi",
+  "findings": [
+   "A6-27",
+   "A6-28",
+   "A6-32"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "MO-06",
+   "MO-07"
+  ],
+  "wave": 6,
+  "notes": ""
+ },
+ {
+  "id": "LT-01",
+  "title": "Registrazione RLI: integrazione reale se documentata (RS-4), altrimenti flusso manuale onesto; atomicita'",
+  "findings": [
+   "A7-01",
+   "A7-21"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-2",
+   "RS-4"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-02",
+  "title": "Firma contratto: provider reale se documentato, altrimenti firma offline con upload; link firmatari persistiti; webhook con controllo stato",
+  "findings": [
+   "A7-02",
+   "A7-16",
+   "A7-20"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-2",
+   "RS-4",
+   "FD-07"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-03",
+  "title": "Template contratto: gate di approvazione reale (Approved=false di default) e contenuto da fonte legale",
+  "findings": [
+   "A7-03"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-2"
+  ],
+  "wave": 3,
+  "notes": "Non scrivere clausole legali: struttura + segnaposto non pubblicabili finche' non forniti."
+ },
+ {
+  "id": "LT-04",
+  "title": "Scadenza RLI corretta (stipula/decorrenza) + promemoria a intervalli su tutti gli stati",
+  "findings": [
+   "A7-04"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-2",
+   "RS-5",
+   "FD-06"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-05",
+  "title": "Landlord solo-LTR: accesso agli immobili e all'APE nel contesto long-rent",
+  "findings": [
+   "A7-06"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-2"
+  ],
+  "wave": 3,
+  "notes": "Verificare se #434 (PR-2) lo chiude gia'."
+ },
+ {
+  "id": "LT-06",
+  "title": "Canone ricorrente (#269): scadenziario, job, UI e incasso su Stripe Connect",
+  "findings": [
+   "A7-07"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "BK-02",
+   "LT-09"
+  ],
+  "wave": 6,
+  "notes": ""
+ },
+ {
+  "id": "LT-07",
+  "title": "Checklist Questura extra-UE con azione esplicita e termine 48h",
+  "findings": [
+   "A7-08"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-2"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-08",
+  "title": "Advisory fiscale LTR corretto (ATA, base 70%, minimo imposta di registro)",
+  "findings": [
+   "A7-09"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "RS-5",
+   "RS-8"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-09",
+  "title": "Libreria PDF (A4, a capo, Unicode) per contratti e report",
+  "findings": [
+   "A7-14"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "PR-2"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "LT-10",
+  "title": "Canone concordato: fasce contigue, tetti coefficienti, durata per tipologia, range validato lato server, dati Partial segnalati",
+  "findings": [
+   "A7-10",
+   "A7-11",
+   "A7-12",
+   "A7-13",
+   "A7-23"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "RS-8",
+   "PR-2"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-11",
+  "title": "LTR: etichette stati, errori, DTO senza PII, stringhe tradotte",
+  "findings": [
+   "A7-15",
+   "A7-17",
+   "A7-26",
+   "A7-27"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "PR-2",
+   "FD-09"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-12",
+  "title": "Anonimizzazione Party su lease scaduti (#179) + retention su data di fine",
+  "findings": [
+   "A7-18"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "CO-15"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "LT-13",
+  "title": "Dati normativi LTR su DB (destinatari IMU, soglie) + pulsante IMU solo quando pertinente",
+  "findings": [
+   "A7-22",
+   "A7-24"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "RS-8",
+   "PR-2"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "LT-14",
+  "title": "Contratti con piu' locatori/conduttori + validazione codice fiscale",
+  "findings": [
+   "A7-28"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "LT-11"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "LT-15",
+  "title": "Test LTR: flusso reale, matrice coefficienti, E2E lease (FE #83)",
+  "findings": [
+   "A7-29"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "LT-10",
+   "LT-01",
+   "LT-02"
+  ],
+  "wave": 6,
+  "notes": ""
+ },
+ {
+  "id": "SE-01",
+  "title": "SEO: revisione legale reale (niente auto-approve), rigenerazione in Draft, contenuti stub ritirati, UX admin",
+  "findings": [
+   "A8-04",
+   "A8-05",
+   "A8-06",
+   "R-09",
+   "A8-21"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-15"
+  ],
+  "wave": 3,
+  "notes": ""
+ },
+ {
+  "id": "SE-02",
+  "title": "Dominio canonico configurabile: canonical, sitemap e robots sul dominio del frontend",
+  "findings": [
+   "A8-02"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "FD-12"
+  ],
+  "wave": 3,
+  "notes": "Decisione D3: nessun dominio hardcoded, solo variabili d'ambiente."
+ },
+ {
+  "id": "SE-03",
+  "title": "Funnel: rotta /signup con attribuzione (comune, UTM) e CTA funzionanti",
+  "findings": [
+   "A8-03"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "SE-02",
+   "PL-01"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "SE-04",
+  "title": "Immobili in evidenza per comune + SeoEvent senza PII + widget admin (#300 AC2 AC3 AC8 AC9)",
+  "findings": [
+   "A8-10",
+   "A8-11",
+   "A8-18"
+  ],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "SE-03",
+   "BK-12"
+  ],
+  "wave": 5,
+  "notes": ""
+ },
+ {
+  "id": "SE-05",
+  "title": "SEO: i18n, cache AI limitata, avviso trasparenza AI Act montato",
+  "findings": [
+   "A8-19",
+   "A8-25",
+   "A8-27"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "SE-01"
+  ],
+  "wave": 4,
+  "notes": ""
+ },
+ {
+  "id": "FN-01",
+  "title": "Messaggi backend residui su IStringLocalizer (.resx IT/EN)",
+  "findings": [
+   "A3-31",
+   "A5-32"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "*"
+  ],
+  "wave": 6,
+  "notes": "Anche parte BE di A1-25 e A4-27: sweep finale dopo i task di feature. Parte solo dopo tutti gli altri task (sweep finale)."
+ },
+ {
+  "id": "FN-02",
+  "title": "Rimozione componenti FE morti + knip in CI",
+  "findings": [
+   "A9-33"
+  ],
+  "repos": [
+   "frontend"
+  ],
+  "deps": [
+   "*"
+  ],
+  "wave": 6,
+  "notes": "Parte solo dopo tutti gli altri task (sweep finale)."
+ },
+ {
+  "id": "FN-03",
+  "title": "Golden Journey L3 da UI in CI su stack effimero (host, fornitore, guest distinti; Stripe test) + F1-F2",
+  "findings": [
+   "A6-04",
+   "A6-23",
+   "A6-24",
+   "A3-23"
+  ],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "CO-17",
+   "SU-09",
+   "BK-07"
+  ],
+  "wave": 7,
+  "notes": ""
+ },
+ {
+  "id": "FN-04",
+  "title": "Maestro reale (login, push, assert per ID) + seed app + job CI su emulatore",
+  "findings": [
+   "A6-22"
+  ],
+  "repos": [
+   "mobile"
+  ],
+  "deps": [
+   "FN-03",
+   "MO-03"
+  ],
+  "wave": 7,
+  "notes": ""
+ },
+ {
+  "id": "FN-05",
+  "title": "Registro spec, PLANNING e documentazione allineati allo stato reale",
+  "findings": [
+   "A7-30",
+   "A8-30"
+  ],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "*"
+  ],
+  "wave": 7,
+  "notes": "Parte solo dopo tutti gli altri task (sweep finale)."
+ }
+]
