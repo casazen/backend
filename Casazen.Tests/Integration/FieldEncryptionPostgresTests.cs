@@ -169,6 +169,7 @@ public class FieldEncryptionPostgresTests
         var newKey = keyManager.CreateNewKey(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(90)).KeyId;
         Assert.NotEqual(oldKey, newKey);
         Assert.Equal(2, await stored.DataProtectionKeys.CountAsync());
+        await WaitUntilDefaultKeyAsync(provider, newKey);
 
         Guid newGuestId;
         await using (var db = NewContext(database, provider))
@@ -364,6 +365,21 @@ public class FieldEncryptionPostgresTests
     private static Task<string> RawCredentialsAsync(AppDbContext stored, Guid propertyId) =>
         stored.Database.SqlQuery<string>(
             $"""SELECT row_to_json(t)::text AS "Value" FROM "PropertyQuesturaCredentials" AS t WHERE t."PropertyId" = {propertyId}""").SingleAsync();
+
+    /// <summary>
+    /// The provider reloads its key ring in the background once a key is created: wait until it protects with the new
+    /// key (it does not become the default one synchronously).
+    /// </summary>
+    private static async Task WaitUntilDefaultKeyAsync(IDataProtectionProvider provider, Guid keyId)
+    {
+        var probe = provider.CreateProtector("Casazen.Tests.KeyRotationProbe");
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (KeyIdOf(probe.Protect("probe")) != keyId)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "The new key never became the default key.");
+            await Task.Delay(100);
+        }
+    }
 
     /// <summary>Id of the key that produced a Data Protection payload (bytes 4-19, after the magic header).</summary>
     private static Guid KeyIdOf(string payload)
