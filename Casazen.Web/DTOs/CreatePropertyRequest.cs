@@ -13,26 +13,26 @@ namespace Casazen.Web.DTOs;
 public class CreatePropertyRequest
 {
     /// <summary>Display name of the property.</summary>
-    [Required(ErrorMessage = "Name is required")]
-    [MaxLength(100, ErrorMessage = "Name cannot exceed 100 characters")]
+    [Required(ErrorMessage = "PropertyNameRequired")]
+    [MaxLength(100, ErrorMessage = "PropertyNameTooLong")]
     public string Name { get; set; } = string.Empty;
 
     /// <summary>Full description shown to guests.</summary>
-    [MaxLength(2000, ErrorMessage = "Description cannot exceed 2000 characters")]
+    [MaxLength(2000, ErrorMessage = "PropertyDescriptionTooLong")]
     public string Description { get; set; } = string.Empty;
 
     /// <summary>Street address of the property.</summary>
-    [Required(ErrorMessage = "Address is required")]
-    [MaxLength(500, ErrorMessage = "Address cannot exceed 500 characters")]
+    [Required(ErrorMessage = "PropertyAddressRequired")]
+    [MaxLength(500, ErrorMessage = "PropertyAddressTooLong")]
     public string Address { get; set; } = string.Empty;
 
     /// <summary>City where the property is located.</summary>
-    [Required(ErrorMessage = "City is required")]
-    [MaxLength(50, ErrorMessage = "City cannot exceed 50 characters")]
+    [Required(ErrorMessage = "PropertyCityRequired")]
+    [MaxLength(50, ErrorMessage = "PropertyCityTooLong")]
     public string City { get; set; } = string.Empty;
 
     /// <summary>Postal / ZIP code.</summary>
-    [MaxLength(10, ErrorMessage = "Postal code cannot exceed 10 characters")]
+    [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string PostalCode { get; set; } = string.Empty;
 
     /// <summary>Geographic latitude of the property.</summary>
@@ -41,34 +41,34 @@ public class CreatePropertyRequest
     /// <summary>Geographic longitude of the property.</summary>
     public decimal Longitude { get; set; }
 
-    /// <summary>Number of bedrooms (1–100).</summary>
-    [Range(1, 100, ErrorMessage = "Bedrooms must be between 1 and 100")]
+    /// <summary>Number of bedrooms (0–100): <c>0</c> is a studio flat (monolocale, A2-27).</summary>
+    [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
     public int Bedrooms { get; set; }
 
-    /// <summary>Number of bathrooms (1–50).</summary>
-    [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
+    /// <summary>Number of bathrooms, whole number (1–50, A2-27).</summary>
+    [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
     /// <summary>
     /// Maximum number of guests of a short stay (0–100). <c>0</c> = not set: a property kept only for long-term leases
     /// has none (A7-06); the short-stay listing cannot be activated until it is set (activation wizard).
     /// </summary>
-    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
+    [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
     /// <summary>
     /// Base nightly rate in euros (€0–€100,000). <c>0</c> = no short-stay rate (long-term only property, A7-06); the
     /// short-stay listing cannot be activated until it is set (activation wizard).
     /// </summary>
-    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
+    [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
     /// <summary>One-time cleaning fee in euros (€0–€10,000).</summary>
-    [Range(0, 10000, ErrorMessage = "Cleaning fee must be between €0 and €10,000")]
+    [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal CleaningFee { get; set; }
 
     /// <summary>Refundable damage deposit in euros (€0–€50,000).</summary>
-    [Range(0, 50000, ErrorMessage = "Damage deposit must be between €0 and €50,000")]
+    [Range(0, 50000, ErrorMessage = "PropertyDamageDepositRange")]
     public decimal DamageDeposit { get; set; }
 
     /// <summary>List of amenities available at the property.</summary>
@@ -78,7 +78,7 @@ public class CreatePropertyRequest
     public List<string> PhotoUrls { get; set; } = new();
 
     /// <summary>House rules presented to guests before booking.</summary>
-    [MaxLength(1000, ErrorMessage = "House rules cannot exceed 1000 characters")]
+    [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
     public string HouseRules { get; set; } = string.Empty;
 
     /// <summary>
@@ -95,7 +95,8 @@ public class CreatePropertyRequest
     /// IANA timezone identifier used for booking date calculations
     /// (e.g. <c>Europe/Rome</c>). Defaults to <c>Europe/Rome</c>.
     /// </summary>
-    [MaxLength(50, ErrorMessage = "Timezone cannot exceed 50 characters")]
+    [MaxLength(50, ErrorMessage = "PropertyTimezoneInvalid")]
+    [IanaTimeZone(ErrorMessage = "PropertyTimezoneInvalid")]
     public string Timezone { get; set; } = "Europe/Rome";
 
     /// <summary>Optional reference to the cancellation policy applied to new bookings.</summary>
@@ -105,7 +106,7 @@ public class CreatePropertyRequest
     public bool IsActive { get; set; } = true;
 
     /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
-    [MaxLength(100)]
+    [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug { get; set; }
 
     /// <summary>

@@ -19,6 +19,11 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .FirstOrDefaultAsync(p => p.Id == id);
     }
 
+    public async Task<Property?> GetRecordAsync(Guid id)
+    {
+        return await context.Properties.FirstOrDefaultAsync(p => p.Id == id);
+    }
+
     public async Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId)
     {
         return await context.Properties
@@ -136,5 +141,18 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         if (excludePropertyId.HasValue)
             query = query.Where(p => p.Id != excludePropertyId.Value);
         return await query.AnyAsync();
+    }
+
+    public async Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync()
+    {
+        return await context.CancellationPolicies
+            .AsNoTracking()
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    public async Task<bool> CancellationPolicyExistsAsync(Guid id)
+    {
+        return await context.CancellationPolicies.AnyAsync(p => p.Id == id);
     }
 }

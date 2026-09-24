@@ -2,7 +2,115 @@
 
 Task PL-10 (audit defects A1-09, A3-03 P0, A1-10, A1-11). The code is in place; the product owner checks the
 Stripe settings below, test mode first, then live mode. Keys, the two webhook endpoints and their event lists
-are in `docs/INFRA.md` § "Stripe keys and webhooks".
+are in `docs/INFRA.md` § "Stripe keys and webhooks". Environments, plan prices and return pages (task PL-11):
+section [Environments](#environments-stripe-mode-plan-prices-and-return-pages-pl-11).
+
+## Environments: Stripe mode, plan prices and return pages (PL-11)
+
+Task PL-11 (audit defects A1-31, A1-32). Before it the Railway test environment ran as `Production` with test keys,
+so the billing entry gate stayed closed and the billing could not be tested; the return pages pointed at a domain and
+routes that do not exist; the price ids were placeholders; `successUrl` / `cancelUrl` were taken from the client
+without any check.
+
+### Which environment uses which mode
+
+| Railway environment | `ASPNETCORE_ENVIRONMENT` | Stripe keys | Price ids | Auth0 tenant |
+|---|---|---|---|---|
+| `test` | **`Staging`** | test mode (`sk_test_…` or `rk_test_…`, `pk_test_…`) | the test-mode prices | test tenant ([auth0.md](auth0.md) §1) |
+| `production` | `Production` | live mode (`sk_live_…` or `rk_live_…`, `pk_live_…`) | the live-mode prices | production tenant |
+
+What the API enforces at startup (`Casazen.Web/Configuration/BillingConfiguration.cs`). "Stops" = the new container
+exits with the list of problems and Railway keeps the previous deployment:
+
+| Situation | Result |
+|---|---|
+| `Production` with a test-mode `Stripe__SecretKey` or `Stripe__PublishableKey` | stops (`… is a Stripe test-mode key but ASPNETCORE_ENVIRONMENT is Production`) |
+| Any other environment (`Staging`, `Development`, `Testing`) with a live-mode key | stops (`… is a Stripe live-mode key but ASPNETCORE_ENVIRONMENT is Staging`) |
+| `Production` with `Stripe__SecretKey` set and a plan without a valid Price id, or two plans with the same id | stops, naming the `Billing__Prices__<Tier>` variables |
+| `Production` without `Stripe__SecretKey` (payments not active yet) | starts; `/api/health/ready` reports `stripe: degraded` (FD-12: payments are optional) |
+| `Staging` / `Development` with a plan without a Price id | starts; that plan is **not purchasable**: `GET /api/billing/plans` returns `purchasable: false` and an empty `stripePriceId`, the checkout answers **422 `billing_plan_unavailable`**, `/api/health/ready` reports `stripe: degraded` naming the variable |
+
+Choice for the price ids (PL-11): in Production a plan offered by the catalogue but not payable is a configuration error
+and stops the deploy; elsewhere the plan is disabled with an explicit error, so the test environment keeps working
+while its prices are being created. A value is a valid Price id when it starts with `price_` and is not a placeholder
+(`price_PLACEHOLDER_…`, `…YOUR_…`). The catalogue has three paid plans, `Starter`, `Pro` and `Scale`
+(`PlanCatalog`, spec-saas-billing AC1): each one needs a price.
+
+The billing entry gate (`BillingEntryGate`): with a test-mode secret key outside Production the checkout is open
+without the invoicing prerequisites (log `Billing entry gate bypassed for Stripe test secret key`); in Production it
+needs `Billing__VatNumber` and `Sdi__ProviderConfigured=true` (task PL-13).
+
+### Plan prices (`Billing__Prices__<Tier>`)
+
+For each mode (test first, then live), Stripe Dashboard → Product catalogue → **Add product**, one product per plan
+(`Starter`, `Pro`, `Scale`) with a **recurring monthly price** in EUR. The amounts are a product decision: the plans page
+shows `Billing:Display:<Tier>:PriceMonthly` from `appsettings.json` (29 / 79 / 199 €), so create prices with the same
+amounts or change both. Open the price and copy its id (`price_…`, not the product id `prod_…`) into Railway:
+
+| Variable | `test` (Staging) | `production` |
+|---|---|---|
+| `Billing__Prices__Starter` | test-mode price of Starter | live-mode price of Starter |
+| `Billing__Prices__Pro` | test-mode price of Pro | live-mode price of Pro |
+| `Billing__Prices__Scale` | test-mode price of Scale | live-mode price of Scale |
+
+A price of the other mode is not detected at startup (Price ids carry no mode): Stripe answers "No such price" and the
+checkout answers 503 `payment_provider_error`. `appsettings.json` keeps the three keys empty. The webhook maps a
+subscription back to its plan through the same variables: a price not listed here grants no paid plan.
+
+### Return pages and allow-list
+
+Stripe Checkout and the billing portal send the browser back to the web app, always on `App__PublicSiteBaseUrl` (the
+public domain of the environment, SE-02 / decision D3, no domain in code):
+
+| Page | URL |
+|---|---|
+| Checkout paid | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=success` |
+| Checkout abandoned | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=cancel` |
+| Billing portal "return" link | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan` |
+
+- `App__PublicSiteBaseUrl` is already required outside Development/Testing (the startup stops without it). In
+  Development/Testing without it the checkout and the portal answer **503 `billing_return_url_not_configured`**.
+- `POST /api/billing/checkout-session` still accepts `successUrl` / `cancelUrl` from the client (e.g. a billing page of
+  task PL-12 on another route, or `?session_id={CHECKOUT_SESSION_ID}`), but only **absolute URLs on the same scheme,
+  host and port as `App__PublicSiteBaseUrl`**, without user info. Anything else (another host, `http` instead of `https`,
+  another port, a relative path) answers **400 `validation_error`** before any change. Vercel preview URLs are not in
+  the allow-list: a preview sends no return URL and gets the default pages of the test web app.
+- `Billing__PortalReturnUrl` no longer exists: delete it from Railway if it was set.
+- Stripe Dashboard: nothing to configure for the return pages (they are sent with each session). For the portal, the
+  "default redirect link" of Settings → Billing → Customer portal is only used by portal links created in the
+  Dashboard; leave it empty or set it to the plan page above.
+
+### Switching the Railway test environment to Staging (one-time, product owner)
+
+1. Railway → project → environment **test** → service → Variables: check that `Hangfire__Schema=hangfire_casazen_test`
+   and the connection string with `SearchPath=casazen_test` are set (the Hangfire schema derived from the environment
+   name would otherwise change, see [hangfire.md](hangfire.md)).
+2. Set `ASPNETCORE_ENVIRONMENT=Staging`. Check that `Stripe__SecretKey` / `Stripe__PublishableKey` are **test-mode** keys
+   and add `Billing__Prices__Starter`, `__Pro`, `__Scale` with the test-mode prices; delete `Billing__PortalReturnUrl`.
+3. Redeploy and open `GET /api/health/ready` with an admin token: `stripe` is `healthy` (test mode).
+4. Railway → environment **production**: `ASPNETCORE_ENVIRONMENT=Production` (unchanged), live-mode keys and the three
+   live-mode prices **before** the release that contains PL-11 reaches `main`: with a live secret key and no prices the
+   new production deployment stops (the previous one keeps running). Without Stripe keys the prices are not required.
+
+What `Staging` changes besides Stripe: every startup validation of Production still applies (email, storage, Auth0,
+CORS, public domain: they are enforced everywhere except Development/Testing), HSTS is still sent, EF migrations still
+run at startup. Only three behaviours depend on the name `Production`: the billing entry gate (above), the draft SEO
+pages, which the public API serves only on Staging (preview of `/p/*` pages not yet approved), and the Hangfire schema
+fallback of step 1.
+
+### Verification
+
+1. Automated: `BillingConfigurationTests` (Production without prices, placeholders, duplicated price, test key in
+   Production, live key in Staging/Development/Testing), `BillingReturnUrlTests` (return pages from the configured
+   domain, allow-list), `BillingIntegrationTests` (default pages sent to Stripe, allowed and refused client URLs,
+   portal return page, plan without price → 422 and `purchasable: false`, 503 without public domain),
+   `ConfigurationHealthChecksTests`, `NoHardcodedPublicDomainTests` (no Stripe URL left in its allow-list).
+2. Test environment (Staging, test keys): from the plans page start the checkout of Pro and pay with
+   `4242 4242 4242 4242`: Stripe sends the browser to `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=success`
+   and the plan becomes Pro after the webhook. Open the billing portal and click the return link: same page without
+   parameters.
+3. `curl -X POST …/api/billing/checkout-session -d '{"planTier":"Pro","billingCountry":"IT","successUrl":"https://example.com/"}'`
+   (with a billing admin token): 400 `validation_error`, no Checkout Session in the Stripe Dashboard.
 
 ## What the backend does
 

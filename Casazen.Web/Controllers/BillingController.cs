@@ -1,5 +1,7 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Billing;
 using Casazen.Web.Infrastructure;
@@ -17,20 +19,33 @@ public class BillingController(
     IBillingCheckoutService billingCheckoutService,
     IBillingEntryGate billingEntryGate,
     IViesService viesService,
+    PublicSiteLinks publicSiteLinks,
     IConfiguration configuration) : ControllerBase
 {
+    /// <summary>503: the public URL of the web app, base of the Stripe return pages, is not configured (PL-11).</summary>
+    private const string ReturnUrlNotConfiguredCode = "billing_return_url_not_configured";
+
+    /// <summary>
+    /// Plans of the catalogue. <c>purchasable</c> is false for a plan whose Stripe Price id is not configured in this
+    /// environment (<c>Billing__Prices__&lt;Tier&gt;</c>, PL-11): its checkout answers 422 <c>billing_plan_unavailable</c>.
+    /// </summary>
     [HttpGet("plans")]
     [Authorize]
     public ActionResult<IEnumerable<PlanCatalogDto>> GetPlans() =>
-        Ok(PlanCatalog.All.Select(e => new PlanCatalogDto
+        Ok(PlanCatalog.All.Select(e =>
         {
-            Tier = e.Tier.ToString(),
-            DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
-            PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
-            Currency = "EUR",
-            UnitAllowance = e.MaxProperties == int.MaxValue ? -1 : e.MaxProperties,
-            Features = configuration.GetSection($"Billing:Display:{e.Tier}:Features").Get<string[]>() ?? [e.Description],
-            StripePriceId = configuration[$"Billing:Prices:{e.Tier}"] ?? string.Empty,
+            var priceId = BillingPrices.Resolve(configuration, e.Tier);
+            return new PlanCatalogDto
+            {
+                Tier = e.Tier.ToString(),
+                DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
+                PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
+                Currency = "EUR",
+                UnitAllowance = e.MaxProperties == int.MaxValue ? -1 : e.MaxProperties,
+                Features = configuration.GetSection($"Billing:Display:{e.Tier}:Features").Get<string[]>() ?? [e.Description],
+                StripePriceId = priceId ?? string.Empty,
+                Purchasable = priceId is not null,
+            };
         }));
 
     /// <summary>
@@ -38,6 +53,12 @@ public class BillingController(
     /// unpaid or waiting for its first payment, stored or already on Stripe) gets 409 <c>already_subscribed</c>: it
     /// changes plan or pays from the billing portal (<c>POST /api/billing/portal-session</c>), never through a second
     /// subscription (A1-10). A repeated request (double click) returns the same open session.
+    /// <para>
+    /// Return pages (PL-11, A1-31): by default the plan page of the web app on <c>App:PublicSiteBaseUrl</c>
+    /// (<c>?checkout=success</c> / <c>?checkout=cancel</c>). <c>successUrl</c> and <c>cancelUrl</c> sent by the client must
+    /// be absolute URLs of that same site, otherwise 400 <c>validation_error</c>: Stripe never sends the browser to
+    /// another site. A plan without a Stripe Price id in this environment answers 422 <c>billing_plan_unavailable</c>.
+    /// </para>
     /// </summary>
     [HttpPost("checkout-session")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -45,6 +66,8 @@ public class BillingController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<CheckoutSessionResponse>> CreateCheckoutSession(
         [FromBody] CreateCheckoutSessionRequest request,
         CancellationToken ct)
@@ -54,6 +77,26 @@ public class BillingController(
 
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingCountryInvalid");
+
+        // Checked before any change (billing profile, Stripe customer): nothing happens for a request that cannot pay.
+        if (!publicSiteLinks.IsConfigured)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status503ServiceUnavailable,
+                ReturnUrlNotConfiguredCode,
+                "BillingReturnUrlNotConfigured");
+        }
+
+        if (!IsAllowedReturnUrl(request.SuccessUrl) || !IsAllowedReturnUrl(request.CancelUrl))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingReturnUrlNotAllowed");
+
+        if (BillingPrices.Resolve(configuration, planTier) is null)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                BillingPrices.PlanUnavailableCode,
+                BillingPrices.PlanUnavailableMessageKey);
+        }
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
@@ -98,16 +141,32 @@ public class BillingController(
 
         await orgService.UpdateBillingProfileAsync(org.Id, request.BillingCountry, request.VatId, vatValidatedAt, ct);
 
-        var successUrl = request.SuccessUrl ?? "https://app.casazen.app/settings/billing?checkout=success";
-        var cancelUrl = request.CancelUrl ?? "https://app.casazen.app/settings/billing/plans?checkout=cancel";
+        var successUrl = string.IsNullOrWhiteSpace(request.SuccessUrl)
+            ? publicSiteLinks.BillingCheckoutSuccess()
+            : request.SuccessUrl.Trim();
+        var cancelUrl = string.IsNullOrWhiteSpace(request.CancelUrl)
+            ? publicSiteLinks.BillingCheckoutCancel()
+            : request.CancelUrl.Trim();
         var url = await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
         return Ok(new CheckoutSessionResponse { CheckoutUrl = url });
     }
 
+    /// <summary>
+    /// Stripe billing portal of the org. It links back to the plan page of the web app on <c>App:PublicSiteBaseUrl</c>
+    /// (PL-11, A1-31); 503 <c>billing_return_url_not_configured</c> when that URL is not set (Development/Testing only).
+    /// </summary>
     [HttpPost("portal-session")]
     [Authorize(Policy = "RequireOrgBillingAdmin")]
     public async Task<ActionResult<PortalSessionResponse>> CreatePortalSession(CancellationToken ct)
     {
+        if (!publicSiteLinks.IsConfigured)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status503ServiceUnavailable,
+                ReturnUrlNotConfiguredCode,
+                "BillingReturnUrlNotConfigured");
+        }
+
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
             return NotFound(new { error = "No organization assigned" });
@@ -121,7 +180,7 @@ public class BillingController(
 
         return Ok(new PortalSessionResponse
         {
-            PortalUrl = await stripeBillingService.CreatePortalSessionAsync(org, ct),
+            PortalUrl = await stripeBillingService.CreatePortalSessionAsync(org, publicSiteLinks.BillingPortalReturn(), ct),
         });
     }
 
@@ -183,6 +242,10 @@ public class BillingController(
             ViesValidated = viesValidated,
         });
     }
+
+    /// <summary>A return URL of the client: absent (the default page is used) or a page of the public web app.</summary>
+    private bool IsAllowedReturnUrl(string? url) =>
+        string.IsNullOrWhiteSpace(url) || publicSiteLinks.IsOnPublicSite(url);
 
     private static SubscriptionDto Map(Casazen.Core.Entities.Org org) => new()
     {
