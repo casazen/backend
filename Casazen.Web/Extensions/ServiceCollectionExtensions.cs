@@ -319,18 +319,6 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddCasazenExternalServices(this IServiceCollection services, IConfiguration configuration)
-    {
-        // Note: Auth0Service was removed as dead code (never used)
-        // JWT authentication is handled directly by AddCasazenAuthentication()
-        services.AddScoped<StripeService>();
-        services.AddCasazenAiProvider(configuration);
-        services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
-        services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
-        services.AddScoped<StripeWebhookHandler>();
-        return services;
-    }
-
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
         // Always registered: OtaManager depends on it (DynamicPricingJob uses OtaManager). With the flag off it has no

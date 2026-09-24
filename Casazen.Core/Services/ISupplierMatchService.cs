@@ -33,13 +33,13 @@ public interface ISupplierMatchService
 {
     /// <summary>
     /// Ranks the active suppliers for a property of <paramref name="orgId"/>. The caller has already authorized the
-    /// property (TN-3); a property of another org is rejected.
+    /// property (TN-3); a property of another org is rejected. The host's notes are not an input: nothing typed by
+    /// the host can reach an AI prompt (A8-15).
     /// </summary>
     Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
         Guid propertyId,
         string category,
         ServiceRequestUrgency urgency,
-        string? notes,
         CancellationToken cancellationToken = default);
 }
