@@ -134,21 +134,22 @@ public class AddServiceRequestRentalContextPostgresTests : IAsyncLifetime
                     '', '', '', '', '', false, '', '', false, now() + interval '7 years', '', false, '', now(), now());
             """);
 
-        async Task StayAsync(Guid id, int fromDay, int toDay, BookingStatus status) =>
+        // BookingCode: unique per org since AddBookingCode (BK-11).
+        async Task StayAsync(Guid id, string code, int fromDay, int toDay, BookingStatus status) =>
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO "Bookings" (
                     "Id", "PropertyId", "OrgId", "GuestId", "CheckInDate", "CheckOutDate", "NumberOfGuests", "Status", "Source",
                     "ExternalId", "BasePrice", "TouristTax", "TotalPrice", "TouristTaxAmount", "NumberOfAdults", "NumberOfChildren",
-                    "SpecialRequests", "CreatedAt", "UpdatedAt")
+                    "SpecialRequests", "BookingCode", "CreatedAt", "UpdatedAt")
                 VALUES ({id}, {s.PropertyA}, {s.Org}, {s.Guest},
                         {new DateTime(2026, 6, fromDay, 0, 0, 0, DateTimeKind.Utc)}, {new DateTime(2026, 6, toDay, 0, 0, 0, DateTimeKind.Utc)},
-                        2, {(int)status}, 0, '', 100, 0, 100, 0, 2, 0, '', now(), now());
+                        2, {(int)status}, 0, '', 100, 0, 100, 0, 2, 0, '', {code}, now(), now());
                 """);
 
-        await StayAsync(s.Stay1, 1, 4, BookingStatus.Confirmed);
-        await StayAsync(s.Stay2, 5, 8, BookingStatus.CheckedOut);
-        await StayAsync(s.Stay3, 8, 10, BookingStatus.Confirmed);
-        await StayAsync(s.CancelledStay, 12, 14, BookingStatus.Cancelled);
+        await StayAsync(s.Stay1, "SU07S1", 1, 4, BookingStatus.Confirmed);
+        await StayAsync(s.Stay2, "SU07S2", 5, 8, BookingStatus.CheckedOut);
+        await StayAsync(s.Stay3, "SU07S3", 8, 10, BookingStatus.Confirmed);
+        await StayAsync(s.CancelledStay, "SU07SX", 12, 14, BookingStatus.Cancelled);
     }
 
     /// <summary>Requests as the web created them before SU-07 (schema right before the migration: no RentalContext).</summary>
