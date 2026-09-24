@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
     public async Task<LeaseContract?> GetByIdWithDetailsAsync(Guid id)
         => await context.LeaseContracts
             .Include(l => l.Property)
+                // The APE of the property: its code and energy class go into the contract (LT-10, LT-03).
+                .ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape))
             .Include(l => l.Parties)
             .Include(l => l.Registration)
             .Include(l => l.Events.OrderBy(e => e.OccurredAt))
@@ -43,6 +46,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 new LeasePropertyDto(l.Property.Id, l.Property.Name, l.Property.City),
                 l.Status,
                 l.FiscalRegime,
+                l.ContractType,
+                l.TaxRegime,
                 l.StartDate,
                 l.EndDate,
                 l.MonthlyRent,

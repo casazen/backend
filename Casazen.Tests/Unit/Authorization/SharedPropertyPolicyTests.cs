@@ -32,6 +32,9 @@ public class SharedPropertyPolicyTests
         "PropertiesController.GetDocumentSignedUrl",
         "PropertiesController.GetDocuments",
         "PropertiesController.Update",
+        // LT-10: the lease contract needs the cadastral data of the unit and the APE code and class (property core).
+        "PropertiesController.UpdateApeIdentification",
+        "PropertiesController.UpdateCadastral",
         "PropertiesController.UploadDocument",
     ];
 

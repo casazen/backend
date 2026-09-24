@@ -96,18 +96,12 @@ public class LeasesController(
                 dto.MonthlyRent,
                 dto.Parties.Select(p => new CreatePartyRequest(
                     p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail)),
-                dto.CanoneConcordato is null
-                    ? null
-                    : new RentBandCharacteristics(
-                        dto.CanoneConcordato.Sqm,
-                        dto.CanoneConcordato.TypeAElementCount,
-                        dto.CanoneConcordato.TypeBElementCount,
-                        dto.CanoneConcordato.TypeCElementCount,
-                        dto.CanoneConcordato.TypeDElementCount,
-                        dto.CanoneConcordato.IsFurnished,
-                        dto.CanoneConcordato.ContractYears,
-                        dto.CanoneConcordato.ZoneName,
-                        dto.CanoneConcordato.CadastralSheet));
+                dto.CanoneConcordato?.ToCharacteristics())
+            {
+                ContractType = dto.ContractType,
+                TaxRegime = dto.TaxRegime,
+                SecurityDeposit = dto.SecurityDeposit,
+            };
 
             var lease = await leaseService.CreateDraftAsync(dto.PropertyId, request);
             var created = await leaseService.GetLeaseDetailAsync(lease.Id) ?? lease;
@@ -521,8 +515,8 @@ public class LeasesController(
     }
 
     /// <summary>
-    /// Pre-signature checks that still throw <see cref="InvalidOperationException"/> (APE, canone concordato minimum
-    /// term): 400 with the APE code, as for the lease creation.
+    /// Pre-signature checks that still throw <see cref="InvalidOperationException"/> (APE): 400 with the APE code, as for
+    /// the lease creation. The term of the contract type is a domain rule (422, LT-10).
     /// </summary>
     private BadRequestObjectResult SignatureRuleProblem(InvalidOperationException ex) =>
         ex is ApeComplianceException ape
@@ -557,15 +551,29 @@ public record RliChecklistResponse(
 /// <summary>A checklist item: <c>Done</c> only when the step happened, <c>Failed</c> when its last attempt failed.</summary>
 public record RliChecklistItemResponse(string Key, string Label, bool Done, bool Failed);
 
+/// <summary>
+/// A new lease (LT-10). <c>ContractType</c> (Libero 4+4, Concordato 3+2, Transitorio 1-18 months) and <c>TaxRegime</c>
+/// replace the legacy <c>FiscalRegime</c>, accepted alone from older clients. The term comes from the dates. A canone
+/// concordato lease needs <c>CanoneConcordato</c>: the server computes the range from it (422
+/// <c>concordato_rent_out_of_range</c> with verified agreement data; with unconfirmed data the range is indicative and
+/// the lease is created, A7-23).
+/// </summary>
 public record CreateLeaseDto(
     [param: Required] Guid PropertyId,
-    [param: Required, EnumDataType(typeof(FiscalRegime))] FiscalRegime FiscalRegime,
+    [param: EnumDataType(typeof(FiscalRegime))] FiscalRegime? FiscalRegime,
     [param: Required] DateTime StartDate,
     [param: Required] DateTime EndDate,
     [param: Range(0.01, 1_000_000.0)] decimal MonthlyRent,
     [param: Required, MinLength(1)] IEnumerable<CreatePartyDto> Parties,
-    CanoneConcordatoCharacteristicsDto? CanoneConcordato = null);
+    CanoneConcordatoCharacteristicsDto? CanoneConcordato = null,
+    [param: EnumDataType(typeof(LeaseContractType))] LeaseContractType? ContractType = null,
+    [param: EnumDataType(typeof(LeaseTaxRegime))] LeaseTaxRegime? TaxRegime = null,
+    [param: Range(0.0, 1_000_000.0)] decimal? SecurityDeposit = null);
 
+/// <summary>
+/// Characteristics of the unit for the canone concordato range (LT-10). No contract years: the term comes from the lease
+/// dates (A7-12). Appurtenances in square metres; element counts as defined by the territorial agreement.
+/// </summary>
 public record CanoneConcordatoCharacteristicsDto(
     [param: Range(1, 10_000)] decimal Sqm,
     [param: Range(0, 100)] int TypeAElementCount,
@@ -573,9 +581,35 @@ public record CanoneConcordatoCharacteristicsDto(
     [param: Range(0, 100)] int TypeCElementCount,
     [param: Range(0, 100)] int TypeDElementCount,
     bool IsFurnished,
-    [param: Range(1, 99)] int ContractYears,
     [param: MaxLength(100)] string? ZoneName,
-    [param: MaxLength(100)] string? CadastralSheet);
+    [param: MaxLength(20)] string? CadastralSheet,
+    [param: Range(0, 100)] int QualifyingTypeDElementCount = 0,
+    bool StoveHeating = false,
+    bool AirConditioning = false,
+    [param: Range(0, 10_000)] decimal GarageSqm = 0,
+    [param: Range(0, 10_000)] decimal BalconySqm = 0,
+    [param: Range(0, 10_000)] decimal OtherAppurtenanceSqm = 0,
+    [param: Range(0, 100_000)] decimal PrivateGreenSqm = 0)
+{
+    public RentBandCharacteristics ToCharacteristics() => new()
+    {
+        Sqm = Sqm,
+        GarageSqm = GarageSqm,
+        BalconySqm = BalconySqm,
+        OtherAppurtenanceSqm = OtherAppurtenanceSqm,
+        PrivateGreenSqm = PrivateGreenSqm,
+        TypeAElementCount = TypeAElementCount,
+        TypeBElementCount = TypeBElementCount,
+        TypeCElementCount = TypeCElementCount,
+        TypeDElementCount = TypeDElementCount,
+        QualifyingTypeDElementCount = QualifyingTypeDElementCount,
+        StoveHeating = StoveHeating,
+        IsFurnished = IsFurnished,
+        AirConditioning = AirConditioning,
+        ZoneName = ZoneName,
+        CadastralSheet = CadastralSheet,
+    };
+}
 
 public record CreatePartyDto(
     [param: Required, EnumDataType(typeof(PartyRole))] PartyRole Role,

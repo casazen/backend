@@ -257,7 +257,10 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         // The host never acts as the supplier, the supplier never marks paid, and "paid" comes only after "completed".
         Assert.Equal(HttpStatusCode.Forbidden, (await host.PostAsJsonAsync($"/api/service-requests/{id}/take", new { })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await supplier.PostAsync($"/api/service-requests/{id}/mark-paid", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await host.PostAsync($"/api/service-requests/{id}/mark-paid", null)).StatusCode);
+        await AssertProblemAsync(
+            await host.PostAsync($"/api/service-requests/{id}/mark-paid", null),
+            HttpStatusCode.UnprocessableEntity,
+            ServiceRequestErrorCodes.InvalidTransition);
 
         Assert.Equal(ServiceRequestStatus.Richiesto, await StatusAsync(id));
     }
