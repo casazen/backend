@@ -12,7 +12,9 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The host's answer to "pay at the property" requests (decision D5, BK-06, A3-06): the list of the requests waiting for
-/// an answer, accept (the booking becomes Confirmed and valid) and decline (cancelled, dates released). TN-3: the list
+/// an answer, accept (the booking becomes Confirmed and valid) and decline (cancelled, dates released). Accept is also
+/// the confirmation of the pending bookings the host entered by hand (PC-07): one confirmation for every pending
+/// booking. TN-3: the list
 /// is filtered in SQL by the caller's scope (org, and owned properties for a non org-wide role); each answer needs
 /// <c>booking.write</c> on the booking's property. A booking of another org, or one the caller may not write, answers 404.
 /// </summary>
@@ -21,6 +23,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.BookingRead)]
 public class BookingApprovalController(
     IOnSiteBookingRequestService onSiteRequests,
+    IHostBookingService hostBookings,
     IBookingService bookingService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
@@ -45,9 +48,15 @@ public class BookingApprovalController(
     }
 
     /// <summary>
-    /// Accepts the request: the booking becomes <c>Confirmed</c> (D5) and the guest gets an email. 409
-    /// <c>onsite_request_not_pending</c> / <c>onsite_request_expired</c> when it was already answered or has expired (the
-    /// second of two concurrent answers), <c>onsite_request_dates_blocked</c> when an OTA block imported meanwhile overlaps.
+    /// The host confirms a pending booking; the only confirmation of the console (PC-07, see
+    /// <see cref="IHostBookingService.ConfirmAsync"/>).
+    /// <para>A "pay at the property" request is accepted: the booking becomes <c>Confirmed</c> (D5) and the guest gets an
+    /// email. 409 <c>onsite_request_not_pending</c> / <c>onsite_request_expired</c> when it was already answered or has
+    /// expired (the second of two concurrent answers), <c>onsite_request_dates_blocked</c> when an OTA block imported
+    /// meanwhile overlaps.</para>
+    /// <para>A pending booking entered by the host (left Pending by the old code) is confirmed when its dates are still
+    /// free (409 <c>booking_dates_unavailable</c>); 409 <c>booking_not_pending</c> when it is no longer pending. Any other
+    /// pending booking (a checkout hold waiting for the payment) answers 422 <c>booking_not_confirmable</c>.</para>
     /// </summary>
     [HttpPost("{id:guid}/approve")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -60,8 +69,10 @@ public class BookingApprovalController(
         if (!await CanWriteAsync(id, cancellationToken))
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
 
-        logger.LogInformation("Host accepting on-site request {BookingId}", id);
-        await onSiteRequests.AcceptAsync(id, cancellationToken);
+        // The only host confirmation of a pending booking (PC-07): "pay at the property" requests (D5) and the pending
+        // bookings the host entered by hand go through the same action.
+        logger.LogInformation("Host confirming pending booking {BookingId}", id);
+        await hostBookings.ConfirmAsync(id, cancellationToken);
         return Ok(await ResponseOfAsync(id));
     }
 

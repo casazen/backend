@@ -77,7 +77,6 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(PaymentsController), nameof(PaymentsController.Refund), "RequireContext:short-rent:payment.write")]
     [InlineData(typeof(BookingCancellationController), nameof(BookingCancellationController.Cancel), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.Update), "RequireContext:short-rent:booking.write")]
-    [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.Confirm), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.CheckOut), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.Quote), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), "RequireContext:short-rent:property.write")]

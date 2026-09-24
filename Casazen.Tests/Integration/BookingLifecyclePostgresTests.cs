@@ -189,9 +189,9 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         var checkoutHold = await SeedBookingAsync(property, BookingStatus.Pending, BookingSource.Direct, NextYear(9, 20), NextYear(9, 22));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
 
-        var confirm = await host.PostAsync($"/api/bookings/{bookingId}/confirm", null);
-        var again = await host.PostAsync($"/api/bookings/{bookingId}/confirm", null);
-        var hold = await host.PostAsync($"/api/bookings/{checkoutHold}/confirm", null);
+        var confirm = await host.PostAsync($"/api/bookings/{bookingId}/approve", null);
+        var again = await host.PostAsync($"/api/bookings/{bookingId}/approve", null);
+        var hold = await host.PostAsync($"/api/bookings/{checkoutHold}/approve", null);
 
         Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
         Assert.Equal("Confirmed", (await confirm.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
@@ -265,7 +265,7 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
             numberOfGuests = 2,
             specialRequests = "hijacked",
         });
-        var confirm = await intruder.PostAsync($"/api/bookings/{pending}/confirm", null);
+        var confirm = await intruder.PostAsync($"/api/bookings/{pending}/approve", null);
         var checkOut = await intruder.PostAsync($"/api/bookings/{pending}/check-out", null);
         var cancel = await intruder.PostAsync($"/api/bookings/{pending}/cancel", null);
         var quote = await intruder.PostAsJsonAsync("/api/bookings/quote", new

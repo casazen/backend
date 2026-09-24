@@ -9,8 +9,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// What the host does on a booking from the console (PC-07, A2-07, A2-08): price a stay, change a booking, confirm a
-/// pending booking entered by hand, check out. Cancellation with refunds is <see cref="BookingCancellationController"/>.
+/// What the host does on a booking from the console (PC-07, A2-07, A2-08): price a stay, change a booking, check out.
+/// Cancellation with refunds is <see cref="BookingCancellationController"/>; the confirmation of a pending booking (entered
+/// by hand, or a "pay at the property" request) is the single <c>POST /api/bookings/{id}/approve</c> of
+/// <see cref="BookingApprovalController"/>.
 /// TN-3: the tenant filter hides a booking or property of another org (404); on a visible one the caller needs
 /// <c>booking.write</c> on its property (owner, or org-wide role), otherwise 404 as well. Domain errors are ProblemDetails
 /// with the codes of <see cref="BookingErrorCodes"/> (FD-05).
@@ -93,27 +95,6 @@ public class BookingLifecycleController(
                 request.SpecialRequests),
             cancellationToken);
         return Ok(BookingMapper.ToResponse(updated));
-    }
-
-    /// <summary>
-    /// Confirms a pending booking entered by the host (A2-08): the ones the old code stored as Pending. Other pending
-    /// bookings answer 422 <c>booking_not_confirmable</c> (a checkout hold is confirmed by the guest's payment); a booking
-    /// no longer pending answers 409 <c>booking_not_pending</c>.
-    /// </summary>
-    [HttpPost("{id:guid}/confirm")]
-    [Authorize(Policy = CasazenPolicies.BookingWrite)]
-    [ProducesResponseType(typeof(BookingResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<BookingResponseDto>> Confirm(Guid id, CancellationToken cancellationToken)
-    {
-        if (!await CanWriteAsync(id, cancellationToken))
-            return BookingNotFound();
-
-        logger.LogInformation("Host confirming booking {BookingId}", id);
-        var confirmed = await hostBookings.ConfirmAsync(id, cancellationToken);
-        return Ok(BookingMapper.ToResponse(confirmed));
     }
 
     /// <summary>

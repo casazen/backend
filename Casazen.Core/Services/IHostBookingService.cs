@@ -22,8 +22,16 @@ public interface IHostBookingService
     Task<Booking> UpdateAsync(HostBookingUpdate update, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Confirms a <see cref="BookingStatus.Pending"/> booking entered by the host (the old code stored them Pending: PC-01
-    /// marked them <see cref="BookingSource.Manual"/> without confirming them). Its dates must still be free.
+    /// The host confirms a <see cref="BookingStatus.Pending"/> booking: the single confirmation of the console
+    /// (<c>POST /api/bookings/{id}/approve</c>).
+    /// <list type="bullet">
+    /// <item>a booking entered by the host (<see cref="BookingSource.Manual"/>; the old code stored them Pending and PC-01
+    /// marked them Manual without confirming them): its dates must still be free;</item>
+    /// <item>a "pay at the property" request (decision D5): accepted through
+    /// <see cref="IOnSiteBookingRequestService.AcceptAsync"/> (BK-06), with its rules and emails;</item>
+    /// <item>any other pending booking (a checkout hold waiting for the guest's payment) cannot be confirmed by the host:
+    /// 422 <see cref="BookingErrorCodes.NotConfirmable"/>.</item>
+    /// </list>
     /// </summary>
     Task<Booking> ConfirmAsync(Guid bookingId, CancellationToken cancellationToken = default);
 

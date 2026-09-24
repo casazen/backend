@@ -26,6 +26,7 @@ public sealed class HostBookingService(
     IBookingRepository bookingRepository,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     PropertyICalSyncService propertyICalSyncService,
+    IOnSiteBookingRequestService onSiteRequests,
     ILogger<HostBookingService> logger,
     TimeProvider? timeProvider = null) : IHostBookingService
 {
@@ -121,9 +122,15 @@ public sealed class HostBookingService(
     {
         var current = await db.Bookings.AsNoTracking()
             .Where(b => b.Id == bookingId)
-            .Select(b => new { b.PropertyId, b.CheckInDate, b.CheckOutDate })
+            .Select(b => new { b.PropertyId, b.CheckInDate, b.CheckOutDate, b.Source, b.PaymentOption })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw BookingNotFound(bookingId);
+
+        // One confirmation for every pending booking: a "pay at the property" request is the host's acceptance of
+        // decision D5, with its own rules (guest email confirmed, deadline, OTA blocks) and emails (BK-06).
+        if (current.Source == BookingSource.Direct && current.PaymentOption == PaymentOption.OnSite)
+            return await onSiteRequests.AcceptAsync(bookingId, cancellationToken);
+
         await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(
             current.PropertyId, current.CheckInDate, current.CheckOutDate, cancellationToken);
 
@@ -203,12 +210,21 @@ public sealed class HostBookingService(
             cancellationToken,
             (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")));
 
-    private async Task<Booking> LoadAsync(Guid bookingId, CancellationToken cancellationToken) =>
-        await db.Bookings
+    /// <summary>
+    /// The booking as committed now, under the lock. The context may already track it (the controller read it for the
+    /// authorization, before the lock): a query does not refresh a tracked entity, so it is reloaded, otherwise a change
+    /// racing a cancellation would still see the old status and write over it.
+    /// </summary>
+    private async Task<Booking> LoadAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        var booking = await db.Bookings
             .Include(b => b.Property)
             .Include(b => b.Guest)
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
-        ?? throw BookingNotFound(bookingId);
+            ?? throw BookingNotFound(bookingId);
+        await db.Entry(booking).ReloadAsync(cancellationToken);
+        return booking;
+    }
 
     private static NotFoundException BookingNotFound(Guid bookingId) =>
         new($"Booking {bookingId} not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
