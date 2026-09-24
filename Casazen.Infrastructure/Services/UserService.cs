@@ -147,10 +147,13 @@ public class UserService(
             UpdatedAt = DateTime.UtcNow
         };
 
-        await repository.AddAsync(user);
-        authorizationCache.Invalidate(user.Id);
-        logger.LogInformation("User auto-created on first login: {UserId}", user.Id);
-        return user;
+        var (stored, created) = await repository.AddIfAbsentAsync(user);
+        authorizationCache.Invalidate(sub);
+        if (created)
+            logger.LogInformation("User auto-created on first login: {UserId}", sub);
+        else
+            logger.LogInformation("User {UserId} was created by a parallel first request, reusing it", sub);
+        return stored;
     }
 
     /// <inheritdoc />

@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -14,12 +15,18 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class EntitlementServiceTests
 {
-    private static AppDbContext NewDb() =>
+    private static AppDbContext NewDb(string? name = null, ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"entitlement-{Guid.NewGuid()}")
+            .UseInMemoryDatabase(name ?? $"entitlement-{Guid.NewGuid()}")
             .ConfigureWarnings(w =>
                 w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options);
+            .Options, tenant);
+
+    private sealed class FixedTenantContext(Guid orgId) : ITenantContext
+    {
+        public Guid? OrgId => orgId;
+        public bool FilterEnabled => true;
+    }
 
     private static IConfiguration Config(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder()
@@ -103,23 +110,58 @@ public class EntitlementServiceTests
     }
 
     [Fact]
-    public async Task ReservePropertySlotAsync_AtStarterLimit_ReturnsFalse()
+    public async Task CreatePropertyWithinLimitAsync_AtStarterLimit_ReturnsNullWithoutCreating()
     {
         await using var db = NewDb();
         var orgId = await SeedOrgWithPropertiesAsync(db, PlanTier.Starter, properties: 3);
         var service = new EntitlementService(db, Config());
+        var createCalls = 0;
 
-        Assert.False(await service.ReservePropertySlotAsync(orgId));
+        var created = await service.CreatePropertyWithinLimitAsync(orgId, () =>
+        {
+            createCalls++;
+            return Task.FromResult(new Property());
+        });
+
+        Assert.Null(created);
+        Assert.Equal(0, createCalls);
     }
 
     [Fact]
-    public async Task ReservePropertySlotAsync_BelowStarterLimit_ReturnsTrue()
+    public async Task CreatePropertyWithinLimitAsync_BelowStarterLimit_CreatesTheProperty()
     {
         await using var db = NewDb();
         var orgId = await SeedOrgWithPropertiesAsync(db, PlanTier.Starter, properties: 2);
         var service = new EntitlementService(db, Config());
 
-        Assert.True(await service.ReservePropertySlotAsync(orgId));
+        var created = await service.CreatePropertyWithinLimitAsync(orgId, async () =>
+        {
+            var property = new Property { OwnerId = "auth0|owner", OrgId = orgId, Name = "P3", Address = "A", City = "Rome" };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            return property;
+        });
+
+        Assert.NotNull(created);
+        Assert.Equal(3, await db.Properties.CountAsync(p => p.OrgId == orgId));
+    }
+
+    [Fact]
+    public async Task GetEntitlementAsync_CallerOfAnotherOrg_CountsEveryPropertyOfTheOrg()
+    {
+        // A1-21: the admin plan change runs with the admin's tenant filter; usage must still be the org's.
+        var dbName = $"entitlement-{Guid.NewGuid()}";
+        Guid orgId;
+        await using (var seed = NewDb(dbName))
+            orgId = await SeedOrgWithPropertiesAsync(seed, PlanTier.Starter, properties: 2);
+        await using var adminDb = NewDb(dbName, new FixedTenantContext(Guid.NewGuid()));
+        var service = new EntitlementService(adminDb, Config());
+
+        var result = await service.GetEntitlementAsync(orgId);
+
+        Assert.Equal(0, await adminDb.Properties.CountAsync(p => p.OrgId == orgId)); // the filter hides them
+        Assert.Equal(2, result.PropertyCount);
+        Assert.True(result.CanAddProperty);
     }
 
     [Fact]
@@ -294,7 +336,7 @@ public class EntitlementServiceTests
         Assert.Equal(PlanTier.Starter.ToString(), result.PlanTier);
         Assert.Equal(3, result.MaxProperties);
         Assert.False(result.CanAddProperty);
-        Assert.False(await service.ReservePropertySlotAsync(org.Id));
+        Assert.Null(await service.CreatePropertyWithinLimitAsync(org.Id, () => Task.FromResult(new Property())));
     }
 
     [Fact]

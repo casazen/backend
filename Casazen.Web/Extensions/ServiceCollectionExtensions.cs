@@ -289,7 +289,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
-        services.AddScoped<ITenantContext, TenantContext>();
+        // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
+        services.AddScoped<TenantContext>();
+        services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        services.AddScoped<IRequestTenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();

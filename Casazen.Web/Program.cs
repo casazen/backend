@@ -297,6 +297,8 @@ app.UseErrorHandling();
 
 // Authentication & Authorization (must be in this order)
 app.UseAuthentication();
+// Loads the caller's OrgId asynchronously once per request, before policies and the EF tenant filter read it (A1-20).
+app.UseTenantResolution();
 app.UseAuthorization();
 app.UseRateLimiter();
 
