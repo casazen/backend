@@ -19,9 +19,16 @@ public class UsersController(
     IUserService userService,
     IOrgService orgService,
     IOnboardingService onboardingService,
+    IRequestTenantContext tenantContext,
     ILogger<UsersController> logger,
     IEntitlementService entitlementService) : ControllerBase
 {
+    /// <summary>
+    /// 422 on <c>PUT /api/users/onboarding</c> from a user without an org and without consents: the first org is
+    /// created only together with the legal consents. The client answers it with the consents step (A1-01).
+    /// </summary>
+    public const string ConsentsRequiredCode = "consents_required";
+
     // ─── Admin endpoints ────────────────────────────────────────────────────
 
     /// <summary>Returns a paginated, filtered list of all users. Admin only.</summary>
@@ -95,7 +102,10 @@ public class UsersController(
     public Task<ActionResult<OnboardingResponseDto>> PostOnboarding([FromBody] OnboardingRequestDto dto) =>
         CompleteOnboardingAsync(dto, requireConsents: true);
 
-    /// <summary>Updates rental type and Auth0 roles (idempotent re-onboarding).</summary>
+    /// <summary>
+    /// Updates rental type and Auth0 roles (idempotent re-onboarding). A user who has no org yet (for example Auth0
+    /// roles assigned by hand) gets the org here too, provided the request carries the consents.
+    /// </summary>
     [HttpPut("onboarding")]
     public Task<ActionResult<OnboardingResponseDto>> PutOnboarding([FromBody] OnboardingRequestDto dto) =>
         CompleteOnboardingAsync(dto, requireConsents: false);
@@ -202,15 +212,26 @@ public class UsersController(
                        ?? User.FindFirst("name")?.Value?.Split(' ').Skip(1).FirstOrDefault()
                        ?? string.Empty;
 
-        var consentInput = dto.Consents.ToInput();
-        var (validationSuccess, validationError) = onboardingService.ValidateConsents(consentInput, requireConsents);
-        if (!validationSuccess)
-            return ToConsentError(validationError);
-
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
-        if (!requireConsents && !hadOrg)
-            return BadRequest(new { error = "Initial onboarding must be completed with required consents." });
+
+        // The first org of a user is created only together with the consents (PLG-AC2), whatever the verb. A PUT
+        // from a user with Auth0 roles but no org (roles assigned by hand, org never provisioned) is not refused:
+        // with the consents it creates or links the org like the POST, without them it gets a stable code the
+        // client answers with the consents step (A1-01).
+        var consentsRequired = requireConsents || !hadOrg;
+        if (!requireConsents && !hadOrg && dto.Consents is null)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity,
+                ConsentsRequiredCode,
+                "OnboardingConsentsRequired");
+        }
+
+        var consentInput = dto.Consents.ToInput();
+        var (validationSuccess, validationError) = onboardingService.ValidateConsents(consentInput, consentsRequired);
+        if (!validationSuccess)
+            return ToConsentError(validationError);
 
         var (user, rolesAssigned, roleSync) = await userService.CompleteOnboardingAsync(
             sub, rentalType, email, firstName, lastName);
@@ -218,11 +239,14 @@ public class UsersController(
         if (user.OrgId is not Guid orgId)
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Org provisioning failed." });
 
+        // TN-4: the rest of this request (consent records, tenant filter) is scoped to the org just created or linked.
+        tenantContext.SetOrgId(orgId);
+
         var (success, error, consentsRecorded) = await onboardingService.ValidateAndRecordConsentsAsync(
             sub,
             orgId,
             consentInput,
-            requireConsents,
+            consentsRequired,
             ClientIp.GetString(HttpContext),
             HttpContext.RequestAborted);
 

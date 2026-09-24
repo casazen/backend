@@ -117,6 +117,21 @@
   <data name="AlloggiatiDeadline_Action" xml:space="preserve">
     <value>Complete or correct the guest data and send the report from CasaZen.</value>
   </data>
+  <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
+    <value>Refund confirmed - {0}</value>
+  </data>
+  <data name="GuestRefundConfirmed_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestRefundConfirmed_Body" xml:space="preserve">
+    <value>we have refunded &lt;strong&gt;€{0}&lt;/strong&gt; for your booking at &lt;strong&gt;{1}&lt;/strong&gt; with arrival on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Method" xml:space="preserve">
+    <value>The amount goes back to the payment method used for the booking.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Timing" xml:space="preserve">
+    <value>When the credit shows on your statement depends on your bank or card issuer.</value>
+  </data>
   <data name="RliDeadlineReminder_Subject" xml:space="preserve">
     <value>RLI registration reminder — {0} (due {1})</value>
   </data>

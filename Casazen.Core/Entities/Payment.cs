@@ -45,6 +45,14 @@ public class Payment : ITenantOwned
     [MaxLength(255)]
     public string? StripePaymentIntentId { get; set; }
 
+    /// <summary>
+    /// Connected account (<c>acct_…</c>) the PaymentIntent was created on (direct charge, BK-02). Refunds and
+    /// cancellations of the intent are sent with this <c>Stripe-Account</c>; null for rows recorded before it was
+    /// stored (the org's current account is used) and for payments that never went through Stripe.
+    /// </summary>
+    [MaxLength(255)]
+    public string? StripeAccountId { get; set; }
+
     public DateTime? ProcessedAt { get; set; }
 
     /// <summary>OTA 21% acconto (issue #3). <see cref="Amount"/> remains gross.</summary>
@@ -69,7 +77,10 @@ public enum PaymentStatus
     Completed,
     Failed,
     Refunded,
-    PartiallyRefunded
+    PartiallyRefunded,
+
+    /// <summary>Never collected: the PaymentIntent or SetupIntent was canceled with the booking (BK-02).</summary>
+    Canceled
 }
 
 public enum PaymentMethod

@@ -22,7 +22,7 @@ public class EmailTemplatesTests
 
     public static TheoryData<string> TemplateNames => new()
     {
-        "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati",
+        "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
         "rli-reminder", "rli-overdue", "rli-extra-eu",
     };
 
@@ -161,6 +161,19 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void GuestRefundConfirmed_ItalianAndEnglish_ShowAmountInEuroPropertyAndArrival()
+    {
+        var italian = EmailTemplates.GuestRefundConfirmed(CultureInfo.GetCultureInfo("it-IT"), "Anna", "Villa Rosa", CheckIn, 1234.5m);
+        var english = EmailTemplates.GuestRefundConfirmed(CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, 1234.5m);
+
+        Assert.Equal("Rimborso confermato - Villa Rosa", italian.Subject);
+        Assert.Contains("1.234,50 €", italian.HtmlBody);
+        Assert.Contains("Villa Rosa", italian.HtmlBody);
+        Assert.Contains("€1,234.50", english.HtmlBody);
+        Assert.Equal("Refund confirmed - Villa Rosa", english.Subject);
+    }
+
+    [Fact]
     public void RliDeadlineReminder_Italian_ShowsPropertyDeadlineAndDaysWithoutTechnicalCodes()
     {
         var content = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
@@ -237,6 +250,7 @@ public class EmailTemplatesTests
             "checkin-link" => EmailTemplates.GuestCheckInLink(culture, value, value, CheckIn, Link),
             "checkin-incomplete" => EmailTemplates.GuestCheckInIncomplete(culture, value, value, CheckIn),
             "alloggiati" => EmailTemplates.AlloggiatiDeadline(culture, value, value, CheckIn),
+            "refund" => EmailTemplates.GuestRefundConfirmed(culture, value, value, CheckIn, 1234.5m),
             "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
             "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
             "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),
