@@ -91,7 +91,7 @@ Casazen.sln
 | CI/CD pipeline | `.github/workflows/ci-cd.yml` |
 
 ## Non-obvious rules / gotchas
-- **CIN code**: every `Property` must store an Italian CIN (`IT-XXXXX-XXXXXXXXXX`). Validated by `[CinCode]` attribute. Required by D.L. 145/2023.
+- **CIN code**: every `Property` must store an Italian CIN (e.g. `IT058091C27G5FFZDZ`: `IT` + 6-digit ISTAT comune code + 2-char category + up to 8 random characters). Normalized and validated by `CinFormat` (`[CinCode]` attribute on DTOs). Required by D.L. 145/2023.
 - **Tourist tax**: stored in `TouristTaxRate` entity — rates vary per city/region. **Never hardcode** a tax amount.
 - **OTA webhooks**: must respond within 3 seconds. Long-running work goes through Hangfire queue — do not process inline in the webhook controller.
 - **DbContext scope**: `AppDbContext` is scoped per request. Never store it in a static field or singleton; always dispose.

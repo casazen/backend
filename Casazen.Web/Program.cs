@@ -16,11 +16,9 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Casazen.Web.Resources;
 using Hangfire;
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.OpenApi.Models;
@@ -135,43 +133,9 @@ builder.Services.AddCasazenHealthChecks();
 // CORS
 builder.Services.AddCasazenCors(builder.Configuration);
 
-builder.Services.AddRateLimiter(options =>
-{
-    options.AddFixedWindowLimiter("PublicBookingCreate", limiter =>
-    {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = builder.Configuration.GetValue("DirectBooking:RateLimitPermitLimit", 10);
-        limiter.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("GuestCheckIn", limiter =>
-    {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = builder.Configuration.GetValue("CheckIn:RateLimitPermitLimit", 10);
-        limiter.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("GuestCheckInSubmit", limiter =>
-    {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = builder.Configuration.GetValue("CheckIn:SubmitRateLimitPermitLimit", 3);
-        limiter.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("PublicTouristTaxCalc", limiter =>
-    {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = builder.Configuration.GetValue("SeoTouristTax:RateLimitPermitLimit", 30);
-        limiter.QueueLimit = 0;
-    });
-    options.AddPolicy("PublicResolveHost", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            GetClientIpRateLimitKey(context),
-            _ => new FixedWindowRateLimiterOptions
-            {
-                Window = TimeSpan.FromMinutes(1),
-                PermitLimit = builder.Configuration.GetValue("PublicHost:RateLimitPermitLimit", 60),
-                QueueLimit = 0,
-            }));
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-});
+// Client IP behind the Railway proxy (UseForwardedHeaders, first middleware) and per-IP rate limiting (FD-10, #273).
+builder.Services.AddCasazenForwardedHeaders();
+builder.Services.AddCasazenRateLimiting();
 
 // Background Jobs
 builder.Services.AddScoped<OtaSyncJob>();
@@ -279,6 +243,10 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// First middleware: resolves the client IP and scheme from the trusted proxy's X-Forwarded-For / X-Forwarded-Proto.
+// Everything after it (rate limiting, consent evidence) reads HttpContext.Connection.RemoteIpAddress, never the header.
+app.UseForwardedHeaders();
 
 // Apply pending EF migrations on startup (Railway deploy). Skipped in Testing (in-memory DB).
 if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("Testing"))
@@ -393,16 +361,5 @@ app.Lifetime.ApplicationStarted.Register(() =>
 });
 
 app.Run();
-
-static string GetClientIpRateLimitKey(HttpContext context)
-{
-    var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-    var forwardedClient = forwarded?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-        .FirstOrDefault();
-
-    return string.IsNullOrWhiteSpace(forwardedClient)
-        ? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"
-        : forwardedClient;
-}
 
 public partial class Program { }

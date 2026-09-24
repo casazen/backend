@@ -11,6 +11,7 @@ using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
@@ -285,19 +286,10 @@ public class PropertiesController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        try
-        {
-            await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
-            return NoContent();
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
+        // Invalid format (422 invalid_cin_format) and CIN already used by another property (409 duplicate_cin)
+        // are domain exceptions turned into ProblemDetails by the error middleware.
+        await propertyService.UpdatePropertyCinAsync(id, request.CinCode);
+        return NoContent();
     }
 
     [HttpDelete("{id}")]
@@ -327,6 +319,7 @@ public class PropertiesController(
 
     [HttpGet("search")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> Search(
         [FromQuery] string? city,
         [FromQuery] int? bedrooms,
@@ -338,6 +331,7 @@ public class PropertiesController(
 
     [HttpGet("{id}/public")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<PublicPropertyDetailDto>> GetPublic(Guid id)
     {
         var property = await propertyService.GetPublicPropertyAsync(id);

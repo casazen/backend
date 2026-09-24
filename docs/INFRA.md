@@ -411,6 +411,8 @@ DataProtection__CertificatePassword=[pfx password]
 
 Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
 
+Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
+
 `RAILWAY_GIT_COMMIT_SHA` is set by Railway itself on every deployment from GitHub: the health endpoints expose it as `commit` and CI compares it with the pushed commit. Do not set it by hand.
 
 ### Variables required in Production
@@ -431,6 +433,7 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | recommended | warning at startup: Data Protection keys stored unencrypted | [`storage.md`](runbooks/storage.md) §4 |
 | `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe | this file § Stripe |
 | `Cors__AllowedOrigins` | when the web app is not on a built-in origin | browser calls rejected by CORS | this file |
+| `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
 | `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |
 

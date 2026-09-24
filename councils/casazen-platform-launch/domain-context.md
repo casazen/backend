@@ -58,7 +58,7 @@ CasaZen is evolving from a vacation-rental PMS (Italian STR compliance, OTA sync
 
 | Regulation | Requirement | Current CasaZen status |
 |------------|-------------|------------------------|
-| D.L. 145/2023 (CIN) | Property CIN `IT-XXXXX-XXXXXXXXXX` | Implemented — `CinCodeAttribute` |
+| D.L. 145/2023 (CIN) | Property CIN, e.g. `IT058091C27G5FFZDZ` | Implemented — `CinFormat` (CO-01) |
 | D.L. 286/1998 Art.7 (Alloggiati Web) | Guest police report within 24h of check-in | Implemented — background job |
 | GDPR | Consent, retention (7y default), erasure Art.17 | Implemented — `GdprService`, retention job |
 | Tourist tax | Municipality rates, never hardcoded | Implemented — `TouristTaxRate` entity |

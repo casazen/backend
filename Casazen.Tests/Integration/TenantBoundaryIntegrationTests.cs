@@ -35,7 +35,7 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
         bathrooms = 1,
         maxGuests = 4,
         nightlyRate = 90m,
-        cinCode = "IT-12345-0123456789",
+        cinCode = "IT058091C27G5FFZDZ",
     };
 
     [Fact]
