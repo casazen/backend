@@ -307,6 +307,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+
+        // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
+        services.AddOptions<SupplierRegistrationOptions>()
+            .BindConfiguration(SupplierRegistrationOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SupplierRegistrationOptions>, SupplierRegistrationOptionsValidator>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();

@@ -19,7 +19,16 @@ public class SupplierRegisterRequest
     [Required, MaxLength(20)]
     public string ComuneCode { get; set; } = string.Empty;
 
+    /// <summary>Token of the invite link (SU-01). A malformed or truncated value answers <c>supplier_invite_invalid</c>.</summary>
+    [MaxLength(256)]
     public string? InviteToken { get; set; }
+}
+
+/// <summary>Body of <c>POST /api/suppliers/invites/lookup</c>: the token stays out of URLs and request logs.</summary>
+public class SupplierInviteLookupRequest
+{
+    [Required, MaxLength(256)]
+    public string Token { get; set; } = string.Empty;
 }
 
 public class UpdateSupplierProfileRequest
@@ -93,6 +102,34 @@ public class SupplierRegisterResponse
 
     /// <summary>Stable error code of the failed Auth0 sync, null when synced or not attempted.</summary>
     public string? RolesSyncError { get; set; }
+}
+
+/// <summary>What an invite grants, to pre-fill the registration page (email and comune are then locked).</summary>
+public class SupplierInviteLookupResponse
+{
+    public string Email { get; set; } = string.Empty;
+    public string ComuneCode { get; set; } = string.Empty;
+
+    /// <summary>Name of the comune when it is a configured pilot comune, otherwise null (show the code).</summary>
+    public string? ComuneName { get; set; }
+
+    public IEnumerable<string> Categories { get; set; } = [];
+    public DateTime ExpiresAt { get; set; }
+}
+
+/// <summary>Self-serve registration settings for the registration page (SU-01).</summary>
+public class SupplierRegistrationOptionsResponse
+{
+    /// <summary>False while no pilot comune is configured: suppliers join by invite only.</summary>
+    public bool SelfServeEnabled { get; set; }
+
+    public IEnumerable<SupplierPilotComuneDto> PilotComuni { get; set; } = [];
+}
+
+public class SupplierPilotComuneDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 }
 
 public class SupplierProfileDto

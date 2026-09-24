@@ -90,7 +90,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 
 | Policy | Endpoints | Default | Limit key (legacy key still honoured) |
 |---|---|---|---|
-| `PublicRead` | `GET api/public/orgs/{slug}`, `…/properties`, `…/properties/{id}`; `GET api/properties/search`, `GET api/properties/{id}/public`; `GET api/public/bookings/property/{id}/availability`; `GET api/public/suppliers/{slug}` | 120 / min | `RateLimiting__PublicRead__PermitLimit` |
+| `PublicRead` | `GET api/public/orgs/{slug}`, `…/properties`, `…/properties/{id}`; `GET api/properties/search`, `GET api/properties/{id}/public`; `GET api/public/bookings/property/{id}/availability`; `GET api/public/suppliers/{slug}`; `POST api/suppliers/invites/lookup`, `GET api/suppliers/registration-options` (SU-01) | 120 / min | `RateLimiting__PublicRead__PermitLimit` |
 | `PublicBookingCreate` | `POST api/public/bookings` | 10 / min | `RateLimiting__PublicBookingCreate__PermitLimit` (`DirectBooking__RateLimitPermitLimit`) |
 | `PublicBookingLookup` | `POST api/public/bookings/lookup`, `GET api/public/bookings/{id}/status` (the checkout polls it up to 15 times) | 30 / min | `RateLimiting__PublicBookingLookup__PermitLimit` |
 | `GuestCheckIn` | `GET api/public/checkin/{token}`; legacy `api/checkin/*` | 10 / min per IP+token | `RateLimiting__GuestCheckIn__PermitLimit` (`CheckIn__RateLimitPermitLimit`) |

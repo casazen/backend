@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -155,7 +156,13 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
     }
 
     private static SupplierService CreateSupplierService(AppDbContext db) =>
-        new(db, Mock.Of<IEmailQueue>(), EmailTestHelpers.Links(), Mock.Of<ISafeExternalHttpClient>(), NullLogger<SupplierService>.Instance);
+        new(
+            db,
+            Mock.Of<IEmailQueue>(),
+            EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
+            Options.Create(new SupplierRegistrationOptions()),
+            NullLogger<SupplierService>.Instance);
 
     private static async Task<string[]> CategoriesAsync(AppDbContext db, Guid supplierOrgId)
     {

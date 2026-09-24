@@ -48,6 +48,8 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         { 15, "POST", "/api/auth/register", "{}" },
         { 16, "GET", "/api/public/check-in/0b6a1f0e-5c1d-4d7e-9a51-3f2c1e0a1005?token=missing", null },
         { 17, "GET", "/api/public/suppliers/missing-supplier", null },
+        { 18, "POST", "/api/suppliers/invites/lookup", "{}" },
+        { 19, "GET", "/api/suppliers/registration-options", null },
     };
 
     [Theory]

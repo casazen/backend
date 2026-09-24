@@ -133,11 +133,41 @@ public class EmailTemplatesTests
             "fornitore@example.com",
             "H501",
             null,
-            "https://casazen-app.test/register?inviteToken=1&email=fornitore%40example.com&comune=H501",
+            "https://casazen-app.test/register?inviteToken=1",
             new DateTime(2026, 6, 27, 12, 0, 0, DateTimeKind.Utc));
 
-        Assert.Contains("L'invito scade il <strong>27/06/2026 14:00</strong>.", content.HtmlBody);
-        Assert.Contains("href=\"https://casazen-app.test/register?inviteToken=1&amp;email=fornitore%40example.com&amp;comune=H501\"", content.HtmlBody);
+        Assert.Contains("L'invito scade il <strong>27/06/2026 14:00</strong> (ora italiana).", content.HtmlBody);
+        Assert.Contains("href=\"https://casazen-app.test/register?inviteToken=1\"", content.HtmlBody);
+    }
+
+    [Fact]
+    public void SupplierInvite_WinterExpiry_IsShownInItalianTimeInBothLanguages()
+    {
+        var expiresAt = new DateTime(2026, 12, 1, 23, 30, 0, DateTimeKind.Utc);
+
+        var italian = EmailTemplates.SupplierInvite(
+            EmailTemplates.DefaultCulture, "fornitore@example.com", "Roma (H501)", null, Link, expiresAt);
+        var english = EmailTemplates.SupplierInvite(
+            CultureInfo.GetCultureInfo("en"), "fornitore@example.com", "Roma (H501)", null, Link, expiresAt);
+
+        // 23:30 UTC on 1 December is 00:30 of 2 December in Rome (CET, UTC+1).
+        Assert.Contains("<strong>02/12/2026 00:30</strong> (ora italiana)", italian.HtmlBody);
+        Assert.Contains("(Italian time)", english.HtmlBody);
+    }
+
+    [Fact]
+    public void SupplierInvite_Text_PromisesTheActivationWizardNotAnAutomaticActivation()
+    {
+        var italian = EmailTemplates.SupplierInvite(
+            EmailTemplates.DefaultCulture, "fornitore@example.com", "Roma (H501)", null, Link, DateTime.UtcNow);
+        var english = EmailTemplates.SupplierInvite(
+            CultureInfo.GetCultureInfo("en"), "fornitore@example.com", "Roma (H501)", null, Link, DateTime.UtcNow);
+
+        Assert.DoesNotContain("automaticamente", italian.HtmlBody);
+        Assert.DoesNotContain("automatically", english.HtmlBody);
+        Assert.Contains("procedura di attivazione", italian.HtmlBody);
+        Assert.Contains("activation steps", english.HtmlBody);
+        Assert.Contains("per il comune <strong>Roma (H501)</strong>", italian.HtmlBody);
     }
 
     [Fact]

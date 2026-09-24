@@ -6,18 +6,30 @@ namespace Casazen.Core.Services;
 public interface ISupplierService
 {
     /// <summary>
-    /// Registers a new supplier org. If <paramref name="inviteToken"/> is provided it is validated
-    /// against an outstanding admin invite; otherwise self-serve registration is assumed.
-    /// When <paramref name="userId"/> is provided the caller's User record is linked to the new org.
+    /// Registers a new supplier org (SU-01). With an invite token the invite must be valid, unused and not expired, and
+    /// is accepted only by a signed-in user whose account email is the invited one, for the invited comune; the invite
+    /// is then used up. Without a token (self-serve) the comune must be a configured pilot comune and, when signed in,
+    /// the email must be the account email. When <see cref="SupplierRegistration.UserId"/> is set the user is linked to
+    /// the org; a user already linked to a supplier org gets that registration back.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Codes <c>supplier_invite_invalid</c>, <c>supplier_invite_expired</c>, <c>supplier_invite_used</c>,
+    /// <c>supplier_invite_login_required</c>, <c>supplier_invite_email_mismatch</c>,
+    /// <c>supplier_invite_comune_mismatch</c>, <c>supplier_account_email_missing</c>,
+    /// <c>supplier_account_email_mismatch</c>, <c>supplier_self_serve_unavailable</c>, <c>supplier_comune_not_pilot</c>.
+    /// </exception>
     Task<(Org Org, SupplierProfile Profile)> RegisterAsync(
-        string email,
-        string legalName,
-        string phone,
-        string comuneCode,
-        string? inviteToken,
-        string? userId = null,
+        SupplierRegistration registration,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The invite of a link token, to pre-fill the registration page (SU-01). Nothing is changed.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Codes <c>supplier_invite_invalid</c> (malformed or unknown token), <c>supplier_invite_expired</c>,
+    /// <c>supplier_invite_used</c>.
+    /// </exception>
+    Task<SupplierInvitePreview> GetInviteAsync(string? inviteToken, CancellationToken cancellationToken = default);
 
     /// <summary>Returns the <see cref="SupplierProfile"/> for the given supplier org.</summary>
     Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
@@ -144,6 +156,30 @@ public record UnmappedServiceCategory(string Source, Guid Id, string Value);
 public record ActivationStep(string Id, string Label, string Status, string? Blocker = null);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
+
+/// <summary>
+/// A supplier registration request. <paramref name="UserId"/> and <paramref name="AccountEmail"/> are the signed-in
+/// caller (Auth0 <c>sub</c> and account email), both null for an anonymous self-serve registration.
+/// </summary>
+public record SupplierRegistration(
+    string Email,
+    string LegalName,
+    string Phone,
+    string ComuneCode,
+    string? InviteToken = null,
+    string? UserId = null,
+    string? AccountEmail = null);
+
+/// <summary>
+/// What an invite link grants: the email that must register, the comune (with its display name when known) and the
+/// preselected service category codes.
+/// </summary>
+public record SupplierInvitePreview(
+    string Email,
+    string ComuneCode,
+    string? ComuneName,
+    IReadOnlyList<string> Categories,
+    DateTime ExpiresAt);
 
 public record SupplierDashboard(
     int ProfileCompletionPercent,

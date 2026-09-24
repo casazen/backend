@@ -23,16 +23,15 @@ public class PublicSiteLinksTests
     }
 
     [Fact]
-    public void SupplierInviteSignup_InviteData_PointsToWebAppRegisterPage()
+    public void SupplierInviteSignup_Token_PointsToWebAppRegisterPageWithTokenOnly()
     {
         var links = EmailTestHelpers.Links("https://app.example.org");
-        var inviteId = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        var token = new string('a', 64);
 
-        var url = links.SupplierInviteSignup(inviteId, "fornitore+1@example.com", "H501");
+        var url = links.SupplierInviteSignup(token);
 
-        Assert.Equal(
-            "https://app.example.org/register?inviteToken=a1b2c3d4-e5f6-7890-abcd-ef1234567890&email=fornitore%2B1%40example.com&comune=H501",
-            url);
+        // SU-01 (A4-03): the web app page, never the backend; no email or comune in the URL.
+        Assert.Equal($"https://app.example.org/register?inviteToken={token}", url);
     }
 
     [Theory]
