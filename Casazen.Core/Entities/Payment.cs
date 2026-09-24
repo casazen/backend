@@ -53,6 +53,14 @@ public class Payment : ITenantOwned
     [MaxLength(255)]
     public string? StripeAccountId { get; set; }
 
+    /// <summary>
+    /// True when the PaymentIntent lives on the platform account: its <c>payment_intent.succeeded</c> came through the
+    /// platform webhook endpoint without a connected account (BK-04). Refunds are then created without the
+    /// <c>Stripe-Account</c> header, never on the org's connected account. False for direct charges
+    /// (<see cref="StripeAccountId"/>) and for payments that never went through Stripe.
+    /// </summary>
+    public bool StripeIntentOnPlatform { get; set; }
+
     public DateTime? ProcessedAt { get; set; }
 
     /// <summary>OTA 21% acconto (issue #3). <see cref="Amount"/> remains gross.</summary>
