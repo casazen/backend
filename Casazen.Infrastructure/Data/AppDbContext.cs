@@ -629,6 +629,11 @@ public class AppDbContext(
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.Status);
 
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.ClaimTokenHash)
+            .IsUnique()
+            .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
+
         modelBuilder.Entity<SupplierAvailability>()
             .HasOne(sa => sa.SupplierProfile)
             .WithMany()

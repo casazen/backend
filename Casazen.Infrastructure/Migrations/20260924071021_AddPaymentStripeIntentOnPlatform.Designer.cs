@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924071021_AddPaymentStripeIntentOnPlatform")]
+    partial class AddPaymentStripeIntentOnPlatform
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -828,7 +831,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("RegistrationDeadline")
+                    b.Property<DateTime>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SignedPdfStoragePath")
@@ -840,9 +843,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
-
-                    b.Property<DateTime?>("StipulaDate")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2742,13 +2742,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<DateTime?>("ClaimTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ClaimTokenHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
                     b.Property<string>("ComuniJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -2801,10 +2794,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("OrgId");
-
-                    b.HasIndex("ClaimTokenHash")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
                     b.HasIndex("Status");
 

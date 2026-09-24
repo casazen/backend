@@ -266,7 +266,7 @@ before the first start with FD-11, or hand over the tables Hangfire created with
 
 Audit defect A3-13. The public checkout (`POST /api/public/bookings`) stores a `Direct` booking `Pending` while the
 guest pays (PaymentIntent) or saves a card (SetupIntent). The hold lasts `DirectBooking:PendingTtlMinutes`
-(default 15) from its creation. Before BK-21 an abandoned hold kept its dates busy on the booking site, in the host
+(default 30 since BK-04; it was 15) from its creation. Before BK-21 an abandoned hold kept its dates busy on the booking site, in the host
 calendar and in the iCal export (so on Airbnb/Booking) until someone tried to book the same dates.
 
 **What counts as an expired hold** — one definition, `Casazen.Core/Services/CheckoutHolds.cs`, used by the job, by
@@ -300,7 +300,9 @@ checks: `Pending` + source `Direct` + payment option not `OnSite` + a PaymentInt
   (BK-06), never the checkout TTL. `Pending` bookings without a Stripe intent are not holds either.
 
 Nothing to configure on Railway: the job is registered at startup like the others. To change the TTL set
-`DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure).
+`DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure; why 30 minutes:
+`docs/runbooks/stripe.md` § "Late payments"). A payment that still succeeds after the hold was released is confirmed
+again or refunded in full by the payment webhook (BK-04, same section).
 
 **Checks** (SQL editor, replace the schema):
 
@@ -312,7 +314,7 @@ WHERE b."Status" = 0 AND b."Source" = 0 AND b."PaymentOption" <> 2
   AND (b."StripeSetupIntentId" IS NOT NULL
        OR EXISTS (SELECT 1 FROM casazen_prod."Payments" p WHERE p."BookingId" = b."Id" AND p."StripePaymentIntentId" IS NOT NULL))
   AND NOT EXISTS (SELECT 1 FROM casazen_prod."Payments" p WHERE p."BookingId" = b."Id" AND p."Status" IN (1, 2))
-  AND b."CreatedAt" < now() - interval '15 minutes'
+  AND b."CreatedAt" < now() - interval '30 minutes'  -- DirectBooking__PendingTtlMinutes
 ORDER BY b."CreatedAt";
 
 -- Holds expired by the system, last 7 days

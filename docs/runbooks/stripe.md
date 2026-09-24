@@ -144,6 +144,109 @@ and check each one in the Stripe Dashboard (Payments → search the `pi_…`) be
    Stripe and the payment is "Parzialmente rimborsato".
 4. Test mode: cancel a booking not paid yet (checkout left open): the PaymentIntent is `canceled` on the connected account.
 
+## Late payments: confirmed again or refunded in full (BK-04)
+
+Task BK-04 (audit defect A3-04 P0). Before it, a guest who paid after the checkout hold had expired (3-D Secure plus a
+banking app easily take more than 15 minutes) could be charged with no booking, no refund and no email: the payment was
+marked `Completed` on the `Cancelled` booking with a warning in the log. PR #442 was discarded for leaving exactly that
+state. Now `payment_intent.succeeded` of a booking payment never ends as "Completed on a cancelled booking".
+
+### What the webhook does
+
+`StripeWebhookHandler` → `CheckoutPaymentSettlementService`, for the checkout's PaymentIntents (`kind = direct-booking`)
+on the Connect endpoint and for every booking payment reported by the platform endpoint:
+
+| Booking when the payment succeeds | Dates | Result |
+|---|---|---|
+| `Pending`, hold still valid (within `DirectBooking:PendingTtlMinutes`, or payment seen in flight by the expiry job) | no other booking on them | `Confirmed` (as before) |
+| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared, check-in token issued), guest email "Prenotazione confermata" with the booking code |
+| same | taken | stays / becomes `Cancelled` (a pending one gets `CancellationReason = 2`, `DatesUnavailableAtPayment`); **full refund** of what is still refundable; guest email "Date non più disponibili, pagamento rimborsato" once Stripe confirms the refund |
+| `Confirmed`, `CheckedIn`, `CheckedOut` | — | payment `Completed`, booking unchanged |
+
+- A hold still valid kept its dates in the iCal export, so only another booking can stand in its way (a block imported
+  meanwhile is an OTA-side double booking for the host to solve). An expired hold or a cancelled booking had released its
+  dates to the site and to the OTAs: iCal blocks count.
+- "Valid hold" and "expired hold" are the single definition of BK-21 (`CheckoutHolds.IsExpired` / `OccupiesDates`).
+- The refund reuses BK-02 (`PaymentRefundService`): row `PaymentRefunds` with origin `BookingCancellation` (the payment page
+  shows "Cancellazione prenotazione"), `Stripe-Account` = the connected account of the payment (the event's `account`,
+  stored at checkout in `Payments.StripeAccountId`), **idempotency key `late-payment-refund:{PaymentIntentId}`**
+  (unique in the table and sent to Stripe), amount = everything still refundable (the whole payment when nothing was
+  refunded). The payment becomes `Refunded` only when Stripe confirms, as for every refund.
+- **Platform endpoint.** An event of the platform endpoint that carries `account` (the endpoint also listens to connected
+  accounts) is handled like a Connect event. Without `account` the PaymentIntent lives on the platform account: the
+  payment is flagged `StripeIntentOnPlatform` and the refund is created **without** `Stripe-Account`. The checkout never
+  creates platform PaymentIntents today; the rule covers older data and a misrouted endpoint.
+- An event whose `account` differs from the one stored on the payment is ignored (log `reported by account … expected …`).
+
+### Exactly once, and no race with a new checkout
+
+- The event claim and every write (payment, booking, refund reservation) share one transaction (PL-10): a duplicate
+  delivery is skipped; another event of the same PaymentIntent finds the `late-payment-refund:` row and does nothing.
+- Under PostgreSQL the webhook takes, in order, the **property lock of the booking checks** (the same
+  `pg_advisory_xact_lock` as `BookingRepository.AddAsync`), the BK-02 booking-cancellation and payment-refund locks, and
+  the booking row (`FOR UPDATE`, so the expiry job skips it). A checkout of the same dates waits for the commit: if the
+  late payment was confirmed again the newcomer gets **409**; if the newcomer committed first the late payment is refunded.
+- The Stripe refund call and the emails happen **after** the commit. A `PaymentRefundSubmitJob` is scheduled (1 minute)
+  before the commit as a safety net: if the process stops in between, the job sends the refund with the same key.
+
+### Hold duration (`DirectBooking:PendingTtlMinutes`, default 30)
+
+Checked in the code on 2026-09-24:
+
+- The public checkout (frontend `src/features/public-booking/checkout-page.tsx`) pays a PaymentIntent with the Stripe
+  Payment Element (`stripe.confirmPayment`, `redirect: 'if_required'`) and, for the deferred option, a SetupIntent
+  (`confirmSetup`). There is **no Stripe Checkout Session** and **no timer** in the page.
+- The PaymentIntent is created without any expiry (`StripeService.CreateConnectedAccountPaymentIntentAsync`): it stays
+  payable until CasaZen cancels it. The only bound is the hold TTL plus the `checkout-hold-expiry` job (every 5 minutes,
+  BK-21), so a hold lasts between TTL and TTL + 5 minutes.
+- Stripe's own hosted Checkout Session cannot expire sooner than **30 minutes** (`expires_at`: "anywhere from 30 minutes
+  to 24 hours after Checkout Session creation", Stripe.net 50.1 API reference of `SessionCreateOptions.ExpiresAt`). The
+  audit scenario (3-D Secure plus banking app) took 18 minutes.
+
+Hence 30 minutes (was 15): long enough for strong customer authentication in normal cases, short enough not to block
+dates for long; what arrives later is confirmed again or refunded as above. Change it with `DirectBooking__PendingTtlMinutes`
+on Railway (minimum 1); a longer TTL blocks abandoned dates longer, a shorter one causes more late payments.
+
+### Operations
+
+| Log / situation | What to do |
+|---|---|
+| `… succeeded on booking … after its hold ended …: booking confirmed again` | Nothing: informative. The host sees the booking as confirmed |
+| `… when its dates were no longer free: booking cancelled, full refund … reserved` | Nothing if the refund succeeds (payment page: "Rimborsato"). |
+| `Automatic refund … of the late payment of booking … was not made by Stripe (<code>)` | Stripe rejected the refund (e.g. `charge_disputed`, insufficient balance on the connected account). The payment stays `Completed` with a failed refund row: the host refunds it from the payment page (BK-02), or support from the Stripe Dashboard |
+| Refund `Pending` for a long time | Stripe or the bank is still working (`refund.updated` completes it); `PaymentRefundSubmitJob` in Hangfire *Failed* means Stripe never answered: requeue it |
+
+**Data written before BK-04**: payments completed on cancelled bookings without any refund. Check each one (Stripe
+Dashboard → Payments → the `pi_…`) and refund it from the payment page, or confirm the booking again if the dates are free:
+
+```sql
+SELECT b."Id" AS booking_id, p."Id" AS payment_id, p."StripePaymentIntentId", p."Amount", b."UpdatedAt"
+FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
+WHERE b."Status" = 4 AND p."Status" = 2 AND p."StripePaymentIntentId" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM casazen_prod."PaymentRefunds" r WHERE r."PaymentId" = p."Id")
+ORDER BY b."UpdatedAt" DESC;
+```
+
+### Stripe settings
+
+Nothing new: the Connect endpoint already sends `payment_intent.succeeded` and the refund events of BK-02; a restricted
+key needs **Refunds: Write** (BK-02).
+
+### Verification
+
+1. Automated: `LateCheckoutPaymentPostgresTests` (free dates → confirmed again + email; dates taken by another guest →
+   one refund with `Stripe-Account`, amount and key checked + email; expired pending hold over an iCal block → refund;
+   valid hold → confirmed; the same event twice in parallel, again later and another event of the same PaymentIntent →
+   one refund; late payment and new checkout racing on the property lock in both orders → one booking on the dates;
+   platform endpoint with and without `account`; foreign account ignored), `DirectCheckoutIntegrationTests` (HTTP
+   pipeline), `EmailTemplatesTests`.
+2. Test mode, with a connected test account: start a checkout for some dates and stop before paying; set that booking
+   `Cancelled` in the SQL editor (`UPDATE … SET "Status" = 4 WHERE "Id" = '…'`, which leaves the PaymentIntent payable as
+   before BK-21), book the **same dates** from another browser, then pay the first checkout with `4242 4242 4242 4242`:
+   the first booking stays cancelled, the connected account shows a full refund, the first guest receives
+   "Date non più disponibili". Repeat without the second booking: the first booking becomes `Confirmed` and the guest
+   receives "Prenotazione confermata".
+
 ## Operations
 
 | Situation | What to do |

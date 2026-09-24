@@ -33,7 +33,8 @@ public interface IAuth0ManagementService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fetches email and name from Auth0. Returns null when Management API is not configured or the call fails.
+    /// Fetches email, name and <c>email_verified</c> from Auth0 (not cached). Returns null when Management API is not
+    /// configured or the call fails.
     /// </summary>
     Task<Auth0UserProfile?> GetUserProfileAsync(string userId);
 }

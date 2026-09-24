@@ -23,7 +23,7 @@ public class EmailTemplatesTests
     public static TheoryData<string> TemplateNames => new()
     {
         "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
-        "rli-reminder", "rli-overdue", "rli-extra-eu",
+        "late-payment-confirmed", "late-payment-refunded", "rli-reminder", "rli-overdue", "rli-extra-eu",
     };
 
     [Theory]
@@ -280,6 +280,32 @@ public class EmailTemplatesTests
             .ToDictionary(entry => (string)entry.Key, entry => entry.Value as string ?? string.Empty, StringComparer.Ordinal);
     }
 
+    [Fact]
+    public void GuestLatePaymentConfirmed_Italian_SaysTheDatesWereFreeAndGivesTheBookingCode()
+    {
+        var content = EmailTemplates.GuestLatePaymentConfirmed(
+            EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), "b7d3c1f0-0000-4000-8000-000000000001");
+
+        Assert.Equal("Prenotazione confermata - Villa Rosa", content.Subject);
+        Assert.Contains("Gentile Anna,", content.HtmlBody);
+        Assert.Contains("dal <strong>05/10/2026</strong> al <strong>08/10/2026</strong>", content.HtmlBody);
+        Assert.Contains("le date erano ancora libere: la prenotazione è confermata", content.HtmlBody);
+        Assert.Contains("Codice prenotazione: b7d3c1f0-0000-4000-8000-000000000001", content.HtmlBody);
+    }
+
+    [Fact]
+    public void GuestPaymentRefundedDatesUnavailable_Italian_ExplainsWhyAndGivesTheFullAmount()
+    {
+        var content = EmailTemplates.GuestPaymentRefundedDatesUnavailable(
+            EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, CheckIn.AddDays(3), 1234.5m);
+
+        Assert.Equal("Date non più disponibili, pagamento rimborsato - Villa Rosa", content.Subject);
+        Assert.Contains("le date non erano più disponibili", content.HtmlBody);
+        Assert.Contains("Non è stato possibile confermare la prenotazione.", content.HtmlBody);
+        Assert.Contains("l'intero importo pagato, <strong>1.234,50 €</strong>", content.HtmlBody);
+        Assert.Contains("L'importo torna sul metodo di pagamento usato per la prenotazione.", content.HtmlBody);
+    }
+
     private static EmailContent Render(string template, string cultureName, string value)
     {
         var culture = CultureInfo.GetCultureInfo(cultureName);
@@ -294,6 +320,9 @@ public class EmailTemplatesTests
             "checkin-incomplete" => EmailTemplates.GuestCheckInIncomplete(culture, value, value, CheckIn),
             "alloggiati" => EmailTemplates.AlloggiatiDeadline(culture, value, value, CheckIn),
             "refund" => EmailTemplates.GuestRefundConfirmed(culture, value, value, CheckIn, 1234.5m),
+            "late-payment-confirmed" => EmailTemplates.GuestLatePaymentConfirmed(culture, value, value, CheckIn, CheckIn.AddDays(3), value),
+            "late-payment-refunded" => EmailTemplates.GuestPaymentRefundedDatesUnavailable(
+                culture, value, value, CheckIn, CheckIn.AddDays(3), 1234.5m),
             "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
             "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
             "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),

@@ -316,6 +316,8 @@ public class UsersController(
         UpdatedAt = u.UpdatedAt,
         OnboardingCompletedAt = u.OnboardingCompletedAt,
         OrgId = u.OrgId,
+        // A user whose only org is a supplier org registered before SupplierOrgId existed counts as linked too.
+        SupplierOrgId = u.SupplierOrgId ?? (org?.OrgType == OrgType.Supplier ? org.Id : null),
         Org = org is null
             ? null
             : new OrgSummaryDto

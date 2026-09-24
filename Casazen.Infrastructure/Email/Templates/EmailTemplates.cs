@@ -23,6 +23,8 @@ public static class EmailTemplates
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
+        public const string GuestLatePaymentConfirmed = "guest-late-payment-confirmed";
+        public const string GuestPaymentRefundedDatesUnavailable = "guest-payment-refunded-dates-unavailable";
         public const string RliDeadlineReminder = "rli-deadline-reminder";
         public const string RliDeadlineOverdue = "rli-deadline-overdue";
         public const string RliExtraEuNotice = "rli-extra-eu-notice";
@@ -153,6 +155,43 @@ public static class EmailTemplates
             .Paragraph("GuestRefundConfirmed_Method")
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestRefundConfirmed_Subject", propertyName);
+
+    /// <summary>
+    /// A payment that arrived after the checkout hold had expired, when the dates were still free: the booking is
+    /// confirmed again (BK-04, A3-04), to the guest. <paramref name="bookingCode"/> is what "Le mie prenotazioni" asks.
+    /// </summary>
+    public static EmailContent GuestLatePaymentConfirmed(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        string bookingCode) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("GuestLatePaymentConfirmed_Greeting", guestName)
+            .Paragraph("GuestLatePaymentConfirmed_Body", propertyName, checkInDate, checkOutDate)
+            .Paragraph("GuestLatePaymentConfirmed_Late")
+            .Muted("GuestLatePaymentConfirmed_Code", bookingCode)
+            .Build("GuestLatePaymentConfirmed_Subject", propertyName);
+
+    /// <summary>
+    /// A payment that arrived when the dates were no longer available, refunded in full once Stripe confirmed the
+    /// refund (BK-04, A3-04), to the guest. <paramref name="amountEur"/> is in euro.
+    /// </summary>
+    public static EmailContent GuestPaymentRefundedDatesUnavailable(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        decimal amountEur) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("GuestPaymentRefundedDatesUnavailable_Greeting", guestName)
+            .Paragraph("GuestPaymentRefundedDatesUnavailable_Body", propertyName, checkInDate, checkOutDate)
+            .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", amountEur.ToString("N2", culture))
+            .Paragraph("GuestRefundConfirmed_Method")
+            .Muted("GuestRefundConfirmed_Timing")
+            .Build("GuestPaymentRefundedDatesUnavailable_Subject", propertyName);
 
     /// <summary>
     /// RLI registration deadline approaching, to the landlord (LT-11, A7-26). <paramref name="contractNotSignedYet"/>:
