@@ -1,33 +1,62 @@
 name: Supabase Keep-Alive
 
+# Weekly ping so the Supabase free tier does not pause the project after 7 days of inactivity.
+# Each probe runs only when its configuration exists and fails the run when the ping really fails
+# (FD-02: the former `|| echo …` kept every step green). Missing configuration is an explicit, visible skip,
+# not a failure. Runbook: docs/runbooks/ci-backend.md (section "Supabase keep-alive").
+
 on:
   schedule:
-    # Weekly — prevents Supabase free tier pause after 7 days of inactivity
     - cron: '0 8 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   ping:
-    name: Ping Supabase (test schema)
+    name: Ping Supabase
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The secrets context is not allowed in step `if:`: expose it as env and test env instead.
+    env:
+      SUPABASE_PROJECT_URL: ${{ vars.SUPABASE_PROJECT_URL }}
+      SUPABASE_DB_HOST: ${{ vars.SUPABASE_DB_HOST }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
     steps:
-      - name: Health check via REST (optional)
-        if: vars.SUPABASE_PROJECT_URL != ''
+      - name: REST ping
+        if: env.SUPABASE_PROJECT_URL != '' && env.SUPABASE_ANON_KEY != ''
         run: |
-          curl -sf "${{ vars.SUPABASE_PROJECT_URL }}/rest/v1/" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            --max-time 30 \
-            || echo "Supabase REST ping skipped or failed (configure SUPABASE_PROJECT_URL + SUPABASE_ANON_KEY)"
+          URL="${SUPABASE_PROJECT_URL%/}/rest/v1/"
+          if ! curl -fsS -o /dev/null --max-time 30 --retry 3 --retry-all-errors --retry-delay 5 \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "$URL"; then
+            echo "::error::Supabase REST ping failed ($URL). The project may be paused or the anon key is wrong: see docs/runbooks/ci-backend.md."
+            exit 1
+          fi
+          echo "Supabase REST ping OK ($URL)"
 
-      - name: TCP reachability (fallback)
-        if: vars.SUPABASE_DB_HOST != ''
+      - name: REST ping skipped (SUPABASE_ANON_KEY not set)
+        if: env.SUPABASE_PROJECT_URL != '' && env.SUPABASE_ANON_KEY == ''
         run: |
-          nc -zv "${{ vars.SUPABASE_DB_HOST }}" 5432 -w 10 \
-            || echo "TCP ping skipped (set SUPABASE_DB_HOST variable to db.[ref].supabase.co)"
+          echo "::warning::REST ping skipped: SUPABASE_PROJECT_URL is set but the secret SUPABASE_ANON_KEY is not. See docs/runbooks/ci-backend.md."
 
-      - name: No-op when vars unset
-        if: vars.SUPABASE_PROJECT_URL == '' && vars.SUPABASE_DB_HOST == ''
+      - name: TCP reachability
+        if: env.SUPABASE_DB_HOST != ''
         run: |
-          echo "Configure GitHub variables SUPABASE_PROJECT_URL and/or SUPABASE_DB_HOST to enable keep-alive pings."
-          echo "See docs/INFRA.md — Supabase keep-alive section."
+          for attempt in 1 2 3; do
+            if nc -z -w 10 "$SUPABASE_DB_HOST" 5432; then
+              echo "Supabase database reachable ($SUPABASE_DB_HOST:5432)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Supabase database not reachable at $SUPABASE_DB_HOST:5432 after 3 attempts. See docs/runbooks/ci-backend.md."
+          exit 1
+
+      - name: Nothing configured (no ping sent)
+        if: env.SUPABASE_PROJECT_URL == '' && env.SUPABASE_DB_HOST == ''
+        run: |
+          echo "::warning::No keep-alive ping sent: set the variable SUPABASE_PROJECT_URL (with the secret SUPABASE_ANON_KEY) and/or SUPABASE_DB_HOST. See docs/runbooks/ci-backend.md."

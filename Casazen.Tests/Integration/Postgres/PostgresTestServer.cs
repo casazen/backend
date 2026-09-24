@@ -70,7 +70,7 @@ public static class PostgresTestServer
             if (UnavailableReason is { } reason)
                 throw new InvalidOperationException($"No PostgreSQL server for integration tests: {reason}.");
 
-            var container = new PostgreSqlBuilder().WithImage(ContainerImage).Build();
+            var container = new PostgreSqlBuilder(ContainerImage).Build();
             // Start on the thread pool: blocking on xUnit's synchronization context could deadlock.
             Task.Run(() => container.StartAsync()).GetAwaiter().GetResult();
             // The Testcontainers resource reaper (Ryuk) removes the container when the test process exits.
