@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924070807_AddBookingCleaningFeeAndCancellationNote")]
-    partial class AddBookingCleaningFeeAndCancellationNote
+    [Migration("20260924073223_SupplierClaimToken")]
+    partial class SupplierClaimToken
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -220,10 +220,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<string>("CancellationNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<int?>("CancellationReason")
                         .HasColumnType("integer");
 
@@ -245,10 +241,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime?>("CheckoutWizardStartedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("CleaningFee")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -897,12 +889,23 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeclaredByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("ExternalRegistrationId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
@@ -915,6 +918,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTime?>("RegistrationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -926,7 +935,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("LeaseContractId")
                         .IsUnique();
 
-                    b.ToTable("LeaseRegistrations");
+                    b.ToTable("LeaseRegistrations", t =>
+                        {
+                            t.HasCheckConstraint("CK_LeaseRegistrations_RegisteredRequiresReceipt", "\"Status\" <> 2 OR btrim(coalesce(\"ReceiptStoragePath\", '')) <> ''");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.LeaseRegistrationAuthorization", b =>
@@ -1334,6 +1346,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("StripeAccountId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("StripeIntentOnPlatform")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(255)
@@ -2727,6 +2742,13 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTime?>("ClaimTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClaimTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ComuniJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -2779,6 +2801,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("OrgId");
+
+                    b.HasIndex("ClaimTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
                     b.HasIndex("Status");
 

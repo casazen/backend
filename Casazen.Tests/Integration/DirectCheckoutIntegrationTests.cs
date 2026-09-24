@@ -336,8 +336,9 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
-    public async Task Webhook_DoesNotConfirmCancelledDirectBooking()
+    public async Task Webhook_PaymentOnCancelledDirectBookingWithFreeDates_ReconfirmsBooking()
     {
+        // A3-04: the payment used to be marked Completed on the cancelled booking, with no booking and no refund.
         var property = await SeedConnectReadyPropertyAsync();
         var client = _factory.CreateClient();
         var response = await PostDirectBookingAsync(client, BuildPayload(property.Id));
@@ -350,35 +351,81 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         using var scope = _factory.Services.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stripe = (FakeStripeService)scope.ServiceProvider.GetRequiredService<IStripeService>();
 
-        var cancelledBooking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
-        cancelledBooking.Status = BookingStatus.Cancelled;
-        cancelledBooking.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        await CancelAsync(db, bookingId);
 
-        var paymentIntent = new PaymentIntent
-        {
-            Id = paymentIntentId,
-            Amount = 65000,
-            Metadata = new Dictionary<string, string>
-            {
-                ["kind"] = "direct-booking",
-                ["bookingId"] = bookingId.ToString(),
-            },
-        };
-
-        await handler.HandleEventAsync(new Event
-        {
-            Type = "payment_intent.succeeded",
-            Data = new EventData { Object = paymentIntent },
-        }, WebhookSource.Connected);
+        await handler.HandleEventAsync(DirectBookingPaymentSucceeded(paymentIntentId, bookingId), WebhookSource.Connected);
 
         var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
-        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        Assert.Equal(BookingStatus.Confirmed, booking.Status);
+        Assert.NotNull(booking.CheckInToken);
 
         var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
         Assert.Equal(PaymentStatus.Completed, payment.Status);
+        Assert.DoesNotContain(stripe.RefundRequests, r => r.PaymentIntentId == paymentIntentId);
     }
+
+    [Fact]
+    public async Task Webhook_PaymentOnCancelledDirectBookingWhoseDatesWereTaken_RefundsInFullOnConnectedAccount()
+    {
+        var property = await SeedConnectReadyPropertyAsync();
+        var client = _factory.CreateClient();
+        var firstResponse = await PostDirectBookingAsync(client, BuildPayload(property.Id));
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        using var firstDoc = JsonDocument.Parse(await firstResponse.Content.ReadAsStringAsync());
+        var bookingId = firstDoc.RootElement.GetProperty("bookingId").GetGuid();
+        var amount = firstDoc.RootElement.GetProperty("amount").GetDecimal();
+        var paymentIntentId = FakeStripeService.LastPaymentIntentId!;
+
+        using var scope = _factory.Services.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stripe = (FakeStripeService)scope.ServiceProvider.GetRequiredService<IStripeService>();
+
+        // The first guest's hold is cancelled and a second guest books the same dates before the payment arrives.
+        await CancelAsync(db, bookingId);
+        var secondResponse = await PostDirectBookingAsync(client, BuildPayload(property.Id));
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+
+        await handler.HandleEventAsync(DirectBookingPaymentSucceeded(paymentIntentId, bookingId), WebhookSource.Connected);
+
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        var refund = Assert.Single(stripe.RefundRequests, r => r.PaymentIntentId == paymentIntentId);
+        Assert.Equal("acct_test_connect_ready", refund.ConnectedAccountId);
+        Assert.Equal((long)Math.Round(amount * 100m), refund.AmountCents);
+        Assert.Equal($"late-payment-refund:{paymentIntentId}", refund.IdempotencyKey);
+        var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
+        Assert.Equal(PaymentStatus.Refunded, payment.Status);
+    }
+
+    private static async Task CancelAsync(AppDbContext db, Guid bookingId)
+    {
+        var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
+        booking.Status = BookingStatus.Cancelled;
+        booking.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    private static Event DirectBookingPaymentSucceeded(string paymentIntentId, Guid bookingId) => new()
+    {
+        Type = "payment_intent.succeeded",
+        Data = new EventData
+        {
+            Object = new PaymentIntent
+            {
+                Id = paymentIntentId,
+                Amount = 65000,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["kind"] = "direct-booking",
+                    ["bookingId"] = bookingId.ToString(),
+                },
+            },
+        },
+    };
 
     [Fact]
     public async Task SetupWebhook_DoesNotConfirmCancelledDeferredBooking()

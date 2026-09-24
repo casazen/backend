@@ -150,6 +150,33 @@
   <data name="GuestBookingCancelled_Contact" xml:space="preserve">
     <value>For any question, please contact the host of the property directly.</value>
   </data>
+  <data name="GuestLatePaymentConfirmed_Subject" xml:space="preserve">
+    <value>Booking confirmed - {0}</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Body" xml:space="preserve">
+    <value>we have received your payment for &lt;strong&gt;{0}&lt;/strong&gt;, from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Late" xml:space="preserve">
+    <value>The payment arrived after the time allowed to complete the booking, but the dates were still free: your booking is confirmed.</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Code" xml:space="preserve">
+    <value>Booking code: {0}</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Subject" xml:space="preserve">
+    <value>Dates no longer available, payment refunded - {0}</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Body" xml:space="preserve">
+    <value>your payment for &lt;strong&gt;{0}&lt;/strong&gt;, from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;, arrived after the time allowed to complete the booking, and meanwhile the dates were no longer available. The booking could not be confirmed.</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Refund" xml:space="preserve">
+    <value>We have refunded the full amount you paid, &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
   <data name="RliDeadlineReminder_Subject" xml:space="preserve">
     <value>RLI registration reminder — {0} (due {1})</value>
   </data>

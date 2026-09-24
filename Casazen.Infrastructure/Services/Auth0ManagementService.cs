@@ -95,7 +95,7 @@ public class Auth0ManagementService(
             if (string.IsNullOrWhiteSpace(firstName) && !string.IsNullOrWhiteSpace(auth0User.NickName))
                 firstName = auth0User.NickName;
 
-            return new Auth0UserProfile(email, firstName, lastName);
+            return new Auth0UserProfile(email, firstName, lastName, auth0User.EmailVerified);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -180,7 +180,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return booking;
     }
 
-    private static void EnsureCheckInToken(Booking booking)
+    /// <summary>A confirmed booking carries its self check-in token (also used by the late-payment reconfirmation, BK-04).</summary>
+    internal static void EnsureCheckInToken(Booking booking)
     {
         if (booking.Status != BookingStatus.Confirmed)
             return;
@@ -234,6 +235,25 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         var transaction = await context.Database.BeginTransactionAsync();
         await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", lockKey);
         return transaction;
+    }
+
+    /// <summary>
+    /// Takes, inside the caller's transaction, the property lock of <see cref="AddAsync"/> and <see cref="UpdateAsync"/>:
+    /// the dates of the property cannot be taken by another booking until the caller commits (BK-04, late payment
+    /// reconfirmed against a concurrent checkout). Nothing is locked outside PostgreSQL.
+    /// </summary>
+    internal static async Task LockPropertyDatesAsync(AppDbContext context, Guid propertyId, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
+            return;
+
+        if (context.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("The property lock is transaction-scoped: begin a transaction first.");
+
+        await context.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock({0})",
+            [ToAdvisoryLockKey(propertyId)],
+            cancellationToken);
     }
 
     private static long ToAdvisoryLockKey(Guid value) =>

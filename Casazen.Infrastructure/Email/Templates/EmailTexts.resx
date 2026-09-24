@@ -150,6 +150,33 @@
   <data name="GuestBookingCancelled_Contact" xml:space="preserve">
     <value>Per qualsiasi domanda contatta direttamente l'host della struttura.</value>
   </data>
+  <data name="GuestLatePaymentConfirmed_Subject" xml:space="preserve">
+    <value>Prenotazione confermata - {0}</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Body" xml:space="preserve">
+    <value>abbiamo ricevuto il tuo pagamento per &lt;strong&gt;{0}&lt;/strong&gt;, dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Late" xml:space="preserve">
+    <value>Il pagamento è arrivato dopo il tempo previsto per completare la prenotazione, ma le date erano ancora libere: la prenotazione è confermata.</value>
+  </data>
+  <data name="GuestLatePaymentConfirmed_Code" xml:space="preserve">
+    <value>Codice prenotazione: {0}</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Subject" xml:space="preserve">
+    <value>Date non più disponibili, pagamento rimborsato - {0}</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Body" xml:space="preserve">
+    <value>il tuo pagamento per &lt;strong&gt;{0}&lt;/strong&gt;, dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, è arrivato dopo il tempo previsto per completare la prenotazione e nel frattempo le date non erano più disponibili. Non è stato possibile confermare la prenotazione.</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Refund" xml:space="preserve">
+    <value>Ti abbiamo rimborsato l'intero importo pagato, &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
   <data name="RliDeadlineReminder_Subject" xml:space="preserve">
     <value>Promemoria registrazione RLI — {0} (scadenza {1})</value>
   </data>

@@ -5,10 +5,8 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
-using Casazen.Core.Options;
 
 namespace Casazen.Tests.Unit.Jobs;
 
@@ -92,16 +90,12 @@ public class ESignWebhookJobTests
 
         var sut = new LeaseWorkflowService(
             leaseRepo.Object,
-            Mock.Of<ILeaseRegistrationRepository>(),
             Mock.Of<ILeaseEventRepository>(),
             Mock.Of<ILeaseTemplateService>(),
             eSign.Object,
-            Mock.Of<ILeaseRegistrationService>(),
             Mock.Of<IPropertyRepository>(),
-            Mock.Of<ILeaseRegistrationAuthorizationRepository>(),
             Mock.Of<IApeComplianceService>(),
             Mock.Of<ICanoneConcordatoEligibilityService>(),
-            Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
 
         await new ESignWebhookJob(sut, Mock.Of<ILogger<ESignWebhookJob>>())
@@ -123,16 +117,12 @@ public class ESignWebhookJobTests
 
         var sut = new LeaseWorkflowService(
             leaseRepo.Object,
-            Mock.Of<ILeaseRegistrationRepository>(),
             events.Object,
             Mock.Of<ILeaseTemplateService>(),
             eSign.Object,
-            Mock.Of<ILeaseRegistrationService>(),
             Mock.Of<IPropertyRepository>(),
-            Mock.Of<ILeaseRegistrationAuthorizationRepository>(),
             Mock.Of<IApeComplianceService>(),
             Mock.Of<ICanoneConcordatoEligibilityService>(),
-            Options.Create(new RliOptions()),
             Mock.Of<ILogger<LeaseWorkflowService>>());
         return (sut, leaseRepo, events);
     }

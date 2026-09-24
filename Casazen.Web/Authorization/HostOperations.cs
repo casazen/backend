@@ -70,4 +70,5 @@ public static class LeaseOperations
     public static readonly HostOperationRequirement Read = new("long-rent", "lease.read");
     public static readonly HostOperationRequirement Create = new("long-rent", "lease.create");
     public static readonly HostOperationRequirement Sign = new("long-rent", "lease.sign");
+    public static readonly HostOperationRequirement Register = new("long-rent", "lease.register");
 }

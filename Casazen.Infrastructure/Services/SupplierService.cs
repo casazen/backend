@@ -28,7 +28,7 @@ public class SupplierService(
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    public async Task<(Org Org, SupplierProfile Profile)> RegisterAsync(
+    public async Task<SupplierRegistrationResult> RegisterAsync(
         SupplierRegistration registration,
         CancellationToken cancellationToken = default)
     {
@@ -79,7 +79,7 @@ public class SupplierService(
                         existing.Value.Org.Id);
                     if (transaction is not null)
                         await transaction.CommitAsync(cancellationToken);
-                    return existing.Value;
+                    return new SupplierRegistrationResult(existing.Value.Org, existing.Value.Profile);
                 }
             }
         }
@@ -142,6 +142,19 @@ public class SupplierService(
         // The invite's categories are codes already (validated when the invite was created, SU-03).
         if (!string.IsNullOrWhiteSpace(invite?.CategoriesJson))
             profile.CategoriesJson = invite.CategoriesJson;
+
+        // Anonymous self-serve (an invite always needs a signed-in account): nobody can be linked now. The response
+        // carries a claim token that the account created afterwards presents to ClaimAsync (SU-02, A4-02); the profile
+        // is never joined by email alone (A4-23).
+        SupplierClaimTicket? claimTicket = null;
+        if (userId is null)
+        {
+            var claimToken = SupplierClaimTokens.Generate();
+            claimTicket = new SupplierClaimTicket(claimToken, DateTime.UtcNow.Add(SupplierClaimTokens.Validity));
+            profile.ClaimTokenHash = SupplierClaimTokens.Hash(claimToken);
+            profile.ClaimTokenExpiresAt = claimTicket.ExpiresAt;
+        }
+
         db.SupplierProfiles.Add(profile);
 
         // Link the authenticated user to the new org so subsequent supplier endpoint
@@ -169,11 +182,138 @@ public class SupplierService(
         else
         {
             logger.LogInformation(
-                "Supplier org {OrgId} self-registered for {MaskedEmail}", org.Id, LogRedaction.MaskEmail(email));
+                "Supplier org {OrgId} self-registered for {MaskedEmail} ({Mode})",
+                org.Id,
+                LogRedaction.MaskEmail(email),
+                claimTicket is null ? "signed in, linked" : "anonymous, claim token issued");
         }
 
-        return (org, profile);
+        return new SupplierRegistrationResult(org, profile, claimTicket);
     }
+
+    public async Task<SupplierClaimResult> ClaimAsync(SupplierClaim claim, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+
+        var userId = claim.UserId;
+        var accountEmail = claim.AccountEmail?.Trim();
+
+        // A malformed or truncated token is "invalid claim" (422), never a parse error.
+        string? tokenHash = null;
+        if (!string.IsNullOrWhiteSpace(claim.ClaimToken))
+        {
+            if (!SupplierClaimTokens.TryNormalize(claim.ClaimToken, out var token))
+                throw ClaimInvalid();
+            tokenHash = SupplierClaimTokens.Hash(token);
+        }
+
+        // One supplier link per user, across requests and instances (TN-4); registrations take the same lock.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId));
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        // A repeated claim (double submit, retry after a failed Auth0 role sync) gets the org already linked.
+        if (user is not null)
+        {
+            var existing = await TryGetExistingSupplierRegistrationAsync(user, cancellationToken);
+            if (existing is not null)
+            {
+                var linkedOrgId = existing.Value.Org.Id;
+                if (tokenHash is not null)
+                {
+                    var tokenOrgId = await db.SupplierProfiles.AsNoTracking()
+                        .Where(sp => sp.ClaimTokenHash == tokenHash)
+                        .Select(sp => (Guid?)sp.OrgId)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (tokenOrgId is Guid otherOrgId && otherOrgId != linkedOrgId)
+                        throw new DomainConflictException("supplier_account_already_linked", "SupplierAccountAlreadyLinked");
+                }
+
+                if (transaction is not null)
+                    await transaction.CommitAsync(cancellationToken);
+                return new SupplierClaimResult(linkedOrgId, NewlyLinked: false);
+            }
+        }
+
+        if (string.IsNullOrEmpty(accountEmail))
+            throw new DomainRuleException("supplier_account_email_missing", "SupplierAccountEmailMissing");
+        if (user is null)
+            throw new InvalidOperationException($"User {userId} must exist before claiming a supplier profile.");
+
+        SupplierProfile profile;
+        string method;
+        if (tokenHash is not null)
+        {
+            profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.ClaimTokenHash == tokenHash, cancellationToken)
+                ?? throw ClaimInvalid();
+            await LockSupplierClaimAsync(profile.OrgId, cancellationToken);
+
+            if (await IsSupplierProfileHeldAsync(profile.OrgId, cancellationToken))
+                throw new DomainRuleException("supplier_claim_used", "SupplierClaimUsed");
+            if (profile.ClaimTokenExpiresAt is not DateTime expiresAt || expiresAt <= DateTime.UtcNow)
+                throw new DomainRuleException("supplier_claim_expired", "SupplierClaimExpired");
+            // The token proves the registrant; the account must still be the one of the registered email.
+            if (!EmailsMatch(profile.Email, accountEmail))
+                throw new DomainRuleException("supplier_claim_email_mismatch", "SupplierClaimEmailMismatch");
+            method = "claim token";
+        }
+        else
+        {
+            // Without the token only an email that Auth0 verified may pick the profile (A4-23, A1-13).
+            if (!claim.AccountEmailVerified)
+                throw new DomainRuleException("supplier_claim_email_unverified", "SupplierClaimEmailUnverified");
+
+            var normalizedEmail = accountEmail.ToLowerInvariant();
+            // Users has no tenant filter (allow-listed identity table): the check spans every org on purpose.
+            var candidates = await db.SupplierProfiles.AsNoTracking()
+                .Where(sp => sp.Email.ToLower() == normalizedEmail
+                             && !db.Users.Any(u => u.SupplierOrgId == sp.OrgId || u.OrgId == sp.OrgId))
+                .OrderBy(sp => sp.CreatedAt)
+                .Select(sp => sp.OrgId)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (candidates.Count == 0)
+                throw new DomainRuleException("supplier_claim_not_found", "SupplierClaimNotFound");
+            if (candidates.Count > 1)
+                throw new DomainConflictException("supplier_claim_ambiguous", "SupplierClaimAmbiguous");
+
+            await LockSupplierClaimAsync(candidates[0], cancellationToken);
+            profile = await db.SupplierProfiles.FirstAsync(sp => sp.OrgId == candidates[0], cancellationToken);
+            // Taken by a parallel claim while this one waited for the lock.
+            if (await IsSupplierProfileHeldAsync(profile.OrgId, cancellationToken))
+                throw new DomainRuleException("supplier_claim_used", "SupplierClaimUsed");
+            method = "verified email";
+        }
+
+        user.SupplierOrgId = profile.OrgId;
+        if (user.OrgId is null)
+            user.OrgId = profile.OrgId;
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} claimed supplier org {OrgId} with a {ClaimMethod}", userId, profile.OrgId, method);
+        return new SupplierClaimResult(profile.OrgId, NewlyLinked: true);
+    }
+
+    private static DomainRuleException ClaimInvalid() =>
+        new("supplier_claim_invalid", "SupplierClaimInvalid");
+
+    /// <summary>Serializes the claims of one profile: at most one account is linked to it (joins the open transaction).</summary>
+    private async Task LockSupplierClaimAsync(Guid supplierOrgId, CancellationToken cancellationToken)
+    {
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.SupplierClaim, supplierOrgId.ToString("N")));
+    }
+
+    /// <summary>True when an account is already linked to the supplier org (claimed, registered signed in, invited).</summary>
+    private Task<bool> IsSupplierProfileHeldAsync(Guid supplierOrgId, CancellationToken cancellationToken) =>
+        db.Users.AsNoTracking().AnyAsync(
+            u => u.SupplierOrgId == supplierOrgId || u.OrgId == supplierOrgId, cancellationToken);
 
     public async Task<SupplierInvitePreview> GetInviteAsync(string? inviteToken, CancellationToken cancellationToken = default)
     {
@@ -523,8 +663,8 @@ public class SupplierService(
         if (user is null)
             return null;
 
+        // Only the contact of a provisioned profile: never used to find one (A4-23).
         var resolvedEmail = string.IsNullOrWhiteSpace(email) ? user.Email : email;
-        var normalizedEmail = string.IsNullOrWhiteSpace(resolvedEmail) ? string.Empty : resolvedEmail.Trim().ToLowerInvariant();
 
         // Step 1a: User.SupplierOrgId — set explicitly during registration or
         // auto-provisioning, survives even when User.OrgId points to a host org.
@@ -564,21 +704,11 @@ public class SupplierService(
             }
         }
 
-        // Step 2: Email-based lookup
-        if (!string.IsNullOrWhiteSpace(normalizedEmail))
-        {
-            var profileByEmail = await db.SupplierProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(sp => sp.Email.ToLower() == normalizedEmail, cancellationToken);
-            if (profileByEmail is not null)
-            {
-                user.SupplierOrgId = profileByEmail.OrgId;
-                user.UpdatedAt = DateTime.UtcNow;
-                await db.SaveChangesAsync(cancellationToken);
-                return profileByEmail.OrgId;
-            }
-        }
+        // No email lookup (A4-23, A1-13): the email of the token is not proof of owning a profile registered with it,
+        // and an unverified Auth0 account could take over that supplier. An existing profile is joined only through
+        // its invite (RegisterAsync) or an explicit claim (ClaimAsync: claim token, or verified email).
 
-        // Step 3: Auto-provisioning — last resort
+        // Step 2: Auto-provisioning — last resort (a Supplier role given by hand, without any profile)
         logger.LogWarning(
             "Auto-provisioning supplier org for user {UserId} (email={MaskedEmail})",
             userId, LogRedaction.MaskEmail(resolvedEmail));
@@ -608,25 +738,8 @@ public class SupplierService(
         };
         db.SupplierProfiles.Add(profile);
 
-        // Consume any pending invite for this email during auto-provisioning
-        if (!string.IsNullOrWhiteSpace(normalizedEmail))
-        {
-            var pendingInvite = await db.SupplierInviteRecords
-                .FirstOrDefaultAsync(i =>
-                    i.Email.ToLower() == normalizedEmail &&
-                    !i.IsUsed &&
-                    i.ExpiresAt > DateTime.UtcNow,
-                    cancellationToken);
-
-            if (pendingInvite is not null)
-            {
-                pendingInvite.IsUsed = true;
-                if (!string.IsNullOrWhiteSpace(pendingInvite.ComuneCode))
-                    profile.ComuniJson = JsonSerializer.Serialize(new[] { pendingInvite.ComuneCode });
-                if (!string.IsNullOrWhiteSpace(pendingInvite.CategoriesJson))
-                    profile.CategoriesJson = pendingInvite.CategoriesJson;
-            }
-        }
+        // A pending invite for the same email is left alone: it is accepted only with its token (SU-01), never
+        // consumed by an account that merely shows the invited email (A4-23).
 
         // Set SupplierOrgId — always, even when User.OrgId is already set (dual-role).
         user.SupplierOrgId = org.Id;

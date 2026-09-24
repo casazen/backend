@@ -172,6 +172,12 @@ public enum BookingCancellationReason
     /// SetupIntent was cancelled on Stripe and the dates released (BK-21, A3-13).
     /// </summary>
     CheckoutHoldExpired = 1,
+
+    /// <summary>
+    /// The guest's payment succeeded when the dates were no longer free (the hold had expired and another booking or an
+    /// iCal block took them): the booking is cancelled and the payment refunded in full automatically (BK-04, A3-04).
+    /// </summary>
+    DatesUnavailableAtPayment = 2,
 }
 
 public enum PaymentOption

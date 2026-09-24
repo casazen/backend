@@ -346,6 +346,12 @@ public class AppDbContext(
             .HasIndex(r => r.LeaseContractId)
             .IsUnique();
 
+        // LT-01 (A7-01): "Registered" only with the official receipt stored, never as a simulation.
+        modelBuilder.Entity<LeaseRegistration>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_LeaseRegistrations_RegisteredRequiresReceipt",
+                $"\"Status\" <> {(int)RegistrationStatus.Registered} OR btrim(coalesce(\"ReceiptStoragePath\", '')) <> ''"));
+
         // LeaseEvent → LeaseContract (cascade)
         modelBuilder.Entity<LeaseEvent>()
             .HasOne(e => e.LeaseContract)
@@ -622,6 +628,11 @@ public class AppDbContext(
 
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.Status);
+
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.ClaimTokenHash)
+            .IsUnique()
+            .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
         modelBuilder.Entity<SupplierAvailability>()
             .HasOne(sa => sa.SupplierProfile)

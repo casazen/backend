@@ -41,12 +41,19 @@ public sealed record LeasePartyDto(
     string ContactEmailMasked,
     bool IsExtraEU);
 
-/// <summary>RLI registration state; the provider id and the receipt storage path stay on the server.</summary>
+/// <summary>
+/// RLI registration state (LT-01). The provider id, the receipt storage path and the declaring user stay on the server:
+/// the client only learns whether a receipt can be downloaded.
+/// </summary>
 public sealed record LeaseRegistrationDto(
     RegistrationStatus Status,
+    RegistrationChannel Channel,
     string? RegistrationCode,
+    DateTime? RegistrationDate,
     DateTime? SubmittedAt,
-    DateTime? ConfirmedAt);
+    DateTime? ConfirmedAt,
+    string? FailureCode,
+    bool HasReceipt);
 
 /// <summary>Timeline entry: the event type only, never its payload.</summary>
 public sealed record LeaseEventDto(LeaseEventType EventType, DateTime OccurredAt);
@@ -116,9 +123,14 @@ public static class LeaseDtoMapper
 
         return new LeaseRegistrationDto(
             registration.Status,
+            registration.Channel,
             registration.RegistrationCode,
+            registration.RegistrationDate,
             registration.SubmittedAt,
-            registration.ConfirmedAt);
+            registration.ConfirmedAt,
+            registration.Status == RegistrationStatus.Failed ? registration.FailureCode : null,
+            HasReceipt: registration.Status == RegistrationStatus.Registered
+                && !string.IsNullOrWhiteSpace(registration.ReceiptStoragePath));
     }
 
     private static LeasePropertyDto? ToProperty(Property? property) =>

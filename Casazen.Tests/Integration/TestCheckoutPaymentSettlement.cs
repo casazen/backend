@@ -1,0 +1,50 @@
+using Casazen.Core.Repositories;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Repositories;
+using Casazen.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+
+namespace Casazen.Tests.Integration;
+
+/// <summary>
+/// Builds the <see cref="CheckoutPaymentSettlementService"/> of a <c>StripeWebhookHandler</c> made by hand in tests, on
+/// the same context and payment repository as the handler (BK-04).
+/// </summary>
+internal static class TestCheckoutPaymentSettlement
+{
+    private static readonly IConfiguration EmptyConfiguration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+
+    public static CheckoutPaymentSettlementService Create(
+        AppDbContext db,
+        IPaymentRepository? paymentRepository = null,
+        IStripeService? stripe = null,
+        IEmailQueue? emails = null,
+        IPaymentRefundRetryScheduler? retryScheduler = null,
+        IConfiguration? configuration = null,
+        TimeProvider? timeProvider = null)
+    {
+        var scheduler = retryScheduler ?? Mock.Of<IPaymentRefundRetryScheduler>();
+        var emailQueue = emails ?? Mock.Of<IEmailQueue>();
+        var refunds = new PaymentRefundService(
+            db,
+            stripe ?? Mock.Of<IStripeService>(),
+            scheduler,
+            emailQueue,
+            NullLogger<PaymentRefundService>.Instance,
+            timeProvider);
+        return new CheckoutPaymentSettlementService(
+            db,
+            paymentRepository ?? new PaymentRepository(db),
+            refunds,
+            scheduler,
+            emailQueue,
+            configuration ?? EmptyConfiguration,
+            NullLogger<CheckoutPaymentSettlementService>.Instance,
+            timeProvider);
+    }
+}

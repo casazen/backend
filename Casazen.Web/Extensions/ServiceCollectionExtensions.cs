@@ -116,11 +116,11 @@ public static class ServiceCollectionExtensions
                                     role));
                             }
 
-                            // Backfill Supplier role from DB. Users who registered via the
-                            // backend-served page have SupplierOrgId set but no Supplier role
-                            // in their Auth0 JWT yet. Adding the claim here lets the
-                            // [Authorize(Policy="RequireSupplier")] filter pass on the first
-                            // request after Auth0 signup.
+                            // Backfill Supplier role from DB. A user just linked to a supplier
+                            // org (registration, invite or claim, SU-02) has SupplierOrgId set but
+                            // no Supplier role in the Auth0 JWT until a new token (or at all when
+                            // the role sync failed). Adding the claim here lets the
+                            // [Authorize(Policy="RequireSupplier")] filter pass right away.
                             var sub = context.Principal.FindFirstValue("sub")
                                 ?? context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -262,6 +262,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
+        // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
+        services.AddScoped<CheckoutPaymentSettlementService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
@@ -311,6 +313,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
+        // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
+        // provider path stays unavailable even with Features:RliProvider on.
+        services.AddScoped<IRliRegistrationService, RliRegistrationService>();
+        services.AddSingleton<ILeaseRegistrationProvider, UnconfiguredLeaseRegistrationProvider>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();

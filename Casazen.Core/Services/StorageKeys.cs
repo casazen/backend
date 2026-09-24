@@ -27,6 +27,10 @@ public static partial class StorageKeys
     public static string GuestDocument(Guid orgId, Guid guestId, string fileName) =>
         $"guest-documents/{orgId}/{guestId}/{fileName}";
 
+    /// <summary>RLI registration receipt of a lease (private bucket, LT-01).</summary>
+    public static string LeaseRegistrationReceipt(Guid orgId, Guid leaseId, string fileName) =>
+        $"leases/{orgId}/{leaseId}/registration/{fileName}";
+
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>
         $"{Guid.NewGuid()}{Path.GetExtension(originalFileName ?? string.Empty).ToLowerInvariant()}";
