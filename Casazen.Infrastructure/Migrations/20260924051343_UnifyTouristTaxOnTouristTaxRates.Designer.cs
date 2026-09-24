@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924045038_UnifyTouristTaxOnTouristTaxRates")]
+    [Migration("20260924051343_UnifyTouristTaxOnTouristTaxRates")]
     partial class UnifyTouristTaxOnTouristTaxRates
     {
         /// <inheritdoc />
@@ -2421,9 +2421,17 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("TokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
 
                     b.HasIndex("Email", "IsUsed");
 
