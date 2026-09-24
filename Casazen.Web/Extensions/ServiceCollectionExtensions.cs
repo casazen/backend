@@ -1,11 +1,13 @@
 // File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
 
 using System.Security.Claims;
+using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
@@ -241,6 +243,8 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenServices(this IServiceCollection services)
     {
+        // Features:* flags (FD-20, docs/runbooks/feature-flags.md)
+        services.AddSingleton<IFeatureFlags, ConfigurationFeatureFlags>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IBookingService, BookingService>();
@@ -325,10 +329,16 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
+        // Always registered: OtaManager depends on it (DynamicPricingJob uses OtaManager). With the flag off it has no
+        // adapter to return, so nothing can call an OTA partner API.
+        services.AddScoped<IChannelFactory, ChannelFactory>();
+
+        // OTA partner API in freeze (D10): adapters, HTTP clients and rate limiter only with Features:OtaPartnerApi on.
+        if (!ConfigurationFeatureFlags.IsEnabled(configuration, FeatureFlags.OtaPartnerApi))
+            return services;
+
         // Register rate limiter as singleton (shared across all OTA adapters)
         services.AddSingleton<OtaRateLimiter>();
-
-        services.AddScoped<IChannelFactory, ChannelFactory>();
 
         // Configure HttpClients for each OTA adapter with Polly policies
         ConfigureOtaHttpClient<AirbnbAdapter>(services, configuration, "Airbnb");
