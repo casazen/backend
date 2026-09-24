@@ -1,12 +1,11 @@
 ﻿namespace Casazen.Core.Services;
 
+/// <summary>
+/// Alerts sent by the recurring jobs (Alloggiati deadline, check-out reminder, CIN deadline). The booking emails (BK-10)
+/// are sent by <c>BookingNotifier</c>, the refund emails by the refund service: no stub methods here.
+/// </summary>
 public interface INotificationService
 {
-    Task SendBookingConfirmationAsync(Guid bookingId);
-    Task SendPaymentReceiptAsync(Guid paymentId);
-    Task SendPropertyUpdateAsync(Guid propertyId);
-    Task SendOtaSyncNotificationAsync(Guid propertyId, string platform);
-    Task SendRefundNotificationAsync(Guid paymentId);
     Task SendAlloggiatiDeadlineAlertAsync(Guid bookingId);
     Task SendCheckoutReminderAsync(Guid bookingId);
     Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline);

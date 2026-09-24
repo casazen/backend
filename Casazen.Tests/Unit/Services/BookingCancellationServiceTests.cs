@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -214,6 +215,58 @@ public class BookingCancellationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CancelAsync_RefundSucceededAtOnce_OneGuestEmailWithTheRefundAndNoSeparateRefundEmail()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: 10);
+        var sent = RecordEmails();
+
+        var result = await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 400m, null, "auth0|host"));
+
+        var email = Assert.Single(sent);
+        Assert.Equal(EmailTemplates.Names.GuestBookingCancelled, email.Template);
+        Assert.Equal("guest@example.com", email.To);
+        Assert.Contains("Ti abbiamo rimborsato <strong>400,00 €</strong>.", email.Content.HtmlBody);
+        Assert.Contains("L'importo torna sul metodo di pagamento usato per la prenotazione.", email.Content.HtmlBody);
+        Assert.DoesNotContain("È stato avviato un rimborso", email.Content.HtmlBody);
+        Assert.Contains("Per qualsiasi domanda contatta <strong>Cancel Org</strong> all'indirizzo host@example.com.", email.Content.HtmlBody);
+        var refundId = Assert.Single(result.Refunds).Id;
+        var refund = await _db.PaymentRefunds.AsNoTracking().SingleAsync(r => r.Id == refundId);
+        Assert.NotNull(refund.GuestNotifiedAt);
+
+        // A later webhook for the same refund does not email the guest again.
+        await RefundService().NotifyGuestAsync(refund.Id);
+        Assert.Single(sent);
+    }
+
+    [Fact]
+    public async Task CancelAsync_RefundPendingOnStripe_CancellationSaysStartedAndConfirmationFollowsOnce()
+    {
+        var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: 10);
+        _refundStatus = "pending";
+        var sent = RecordEmails();
+
+        var result = await Service().CancelAsync(new BookingCancellationRequest(seed.BookingId, 400m, null, null));
+
+        var email = Assert.Single(sent);
+        Assert.Equal(EmailTemplates.Names.GuestBookingCancelled, email.Template);
+        Assert.Contains("È stato avviato un rimborso di <strong>400,00 €</strong>", email.Content.HtmlBody);
+        Assert.DoesNotContain("Ti abbiamo rimborsato", email.Content.HtmlBody);
+        var refundId = Assert.Single(result.Refunds).Id;
+        var refund = await _db.PaymentRefunds.SingleAsync(r => r.Id == refundId);
+        Assert.Null(refund.GuestNotifiedAt);
+
+        // Stripe confirms it later (webhook): the "refund confirmed" email, once.
+        refund.Status = PaymentRefundStatus.Succeeded;
+        await _db.SaveChangesAsync();
+        var refundService = RefundService();
+        await refundService.NotifyGuestAsync(refund.Id);
+        await refundService.NotifyGuestAsync(refund.Id);
+        Assert.Equal(
+            [EmailTemplates.Names.GuestBookingCancelled, EmailTemplates.Names.GuestRefundConfirmed],
+            sent.Select(e => e.Template).ToList());
+    }
+
+    [Fact]
     public async Task CancelAsync_RefundPendingOnStripe_BookingCancelledButPaymentNotRefundedYet()
     {
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 400m, freeRefundUntilDaysFromNow: 10);
@@ -303,15 +356,29 @@ public class BookingCancellationServiceTests : IDisposable
 
     private BookingCancellationService Service()
     {
-        var refunds = new PaymentRefundService(
+        var notifier = new BookingNotifier(_db, _emails.Object, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance);
+        return new BookingCancellationService(
+            _db, RefundService(), _stripe.Object, notifier, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
+    }
+
+    // One queue for the refund emails and the cancellation email: BK-10 checks the guest gets one email, not two.
+    private PaymentRefundService RefundService() =>
+        new(
             _db,
             _stripe.Object,
             Mock.Of<IPaymentRefundRetryScheduler>(),
-            Mock.Of<IEmailQueue>(),
+            _emails.Object,
             NullLogger<PaymentRefundService>.Instance,
             new FixedTimeProvider(Now));
-        return new BookingCancellationService(
-            _db, refunds, _stripe.Object, _emails.Object, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
+
+    private List<(string? To, EmailContent Content, string Template)> RecordEmails()
+    {
+        var sent = new List<(string? To, EmailContent Content, string Template)>();
+        _emails
+            .Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
+            .Callback<string?, EmailContent, string>((to, content, template) => sent.Add((to, content, template)))
+            .Returns(true);
+        return sent;
     }
 
     private sealed record Seed(Guid BookingId, Guid PaymentId, string PaymentIntentId);

@@ -123,9 +123,6 @@
   <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
     <value>Rimborso confermato - {0}</value>
   </data>
-  <data name="GuestRefundConfirmed_Greeting" xml:space="preserve">
-    <value>Gentile {0},</value>
-  </data>
   <data name="GuestRefundConfirmed_Body" xml:space="preserve">
     <value>abbiamo rimborsato &lt;strong&gt;{0} €&lt;/strong&gt; per la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
   </data>
@@ -138,38 +135,17 @@
   <data name="GuestBookingCancelled_Subject" xml:space="preserve">
     <value>Prenotazione annullata - {0}</value>
   </data>
-  <data name="GuestBookingCancelled_Greeting" xml:space="preserve">
-    <value>Gentile {0},</value>
-  </data>
   <data name="GuestBookingCancelled_Body" xml:space="preserve">
     <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata dall'host.</value>
   </data>
   <data name="GuestBookingCancelled_Refund" xml:space="preserve">
     <value>È stato avviato un rimborso di &lt;strong&gt;{0} €&lt;/strong&gt; sul metodo di pagamento usato per la prenotazione: riceverai un'altra email quando sarà confermato.</value>
   </data>
-  <data name="GuestBookingCancelled_Contact" xml:space="preserve">
+  <data name="Booking_ContactHostDirectly" xml:space="preserve">
     <value>Per qualsiasi domanda contatta direttamente l'host della struttura.</value>
-  </data>
-  <data name="GuestLatePaymentConfirmed_Subject" xml:space="preserve">
-    <value>Prenotazione confermata - {0}</value>
-  </data>
-  <data name="GuestLatePaymentConfirmed_Greeting" xml:space="preserve">
-    <value>Gentile {0},</value>
-  </data>
-  <data name="GuestLatePaymentConfirmed_Body" xml:space="preserve">
-    <value>abbiamo ricevuto il tuo pagamento per &lt;strong&gt;{0}&lt;/strong&gt;, dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;.</value>
-  </data>
-  <data name="GuestLatePaymentConfirmed_Late" xml:space="preserve">
-    <value>Il pagamento è arrivato dopo il tempo previsto per completare la prenotazione, ma le date erano ancora libere: la prenotazione è confermata.</value>
-  </data>
-  <data name="GuestLatePaymentConfirmed_Code" xml:space="preserve">
-    <value>Codice prenotazione: {0}</value>
   </data>
   <data name="GuestPaymentRefundedDatesUnavailable_Subject" xml:space="preserve">
     <value>Date non più disponibili, pagamento rimborsato - {0}</value>
-  </data>
-  <data name="GuestPaymentRefundedDatesUnavailable_Greeting" xml:space="preserve">
-    <value>Gentile {0},</value>
   </data>
   <data name="GuestPaymentRefundedDatesUnavailable_Body" xml:space="preserve">
     <value>il tuo pagamento per &lt;strong&gt;{0}&lt;/strong&gt;, dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, è arrivato dopo il tempo previsto per completare la prenotazione e nel frattempo le date non erano più disponibili. Non è stato possibile confermare la prenotazione.</value>
@@ -234,10 +210,7 @@
   <data name="ServiceCategory_excursions" xml:space="preserve">
     <value>Escursioni</value>
   </data>
-  <data name="OnSiteRequest_Greeting" xml:space="preserve">
-    <value>Gentile {0},</value>
-  </data>
-  <data name="OnSiteRequest_LinkFallback" xml:space="preserve">
+  <data name="Booking_LinkFallback" xml:space="preserve">
     <value>Se il pulsante non funziona, copia questo link nel browser:</value>
   </data>
   <data name="OnSiteRequest_NoCharge" xml:space="preserve">
@@ -276,18 +249,6 @@
   <data name="OnSiteRequestToHost_Cta" xml:space="preserve">
     <value>Apri le richieste</value>
   </data>
-  <data name="OnSiteRequestAccepted_Subject" xml:space="preserve">
-    <value>Prenotazione confermata - {0}</value>
-  </data>
-  <data name="OnSiteRequestAccepted_Body" xml:space="preserve">
-    <value>l'host ha accettato la tua richiesta: la prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è confermata.</value>
-  </data>
-  <data name="OnSiteRequestAccepted_Payment" xml:space="preserve">
-    <value>Pagherai &lt;strong&gt;{0} €&lt;/strong&gt; direttamente in struttura.</value>
-  </data>
-  <data name="OnSiteRequestAccepted_Reference" xml:space="preserve">
-    <value>Codice prenotazione: {0}</value>
-  </data>
   <data name="OnSiteRequestDeclined_Subject" xml:space="preserve">
     <value>Richiesta di prenotazione non accettata - {0}</value>
   </data>
@@ -302,5 +263,92 @@
   </data>
   <data name="OnSiteRequestExpired_Body" xml:space="preserve">
     <value>l'host non ha risposto in tempo alla tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;: la richiesta è scaduta e le date sono tornate disponibili.</value>
+  </data>
+  <data name="Booking_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="Booking_Code" xml:space="preserve">
+    <value>Codice prenotazione: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_FindIt" xml:space="preserve">
+    <value>Per ritrovare la prenotazione in «Le mie prenotazioni» servono il codice prenotazione e l'indirizzo email a cui hai ricevuto questo messaggio.</value>
+  </data>
+  <data name="Booking_MyBookingsCta" xml:space="preserve">
+    <value>Le mie prenotazioni</value>
+  </data>
+  <data name="Booking_Summary_Nights" xml:space="preserve">
+    <value>Notti: {0}</value>
+  </data>
+  <data name="Booking_Summary_Guests" xml:space="preserve">
+    <value>Ospiti: {0}</value>
+  </data>
+  <data name="Booking_Summary_Lodging" xml:space="preserve">
+    <value>Soggiorno: {0} €</value>
+  </data>
+  <data name="Booking_Summary_Cleaning" xml:space="preserve">
+    <value>Pulizie: {0} €</value>
+  </data>
+  <data name="Booking_Summary_TouristTax" xml:space="preserve">
+    <value>Tassa di soggiorno: {0} € (inclusa nel totale)</value>
+  </data>
+  <data name="Booking_Summary_Total" xml:space="preserve">
+    <value>Totale: &lt;strong&gt;{0} €&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_ContactHost" xml:space="preserve">
+    <value>Per qualsiasi domanda contatta &lt;strong&gt;{0}&lt;/strong&gt; all'indirizzo {1}.</value>
+  </data>
+  <data name="Booking_ContactHostEmail" xml:space="preserve">
+    <value>Per qualsiasi domanda contatta l'host all'indirizzo {0}.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Subject" xml:space="preserve">
+    <value>Prenotazione confermata - {0}</value>
+  </data>
+  <data name="GuestBookingConfirmed_Body" xml:space="preserve">
+    <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è confermata.</value>
+  </data>
+  <data name="GuestBookingConfirmed_BodyOnSite" xml:space="preserve">
+    <value>l'host ha accettato la tua richiesta: la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è confermata.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Late" xml:space="preserve">
+    <value>Il pagamento è arrivato dopo il tempo previsto per completare la prenotazione, ma le date erano ancora libere.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Paid" xml:space="preserve">
+    <value>Pagamento ricevuto: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestBookingConfirmed_DeferredOn" xml:space="preserve">
+    <value>Non ti è stato ancora addebitato nulla: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato il &lt;strong&gt;{1}&lt;/strong&gt; sul metodo di pagamento salvato durante la prenotazione.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Deferred" xml:space="preserve">
+    <value>Non ti è stato ancora addebitato nulla: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato alla scadenza indicata durante la prenotazione, sul metodo di pagamento salvato.</value>
+  </data>
+  <data name="GuestBookingConfirmed_OnSite" xml:space="preserve">
+    <value>Pagherai &lt;strong&gt;{0} €&lt;/strong&gt; direttamente in struttura.</value>
+  </data>
+  <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
+    <value>Questa email conferma la prenotazione e il pagamento ricevuto; non è un documento fiscale.</value>
+  </data>
+  <data name="HostBookingConfirmed_Subject" xml:space="preserve">
+    <value>Nuova prenotazione confermata - {0} ({1})</value>
+  </data>
+  <data name="HostBookingConfirmed_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha prenotato &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;: la prenotazione è confermata.</value>
+  </data>
+  <data name="HostBookingConfirmed_Late" xml:space="preserve">
+    <value>Il pagamento dell'ospite è arrivato dopo il tempo previsto per il checkout, ma le date erano ancora libere: la prenotazione è stata confermata automaticamente.</value>
+  </data>
+  <data name="HostBookingConfirmed_Paid" xml:space="preserve">
+    <value>Pagamento online ricevuto: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingConfirmed_DeferredOn" xml:space="preserve">
+    <value>L'ospite ha salvato un metodo di pagamento: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato il &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingConfirmed_Deferred" xml:space="preserve">
+    <value>L'ospite ha salvato un metodo di pagamento: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato alla scadenza scelta al checkout.</value>
+  </data>
+  <data name="HostBookingConfirmed_Cta" xml:space="preserve">
+    <value>Apri la prenotazione</value>
+  </data>
+  <data name="GuestBookingCancelled_Refunded" xml:space="preserve">
+    <value>Ti abbiamo rimborsato &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
   </data>
 </root>
