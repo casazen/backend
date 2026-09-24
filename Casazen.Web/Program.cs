@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
@@ -98,7 +99,7 @@ builder.Services.AddScoped<ILeaseESignService, LeaseESignHttpAdapter>();
 builder.Services.AddScoped<ILeaseRegistrationService, OpenapiLeaseRegistrationProvider>();
 builder.Services.AddHttpClient("Openapi");
 
-// OTA Integrations with resilience patterns
+// OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
 // Localization — Italian (default) and English.
@@ -295,6 +296,9 @@ app.UseRequestLocalization();
 // Global error handling — must be early in pipeline to catch all exceptions
 app.UseErrorHandling();
 
+// Endpoints behind a disabled feature flag answer 404 before authentication, like a missing route (FD-20)
+app.UseFeatureGates();
+
 // Authentication & Authorization (must be in this order)
 app.UseAuthentication();
 // Loads the caller's OrgId asynchronously once per request, before policies and the EF tenant filter read it (A1-20).
@@ -324,7 +328,7 @@ if (hangfireStorage is not null)
             .LogInformation("Hangfire storage schema: {HangfireSchema}", hangfireStorage.Schema);
         using var scope = app.Services.CreateScope();
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-        RecurringJobsRegistration.Configure(recurringJobManager);
+        RecurringJobsRegistration.Configure(recurringJobManager, scope.ServiceProvider.GetRequiredService<IFeatureFlags>());
     });
 }
 

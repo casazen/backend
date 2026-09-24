@@ -1,6 +1,7 @@
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
@@ -70,7 +71,7 @@ public class SupplierServiceInviteEmailTests
         var queue = new Mock<IEmailQueue>();
         queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>())).Returns(false);
         var service = new SupplierService(
-            db, queue.Object, EmailTestHelpers.Links(), NullLogger<SupplierService>.Instance);
+            db, queue.Object, EmailTestHelpers.Links(), Mock.Of<ISafeExternalHttpClient>(), NullLogger<SupplierService>.Instance);
 
         var invite = await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
 
@@ -82,7 +83,7 @@ public class SupplierServiceInviteEmailTests
         AppDbContext db,
         IEmailQueue queue,
         string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl) =>
-        new(db, queue, EmailTestHelpers.Links(publicSiteBaseUrl), NullLogger<SupplierService>.Instance);
+        new(db, queue, EmailTestHelpers.Links(publicSiteBaseUrl), Mock.Of<ISafeExternalHttpClient>(), NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()
     {

@@ -1,0 +1,57 @@
+# Runbook: feature flags
+
+Task FD-20 (defects A2-09, A9-17, R-10 webhook part, A8-16 OTA part, A9-15 OTA jobs; decision D10).
+
+## How it works
+
+| Piece | Where | Behaviour |
+|---|---|---|
+| Configuration | section `Features` (`appsettings.json`), overridden by Railway variables `Features__<Name>` | One boolean per flag. **Missing or not `true`/`false` means off.** Read at every check: changing a Railway variable redeploys the service and the new value applies. |
+| Flag names | `Casazen.Core/Features/FeatureFlags.cs` | A constant per flag plus the list `FeatureFlags.All` exposed to the frontend. |
+| Code checks | `IFeatureFlags.IsEnabled(FeatureFlags.X)` (`Casazen.Core.Features`, singleton `ConfigurationFeatureFlags`) | For services, background jobs, recurring job registration. Code that runs before the container exists (service registration) uses `ConfigurationFeatureFlags.IsEnabled(configuration, flag)`. |
+| Endpoints | `[FeatureGate(FeatureFlags.X)]` on a controller or an action (`Casazen.Web/Infrastructure/FeatureGateAttribute.cs`) | With the flag off the endpoint answers **404 `not_found`**, the same response as a route that does not exist, before authentication, rate limiting and model binding (`FeatureGateMiddleware`, right after `UseErrorHandling`). |
+| Frontend | `GET /api/public/features` (anonymous, rate limit `PublicRead`) → `{ "otaPartnerApi": false }` | One camelCase key per flag. The SPA loads it once (`FeatureFlagsProvider`, `src/config/feature-flags.ts`); while loading, or if the call fails, every flag is **off**. |
+
+## Flags
+
+| Flag | Railway variable | Default | What it controls |
+|---|---|---|---|
+| `OtaPartnerApi` | `Features__OtaPartnerApi` | `false` (D10: Airbnb / Booking.com partner API in freeze, #31-35) | `api/ota`, `api/properties/{id}/ota-integrations`, `POST /webhooks/ota/{platform}` (404 when off, also without `OTA:WebhookSecret`); OTA adapters, their HTTP clients and rate limiter (not registered in DI); recurring jobs `ota-sync-all` and `booking-pull-all` (not registered, and removed with `RemoveIfExists` from the Hangfire schema of earlier deploys); frontend menu "Canali OTA", routes `/app/short-rent/ota*`, dashboard OTA widget, OTA card in the property detail. **iCal import/export is not behind this flag.** |
+
+`FD-21` adds `AiSupplierDiscovery` the same way (decision D11).
+
+### Before turning `OtaPartnerApi` on
+
+The flag only hides code that is still in freeze; turning it on brings back the known defects: `ota-sync-all` /
+`booking-pull-all` run with `Guid.Empty` (no-op plus a warning at every run, A9-15), `OtaManager.SyncPlatformAsync` /
+`PullBookingsAsync` do nothing, the frontend OTA pages call endpoints that do not exist (`/ota/sync/all`, `POST /ota`,
+`/ota/{id}/validate`). Removed for good by FD-20 (they do not come back with the flag): `PUT /api/ota/pricing`
+(rewrote `NightlyRate` without validation), `POST /api/ota/validate?apiKey=` (API key in the query string),
+`POST /api/ota/sync-platform` (no ownership check, A9-17).
+
+## Adding a flag
+
+1. Backend, `Casazen.Core/Features/FeatureFlags.cs`: `public const string MyFeature = "MyFeature";` and add it to `All`.
+2. Backend, `Casazen.Web/appsettings.json`: `"Features": { ..., "MyFeature": false }` (documentation of the default;
+   a missing value is off anyway).
+3. Backend, gate the code:
+   - endpoints: `[FeatureGate(FeatureFlags.MyFeature)]` on the controller or the action;
+   - services / jobs: inject `IFeatureFlags` and check `IsEnabled(FeatureFlags.MyFeature)`;
+   - recurring jobs: register them in `RecurringJobsRegistration.Configure` only when the flag is on and call
+     `RemoveIfExists(id)` otherwise;
+   - DI registrations: `ConfigurationFeatureFlags.IsEnabled(configuration, FeatureFlags.MyFeature)`.
+4. Frontend, `src/config/feature-flags.ts`: add `myFeature` to `FeatureFlagKey` and `false` to `DEFAULT_FEATURE_FLAGS`.
+5. Frontend, gate the UI:
+   - routes and menu entries: `featureFlag: 'myFeature'` on the `ROUTE_MANIFEST` entry (hidden from every menu, the
+     route redirects to the context home);
+   - components: `const { flags } = useFeatureFlags(); if (!flags.myFeature) ...`, and `enabled: flags.myFeature` on
+     the queries of the hidden feature, so no request leaves while it is off.
+6. Tests: endpoint 404 with the flag off (see `OtaPartnerApiFeatureFlagTests`), jobs not registered
+   (`RecurringJobsFeatureFlagTests`), frontend menu without the entry (`route-manifest-nav.test.ts`).
+7. Railway (test, then production): set `Features__MyFeature=true` only where the feature must be visible.
+
+## Product owner steps (Railway)
+
+Nothing to do for `OtaPartnerApi`: the default is off. Do **not** set `Features__OtaPartnerApi` on test or production
+while D10 is in force. After the first deploy with FD-20, the Hangfire dashboard (if enabled) no longer lists
+`ota-sync-all` and `booking-pull-all`.

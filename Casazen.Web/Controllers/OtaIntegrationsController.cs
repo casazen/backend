@@ -1,14 +1,18 @@
 using System.Security.Claims;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>OTA partner credentials per property: in freeze behind <see cref="FeatureFlags.OtaPartnerApi"/> (D10).</summary>
 [ApiController]
 [Route("api/properties/{propertyId}/ota-integrations")]
 [Authorize(Policy = "RequireContext:short-rent:ota.read")]
+[FeatureGate(FeatureFlags.OtaPartnerApi)]
 public class OtaIntegrationsController(
     IOtaIntegrationService otaIntegrationService,
     IPropertyService propertyService,

@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
@@ -6,6 +7,7 @@ using Hangfire.PostgreSql;
 using Hangfire.PostgreSql.Factories;
 using Hangfire.Server;
 using Hangfire.Storage;
+using Moq;
 using Npgsql;
 using Xunit;
 
@@ -34,7 +36,7 @@ public class HangfireEnvironmentIsolationPostgresTests : IAsyncLifetime
         var (prodSettings, prodStorage) = CreateStorage("casazen_prod");
 
         // Production registers its recurring jobs and receives a job (e.g. a Stripe webhook).
-        RecurringJobsRegistration.Configure(new RecurringJobManager(prodStorage));
+        RecurringJobsRegistration.Configure(new RecurringJobManager(prodStorage), Mock.Of<IFeatureFlags>());
         new BackgroundJobClient(prodStorage).Enqueue(() => Console.WriteLine("prod webhook"));
 
         // A test server comes up.
