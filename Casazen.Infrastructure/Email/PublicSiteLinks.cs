@@ -75,6 +75,19 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Host console: the "pay at the property" requests to accept or decline (BK-06).</summary>
     public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
 
+    /// <summary>
+    /// "Le mie prenotazioni" of the org's booking site (BK-10): the guest finds a booking there with its code and email.
+    /// The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails link here.
+    /// </summary>
+    public string GuestBookings(string orgSlug)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        return Build($"/book/{Uri.EscapeDataString(orgSlug)}/my-bookings");
+    }
+
+    /// <summary>Host console: detail page of one booking (BK-10).</summary>
+    public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
+
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
     private string BaseUrl()

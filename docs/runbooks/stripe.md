@@ -125,7 +125,9 @@ Authorization (TN-3): `booking.write` on the booking; when the cancellation move
    **SetupIntents: Write** (read and cancel), **PaymentMethods: Write** (detach), and the key must be allowed to act on
    connected accounts (Connect permissions of the key). With the standard secret key nothing to do.
 4. **Customer emails** (Settings → Customer emails): Stripe's own refund receipt is independent from the CasaZen email;
-   keep one of the two if guests should get a single message.
+   keep one of the two if guests should get a single message. Payment receipts: CasaZen's "Prenotazione confermata"
+   carries the amounts and the payment received (BK-10) and is not a fiscal document; see
+   [email.md](email.md#payment-receipt-choice-bk-10) before enabling Stripe's "Successful payments" emails.
 
 ### Data written before BK-02
 
@@ -159,8 +161,8 @@ on the Connect endpoint and for every booking payment reported by the platform e
 
 | Booking when the payment succeeds | Dates | Result |
 |---|---|---|
-| `Pending`, hold still valid (within `DirectBooking:PendingTtlMinutes`, or payment seen in flight by the expiry job) | no other booking on them | `Confirmed` (as before) |
-| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared, check-in token issued), guest email "Prenotazione confermata" with the booking code |
+| `Pending`, hold still valid (within `DirectBooking:PendingTtlMinutes`, or payment seen in flight by the expiry job) | no other booking on them | `Confirmed` (as before); guest email "Prenotazione confermata" and host email "Nuova prenotazione confermata" (BK-10, [email.md](email.md#booking-emails-bk-10)) |
+| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared, check-in token issued), the same two emails with a note on the late payment |
 | same | taken | stays / becomes `Cancelled` (a pending one gets `CancellationReason = 2`, `DatesUnavailableAtPayment`); **full refund** of what is still refundable; guest email "Date non più disponibili, pagamento rimborsato" once Stripe confirms the refund |
 | `Confirmed`, `CheckedIn`, `CheckedOut` | — | payment `Completed`, booking unchanged |
 
@@ -245,8 +247,8 @@ key needs **Refunds: Write** (BK-02).
    `Cancelled` in the SQL editor (`UPDATE … SET "Status" = 4 WHERE "Id" = '…'`, which leaves the PaymentIntent payable as
    before BK-21), book the **same dates** from another browser, then pay the first checkout with `4242 4242 4242 4242`:
    the first booking stays cancelled, the connected account shows a full refund, the first guest receives
-   "Date non più disponibili". Repeat without the second booking: the first booking becomes `Confirmed` and the guest
-   receives "Prenotazione confermata".
+   "Date non più disponibili". Repeat without the second booking: the first booking becomes `Confirmed`, the guest
+   receives "Prenotazione confermata" (with the late-payment note) and the host "Nuova prenotazione confermata".
 
 ## Operations
 
