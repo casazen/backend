@@ -29,21 +29,27 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
 
     private static string NewSub() => $"auth0|pl02-{Guid.NewGuid():N}";
 
-    public static TheoryData<string, string> HostWrites => new()
+    public static TheoryData<string, string, string> HostWrites => new()
     {
-        { "POST", "/api/properties" },
-        { "POST", "/api/guests" },
-        { "POST", "/api/bookings" },
-        { "GET", "/api/properties" },
+        { "PropertyOwner", "POST", "/api/properties" },
+        { "PropertyOwner", "POST", "/api/guests" },
+        { "PropertyOwner", "POST", "/api/bookings" },
+        { "PropertyOwner", "GET", "/api/properties" },
+        // long-rent is a host context too: a JWT landlord role alone opens neither leases nor long-rent properties.
+        { "LongTermLandlord", "GET", "/api/leases" },
+        { "LongTermLandlord", "POST", "/api/properties" },
     };
 
     [PostgresTheory]
     [MemberData(nameof(HostWrites))]
-    public async Task HostEndpoint_NewUserWithJwtHostRoleAndNoConsents_Returns403OnboardingRequired(string method, string path)
+    public async Task HostEndpoint_NewUserWithJwtHostRoleAndNoConsents_Returns403OnboardingRequired(
+        string role,
+        string method,
+        string path)
     {
-        // The Auth0 sign-up with a PropertyOwner role, straight to the API or the app: no onboarding, no consents.
+        // The Auth0 sign-up with a host role, straight to the API or the app: no onboarding, no consents.
         var sub = NewSub();
-        using var client = _factory.CreateAuthenticatedClient(sub, roles: "PropertyOwner");
+        using var client = _factory.CreateAuthenticatedClient(sub, roles: role);
 
         var response = method == "GET"
             ? await client.GetAsync(path)
