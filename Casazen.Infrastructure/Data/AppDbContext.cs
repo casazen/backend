@@ -42,6 +42,10 @@ public class AppDbContext(
     // Stages of the host alerts already sent per stay (CO-10)
     public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
 
+    // D.L. 145/2023 safety checklist of a short-stay property (CO-07)
+    public DbSet<PropertySafetyChecklist> PropertySafetyChecklists { get; set; } = null!;
+    public DbSet<PropertySafetyChecklistItem> PropertySafetyChecklistItems { get; set; } = null!;
+
     // Guests of a stay and official Alloggiati code tables (CO-12)
     public DbSet<StayGuest> StayGuests { get; set; } = null!;
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
@@ -175,6 +179,37 @@ public class AppDbContext(
             entity.HasIndex(s => s.GuestId);
         });
 
+        // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
+        // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
+        modelBuilder.Entity<PropertySafetyChecklist>(entity =>
+        {
+            entity.HasOne(c => c.Property)
+                .WithOne()
+                .HasForeignKey<PropertySafetyChecklist>(c => c.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(c => c.PropertyId).IsUnique();
+            entity.HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.OrgId);
+            entity.HasMany(c => c.Items)
+                .WithOne(i => i.Checklist)
+                .HasForeignKey(i => i.ChecklistId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PropertySafetyChecklistItem>(entity =>
+        {
+            entity.HasIndex(i => new { i.ChecklistId, i.Code }).IsUnique();
+            entity.HasOne(i => i.EvidenceDocument)
+                .WithMany()
+                .HasForeignKey(i => i.EvidenceDocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(i => i.EvidenceDocumentId);
+            entity.HasOne<Org>().WithMany().HasForeignKey(i => i.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(i => i.OrgId);
+        });
+
         modelBuilder.Entity<AlloggiatiCodeEntry>()
             .HasOne(e => e.Import)
             .WithMany()
@@ -195,6 +230,11 @@ public class AppDbContext(
             .HasIndex(b => b.CheckInToken)
             .IsUnique()
             .HasFilter("\"CheckInToken\" IS NOT NULL");
+
+        // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.BookingCode })
+            .IsUnique();
 
         // Precision for GPS coordinates
         modelBuilder.Entity<Property>()

@@ -7,11 +7,25 @@ namespace Casazen.Core.Services;
 public interface IPropertyService
 {
     Task<Property?> GetPropertyAsync(Guid id);
+
+    /// <summary>
+    /// The property row alone (no bookings, OTA integrations or documents), tracked: for <c>GET /properties/{id}</c>
+    /// and its update (A2-32, A2-04).
+    /// </summary>
+    Task<Property?> GetPropertyRecordAsync(Guid id);
+
+    /// <summary>The cancellation policies a property can reference (A2-04).</summary>
+    Task<IReadOnlyList<CancellationPolicyOptionDto>> GetCancellationPoliciesAsync();
     Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId);
 
     /// <summary>Active properties of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
     Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope);
     Task<Property> CreatePropertyAsync(Property property);
+
+    /// <summary>
+    /// Saves a property changed in place: normalizes the CIN, checks the slug (409 <c>duplicate_property_slug</c>) and
+    /// the cancellation policy (422 <c>cancellation_policy_not_found</c>).
+    /// </summary>
     Task<Property> UpdatePropertyAsync(Property property);
     Task<bool> DeletePropertyAsync(Guid id);
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);

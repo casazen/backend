@@ -44,7 +44,7 @@ Notes:
 - The old variable `Email__ResendApiKey` is still read when `Email__ApiKey` is empty. Rename it to `Email__ApiKey` and delete the old one. If `Email__ApiKey` already exists with a SendGrid key (`SG.…`), replace it with the Resend key: validation rejects keys that do not start with `re_`.
 - `Email__SendGridApiKey`, `Email__Smtp*`, `SendGrid__ApiKey`, `App__SupplierLoginUrl` and `App__FrontendBaseUrl` are no longer read: delete them.
 - **Set the variables before the release reaches `main`.** From this version the production service does not start without `Email__ApiKey`, `Email__FromAddress` and `App__PublicSiteBaseUrl`: the deploy log shows lines such as `Email__FromAddress is missing: set a sender of the domain verified on Resend.`
-- Both Railway services run with `ASPNETCORE_ENVIRONMENT=Production` (`secrets/railway.test.variables.example.json`, [`docs/INFRA.md`](../INFRA.md#variables-required-in-production)): the `test` service needs these variables too. Only `Development` and `Testing` (local runs, CI) start without them, skipping each email with a warning; `/api/health/ready` then reports `email: degraded`.
+- Both Railway services run outside Development/Testing (`Production` on production, `Staging` on test: `secrets/railway.test.variables.example.json`, [`docs/INFRA.md`](../INFRA.md#variables-required-in-production)): the `test` service needs these variables too. Only `Development` and `Testing` (local runs, CI) start without them, skipping each email with a warning; `/api/health/ready` then reports `email: degraded`.
 
 ## 3. Send test
 
@@ -78,7 +78,10 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 |---|---|---|---|
 | `guest-booking-confirmed` | guest | a booking becomes confirmed: payment succeeded (webhook), card saved for a deferred payment (webhook), "pay at the property" request accepted by the host, late payment confirmed again (BK-04) | `BookingNotifier`, queued |
 | `host-booking-confirmed` | host (`Org.ContactEmail`) | the same confirmations, except the "pay at the property" acceptance (the host did it) | `BookingNotifier`, queued |
-| `guest-booking-cancelled` | guest | the host cancels a booking; includes the refund (made, or started) | `BookingNotifier` (from `BookingCancellationService`), queued |
+| `guest-booking-cancelled` | guest | the host cancels a booking; includes the refund (made, or started). Also the automatic cancellation of a "Paga più tardi" booking not paid in time (BK-08), with its own cause: "il pagamento non è stato completato… non ti è stato addebitato nulla" | `BookingNotifier` (from `BookingCancellationService`, or `DeferredChargeService`), queued |
+| `guest-deferred-charge-failed` | guest | the deferred charge of "Paga più tardi" failed (authentication required, card declined): link to pay on the checkout outcome page with a new checkout token, last day before the automatic cancellation (BK-08) | `BookingNotifier` (from `DeferredChargeService`: job or `payment_intent.payment_failed`), queued, once per failure |
+| `host-deferred-charge-failed` | host | the same failure; or every attempt ended without a charge the guest could complete ("contatta l'ospite") | `BookingNotifier`, queued, once |
+| `host-deferred-charge-cancelled` | host | "Paga più tardi" booking cancelled automatically, dates released (BK-08) | `BookingNotifier`, queued |
 | `guest-refund-confirmed` | guest | Stripe confirms a refund later (webhook or retry job), or a refund made from the payment page | `PaymentRefundService`, queued, once per refund (`PaymentRefunds.GuestNotifiedAt`) |
 | `guest-payment-refunded-dates-unavailable` | guest | a late payment whose dates were taken, refunded in full (BK-04) | `PaymentRefundService`, queued, once |
 | `onsite-request-received` | guest | "pay at the property" request sent: link to confirm the email (BK-06) | `OnSiteRequestNotifier`, queued |
@@ -114,7 +117,7 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 
 - The guest confirmation **is** the payment confirmation: amounts, tourist tax and amount received. It states that it is not a fiscal document; receipts and invoices belong to the fiscal task (SDI), not to these emails.
 - Stripe's automatic receipts go to the PaymentIntent's `receipt_email` or to its Customer's email; the checkout PaymentIntent (on the host's connected account) sets neither, so no Stripe receipt duplicates the confirmation and there is nothing to switch off. Do not add `receipt_email` to the checkout without removing the payment lines from the confirmation.
-- Deferred payments do create a Customer with the guest's email (to charge the saved card later). If "Successful payments" is enabled in the customer emails settings that apply to the connected account, Stripe may email its receipt when the card is charged at the deadline: that charge has no CasaZen email today (BK-08 owns the deferred charge notifications). Keep one of the two when BK-08 adds its email.
+- Deferred payments do create a Customer with the guest's email (to charge the saved card later). If "Successful payments" is enabled in the customer emails settings that apply to the connected account, Stripe may email its receipt when the card is charged at the deadline. BK-08 emails only the failures and the automatic cancellation of the deferred charge, **not** its success: whether the guest gets a CasaZen "Pagamento ricevuto" or Stripe's receipt for that charge is an open product question (DUBBI BK-08, recommendation: a CasaZen email through `BookingNotifier`, and Stripe's "Successful payments" left off, so that the guest gets one Italian/English message with the booking code, like every other booking email).
 
 ### Language
 

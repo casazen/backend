@@ -78,6 +78,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 // Requests without a test peer share one partition: keep the per-IP limits out of the way (FD-10).
                 ["RateLimiting:PublicRead:PermitLimit"] = "1000",
                 ["RateLimiting:PublicBookingLookup:PermitLimit"] = "1000",
+                ["RateLimiting:PublicGuestBookingLookup:PermitLimit"] = "1000",
+                ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "1000",
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierCheckIn:PermitLimit"] = "1000",
@@ -115,7 +117,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Compliance:CheckoutReminderHourLocal"] = "20",
                 ["Compliance:GdprRetentionYears"] = "7",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
-                ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
                 ["CheckIn:RateLimitPermitLimit"] = "100",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "100",
                 ["ESign:WebhookSecret"] = "esign-test-secret",

@@ -33,6 +33,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicRead, 120, OneMinute),
         new(RateLimitPolicies.PublicBookingCreate, 10, OneMinute, "DirectBooking:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicBookingLookup, 30, OneMinute),
+        new(RateLimitPolicies.PublicGuestBookingLookup, 10, TimeSpan.FromMinutes(5)),
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
@@ -48,6 +49,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // Per user and per org limits of the endpoints that call an AI provider ([AiRateLimit], A8-01).
         services.AddSingleton<AiRequestRateLimiter>();
+
+        // Per email limit of "Le mie prenotazioni" ([GuestBookingEmailRateLimit], BK-11), next to its per-IP policy.
+        services.AddSingleton<GuestBookingEmailRateLimiter>();
 
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()

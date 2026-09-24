@@ -2,7 +2,115 @@
 
 Task PL-10 (audit defects A1-09, A3-03 P0, A1-10, A1-11). The code is in place; the product owner checks the
 Stripe settings below, test mode first, then live mode. Keys, the two webhook endpoints and their event lists
-are in `docs/INFRA.md` § "Stripe keys and webhooks".
+are in `docs/INFRA.md` § "Stripe keys and webhooks". Environments, plan prices and return pages (task PL-11):
+section [Environments](#environments-stripe-mode-plan-prices-and-return-pages-pl-11).
+
+## Environments: Stripe mode, plan prices and return pages (PL-11)
+
+Task PL-11 (audit defects A1-31, A1-32). Before it the Railway test environment ran as `Production` with test keys,
+so the billing entry gate stayed closed and the billing could not be tested; the return pages pointed at a domain and
+routes that do not exist; the price ids were placeholders; `successUrl` / `cancelUrl` were taken from the client
+without any check.
+
+### Which environment uses which mode
+
+| Railway environment | `ASPNETCORE_ENVIRONMENT` | Stripe keys | Price ids | Auth0 tenant |
+|---|---|---|---|---|
+| `test` | **`Staging`** | test mode (`sk_test_…` or `rk_test_…`, `pk_test_…`) | the test-mode prices | test tenant ([auth0.md](auth0.md) §1) |
+| `production` | `Production` | live mode (`sk_live_…` or `rk_live_…`, `pk_live_…`) | the live-mode prices | production tenant |
+
+What the API enforces at startup (`Casazen.Web/Configuration/BillingConfiguration.cs`). "Stops" = the new container
+exits with the list of problems and Railway keeps the previous deployment:
+
+| Situation | Result |
+|---|---|
+| `Production` with a test-mode `Stripe__SecretKey` or `Stripe__PublishableKey` | stops (`… is a Stripe test-mode key but ASPNETCORE_ENVIRONMENT is Production`) |
+| Any other environment (`Staging`, `Development`, `Testing`) with a live-mode key | stops (`… is a Stripe live-mode key but ASPNETCORE_ENVIRONMENT is Staging`) |
+| `Production` with `Stripe__SecretKey` set and a plan without a valid Price id, or two plans with the same id | stops, naming the `Billing__Prices__<Tier>` variables |
+| `Production` without `Stripe__SecretKey` (payments not active yet) | starts; `/api/health/ready` reports `stripe: degraded` (FD-12: payments are optional) |
+| `Staging` / `Development` with a plan without a Price id | starts; that plan is **not purchasable**: `GET /api/billing/plans` returns `purchasable: false` and an empty `stripePriceId`, the checkout answers **422 `billing_plan_unavailable`**, `/api/health/ready` reports `stripe: degraded` naming the variable |
+
+Choice for the price ids (PL-11): in Production a plan offered by the catalogue but not payable is a configuration error
+and stops the deploy; elsewhere the plan is disabled with an explicit error, so the test environment keeps working
+while its prices are being created. A value is a valid Price id when it starts with `price_` and is not a placeholder
+(`price_PLACEHOLDER_…`, `…YOUR_…`). The catalogue has three paid plans, `Starter`, `Pro` and `Scale`
+(`PlanCatalog`, spec-saas-billing AC1): each one needs a price.
+
+The billing entry gate (`BillingEntryGate`): with a test-mode secret key outside Production the checkout is open
+without the invoicing prerequisites (log `Billing entry gate bypassed for Stripe test secret key`); in Production it
+needs `Billing__VatNumber` and `Sdi__ProviderConfigured=true` (task PL-13).
+
+### Plan prices (`Billing__Prices__<Tier>`)
+
+For each mode (test first, then live), Stripe Dashboard → Product catalogue → **Add product**, one product per plan
+(`Starter`, `Pro`, `Scale`) with a **recurring monthly price** in EUR. The amounts are a product decision: the plans page
+shows `Billing:Display:<Tier>:PriceMonthly` from `appsettings.json` (29 / 79 / 199 €), so create prices with the same
+amounts or change both. Open the price and copy its id (`price_…`, not the product id `prod_…`) into Railway:
+
+| Variable | `test` (Staging) | `production` |
+|---|---|---|
+| `Billing__Prices__Starter` | test-mode price of Starter | live-mode price of Starter |
+| `Billing__Prices__Pro` | test-mode price of Pro | live-mode price of Pro |
+| `Billing__Prices__Scale` | test-mode price of Scale | live-mode price of Scale |
+
+A price of the other mode is not detected at startup (Price ids carry no mode): Stripe answers "No such price" and the
+checkout answers 503 `payment_provider_error`. `appsettings.json` keeps the three keys empty. The webhook maps a
+subscription back to its plan through the same variables: a price not listed here grants no paid plan.
+
+### Return pages and allow-list
+
+Stripe Checkout and the billing portal send the browser back to the web app, always on `App__PublicSiteBaseUrl` (the
+public domain of the environment, SE-02 / decision D3, no domain in code):
+
+| Page | URL |
+|---|---|
+| Checkout paid | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=success` |
+| Checkout abandoned | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=cancel` |
+| Billing portal "return" link | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan` |
+
+- `App__PublicSiteBaseUrl` is already required outside Development/Testing (the startup stops without it). In
+  Development/Testing without it the checkout and the portal answer **503 `billing_return_url_not_configured`**.
+- `POST /api/billing/checkout-session` still accepts `successUrl` / `cancelUrl` from the client (e.g. a billing page of
+  task PL-12 on another route, or `?session_id={CHECKOUT_SESSION_ID}`), but only **absolute URLs on the same scheme,
+  host and port as `App__PublicSiteBaseUrl`**, without user info. Anything else (another host, `http` instead of `https`,
+  another port, a relative path) answers **400 `validation_error`** before any change. Vercel preview URLs are not in
+  the allow-list: a preview sends no return URL and gets the default pages of the test web app.
+- `Billing__PortalReturnUrl` no longer exists: delete it from Railway if it was set.
+- Stripe Dashboard: nothing to configure for the return pages (they are sent with each session). For the portal, the
+  "default redirect link" of Settings → Billing → Customer portal is only used by portal links created in the
+  Dashboard; leave it empty or set it to the plan page above.
+
+### Switching the Railway test environment to Staging (one-time, product owner)
+
+1. Railway → project → environment **test** → service → Variables: check that `Hangfire__Schema=hangfire_casazen_test`
+   and the connection string with `SearchPath=casazen_test` are set (the Hangfire schema derived from the environment
+   name would otherwise change, see [hangfire.md](hangfire.md)).
+2. Set `ASPNETCORE_ENVIRONMENT=Staging`. Check that `Stripe__SecretKey` / `Stripe__PublishableKey` are **test-mode** keys
+   and add `Billing__Prices__Starter`, `__Pro`, `__Scale` with the test-mode prices; delete `Billing__PortalReturnUrl`.
+3. Redeploy and open `GET /api/health/ready` with an admin token: `stripe` is `healthy` (test mode).
+4. Railway → environment **production**: `ASPNETCORE_ENVIRONMENT=Production` (unchanged), live-mode keys and the three
+   live-mode prices **before** the release that contains PL-11 reaches `main`: with a live secret key and no prices the
+   new production deployment stops (the previous one keeps running). Without Stripe keys the prices are not required.
+
+What `Staging` changes besides Stripe: every startup validation of Production still applies (email, storage, Auth0,
+CORS, public domain: they are enforced everywhere except Development/Testing), HSTS is still sent, EF migrations still
+run at startup. Only three behaviours depend on the name `Production`: the billing entry gate (above), the draft SEO
+pages, which the public API serves only on Staging (preview of `/p/*` pages not yet approved), and the Hangfire schema
+fallback of step 1.
+
+### Verification
+
+1. Automated: `BillingConfigurationTests` (Production without prices, placeholders, duplicated price, test key in
+   Production, live key in Staging/Development/Testing), `BillingReturnUrlTests` (return pages from the configured
+   domain, allow-list), `BillingIntegrationTests` (default pages sent to Stripe, allowed and refused client URLs,
+   portal return page, plan without price → 422 and `purchasable: false`, 503 without public domain),
+   `ConfigurationHealthChecksTests`, `NoHardcodedPublicDomainTests` (no Stripe URL left in its allow-list).
+2. Test environment (Staging, test keys): from the plans page start the checkout of Pro and pay with
+   `4242 4242 4242 4242`: Stripe sends the browser to `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=success`
+   and the plan becomes Pro after the webhook. Open the billing portal and click the return link: same page without
+   parameters.
+3. `curl -X POST …/api/billing/checkout-session -d '{"planTier":"Pro","billingCountry":"IT","successUrl":"https://example.com/"}'`
+   (with a billing admin token): 400 `validation_error`, no Checkout Session in the Stripe Dashboard.
 
 ## What the backend does
 
@@ -64,7 +172,7 @@ Task BK-02 (audit defects A3-05 P0, A9-15 payments part; issue #51). Before it, 
 ### Charge model (verified in the code)
 
 The checkout creates the guest's PaymentIntent **on the host's connected account** (`StripeService.CreateConnectedAccountPaymentIntentAsync`
-and, for the deferred option, `ChargePaymentMethodAsync`, both with the `Stripe-Account` header and `application_fee_amount = 0`):
+and, for the deferred option, `ChargePaymentMethodAsync` (off-session, BK-08, section "Deferred charge" below), both with the `Stripe-Account` header and `application_fee_amount = 0`):
 **direct charges**. Consequences for refunds:
 
 | Parameter | Value | Why |
@@ -249,6 +357,80 @@ key needs **Refunds: Write** (BK-02).
    the first booking stays cancelled, the connected account shows a full refund, the first guest receives
    "Date non più disponibili". Repeat without the second booking: the first booking becomes `Confirmed`, the guest
    receives "Prenotazione confermata" (with the late-payment note) and the host "Nuova prenotazione confermata".
+
+## Deferred charge of "Paga più tardi" (BK-08)
+
+Task BK-08 (audit defect A3-14, P1). Before it the deferred charge job marked the payment `Completed` whatever the
+PaymentIntent status, without `off_session`: with an EU card and 3-D Secure the PaymentIntent stayed `requires_action`,
+CasaZen said "paid" and the guest arrived without paying. Errors were only logged and the job retried every day forever;
+the webhook ignored the `direct-booking-deadline-charge` kind on the platform endpoint. The booking side (attempts, emails,
+cancellation, settings) is in [direct-booking.md](direct-booking.md) § 9; this section covers the Stripe calls.
+
+### Stripe parameters (checked 2026-09-24)
+
+`StripeService.ChargePaymentMethodAsync` creates the PaymentIntent **on the connected account the card was saved on**
+(`Payments.StripeAccountId` of the deferred payment, written at checkout with the SetupIntent; the org's current account
+only for rows without it): `Stripe-Account` header, `customer` and `payment_method` of the booking, `amount` = the
+booking total in cents, `confirm=true`, **`off_session=true`**, `metadata.kind = direct-booking-deadline-charge`,
+`metadata.bookingId`. A failed attempt is retried (next days) by confirming **the same** PaymentIntent again
+(`ConfirmPaymentIntentOffSessionAsync`: `payment_method`, `off_session=true`), so one booking never has two payable
+deferred PaymentIntents.
+
+| Parameter | Choice | Why (sources) |
+|---|---|---|
+| `off_session` | `true` | The guest is not in the checkout. Stripe.net 50.1 API reference (`PaymentIntentCreateOptions.OffSession`): "the customer isn't in your checkout flow during this payment attempt and can't authenticate… only with `confirm=true`". Stripe docs "Save a customer's payment method" / "Charge the saved payment method later": a failed off-session attempt answers **HTTP 402** and leaves the PaymentIntent in `requires_payment_method`; for `authentication_required` bring the customer back and confirm the same PaymentIntent on-session |
+| `error_on_requires_action` | **not sent** | Stripe changelog 2023-08-16 "automatic payment methods" (our API version `2025-12-15.clover` is later): PaymentIntents use automatic payment methods by default and `error_on_requires_action` is accepted only with explicit `payment_method_types`. Restricting `payment_method_types` (e.g. `card`) would refuse the other methods the SetupIntent (automatic payment methods, `usage=off_session`) may have saved, such as SEPA Debit. With `off_session=true` an authentication request already fails the attempt, so the flag adds nothing. PR #447 was discarded for sending it without `payment_method_types` |
+| `return_url` | **not sent** | Same changelog: confirming requires a `return_url` **unless `off_session=true`**; nobody is redirected off-session. The on-session payment of the guest (outcome page) sends its own `return_url` from Stripe.js |
+| `payment_method_types` | not sent | automatic payment methods, like the checkout |
+| `application_fee_amount` | `0`, unchanged | left to task BK-19 (A3-40) |
+| Idempotency key (creation) | `direct-booking-deadline:{bookingId}:{deadline yyyyMMdd}:{attempt}` | bound to the booking, its deadline and the attempt: a Hangfire retry or a crash before the commit sends the same key and gets the same PaymentIntent |
+| Idempotency key (retry) | `direct-booking-deadline-confirm:{PaymentIntentId}:{attempt}` | one confirmation per attempt |
+| Before a creation | `GET /v1/payment_intents?customer=…` on the connected account | Stripe keeps idempotency keys for 24 hours and the job runs daily: a PaymentIntent of an attempt whose answer was lost (timeout) is found by `metadata.bookingId` + `kind` and used instead of creating a second charge |
+
+Status mapping (`DeferredCharges.StatusOf`): `succeeded` → payment `Completed`; `processing` (SEPA) / `requires_capture` →
+`Processing`, completed by the webhook; `requires_action`, `requires_payment_method`, `requires_confirmation` (and the 402
+answer) → `Failed`, the guest must act; `canceled` → `Canceled` (canceled outside CasaZen: no new attempt, see
+direct-booking.md § 9).
+
+### Webhooks
+
+`StripeWebhookHandler` sends every `payment_intent.*` event whose `metadata.kind` is `direct-booking-deadline-charge` to
+`DeferredChargeService`, from the **Connect endpoint** and from the **platform endpoint when the event carries `account`**
+(an endpoint that also listens to connected accounts). A platform event without `account` is ignored (deferred charges
+never live on the platform account), as is an event whose `account` differs from the one stored on the payment.
+
+| Event | Effect |
+|---|---|
+| `payment_intent.succeeded` | payment `Completed` (amount of the PaymentIntent), failure cleared. On a booking no longer confirmed it is settled as a late payment (BK-04): confirmed again or refunded in full, never "Completed" on a cancelled booking |
+| `payment_intent.processing` | payment `Processing` (**add this event to the Connect endpoint**, `docs/INFRA.md`; without it the job reads the status again every day) |
+| `payment_intent.payment_failed` | payment `Failed`; the first failure of a confirmed booking emails the guest (link to pay) and the host, once |
+| `payment_intent.canceled` | payment `Canceled` |
+
+Exactly once like every event (PL-10). The handler takes the BK-02 booking-cancellation and payment-refund locks of the
+booking, the same as the job, so an event that arrives while the job is charging waits for the job's commit and sees its
+result (no second email).
+
+### Stripe settings to check (product owner)
+
+1. Connect endpoint: add `payment_intent.processing` (optional but recommended for SEPA).
+2. Restricted key only (`rk_…`): **PaymentIntents: Write** (create, confirm, list, cancel), **PaymentMethods: Write**
+   (detach at the automatic cancellation), on connected accounts.
+3. Customer emails: the deferred PaymentIntent has a `customer` (the one of the SetupIntent). Stripe sends its own
+   receipt only if "Successful payments" emails are enabled for the account and the customer has an email: CasaZen
+   sends no email for a successful deferred charge, see the open question in
+   [email.md](email.md#payment-receipt-choice-bk-10).
+
+### Verification
+
+1. Automated: `StripeServiceDeferredChargeTests` (mocked `IStripeClient`: `Stripe-Account`, `off_session`, `confirm`, no
+   `error_on_requires_action` / `payment_method_types` / `return_url`, idempotency keys), `DirectBookingChargeJobTests`,
+   `DeferredChargePostgresTests` (webhook on both endpoints, foreign account ignored).
+2. Test mode, connected test account: book with "Paga più tardi" and the card `4000 0027 6000 3184` (always asks for
+   3-D Secure), set the booking's `FreeRefundDeadline` to today in the SQL editor, trigger `direct-booking-charge` from the
+   Hangfire dashboard: Stripe shows the PaymentIntent `requires_payment_method` with `authentication_required`, the payment
+   is "Fallito", the guest receives "Pagamento non riuscito" and the host "Addebito non riuscito". Open the link, complete
+   3-D Secure: after `payment_intent.succeeded` the payment is "Completato". Repeat with `4242 4242 4242 4242`: completed at
+   the first run, no email. `4000 0000 0000 9995` (insufficient funds): failed, retried on the next days.
 
 ## Operations
 
