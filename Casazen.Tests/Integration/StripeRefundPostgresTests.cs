@@ -9,6 +9,7 @@ using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -232,7 +233,12 @@ public class StripeRefundPostgresTests : IAsyncLifetime
         NullLogger<PaymentRefundService>.Instance);
 
     private BookingCancellationService CancellationService(AppDbContext db) =>
-        new(db, RefundService(db), _stripe.Object, _emails.Object, NullLogger<BookingCancellationService>.Instance);
+        new(
+            db,
+            RefundService(db),
+            _stripe.Object,
+            new BookingNotifier(db, _emails.Object, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance),
+            NullLogger<BookingCancellationService>.Instance);
 
     private AppDbContext NewContext() => _database!.CreateContext();
 

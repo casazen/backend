@@ -10,7 +10,7 @@ accepted it is valid. The code is in place; the product owner decides the provis
 |---|---|---|---|---|
 | Guest submits the checkout with "Paga in struttura" (`POST /api/public/bookings`) | `Pending`, `Source = Direct`, `PaymentOption = OnSite`, `RequestExpiresAt = now + email window`; a `Payments` row `CashOnArrival`, `Pending` | held on the booking site and in the host calendar (no double request) | **not exported** | guest: "request received" with the confirmation link (`/book/{orgSlug}/requests/{bookingId}/confirm?token=…`) |
 | Guest opens the link and clicks "Conferma e invia la richiesta" (`POST /api/public/bookings/{id}/confirm-email`) | `GuestEmailVerifiedAt` set, `RequestExpiresAt = now + OnSiteApprovalHours` | held | not exported | host (`Org.ContactEmail`): "new request to approve", with the link to the console (`/app/short-rent/bookings?view=requests`) |
-| Host accepts (`POST /api/bookings/{id}/approve`) | `Confirmed`, check-in token issued, `RequestExpiresAt` cleared | taken | **exported** like every confirmed booking | guest: "booking confirmed", pay at the property |
+| Host accepts (`POST /api/bookings/{id}/approve`) | `Confirmed`, check-in token issued, `RequestExpiresAt` cleared | taken | **exported** like every confirmed booking | guest: the standard "Prenotazione confermata" (BK-10) saying the host accepted and the amount to pay at the property; no email to the host, who accepted |
 | Host declines (`POST /api/bookings/{id}/decline`, optional `message`) | `Cancelled`, `CancellationReason = 3` (`OnSiteRequestDeclined`), payment row `Canceled` | released | — | guest: "request not accepted" with the host's message |
 | Nobody answers by `RequestExpiresAt` | job `checkout-hold-expiry` (every 5 min): `Cancelled`, reason `4` (`OnSiteRequestExpired`) or `5` (`OnSiteEmailNotConfirmed`) | released at the deadline (reads ignore it before the job runs) | — | guest: "request expired" (only when the email had been confirmed) |
 
@@ -252,11 +252,11 @@ stayed `requires_action`), only logged errors and retried every day forever. Str
 
 | Stripe answer | Payment (`Payments` row of the deferred payment) | Booking | Emails |
 |---|---|---|---|
-| `succeeded` | `Completed` | stays `Confirmed` | none (the confirmation was sent when the card was saved, BK-10) |
+| `succeeded` | `Completed` | stays `Confirmed` | none: the confirmation was sent when the card was saved (BK-10); a "payment received" email for the deferred charge is an open question (DUBBI BK-08, [email.md](email.md#payment-receipt-choice-bk-10)) |
 | `processing` (SEPA Debit) | `Processing`, then `Completed` / `Failed` from the webhook (the job also reads it again daily) | `Confirmed` | none, or as `Failed` below |
 | `requires_action`, `requires_payment_method` (authentication required, card declined: HTTP 402) | `Failed`, never `Completed` | `Confirmed`, `DeferredChargeFailedAt` set | **once**: guest "Pagamento non riuscito, completa il pagamento" with the link to pay; host "Addebito non riuscito" (`Org.ContactEmail`) |
 | no PaymentIntent (Stripe unreachable, 5xx, invalid request, no saved card) | unchanged | `Confirmed` | after the last attempt only: host "Addebito non riuscito", "contatta l'ospite" (the guest has nothing to pay online) |
-| still unpaid on the cancellation day | `Canceled` (PaymentIntent canceled and card detached on the connected account) | `Cancelled`, `CancellationReason = 6` (`DeferredPaymentNotCompleted`): dates released on the site, in the host calendar and in the iCal export | guest "Prenotazione annullata per pagamento non completato" ("non ti è stato addebitato nulla"); host "Prenotazione annullata per mancato pagamento" |
+| still unpaid on the cancellation day | `Canceled` (PaymentIntent canceled and card detached on the connected account) | `Cancelled`, `CancellationReason = 6` (`DeferredPaymentNotCompleted`): dates released on the site, in the host calendar and in the iCal export | guest: the standard "Prenotazione annullata" (BK-10) with its own cause, "il pagamento non è stato completato… non ti è stato addebitato nulla"; host "Prenotazione annullata per mancato pagamento" |
 
 - **Attempts**: at most one per booking per Europe/Rome day (`Bookings.DeferredChargeLastAttemptOn`) and
   `DirectBooking:DeferredChargeMaxAttempts` in total (`Bookings.DeferredChargeAttempts`). A failed attempt is retried on
@@ -339,8 +339,11 @@ Logs (booking and Stripe ids only): `Deferred charge of booking {BookingId}: att
 | Log `second succeeded deferred charge` | Two deferred PaymentIntents succeeded for one booking (should not happen): refund one from the payment page (BK-02) |
 | `canceled on Stripe: no further attempt` | Someone canceled the PaymentIntent in the Stripe Dashboard: the job stops; the host decides (cancel the booking or collect otherwise) |
 
+Emails: `BookingNotifier` (BK-10) with the shared booking texts (greeting, code, summary, host contact, link fallback); list in
+[email.md](email.md#complete-list-of-emails).
+
 Code: `Casazen.Core/Services/DeferredCharges.cs` (rules, settings), `Casazen.Infrastructure/Services/DeferredChargeService.cs`
-(job, webhook, emails), `StripeService.ChargePaymentMethodAsync` / `ConfirmPaymentIntentOffSessionAsync` /
+(job, webhook), `StripeService.ChargePaymentMethodAsync` / `ConfirmPaymentIntentOffSessionAsync` /
 `ListCustomerPaymentIntentsAsync`, `StripeWebhookHandler`, `CheckoutOutcomes` / `CheckoutOutcomeService` (link to pay),
 `Casazen.Web/BackgroundJobs/DirectBookingChargeJob.cs`. Tests: `DeferredChargePostgresTests` (success, `requires_action`
 with emails and the link, `processing` then webhook, failures then cancellation with dates released, guest paid before

@@ -156,7 +156,10 @@ public class SharedPropertyPolicyTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAuthorizationCore();
-        services.AddSingleton<IAuthorizationHandler>(new ContextAuthorizationHandler(contexts.Object));
+        var onboarding = new Mock<IHostOnboardingGate>();
+        onboarding.Setup(g => g.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Casazen.Core.Authorization.HostOnboardingStatus(true, true));
+        services.AddSingleton<IAuthorizationHandler>(new ContextAuthorizationHandler(contexts.Object, onboarding.Object));
         var authorization = services.BuildServiceProvider().GetRequiredService<IAuthorizationService>();
         return (await authorization.AuthorizeAsync(User(), policy)).Succeeded;
     }

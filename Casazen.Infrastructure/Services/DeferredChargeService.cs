@@ -3,8 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Email;
-using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -55,7 +53,12 @@ public enum DeferredChargeNoticeKind
 }
 
 /// <param name="CheckoutToken">Raw checkout token of the link to pay (<see cref="DeferredChargeNoticeKind.GuestMustPay"/>); only its hash is stored.</param>
-public sealed record DeferredChargeNotice(Guid BookingId, DeferredChargeNoticeKind Kind, string? CheckoutToken = null);
+/// <param name="CancellationDay">Day of the automatic cancellation of an unpaid booking, when one applies.</param>
+public sealed record DeferredChargeNotice(
+    Guid BookingId,
+    DeferredChargeNoticeKind Kind,
+    string? CheckoutToken = null,
+    DateOnly? CancellationDay = null);
 
 /// <summary>
 /// The deferred payment of the public checkout, "Paga alla scadenza" (task BK-08, audit defect A3-14): off-session charge
@@ -72,13 +75,15 @@ public sealed record DeferredChargeNotice(Guid BookingId, DeferredChargeNoticeKi
 /// retry sends the same idempotency key (same PaymentIntent). Before creating a PaymentIntent the customer's
 /// PaymentIntents are read on the connected account, so an attempt whose answer was lost never creates a second charge.
 /// </para>
-/// <para>Emails are queued after the commit (FD-13); logs carry booking, payment and Stripe ids only.</para>
+/// <para>
+/// Emails go through the booking emails of BK-10 (<see cref="BookingNotifier"/>), queued after the commit (FD-13); logs
+/// carry booking, payment and Stripe ids only.
+/// </para>
 /// </remarks>
 public sealed class DeferredChargeService(
     AppDbContext db,
     IStripeService stripeService,
-    IEmailQueue emailQueue,
-    PublicSiteLinks links,
+    BookingNotifier notifier,
     IConfiguration configuration,
     ILogger<DeferredChargeService> logger,
     TimeProvider? timeProvider = null)
@@ -670,7 +675,11 @@ public sealed class DeferredChargeService(
                 booking.DeferredChargeFailedAt = now;
                 booking.CheckoutTokenHash = CheckoutOutcomes.HashToken(token);
                 booking.UpdatedAt = now;
-                return new DeferredChargeNotice(booking.Id, DeferredChargeNoticeKind.GuestMustPay, token);
+                return new DeferredChargeNotice(
+                    booking.Id,
+                    DeferredChargeNoticeKind.GuestMustPay,
+                    token,
+                    DeferredCharges.CancellationDay(booking, DeferredCharges.GetCancelAfterDays(configuration)));
         }
     }
 
@@ -710,95 +719,18 @@ public sealed class DeferredChargeService(
     private static long ToCents(decimal amount) => (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
 
     /// <summary>
-    /// Queues the emails of a committed change: guest (link to pay, or cancellation) and host (<c>Org.ContactEmail</c>).
-    /// A failure is logged with the booking id only and never undoes the change.
+    /// Queues the emails of a committed change through <see cref="BookingNotifier"/>: guest (link to pay, or cancellation)
+    /// and host (<c>Org.ContactEmail</c>). A failure is logged with the booking id only and never undoes the change.
     /// </summary>
-    public async Task CompleteAsync(DeferredChargeNotice notice, CancellationToken cancellationToken = default)
+    public Task CompleteAsync(DeferredChargeNotice notice, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(notice);
-        try
+        return notice.Kind switch
         {
-            var data = await db.Bookings
-                .AsNoTracking()
-                .Where(b => b.Id == notice.BookingId)
-                .Select(b => new NoticeData(
-                    b.Id,
-                    b.Guest.FirstName,
-                    b.Guest.LastName,
-                    b.Guest.Email,
-                    b.Property.Name,
-                    b.Org.Slug,
-                    b.Org.ContactEmail,
-                    b.CheckInDate,
-                    b.CheckOutDate,
-                    b.TotalPrice,
-                    b.DeferredChargeFailedAt))
-                .SingleOrDefaultAsync(cancellationToken);
-            if (data is null)
-            {
-                logger.LogWarning("Deferred charge emails of booking {BookingId} skipped: booking not found", notice.BookingId);
-                return;
-            }
-
-            var culture = EmailTemplates.DefaultCulture;
-            var guestFullName = $"{data.GuestFirstName} {data.GuestLastName}".Trim();
-            var hostBookingUrl = links.HostBooking(data.BookingId);
-            switch (notice.Kind)
-            {
-                case DeferredChargeNoticeKind.GuestMustPay:
-                    {
-                        var cancelOn = DeferredCharges.CancellationDay(
-                            data.FailedAt, data.CheckInDate, DeferredCharges.GetCancelAfterDays(configuration));
-                        DateTime? cancelOnDate = cancelOn?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-                        Queue(data.BookingId, EmailTemplates.Names.GuestDeferredChargeFailed, data.GuestEmail, EmailTemplates.GuestDeferredChargeFailed(
-                            culture,
-                            data.GuestFirstName,
-                            data.PropertyName,
-                            data.CheckInDate,
-                            data.CheckOutDate,
-                            data.TotalPrice,
-                            links.CheckoutOutcome(data.OrgSlug, data.BookingId, notice.CheckoutToken!),
-                            cancelOnDate?.AddDays(-1)));
-                        Queue(data.BookingId, EmailTemplates.Names.HostDeferredChargeFailed, data.HostEmail, EmailTemplates.HostDeferredChargeFailed(
-                            culture, guestFullName, data.PropertyName, data.CheckInDate, data.CheckOutDate, data.TotalPrice, true, cancelOnDate, hostBookingUrl));
-                        break;
-                    }
-
-                case DeferredChargeNoticeKind.ChargeNotAttempted:
-                    Queue(data.BookingId, EmailTemplates.Names.HostDeferredChargeFailed, data.HostEmail, EmailTemplates.HostDeferredChargeFailed(
-                        culture, guestFullName, data.PropertyName, data.CheckInDate, data.CheckOutDate, data.TotalPrice, false, null, hostBookingUrl));
-                    break;
-
-                case DeferredChargeNoticeKind.Cancelled:
-                    Queue(data.BookingId, EmailTemplates.Names.GuestDeferredChargeCancelled, data.GuestEmail, EmailTemplates.GuestDeferredChargeCancelled(
-                        culture, data.GuestFirstName, data.PropertyName, data.CheckInDate, data.CheckOutDate));
-                    Queue(data.BookingId, EmailTemplates.Names.HostDeferredChargeCancelled, data.HostEmail, EmailTemplates.HostDeferredChargeCancelled(
-                        culture, guestFullName, data.PropertyName, data.CheckInDate, data.CheckOutDate, hostBookingUrl));
-                    break;
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "Deferred charge emails ({Kind}) of booking {BookingId} could not be queued", notice.Kind, notice.BookingId);
-        }
+            DeferredChargeNoticeKind.GuestMustPay =>
+                notifier.DeferredChargeFailedAsync(notice.BookingId, notice.CheckoutToken!, notice.CancellationDay, cancellationToken),
+            DeferredChargeNoticeKind.ChargeNotAttempted => notifier.DeferredChargeNotAttemptedAsync(notice.BookingId, cancellationToken),
+            _ => notifier.DeferredChargeCancelledAsync(notice.BookingId, cancellationToken),
+        };
     }
-
-    private void Queue(Guid bookingId, string template, string? to, EmailContent content)
-    {
-        if (!emailQueue.Enqueue(to, content, template))
-            logger.LogWarning("Email {Template} for booking {BookingId} was not queued", template, bookingId);
-    }
-
-    private sealed record NoticeData(
-        Guid BookingId,
-        string GuestFirstName,
-        string GuestLastName,
-        string GuestEmail,
-        string PropertyName,
-        string OrgSlug,
-        string HostEmail,
-        DateTime CheckInDate,
-        DateTime CheckOutDate,
-        decimal TotalPrice,
-        DateTime? FailedAt);
 }

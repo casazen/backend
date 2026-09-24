@@ -103,7 +103,13 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.NotNull(stored.CheckInToken);
         Assert.Null(stored.RequestExpiresAt);
         Assert.Contains($"UID:booking-{bookingId}", await IcsAsync(exportToken));
-        Assert.Single(Emails(bookingId, "onsite-request-accepted"));
+        // BK-10: the standard confirmation, "pay at the property"; the host who accepted gets no "new booking" email.
+        var confirmation = Assert.Single(Emails(bookingId, "guest-booking-confirmed"));
+        Assert.Equal(stored.Guest.Email, confirmation.To);
+        Assert.Contains("l'host ha accettato la tua richiesta", confirmation.Content.HtmlBody);
+        Assert.Contains("direttamente in struttura", confirmation.Content.HtmlBody);
+        Assert.Contains($"Codice prenotazione: <strong>{bookingId:D}</strong>", confirmation.Content.HtmlBody);
+        Assert.Empty(Emails(bookingId, "host-booking-confirmed"));
         var afterwards = await host.GetFromJsonAsync<JsonElement>("/api/bookings/approval-requests");
         Assert.DoesNotContain(afterwards.EnumerateArray(), r => r.GetProperty("id").GetGuid() == bookingId);
     }
@@ -194,7 +200,7 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         var stored = await LoadBookingAsync(bookingId);
         var approveWon = responses[0].StatusCode == HttpStatusCode.OK;
         Assert.Equal(approveWon ? BookingStatus.Confirmed : BookingStatus.Cancelled, stored.Status);
-        var outcomes = Emails(bookingId, "onsite-request-accepted").Count + Emails(bookingId, "onsite-request-declined").Count;
+        var outcomes = Emails(bookingId, "guest-booking-confirmed").Count + Emails(bookingId, "onsite-request-declined").Count;
         Assert.Equal(1, outcomes);
     }
 

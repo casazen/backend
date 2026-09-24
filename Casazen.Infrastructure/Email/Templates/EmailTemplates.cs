@@ -24,19 +24,18 @@ public static class EmailTemplates
         public const string AlloggiatiDeadline = "alloggiati-deadline";
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
         public const string GuestBookingCancelled = "guest-booking-cancelled";
-        public const string GuestLatePaymentConfirmed = "guest-late-payment-confirmed";
+        public const string GuestBookingConfirmed = "guest-booking-confirmed";
+        public const string HostBookingConfirmed = "host-booking-confirmed";
         public const string GuestPaymentRefundedDatesUnavailable = "guest-payment-refunded-dates-unavailable";
         public const string RliDeadlineReminder = "rli-deadline-reminder";
         public const string RliDeadlineOverdue = "rli-deadline-overdue";
         public const string RliExtraEuNotice = "rli-extra-eu-notice";
         public const string OnSiteRequestReceived = "onsite-request-received";
         public const string OnSiteRequestToHost = "onsite-request-to-host";
-        public const string OnSiteRequestAccepted = "onsite-request-accepted";
         public const string OnSiteRequestDeclined = "onsite-request-declined";
         public const string OnSiteRequestExpired = "onsite-request-expired";
         public const string GuestDeferredChargeFailed = "guest-deferred-charge-failed";
         public const string HostDeferredChargeFailed = "host-deferred-charge-failed";
-        public const string GuestDeferredChargeCancelled = "guest-deferred-charge-cancelled";
         public const string HostDeferredChargeCancelled = "host-deferred-charge-cancelled";
     }
 
@@ -160,29 +159,11 @@ public static class EmailTemplates
         DateTime checkInDate,
         decimal amountEur) =>
         new EmailHtmlBuilder(culture)
-            .Paragraph("GuestRefundConfirmed_Greeting", guestName)
+            .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestRefundConfirmed_Body", amountEur.ToString("N2", culture), propertyName, checkInDate)
             .Paragraph("GuestRefundConfirmed_Method")
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestRefundConfirmed_Subject", propertyName);
-
-    /// <summary>
-    /// A payment that arrived after the checkout hold had expired, when the dates were still free: the booking is
-    /// confirmed again (BK-04, A3-04), to the guest. <paramref name="bookingCode"/> is what "Le mie prenotazioni" asks.
-    /// </summary>
-    public static EmailContent GuestLatePaymentConfirmed(
-        CultureInfo culture,
-        string guestName,
-        string propertyName,
-        DateTime checkInDate,
-        DateTime checkOutDate,
-        string bookingCode) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("GuestLatePaymentConfirmed_Greeting", guestName)
-            .Paragraph("GuestLatePaymentConfirmed_Body", propertyName, checkInDate, checkOutDate)
-            .Paragraph("GuestLatePaymentConfirmed_Late")
-            .Muted("GuestLatePaymentConfirmed_Code", bookingCode)
-            .Build("GuestLatePaymentConfirmed_Subject", propertyName);
 
     /// <summary>
     /// A payment that arrived when the dates were no longer available, refunded in full once Stripe confirmed the
@@ -196,7 +177,7 @@ public static class EmailTemplates
         DateTime checkOutDate,
         decimal amountEur) =>
         new EmailHtmlBuilder(culture)
-            .Paragraph("GuestPaymentRefundedDatesUnavailable_Greeting", guestName)
+            .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", amountEur.ToString("N2", culture))
             .Paragraph("GuestRefundConfirmed_Method")
@@ -204,8 +185,12 @@ public static class EmailTemplates
             .Build("GuestPaymentRefundedDatesUnavailable_Subject", propertyName);
 
     /// <summary>
-    /// The host cancelled the booking, to the guest (PC-07, A2-08). <paramref name="refundStartedEur"/> is the refund
-    /// sent to Stripe, in euro, when there is one: its confirmation is <see cref="GuestRefundConfirmed"/>.
+    /// The host cancelled the booking, to the guest (PC-07, A2-08; one email with the refund, BK-10); or, with
+    /// <paramref name="cause"/> <see cref="BookingCancellationEmailCause.DeferredPaymentNotCompleted"/>, the system cancelled
+    /// a "Paga più tardi" booking whose payment was not completed (BK-08: nothing was charged).
+    /// <paramref name="refundedEur"/> is what Stripe already confirmed at the cancellation: that refund gets no separate
+    /// <see cref="GuestRefundConfirmed"/>. <paramref name="refundStartedEur"/> is what Stripe has not confirmed yet: its
+    /// <see cref="GuestRefundConfirmed"/> follows. Amounts in euro; the host's reason is never passed here.
     /// </summary>
     public static EmailContent GuestBookingCancelled(
         CultureInfo culture,
@@ -213,16 +198,125 @@ public static class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         DateTime checkOutDate,
-        decimal? refundStartedEur)
+        decimal refundedEur,
+        decimal refundStartedEur,
+        BookingHostContact hostContact,
+        BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host)
     {
         var builder = new EmailHtmlBuilder(culture)
-            .Paragraph("GuestBookingCancelled_Greeting", guestName)
-            .Paragraph("GuestBookingCancelled_Body", propertyName, checkInDate, checkOutDate);
-        if (refundStartedEur is > 0m)
-            builder.Paragraph("GuestBookingCancelled_Refund", refundStartedEur.Value.ToString("N2", culture));
+            .Paragraph("Booking_Greeting", guestName)
+            .Paragraph(
+                cause == BookingCancellationEmailCause.DeferredPaymentNotCompleted
+                    ? "GuestBookingCancelled_BodyUnpaid"
+                    : "GuestBookingCancelled_Body",
+                propertyName,
+                checkInDate,
+                checkOutDate);
+        if (cause == BookingCancellationEmailCause.DeferredPaymentNotCompleted)
+            builder.Paragraph("GuestBookingCancelled_NoCharge");
+        if (refundedEur > 0m)
+        {
+            builder
+                .Paragraph("GuestBookingCancelled_Refunded", Amount(refundedEur, culture))
+                .Paragraph("GuestRefundConfirmed_Method")
+                .Muted("GuestRefundConfirmed_Timing");
+        }
+
+        if (refundStartedEur > 0m)
+            builder.Paragraph("GuestBookingCancelled_Refund", Amount(refundStartedEur, culture));
+
+        return ContactHost(builder, hostContact).Build("GuestBookingCancelled_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// The booking is confirmed, to the guest (BK-10, A3-11, #58): booking code, stay, amounts with the tourist tax
+    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact.
+    /// One template for every way a booking becomes confirmed (<paramref name="kind"/>): it replaces the BK-04 late
+    /// payment and the BK-06 "request accepted" emails. <paramref name="paidEur"/> is what Stripe collected;
+    /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known.
+    /// </summary>
+    public static EmailContent GuestBookingConfirmed(
+        CultureInfo culture,
+        string guestName,
+        BookingEmailSummary booking,
+        BookingConfirmationKind kind,
+        decimal paidEur,
+        DateTime? deferredChargeDate,
+        BookingHostContact hostContact,
+        string myBookingsUrl)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("Booking_Greeting", guestName)
+            .Paragraph(
+                kind == BookingConfirmationKind.OnSite ? "GuestBookingConfirmed_BodyOnSite" : "GuestBookingConfirmed_Body",
+                booking.PropertyName,
+                booking.CheckInDate,
+                booking.CheckOutDate);
+        if (kind == BookingConfirmationKind.PaidOnlineLate)
+            builder.Paragraph("GuestBookingConfirmed_Late");
+
+        builder.Paragraph("Booking_Code", booking.BookingCode).List(SummaryLines(booking, culture));
+        switch (kind)
+        {
+            case BookingConfirmationKind.PaidOnline or BookingConfirmationKind.PaidOnlineLate:
+                if (paidEur > 0m)
+                    builder.Paragraph("GuestBookingConfirmed_Paid", Amount(paidEur, culture));
+                break;
+            case BookingConfirmationKind.DeferredCharge:
+                builder.Paragraph(DeferredKey("GuestBookingConfirmed", deferredChargeDate), Amount(booking.Total, culture), deferredChargeDate);
+                break;
+            case BookingConfirmationKind.OnSite:
+                builder.Paragraph("GuestBookingConfirmed_OnSite", Amount(booking.Total, culture));
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
+        }
+
+        builder
+            .Button("Booking_MyBookingsCta", myBookingsUrl)
+            .LinkFallback("Booking_LinkFallback", myBookingsUrl)
+            .Muted("Booking_FindIt");
+        ContactHost(builder, hostContact);
+        if ((kind is BookingConfirmationKind.PaidOnline or BookingConfirmationKind.PaidOnlineLate) && paidEur > 0m)
+            builder.Muted("GuestBookingConfirmed_NotFiscal");
+
+        return builder.Build("GuestBookingConfirmed_Subject", booking.PropertyName);
+    }
+
+    /// <summary>
+    /// A new booking confirmed without the host's action (payment or saved card at the checkout), to the host (BK-10,
+    /// A3-11): guest name, stay, amounts, payment and a link to the booking in the console. A "pay at the property"
+    /// request is accepted by the host, who is not emailed about it.
+    /// </summary>
+    public static EmailContent HostBookingConfirmed(
+        CultureInfo culture,
+        string guestFullName,
+        BookingEmailSummary booking,
+        BookingConfirmationKind kind,
+        decimal paidEur,
+        DateTime? deferredChargeDate,
+        string bookingUrl)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        if (kind is not (BookingConfirmationKind.PaidOnline or BookingConfirmationKind.PaidOnlineLate or BookingConfirmationKind.DeferredCharge))
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "The host confirmed this booking: no host email.");
+
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("HostBookingConfirmed_Body", guestFullName, booking.PropertyName, booking.CheckInDate, booking.CheckOutDate);
+        if (kind == BookingConfirmationKind.PaidOnlineLate)
+            builder.Paragraph("HostBookingConfirmed_Late");
+
+        builder.Paragraph("Booking_Code", booking.BookingCode).List(SummaryLines(booking, culture));
+        if (kind == BookingConfirmationKind.DeferredCharge)
+            builder.Paragraph(DeferredKey("HostBookingConfirmed", deferredChargeDate), Amount(booking.Total, culture), deferredChargeDate);
+        else if (paidEur > 0m)
+            builder.Paragraph("HostBookingConfirmed_Paid", Amount(paidEur, culture));
+
         return builder
-            .Muted("GuestBookingCancelled_Contact")
-            .Build("GuestBookingCancelled_Subject", propertyName);
+            .Button("HostBookingConfirmed_Cta", bookingUrl)
+            .LinkFallback("Booking_LinkFallback", bookingUrl)
+            .Build("HostBookingConfirmed_Subject", booking.PropertyName, booking.CheckInDate);
     }
 
     /// <summary>
@@ -281,11 +375,11 @@ public static class EmailTemplates
     {
         var builder = new EmailHtmlBuilder(culture);
         return builder
-            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("Booking_Greeting", guestName)
             .Paragraph("OnSiteRequestReceived_Body", propertyName, checkInDate, checkOutDate, amountEur.ToString("N2", culture))
             .Paragraph("OnSiteRequestReceived_Action", builder.FormatInstant(confirmByUtc))
             .Button("OnSiteRequestReceived_Cta", confirmUrl)
-            .LinkFallback("OnSiteRequest_LinkFallback", confirmUrl)
+            .LinkFallback("Booking_LinkFallback", confirmUrl)
             .Muted("OnSiteRequestReceived_NotConfirmedYet")
             .Muted("OnSiteRequestReceived_NotYou")
             .Build("OnSiteRequestReceived_Subject", propertyName);
@@ -319,25 +413,9 @@ public static class EmailTemplates
             .Paragraph("OnSiteRequestToHost_Action", builder.FormatInstant(answerByUtc))
             .Muted("OnSiteRequestToHost_NotConfirmedYet")
             .Button("OnSiteRequestToHost_Cta", requestsUrl)
-            .LinkFallback("OnSiteRequest_LinkFallback", requestsUrl)
+            .LinkFallback("Booking_LinkFallback", requestsUrl)
             .Build("OnSiteRequestToHost_Subject", propertyName);
     }
-
-    /// <summary>"Pay at the property" request accepted by the host: the booking is confirmed, to the guest (BK-06, D5).</summary>
-    public static EmailContent OnSiteRequestAccepted(
-        CultureInfo culture,
-        string guestName,
-        string propertyName,
-        DateTime checkInDate,
-        DateTime checkOutDate,
-        decimal amountEur,
-        string bookingReference) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("OnSiteRequest_Greeting", guestName)
-            .Paragraph("OnSiteRequestAccepted_Body", propertyName, checkInDate, checkOutDate)
-            .Paragraph("OnSiteRequestAccepted_Payment", amountEur.ToString("N2", culture))
-            .Muted("OnSiteRequestAccepted_Reference", bookingReference)
-            .Build("OnSiteRequestAccepted_Subject", propertyName);
 
     /// <summary>"Pay at the property" request declined by the host, to the guest (BK-06), with the host's optional message.</summary>
     public static EmailContent OnSiteRequestDeclined(
@@ -348,7 +426,7 @@ public static class EmailTemplates
         DateTime checkOutDate,
         string? hostMessage) =>
         new EmailHtmlBuilder(culture)
-            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("Booking_Greeting", guestName)
             .Paragraph("OnSiteRequestDeclined_Body", propertyName, checkInDate, checkOutDate)
             .Quote("OnSiteRequestDeclined_MessageLabel", hostMessage)
             .Paragraph("OnSiteRequest_NoCharge")
@@ -362,65 +440,69 @@ public static class EmailTemplates
         DateTime checkInDate,
         DateTime checkOutDate) =>
         new EmailHtmlBuilder(culture)
-            .Paragraph("OnSiteRequest_Greeting", guestName)
+            .Paragraph("Booking_Greeting", guestName)
             .Paragraph("OnSiteRequestExpired_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("OnSiteRequest_NoCharge")
             .Build("OnSiteRequestExpired_Subject", propertyName);
 
     /// <summary>
-    /// "Paga alla scadenza": the deferred charge failed (authentication required, card declined), to the guest (BK-08,
-    /// A3-14). <paramref name="payUrl"/> opens the checkout outcome page with a new checkout token, where the guest pays the
-    /// same PaymentIntent. <paramref name="payByDay"/> is the last day to pay before the automatic cancellation, when one
-    /// applies. <paramref name="amountEur"/> is in euro.
+    /// "Paga più tardi": the deferred charge failed (authentication required, card declined), to the guest (BK-08, A3-14).
+    /// <paramref name="payUrl"/> opens the checkout outcome page with a new checkout token, where the guest pays the same
+    /// PaymentIntent. <paramref name="payByDay"/> is the last day to pay before the automatic cancellation, when one
+    /// applies. Shares greeting, booking code, summary, link fallback and host contact with the BK-10 booking emails.
     /// </summary>
     public static EmailContent GuestDeferredChargeFailed(
         CultureInfo culture,
         string guestName,
-        string propertyName,
-        DateTime checkInDate,
-        DateTime checkOutDate,
-        decimal amountEur,
+        BookingEmailSummary booking,
         string payUrl,
-        DateTime? payByDay)
+        DateTime? payByDay,
+        BookingHostContact hostContact)
     {
+        ArgumentNullException.ThrowIfNull(booking);
         var builder = new EmailHtmlBuilder(culture)
-            .Paragraph("DeferredChargeGuest_Greeting", guestName)
-            .Paragraph("GuestDeferredChargeFailed_Body", amountEur.ToString("N2", culture), propertyName, checkInDate, checkOutDate)
+            .Paragraph("Booking_Greeting", guestName)
+            .Paragraph(
+                "GuestDeferredChargeFailed_Body",
+                Amount(booking.Total, culture),
+                booking.PropertyName,
+                booking.CheckInDate,
+                booking.CheckOutDate)
             .Paragraph("GuestDeferredChargeFailed_Action");
         if (payByDay is { } day)
             builder.Paragraph("GuestDeferredChargeFailed_Deadline", day);
 
-        return builder
+        builder
             .Button("GuestDeferredChargeFailed_Cta", payUrl)
-            .LinkFallback("GuestDeferredChargeFailed_LinkFallback", payUrl)
+            .LinkFallback("Booking_LinkFallback", payUrl)
             .Muted("GuestDeferredChargeFailed_Personal")
-            .Build("GuestDeferredChargeFailed_Subject", propertyName);
+            .Paragraph("Booking_Code", booking.BookingCode)
+            .List(SummaryLines(booking, culture));
+        return ContactHost(builder, hostContact).Build("GuestDeferredChargeFailed_Subject", booking.PropertyName);
     }
 
     /// <summary>
-    /// "Paga alla scadenza": the deferred charge failed, to the host (BK-08, A3-14). <paramref name="guestAsked"/>: the
-    /// guest got the link to pay (otherwise Stripe could not attempt the charge and the host must contact the guest).
+    /// "Paga più tardi": the deferred charge failed, to the host (BK-08, A3-14). <paramref name="guestAsked"/>: the guest
+    /// got the link to pay (otherwise no charge could be attempted and the host must contact the guest).
     /// <paramref name="cancelOnDay"/>: the day of the automatic cancellation, when one applies.
     /// </summary>
     public static EmailContent HostDeferredChargeFailed(
         CultureInfo culture,
         string guestFullName,
-        string propertyName,
-        DateTime checkInDate,
-        DateTime checkOutDate,
-        decimal amountEur,
+        BookingEmailSummary booking,
         bool guestAsked,
         DateTime? cancelOnDay,
         string bookingUrl)
     {
+        ArgumentNullException.ThrowIfNull(booking);
         var builder = new EmailHtmlBuilder(culture)
             .Paragraph(
                 "HostDeferredChargeFailed_Body",
-                amountEur.ToString("N2", culture),
+                Amount(booking.Total, culture),
                 guestFullName,
-                propertyName,
-                checkInDate,
-                checkOutDate)
+                booking.PropertyName,
+                booking.CheckInDate,
+                booking.CheckOutDate)
             .Paragraph(guestAsked ? "HostDeferredChargeFailed_GuestAsked" : "HostDeferredChargeFailed_ContactGuest");
         if (cancelOnDay is { } day)
             builder.Paragraph("HostDeferredChargeFailed_Cancellation", day);
@@ -428,39 +510,31 @@ public static class EmailTemplates
             builder.Paragraph("HostDeferredChargeFailed_NoCancellation");
 
         return builder
-            .Button("HostDeferredCharge_Cta", bookingUrl)
-            .Build("HostDeferredChargeFailed_Subject", propertyName, checkInDate);
+            .Paragraph("Booking_Code", booking.BookingCode)
+            .Button("HostBookingConfirmed_Cta", bookingUrl)
+            .LinkFallback("Booking_LinkFallback", bookingUrl)
+            .Build("HostDeferredChargeFailed_Subject", booking.PropertyName, booking.CheckInDate);
     }
 
     /// <summary>
-    /// "Paga alla scadenza" not paid in time: the booking was cancelled and nothing was collected, to the guest (BK-08).
+    /// "Paga più tardi" not paid in time: the booking was cancelled automatically and its dates released, to the host
+    /// (BK-08). The guest gets <see cref="GuestBookingCancelled"/> with <see cref="BookingCancellationEmailCause.DeferredPaymentNotCompleted"/>.
     /// </summary>
-    public static EmailContent GuestDeferredChargeCancelled(
-        CultureInfo culture,
-        string guestName,
-        string propertyName,
-        DateTime checkInDate,
-        DateTime checkOutDate) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("DeferredChargeGuest_Greeting", guestName)
-            .Paragraph("GuestDeferredChargeCancelled_Body", propertyName, checkInDate, checkOutDate)
-            .Paragraph("GuestDeferredChargeCancelled_NoCharge")
-            .Muted("GuestDeferredChargeCancelled_Contact")
-            .Build("GuestDeferredChargeCancelled_Subject", propertyName);
-
-    /// <summary>"Paga alla scadenza" not paid in time: the booking was cancelled and its dates released, to the host (BK-08).</summary>
     public static EmailContent HostDeferredChargeCancelled(
         CultureInfo culture,
         string guestFullName,
-        string propertyName,
-        DateTime checkInDate,
-        DateTime checkOutDate,
-        string bookingUrl) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("HostDeferredChargeCancelled_Body", guestFullName, propertyName, checkInDate, checkOutDate)
+        BookingEmailSummary booking,
+        string bookingUrl)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        return new EmailHtmlBuilder(culture)
+            .Paragraph("HostDeferredChargeCancelled_Body", guestFullName, booking.PropertyName, booking.CheckInDate, booking.CheckOutDate)
             .Paragraph("HostDeferredChargeCancelled_Dates")
-            .Button("HostDeferredCharge_Cta", bookingUrl)
-            .Build("HostDeferredChargeCancelled_Subject", propertyName, checkInDate);
+            .Paragraph("Booking_Code", booking.BookingCode)
+            .Button("HostBookingConfirmed_Cta", bookingUrl)
+            .LinkFallback("Booking_LinkFallback", bookingUrl)
+            .Build("HostDeferredChargeCancelled_Subject", booking.PropertyName, booking.CheckInDate);
+    }
 
     /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
     public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>
@@ -468,4 +542,90 @@ public static class EmailTemplates
             .Paragraph("RliExtraEuNotice_Body", propertyName)
             .Paragraph("RliExtraEuNotice_Disclaimer")
             .Build("RliExtraEuNotice_Subject", propertyName);
+
+    /// <summary>Nights, guests, lodging, cleaning and tourist tax (only when charged) and total of a booking.</summary>
+    private static IEnumerable<(string Key, object?[] Args)> SummaryLines(BookingEmailSummary booking, CultureInfo culture)
+    {
+        yield return ("Booking_Summary_Nights", [booking.Nights]);
+        yield return ("Booking_Summary_Guests", [booking.Guests]);
+        yield return ("Booking_Summary_Lodging", [Amount(booking.Lodging, culture)]);
+        if (booking.CleaningFee > 0m)
+            yield return ("Booking_Summary_Cleaning", [Amount(booking.CleaningFee, culture)]);
+        if (booking.TouristTax > 0m)
+            yield return ("Booking_Summary_TouristTax", [Amount(booking.TouristTax, culture)]);
+        yield return ("Booking_Summary_Total", [Amount(booking.Total, culture)]);
+    }
+
+    /// <summary>
+    /// The host's contact shown on the booking site (name and email of the site footer); without an email the guest is
+    /// told to contact the host of the property. Nothing else is invented.
+    /// </summary>
+    private static EmailHtmlBuilder ContactHost(EmailHtmlBuilder builder, BookingHostContact contact)
+    {
+        if (string.IsNullOrWhiteSpace(contact.Email))
+            return builder.Muted("Booking_ContactHostDirectly");
+
+        return string.IsNullOrWhiteSpace(contact.Name)
+            ? builder.Muted("Booking_ContactHostEmail", contact.Email.Trim())
+            : builder.Muted("Booking_ContactHost", contact.Name.Trim(), contact.Email.Trim());
+    }
+
+    private static string DeferredKey(string prefix, DateTime? chargeDate) =>
+        chargeDate is null ? $"{prefix}_Deferred" : $"{prefix}_DeferredOn";
+
+    private static string Amount(decimal amountEur, CultureInfo culture) => amountEur.ToString("N2", culture);
+}
+
+/// <summary>Why the guest's booking was cancelled (<see cref="EmailTemplates.GuestBookingCancelled"/>).</summary>
+public enum BookingCancellationEmailCause
+{
+    /// <summary>The host cancelled it (PC-07, BK-02).</summary>
+    Host,
+
+    /// <summary>"Paga più tardi" not paid within the deadline after the failed charge (BK-08): nothing was charged.</summary>
+    DeferredPaymentNotCompleted,
+}
+
+/// <summary>How a booking became confirmed (BK-10): decides the payment paragraph and whether the host is emailed.</summary>
+public enum BookingConfirmationKind
+{
+    /// <summary>Paid online at the checkout, within the hold (<c>payment_intent.succeeded</c>).</summary>
+    PaidOnline,
+
+    /// <summary>Paid online after the hold had ended, with the dates still free: confirmed again (BK-04).</summary>
+    PaidOnlineLate,
+
+    /// <summary>Card saved at the checkout (<c>setup_intent.succeeded</c>), charged at the free-cancellation deadline.</summary>
+    DeferredCharge,
+
+    /// <summary>"Pay at the property" request accepted by the host (BK-06, D5): nothing paid online.</summary>
+    OnSite,
+}
+
+/// <summary>
+/// What the booking emails show of a booking (BK-10), in euro as recorded on it: <see cref="Lodging"/> is the nightly
+/// part (<c>BasePrice - CleaningFee</c>), <see cref="Total"/> includes cleaning and the tourist tax (BK-03).
+/// <see cref="BookingCode"/> is the code "Le mie prenotazioni" asks for (the booking id).
+/// </summary>
+public sealed record BookingEmailSummary(
+    string BookingCode,
+    string PropertyName,
+    DateTime CheckInDate,
+    DateTime CheckOutDate,
+    int Guests,
+    decimal Lodging,
+    decimal CleaningFee,
+    decimal TouristTax,
+    decimal Total)
+{
+    public int Nights => Math.Max(0, (CheckOutDate.Date - CheckInDate.Date).Days);
+}
+
+/// <summary>
+/// The host's contact the guest emails may show: the name and email that the booking site already shows publicly
+/// (<c>Org.DisplayName</c>, <c>Org.ContactEmail</c>, site footer). Either may be empty.
+/// </summary>
+public sealed record BookingHostContact(string? Name, string? Email)
+{
+    public static BookingHostContact None { get; } = new(null, null);
 }

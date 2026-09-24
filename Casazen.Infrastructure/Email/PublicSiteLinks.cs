@@ -76,6 +76,16 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
 
     /// <summary>
+    /// "Le mie prenotazioni" of the org's booking site (BK-10): the guest finds a booking there with its code and email.
+    /// The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails link here.
+    /// </summary>
+    public string GuestBookings(string orgSlug)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
+        return Build($"/book/{Uri.EscapeDataString(orgSlug)}/my-bookings");
+    }
+
+    /// <summary>
     /// Checkout outcome page of the booking site (BK-07) with a checkout token: the guest of a failed deferred charge pays
     /// there (BK-08). Only the booking id and the random token are in the link, no personal data.
     /// </summary>
@@ -87,7 +97,7 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}?token={Uri.EscapeDataString(checkoutToken)}");
     }
 
-    /// <summary>Host console: detail page of one booking.</summary>
+    /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;

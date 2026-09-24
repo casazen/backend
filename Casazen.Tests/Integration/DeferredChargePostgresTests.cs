@@ -184,7 +184,8 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
 
         var emails = EmailsOf(seeded);
         Assert.Equal(4, emails.Count);
-        Assert.Single(emails, e => e.Template == EmailTemplates.Names.GuestDeferredChargeCancelled && e.To == seeded.GuestEmail);
+        var guestCancellation = Assert.Single(emails, e => e.Template == EmailTemplates.Names.GuestBookingCancelled && e.To == seeded.GuestEmail);
+        Assert.Contains("il pagamento non è stato completato entro la scadenza", guestCancellation.Content.HtmlBody);
         Assert.Single(emails, e => e.Template == EmailTemplates.Names.HostDeferredChargeCancelled && e.To == seeded.HostEmail);
     }
 

@@ -27,13 +27,17 @@ namespace Casazen.Tests.Integration;
 /// BK-04 (A3-04) on real PostgreSQL: a checkout payment that succeeds after its hold expired, or on a cancelled booking,
 /// is confirmed again when the dates are still free, and otherwise refunded in full on the Stripe account the
 /// PaymentIntent lives on (Connect: <c>Stripe-Account</c> of the host; platform endpoint without account: none), with an
-/// idempotency key bound to the PaymentIntent and a guest email. Duplicate events refund once, and a late payment racing
+/// idempotency key bound to the PaymentIntent and a guest email; a confirmed booking gets the standard confirmation
+/// emails of BK-10 (guest and host), with the late-payment note when it was confirmed again. Duplicate events refund once, and a late payment racing
 /// a new checkout of the same dates leaves exactly one booking on them.
 /// </summary>
 public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
     private const decimal HoldAmount = 350m;
+
+    /// <summary><c>Org.ContactEmail</c> of the orgs seeded by <see cref="CasazenWebApplicationFactory"/>: the host's emails.</summary>
+    private const string SeededHostEmail = "owner@example.com";
 
     private readonly CasazenWebApplicationFactory _factory;
     private readonly Mock<IStripeService> _stripe = new();
@@ -77,7 +81,10 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(account, payment.StripeAccountId);
         Assert.False(payment.StripeIntentOnPlatform);
         NoRefundRequested();
-        Assert.Equal([(late.GuestEmail, EmailTemplates.Names.GuestLatePaymentConfirmed)], _sentEmails.ToList());
+        Assert.Equal([
+            (late.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
+            (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
+        ], _sentEmails.ToList());
     }
 
     [PostgresFact]
@@ -134,7 +141,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
     }
 
     [PostgresFact]
-    public async Task HandleEventAsync_PaymentOnHoldStillValid_ConfirmsWithoutLateEmail()
+    public async Task HandleEventAsync_PaymentOnHoldStillValid_ConfirmsWithTheStandardEmailsOnly()
     {
         // A hold within its TTL kept its dates in the iCal export: a block imported meanwhile does not undo the payment.
         var (property, account) = await SeedCheckoutReadyPropertyAsync();
@@ -148,7 +155,13 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
         Assert.Equal(PaymentStatus.Completed, Assert.Single(booking.Payments).Status);
         NoRefundRequested();
-        Assert.Empty(_sentEmails);
+        // BK-10: the standard confirmation (guest) and new booking (host); no refund email.
+        Assert.Equal(
+            [
+                (hold.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
+                (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
+            ],
+            _sentEmails.ToList());
     }
 
     [PostgresFact]
@@ -254,7 +267,10 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(PaymentStatus.Completed, payment.Status);
         Assert.True(payment.StripeIntentOnPlatform);
         NoRefundRequested();
-        Assert.Equal([(late.GuestEmail, EmailTemplates.Names.GuestLatePaymentConfirmed)], _sentEmails.ToList());
+        Assert.Equal([
+            (late.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
+            (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
+        ], _sentEmails.ToList());
     }
 
     [PostgresFact]

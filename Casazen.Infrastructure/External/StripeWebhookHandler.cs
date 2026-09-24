@@ -66,7 +66,7 @@ public class StripeWebhookHandler(
 
         // Refunds that Stripe has just confirmed: the guest is emailed once the event is committed.
         IReadOnlyList<Guid> succeededRefunds = [];
-        // Booking payment confirmed again or refunded (BK-04): Stripe call and email once the event is committed.
+        // Booking confirmed (BK-10), confirmed again or refunded (BK-04): Stripe call and emails once the event is committed.
         CheckoutPaymentSettlement? checkoutSettlement = null;
         // Deferred charge failed (BK-08): guest and host emails once the event is committed.
         DeferredChargeNotice? deferredChargeNotice = null;
@@ -91,7 +91,7 @@ public class StripeWebhookHandler(
                     break;
                 case "setup_intent.succeeded":
                     if (source == WebhookSource.Connected)
-                        await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent);
+                        checkoutSettlement = await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent);
                     break;
                 case "charge.refunded":
                     succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
@@ -573,27 +573,33 @@ public class StripeWebhookHandler(
         return await checkoutPayments.SettleSucceededPaymentAsync(paymentIntent.Id, source, account);
     }
 
-    private async Task HandleSetupIntentSucceededAsync(SetupIntent? setupIntent)
+    /// <summary>
+    /// The card of a deferred payment is saved: the pending booking is confirmed (charged at the free-cancellation
+    /// deadline). The confirmation emails follow the commit, once per transition (BK-10): the booking row is locked, so
+    /// two different events of the same SetupIntent cannot both see it pending.
+    /// </summary>
+    private async Task<CheckoutPaymentSettlement?> HandleSetupIntentSucceededAsync(SetupIntent? setupIntent)
     {
         if (setupIntent is null)
-            return;
+            return null;
 
         logger.LogInformation("Direct booking setup intent succeeded: {SetupIntentId}", setupIntent.Id);
 
         if (!TryGetMetadataKind(setupIntent, out var kind) || !string.Equals(kind, "direct-booking-setup", StringComparison.Ordinal))
-            return;
+            return null;
 
         if (!setupIntent.Metadata.TryGetValue("bookingId", out var bookingIdRaw) || !Guid.TryParse(bookingIdRaw, out var bookingId))
         {
             logger.LogWarning("Setup intent has no bookingId metadata: {SetupIntentId}", setupIntent.Id);
-            return;
+            return null;
         }
 
+        await LockBookingRowAsync(bookingId);
         var booking = await bookingRepository.GetByIdAsync(bookingId);
         if (booking is null)
         {
             logger.LogWarning("No booking found for setup intent: {BookingId}", bookingId);
-            return;
+            return null;
         }
 
         if (booking.Status != BookingStatus.Pending)
@@ -603,20 +609,20 @@ public class StripeWebhookHandler(
                 setupIntent.Id,
                 bookingId,
                 booking.Status);
-            return;
+            return null;
         }
 
         var paymentMethodId = setupIntent.PaymentMethodId;
         if (string.IsNullOrWhiteSpace(paymentMethodId))
         {
             logger.LogWarning("Setup intent has no payment method: {SetupIntentId}", setupIntent.Id);
-            return;
+            return null;
         }
 
         if (string.IsNullOrWhiteSpace(setupIntent.CustomerId))
         {
             logger.LogWarning("Setup intent has no customer: {SetupIntentId}", setupIntent.Id);
-            return;
+            return null;
         }
 
         booking.StripePaymentMethodId = paymentMethodId;
@@ -626,6 +632,18 @@ public class StripeWebhookHandler(
         await bookingRepository.UpdateAsync(booking);
 
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
+        return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.ConfirmedWithSavedCard, bookingId);
+    }
+
+    /// <summary>Row lock of the booking for the rest of the event transaction; nothing outside PostgreSQL.</summary>
+    private async Task LockBookingRowAsync(Guid bookingId)
+    {
+        if (!dbContext.Database.IsNpgsql())
+            return;
+
+        await dbContext.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Bookings" WHERE "Id" = {bookingId} FOR UPDATE""")
+            .ToListAsync();
     }
 
     private static bool IsDeferredCharge(PaymentIntent? paymentIntent) =>

@@ -181,6 +181,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
+        // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
+        services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, OnboardingRequiredAuthorizationResultHandler>();
         services.AddScoped<IAuthorizationHandler, ContextAuthorizationHandler>();
 
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
@@ -265,6 +268,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
         services.AddScoped<CheckoutPaymentSettlementService>();
+        // Booking confirmation (guest + host) and cancellation emails (BK-10, docs/runbooks/email.md).
+        services.AddScoped<BookingNotifier>();
         // Deferred charge of "Paga alla scadenza" bookings: job and webhooks (BK-08, docs/runbooks/direct-booking.md § 8).
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();

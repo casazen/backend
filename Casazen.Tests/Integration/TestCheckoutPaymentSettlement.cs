@@ -5,6 +5,7 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -43,7 +44,7 @@ internal static class TestCheckoutPaymentSettlement
             paymentRepository ?? new PaymentRepository(db),
             refunds,
             scheduler,
-            emailQueue,
+            new BookingNotifier(db, emailQueue, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance),
             configuration ?? EmptyConfiguration,
             NullLogger<CheckoutPaymentSettlementService>.Instance,
             timeProvider);
@@ -69,8 +70,11 @@ internal static class TestDeferredCharges
         new(
             db,
             stripe ?? Mock.Of<IStripeService>(),
-            emails ?? Mock.Of<IEmailQueue>(),
-            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSiteBaseUrl })),
+            new BookingNotifier(
+                db,
+                emails ?? Mock.Of<IEmailQueue>(),
+                new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSiteBaseUrl })),
+                NullLogger<BookingNotifier>.Instance),
             configuration ?? EmptyConfiguration,
             NullLogger<DeferredChargeService>.Instance,
             timeProvider);

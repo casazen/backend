@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -7,9 +8,15 @@ namespace Casazen.Web.Infrastructure;
 
 public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 
+/// <summary>
+/// Plan, billing and domain of the caller's host org. Like the host contexts, it waits for the host onboarding and the
+/// current consents (PL-02): refused with <see cref="HostOnboarding.RequiredCode"/> until then, platform admins included,
+/// since billing an org means using it as a host.
+/// </summary>
 public class OrgBillingAdminAuthorizationHandler(
     IOrgContextResolver orgContextResolver,
-    IUserAuthorizationSnapshotStore snapshotStore) : AuthorizationHandler<OrgBillingAdminRequirement>
+    IUserAuthorizationSnapshotStore snapshotStore,
+    IHostOnboardingGate hostOnboardingGate) : AuthorizationHandler<OrgBillingAdminRequirement>
 {
     /// <summary>DB context memberships that grant billing administration without relying on JWT roles.</summary>
     private static readonly HashSet<string> AllowedMembershipContexts = new(StringComparer.OrdinalIgnoreCase)
@@ -43,6 +50,16 @@ public class OrgBillingAdminAuthorizationHandler(
 
         if (!HasAllowedRole(context.User) && !await HasAllowedMembershipAsync(context.User))
             return;
+
+        var userId = context.User.FindFirstValue("sub") ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        if (!(await hostOnboardingGate.GetStatusAsync(userId)).IsComplete)
+        {
+            context.Fail(new AuthorizationFailureReason(this, HostOnboarding.RequiredCode));
+            return;
+        }
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync();
         if (orgId is null)
