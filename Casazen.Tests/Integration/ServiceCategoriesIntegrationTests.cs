@@ -146,12 +146,14 @@ public class ServiceCategoriesIntegrationTests : IClassFixture<CasazenWebApplica
     public async Task CreateServiceRequest_CanonicalCode_Returns201WithCode()
     {
         var (_, supplierOrgId) = await SeedSupplierAsync("""["check-in"]""", active: true);
-        var (hostId, _, propertyId) = await SeedHostPropertyAsync();
+        var (hostId, hostOrgId, propertyId) = await SeedHostPropertyAsync();
+        var bookingId = await SeedStayAsync(hostOrgId, propertyId);
         using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
 
         var response = await client.PostAsJsonAsync("/api/service-requests", new
         {
             propertyId,
+            bookingId,
             supplierOrgId,
             category = "check-in",
         });
@@ -295,5 +297,26 @@ public class ServiceCategoriesIntegrationTests : IClassFixture<CasazenWebApplica
         db.Properties.Add(property);
         await db.SaveChangesAsync();
         return (hostId, hostOrg.Id, property.Id);
+    }
+
+    /// <summary>A confirmed stay on the property: short-rent requests are for a stay (SU-07, D2).</summary>
+    private async Task<Guid> SeedStayAsync(Guid orgId, Guid propertyId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var guest = new Guest { OrgId = orgId, FirstName = "Anna", LastName = "Ospite", Email = $"su03-{Guid.NewGuid():N}@example.com" };
+        var booking = new Booking
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            GuestId = guest.Id,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(3),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(5),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+        };
+        db.AddRange(guest, booking);
+        await db.SaveChangesAsync();
+        return booking.Id;
     }
 }
