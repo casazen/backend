@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -956,16 +957,9 @@ public class PropertiesController(
         [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-            return Forbid();
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
 
         try
         {
@@ -994,6 +988,7 @@ public class PropertiesController(
                 ? step.Message
                 : localizer[step.MessageKey, step.MessageArgs?.ToArray() ?? []].Value,
             LinkUrl = step.LinkUrl,
+            Blockers = step.Blockers.Select(b => ToBlockerDto(step.Id, b, localizer)).ToList(),
             TouristTax = step.TouristTax is not { } tax
                 ? null
                 : new ActivationTouristTaxDto
@@ -1023,6 +1018,25 @@ public class PropertiesController(
                 },
         };
 
+    private static ActivationBlockerDto ToBlockerDto(
+        string stepId,
+        ActivationBlocker blocker,
+        IStringLocalizer<SharedResources> localizer) => new()
+        {
+            Step = stepId,
+            Code = blocker.Code,
+            Message = localizer[blocker.MessageKey, blocker.MessageArgs.ToArray()].Value,
+        };
+
+    /// <summary>Code of the 409 of <see cref="CompleteComplianceActivation"/> when blocking steps are left.</summary>
+    internal const string ActivationBlockedCode = "property_activation_blocked";
+
+    /// <summary>
+    /// Activates the property when every blocking step is complete. 409 <c>property_activation_blocked</c> otherwise, with
+    /// <c>incompleteBlockers</c> (step ids) and <c>blockers</c> (<c>{ step, code, message }</c>, stable codes such as
+    /// <c>safety_gas_detector_missing</c>); 409 <c>activation_tos_required</c> without the terms accepted. The safety
+    /// checklist is saved with <see cref="SaveSafetyChecklist"/> (CO-07).
+    /// </summary>
     [HttpPost("{id:guid}/compliance/activation/complete")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(CompletePropertyActivationResponse), StatusCodes.Status200OK)]
@@ -1031,39 +1045,36 @@ public class PropertiesController(
     public async Task<ActionResult<CompletePropertyActivationResponse>> CompleteComplianceActivation(
         Guid id,
         [FromBody] CompletePropertyActivationRequest request,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property is null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-            return Forbid();
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Write);
+        if (denied is not null)
+            return denied;
 
         try
         {
-            PropertySafetyChecklistInput? safety = request.SafetyChecklist is null
-                ? null
-                : new PropertySafetyChecklistInput(
-                    request.SafetyChecklist.SmokeDetector,
-                    request.SafetyChecklist.FireExtinguisher,
-                    request.SafetyChecklist.GasCompliance,
-                    userId);
+            var (updated, blockingSteps) = await complianceWizardService.CompleteActivationAsync(
+                id, userId, request.TosAccepted, cancellationToken);
 
-            var (updated, blockers) = await complianceWizardService.CompleteActivationAsync(
-                id, userId, safety, request.TosAccepted, cancellationToken);
-
-            if (blockers.Count > 0)
+            if (blockingSteps.Count > 0)
             {
-                return Conflict(new CompletePropertyActivationResponse
+                var problem = ApiProblemDetails.Create(
+                    HttpContext, StatusCodes.Status409Conflict, ActivationBlockedCode, "PropertyActivationBlocked");
+                problem.Extensions["complianceStatus"] = updated.ComplianceStatus.ToString();
+                problem.Extensions["incompleteBlockers"] = blockingSteps.Select(s => s.Id).ToList();
+                problem.Extensions["blockers"] = blockingSteps
+                    .SelectMany(s => s.Blockers.Select(b => ToBlockerDto(s.Id, b, localizer)))
+                    .ToList();
+                return new ObjectResult(problem)
                 {
-                    ComplianceStatus = updated.ComplianceStatus.ToString(),
-                    IncompleteBlockers = blockers,
-                });
+                    StatusCode = StatusCodes.Status409Conflict,
+                    ContentTypes = { ApiProblemDetails.ContentType },
+                };
             }
 
             return Ok(new CompletePropertyActivationResponse
@@ -1075,10 +1086,158 @@ public class PropertiesController(
         {
             return NotFound();
         }
-        catch (InvalidOperationException ex)
+    }
+
+    // ─── D.L. 145/2023 safety checklist (CO-07) ────────────────────────────────
+
+    /// <summary>
+    /// Safety checklist of the property (D.L. 145/2023 art. 13-ter): facts, answers, items "not applicable" with their
+    /// reason, minimum extinguishers, blockers and warnings with stable codes. An empty checklist before the first save.
+    /// </summary>
+    [HttpGet("{id:guid}/compliance/safety-checklist")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(SafetyChecklistDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SafetyChecklistDto>> GetSafetyChecklist(
+        Guid id,
+        [FromServices] IPropertySafetyChecklistService safetyChecklistService,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var view = await safetyChecklistService.GetAsync(id, cancellationToken);
+        return Ok(ToSafetyChecklistDto(view, localizer));
+    }
+
+    /// <summary>
+    /// Saves the whole safety checklist (facts and answers). "Not applicable" is not sent: it follows from the facts.
+    /// <c>confirm</c> records the host's final confirmation (SC-08) of these answers; any later save without it clears
+    /// it. 422 with a stable code (<c>safety_*</c>) for invalid values; the evidence must be a document of the property.
+    /// </summary>
+    [HttpPut("{id:guid}/compliance/safety-checklist")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(SafetyChecklistDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SafetyChecklistDto>> SaveSafetyChecklist(
+        Guid id,
+        [FromBody] SaveSafetyChecklistRequest request,
+        [FromServices] IPropertySafetyChecklistService safetyChecklistService,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var denied = await AuthorizeShortStayPropertyAsync(id, PropertyOperations.Write);
+        if (denied is not null)
+            return denied;
+
+        var facts = request.Facts ?? new SafetyChecklistFactsDto();
+        var input = new SafetyChecklistInput(
+            new SafetyChecklistFactsInput(
+                facts.Entrepreneurial,
+                facts.HasGasSupply,
+                facts.CombustionAppliances,
+                facts.FloorCount,
+                facts.FloorAreasSqm),
+            (request.Items ?? []).Select(i => new SafetyChecklistItemInput(
+                i.Code,
+                i.Answer,
+                i.Quantity,
+                i.Location,
+                i.DetectorType,
+                i.CheckedOn,
+                i.ExpiresOn,
+                i.EvidenceDocumentId,
+                i.Notes)).ToList(),
+            request.Confirm);
+
+        var view = await safetyChecklistService.SaveAsync(id, userId, input, cancellationToken);
+        return Ok(ToSafetyChecklistDto(view, localizer));
+    }
+
+    private static SafetyChecklistDto ToSafetyChecklistDto(SafetyChecklistView view, IStringLocalizer<SharedResources> localizer)
+    {
+        var checklist = view.Checklist;
+        var answers = checklist?.Items.ToDictionary(i => i.Code) ?? new Dictionary<SafetyItemCode, PropertySafetyChecklistItem>();
+
+        return new SafetyChecklistDto
         {
-            return Conflict(new { error = ex.Message });
+            SchemaVersion = checklist?.SchemaVersion ?? SafetyChecklistRules.SchemaVersion,
+            LegalBasis = checklist?.LegalBasis is { Length: > 0 } basis ? basis : SafetyChecklistRules.LegalBasis,
+            DeclarationTextVersion = SafetyChecklistRules.DeclarationTextVersion,
+            Saved = checklist is not null,
+            ImportedFromLegacy = checklist is { SchemaVersion: SafetyChecklistRules.LegacySchemaVersion },
+            Facts = new SafetyChecklistFactsDto
+            {
+                Entrepreneurial = checklist?.Entrepreneurial,
+                HasGasSupply = checklist?.HasGasSupply,
+                CombustionAppliances = checklist?.CombustionAppliances,
+                FloorCount = checklist?.FloorCount,
+                FloorAreasSqm = checklist?.FloorAreasSqm,
+            },
+            Items = view.Evaluation.Items.Select(e =>
+            {
+                answers.TryGetValue(e.Code, out var item);
+                return new SafetyChecklistItemDto
+                {
+                    Code = e.Code,
+                    Requirement = e.Requirement,
+                    Status = e.Status,
+                    NotApplicableReason = e.NotApplicableReason,
+                    Answer = item?.Answer,
+                    Quantity = item?.Quantity,
+                    Location = item?.Location,
+                    DetectorType = item?.DetectorType,
+                    CheckedOn = item?.CheckedOn,
+                    ExpiresOn = item?.ExpiresOn,
+                    EvidenceDocumentId = item?.EvidenceDocumentId,
+                    EvidenceFileName = item?.EvidenceDocumentId is { } doc && view.EvidenceFileNames.TryGetValue(doc, out var name)
+                        ? name
+                        : null,
+                    Notes = item?.Notes,
+                };
+            }).ToList(),
+            MinimumExtinguishers = view.Evaluation.MinimumExtinguishers,
+            IsComplete = view.Evaluation.IsComplete,
+            Blockers = view.Evaluation.Blockers.Select(b => ToIssueDto(b, localizer)).ToList(),
+            Warnings = view.Evaluation.Warnings.Select(w => ToIssueDto(w, localizer)).ToList(),
+            ConfirmedAt = checklist?.ConfirmedAt,
+            ConfirmedTextVersion = checklist?.ConfirmedTextVersion,
+            UpdatedAt = checklist?.UpdatedAt,
+        };
+    }
+
+    private static SafetyChecklistIssueDto ToIssueDto(SafetyChecklistIssue issue, IStringLocalizer<SharedResources> localizer) => new()
+    {
+        Code = issue.Code,
+        Message = localizer[issue.MessageKey, issue.MessageArgs.ToArray()].Value,
+    };
+
+    // TN-3 resource-based check of a short-stay property for the compliance actions touched by CO-07: 404 when the
+    // property is not visible (other org), 403 when visible but the operation is not allowed.
+    private async Task<ActionResult?> AuthorizeShortStayPropertyAsync(Guid propertyId, HostOperationRequirement operation)
+    {
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property is null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), operation))
+        {
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on compliance of property {PropertyId}",
+                User.GetUserId(), operation.PermissionKey, propertyId);
+            return Forbid();
         }
+
+        return null;
     }
 
     /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>

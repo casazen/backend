@@ -93,8 +93,7 @@ public class Property : ITenantOwned
 
     public DateTime? ComplianceCompletedAt { get; set; }
 
-    /// <summary>JSON safety checklist: smokeDetector, fireExtinguisher, gasCompliance, acknowledgedAt, acknowledgedBy.</summary>
-    public string? SafetyChecklistJson { get; set; }
+    // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
