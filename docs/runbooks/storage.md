@@ -24,7 +24,7 @@ Object keys:
 
 Lease contract PDFs (offline signing flow, D15) use the private bucket through `IFileStorage`: the landlord uploads the signed contract (`POST /api/leases/{id}/signed-document`, PDF of at most 20 MB, `docs/runbooks/rli.md` § Contract signature). A path left by the old e-sign stub (`/signed/…`) is not a storage key and is never served.
 
-Outside `Development` and `Testing` (so on **both** Railway environments, which run with `ASPNETCORE_ENVIRONMENT=Production`) the API **does not start** without a complete S3 configuration. Startup fails with `OptionsValidationException` and lists the missing keys. The filesystem provider is refused there.
+Outside `Development` and `Testing` (so on **both** Railway environments: `ASPNETCORE_ENVIRONMENT=Production` on production, `Staging` on test) the API **does not start** without a complete S3 configuration. Startup fails with `OptionsValidationException` and lists the missing keys. The filesystem provider is refused there.
 
 > **Deploy order:** create the buckets and set the Railway variables (sections 1-3) **before** merging FD-07 to `develop` / `main`. Otherwise the new container fails at startup and Railway keeps the previous one.
 

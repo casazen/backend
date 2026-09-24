@@ -129,6 +129,8 @@ public class TenantQueryFilterArchitectureTests
     [InlineData(typeof(PropertyICalFeed))]
     [InlineData(typeof(PropertyICalExport))]
     [InlineData(typeof(PropertyDocument))]
+    [InlineData(typeof(PropertySafetyChecklist))]
+    [InlineData(typeof(PropertySafetyChecklistItem))]
     [InlineData(typeof(OtaIntegration))]
     [InlineData(typeof(PricingAdapterConfig))]
     [InlineData(typeof(PricingHistory))]

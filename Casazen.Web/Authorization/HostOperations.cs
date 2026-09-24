@@ -64,6 +64,16 @@ public static class OtaOperations
     public static readonly HostOperationRequirement Write = new("short-rent", "ota.write");
 }
 
+/// <summary>
+/// Operations on a property's long-term side outside leases, i.e. the long-rent service requests (D2, SU-07):
+/// <c>property.*</c> held in the long-rent context (<see cref="CasazenPolicies.LongRentPropertyRead"/>).
+/// </summary>
+public static class LongRentPropertyOperations
+{
+    public static readonly HostOperationRequirement Read = new("long-rent", "property.read");
+    public static readonly HostOperationRequirement Write = new("long-rent", "property.write");
+}
+
 /// <summary>Operations on a long-term lease (the resource is its property, with the lease's own org).</summary>
 public static class LeaseOperations
 {

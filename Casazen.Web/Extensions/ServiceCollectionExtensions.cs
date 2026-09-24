@@ -266,6 +266,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
+        services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
         // Late checkout payments: confirmed again or refunded in full (BK-04, docs/runbooks/stripe.md "Late payments").
@@ -317,6 +318,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
         services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
+        // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
+        services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();

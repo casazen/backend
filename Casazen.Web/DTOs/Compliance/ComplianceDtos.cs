@@ -1,4 +1,6 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 
 namespace Casazen.Web.DTOs.Compliance;
 
@@ -15,6 +17,19 @@ public class ComplianceActivationStepDto
 
     /// <summary>Only on the <c>tourist-tax</c> step.</summary>
     public ActivationTouristTaxDto? TouristTax { get; set; }
+
+    /// <summary>What keeps this blocking step incomplete, with stable codes; empty when complete.</summary>
+    public IEnumerable<ActivationBlockerDto> Blockers { get; set; } = [];
+}
+
+/// <summary>One reason why the activation is blocked (CO-07): stable snake_case code and localized message.</summary>
+public class ActivationBlockerDto
+{
+    /// <summary>Id of the wizard step (<c>safety</c>, <c>cin</c>, ...).</summary>
+    public string Step { get; set; } = string.Empty;
+
+    public string Code { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
 }
 
 /// <summary>Tourist tax of the property's comune, as shown to the host in the activation wizard.</summary>
@@ -56,17 +71,13 @@ public class PropertyActivationWizardDto
     public IEnumerable<ComplianceActivationStepDto> Steps { get; set; } = [];
 }
 
+/// <summary>
+/// Completion of the activation. The safety checklist is saved on its own endpoint
+/// (<c>PUT /api/properties/{id}/compliance/safety-checklist</c>, CO-07), never here.
+/// </summary>
 public class CompletePropertyActivationRequest
 {
-    public PropertySafetyChecklistRequest? SafetyChecklist { get; set; }
     public bool? TosAccepted { get; set; }
-}
-
-public class PropertySafetyChecklistRequest
-{
-    public bool SmokeDetector { get; set; }
-    public bool FireExtinguisher { get; set; }
-    public bool GasCompliance { get; set; }
 }
 
 public class CompletePropertyActivationResponse
@@ -110,10 +121,111 @@ public class CompleteCheckoutWizardRequest
     public Guid? SupplierOrgId { get; set; }
     public string? ServiceNotes { get; set; }
     public string? ServiceCategory { get; set; }
+
+    /// <summary>
+    /// The host confirms that the guest arrived: a confirmed booking whose arrival was never registered is checked in
+    /// with the check-out ("registra arrivo e procedi", CO-08).
+    /// </summary>
+    public bool RegisterArrival { get; set; }
 }
 
 public class CompleteCheckoutWizardResponse
 {
     public bool PropertyReady { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
+}
+
+/// <summary>Safety checklist of a short-stay property under D.L. 145/2023 art. 13-ter (CO-07).</summary>
+public class SafetyChecklistDto
+{
+    /// <summary>1 = imported from the old checklist and still to review, 2 = current rules.</summary>
+    public int SchemaVersion { get; set; }
+    public string LegalBasis { get; set; } = string.Empty;
+
+    /// <summary>Version of the confirmation text the host must confirm now.</summary>
+    public string DeclarationTextVersion { get; set; } = string.Empty;
+
+    /// <summary>False until the host saves the checklist once.</summary>
+    public bool Saved { get; set; }
+
+    /// <summary>True when the answers come from the old checklist (smoke detector, extinguisher, gas certificate).</summary>
+    public bool ImportedFromLegacy { get; set; }
+
+    public SafetyChecklistFactsDto Facts { get; set; } = new();
+    public IEnumerable<SafetyChecklistItemDto> Items { get; set; } = [];
+
+    /// <summary>One every 200 m² of floor or fraction per floor, at least one per floor; null without the floors.</summary>
+    public int? MinimumExtinguishers { get; set; }
+
+    public bool IsComplete { get; set; }
+    public IEnumerable<SafetyChecklistIssueDto> Blockers { get; set; } = [];
+    public IEnumerable<SafetyChecklistIssueDto> Warnings { get; set; } = [];
+    public DateTime? ConfirmedAt { get; set; }
+    public string? ConfirmedTextVersion { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>Facts of the unit declared by the host (SC-01, SC-03, floors of SC-02).</summary>
+public class SafetyChecklistFactsDto
+{
+    public bool? Entrepreneurial { get; set; }
+    public bool? HasGasSupply { get; set; }
+
+    /// <summary>Null = not answered, empty = no combustion appliance.</summary>
+    public List<CombustionAppliance>? CombustionAppliances { get; set; }
+
+    public int? FloorCount { get; set; }
+
+    /// <summary>m² of floor of each floor of the unit, in order; null when not given.</summary>
+    public List<decimal>? FloorAreasSqm { get; set; }
+}
+
+public class SafetyChecklistItemDto
+{
+    public SafetyItemCode Code { get; set; }
+    public SafetyItemRequirement Requirement { get; set; }
+    public SafetyItemStatus Status { get; set; }
+    public SafetyNotApplicableReason? NotApplicableReason { get; set; }
+    public SafetyItemAnswer? Answer { get; set; }
+    public int? Quantity { get; set; }
+    public string? Location { get; set; }
+    public SafetyDetectorType? DetectorType { get; set; }
+    public DateOnly? CheckedOn { get; set; }
+    public DateOnly? ExpiresOn { get; set; }
+    public Guid? EvidenceDocumentId { get; set; }
+    public string? EvidenceFileName { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class SafetyChecklistIssueDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>Whole checklist as saved by the host. <see cref="Confirm"/> is the final confirmation (SC-08).</summary>
+public class SaveSafetyChecklistRequest
+{
+    public SafetyChecklistFactsDto Facts { get; set; } = new();
+    public List<SaveSafetyChecklistItemRequest> Items { get; set; } = [];
+    public bool Confirm { get; set; }
+}
+
+public class SaveSafetyChecklistItemRequest
+{
+    public SafetyItemCode Code { get; set; }
+
+    /// <summary><c>Present</c>, <c>Missing</c> or null (not answered); "not applicable" follows from the facts.</summary>
+    public SafetyItemAnswer? Answer { get; set; }
+
+    public int? Quantity { get; set; }
+    public string? Location { get; set; }
+    public SafetyDetectorType? DetectorType { get; set; }
+    public DateOnly? CheckedOn { get; set; }
+    public DateOnly? ExpiresOn { get; set; }
+
+    /// <summary>Id of a document of the same property (uploaded with <c>POST /api/properties/{id}/documents</c>).</summary>
+    public Guid? EvidenceDocumentId { get; set; }
+
+    public string? Notes { get; set; }
 }

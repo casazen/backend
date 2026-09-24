@@ -1,6 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
@@ -9,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -30,21 +33,32 @@ public class ComplianceWizardServiceTests
             {
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
-                ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
                 ["Compliance:GdprRetentionYears"] = "7",
             })
             .Build();
 
-    private static ComplianceWizardService CreateService(AppDbContext db, TimeProvider? timeProvider = null)
+    private static ComplianceWizardService CreateService(
+        AppDbContext db,
+        TimeProvider? timeProvider = null,
+        IConfiguration? configuration = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
 
+        var stayLifecycle = new StayLifecycleService(
+            db,
+            alloggiati.Object,
+            Mock.Of<IAlloggiatiReportScheduler>(),
+            Mock.Of<IServiceRequestService>(),
+            Options.Create(new ComplianceOptions { GdprRetentionYears = 7 }),
+            NullLogger<StayLifecycleService>.Instance,
+            timeProvider);
+
         return new ComplianceWizardService(
             db,
-            CreateConfig(),
+            configuration ?? CreateConfig(),
             alloggiati.Object,
-            Mock.Of<IServiceRequestService>(),
+            stayLifecycle,
             new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
             Mock.Of<ILogger<ComplianceWizardService>>(),
             timeProvider);
@@ -186,7 +200,6 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
         Assert.Empty(blockers);
@@ -249,7 +262,6 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
         Assert.Empty(blockers);
@@ -263,11 +275,11 @@ public class ComplianceWizardServiceTests
         await using var db = CreateDb(nameof(CompleteActivation_TosOmitted_DoesNotActivateProperty));
         var property = await SeedFullyCompliantPropertyAsync(db);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(db).CompleteActivationAsync(
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: null));
+        Assert.Equal("activation_tos_required", error.Code);
 
         var reloaded = await db.Properties.FindAsync(property.Id);
         Assert.Equal(PropertyComplianceStatus.Pending, reloaded!.ComplianceStatus);
@@ -283,11 +295,75 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
-        Assert.Contains("cin", blockers);
+        var cin = Assert.Single(blockers, b => b.Id == "cin");
+        Assert.Equal("activation_cin_missing", Assert.Single(cin.Blockers).Code);
         Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes()
+    {
+        await using var db = CreateDb(nameof(Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes));
+        var property = await SeedPropertyAsync(db);
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var safety = steps.Single(s => s.Id == "safety");
+        Assert.Equal("pending", safety.Status);
+        Assert.True(safety.Blocker);
+        Assert.Equal("ActivationSafetyIncomplete", safety.MessageKey);
+        Assert.Contains(safety.Blockers, b => b.Code == "safety_extinguishers_missing");
+        Assert.DoesNotContain(safety.Blockers, b => b.Code.Contains("smoke", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CompleteActivation_AllElectricHomeWithoutSmokeDetector_SetsActive()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_AllElectricHomeWithoutSmokeDetector_SetsActive));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var smoke = await db.PropertySafetyChecklistItems.SingleAsync(i => i.Code == SafetyItemCode.SmokeDetector);
+        smoke.Answer = SafetyItemAnswer.Missing;
+        await db.SaveChangesAsync();
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var checklist = await db.PropertySafetyChecklists.SingleAsync(c => c.PropertyId == property.Id);
+        checklist.HasGasSupply = true;
+        checklist.CombustionAppliances = [CombustionAppliance.GasHob];
+        await db.SaveChangesAsync();
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        var safety = Assert.Single(blockers);
+        Assert.Equal("safety", safety.Id);
+        Assert.Equal(
+            ["safety_gas_detector_missing", "safety_co_detector_missing"],
+            safety.Blockers.Select(b => b.Code));
+        Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task Activation_NoRequiredDocumentsConfigured_DoesNotAskForASafetyCertificate()
+    {
+        await using var db = CreateDb(nameof(Activation_NoRequiredDocumentsConfigured_DoesNotAskForASafetyCertificate));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var noDocumentsConfig = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
+
+        var (_, steps) = await CreateService(db, configuration: noDocumentsConfig).GetActivationWizardAsync(property.Id);
+
+        Assert.DoesNotContain(property.PropertyDocuments, d => d.DocumentType == DocumentType.SafetyCompliance);
+        Assert.Equal("complete", steps.Single(s => s.Id == "documents").Status);
     }
 
     [Fact]
@@ -383,40 +459,31 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
-    public async Task CompleteCheckoutWizard_WhenConfirmedBookingReachedCheckoutDay_CompletesBooking()
+    public async Task StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival()
     {
-        await using var db = CreateDb(nameof(CompleteCheckoutWizard_WhenConfirmedBookingReachedCheckoutDay_CompletesBooking));
+        await using var db = CreateDb(nameof(StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival));
         var property = await SeedFullyCompliantPropertyAsync(db);
         property.ComplianceStatus = PropertyComplianceStatus.Active;
+        // Rome 24/09 00:30: the departure day of the stay has started.
+        var checkout = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
         var guest = new Guest
         {
             FirstName = "Luigi",
             LastName = "Verdi",
             Email = $"luigi-{Guid.NewGuid():N}@test.com",
-            // Retention is only ever extended (#429): start below checkout + 7y so the wizard's
+            // Retention is only ever extended (#429): start below checkout + 7y so the check-out's
             // checkout-anchored horizon is observable regardless of the entity's UtcNow default.
-            DataRetentionUntil = DateTime.UtcNow.Date.AddYears(1),
+            DataRetentionUntil = checkout.AddYears(1),
         };
         db.Guests.Add(guest);
-
-        var booking = new Booking
-        {
-            PropertyId = property.Id,
-            OrgId = property.OrgId,
-            GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
-            CheckOutDate = DateTime.UtcNow.Date,
-            Status = BookingStatus.Confirmed,
-            NumberOfGuests = 2,
-            BasePrice = 100,
-            TouristTax = 0,
-            TotalPrice = 100,
-        };
+        var booking = BuildBooking(property, guest, checkout, BookingStatus.Confirmed);
         db.Bookings.Add(booking);
         await db.SaveChangesAsync();
+        var service = CreateService(db, RomeJustAfterMidnight);
 
-        var service = CreateService(db);
-        await service.StartCheckoutWizardAsync(booking.Id);
+        var deadEnd = await Assert.ThrowsAsync<DomainConflictException>(() => service.StartCheckoutWizardAsync(booking.Id));
+        var (started, steps) = await service.StartCheckoutWizardAsync(booking.Id, registerArrival: true);
+        var statusAfterStart = started.Status;
         var (updated, propertyReady) = await service.CompleteCheckoutWizardAsync(
             booking.Id,
             property.OwnerId,
@@ -426,9 +493,66 @@ public class ComplianceWizardServiceTests
                 ServiceNotes: null,
                 ServiceCategory: null));
 
+        Assert.Equal(BookingErrorCodes.ArrivalNotRegistered, deadEnd.Code);
+        Assert.Equal(BookingStatus.CheckedIn, statusAfterStart);
+        Assert.NotNull(started.CheckoutWizardStartedAt);
+        Assert.Contains(steps, s => s.Id == "confirm-departure" && s.Status == "complete");
         Assert.True(propertyReady);
         Assert.Equal(BookingStatus.CheckedOut, updated.Status);
-        Assert.Equal(booking.CheckOutDate.AddYears(7), updated.Guest.DataRetentionUntil);
+        Assert.Equal(checkout.AddYears(7), updated.Guest.DataRetentionUntil);
+    }
+
+    [Fact]
+    public async Task CompleteCheckoutWizard_DepartureNotConfirmed_Returns422AndKeepsTheStayOpen()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_DepartureNotConfirmed_Returns422AndKeepsTheStayOpen));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => CreateService(db, RomeJustAfterMidnight)
+            .CompleteCheckoutWizardAsync(booking.Id, property.OwnerId, new CompleteCheckoutWizardInput(false, null, null, null)));
+
+        Assert.Equal(BookingErrorCodes.DepartureNotConfirmed, error.Code);
+        Assert.Equal(BookingStatus.CheckedIn, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Summary_CheckoutsDue_TodaysDeparturesInRomeConfirmedOrCheckedInAndOpenStays()
+    {
+        await using var db = CreateDb(nameof(Summary_CheckoutsDue_TodaysDeparturesInRomeConfirmedOrCheckedInAndOpenStays));
+        var property = await SeedPropertyAsync(db);
+        // 2026-09-23 22:30 UTC is already 24/09 in Rome.
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
+        Booking Stay(DateTime checkout, BookingStatus status)
+        {
+            var guest = new Guest { FirstName = "Ospite", LastName = status.ToString(), Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+
+        var confirmedToday = Stay(todayInRome, BookingStatus.Confirmed);
+        var checkedInToday = Stay(todayInRome, BookingStatus.CheckedIn);
+        var checkedInOverdue = Stay(todayInRome.AddDays(-1), BookingStatus.CheckedIn);
+        Stay(todayInRome.AddDays(-1), BookingStatus.Confirmed);
+        Stay(todayInRome.AddDays(1), BookingStatus.CheckedIn);
+        Stay(todayInRome.AddDays(1), BookingStatus.Confirmed);
+        Stay(todayInRome, BookingStatus.CheckedOut);
+        Stay(todayInRome, BookingStatus.Cancelled);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+
+        Assert.Equal(3, summary.CheckoutsDue.Count);
+        Assert.Equal(
+            new[] { confirmedToday.Id, checkedInToday.Id, checkedInOverdue.Id }.Order(),
+            summary.CheckoutsDue.Items.Select(i => i.Id).Order());
     }
 
     [Fact]
@@ -538,7 +662,7 @@ public class ComplianceWizardServiceTests
             });
         }
 
-        db.PropertyDocuments.AddRange(
+        db.PropertyDocuments.Add(
             new PropertyDocument
             {
                 PropertyId = property.Id,
@@ -546,18 +670,9 @@ public class ComplianceWizardServiceTests
                 StorageUrl = "/docs/cin.pdf",
                 DocumentType = DocumentType.CinCertificate,
                 UploadedBy = property.OwnerId,
-            },
-            new PropertyDocument
-            {
-                PropertyId = property.Id,
-                FileName = "safety.pdf",
-                StorageUrl = "/docs/safety.pdf",
-                DocumentType = DocumentType.SafetyCompliance,
-                UploadedBy = property.OwnerId,
             });
 
-        property.SafetyChecklistJson =
-            """{"smokeDetector":true,"fireExtinguisher":true,"gasCompliance":true,"acknowledgedAt":"2026-01-01T00:00:00Z"}""";
+        db.PropertySafetyChecklists.Add(SafetyChecklistTestData.CompleteAllElectric(property.Id, property.OrgId));
 
         await db.SaveChangesAsync();
         return property;
