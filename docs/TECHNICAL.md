@@ -186,7 +186,13 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
 | `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
 | `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
-| `POST` | `/api/leases/{id}/signing` | lease.sign | Start / advance e-sign flow |
+| `GET` | `/api/leases/{id}/contract.pdf` | lease.sign | Final contract to sign offline (approved template only, LT-02/LT-03) |
+| `GET` | `/api/leases/{id}/contract/preview` | lease.sign | Contract preview marked BOZZA / ANTEPRIMA (never valid for signature) |
+| `POST` | `/api/leases/{id}/signed-document` | lease.sign | Offline signature: signed PDF + stipula date; lease Signed (LT-02) |
+| `GET` | `/api/leases/{id}/signed-document` | lease.read | Signed contract (private bucket) |
+| `POST` | `/api/leases/{id}/stipula` | lease.sign | Declare the stipula date of a lease signed before LT-02 (once) |
+| `GET` | `/api/leases/{id}/signers` | lease.read | Signature panel: persisted signers, provider availability, contract availability |
+| `POST` | `/api/leases/{id}/signing` | lease.sign | E-sign provider path, behind `Features:ESignProvider` (off, 404) and a configured provider |
 | `POST` | `/api/leases/{id}/registration` | lease.register | Submit lease registration |
 | `GET` | `/api/leases/{id}/registration` | lease.read | Registration status |
 | `GET` | `/api/leases/{id}/registration/receipt` | lease.read | Registration receipt |

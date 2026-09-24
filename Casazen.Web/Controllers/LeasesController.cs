@@ -19,7 +19,8 @@ namespace Casazen.Web.Controllers;
 /// Long-term leases. Reads need <c>lease.read</c>, each write its own lease permission. Creation and every read (list,
 /// detail, registration, checklist, advisory, receipt, exports) authorize the row as a <see cref="HostResource"/> of
 /// the lease's property (TN-3): the property owner or an org-wide member of its org with the lease permission; another
-/// org's lease is invisible (404), a lease of the org the caller may not handle answers 403. Signing, the provider
+/// org's lease is invisible (404), a lease of the org the caller may not handle answers 403. The signature endpoints
+/// (LT-02) need <c>lease.sign</c> on the lease, the signed contract and the signers <c>lease.read</c>; the provider
 /// filing delega and the IMU "sent" attestation still act for the property owner only (services); the manual RLI
 /// declaration needs <c>lease.register</c> on the lease (LT-01).
 /// Responses are DTOs (LT-11, A7-17): never EF entities, no clear personal data of the parties.
@@ -46,6 +47,9 @@ public class LeasesController(
 
     /// <summary>The receipt (at most <see cref="RliRegistrationLimits.MaxReceiptBytes"/>) plus the other form fields.</summary>
     private const long ManualRegistrationRequestLimit = RliRegistrationLimits.MaxReceiptBytes + 64 * 1024;
+
+    /// <summary>The signed contract (at most <see cref="LeaseSigningLimits.MaxSignedContractBytes"/>) plus the other form fields.</summary>
+    private const long SignedDocumentRequestLimit = LeaseSigningLimits.MaxSignedContractBytes + 64 * 1024;
 
     private string? GetOwnerId() => User.GetUserId();
 
@@ -123,27 +127,164 @@ public class LeasesController(
     }
 
     /// <summary>
-    /// Generate the final contract PDF and initiate digital signing for a lease in Draft status. 422
-    /// <c>contract_template_not_approved</c> while the template of the regime is not approved (LT-03).
+    /// Provider signature (LT-02): sends the final contract to the e-signature provider and returns the personal signing
+    /// links, persisted (<c>GET signers</c>). Only with <c>Features:ESignProvider</c> on (404 otherwise) and a configured
+    /// provider (409 <c>esign_provider_unavailable</c>); 422 <c>contract_template_not_approved</c> while the template is
+    /// not approved (LT-03); 502 <c>esign_provider_failed</c> when the provider refuses. The default is the offline
+    /// signature (<c>contract.pdf</c> + <c>signed-document</c>).
     /// </summary>
     [HttpPost("{id:guid}/signing")]
+    [FeatureGate(FeatureFlags.ESignProvider)]
     [Authorize(Policy = CasazenPolicies.LeaseSign)]
-    public async Task<IActionResult> InitiateSigning(Guid id)
+    public async Task<ActionResult<SigningInitiatedDto>> InitiateSigning(
+        Guid id, [FromServices] ILeaseSigningService signing, CancellationToken cancellationToken)
     {
-        if (GetOwnerId() is not { } ownerId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Sign);
+        if (denied is not null)
+            return denied;
+
         try
         {
-            var result = await leaseService.InitiateSigningAsync(id, ownerId);
-            return Ok(result);
+            var signers = await signing.InitiateProviderSigningAsync(id, cancellationToken);
+            return Ok(new SigningInitiatedDto(id, LeaseStatus.AwaitingSignature, signers));
+        }
+        catch (ESignProviderException)
+        {
+            // Logged with its cause by the service; the client learns only that the provider failed.
+            return this.ApiProblem(StatusCodes.Status502BadGateway, LeaseSigningErrorCodes.ProviderFailed, "ESignProviderFailed");
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return SignatureRuleProblem(ex);
         }
-        catch (UnauthorizedAccessException)
+    }
+
+    /// <summary>
+    /// The final contract to be signed offline (LT-02): only from a complete, approved template (422
+    /// <c>contract_template_not_approved</c> / <c>contract_data_missing</c>, LT-03; the BOZZA is <c>contract/preview</c>),
+    /// only before every party signed (409 <c>lease_already_signed</c>). Needs <c>lease.sign</c>: the document carries
+    /// the parties' full fiscal codes.
+    /// </summary>
+    [HttpGet("{id:guid}/contract.pdf")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
+    public async Task<IActionResult> GetContractForSignature(
+        Guid id, [FromServices] ILeaseSigningService signing, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Sign);
+        if (denied is not null)
+            return denied;
+
+        try
         {
-            return Forbid();
+            var pdf = await signing.GenerateContractForSignatureAsync(id, cancellationToken);
+            Response.Headers.CacheControl = "private, no-store";
+            return File(pdf, "application/pdf", $"contratto-{id}.pdf");
         }
+        catch (InvalidOperationException ex)
+        {
+            return SignatureRuleProblem(ex);
+        }
+    }
+
+    /// <summary>
+    /// Offline signature (LT-02, default path, D15): the landlord uploads the contract signed by every party (PDF, checked
+    /// on its content, at most 20 MB, private bucket, FD-07) and declares the stipula date (not after today). Only now
+    /// the lease is Signed, the stipula recorded and the RLI deadline fixed (LT-04). Multipart fields:
+    /// <c>stipulaDate</c>, <c>signedContract</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/signed-document")]
+    [Consumes("multipart/form-data")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
+    [RequestSizeLimit(SignedDocumentRequestLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = SignedDocumentRequestLimit)]
+    public async Task<ActionResult<LeaseDetailDto>> DeclareOfflineSignature(
+        Guid id,
+        [FromForm] SignedDocumentForm form,
+        [FromServices] ILeaseSigningService signing,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } userId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Sign);
+        if (denied is not null)
+            return denied;
+
+        try
+        {
+            await using var signedContract = form.SignedContract!.OpenReadStream();
+            await signing.DeclareOfflineSignatureAsync(
+                id,
+                userId,
+                new OfflineSignatureDeclaration(form.StipulaDate!.Value, signedContract, form.SignedContract.Length),
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return SignatureRuleProblem(ex);
+        }
+
+        return Ok(LeaseDtoMapper.ToDetail((await leaseService.GetLeaseDetailAsync(id))!, _clock.TodayInRome()));
+    }
+
+    /// <summary>
+    /// The contract signed by every party, from the private bucket (FD-07): only through this authenticated endpoint,
+    /// for a caller who may read the lease (TN-3: the owner or an org-wide member of its org). 404
+    /// <c>lease_signed_contract_not_available</c> until a signed contract is stored.
+    /// </summary>
+    [HttpGet("{id:guid}/signed-document")]
+    public async Task<IActionResult> GetSignedDocument(
+        Guid id, [FromServices] ILeaseSigningService signing, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var file = await signing.OpenSignedContractAsync(id, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(file.Content, "application/pdf", file.FileName);
+    }
+
+    /// <summary>
+    /// Stipula date of a lease already signed whose signature was never recorded (older leases, LT-02): fixes the RLI
+    /// deadline (LT-04). 409 <c>lease_stipula_already_recorded</c>, 422 <c>lease_stipula_lease_not_signed</c> before the
+    /// signature (use <c>signed-document</c>), 422 <c>lease_stipula_date_in_future</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/stipula")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
+    public async Task<ActionResult<LeaseDetailDto>> DeclareStipula(
+        Guid id,
+        [FromBody] DeclareStipulaDto dto,
+        [FromServices] ILeaseSigningService signing,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } userId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Sign);
+        if (denied is not null)
+            return denied;
+
+        await signing.DeclareStipulaAsync(id, userId, dto.StipulaDate!.Value, cancellationToken);
+        return Ok(LeaseDtoMapper.ToDetail((await leaseService.GetLeaseDetailAsync(id))!, _clock.TodayInRome()));
+    }
+
+    /// <summary>
+    /// The signature panel (LT-02, A7-16): the parties as signers, persisted so the provider links survive a refresh;
+    /// whether the provider path exists; whether the final contract to sign can be downloaded now (otherwise the reason:
+    /// template not approved or data missing, LT-03, or already signed). Offline, each party is "to be signed on paper or
+    /// PDF" until the signed contract is uploaded. The provider link is returned only to a caller who may sign the lease.
+    /// </summary>
+    [HttpGet("{id:guid}/signers")]
+    public async Task<ActionResult<LeaseSigningStateDto>> GetSigners(
+        Guid id, [FromServices] ILeaseSigningService signing, CancellationToken cancellationToken)
+    {
+        var (lease, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var state = await signing.GetSigningStateAsync(id, cancellationToken);
+        var resource = HostResource.ForProperty(lease!.Property) with { OrgId = lease.OrgId };
+        if (await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Sign))
+            return Ok(state);
+
+        return Ok(state with { Signers = state.Signers.Select(s => s with { SigningUrl = null }).ToList() });
     }
 
     /// <summary>
@@ -379,6 +520,19 @@ public class LeasesController(
             : (null, Forbid());
     }
 
+    /// <summary>
+    /// Pre-signature checks that still throw <see cref="InvalidOperationException"/> (APE, canone concordato minimum
+    /// term): 400 with the APE code, as for the lease creation.
+    /// </summary>
+    private BadRequestObjectResult SignatureRuleProblem(InvalidOperationException ex) =>
+        ex is ApeComplianceException ape
+            ? BadRequest(new
+            {
+                error = ape.Code == ApeComplianceException.InvalidContentCode ? localizer["ApeInvalidContent"].Value : ape.Message,
+                code = ape.Code,
+            })
+            : BadRequest(new { error = ex.Message });
+
     private string ChecklistLabel(string key)
     {
         var label = localizer[$"RliChecklist_{key}"];
@@ -430,6 +584,21 @@ public record CreatePartyDto(
     [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
     [param: Required, MaxLength(2), MinLength(2)] string Citizenship,
     [param: Required, EmailAddress] string ContactEmail);
+
+/// <summary>Stipula date of a lease already signed (calendar date, not after today).</summary>
+public record DeclareStipulaDto([param: Required] DateTime? StipulaDate);
+
+/// <summary>Offline signature: the stipula date and the contract signed by every party.</summary>
+public sealed class SignedDocumentForm
+{
+    /// <summary>Date of the stipula: the day the last party signed (calendar date, not after today).</summary>
+    [Required]
+    public DateTime? StipulaDate { get; set; }
+
+    /// <summary>The contract signed by every party, a PDF of at most 20 MB.</summary>
+    [Required]
+    public IFormFile? SignedContract { get; set; }
+}
 
 public record TriggerRegistrationDto(
     [param: Required, MaxLength(80)] string TosVersion,

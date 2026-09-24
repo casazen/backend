@@ -28,7 +28,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     public LeasesControllerIntegrationTests(LeaseFlowWebApplicationFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task AC1_FullFlow_CreateSignManualRegistrationReceipt_EmitsRequiredEvents()
+    public async Task AC1_FullFlow_CreateSignOfflineManualRegistrationReceipt_EmitsRequiredEvents()
     {
         var owner = UniqueOwner("flow");
         var property = await _factory.SeedPropertyAsync(owner);
@@ -46,37 +46,24 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         Assert.Equal(JsonValueKind.Null, afterCreate.GetProperty("stipulaDate").ValueKind);
         Assert.Equal(new DateTime(2026, 10, 1), afterCreate.GetProperty("registrationDeadline").GetDateTime().Date);
 
-        var signing = await client.PostAsync($"/api/leases/{leaseId}/signing", null);
-        Assert.Equal(HttpStatusCode.OK, signing.StatusCode);
-        var signingBody = await ReadJson(signing);
-        Assert.Equal("AwaitingSignature", signingBody.GetProperty("status").GetString());
-        Assert.True(signingBody.GetProperty("signers").GetArrayLength() >= 2);
+        // LT-02: offline signature, the default path. The final contract comes from the approved template (not a BOZZA).
+        var contract = await client.GetAsync($"/api/leases/{leaseId}/contract.pdf");
+        Assert.Equal(HttpStatusCode.OK, contract.StatusCode);
+        Assert.Equal("application/pdf", contract.Content.Headers.ContentType?.MediaType);
+        Assert.DoesNotContain("BOZZA", Encoding.ASCII.GetString(await contract.Content.ReadAsByteArrayAsync()), StringComparison.Ordinal);
 
-        var afterSign = await GetLease(client, leaseId);
-        Assert.Equal("AwaitingSignature", afterSign.GetProperty("status").GetString());
+        var upload = await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId);
+        Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
 
-        var payload = JsonSerializer.Serialize(new
-        {
-            externalSessionId = $"stub-session-{leaseId}",
-            eventType = "all_signed",
-            allSigned = true,
-            signedDocumentPath = "/signed/lease.pdf",
-        });
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var job = scope.ServiceProvider.GetRequiredService<ESignWebhookJob>();
-            await job.ProcessEventAsync(payload);
-        }
-
-        var todayBefore = TimeProvider.System.TodayInRome();
         var signed = await GetLease(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
-        // LT-04: stipula = the Rome day of the last signature; start 1/9 is earlier, so the deadline stays 1/10.
-        Assert.InRange(signed.GetProperty("stipulaDate").GetDateTime().Date, todayBefore.AddDays(-1), TimeProvider.System.TodayInRome());
-        Assert.Equal(new DateTime(2026, 10, 1), signed.GetProperty("registrationDeadline").GetDateTime().Date);
-        // The storage path stays on the server (A7-17): the client only learns that the signed PDF exists.
+        // LT-04: stipula 20/8 declared by the landlord, before the start 1/9: deadline 20/8 + 30 = 19/9.
+        Assert.Equal(new DateTime(2026, 8, 20), signed.GetProperty("stipulaDate").GetDateTime().Date);
+        Assert.Equal(new DateTime(2026, 9, 19), signed.GetProperty("registrationDeadline").GetDateTime().Date);
+        // The storage key stays on the server (A7-17): the client only learns that the signed PDF exists.
         Assert.True(signed.GetProperty("hasSignedPdf").GetBoolean());
         Assert.False(signed.TryGetProperty("signedPdfStoragePath", out _));
+        Assert.Equal(0, _factory.ESignProvider.Calls);
 
         // LT-01: the landlord registers on the official channel, then declares number, date and receipt.
         var declared = await DeclareManualAsync(client, leaseId);
@@ -86,7 +73,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         Assert.Equal("Registered", registered.GetProperty("status").GetString());
         AssertEventSequence(registered, [
             "Created",
-            "SigningInitiated",
             "AllPartiesSigned",
             "RegistrationConfirmed",
         ]);
@@ -99,26 +85,25 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     }
 
     [Fact]
-    public async Task InitiateSigning_TemplateNotApproved_Returns422AndLeaseStaysDraft()
+    public async Task GetContractForSignature_TemplateNotApproved_Returns422NoFinalPdfAndLeaseStaysDraft()
     {
-        // LT-03 (A7-03): RegimeOrdinario keeps the committed default (no approved template) in this factory.
+        // LT-03 (A7-03), LT-02: RegimeOrdinario keeps the committed default (no approved template) in this factory:
+        // no final contract to sign, only the BOZZA preview.
         var owner = UniqueOwner("template-422");
         var property = await _factory.SeedPropertyAsync(owner);
         using var client = LandlordClient(owner);
         var created = await ReadJson(await client.PostAsJsonAsync("/api/leases", CreateBody(property.Id, "RegimeOrdinario")));
         var leaseId = created.GetProperty("id").GetGuid();
 
-        var signing = await client.PostAsync($"/api/leases/{leaseId}/signing", null);
+        var contract = await client.GetAsync($"/api/leases/{leaseId}/contract.pdf");
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, signing.StatusCode);
-        var problem = await ReadJson(signing);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, contract.StatusCode);
+        Assert.NotEqual("application/pdf", contract.Content.Headers.ContentType?.MediaType);
+        var problem = await ReadJson(contract);
         Assert.Equal("contract_template_not_approved", problem.GetProperty("code").GetString());
         var lease = await GetLease(client, leaseId);
         Assert.Equal("Draft", lease.GetProperty("status").GetString());
         AssertEventSequence(lease, ["Created"]);
-        Assert.DoesNotContain(
-            lease.GetProperty("events").EnumerateArray(),
-            e => e.GetProperty("eventType").GetString() == "SigningInitiated");
     }
 
     [Fact]
@@ -260,7 +245,10 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         var get = await clientB.GetAsync($"/api/leases/{leaseId}");
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
 
-        var sign = await clientB.PostAsync($"/api/leases/{leaseId}/signing", null);
+        var contract = await clientB.GetAsync($"/api/leases/{leaseId}/contract.pdf");
+        Assert.Equal(HttpStatusCode.NotFound, contract.StatusCode);
+
+        var sign = await LeaseSigningTestClient.UploadSignedContractAsync(clientB, leaseId);
         Assert.Equal(HttpStatusCode.NotFound, sign.StatusCode);
     }
 
@@ -707,21 +695,23 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     }
 
     [Fact]
-    public async Task PublicFeatures_Default_ReturnsRliProviderOff()
+    public async Task PublicFeatures_Default_ReturnsRliAndESignProvidersOff()
     {
         using var client = _factory.CreateClient();
 
         var response = await client.GetAsync("/api/public/features");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.False((await ReadJson(response)).GetProperty("rliProvider").GetBoolean());
+        var features = await ReadJson(response);
+        Assert.False(features.GetProperty("rliProvider").GetBoolean());
+        Assert.False(features.GetProperty("eSignProvider").GetBoolean());
     }
 
     private static void AssertNoPartyPiiNorInternalFields(string json)
     {
-        foreach (var secret in new[] { LandlordCf, TenantCf, "mario@example.com", "giulia@example.com", "auth0|lease-", "/signed/", "stub-session-", "\"secret-checklist\"" })
+        foreach (var secret in new[] { LandlordCf, TenantCf, "mario@example.com", "giulia@example.com", "auth0|lease-", "/signed/", "signed-contract/", "stub-session-", "fake-session-", "\"secret-checklist\"" })
             Assert.DoesNotContain(secret, json, StringComparison.OrdinalIgnoreCase);
-        foreach (var field in new[] { "ownerId", "orgId", "safetyChecklistJson", "fiscalCode", "contactEmail", "citizenship", "payload", "signedPdfStoragePath", "externalSigningSessionId", "externalRegistrationId", "receiptStoragePath", "declaredByUserId", "dataRetentionUntil" })
+        foreach (var field in new[] { "ownerId", "orgId", "safetyChecklistJson", "fiscalCode", "contactEmail", "citizenship", "payload", "signedPdfStoragePath", "externalSigningSessionId", "externalRegistrationId", "receiptStoragePath", "declaredByUserId", "stipulaDeclaredByUserId", "dataRetentionUntil" })
             Assert.DoesNotContain($"\"{field}\":", json, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -794,8 +784,10 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     /// <summary>Receipt files of the lease in the private bucket of the test storage.</summary>
     private string[] StoredReceiptsOf(Guid leaseId)
     {
+        // Only the registration folder: the signed contract of the lease lives next to it (LT-02).
         var folder = Directory.EnumerateDirectories(_factory.StorageRoot, leaseId.ToString(), SearchOption.AllDirectories)
-            .FirstOrDefault();
+            .Select(d => Path.Combine(d, "registration"))
+            .FirstOrDefault(Directory.Exists);
         return folder is null ? [] : Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
     }
 
@@ -820,32 +812,20 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = TenantCf, citizenship = "IT", contactEmail = "giulia@example.com" },
     ];
 
-    private async Task<Guid> DriveToSignedAsync(HttpClient client, Guid propertyId)
+    private static async Task<Guid> DriveToSignedAsync(HttpClient client, Guid propertyId)
     {
         var created = await ReadJson(await client.PostAsJsonAsync("/api/leases", CreateBody(propertyId)));
         var leaseId = created.GetProperty("id").GetGuid();
-        var signing = await client.PostAsync($"/api/leases/{leaseId}/signing", null);
-        signing.EnsureSuccessStatusCode();
+        (await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId)).EnsureSuccessStatusCode();
 
-        var payload = JsonSerializer.Serialize(new
-        {
-            externalSessionId = $"stub-session-{leaseId}",
-            eventType = "all_signed",
-            allSigned = true,
-            signedDocumentPath = "/signed/lease.pdf",
-        });
-        using var scope = _factory.Services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<ESignWebhookJob>().ProcessEventAsync(payload);
-        var todayBefore = TimeProvider.System.TodayInRome();
         var signed = await GetLease(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
-        // LT-04: stipula = the Rome day of the last signature; start 1/9 is earlier, so the deadline stays 1/10.
-        Assert.InRange(signed.GetProperty("stipulaDate").GetDateTime().Date, todayBefore.AddDays(-1), TimeProvider.System.TodayInRome());
-        Assert.Equal(new DateTime(2026, 10, 1), signed.GetProperty("registrationDeadline").GetDateTime().Date);
+        // LT-04: stipula 20/8 declared with the signed contract, before the start 1/9: deadline 19/9.
+        Assert.Equal(new DateTime(2026, 9, 19), signed.GetProperty("registrationDeadline").GetDateTime().Date);
         return leaseId;
     }
 
-    private async Task<Guid> DriveToRegisteredAsync(HttpClient client, Guid propertyId)
+    private static async Task<Guid> DriveToRegisteredAsync(HttpClient client, Guid propertyId)
     {
         var leaseId = await DriveToSignedAsync(client, propertyId);
         (await DeclareManualAsync(client, leaseId)).EnsureSuccessStatusCode();

@@ -21,12 +21,6 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
             .Include(l => l.Events.OrderBy(e => e.OccurredAt))
             .FirstOrDefaultAsync(l => l.Id == id);
 
-    public async Task<LeaseContract?> GetByExternalSigningSessionIdAsync(string externalSessionId)
-        => await context.LeaseContracts
-            .Include(l => l.Property)
-            .Include(l => l.Parties)
-            .FirstOrDefaultAsync(l => l.ExternalSigningSessionId == externalSessionId);
-
     public async Task<IReadOnlyList<LeaseSummaryDto>> GetSummariesAsync(HostScope scope, Guid? propertyId = null)
     {
         ArgumentNullException.ThrowIfNull(scope);

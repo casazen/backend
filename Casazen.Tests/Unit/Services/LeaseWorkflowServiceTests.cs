@@ -14,8 +14,6 @@ public class LeaseWorkflowServiceTests
 {
     private readonly Mock<ILeaseContractRepository> _leaseRepo = new();
     private readonly Mock<ILeaseEventRepository> _eventRepo = new();
-    private readonly Mock<ILeaseTemplateService> _templateService = new();
-    private readonly Mock<ILeaseESignService> _eSignService = new();
     private readonly Mock<IPropertyRepository> _propertyRepo = new();
     private readonly Mock<IApeComplianceService> _apeCompliance = new();
     private readonly Mock<ICanoneConcordatoEligibilityService> _canoneEligibility = new();
@@ -31,8 +29,6 @@ public class LeaseWorkflowServiceTests
         _sut = new LeaseWorkflowService(
             _leaseRepo.Object,
             _eventRepo.Object,
-            _templateService.Object,
-            _eSignService.Object,
             _propertyRepo.Object,
             _apeCompliance.Object,
             _canoneEligibility.Object,
@@ -174,86 +170,6 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
-    public async Task InitiateSigningAsync_WhenStatusIsDraft_TransitionsToAwaitingSignature()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Draft);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
-            .ReturnsAsync((LeaseContract l) => l);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
-            .ReturnsAsync((LeaseEvent e) => e);
-        _templateService.Setup(s => s.GeneratePdfAsync(lease))
-            .ReturnsAsync([0x25, 0x50, 0x44, 0x46]); // %PDF header
-        _eSignService.Setup(s => s.InitiateSigningAsync(lease, It.IsAny<byte[]>()))
-            .ReturnsAsync(new SigningSessionResult("session-abc", []));
-
-        // Act
-        var result = await _sut.InitiateSigningAsync(lease.Id, OwnerId);
-
-        // Assert
-        Assert.Equal(LeaseStatus.AwaitingSignature, result.Status);
-    }
-
-    [Fact]
-    public async Task InitiateSigningAsync_WhenStatusIsNotDraft_ThrowsInvalidOperationException()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Signed);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.InitiateSigningAsync(lease.Id, OwnerId));
-    }
-
-    [Fact]
-    public async Task InitiateSigningAsync_WhenApeWasDeletedAfterDraft_BlocksBeforeCreatingSigningSession()
-    {
-        var lease = BuildLease(LeaseStatus.Draft);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-        _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(lease.PropertyId))
-            .ThrowsAsync(ApeComplianceException.Required());
-
-        var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
-            _sut.InitiateSigningAsync(lease.Id, OwnerId));
-
-        Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
-        _templateService.Verify(s => s.GeneratePdfAsync(It.IsAny<LeaseContract>()), Times.Never);
-        _eSignService.Verify(s => s.InitiateSigningAsync(It.IsAny<LeaseContract>(), It.IsAny<byte[]>()), Times.Never);
-        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task InitiateSigningAsync_CanoneConcordatoShorterThanThreeYears_ThrowsBeforeGeneratingPdf()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Draft);
-        lease.FiscalRegime = FiscalRegime.CanoneConcordato;
-        lease.StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
-        lease.EndDate = new DateTime(2027, 8, 31, 0, 0, 0, DateTimeKind.Utc);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.InitiateSigningAsync(lease.Id, OwnerId));
-        Assert.Contains("initial 3-year term", ex.Message, StringComparison.Ordinal);
-        _templateService.Verify(s => s.GeneratePdfAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task InitiateSigningAsync_WhenAlreadyAwaitingSignature_ThrowsInvalidOperationException()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.AwaitingSignature);
-        _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.InitiateSigningAsync(lease.Id, OwnerId));
-    }
-
-    [Fact]
     public async Task GetLeaseDetailAsync_ExistingLease_ReturnsItForTheCallerToAuthorize()
     {
         // Arrange: ownership is no longer decided here but by the controller (TN-3 HostResource check).
@@ -278,125 +194,6 @@ public class LeaseWorkflowServiceTests
 
         // Assert
         Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task HandleESignEventAsync_WhenNoMatchingSession_LogsAndReturns()
-    {
-        // Arrange
-        var esignEvent = new ESignEvent("unknown-session", "all_signed", null, true, null);
-        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
-        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("unknown-session"))
-            .ReturnsAsync((LeaseContract?)null);
-
-        // Act — should not throw
-        await _sut.HandleESignEventAsync("payload");
-
-        // Assert — no update calls made
-        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task HandleESignEventAsync_WhenAllSigned_TransitionsLeaseToSigned()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.AwaitingSignature);
-        lease.ExternalSigningSessionId = "session-xyz";
-        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, "/path/signed.pdf");
-        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
-        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
-        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>()))
-            .ReturnsAsync((LeaseContract l) => l);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>()))
-            .ReturnsAsync((LeaseEvent e) => e);
-
-        // Act
-        await _sut.HandleESignEventAsync("payload");
-
-        // Assert
-        Assert.Equal(LeaseStatus.Signed, lease.Status);
-        Assert.Equal("/path/signed.pdf", lease.SignedPdfStoragePath);
-    }
-
-    [Fact]
-    public async Task HandleESignEventAsync_AllSignedOnAugustFirstWithStartOctoberFirst_DeadlineAugust31()
-    {
-        // LT-04 (A7-04): signed 1/8 (00:30 in Rome, still 31/7 in UTC), start 1/10 → stipula 1/8, deadline 31/8.
-        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 7, 31, 22, 30, 0, TimeSpan.Zero));
-        var sut = CreateSut(clock);
-        var lease = BuildLease(LeaseStatus.AwaitingSignature);
-        lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
-        lease.ExternalSigningSessionId = "session-xyz";
-        SetupAllSigned(lease);
-
-        await sut.HandleESignEventAsync("payload");
-
-        Assert.Equal(LeaseStatus.Signed, lease.Status);
-        Assert.Equal(new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), lease.StipulaDate);
-        Assert.Equal(new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), lease.RegistrationDeadline);
-        _leaseRepo.Verify(r => r.UpdateAsync(It.Is<LeaseContract>(l => l.StipulaDate != null)), Times.Once);
-        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
-            e.EventType == LeaseEventType.AllPartiesSigned
-            && e.OccurredAt == new DateTime(2026, 7, 31, 22, 30, 0, DateTimeKind.Utc))), Times.Once);
-    }
-
-    [Fact]
-    public async Task HandleESignEventAsync_AllSignedAfterStartDate_DeadlineFromStartDate()
-    {
-        // Start (decorrenza) 1/9 earlier than the stipula 20/9: 30 days from the start → 1/10.
-        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 9, 20, 10, 0, 0, TimeSpan.Zero));
-        var sut = CreateSut(clock);
-        var lease = BuildLease(LeaseStatus.AwaitingSignature);
-        lease.ExternalSigningSessionId = "session-xyz";
-        SetupAllSigned(lease);
-
-        await sut.HandleESignEventAsync("payload");
-
-        Assert.Equal(new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc), lease.StipulaDate);
-        Assert.Equal(new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), lease.RegistrationDeadline);
-    }
-
-    [Fact]
-    public async Task HandleESignEventAsync_WhenAllSignedReplayedAfterRegistration_DoesNotDowngradeLease()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.Registered);
-        lease.ExternalSigningSessionId = "session-xyz";
-        lease.SignedPdfStoragePath = "/path/original.pdf";
-        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, "/path/replayed.pdf");
-        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
-        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
-
-        // Act
-        await _sut.HandleESignEventAsync("payload");
-
-        // Assert
-        Assert.Equal(LeaseStatus.Registered, lease.Status);
-        Assert.Equal("/path/original.pdf", lease.SignedPdfStoragePath);
-        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
-        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(
-            e => e.EventType == LeaseEventType.AllPartiesSigned)), Times.Never);
-    }
-
-    [Fact]
-    public async Task HandleESignEventAsync_WhenAllSignedMissingSignedPdf_DoesNotMarkSigned()
-    {
-        // Arrange
-        var lease = BuildLease(LeaseStatus.AwaitingSignature);
-        lease.ExternalSigningSessionId = "session-xyz";
-        var esignEvent = new ESignEvent("session-xyz", "all_signed", null, AllSigned: true, null);
-        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
-        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync("session-xyz")).ReturnsAsync(lease);
-
-        // Act
-        await _sut.HandleESignEventAsync("payload");
-
-        // Assert
-        Assert.Equal(LeaseStatus.AwaitingSignature, lease.Status);
-        Assert.Null(lease.SignedPdfStoragePath);
-        _leaseRepo.Verify(r => r.UpdateAsync(It.IsAny<LeaseContract>()), Times.Never);
-        _eventRepo.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e =>
-            e.EventType == LeaseEventType.AllPartiesSigned)), Times.Never);
     }
 
     [Fact]
@@ -600,26 +397,6 @@ public class LeaseWorkflowServiceTests
     }
 
     // Helpers
-
-    private LeaseWorkflowService CreateSut(TimeProvider clock) => new(
-        _leaseRepo.Object,
-        _eventRepo.Object,
-        _templateService.Object,
-        _eSignService.Object,
-        _propertyRepo.Object,
-        _apeCompliance.Object,
-        _canoneEligibility.Object,
-        new Mock<ILogger<LeaseWorkflowService>>().Object,
-        clock);
-
-    private void SetupAllSigned(LeaseContract lease)
-    {
-        var esignEvent = new ESignEvent(lease.ExternalSigningSessionId!, "all_signed", null, AllSigned: true, "/path/signed.pdf");
-        _eSignService.Setup(s => s.ParseWebhookEventAsync("payload")).ReturnsAsync(esignEvent);
-        _leaseRepo.Setup(r => r.GetByExternalSigningSessionIdAsync(lease.ExternalSigningSessionId!)).ReturnsAsync(lease);
-        _leaseRepo.Setup(r => r.UpdateAsync(It.IsAny<LeaseContract>())).ReturnsAsync((LeaseContract l) => l);
-        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
-    }
 
     private static Property BuildProperty(bool hasApe, string? ownerId = null) => new()
     {
