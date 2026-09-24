@@ -118,7 +118,14 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
             "/api/public/bookings", CheckoutPayload(property.Id, october1.AddDays(19), october1.AddDays(21)));
 
         Assert.Equal(HttpStatusCode.OK, holdDates.StatusCode);
-        Assert.Equal(BookingStatus.Cancelled, (await LoadBookingAsync(abandonedHoldId)).Status);
+        var expired = await LoadBookingAsync(abandonedHoldId);
+        Assert.Equal(BookingStatus.Cancelled, expired.Status);
+        // BK-21: same routine as the expiry job, so the abandoned PaymentIntent is cancelled on the host's account first.
+        Assert.Equal(BookingCancellationReason.CheckoutHoldExpired, expired.CancellationReason);
+        var cancellation = Assert.Single(
+            FakeStripeService.CancelledIntents,
+            c => c.IdempotencyKey.StartsWith($"checkout-hold-expiry:{abandonedHoldId}:", StringComparison.Ordinal));
+        Assert.Equal("acct_test_connect_ready", cancellation.AccountId);
     }
 
     [PostgresFact]

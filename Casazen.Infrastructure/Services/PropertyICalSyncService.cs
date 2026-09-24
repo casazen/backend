@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.ICalSpike;
@@ -225,9 +226,12 @@ public class PropertyICalSyncService
         var feed = await GetFeedByExportTokenAsync(exportToken, ct)
             ?? throw new InvalidOperationException("Export token not found");
 
+        // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21).
+        var expiredHoldCutoff = CheckoutHolds.ExpiryCutoffUtc(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(_configuration));
         var bookings = await _db.Bookings
             .IgnoreQueryFilters()
-            .Where(b => b.PropertyId == feed.PropertyId && b.Status != BookingStatus.Cancelled)
+            .Where(b => b.PropertyId == feed.PropertyId)
+            .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoff))
             .ToListAsync(ct);
 
         var blocks = await _db.CalendarBlocks

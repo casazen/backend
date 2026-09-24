@@ -43,6 +43,7 @@ and production never block each other.
 | `rli-deadline-reminder` | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
+| `checkout-hold-expiry` (BK-21, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
 | `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
@@ -240,7 +241,7 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 15 recurring jobs in each schema
+  -- 16 recurring jobs in each schema (14 with Features:OtaPartnerApi off)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
@@ -260,3 +261,71 @@ before the first start with FD-11, or hand over the tables Hangfire created with
 | Job failed with `DistributedLockTimeoutException` (`…distributed lock on the '…' resource`) | The previous run was still going; Hangfire retries it. Occasional on the 15-minute syncs when a run is slow; if systematic, the job is too slow for its schedule |
 | A job seems blocked by a lock after a crash | `SELECT resource, acquired FROM hangfire_casazen_prod.lock ORDER BY acquired;` The lock expires after `Hangfire__DistributedLockTimeoutMinutes`. Delete the row only if the dashboard shows no run of that job in *Processing* |
 | A job legitimately runs longer than 30 minutes | Raise `Hangfire__DistributedLockTimeoutMinutes` above its duration. Hangfire.PostgreSql also hands a job still running after 30 minutes (invisibility timeout) to another worker; the lock makes that second run wait instead of running in parallel |
+
+## 7. Checkout hold expiry (BK-21)
+
+Audit defect A3-13. The public checkout (`POST /api/public/bookings`) stores a `Direct` booking `Pending` while the
+guest pays (PaymentIntent) or saves a card (SetupIntent). The hold lasts `DirectBooking:PendingTtlMinutes`
+(default 15) from its creation. Before BK-21 an abandoned hold kept its dates busy on the booking site, in the host
+calendar and in the iCal export (so on Airbnb/Booking) until someone tried to book the same dates.
+
+**What counts as an expired hold** — one definition, `Casazen.Core/Services/CheckoutHolds.cs`, used by the job, by
+the cleanup before a new booking, by public availability, by the host calendar, by the iCal export and by the overlap
+checks: `Pending` + source `Direct` + payment option not `OnSite` + a PaymentIntent or SetupIntent + no payment
+`Processing`/`Completed` + created more than the TTL ago.
+
+- **Reads** (availability, calendar, iCal export) leave expired holds out at once, before the job runs. They never
+  cancel anything.
+- **Job `checkout-hold-expiry`**, every 5 minutes (`CheckoutHoldExpiryJob` → `CheckoutHoldExpiryService`). For each
+  expired hold, in its own transaction holding the booking row (`FOR UPDATE SKIP LOCKED`: a concurrent run skips it):
+  1. reads the intent on the connected account it was created on (`Stripe-Account` header: the payment row's
+     `StripeAccountId`, stored since BK-02, else the org's current account);
+  2. `succeeded`, `processing` or `requires_capture` (PaymentIntent) / `succeeded`, `processing` (SetupIntent): the
+     guest has paid or is paying. The booking is **not** cancelled; the payment row becomes `Processing`, so the hold
+     keeps its dates, and the payment webhook confirms it (a later failure makes it expire at the next run).
+     Log: `Checkout hold {BookingId} not expired: payment intent … is succeeded; left to the payment webhook`;
+  3. otherwise cancels the intent (`cancellation_reason=abandoned`, idempotency key
+     `checkout-hold-expiry:<bookingId>:<intentId>:<status>:<latest attempt>`), then sets the booking `Cancelled`
+     with `CancellationReason = CheckoutHoldExpired` (1) and its uncollected payment rows `Canceled`, as a host
+     cancellation does (BK-02).
+     Log: `Checkout hold {BookingId} expired: intent cancelled on Stripe, dates released`;
+  4. a Stripe error leaves the hold untouched; the next run retries it (log `could not be expired`). An intent that is
+     not found on that account (`resource_missing`), or no connected account at all, releases the dates with a
+     warning.
+- **Before a new booking** of the same dates (public checkout or host booking) the same routine runs on the
+  overlapping expired holds only: a late payment keeps the dates (the new request gets 409), otherwise the hold is
+  cancelled with its intent.
+- **Never touched**: host bookings (`Manual`), OTA bookings, every status other than `Pending`, and "pay at the
+  property" (`OnSite`) requests: under decision D5 they wait for the host's approval with their own waiting time
+  (BK-06), never the checkout TTL. `Pending` bookings without a Stripe intent are not holds either.
+
+Nothing to configure on Railway: the job is registered at startup like the others. To change the TTL set
+`DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure).
+
+**Checks** (SQL editor, replace the schema):
+
+```sql
+-- Expired holds still waiting for the job (should be empty or only a few minutes old)
+SELECT b."Id", b."CreatedAt", now() - b."CreatedAt" AS age
+FROM casazen_prod."Bookings" b
+WHERE b."Status" = 0 AND b."Source" = 0 AND b."PaymentOption" <> 2
+  AND (b."StripeSetupIntentId" IS NOT NULL
+       OR EXISTS (SELECT 1 FROM casazen_prod."Payments" p WHERE p."BookingId" = b."Id" AND p."StripePaymentIntentId" IS NOT NULL))
+  AND NOT EXISTS (SELECT 1 FROM casazen_prod."Payments" p WHERE p."BookingId" = b."Id" AND p."Status" IN (1, 2))
+  AND b."CreatedAt" < now() - interval '15 minutes'
+ORDER BY b."CreatedAt";
+
+-- Holds expired by the system, last 7 days
+SELECT count(*) FROM casazen_prod."Bookings"
+WHERE "CancellationReason" = 1 AND "UpdatedAt" > now() - interval '7 days';
+
+-- Holds left to the webhook for more than an hour: payment Processing but booking still Pending
+SELECT b."Id", p."StripePaymentIntentId", p."UpdatedAt"
+FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
+WHERE b."Status" = 0 AND b."Source" = 0 AND p."Status" = 1 AND p."UpdatedAt" < now() - interval '1 hour';
+```
+
+The last query should stay empty: a row there means the payment webhook did not arrive (check the Connect endpoint and
+`Stripe__ConnectWebhookSecret`, then resend the event from the Stripe Dashboard) or a SEPA payment is still
+processing. A SetupIntent still `processing` is not recorded on the booking: the job reads it again at every run until
+the webhook confirms it.
