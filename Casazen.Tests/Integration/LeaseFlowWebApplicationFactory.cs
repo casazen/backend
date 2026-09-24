@@ -12,13 +12,17 @@ namespace Casazen.Tests.Integration;
 /// manually; the provider is a <see cref="FakeLeaseRegistrationProvider"/> that counts calls, to prove none happens.
 /// APE is stubbed on the base factory. Contract templates (LT-03): only <c>CedolareSecca</c> has an approved template,
 /// the test fixture <c>Fixtures/LeaseTemplates/CedolareSecca/test-fixture-v1.md</c> (test texts, not legal clauses);
-/// the other regimes keep the committed default (not approved).
+/// the other regimes keep the committed default (not approved). Signature (LT-02): <c>Features:ESignProvider</c> keeps
+/// its default (off), so contracts are signed offline; the e-sign provider is a <see cref="FakeLeaseESignProvider"/>
+/// that counts calls, to prove none happens.
 /// </summary>
 public class LeaseFlowWebApplicationFactory : CasazenWebApplicationFactory
 {
     public const string ApprovedFixtureVersion = "test-fixture-v1";
 
     public FakeLeaseRegistrationProvider RegistrationProvider { get; } = new();
+
+    public FakeLeaseESignProvider ESignProvider { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -37,6 +41,8 @@ public class LeaseFlowWebApplicationFactory : CasazenWebApplicationFactory
         {
             RemoveAllOf<ILeaseRegistrationProvider>(services);
             services.AddSingleton<ILeaseRegistrationProvider>(RegistrationProvider);
+            RemoveAllOf<ILeaseESignService>(services);
+            services.AddSingleton<ILeaseESignService>(ESignProvider);
         });
     }
 }
@@ -49,5 +55,19 @@ public class LeaseProviderFlowWebApplicationFactory : LeaseFlowWebApplicationFac
         base.ConfigureWebHost(builder);
         builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:RliProvider"] = "true" }));
+    }
+}
+
+/// <summary>
+/// Lease flow with the e-signature provider path on (<c>Features:ESignProvider</c>) and the configured fake provider
+/// (LT-02). The webhook secret is the base factory's <c>esign-test-secret</c>.
+/// </summary>
+public class LeaseESignProviderFlowWebApplicationFactory : LeaseFlowWebApplicationFactory
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:ESignProvider"] = "true" }));
     }
 }

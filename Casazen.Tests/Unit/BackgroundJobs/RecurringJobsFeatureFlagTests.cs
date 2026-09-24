@@ -82,11 +82,36 @@ public class RecurringJobsFeatureFlagTests
         manager.Verify(m => m.RemoveIfExists(LeaseRegistrationStatusPollingJob.RecurringJobId), Times.Never);
     }
 
-    internal static IFeatureFlags Flags(bool otaPartnerApi, bool rliProvider = false)
+    [Fact]
+    public void Configure_ESignProviderOff_DoesNotWatchTheProviderAndRemovesTheOldSchedule()
+    {
+        // LT-02: with the provider path off every contract is signed offline; no lease waits for a provider.
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
+
+        Assert.Equal("lease-sign-status-poll", LeaseSignStatusPollingJob.RecurringJobId);
+        Assert.DoesNotContain(LeaseSignStatusPollingJob.RecurringJobId, registered);
+        manager.Verify(m => m.RemoveIfExists(LeaseSignStatusPollingJob.RecurringJobId), Times.Once);
+    }
+
+    [Fact]
+    public void Configure_ESignProviderOn_WatchesTheProvider()
+    {
+        var (manager, registered) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false, eSignProvider: true));
+
+        Assert.Contains(LeaseSignStatusPollingJob.RecurringJobId, registered);
+        manager.Verify(m => m.RemoveIfExists(LeaseSignStatusPollingJob.RecurringJobId), Times.Never);
+    }
+
+    internal static IFeatureFlags Flags(bool otaPartnerApi, bool rliProvider = false, bool eSignProvider = false)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OtaPartnerApi)).Returns(otaPartnerApi);
         flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(rliProvider);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.ESignProvider)).Returns(eSignProvider);
         return flags.Object;
     }
 

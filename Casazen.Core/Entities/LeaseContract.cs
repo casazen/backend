@@ -55,14 +55,26 @@ public class LeaseContract : ITenantOwned
     [MaxLength(500)]
     public string? ExternalSigningSessionId { get; set; }
 
+    /// <summary>
+    /// Key of the contract signed by every party in the private bucket (FD-07, LT-02): uploaded by the landlord (offline
+    /// signature) or copied from the e-signature provider. Served only by the authenticated lease endpoint.
+    /// </summary>
     [MaxLength(1000)]
     public string? SignedPdfStoragePath { get; set; }
+
+    /// <summary>
+    /// User who declared the stipula date (offline signature or later declaration, LT-02); null when the provider
+    /// recorded the signature or no declaration was made.
+    /// </summary>
+    [MaxLength(200)]
+    public string? StipulaDeclaredByUserId { get; set; }
 
     public bool ErasureRequested { get; set; } = false;
 
     public DateTime DataRetentionUntil { get; set; }
 
     public virtual ICollection<Party> Parties { get; set; } = [];
+    public virtual ICollection<LeaseSigner> Signers { get; set; } = [];
     public virtual LeaseRegistration? Registration { get; set; }
     public virtual ICollection<LeaseEvent> Events { get; set; } = [];
     public virtual RentSchedule? RentSchedule { get; set; }

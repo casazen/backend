@@ -20,8 +20,9 @@ Object keys:
 | private | `properties/{propertyId}/documents/{random}.{ext}` |
 | private | `guest-documents/{orgId}/{guestId}/{random}.{ext}` |
 | private | `leases/{orgId}/{leaseId}/registration/{random}.pdf` (RLI receipts, LT-01: only through `GET /api/leases/{id}/registration/receipt`) |
+| private | `leases/{orgId}/{leaseId}/signed-contract/{random}.pdf` (contract signed by every party, LT-02: uploaded by the landlord or copied from the e-sign provider; only through `GET /api/leases/{id}/signed-document`) |
 
-Lease contract PDFs (manual signing flow, D15) must use the private bucket through `IFileStorage` too. There is no local contract upload yet: a signed PDF only arrives from the e-sign provider as an external path.
+Lease contract PDFs (offline signing flow, D15) use the private bucket through `IFileStorage`: the landlord uploads the signed contract (`POST /api/leases/{id}/signed-document`, PDF of at most 20 MB, `docs/runbooks/rli.md` § Contract signature). A path left by the old e-sign stub (`/signed/…`) is not a storage key and is never served.
 
 Outside `Development` and `Testing` (so on **both** Railway environments, which run with `ASPNETCORE_ENVIRONMENT=Production`) the API **does not start** without a complete S3 configuration. Startup fails with `OptionsValidationException` and lists the missing keys. The filesystem provider is refused there.
 
@@ -39,7 +40,7 @@ The database uses one Supabase project for test and production (two schemas). Bu
 Supabase → project → **Storage → New bucket**:
 
 1. `casazen-<env>-public`: enable **Public bucket**. Optional: allowed MIME types `image/jpeg, image/png, image/webp` and a 10 MB file size limit (the API enforces the same rules).
-2. `casazen-<env>-private`: leave **Public bucket off**. Optional: allowed MIME types `application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document, image/jpeg, image/png`, 10 MB limit.
+2. `casazen-<env>-private`: leave **Public bucket off**. Optional: allowed MIME types `application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document, image/jpeg, image/png`, 20 MB limit (signed lease contracts, LT-02, accept up to 20 MB; the other documents stay at 10 MB in the API).
 
 Policies: **do not add** policies on `storage.objects` for the private buckets. The frontend never talks to Supabase Storage directly: all reads and writes go through the API with the S3 keys (server side). The public bucket needs no policy for reading, because Supabase serves public buckets at `https://<project-ref>.supabase.co/storage/v1/object/public/<bucket>/<key>`.
 

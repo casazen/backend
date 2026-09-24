@@ -657,6 +657,39 @@
   <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
     <value>Il file non è valido e nessun codice è stato importato: correggi le righe indicate e riprova.</value>
   </data>
+  <data name="ESignProviderUnavailable" xml:space="preserve">
+    <value>La firma elettronica tramite provider non è disponibile. Scarica il contratto, fallo firmare a tutte le parti (su carta o con la loro firma digitale) e carica qui il PDF firmato con la data di stipula.</value>
+  </data>
+  <data name="ESignProviderFailed" xml:space="preserve">
+    <value>Il provider di firma elettronica non ha accettato la richiesta: nessun link di firma è stato creato e il contratto NON è firmato. Riprova più tardi oppure usa la firma su carta o PDF.</value>
+  </data>
+  <data name="ESignWebhookNotConfigured" xml:space="preserve">
+    <value>Il webhook di firma elettronica non è configurato.</value>
+  </data>
+  <data name="ESignWebhookSignatureInvalid" xml:space="preserve">
+    <value>Firma del webhook di firma elettronica non valida.</value>
+  </data>
+  <data name="LeaseSigningNotDraft" xml:space="preserve">
+    <value>La firma elettronica si può avviare solo su un contratto in bozza.</value>
+  </data>
+  <data name="LeaseAlreadySigned" xml:space="preserve">
+    <value>Il contratto risulta già firmato da tutte le parti.</value>
+  </data>
+  <data name="LeaseSignedContractInvalid" xml:space="preserve">
+    <value>Il contratto firmato deve essere un file PDF di al massimo {0} MB.</value>
+  </data>
+  <data name="LeaseSignedContractNotAvailable" xml:space="preserve">
+    <value>Il contratto firmato non è disponibile: non è stato ancora caricato.</value>
+  </data>
+  <data name="LeaseStipulaDateInFuture" xml:space="preserve">
+    <value>La data di stipula non può essere successiva a oggi.</value>
+  </data>
+  <data name="LeaseStipulaAlreadyRecorded" xml:space="preserve">
+    <value>La data di stipula di questo contratto è già registrata.</value>
+  </data>
+  <data name="LeaseStipulaLeaseNotSigned" xml:space="preserve">
+    <value>Il contratto non è ancora firmato: carica il PDF firmato da tutte le parti insieme alla data di stipula.</value>
+  </data>
   <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
     <value>Il pagamento alla scadenza non è disponibile per queste date: l'arrivo è troppo vicino. Scegli un altro metodo di pagamento.</value>
   </data>
