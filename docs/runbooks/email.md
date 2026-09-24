@@ -1,6 +1,6 @@
 # Runbook: transactional email (Resend)
 
-Task FD-13, audit defects A9-06, A9-16, A4-06, A4-07, A4-08, A5-33, A4-20.
+Task FD-13, audit defects A9-06, A9-16, A4-06, A4-07, A4-08, A5-33, A4-20. Booking emails: task BK-10, defect A3-11.
 
 ## How it works
 
@@ -13,7 +13,7 @@ Task FD-13, audit defects A9-06, A9-16, A4-06, A4-07, A4-08, A5-33, A4-20.
 | Links | `PublicSiteLinks` | Every link comes from `App__PublicSiteBaseUrl`, the same public domain as the SEO canonical URLs and the sitemap ([`seo-domain.md`](seo-domain.md)). Missing or invalid value = configuration error, never a fallback domain. |
 | Queue | `IEmailQueue` → Hangfire job `EmailDeliveryJob` | Request handlers only queue: a slow or failing provider never turns a saved operation into an error. Transient errors (timeouts, 429, 5xx) are retried 5 times, then the job is deleted. Recurring jobs (check-in link, reminders, Alloggiati alert) already run in Hangfire and send directly. |
 
-Emails covered: new service request (to the supplier), request taken / completed / rejected (to the host), supplier invite, guest check-in link (daily job and "resend link"), incomplete check-in reminder, Alloggiati Web deadline alert. Recipients have no language preference yet, so emails go out in Italian; the English texts are ready.
+Every email of the application is listed in [Complete list of emails](#complete-list-of-emails). Recipients have no language preference yet, so emails go out in Italian; the English texts are ready (see [Language](#language)).
 
 When the provider is not configured (only possible in Development or Testing) every skipped email is logged as a warning: `Email <template> skipped: the email provider is not configured`.
 
@@ -70,9 +70,58 @@ On the **test** environment first, then on production after the release:
 
 The queued job carries recipient, subject and HTML (the check-in email includes the check-in link). Hangfire removes succeeded jobs after 24 hours; failed deliveries are deleted after the last retry (each failure is logged without the recipient address).
 
+## Complete list of emails
+
+Template names are those of the logs (`Email <template> queued`). "Queued" = `IEmailQueue` → Hangfire `EmailDeliveryJob`; "job" = sent directly by a recurring Hangfire job.
+
+| Template | To | When | Sent by |
+|---|---|---|---|
+| `guest-booking-confirmed` | guest | a booking becomes confirmed: payment succeeded (webhook), card saved for a deferred payment (webhook), "pay at the property" request accepted by the host, late payment confirmed again (BK-04) | `BookingNotifier`, queued |
+| `host-booking-confirmed` | host (`Org.ContactEmail`) | the same confirmations, except the "pay at the property" acceptance (the host did it) | `BookingNotifier`, queued |
+| `guest-booking-cancelled` | guest | the host cancels a booking; includes the refund (made, or started) | `BookingNotifier` (from `BookingCancellationService`), queued |
+| `guest-refund-confirmed` | guest | Stripe confirms a refund later (webhook or retry job), or a refund made from the payment page | `PaymentRefundService`, queued, once per refund (`PaymentRefunds.GuestNotifiedAt`) |
+| `guest-payment-refunded-dates-unavailable` | guest | a late payment whose dates were taken, refunded in full (BK-04) | `PaymentRefundService`, queued, once |
+| `onsite-request-received` | guest | "pay at the property" request sent: link to confirm the email (BK-06) | `OnSiteRequestNotifier`, queued |
+| `onsite-request-to-host` | host | the guest confirmed the email: request to accept or decline | `OnSiteRequestNotifier`, queued |
+| `onsite-request-declined` | guest | the host declined the request (with the host's optional message) | `OnSiteRequestNotifier`, queued |
+| `onsite-request-expired` | guest | the host did not answer in time | `OnSiteRequestNotifier` (expiry job), queued |
+| `guest-checkin-link` | guest | self check-in link: daily job before arrival, or "resend link" by the host | `GuestCheckInSendJob` (job) / `BookingsController` (queued) |
+| `guest-checkin-incomplete` | host | check-in still incomplete close to arrival | `GuestCheckInReminderJob` (job) |
+| `alloggiati-deadline` | host | Alloggiati Web communication close to its deadline | `NotificationService` (job) |
+| `service-request-created` | supplier | new service request | `ServiceRequestService`, queued |
+| `service-request-status-changed` | host | request taken / completed / rejected by the supplier | `ServiceRequestService`, queued |
+| `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |
+| `rli-deadline-reminder`, `rli-deadline-overdue`, `rli-extra-eu-notice` | landlord | RLI registration deadline / extra-EU tenant (long rents) | `RliDeadlineReminderJob` (job) |
+
+Not sent by design: bookings entered by the host (`Manual`, PC-01) and the host's own confirmations or cancellations get no email to the host; manual bookings get no confirmation to the guest (the host can send the check-in link). There is no guest self-service cancellation yet, so no "cancelled by the guest" email to the host. No email for the CIN deadline alert (CO-20: only logged as not delivered).
+
+## Booking emails (BK-10)
+
+Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBookingConfirmed`, `HostBookingConfirmed`, `GuestBookingCancelled` in `EmailTemplates`.
+
+- **When.** Only on the transition to `Confirmed`, after the change is committed, by the code that made it: `CheckoutPaymentSettlementService.CompleteAsync` (payment webhook: `Confirmed` / `Reconfirmed`; SetupIntent webhook: `ConfirmedWithSavedCard`) and `OnSiteBookingRequestService.AcceptAsync`. The emails are skipped if the booking is no longer confirmed when they are prepared.
+- **Once per transition.** A duplicate webhook is skipped by the event claim (`ProcessedStripeEvents`); another event of a payment already applied is `AlreadySettled`; the SetupIntent handler locks the booking row, so a second event sees it confirmed; a second host acceptance gets 409. None of them sends anything. Tests: `BookingEmailsPostgresTests`.
+- **Guest confirmation content.** Booking code (the booking id, asked by "Le mie prenotazioni"), property, dates, nights, guests, stay, cleaning, tourist tax (only when charged, "inclusa nel totale", BK-03), total; then the payment: "Pagamento ricevuto" (online), the day of the deferred charge (`FreeRefundDeadline`, the day `DirectBookingChargeJob` charges), or "pay at the property". A late payment confirmed again (BK-04) adds a note; an accepted "pay at the property" request says the host accepted it. The standard confirmation replaces the former `guest-late-payment-confirmed` (BK-04) and `onsite-request-accepted` (BK-06) emails.
+- **Link.** `App__PublicSiteBaseUrl/book/{orgSlug}/my-bookings` ("Le mie prenotazioni": code + email). The checkout outcome page of BK-07 needs the checkout token, which only the guest's browser has, so it cannot be linked from an email.
+- **Host contact.** Only what the booking site already shows publicly in its footer: `Org.DisplayName` and `Org.ContactEmail`; without an email the guest is told to contact the host. When the opt-in public contact of BK-12 exists, `BookingNotifier` must read that instead.
+- **Host email.** To `Org.ContactEmail`: guest name, stay, amounts, payment, link to `/app/short-rent/bookings/{id}`. `BookingNotifier.AlertHostOfNewBooking` is the single place where the host learns of a new booking: the push of MO-04 goes there, next to the email.
+- **Cancellation and refund, one coherent set.** The host's cancellation sends one `guest-booking-cancelled`: with "Ti abbiamo rimborsato X €" when Stripe confirmed the refund at once (that refund's own `guest-refund-confirmed` is then claimed and never sent), or "È stato avviato un rimborso di X €" when Stripe has not confirmed it yet (the `guest-refund-confirmed` follows, once). Before BK-10 a card refund produced two emails at once, the confirmation first. The host's reason (`CancellationNote`) is never sent.
+
+### Payment receipt choice (BK-10)
+
+- The guest confirmation **is** the payment confirmation: amounts, tourist tax and amount received. It states that it is not a fiscal document; receipts and invoices belong to the fiscal task (SDI), not to these emails.
+- Stripe's automatic receipts go to the PaymentIntent's `receipt_email` or to its Customer's email; the checkout PaymentIntent (on the host's connected account) sets neither, so no Stripe receipt duplicates the confirmation and there is nothing to switch off. Do not add `receipt_email` to the checkout without removing the payment lines from the confirmation.
+- Deferred payments do create a Customer with the guest's email (to charge the saved card later). If "Successful payments" is enabled in the customer emails settings that apply to the connected account, Stripe may email its receipt when the card is charged at the deadline: that charge has no CasaZen email today (BK-08 owns the deferred charge notifications). Keep one of the two when BK-08 adds its email.
+
+### Language
+
+The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done.
+
 ## Adding a new email
 
 1. Add the texts to `EmailTexts.resx` **and** `EmailTexts.en.resx` (`EmailTemplatesTests` fails if a key is missing or untranslated). Texts may contain markup; dynamic values only through `{0}`, `{1}` placeholders.
 2. Add a method to `EmailTemplates` using `EmailHtmlBuilder` (never string interpolation of values into HTML).
 3. Build links only with `PublicSiteLinks`.
 4. In a request handler, queue with `IEmailQueue.Enqueue(...)` after the data is saved; inside a Hangfire job you may call `IEmailService` directly.
+5. A booking status email goes in `BookingNotifier` (called after the commit, by the code that makes the transition, so a repeated request or webhook sends nothing).
+6. Add it to [Complete list of emails](#complete-list-of-emails).
