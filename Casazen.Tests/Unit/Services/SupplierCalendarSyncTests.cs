@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -119,7 +120,13 @@ public class SupplierCalendarSyncTests
     }
 
     private static SupplierService CreateSupplierService(AppDbContext db) =>
-        new(db, Mock.Of<IEmailQueue>(), EmailTestHelpers.Links(), new FakeExternalHttpClient(null), NullLogger<SupplierService>.Instance);
+        new(
+            db,
+            Mock.Of<IEmailQueue>(),
+            EmailTestHelpers.Links(),
+            new FakeExternalHttpClient(null),
+            Options.Create(new SupplierRegistrationOptions()),
+            NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);

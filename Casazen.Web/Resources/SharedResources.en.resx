@@ -420,4 +420,34 @@
   <data name="ServiceCategoryNotSupported" xml:space="preserve">
     <value>This service category is not supported.</value>
   </data>
+  <data name="SupplierInviteInvalid" xml:space="preserve">
+    <value>Invalid invitation: the link is incomplete or does not exist. Open the link from the email again or ask for a new invitation.</value>
+  </data>
+  <data name="SupplierInviteExpired" xml:space="preserve">
+    <value>This invitation has expired. Ask the CasaZen team to send you a new one.</value>
+  </data>
+  <data name="SupplierInviteUsed" xml:space="preserve">
+    <value>This invitation has already been used. If you already have a supplier account, sign in.</value>
+  </data>
+  <data name="SupplierInviteLoginRequired" xml:space="preserve">
+    <value>To accept the invitation, sign in or create an account with the invited email.</value>
+  </data>
+  <data name="SupplierInviteEmailMismatch" xml:space="preserve">
+    <value>The invitation is for another email: sign in with the account of the email the invitation was sent to.</value>
+  </data>
+  <data name="SupplierInviteComuneMismatch" xml:space="preserve">
+    <value>The invitation is for another municipality: the municipality cannot be changed.</value>
+  </data>
+  <data name="SupplierAccountEmailMissing" xml:space="preserve">
+    <value>Your account has no email, so the registration cannot be verified. Sign in with an account that has an email.</value>
+  </data>
+  <data name="SupplierAccountEmailMismatch" xml:space="preserve">
+    <value>The registration email must be the email of your account.</value>
+  </data>
+  <data name="SupplierSelfServeUnavailable" xml:space="preserve">
+    <value>Supplier self-registration is not available yet: you can join only with an invitation from the CasaZen team.</value>
+  </data>
+  <data name="SupplierComuneNotPilot" xml:space="preserve">
+    <value>Self-registration is not available for this municipality: choose one from the list or ask for an invitation.</value>
+  </data>
 </root>

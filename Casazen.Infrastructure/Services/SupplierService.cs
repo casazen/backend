@@ -13,6 +13,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
@@ -22,19 +23,47 @@ public class SupplierService(
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     ISafeExternalHttpClient externalHttpClient,
+    IOptions<SupplierRegistrationOptions> registrationOptions,
     ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
     public async Task<(Org Org, SupplierProfile Profile)> RegisterAsync(
-        string email,
-        string legalName,
-        string phone,
-        string comuneCode,
-        string? inviteToken,
-        string? userId = null,
+        SupplierRegistration registration,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(registration);
+
+        var email = registration.Email.Trim();
+        var comuneCode = registration.ComuneCode.Trim();
+        var userId = registration.UserId;
+        var accountEmail = registration.AccountEmail?.Trim();
+
+        // A malformed or truncated token is "invalid invite" (422), never a parse error (A4-21).
+        string? tokenHash = null;
+        if (!string.IsNullOrEmpty(registration.InviteToken))
+        {
+            if (!SupplierInviteTokens.TryNormalize(registration.InviteToken, out var token))
+                throw InviteInvalid();
+            tokenHash = SupplierInviteTokens.Hash(token);
+
+            // The invite is accepted by the Auth0 account of the invited email: an anonymous request cannot prove it.
+            if (userId is null)
+                throw new DomainRuleException("supplier_invite_login_required", "SupplierInviteLoginRequired");
+        }
+
+        if (userId is not null && string.IsNullOrEmpty(accountEmail))
+            throw new DomainRuleException("supplier_account_email_missing", "SupplierAccountEmailMissing");
+
+        // One registration per user and one acceptance per invite, across requests and instances (TN-4).
+        var locks = new List<(PostgresAdvisoryLocks.Scope, string)>();
+        if (userId is not null)
+            locks.Add((PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId));
+        if (tokenHash is not null)
+            locks.Add((PostgresAdvisoryLocks.Scope.SupplierInvite, tokenHash));
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, locks.ToArray());
+
         User? user = null;
         if (userId is not null)
         {
@@ -48,32 +77,55 @@ public class SupplierService(
                         "User {UserId} is already linked to supplier org {OrgId}; returning existing registration",
                         userId,
                         existing.Value.Org.Id);
+                    if (transaction is not null)
+                        await transaction.CommitAsync(cancellationToken);
                     return existing.Value;
                 }
             }
         }
 
-        if (inviteToken is not null)
+        SupplierInviteRecord? invite = null;
+        if (tokenHash is not null)
         {
-            var invite = await db.SupplierInviteRecords
-                .FirstOrDefaultAsync(i =>
-                    i.Id == Guid.Parse(inviteToken) &&
-                    !i.IsUsed &&
-                    i.ExpiresAt > DateTime.UtcNow,
-                    cancellationToken);
+            invite = await db.SupplierInviteRecords.FirstOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
+            EnsureInviteUsable(invite);
 
-            if (invite is null)
-                throw new InvalidOperationException("Invalid or expired invite token.");
+            // The token is bound to the invited email (account and form) and comune (A4-04).
+            if (!EmailsMatch(invite!.Email, accountEmail) || !EmailsMatch(invite.Email, email))
+                throw new DomainRuleException("supplier_invite_email_mismatch", "SupplierInviteEmailMismatch");
+            if (!string.IsNullOrWhiteSpace(invite.ComuneCode)
+                && !string.Equals(invite.ComuneCode.Trim(), comuneCode, StringComparison.OrdinalIgnoreCase))
+                throw new DomainRuleException("supplier_invite_comune_mismatch", "SupplierInviteComuneMismatch");
 
+            email = invite.Email.Trim();
+            if (!string.IsNullOrWhiteSpace(invite.ComuneCode))
+                comuneCode = invite.ComuneCode.Trim();
             invite.IsUsed = true;
+        }
+        else
+        {
+            if (userId is not null && !EmailsMatch(accountEmail, email))
+                throw new DomainRuleException("supplier_account_email_mismatch", "SupplierAccountEmailMismatch");
+
+            var options = registrationOptions.Value;
+            if (!options.SelfServeEnabled)
+            {
+                logger.LogWarning(
+                    "Supplier self-serve registration refused: no pilot comune configured (Suppliers__PilotComuni)");
+                throw new DomainRuleException("supplier_self_serve_unavailable", "SupplierSelfServeUnavailable");
+            }
+
+            var pilot = options.FindPilotComune(comuneCode)
+                ?? throw new DomainRuleException("supplier_comune_not_pilot", "SupplierComuneNotPilot");
+            comuneCode = pilot.Code.Trim();
         }
 
         var slug = $"supplier-{Guid.NewGuid():N}"[..30];
         var org = new Org
         {
-            Name = legalName,
+            Name = registration.LegalName,
             Slug = slug,
-            DisplayName = legalName,
+            DisplayName = registration.LegalName,
             ContactEmail = email,
             OrgType = OrgType.Supplier,
         };
@@ -83,10 +135,13 @@ public class SupplierService(
         {
             OrgId = org.Id,
             Email = email,
-            LegalName = legalName,
-            Phone = phone,
+            LegalName = registration.LegalName,
+            Phone = registration.Phone,
             ComuniJson = JsonSerializer.Serialize(new[] { comuneCode }, JsonOpts),
         };
+        // The invite's categories are codes already (validated when the invite was created, SU-03).
+        if (!string.IsNullOrWhiteSpace(invite?.CategoriesJson))
+            profile.CategoriesJson = invite.CategoriesJson;
         db.SupplierProfiles.Add(profile);
 
         // Link the authenticated user to the new org so subsequent supplier endpoint
@@ -102,10 +157,59 @@ public class SupplierService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
 
-        logger.LogInformation("Supplier org {OrgId} registered for {MaskedEmail}", org.Id, LogRedaction.MaskEmail(email));
+        if (invite is not null)
+        {
+            logger.LogInformation(
+                "Supplier org {OrgId} registered for {MaskedEmail} by accepting invite {InviteId}",
+                org.Id, LogRedaction.MaskEmail(email), invite.Id);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Supplier org {OrgId} self-registered for {MaskedEmail}", org.Id, LogRedaction.MaskEmail(email));
+        }
+
         return (org, profile);
     }
+
+    public async Task<SupplierInvitePreview> GetInviteAsync(string? inviteToken, CancellationToken cancellationToken = default)
+    {
+        if (!SupplierInviteTokens.TryNormalize(inviteToken, out var token))
+            throw InviteInvalid();
+
+        var tokenHash = SupplierInviteTokens.Hash(token);
+        var invite = await db.SupplierInviteRecords.AsNoTracking()
+            .FirstOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
+        EnsureInviteUsable(invite);
+
+        return new SupplierInvitePreview(
+            invite!.Email.Trim(),
+            invite.ComuneCode.Trim(),
+            registrationOptions.Value.FindPilotComune(invite.ComuneCode)?.Name.Trim(),
+            DeserializeStrings(invite.CategoriesJson),
+            invite.ExpiresAt);
+    }
+
+    private static DomainRuleException InviteInvalid() =>
+        new("supplier_invite_invalid", "SupplierInviteInvalid");
+
+    private static void EnsureInviteUsable(SupplierInviteRecord? invite)
+    {
+        if (invite is null)
+            throw InviteInvalid();
+        if (invite.IsUsed)
+            throw new DomainRuleException("supplier_invite_used", "SupplierInviteUsed");
+        if (invite.ExpiresAt <= DateTime.UtcNow)
+            throw new DomainRuleException("supplier_invite_expired", "SupplierInviteExpired");
+    }
+
+    private static bool EmailsMatch(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a)
+        && !string.IsNullOrWhiteSpace(b)
+        && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
     public async Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
@@ -334,15 +438,24 @@ public class SupplierService(
     {
         var categoryCodes = categories is null ? null : ServiceCategories.RequireAll(categories);
 
+        email = email.Trim();
+        comuneCode = comuneCode.Trim();
+
+        // Invites created before SU-01 (no token hash) can no longer be accepted: they do not block a new one.
         var existing = await db.SupplierInviteRecords
-            .FirstOrDefaultAsync(i => i.Email == email && !i.IsUsed && i.ExpiresAt > DateTime.UtcNow, cancellationToken);
+            .FirstOrDefaultAsync(
+                i => i.Email == email && i.TokenHash != null && !i.IsUsed && i.ExpiresAt > DateTime.UtcNow,
+                cancellationToken);
 
         if (existing is not null)
             throw new InvalidOperationException($"Pending invite already exists for {email}");
 
+        // The token only travels in the email; the database keeps its hash (A4-04).
+        var token = SupplierInviteTokens.Generate();
         var invite = new SupplierInviteRecord
         {
             Email = email,
+            TokenHash = SupplierInviteTokens.Hash(token),
             ComuneCode = comuneCode,
             CategoriesJson = categoryCodes is not null
                 ? JsonSerializer.Serialize(categoryCodes, JsonOpts)
@@ -352,7 +465,7 @@ public class SupplierService(
         };
 
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
-        var inviteEmail = BuildInviteEmail(invite);
+        var inviteEmail = BuildInviteEmail(invite, token);
 
         db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
@@ -784,12 +897,23 @@ public class SupplierService(
     private static string NormalizeSupplierEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
-    private EmailContent BuildInviteEmail(SupplierInviteRecord invite) =>
+    private EmailContent BuildInviteEmail(SupplierInviteRecord invite, string token) =>
         EmailTemplates.SupplierInvite(
             EmailTemplates.DefaultCulture,
             invite.Email,
-            invite.ComuneCode,
+            DescribeComune(invite.ComuneCode),
             invite.Message,
-            publicSiteLinks.SupplierInviteSignup(invite.Id, invite.Email, invite.ComuneCode),
+            publicSiteLinks.SupplierInviteSignup(token),
             invite.ExpiresAt);
+
+    /// <summary>
+    /// "Name (code)" when the comune is a configured pilot comune, otherwise the code. <c>ItalianComuneRegistry</c> is
+    /// not used: it knows 12 comuni and maps F205 to Firenze while F205 is Milano (A4-12, SU-04).
+    /// </summary>
+    private string DescribeComune(string comuneCode)
+    {
+        var code = comuneCode.Trim();
+        var name = registrationOptions.Value.FindPilotComune(code)?.Name.Trim();
+        return string.IsNullOrEmpty(name) ? code : $"{name} ({code})";
+    }
 }
