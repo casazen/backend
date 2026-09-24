@@ -31,6 +31,9 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Property count and insert of one org (plan limit).</summary>
         OrgPropertySlot = 1_003,
+
+        /// <summary>Stripe Checkout of one org's plan: at most one subscription per org (A1-10).</summary>
+        OrgBillingCheckout = 1_004,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

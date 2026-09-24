@@ -21,6 +21,14 @@ public static class FeatureFlags
     /// </summary>
     public const string OtaPartnerApi = "OtaPartnerApi";
 
+    /// <summary>
+    /// D11: AI supplier discovery (US-014, in freeze): <c>POST api/service-requests/match-supplier</c>, the external
+    /// web search and the LLM extraction of "nearby businesses" (<c>IAiSupplierDiscoveryService</c>) and the AI match
+    /// reason. Off: the endpoint answers 404 and no call reaches the AI provider. The manual service request
+    /// (<c>POST api/service-requests</c> with a chosen supplier) is not behind this flag.
+    /// </summary>
+    public const string AiSupplierDiscovery = "AiSupplierDiscovery";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
-    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi];
+    public static IReadOnlyList<string> All { get; } = [OtaPartnerApi, AiSupplierDiscovery];
 }

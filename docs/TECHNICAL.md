@@ -204,9 +204,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/billing/plans` | JWT | Stripe plan catalogue |
-| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session |
+| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session; one per org at a time, same open session reused, 409 `already_subscribed` when a subscription exists (A1-10, `docs/runbooks/stripe.md`) |
 | `POST` | `/api/billing/portal-session` | OrgBillingAdmin | Create Stripe Customer Portal session |
-| `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription |
+| `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription; `status`: `none`, `trialing`, `active`, `past_due`, `unpaid`, `incomplete`, `canceled` |
 | `PUT` | `/api/billing/profile` | OrgBillingAdmin | Update billing profile |
 
 #### Pricing Adapter (AI Dynamic Pricing)
@@ -343,8 +343,8 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/webhooks/stripe` | Anonymous (signature) | Stripe platform webhook |
-| `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook |
+| `POST` | `/webhooks/stripe` | Anonymous (signature) | Stripe platform webhook; processed once per event id (`docs/runbooks/stripe.md`) |
+| `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook; processed once per event id |
 | `POST` | `/webhooks/ota/{platform}` | Anonymous | OTA inbound webhook |
 | `POST` | `/webhooks/esign` | Anonymous | E-sign provider webhook |
 | `GET` | `/api/health/live` | Anonymous | Liveness: the process answers (always 200) |

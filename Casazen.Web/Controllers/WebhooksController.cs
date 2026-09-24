@@ -6,6 +6,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
@@ -54,10 +55,11 @@ public class WebhooksController : ControllerBase
             var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
             var webhookSecret = _configuration["Stripe:WebhookSecret"];
 
-            if (string.IsNullOrEmpty(webhookSecret))
+            // A placeholder committed in appsettings.json is public: signing with it would accept forged events.
+            if (RequiredConfiguration.IsMissing(webhookSecret))
             {
                 _logger.LogError("Stripe webhook secret not configured");
-                return StatusCode(500, "Webhook secret not configured");
+                return StripeWebhookNotConfigured();
             }
 
             // Verify webhook signature
@@ -69,7 +71,7 @@ public class WebhooksController : ControllerBase
             catch (StripeException ex)
             {
                 _logger.LogError(ex, "Invalid Stripe webhook signature");
-                return BadRequest("Invalid signature");
+                return StripeWebhookSignatureInvalid();
             }
 
             _logger.LogInformation("Received Stripe webhook: {EventType} ({EventId})", stripeEvent.Type, stripeEvent.Id);
@@ -87,7 +89,7 @@ public class WebhooksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Stripe webhook");
-            return StatusCode(500, "Internal server error");
+            return StripeWebhookFailed();
         }
     }
 
@@ -104,10 +106,11 @@ public class WebhooksController : ControllerBase
             var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
             var webhookSecret = _configuration["Stripe:ConnectWebhookSecret"];
 
-            if (string.IsNullOrEmpty(webhookSecret))
+            // A placeholder committed in appsettings.json is public: signing with it would accept forged events.
+            if (RequiredConfiguration.IsMissing(webhookSecret))
             {
                 _logger.LogError("Stripe Connect webhook secret not configured");
-                return StatusCode(500, "Webhook secret not configured");
+                return StripeWebhookNotConfigured();
             }
 
             Event stripeEvent;
@@ -118,7 +121,7 @@ public class WebhooksController : ControllerBase
             catch (StripeException ex)
             {
                 _logger.LogError(ex, "Invalid Stripe Connect webhook signature");
-                return BadRequest("Invalid signature");
+                return StripeWebhookSignatureInvalid();
             }
 
             _logger.LogInformation(
@@ -129,14 +132,25 @@ public class WebhooksController : ControllerBase
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
                 job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Connected));
 
+            _logger.LogInformation("Queued Stripe Connect webhook event {EventId} for background processing", stripeEvent.Id);
             return Ok();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Stripe Connect webhook");
-            return StatusCode(500, "Internal server error");
+            return StripeWebhookFailed();
         }
     }
+
+    // Stripe retries a delivery answered with a non-2xx status: an event is acknowledged (200) only once queued.
+    private ObjectResult StripeWebhookNotConfigured() =>
+        this.ApiProblem(StatusCodes.Status500InternalServerError, "stripe_webhook_not_configured", "StripeWebhookNotConfigured");
+
+    private ObjectResult StripeWebhookSignatureInvalid() =>
+        this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_signature", "StripeWebhookSignatureInvalid");
+
+    private ObjectResult StripeWebhookFailed() =>
+        this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
 
     /// <summary>
     /// Handles incoming OTA platform webhooks (Airbnb, Booking.com, etc.)

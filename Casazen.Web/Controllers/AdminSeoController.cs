@@ -3,6 +3,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
+using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -67,9 +68,15 @@ public class AdminSeoController(
         return Ok(new SeoBulkApproveResultDto(approved));
     }
 
+    /// <summary>
+    /// Queues AI generation of SEO pages. Rate limited per user (<see cref="AiRateLimitAttribute"/>); the job stops at
+    /// the first page the monthly AI budget cannot cover.
+    /// </summary>
     [HttpPost("generate")]
+    [AiRateLimit]
     [ProducesResponseType(typeof(SeoGenerateAcceptedDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public ActionResult<SeoGenerateAcceptedDto> Generate([FromBody] SeoGenerateRequestDto request)
     {
         var comuneCodes = request.ComuneCodes.Count > 0

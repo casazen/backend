@@ -46,6 +46,9 @@ public static class RateLimitingServiceCollectionExtensions
     {
         services.AddRateLimiter(_ => { });
 
+        // Per user and per org limits of the endpoints that call an AI provider ([AiRateLimit], A8-01).
+        services.AddSingleton<AiRequestRateLimiter>();
+
         // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
             .Configure<IConfiguration>((options, configuration) =>
