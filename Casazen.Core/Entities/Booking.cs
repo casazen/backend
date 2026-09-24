@@ -112,10 +112,6 @@ public class Booking : ITenantOwned
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
 
-    /// <summary>Hangfire job id for end-of-checkout-day reminder when wizard is incomplete.</summary>
-    [MaxLength(100)]
-    public string? CheckoutReminderJobId { get; set; }
-
     public DateTime? CheckoutWizardStartedAt { get; set; }
 
     /// <summary>

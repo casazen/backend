@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
@@ -17,7 +16,6 @@ using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -33,8 +31,6 @@ public class BookingsController(
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IGuestCheckInService checkInService,
     IComplianceWizardService complianceWizardService,
-    ICheckoutReminderScheduler checkoutReminderScheduler,
-    IOptions<ComplianceOptions> complianceOptions,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IStringLocalizer<SharedResources> localizer,
@@ -324,15 +320,8 @@ public class BookingsController(
             logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled at check-in", booking.Id);
         }
 
-        var localCheckoutDate = TimezoneHelper.ConvertUtcToLocal(booking.CheckOutDate, property.Timezone);
-        var reminderAtLocal = localCheckoutDate.Date
-            .AddHours(complianceOptions.Value.CheckoutReminderHourLocal);
-        var reminderAt = TimezoneHelper.ConvertLocalToUtc(reminderAtLocal, property.Timezone);
-        if (reminderAt <= DateTime.UtcNow)
-            reminderAt = DateTime.UtcNow.AddMinutes(5);
-
-        booking.CheckoutReminderJobId = checkoutReminderScheduler.ScheduleReminder(booking.Id, reminderAt);
-        await bookingService.UpdateBookingAsync(booking);
+        // The check-out reminder (email + push) comes from the hourly stay-alerts job for every confirmed or checked-in
+        // stay, not from the check-in (CO-10): nothing to schedule here.
 
         logger.LogInformation("Check-in completed for booking {BookingId}, Alloggiati Web report scheduled", id);
         var updated = await bookingService.GetBookingAsync(id);
@@ -412,8 +401,6 @@ public class BookingsController(
                     request.SupplierOrgId,
                     request.ServiceNotes,
                     request.ServiceCategory));
-
-            checkoutReminderScheduler.CancelReminder(booking.CheckoutReminderJobId);
 
             return Ok(new CompleteCheckoutWizardResponse
             {

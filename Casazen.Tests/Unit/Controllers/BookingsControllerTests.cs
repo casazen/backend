@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
@@ -41,7 +40,6 @@ public class BookingsControllerTests
     private readonly Mock<IAlloggiatiReportScheduler> _mockAlloggiatiScheduler;
     private readonly Mock<IGuestCheckInService> _mockGuestCheckInService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
-    private readonly Mock<ICheckoutReminderScheduler> _mockCheckoutReminderScheduler;
     private readonly Mock<IEmailQueue> _mockEmailQueue;
     private readonly List<(string? To, EmailContent Content, string Template)> _queuedEmails = [];
     private readonly Mock<ILogger<BookingsController>> _mockLogger;
@@ -72,15 +70,11 @@ public class BookingsControllerTests
         _mockAlloggiatiScheduler = new Mock<IAlloggiatiReportScheduler>();
         _mockGuestCheckInService = new Mock<IGuestCheckInService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
-        _mockCheckoutReminderScheduler = new Mock<ICheckoutReminderScheduler>();
         _mockEmailQueue = new Mock<IEmailQueue>();
         _mockEmailQueue
             .Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
             .Callback<string?, EmailContent, string>((to, content, template) => _queuedEmails.Add((to, content, template)))
             .Returns(true);
-        _mockCheckoutReminderScheduler
-            .Setup(s => s.ScheduleReminder(It.IsAny<Guid>(), It.IsAny<DateTime>()))
-            .Returns("job-test");
         _mockLogger = new Mock<ILogger<BookingsController>>();
 
         _controller = CreateController(EmailTestHelpers.Links("https://public.test"));
@@ -96,8 +90,6 @@ public class BookingsControllerTests
             _mockAlloggiatiScheduler.Object,
             _mockGuestCheckInService.Object,
             _mockComplianceWizardService.Object,
-            _mockCheckoutReminderScheduler.Object,
-            Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = 20 }),
             _mockEmailQueue.Object,
             publicSiteLinks,
             CreateLocalizer(),
@@ -807,6 +799,5 @@ public class BookingsControllerTests
                 It.IsAny<CompleteCheckoutWizardInput>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
-        _mockCheckoutReminderScheduler.Verify(s => s.CancelReminder(It.IsAny<string?>()), Times.Never);
     }
 }
