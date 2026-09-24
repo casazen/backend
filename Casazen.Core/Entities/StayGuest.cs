@@ -105,6 +105,13 @@ public class StayGuest : ITenantOwned
     [MaxLength(100)]
     public string DocumentIssuePlaceName { get; set; } = string.Empty;
 
+    /// <summary>Who entered the data of this row last (CO-09 audit): the guest portal or the host; not recorded before CO-09.</summary>
+    public StayGuestDataSource DataSource { get; set; } = StayGuestDataSource.NotRecorded;
+
+    /// <summary>User id (Auth0 <c>sub</c>) of the host who entered the row; null for the guest portal. Never returned to clients.</summary>
+    [MaxLength(200)]
+    public string? EnteredByUserId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -131,6 +138,7 @@ public class StayGuest : ITenantOwned
         DocumentType = guest.DocumentType is GuestDocumentType.Other ? null : guest.DocumentType,
         DocumentNumber = guest.DocumentNumber,
         DocumentIssuePlaceName = guest.DocumentIssuingCountry,
+        DataSource = StayGuestDataSource.NotRecorded,
         CreatedAt = booking.CreatedAt,
         UpdatedAt = booking.UpdatedAt,
     };
@@ -158,4 +166,20 @@ public enum StayGuestType
 
     /// <summary>Membro gruppo: no document, follows the head of group.</summary>
     GroupMember = 5,
+}
+
+/// <summary>Who entered the data of a guest of the stay (CO-09). Stored as an integer: never renumber.</summary>
+public enum StayGuestDataSource
+{
+    /// <summary>
+    /// Not recorded: copied from the booker's record (booking, CO-12 backfill) or entered before CO-09, when the author
+    /// was not stored.
+    /// </summary>
+    NotRecorded = 0,
+
+    /// <summary>Entered by the guest on the check-in portal.</summary>
+    GuestPortal = 1,
+
+    /// <summary>Entered or corrected by the host (<see cref="StayGuest.EnteredByUserId"/>).</summary>
+    Host = 2,
 }

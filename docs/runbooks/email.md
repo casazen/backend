@@ -11,7 +11,7 @@ Task FD-13, audit defects A9-06, A9-16, A4-06, A4-07, A4-08, A5-33, A4-20. Booki
 | `ResendEmailService` | `Casazen.Infrastructure/External/ResendEmailService.cs` | The only `IEmailService`. Sends with the configured sender, unchanged: the old rewrite to `onboarding@resend.dev` is gone. |
 | Templates | `Casazen.Infrastructure/Email/Templates/` | `EmailTexts.resx` (Italian, default) and `EmailTexts.en.resx`; `EmailTemplates` renders every email; every dynamic value (names, notes, property, reasons) is HTML-encoded. |
 | Links | `PublicSiteLinks` | Every link comes from `App__PublicSiteBaseUrl`, the same public domain as the SEO canonical URLs and the sitemap ([`seo-domain.md`](seo-domain.md)). Missing or invalid value = configuration error, never a fallback domain. |
-| Queue | `IEmailQueue` → Hangfire job `EmailDeliveryJob` | Request handlers only queue: a slow or failing provider never turns a saved operation into an error. Transient errors (timeouts, 429, 5xx) are retried 5 times, then the job is deleted. Recurring jobs that already run in Hangfire (check-in link) may send directly; the stay alerts (CO-10) queue theirs. |
+| Queue | `IEmailQueue` → Hangfire job `EmailDeliveryJob` | Request handlers only queue: a slow or failing provider never turns a saved operation into an error. Transient errors (timeouts, 429, 5xx) are retried 5 times, then the job is deleted. The check-in link email has its own job (`GuestCheckInLinkEmailJob`, CO-09) that records the real outcome on the link; the stay alerts (CO-10) queue theirs. |
 
 Every email of the application is listed in [Complete list of emails](#complete-list-of-emails). Recipients have no language preference yet, so emails go out in Italian; the English texts are ready (see [Language](#language)).
 
@@ -68,7 +68,7 @@ On the **test** environment first, then on production after the release:
 
 ## Data kept in Hangfire
 
-The queued job carries recipient, subject and HTML (the check-in email includes the check-in link). Hangfire removes succeeded jobs after 24 hours; failed deliveries are deleted after the last retry (each failure is logged without the recipient address).
+The queued job carries recipient, subject and HTML. The check-in link job carries only the session id and the raw token (the email is built when it is sent). Hangfire removes succeeded jobs after 24 hours; failed deliveries are deleted after the last retry (each failure is logged without the recipient address).
 
 ## Complete list of emails
 
@@ -88,7 +88,7 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `onsite-request-to-host` | host | the guest confirmed the email: request to accept or decline | `OnSiteRequestNotifier`, queued |
 | `onsite-request-declined` | guest | the host declined the request (with the host's optional message) | `OnSiteRequestNotifier`, queued |
 | `onsite-request-expired` | guest | the host did not answer in time | `OnSiteRequestNotifier` (expiry job), queued |
-| `guest-checkin-link` | guest | self check-in link: daily job before arrival, or "resend link" by the host | `GuestCheckInSendJob` (job) / `BookingsController` (queued) |
+| `guest-checkin-link` | guest | self check-in link: daily job before arrival, or "send link" / reminder by the host | `GuestCheckInSendJob` or `BookingCheckInLinkController` → `GuestCheckInLinkEmailJob` (queued, outcome on the link: [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) |
 | `guest-checkin-incomplete` | host | "Dati ospiti mancanti": guest data for Alloggiati Web still incomplete the day before arrival | `stay-alerts` job → `NotificationService`, queued, once per stay (CO-10, [hangfire.md §9](hangfire.md#9-stay-alerts-co-10)) |
 | `alloggiati-deadline` | host | Alloggiati Web communication not sent, deadline approaching | same, once per stay |
 | `alloggiati-overdue` | host | Alloggiati Web deadline passed without the communication, then at most `StayAlerts__MaxOverdueReminders` daily reminders | same |
