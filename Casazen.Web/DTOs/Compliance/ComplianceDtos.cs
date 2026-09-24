@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 
 namespace Casazen.Web.DTOs.Compliance;
@@ -86,11 +87,25 @@ public class CompletePropertyActivationResponse
     public IEnumerable<string>? IncompleteBlockers { get; set; }
 }
 
+/// <summary>
+/// An item of the compliance cockpit (CO-04, A5-09): the action to take and its target, never a front-end path. The
+/// web app builds the route from its <c>ROUTE_MANIFEST</c> (<c>src/lib/compliance-routes.ts</c>).
+/// </summary>
 public class ComplianceSummaryItemDto
 {
+    /// <summary>Target of the action: equal to <see cref="PropertyId"/> or <see cref="BookingId"/>.</summary>
     public Guid Id { get; set; }
+
     public string Label { get; set; } = string.Empty;
-    public string RouteLink { get; set; } = string.Empty;
+
+    /// <summary>Serialized by name (<c>ActivateProperty</c>, <c>CompleteGuestCheckIn</c>, ...).</summary>
+    public ComplianceCockpitAction Action { get; set; }
+
+    /// <summary>Set for <see cref="ComplianceCockpitAction.ActivateProperty"/>, null otherwise.</summary>
+    public Guid? PropertyId { get; set; }
+
+    /// <summary>Set for every action on a booking, null for <see cref="ComplianceCockpitAction.ActivateProperty"/>.</summary>
+    public Guid? BookingId { get; set; }
 }
 
 public class ComplianceSummarySectionDto

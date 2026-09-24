@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
@@ -93,10 +94,10 @@ public class ComplianceWizardService(
             var dataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
             if (!dataComplete)
             {
-                incompleteCheckIns.Add(new ComplianceSummaryItem(
+                incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
+                    ComplianceCockpitAction.CompleteGuestCheckIn,
                     booking.Id,
-                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
-                    $"/bookings/{booking.Id}/check-in"));
+                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()));
             }
         }
 
@@ -109,7 +110,7 @@ public class ComplianceWizardService(
                 .OrderBy(b => b.CheckOutDate)
                 .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
                 .ToListAsync(cancellationToken))
-            .Select(b => new ComplianceSummaryItem(b.Id, b.GuestName, $"/bookings/{b.Id}/checkout-wizard"))
+            .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName))
             .ToList();
 
         var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
@@ -117,8 +118,9 @@ public class ComplianceWizardService(
         return new ComplianceSummaryResult(
             new ComplianceSummarySection(
                 pendingProperties.Count,
-                pendingProperties.Select(p => new ComplianceSummaryItem(
-                    p.Id, p.Name, $"/properties/{p.Id}/compliance/activation")).ToList()),
+                // Pending and suspended alike: the activation wizard opens on the first blocking step still open.
+                pendingProperties.Select(p => ComplianceSummaryItem.ForProperty(
+                    ComplianceCockpitAction.ActivateProperty, p.Id, p.Name)).ToList()),
             new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns),
             new ComplianceSummarySection(checkoutDue.Count, checkoutDue),
             alloggiatiFailures,
@@ -170,12 +172,16 @@ public class ComplianceWizardService(
             var report = ofStay.FirstOrDefault(r => r.GuestId == stay.GuestId)
                 ?? ofStay.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
             var status = AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today);
-            var item = new ComplianceSummaryItem(stay.Id, stay.GuestName, $"/bookings/{stay.Id}/alloggiati");
-
             if (AlloggiatiStatusRules.IsFailure(status))
-                failures.Add((stay.CheckInDate, item));
+            {
+                failures.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
+                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName)));
+            }
             else if (status == AlloggiatiWebStatus.DaInviareManualmente)
-                manual.Add((stay.CheckInDate, item));
+            {
+                manual.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
+                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName)));
+            }
         }
 
         return (Section(failures), Section(manual));
