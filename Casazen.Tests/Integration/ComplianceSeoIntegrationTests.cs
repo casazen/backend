@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
@@ -126,6 +127,102 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         var disclaimers = doc.RootElement.GetProperty("disclaimers");
         Assert.Contains("non consulenza legale", disclaimers.GetProperty("notLegalAdvice").GetString());
         Assert.Contains("Contenuto generato con AI", disclaimers.GetProperty("aiGenerated").GetString());
+    }
+
+    [Fact]
+    public async Task PublicComplianceGuide_SeededStubBody_KeepsParagraphText()
+    {
+        await SeedSeoPageAsync(LegalReviewStatus.Reviewed, SeoPageType.ComplianceGuide);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/public/content/affitti-brevi/lombardia/como");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("<p>Guida compliance Como</p>", doc.RootElement.GetProperty("bodyHtml").GetString());
+    }
+
+    // A8-08: a revision stored before the allowlist (or by any other path) is sanitized again when served.
+    [Fact]
+    public async Task PublicComplianceGuide_StoredRevisionWithXssPayload_ReturnsSanitizedBody()
+    {
+        await SeedPageWithRawRevisionAsync(
+            "013040",
+            "affitti-brevi/lombardia/bellagio",
+            "<h2>Bellagio</h2><img src=x onerror=alert(1)><svg/onload=alert(1)>" +
+            "<p ONCLICK=\"alert(1)\">CIN <a href=\"&#106;avascript:alert(1)\">x</a> " +
+            "<a href=\"https://www.example.com\">fonte</a></p><iframe src=\"https://evil.example\"></iframe>");
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/public/content/affitti-brevi/lombardia/bellagio");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "<h2>Bellagio</h2><p>CIN <a rel=\"noopener noreferrer\">x</a> " +
+            "<a href=\"https://www.example.com\" rel=\"noopener noreferrer\">fonte</a></p>",
+            doc.RootElement.GetProperty("bodyHtml").GetString());
+    }
+
+    [Fact]
+    public async Task AddRevisionAsync_MaliciousBody_PersistsSanitizedHtml()
+    {
+        var pageId = await SeedPageWithRawRevisionAsync("013182", "affitti-brevi/lombardia/varenna", "<p>v1</p>");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var repository = scope.ServiceProvider.GetRequiredService<ISeoContentRepository>();
+            await repository.AddRevisionAsync(new SeoContentRevision
+            {
+                PageId = pageId,
+                BodyHtml = "<p onmouseover=\"alert(1)\">v2</p><script>alert(1)</script><style>p{}</style>",
+                AiModelTier = AiModelTier.Economy,
+                SourceDataVersion = "test-v2",
+                GeneratedAt = DateTime.UtcNow.AddMinutes(1),
+            });
+        }
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var context = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stored = await context.SeoContentRevisions.AsNoTracking()
+            .SingleAsync(r => r.PageId == pageId && r.SourceDataVersion == "test-v2");
+        Assert.Equal("<p>v2</p>", stored.BodyHtml);
+    }
+
+    /// <summary>
+    /// Creates a reviewed compliance guide page with a revision written straight to the database,
+    /// bypassing the repository (simulates content stored before the allowlist).
+    /// </summary>
+    private async Task<Guid> SeedPageWithRawRevisionAsync(string comuneCode, string slug, string bodyHtml)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var page = new SeoContentPage
+        {
+            Slug = slug,
+            ComuneCode = comuneCode,
+            RegionCode = "LOM",
+            PageType = SeoPageType.ComplianceGuide,
+            Title = "Pagina di test",
+            MetaDescription = "Test meta",
+            LegalReviewStatus = LegalReviewStatus.Reviewed,
+            PublishedAt = DateTime.UtcNow,
+            LastRefreshedAt = DateTime.UtcNow,
+        };
+        context.SeoContentPages.Add(page);
+        await context.SaveChangesAsync();
+
+        context.SeoContentRevisions.Add(new SeoContentRevision
+        {
+            PageId = page.Id,
+            BodyHtml = bodyHtml,
+            AiModelTier = AiModelTier.Economy,
+            PromptTokens = 100,
+            SourceDataVersion = "test-v1",
+        });
+        await context.SaveChangesAsync();
+        return page.Id;
     }
 
     /// <summary>

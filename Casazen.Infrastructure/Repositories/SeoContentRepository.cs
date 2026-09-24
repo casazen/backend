@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Regulatory;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Repositories;
@@ -184,6 +185,8 @@ public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
 
     public async Task AddRevisionAsync(SeoContentRevision revision, CancellationToken cancellationToken = default)
     {
+        // Every stored revision goes through the allowlist, whoever writes it (AI generation or manual edit).
+        revision.BodyHtml = SeoHtmlSanitizer.Sanitize(revision.BodyHtml);
         context.SeoContentRevisions.Add(revision);
         await context.SaveChangesAsync(cancellationToken);
     }
