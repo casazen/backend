@@ -24,6 +24,13 @@ public class CalendarBlock : ITenantOwned
 
     public CalendarBlockSource Source { get; set; } = CalendarBlockSource.ICalImport;
 
+    /// <summary>
+    /// Import feed the block comes from (PC-11): each feed replaces only its own blocks, and removing the feed deletes
+    /// them (FK cascade). Null for blocks that do not come from a feed (<see cref="CalendarBlockSource.Manual"/>).
+    /// <see cref="ExternalUid"/> is unique per feed.
+    /// </summary>
+    public Guid? FeedId { get; set; }
+
     [MaxLength(ExternalUidMaxLength)]
     public string? ExternalUid { get; set; }
 
@@ -38,6 +45,9 @@ public class CalendarBlock : ITenantOwned
 
     [ForeignKey(nameof(PropertyId))]
     public Property Property { get; set; } = null!;
+
+    [ForeignKey(nameof(FeedId))]
+    public PropertyICalFeed? Feed { get; set; }
 
     [ForeignKey(nameof(OrgId))]
     public Org Org { get; set; } = null!;

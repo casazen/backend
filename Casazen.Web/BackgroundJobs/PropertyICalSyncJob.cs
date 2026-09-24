@@ -23,12 +23,14 @@ public class PropertyICalSyncJob
     }
 
     /// <summary>
-    /// First sync of a newly saved import URL, queued by <c>POST /api/properties/{id}/ical/import-url</c> so the
-    /// download never runs inside the request (FD-16, A2-21). One run per property at a time.
+    /// Sync of one import feed, queued when the feed is added (<c>POST /api/properties/{id}/ical/feeds</c>) or by
+    /// "sync now" (<c>POST .../ical/feeds/{feedId}/sync</c>), so the download never runs inside the request (FD-16,
+    /// A2-21, PC-11). One run per feed at a time. A job queued before PC-11 carries a property id: no feed has that
+    /// id, so it does nothing (the 15-minute job syncs the feed).
     /// </summary>
     [DisableConcurrentExecution("PropertyICalSyncJob.SyncFeedAsync:{0}", JobLockTimeouts.FrequentSeconds)]
-    public async Task SyncFeedAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    public async Task SyncFeedAsync(Guid feedId, CancellationToken cancellationToken = default)
     {
-        await _syncService.SyncPropertyFeedAsync(propertyId, cancellationToken);
+        await _syncService.SyncFeedAsync(feedId, cancellationToken);
     }
 }
