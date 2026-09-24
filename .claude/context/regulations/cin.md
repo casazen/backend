@@ -174,7 +174,7 @@ Versione con gruppi, per il controllo ISTAT (.NET):
 ### CIN e codici regionali (CIR / CIS / CIPAT / CIU)
 
 - I codici regionali hanno formati **diversi per ogni regione** e non sono CIN. Esempi:
-  - **Lombardia (CIR)**: `015146-CNI-01894`, cioè 6 cifre ISTAT del comune + 3 lettere di tipologia + 5 caratteri progressivi (Regione Lombardia). Un hotel di Milano ha CIN `IT015146A12HOLV2MZ`: il CIN **non si ricava** dal CIR.
+  - **Lombardia (CIR)**: `015146-CNI-01894`, cioè 6 cifre ISTAT del comune + 3 lettere di tipologia + 5 caratteri progressivi. La composizione viene da Regione Lombardia; l'esempio da un annuncio pubblico (terza parte, verifica RS-9). Un hotel di Milano ha CIN `IT015146A12HOLV2MZ`: il CIN **non si ricava** dal CIR. Norme, percorso, esposizione e sanzioni sono in `cir-lombardia.md` (RS-9, 2026-09-24).
   - **Puglia (CIS)**: il CIS è stato ricodificato in CIR e trasmesso alla BDSR, che rilascia il CIN (Regione Puglia, In-Formati).
   - **Veneto**: il CIR assegnato da Ross1000 è necessario per chiedere il CIN in BDSR (Regione Veneto).
   - **Provincia autonoma di Trento**: il CIN sostituisce il CIPAT provinciale.
@@ -185,7 +185,7 @@ Versione con gruppi, per il controllo ISTAT (.NET):
   - non derivare mai il CIN dal CIR;
   - non accettare un CIR nel campo CIN (la regex lo rifiuta);
   - se serve il codice regionale, salvarlo in un campo separato.
-- Se il codice regionale vada esposto accanto al CIN dipende dalla legge di ciascuna regione. Qui non è stato verificato.
+- Se il codice regionale vada esposto accanto al CIN dipende dalla legge di ciascuna regione. Qui non è stato verificato, salvo la **Lombardia**: dal 02/11/2024 l'indicazione del CIN negli annunci sostituisce quella del CIR, che resta propedeutico al CIN (fonti regionali e provinciali, vedi `cir-lombardia.md` § 5).
 
 ### Obbligo di esposizione e sanzioni
 
