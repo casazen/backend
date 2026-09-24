@@ -161,8 +161,40 @@ Stripe Dashboard labels may differ slightly between versions.
 
 1. **Webhook endpoints**: as in `docs/INFRA.md`. The platform endpoint must include `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
 2. **Restricted key** (only if `Stripe__SecretKey` is an `rk_…` key): besides the permissions already used, the checkout now needs **Checkout Sessions: write** (create, list, expire) and **Subscriptions: read** (list the customer's subscriptions). Without them the checkout answers 503 `payment_provider_error`.
-3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there.
+3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there. The web app (PL-12) sends every subscribed org to the portal to **change plan**: turn on the subscription update (plan switch) and list the Starter, Pro and Scale products with the same prices as `Billing__Prices__<Tier>`, otherwise "Cambia dal portale" opens a portal without the plan change.
 4. **Failed payments** (Settings → Billing → Subscriptions and emails → manage failed payments): at the end of the retries the subscription may be canceled or marked unpaid; both end paid access (Canceled / Unpaid).
+
+## Web app: plans, checkout, portal and billing profile (PL-12)
+
+Task PL-12 (audit defect A1-07). Pages of the web app, visible in the menu only to the org billing administrator
+(frontend mirror of the policy `OrgBillingAdmin`: host owner or platform admin; the long-term landlords come with
+PL-16). Anyone else who opens them sees "contatta l'amministratore" and no billing call is made.
+
+| Page | What it does |
+|---|---|
+| `/app/short-rent/settings/plan` ("Piano") | Plans of `GET /api/billing/plans`: name, allowance, features and the price only when the API sends one (`Billing:Display:<Tier>:PriceMonthly` > 0, otherwise "the price is shown on Stripe"). A plan with `purchasable: false` is shown as "Non disponibile". "Scegli piano" asks country and optional VAT id, then `POST /api/billing/checkout-session` and the redirect to Stripe. An org with a live subscription (active, trialing, past due, unpaid, incomplete) gets "Cambia dal portale" instead of a second checkout. |
+| same page, `?checkout=success` | Reads `GET /api/billing/subscription` every 3 s for up to 60 s: "Pagamento confermato" only once the webhook has made it active or trialing; incomplete/unpaid/past due show the payment notice with "Completa il pagamento" (portal); after 60 s without the webhook, "conferma non ancora ricevuta" with a refresh button. The redirect alone never shows success. |
+| same page, `?checkout=cancel` | "Pagamento annullato, nessun addebito" and the real state of the plans. |
+| `/app/short-rent/settings/billing` ("Fatturazione") | Subscription (effective plan, status badge, next due date), "Gestisci pagamenti" → `POST /api/billing/portal-session`, notices for past due (grace), incomplete and unpaid, and the billing profile form (country, VAT id) → `PUT /api/billing/profile`. |
+
+Error codes shown to the user: 409 `already_subscribed` (message with the portal button), 409 `billing_gate_closed`,
+422 `billing_plan_unavailable` (the plans are read again), 503 `billing_return_url_not_configured`,
+503 `payment_provider_error`. The portal answers 400 while the org has no Stripe customer (never started a checkout):
+the web app says the portal is available after the first payment.
+
+VAT id: the web app only checks its shape (letters and digits, 4-20 characters, spaces, dots and dashes removed) and
+says it will be verified. The real check (VIES) and the VAT/OSS treatment are task PL-13: until then a VAT id of a
+country other than Italy is refused by the backend unless `Vies__StubMode=true`.
+
+Return pages: the plan page sends no `successUrl`/`cancelUrl` (the backend default is that same page). A page on another
+route sends its own URLs only when the app runs on `VITE_PUBLIC_SITE_URL`, which must be the same origin as
+`App__PublicSiteBaseUrl`; a Vercel preview sends none.
+
+Verification on the test environment (Staging, test keys): open "Piano" as a host owner, choose Pro, country Italia,
+pay with `4242 4242 4242 4242`; back on the page the banner goes from "Stiamo verificando" to "Pagamento confermato",
+the Pro card shows "Piano attuale" and "Fatturazione" shows Attivo with the next due date. On the same page the other plans
+offer "Cambia dal portale", which opens the Stripe portal. The incomplete, unpaid and past due states are covered by the
+frontend tests (`plans-page.test.tsx`, `billing-settings-page.test.tsx`).
 
 ## Refunds and booking cancellations on Stripe Connect (BK-02)
 

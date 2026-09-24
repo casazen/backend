@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -8,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalReportingService
+public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer) : IFiscalRegimeService, IFiscalReportingService
 {
     public async Task<FiscalRegimeSnapshot> GetRegimeAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default)
     {
@@ -327,7 +328,7 @@ public class FiscalService(AppDbContext db) : IFiscalRegimeService, IFiscalRepor
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
-    public byte[] ToPdf(string title, string body) => FiscalPdfWriter.Write(title, body);
+    public byte[] ToPdf(string title, string body) => pdfRenderer.Render(PdfDocumentContent.FromPlainText(title, body));
 
     private async Task<List<Property>> GetCountedPropertiesAsync(Guid orgId, int taxYear, CancellationToken cancellationToken)
     {

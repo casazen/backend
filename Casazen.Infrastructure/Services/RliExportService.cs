@@ -1,4 +1,5 @@
 using System.Text;
+using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
@@ -11,6 +12,7 @@ namespace Casazen.Infrastructure.Services;
 public class RliExportService(
     ILeaseContractRepository leases,
     ILeaseEventRepository events,
+    IPdfDocumentRenderer pdfRenderer,
     TimeProvider? timeProvider = null) : IRliExportService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -23,9 +25,9 @@ public class RliExportService(
             return null;
 
         var body = BuildBody(lease, RliRegistrationDeadline.Resolve(lease, _clock.TodayInRome()));
-        var pdf = FiscalPdfWriter.Write(
+        var pdf = pdfRenderer.Render(PdfDocumentContent.FromPlainText(
             "Precompilazione RLI - anteprima, non depositata",
-            body);
+            body));
 
         await events.AddAsync(new LeaseEvent
         {

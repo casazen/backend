@@ -3,7 +3,9 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Documents;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -34,7 +36,7 @@ public class FiscalRegimeServiceTests
         SeedOrg(db, orgId);
         SeedProperty(db, orgId, "Casa Uno");
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         var snapshot = await sut.GetRegimeAsync(orgId, 2026);
 
@@ -52,7 +54,7 @@ public class FiscalRegimeServiceTests
         SeedOrg(db, orgId);
         var property = SeedProperty(db, orgId, "Solo");
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         await Assert.ThrowsAsync<FiscalValidationException>(() =>
             sut.AssignRegimeAsync(orgId, property.Id, 2026, StrFiscalRegime.CedolareSecca26, false));
@@ -67,7 +69,7 @@ public class FiscalRegimeServiceTests
         var first = SeedProperty(db, orgId, "Casa Uno");
         SeedProperty(db, orgId, "Casa Due");
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         await Assert.ThrowsAsync<FiscalValidationException>(() =>
             sut.AssignRegimeAsync(orgId, first.Id, 2026, StrFiscalRegime.CedolareSecca26, false));
@@ -82,7 +84,7 @@ public class FiscalRegimeServiceTests
         var primary = SeedProperty(db, orgId, "Casa Uno");
         var secondary = SeedProperty(db, orgId, "Casa Due");
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         await sut.AssignRegimeAsync(orgId, primary.Id, 2026, StrFiscalRegime.CedolareSecca21, true);
         var result = await sut.AssignRegimeAsync(orgId, secondary.Id, 2026, StrFiscalRegime.CedolareSecca26, false);
@@ -101,7 +103,7 @@ public class FiscalRegimeServiceTests
         SeedProperty(db, orgId, "B");
         SeedProperty(db, orgId, "C");
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         await Assert.ThrowsAsync<FiscalConflictException>(() =>
             sut.AssignRegimeAsync(orgId, first.Id, 2026, StrFiscalRegime.CedolareSecca21, true));
@@ -116,7 +118,7 @@ public class FiscalRegimeServiceTests
         var first = SeedProperty(db, orgId, "Casa Cedolare");
         var second = SeedProperty(db, orgId, "Casa Impresa");
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         await sut.AssignRegimeAsync(orgId, second.Id, 2026, StrFiscalRegime.RegimeForfettario, false);
         await sut.AssignRegimeAsync(orgId, first.Id, 2026, StrFiscalRegime.CedolareSecca21, true);
@@ -147,7 +149,7 @@ public class FiscalRegimeServiceTests
             RegistrationDeadline = DateTime.UtcNow.AddDays(30),
         });
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         var snapshot = await sut.GetRegimeAsync(orgId, 2026);
 
@@ -156,9 +158,32 @@ public class FiscalRegimeServiceTests
     }
 
     [Fact]
+    public void ToPdf_LongReport_A4PagesWithEveryLine()
+    {
+        // LT-09 (A7-14): no more single Letter page cut at 4000 characters.
+        using var db = CreateDb();
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
+        var body = string.Join('\n', Enumerable.Range(1, 400).Select(i => $"Riga {i:D3} lordo 1.000,00 ritenuta 210,00 netto 790,00"));
+
+        var pdf = sut.ToPdf("Redditi 2026 – riepilogo", body);
+
+        var pages = PdfTestReader.Pages(pdf);
+        Assert.True(pages.Count > 1, $"{pages.Count} pages");
+        Assert.All(pages, page =>
+        {
+            Assert.Equal(595, Math.Round(page.Width));
+            Assert.Equal(842, Math.Round(page.Height));
+        });
+        var words = PdfTestReader.BodyWords(pdf);
+        var lines = words.Select((w, i) => (w, i)).Where(x => x.w == "Riga").Select(x => words[x.i + 1]);
+        Assert.Equal(Enumerable.Range(1, 400).Select(i => $"{i:D3}"), lines);
+        Assert.Contains("Redditi 2026 – riepilogo", PdfTestReader.Text(pdf), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ApplyWithholding_OtaAuto_DirectSkipped()
     {
-        var sut = new FiscalService(CreateDb());
+        var sut = new FiscalService(CreateDb(), new MigraDocPdfDocumentRenderer());
         var otaPayment = new Payment { Amount = 100m };
         var otaBooking = new Booking { Source = BookingSource.Airbnb };
         await sut.ApplyWithholdingOnCreateAsync(otaPayment, otaBooking, null, null);
@@ -245,7 +270,7 @@ public class FiscalRegimeServiceTests
         db.Bookings.Add(booking);
         db.Payments.AddRange(pendingPayment, completedPayment, partiallyRefundedPayment, refundedPayment);
         await db.SaveChangesAsync();
-        var sut = new FiscalService(db);
+        var sut = new FiscalService(db, new MigraDocPdfDocumentRenderer());
 
         var annual = await sut.GetAnnualReportAsync(orgId, 2026);
         var annualLine = Assert.Single(annual.Properties);
