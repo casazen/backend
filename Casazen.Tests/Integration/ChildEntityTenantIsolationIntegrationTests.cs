@@ -17,14 +17,16 @@ namespace Casazen.Tests.Integration;
 /// pricing config and history, Alloggiati reports, check-in sessions) are neither visible nor writable by
 /// a user of org B, over HTTP and directly through the tenant query filter of <see cref="AppDbContext"/>
 /// (also with B's own parent in the URL), and the rows created by org A carry org A's OrgId.
+/// Runs with <c>Features:OtaPartnerApi</c> on (FD-20): otherwise the OTA endpoints answer 404 for everyone and the
+/// OTA cases would no longer test the tenant boundary.
 /// </summary>
-public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
+public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<OtaPartnerApiEnabledFactory>
 {
     private const string OwnerRole = "PropertyOwner";
 
     private readonly CasazenWebApplicationFactory _factory;
 
-    public ChildEntityTenantIsolationIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
+    public ChildEntityTenantIsolationIntegrationTests(OtaPartnerApiEnabledFactory factory) => _factory = factory;
 
     [PostgresFact]
     public async Task PropertyDocuments_UserOfOtherOrg_CannotListOrDeleteThem()

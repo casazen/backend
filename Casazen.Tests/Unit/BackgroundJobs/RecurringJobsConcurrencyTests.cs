@@ -100,7 +100,8 @@ public class RecurringJobsConcurrencyTests
             .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
             .Callback<string, Job, string, RecurringJobOptions>((id, job, _, _) => jobs[id] = job);
 
-        RecurringJobsRegistration.Configure(manager.Object);
+        // Every flag on: the jobs behind a feature flag must be lock-protected too (FD-20).
+        RecurringJobsRegistration.Configure(manager.Object, RecurringJobsFeatureFlagTests.Flags(otaPartnerApi: true));
 
         return jobs;
     }

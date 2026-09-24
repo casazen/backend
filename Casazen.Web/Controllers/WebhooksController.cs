@@ -1,10 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -138,11 +140,13 @@ public class WebhooksController : ControllerBase
 
     /// <summary>
     /// Handles incoming OTA platform webhooks (Airbnb, Booking.com, etc.)
-    /// Queues sync jobs for background processing
+    /// Queues sync jobs for background processing.
+    /// OTA partner API in freeze (D10): 404 while <see cref="FeatureFlags.OtaPartnerApi"/> is off.
     /// </summary>
     /// <param name="platform">OTA platform name (airbnb, booking, expedia, etc.)</param>
     /// <returns>200 OK to acknowledge receipt</returns>
     [HttpPost("ota/{platform}")]
+    [FeatureGate(FeatureFlags.OtaPartnerApi)]
     public async Task<IActionResult> OtaWebhook(string platform)
     {
         try
