@@ -128,6 +128,8 @@ public class TenantQueryFilterArchitectureTests
     [InlineData(typeof(CalendarBlock))]
     [InlineData(typeof(PropertyICalFeed))]
     [InlineData(typeof(PropertyDocument))]
+    [InlineData(typeof(PropertySafetyChecklist))]
+    [InlineData(typeof(PropertySafetyChecklistItem))]
     [InlineData(typeof(OtaIntegration))]
     [InlineData(typeof(PricingAdapterConfig))]
     [InlineData(typeof(PricingHistory))]
