@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -17,8 +18,9 @@ namespace Casazen.Web.Controllers;
 /// Long-term leases. Reads need <c>lease.read</c>, each write its own lease permission. Creation and every read (list,
 /// detail, registration, checklist, advisory, receipt, exports) authorize the row as a <see cref="HostResource"/> of
 /// the lease's property (TN-3): the property owner or an org-wide member of its org with the lease permission; another
-/// org's lease is invisible (404), a lease of the org the caller may not handle answers 403. Signing, filing and the
-/// IMU "sent" attestation still act for the property owner only (services).
+/// org's lease is invisible (404), a lease of the org the caller may not handle answers 403. Signing, the provider
+/// filing delega and the IMU "sent" attestation still act for the property owner only (services); the manual RLI
+/// declaration needs <c>lease.register</c> on the lease (LT-01).
 /// Responses are DTOs (LT-11, A7-17): never EF entities, no clear personal data of the parties.
 /// </summary>
 [ApiController]
@@ -37,6 +39,9 @@ public class LeasesController(
 {
     private const string LeaseNotFoundCode = "lease_not_found";
     private const string PropertyNotFoundCode = "property_not_found";
+
+    /// <summary>The receipt (at most <see cref="RliRegistrationLimits.MaxReceiptBytes"/>) plus the other form fields.</summary>
+    private const long ManualRegistrationRequestLimit = RliRegistrationLimits.MaxReceiptBytes + 64 * 1024;
 
     private string? GetOwnerId() => User.GetUserId();
 
@@ -154,17 +159,29 @@ public class LeasesController(
         return File(pdf, "application/pdf", $"bozza-contratto-{id}.pdf");
     }
 
-    /// <summary>Submit a Signed lease to the filing channel after per-lease delega (async).</summary>
+    /// <summary>
+    /// Submits a Signed lease to the RLI filing provider on the owner's delega (LT-01). Only with
+    /// <c>Features:RliProvider</c> on (404 otherwise) and a configured provider (409 <c>rli_provider_unavailable</c>).
+    /// 202: the filing is <b>in progress</b>, not done; the lease is Registered only when the provider returns the
+    /// receipt. 502 <c>rli_provider_failed</c>: the failure is recorded (registration Failed, lease Signed) and the
+    /// landlord can retry or register manually.
+    /// </summary>
     [HttpPost("{id:guid}/registration")]
+    [FeatureGate(FeatureFlags.RliProvider)]
     [Authorize(Policy = CasazenPolicies.LeaseRegister)]
-    public async Task<IActionResult> TriggerRegistration(Guid id, [FromBody] TriggerRegistrationDto dto)
+    public async Task<IActionResult> TriggerRegistration(
+        Guid id,
+        [FromBody] TriggerRegistrationDto dto,
+        [FromServices] IRliRegistrationService registrations)
     {
         if (GetOwnerId() is not { } ownerId) return Unauthorized();
-        if (dto is null || !dto.AttestationAccepted)
-            return BadRequest(new { error = localizer["RliDelegaRequired"].Value });
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null)
+            return denied;
+
         try
         {
-            var registration = await leaseService.TriggerRegistrationAsync(
+            var registration = await registrations.SubmitToProviderAsync(
                 id, ownerId, new RegistrationAuthorizationRequest(dto.TosVersion, dto.AttestationAccepted));
             return Accepted(new
             {
@@ -173,14 +190,54 @@ public class LeasesController(
                 message = localizer["RliRegistrationAccepted"].Value
             });
         }
+        catch (LeaseRegistrationProviderException)
+        {
+            // Logged with its cause by the service; the client learns only that the provider failed.
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway, RliRegistrationErrorCodes.ProviderFailed, "RliProviderFailed");
+        }
+        catch (ApeComplianceException ex)
+        {
+            var error = ex.Code == ApeComplianceException.InvalidContentCode
+                ? localizer["ApeInvalidContent"].Value
+                : ex.Message;
+            return BadRequest(new { error, code = ex.Code });
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+    }
+
+    /// <summary>
+    /// Manual registration (LT-01, default path, D15): the landlord filed the contract on the official channel of the
+    /// Agenzia delle Entrate and declares the registration number or protocol, its date and the receipt PDF (private
+    /// bucket, FD-07). Only now the lease becomes Registered. Multipart fields: <c>registrationCode</c>,
+    /// <c>registrationDate</c>, <c>receipt</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/registration/manual")]
+    [Consumes("multipart/form-data")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    [RequestSizeLimit(ManualRegistrationRequestLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ManualRegistrationRequestLimit)]
+    public async Task<ActionResult<LeaseRegistrationDto>> DeclareManualRegistration(
+        Guid id,
+        [FromForm] ManualRegistrationForm form,
+        [FromServices] IRliRegistrationService registrations,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } userId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null)
+            return denied;
+
+        await using var receipt = form.Receipt!.OpenReadStream();
+        var registration = await registrations.DeclareManualRegistrationAsync(
+            id,
+            userId,
+            new ManualRegistrationDeclaration(form.RegistrationCode!, form.RegistrationDate!.Value, receipt, form.Receipt.Length),
+            cancellationToken);
+        return Ok(LeaseDtoMapper.ToRegistration(registration));
     }
 
     [HttpGet("{id:guid}/rli/advisory")]
@@ -222,7 +279,8 @@ public class LeasesController(
             result.DaysRemaining,
             result.TosVersion,
             result.AttestationText,
-            result.Items.Select(i => new RliChecklistItemResponse(i.Key, ChecklistLabel(i.Key), i.Done)).ToList()));
+            result.ProviderFilingAvailable,
+            result.Items.Select(i => new RliChecklistItemResponse(i.Key, ChecklistLabel(i.Key), i.Done, i.Failed)).ToList()));
     }
 
     /// <summary>Get current RLI registration status.</summary>
@@ -239,23 +297,23 @@ public class LeasesController(
         return Ok(LeaseDtoMapper.ToRegistration(registration));
     }
 
-    /// <summary>Download the official RLI registration receipt (PDF).</summary>
+    /// <summary>
+    /// The RLI registration receipt (PDF) from the private bucket (FD-07): only through this authenticated endpoint, for
+    /// a caller who may read the lease (TN-3). 404 <c>rli_receipt_not_available</c> until the lease is registered.
+    /// </summary>
     [HttpGet("{id:guid}/registration/receipt")]
-    public async Task<IActionResult> GetReceipt(Guid id)
+    public async Task<IActionResult> GetReceipt(
+        Guid id,
+        [FromServices] IRliRegistrationService registrations,
+        CancellationToken cancellationToken)
     {
         var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
         if (denied is not null)
             return denied;
 
-        try
-        {
-            var stream = await leaseService.GetRegistrationReceiptAsync(id);
-            return File(stream, "application/pdf", $"receipt-{id}.pdf");
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
+        var receipt = await registrations.OpenReceiptAsync(id, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(receipt.Content, "application/pdf", receipt.FileName);
     }
 
     /// <summary>Export a draft comune IMU-reduction notification (PDF). Landlord sends it themselves.</summary>
@@ -324,15 +382,20 @@ public class LeasesController(
     }
 }
 
-/// <summary>RLI checklist as returned by the API, with labels in the request language.</summary>
+/// <summary>
+/// RLI checklist as returned by the API, with labels in the request language. <c>ProviderFilingAvailable</c>: the
+/// provider path exists (flag on and configured provider); otherwise the landlord registers manually (LT-01).
+/// </summary>
 public record RliChecklistResponse(
     DateTime RegistrationDeadline,
     int DaysRemaining,
     string TosVersion,
     string AttestationText,
+    bool ProviderFilingAvailable,
     IReadOnlyList<RliChecklistItemResponse> Items);
 
-public record RliChecklistItemResponse(string Key, string Label, bool Done);
+/// <summary>A checklist item: <c>Done</c> only when the step happened, <c>Failed</c> when its last attempt failed.</summary>
+public record RliChecklistItemResponse(string Key, string Label, bool Done, bool Failed);
 
 public record CreateLeaseDto(
     [param: Required] Guid PropertyId,
@@ -365,3 +428,19 @@ public record CreatePartyDto(
 public record TriggerRegistrationDto(
     [param: Required, MaxLength(80)] string TosVersion,
     [param: Required] bool AttestationAccepted);
+
+/// <summary>Manual RLI registration: what the landlord reads on the receipt of the Agenzia delle Entrate, plus the receipt.</summary>
+public sealed class ManualRegistrationForm
+{
+    /// <summary>Registration number or protocol, as written on the receipt.</summary>
+    [Required, StringLength(RliRegistrationLimits.MaxRegistrationCodeLength, MinimumLength = 1)]
+    public string? RegistrationCode { get; set; }
+
+    /// <summary>Date of the registration (calendar date).</summary>
+    [Required]
+    public DateTime? RegistrationDate { get; set; }
+
+    /// <summary>The receipt, a PDF of at most 10 MB.</summary>
+    [Required]
+    public IFormFile? Receipt { get; set; }
+}
