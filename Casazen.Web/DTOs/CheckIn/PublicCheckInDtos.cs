@@ -205,17 +205,65 @@ public static class StayGuestFieldLimits
     public const int Label = 100;
 }
 
-public class ResendCheckInLinkResponse
+/// <summary>
+/// A check-in link the host just generated (<c>POST /api/bookings/{id}/checkin/link</c>) or sent
+/// (<c>POST .../checkin/resend-link</c>): the link to copy, always, and the real state of its email (CO-09).
+/// </summary>
+public class CheckInLinkResponse
 {
-    public bool Success { get; set; }
-    public string? Message { get; set; }
-    public string? CheckInLink { get; set; }
+    public string CheckInLink { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+
+    /// <summary><c>NotRequested</c> (link to copy), <c>Queued</c> or <c>Failed</c> (with <see cref="EmailError"/>).</summary>
+    public GuestCheckInLinkEmailStatus EmailStatus { get; set; }
+
+    /// <summary>Stable reason of a failed email (<see cref="GuestCheckInLinkEmailErrors"/>).</summary>
+    public string? EmailError { get; set; }
 }
 
+/// <summary>
+/// The check-in link of a booking as the host sees it (<c>GET /api/bookings/{id}/checkin-session</c>). Every field but
+/// <see cref="CanIssueLink"/> is null when no link was ever issued.
+/// </summary>
 public class CheckInSessionStatusResponse
 {
     public Guid? SessionId { get; set; }
+
+    /// <summary>Status at the time of the request: an open link past its expiry is <c>Scaduto</c> (A5-27).</summary>
     public string? Status { get; set; }
+
+    public DateTime? IssuedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>When the email was handed to the provider; null when it was not.</summary>
     public DateTime? SentAt { get; set; }
+
     public DateTime? CompletedAt { get; set; }
+
+    /// <summary>State of the link email; null for links issued before CO-09 (unknown).</summary>
+    public GuestCheckInLinkEmailStatus? EmailStatus { get; set; }
+
+    public string? EmailError { get; set; }
+
+    /// <summary>
+    /// A new link can be generated or sent: the booking is confirmed or checked in and the guest has not completed the
+    /// check-in. The caller also needs <c>booking.write</c>.
+    /// </summary>
+    public bool CanIssueLink { get; set; }
+
+    public static CheckInSessionStatusResponse From(GuestCheckInSession? session, bool bookingEligible, DateTime nowUtc) =>
+        session is null
+            ? new CheckInSessionStatusResponse { CanIssueLink = bookingEligible }
+            : new CheckInSessionStatusResponse
+            {
+                SessionId = session.Id,
+                Status = session.EffectiveStatus(nowUtc).ToString(),
+                IssuedAt = session.CreatedAt,
+                ExpiresAt = session.ExpiresAt,
+                SentAt = session.SentAt,
+                CompletedAt = session.CompletedAt,
+                EmailStatus = session.LinkEmailStatus,
+                EmailError = session.LinkEmailStatus == GuestCheckInLinkEmailStatus.Failed ? session.LinkEmailError : null,
+                CanIssueLink = bookingEligible && !session.IsCompleted,
+            };
 }

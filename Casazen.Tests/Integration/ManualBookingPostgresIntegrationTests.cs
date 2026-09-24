@@ -142,8 +142,9 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
 
         Assert.Equal(HttpStatusCode.OK, link.StatusCode);
         var linkBody = await link.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(linkBody.GetProperty("success").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(linkBody.GetProperty("checkInLink").GetString()));
+        // No email provider in the test host: the link is returned anyway and the email is reported as failed (CO-09).
+        Assert.Equal("Failed", linkBody.GetProperty("emailStatus").GetString());
 
         var checkIn = await host.PostAsync($"/api/bookings/{bookingId}/check-in", null);
 

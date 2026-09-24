@@ -1,12 +1,15 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -18,13 +21,21 @@ public class GuestCheckInService(
     AppDbContext db,
     ILogger<GuestCheckInService> logger,
     IStayGuestService? stayGuestService = null,
-    IAlloggiatiCodeTableService? codeTableService = null) : IGuestCheckInService
+    IAlloggiatiCodeTableService? codeTableService = null,
+    IOptions<GuestCheckInOptions>? options = null,
+    TimeProvider? timeProvider = null) : IGuestCheckInService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
+
     private readonly IAlloggiatiCodeTableService _codeTables =
         codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
 
     private readonly IStayGuestService _stayGuests = stayGuestService
         ?? new StayGuestService(db, codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance));
+
+    /// <summary>Attempts of <see cref="IssueLinkAsync"/> when another link of the booking is issued at the same time.</summary>
+    private const int MaxIssueAttempts = 3;
 
     private const string DocumentNumberMask = "*****";
     private const int DocumentNumberVisibleChars = 3;
@@ -36,10 +47,8 @@ public class GuestCheckInService(
         GuestCheckInSessionStatus.InCompilazione,
     ];
 
-    private static readonly GuestCheckInSessionStatus[] ActiveStatuses =
+    private static readonly GuestCheckInSessionStatus[] CompletedStatuses =
     [
-        GuestCheckInSessionStatus.Inviato,
-        GuestCheckInSessionStatus.InCompilazione,
         GuestCheckInSessionStatus.Completo,
         GuestCheckInSessionStatus.AlloggiatiInviato,
     ];
@@ -47,28 +56,88 @@ public class GuestCheckInService(
     public async Task<string> CreateSessionAsync(Guid bookingId, Guid orgId)
     {
         await MakeRoomForNewSentSessionAsync(bookingId);
+        return (await AddSessionAsync(bookingId, orgId)).Token;
+    }
 
+    public async Task<IssuedCheckInLink> IssueLinkAsync(Guid bookingId, Guid orgId)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            await ExpireOpenSessionsAsync(bookingId);
+            try
+            {
+                return await AddSessionAsync(bookingId, orgId);
+            }
+            catch (DbUpdateException ex) when (
+                attempt < MaxIssueAttempts &&
+                ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // Another link of the booking was issued at the same time (host and send job): this one replaces it.
+                logger.LogInformation("Check-in link of booking {BookingId} issued concurrently, replacing it", bookingId);
+            }
+        }
+    }
+
+    public async Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = UtcNow();
+        var stale = await db.GuestCheckInSessions
+            .Where(s => OpenLinkStatuses.Contains(s.Status) && s.ExpiresAt < now)
+            .ToListAsync(cancellationToken);
+
+        foreach (var session in stale)
+        {
+            session.Status = GuestCheckInSessionStatus.Scaduto;
+            session.UpdatedAt = now;
+        }
+
+        if (stale.Count > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Expired {Count} guest check-in links past their validity", stale.Count);
+        }
+
+        return stale.Count;
+    }
+
+    /// <summary>SHA-256 hex of a raw token: the only form stored (<see cref="GuestCheckInSession.TokenHash"/>).</summary>
+    public static string HashToken(string token) => ComputeSha256Hex(token);
+
+    private async Task<IssuedCheckInLink> AddSessionAsync(Guid bookingId, Guid orgId)
+    {
         var rawToken = GenerateToken();
-        var tokenHash = ComputeSha256Hex(rawToken);
+        var now = UtcNow();
 
         var session = new GuestCheckInSession
         {
             BookingId = bookingId,
             OrgId = orgId,
-            TokenHash = tokenHash,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            TokenHash = ComputeSha256Hex(rawToken),
+            ExpiresAt = now.Add(_options.SessionLifetime),
             Status = GuestCheckInSessionStatus.Inviato,
-            SentAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            // Set when an email is actually handed to the provider (CO-09): a link to copy is not "sent".
+            SentAt = null,
+            LinkEmailStatus = GuestCheckInLinkEmailStatus.NotRequested,
+            CreatedAt = now,
+            UpdatedAt = now,
         };
 
         db.GuestCheckInSessions.Add(session);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(session).State = EntityState.Detached;
+            throw;
+        }
 
         logger.LogInformation("Created guest check-in session {SessionId} for booking {BookingId}", session.Id, bookingId);
-        return rawToken;
+        return new IssuedCheckInLink(session.Id, rawToken, session.ExpiresAt);
     }
+
+    private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 
     public async Task<GuestCheckInSession?> GetSessionByTokenAsync(string token)
     {
@@ -164,7 +233,7 @@ public class GuestCheckInService(
         if (session is null)
             return null;
 
-        if (session.ExpiresAt < DateTime.UtcNow || session.Status == GuestCheckInSessionStatus.Scaduto)
+        if (session.ExpiresAt < UtcNow() || session.Status == GuestCheckInSessionStatus.Scaduto)
             return null;
 
         if (!IsBookingEligibleForPublicCheckIn(session.Booking.Status))
@@ -174,7 +243,7 @@ public class GuestCheckInService(
         if (session.Status == GuestCheckInSessionStatus.Inviato)
         {
             session.Status = GuestCheckInSessionStatus.InCompilazione;
-            session.UpdatedAt = DateTime.UtcNow;
+            session.UpdatedAt = UtcNow();
             await db.SaveChangesAsync();
         }
 
@@ -184,8 +253,10 @@ public class GuestCheckInService(
     public async Task<GuestCheckInSession?> GetSessionForBookingAsync(Guid bookingId)
     {
         return await db.GuestCheckInSessions
-            .Where(s => s.BookingId == bookingId && ActiveStatuses.Contains(s.Status))
-            .OrderByDescending(s => s.CreatedAt)
+            .AsNoTracking()
+            .Where(s => s.BookingId == bookingId)
+            .OrderByDescending(s => CompletedStatuses.Contains(s.Status))
+            .ThenByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync();
     }
 
@@ -212,11 +283,11 @@ public class GuestCheckInService(
         if (errors.Count > 0)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = errors };
 
-        var now = DateTime.UtcNow;
+        var now = UtcNow();
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
         // Stages the rows: the session is completed in the same SaveChanges.
-        var saved = await _stayGuests.ReplaceAsync(session.Booking, request.Guests, save: false);
+        var saved = await _stayGuests.ReplaceAsync(session.Booking, request.Guests, StayGuestAuthor.GuestPortal, save: false);
         if (!saved.Success)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = saved.Errors };
 
@@ -253,20 +324,26 @@ public class GuestCheckInService(
         };
     }
 
-    public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId)
+    public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId) =>
+        (await IssueLinkAsync(bookingId, orgId)).Token;
+
+    /// <summary>Expires every open link of the booking: a new link replaces them (the unique index allows one per status).</summary>
+    private async Task ExpireOpenSessionsAsync(Guid bookingId)
     {
-        var activeSessions = await db.GuestCheckInSessions
+        var openSessions = await db.GuestCheckInSessions
             .Where(s => s.BookingId == bookingId && OpenLinkStatuses.Contains(s.Status))
             .ToListAsync();
+        if (openSessions.Count == 0)
+            return;
 
-        foreach (var s in activeSessions)
+        var now = UtcNow();
+        foreach (var s in openSessions)
         {
             s.Status = GuestCheckInSessionStatus.Scaduto;
-            s.UpdatedAt = DateTime.UtcNow;
+            s.UpdatedAt = now;
         }
 
         await db.SaveChangesAsync();
-        return await CreateSessionAsync(bookingId, orgId);
     }
 
     public async Task ExpireTokenAsync(string token)
@@ -279,7 +356,7 @@ public class GuestCheckInService(
             return;
 
         session.Status = GuestCheckInSessionStatus.Scaduto;
-        session.UpdatedAt = DateTime.UtcNow;
+        session.UpdatedAt = UtcNow();
         await db.SaveChangesAsync();
     }
 
@@ -296,7 +373,7 @@ public class GuestCheckInService(
         foreach (var session in activeSessions)
         {
             session.Status = GuestCheckInSessionStatus.Scaduto;
-            session.UpdatedAt = DateTime.UtcNow;
+            session.UpdatedAt = UtcNow();
         }
 
         await db.SaveChangesAsync();
@@ -316,7 +393,7 @@ public class GuestCheckInService(
             .AnyAsync(s => s.BookingId == bookingId && s.Status == GuestCheckInSessionStatus.InCompilazione);
 
         var preserveOneUsableLink = !hasInProgressSession;
-        var now = DateTime.UtcNow;
+        var now = UtcNow();
         foreach (var session in sentSessions)
         {
             session.Status = preserveOneUsableLink

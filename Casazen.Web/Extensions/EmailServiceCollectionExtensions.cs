@@ -52,6 +52,9 @@ public static class EmailServiceCollectionExtensions
         services.AddSingleton<PublicSiteLinks>();
         services.AddScoped<IEmailQueue, HangfireEmailQueue>();
         services.AddScoped<EmailDeliveryJob>();
+        // Check-in link email with its outcome recorded on the session (CO-09).
+        services.AddScoped<IGuestCheckInLinkEmailQueue, GuestCheckInLinkEmailQueue>();
+        services.AddScoped<GuestCheckInLinkEmailJob>();
 
         return services;
     }

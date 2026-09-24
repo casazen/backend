@@ -4,17 +4,13 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
-using Casazen.Infrastructure.Email;
-using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.Infrastructure;
-using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -27,10 +23,6 @@ public class BookingsController(
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
-    IGuestCheckInService checkInService,
-    IEmailQueue emailQueue,
-    PublicSiteLinks publicSiteLinks,
-    IStringLocalizer<SharedResources> localizer,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -293,88 +285,6 @@ public class BookingsController(
         UpdatedAt = DateTime.UtcNow,
     };
 
-    /// <summary>Regenerates the guest check-in token and resends the email (AC9, US-020).</summary>
-    [HttpPost("{id}/checkin/resend-link")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.write")]
-    public async Task<ActionResult<DTOs.CheckIn.ResendCheckInLinkResponse>> ResendCheckInLink(Guid id)
-    {
-        var userId = GetUserId();
-        if (userId is null) return Unauthorized();
-        var booking = await bookingService.GetBookingAsync(id);
-        if (booking is null) return NotFound();
-        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
-        if (property is null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
-
-        if (!IsPublicCheckInLinkEligible(booking.Status))
-        {
-            return Conflict(new DTOs.CheckIn.ResendCheckInLinkResponse
-            {
-                Success = false,
-                Message = $"Il link check-in è disponibile solo per prenotazioni confermate o in check-in. Stato attuale: {booking.Status}.",
-            });
-        }
-
-        var existingSession = await checkInService.GetSessionForBookingAsync(booking.Id);
-        if (existingSession?.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato)
-        {
-            return Conflict(new DTOs.CheckIn.ResendCheckInLinkResponse
-            {
-                Success = false,
-                Message = "Il check-in è già stato completato.",
-            });
-        }
-
-        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any session is created: never a wrong link.
-        publicSiteLinks.EnsureConfigured();
-
-        var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
-        var link = publicSiteLinks.GuestCheckIn(token);
-        var email = EmailTemplates.GuestCheckInLink(
-            EmailTemplates.DefaultCulture,
-            booking.Guest.FirstName,
-            property.Name,
-            booking.CheckInDate,
-            link);
-
-        // Delivered by a Hangfire job: the provider is never called inside the request.
-        var emailQueued = emailQueue.Enqueue(booking.Guest.Email, email, EmailTemplates.Names.GuestCheckInLink);
-        if (!emailQueued)
-            logger.LogWarning("Check-in link created for booking {BookingId} but its email was not queued", booking.Id);
-
-        await checkInService.ExpireOtherActiveSessionsAsync(booking.Id, token);
-
-        return Ok(new DTOs.CheckIn.ResendCheckInLinkResponse
-        {
-            Success = true,
-            CheckInLink = link,
-            Message = emailQueued ? localizer["CheckInLinkEmailQueued"] : localizer["CheckInLinkEmailNotQueued"],
-        });
-    }
-
-    /// <summary>Returns the current active guest check-in session for a booking (host view).</summary>
-    [HttpGet("{id}/checkin-session")]
-    [Authorize(Policy = "RequireContext:short-rent:booking.read")]
-    public async Task<ActionResult<DTOs.CheckIn.CheckInSessionStatusResponse>> GetCheckInSession(Guid id)
-    {
-        var userId = GetUserId();
-        if (userId is null) return Unauthorized();
-        var booking = await bookingService.GetBookingAsync(id);
-        if (booking is null) return NotFound();
-        var property = await propertyService.GetPropertyAsync(booking.PropertyId);
-        if (property is null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles())) return Forbid();
-
-        var session = await checkInService.GetSessionForBookingAsync(booking.Id);
-        return Ok(new DTOs.CheckIn.CheckInSessionStatusResponse
-        {
-            SessionId = session?.Id,
-            Status = session?.Status.ToString(),
-            SentAt = session?.SentAt,
-            CompletedAt = session?.CompletedAt,
-        });
-    }
-
     private string? GetUserId() =>
         User.FindFirst("sub")?.Value
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -382,9 +292,6 @@ public class BookingsController(
 
     private IReadOnlyList<string> GetUserRoles() =>
         User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
-
-    private static bool IsPublicCheckInLinkEligible(BookingStatus status) =>
-        status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
     private async Task<IReadOnlyList<Booking>> FilterAccessibleBookingsAsync(IEnumerable<Booking> bookings, string userId)
     {
