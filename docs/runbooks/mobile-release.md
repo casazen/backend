@@ -52,12 +52,16 @@ EAS has three environments: `development`, `preview`, `production` (expo.dev →
 | `EXPO_PUBLIC_API_URL` | Railway `test` public URL, `https://<railway-test-host>` (same as GitHub variable `RAILWAY_TEST_URL`) | Railway `production` public URL (`RAILWAY_PROD_URL`) | Usually unset: developers use `.env` (`http://<LAN IP>:5000`) |
 | `EXPO_PUBLIC_WEB_URL` | Vercel staging deployment of `develop`, `https://<staging-host>` | `https://casazen-app.vercel.app` | unset |
 | `EXPO_PUBLIC_AUTH0_DOMAIN` | test tenant, e.g. `casazen-test.eu.auth0.com` (host name only, no `https://`) | production tenant, e.g. `casazen.eu.auth0.com` | unset |
-| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app in the test tenant | client id of the **Native** app in the production tenant | unset |
+| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app `CasaZen Host (mobile)` in the test tenant ([auth0.md](auth0.md) section 7), never the SPA client id | client id of the **Native** app in the production tenant | unset: developers set it in `.env` (Native app of the dev/test tenant). It has **no** local default |
 | `EXPO_PUBLIC_AUTH0_AUDIENCE` | API identifier of the test tenant (auth0.md section 2, e.g. `https://casazen-api`) | API identifier of the production tenant | unset |
+| `EXPO_PUBLIC_E2E_DEMO` | **do not set** | **do not set** | optional, `1` only for the Maestro demo button in Metro bundles |
 
 Rules enforced by the app and by the EAS build:
 
-- every variable is required outside `__DEV__`;
+- every variable is required outside `__DEV__`; `EXPO_PUBLIC_AUTH0_CLIENT_ID` is required in `__DEV__` too
+  (the login configuration error `AUTH_CONFIG_INVALID` is shown without it);
+- `EXPO_PUBLIC_E2E_DEMO` is ignored outside `__DEV__`: a preview / production build never shows the demo
+  button, and the demo code is not in the release bundle (mobile CI checks it);
 - URLs must be absolute `https://` URLs without query string, and must not point to `localhost`, `127.x`, `10.0.2.2` (Android emulator) or `0.0.0.0`. Android release builds block cleartext http anyway;
 - trailing slashes are removed; `EXPO_PUBLIC_API_URL` has **no** `/api` suffix (the app adds it);
 - `EXPO_PUBLIC_AUTH0_DOMAIN` is a bare host name.
@@ -107,7 +111,7 @@ Set the variables in the EAS environment of this profile (expo.dev → project �
 
 Fix the variable in the EAS environment and start the build again. The check runs where EAS sets `EAS_BUILD=true` (cloud workers and `eas build --local`); builds started from the expo.dev GitHub integration were not tried: run one `preview` build that way before relying on it. iOS internal builds also need the testers' devices registered (`npx eas-cli@latest device:create`).
 
-Smoke test of each build: install it, the app must open the login screen (not "Configurazione dell'app incompleta"), log in against the tenant of that environment, and the calendar must load from the matching backend.
+Smoke test of each build: install it, the app must open the login screen (not "Configurazione dell'app incompleta"), log in against the tenant of that environment, and the calendar must load from the matching backend. The full login check (callback URLs per platform, Auth0 logs, token claims) is in [auth0.md](auth0.md) section 7.7. Before the first build of a profile, the Native application of its tenant must list the two callback URLs built with that profile's `EXPO_PUBLIC_AUTH0_DOMAIN` (auth0.md section 7.2).
 
 Local release bundles (`npx expo run:android --variant release`, `npx expo export`) are not checked at build time: without the variables they build, and the app shows the `CONFIG_ENV_INVALID` screen at startup. The mobile CI (`expo export`) relies on this and needs no variables.
 
@@ -149,6 +153,8 @@ Both query `api.expo.dev` (and `expo-doctor` also `reactnative.directory`). With
 | Symptom | Cause | Action |
 |---|---|---|
 | App shows "Configurazione dell'app incompleta" (`CONFIG_ENV_INVALID`) | Release bundle built without the listed `EXPO_PUBLIC_*` variables, or with http / local URLs | Set them in the EAS environment of the profile (section 2) and rebuild |
+| App shows "Configurazione dell'app incompleta" (`AUTH_CONFIG_INVALID`) | Login cannot be configured: `EXPO_PUBLIC_AUTH0_CLIENT_ID` missing (development builds), or `app.json` lacks `scheme` / `ios.bundleIdentifier` / `android.package` | Set the client id of the Native app (auth0.md section 7) or restore `app.json` |
+| Auth0 page "Callback URL mismatch" after "Continua con Auth0" | Callback URLs of the Native app do not match the build (domain of the profile, platform) or the build has the SPA client id | [auth0.md](auth0.md) sections 7.2 and 7.7 |
 | `eas build` asks to create a project or says the project is not configured | `EAS_PROJECT_ID` not exported in the shell | Section 1 |
 | Every Expo command fails with `EAS_PROJECT_ID="..." is not a valid EAS project id` | Placeholder or typo in `EAS_PROJECT_ID` | Use the UUID from `eas init` / `project:info` |
 | Log `[push] PUSH_PROJECT_ID_MISSING` | Local build without `EAS_PROJECT_ID` | Set it in `.env` (development) or the shell; EAS builds get it automatically |

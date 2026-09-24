@@ -357,6 +357,9 @@
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
   </data>
+  <data name="ServiceCategoryInvalid" xml:space="preserve">
+    <value>La categoria di servizio «{0}» non è valida: scegline una dall'elenco delle categorie disponibili.</value>
+  </data>
   <data name="AiBudgetExhaustedDetail" xml:space="preserve">
     <value>Il budget mensile per le funzioni AI della piattaforma è esaurito. Riprova il mese prossimo o contatta il supporto.</value>
   </data>

@@ -357,6 +357,9 @@
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Enter the property's city in the basic details to see the tourist tax rate. This does not block the activation.</value>
   </data>
+  <data name="ServiceCategoryInvalid" xml:space="preserve">
+    <value>The service category "{0}" is not valid: choose one from the list of available categories.</value>
+  </data>
   <data name="AiBudgetExhaustedDetail" xml:space="preserve">
     <value>The platform's monthly budget for AI features is used up. Try again next month or contact support.</value>
   </data>

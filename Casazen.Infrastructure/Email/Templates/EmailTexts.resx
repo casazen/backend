@@ -141,4 +141,34 @@
   <data name="RliExtraEuNotice_Disclaimer" xml:space="preserve">
     <value>Testo bozza da confermare con legale. CasaZen non invia la comunicazione.</value>
   </data>
+  <data name="ServiceCategory_cleaning" xml:space="preserve">
+    <value>Pulizie</value>
+  </data>
+  <data name="ServiceCategory_maintenance" xml:space="preserve">
+    <value>Manutenzione</value>
+  </data>
+  <data name="ServiceCategory_plumbing" xml:space="preserve">
+    <value>Idraulico</value>
+  </data>
+  <data name="ServiceCategory_laundry" xml:space="preserve">
+    <value>Lavanderia</value>
+  </data>
+  <data name="ServiceCategory_linen" xml:space="preserve">
+    <value>Biancheria</value>
+  </data>
+  <data name="ServiceCategory_check-in" xml:space="preserve">
+    <value>Check-in ospiti</value>
+  </data>
+  <data name="ServiceCategory_gardening" xml:space="preserve">
+    <value>Giardinaggio</value>
+  </data>
+  <data name="ServiceCategory_events" xml:space="preserve">
+    <value>Eventi</value>
+  </data>
+  <data name="ServiceCategory_rental" xml:space="preserve">
+    <value>Noleggio</value>
+  </data>
+  <data name="ServiceCategory_excursions" xml:space="preserve">
+    <value>Escursioni</value>
+  </data>
 </root>

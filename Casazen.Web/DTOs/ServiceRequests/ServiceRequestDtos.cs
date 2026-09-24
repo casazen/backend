@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
+using Casazen.Core.Validation;
 
 namespace Casazen.Web.DTOs.ServiceRequests;
 
@@ -34,12 +34,7 @@ public class MatchSupplierRequest
     public Guid PropertyId { get; set; }
 
     [Required(ErrorMessage = "ServiceCategoryRequired")]
-    [AllowedValues(
-        ServiceCategories.Cleaning,
-        ServiceCategories.Maintenance,
-        ServiceCategories.Plumbing,
-        ServiceCategories.Laundry,
-        ErrorMessage = "ServiceCategoryNotSupported")]
+    [ServiceCategoryCode(ErrorMessage = "ServiceCategoryNotSupported")]
     public string Category { get; set; } = string.Empty;
 
     [EnumDataType(typeof(ServiceRequestUrgency))]
