@@ -367,12 +367,13 @@ section "Maestro E2E". The automated login flow belongs to task FN-04.
 **Logout** (tab **Profilo → Esci**, also on the "Account disattivato" and activation screens), in this order:
 
 1. `DELETE /api/devices/{deviceId}` with the current session: this phone stops receiving the user's pushes. The id is
-   the one the app registered with `POST /api/devices` (kept in SecureStore). The backend removes only the caller's
-   own registration (404 for any other user).
+   the one the app registered with `POST /api/devices` (kept in SecureStore); a registration still running is waited
+   for first (MO-03). The backend removes only the caller's own registration (404 for any other user).
 2. `POST https://<domain>/oauth/revoke` with the refresh token and the Native `client_id` (public client, no
    secret): the refresh token can no longer be exchanged for access tokens.
-3. React Query cache cleared (`queryClient.clear()`), then every value in SecureStore removed (tokens, expiry,
-   device id). A refresh still running cannot store its tokens any more.
+3. React Query cache cleared (`queryClient.clear()`), then every session value in SecureStore removed (tokens, expiry,
+   registered device id). A refresh still running cannot store its tokens any more. The installation id used as
+   `deviceId` (MO-03, [mobile-release.md](mobile-release.md) section 9) stays: it identifies the phone, not the user.
 4. `https://<domain>/v2/logout?client_id=…&returnTo=<redirect URI>` in the system browser: ends the Auth0 session of
    the browser, otherwise the next **Continua con Auth0** would sign the previous user in without asking for the
    password. On iOS the system asks "CasaZen wants to use auth0.com to sign in" (standard for the authentication
