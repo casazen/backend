@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
@@ -12,8 +13,7 @@ public record CreateServiceRequestCommand(
     string Category,
     ServiceRequestUrgency Urgency,
     string? Notes,
-    bool ChargeToGuest,
-    IEnumerable<string>? UserRoles = null);
+    bool ChargeToGuest);
 
 public interface IServiceRequestService
 {
@@ -21,18 +21,14 @@ public interface IServiceRequestService
     Task<ServiceRequest> TakeAsync(Guid id, Guid supplierOrgId, string userId, CancellationToken cancellationToken = default);
     Task<ServiceRequest> CompleteAsync(Guid id, Guid supplierOrgId, string? notes, CancellationToken cancellationToken = default);
     Task<ServiceRequest> RejectAsync(Guid id, Guid supplierOrgId, string reason, CancellationToken cancellationToken = default);
-    Task<ServiceRequest> MarkPaidAsync(Guid id, Guid hostOrgId, string userId, CancellationToken cancellationToken = default);
-    Task<ServiceRequest?> GetByIdForHostAsync(
-        Guid id,
-        Guid hostOrgId,
-        string userId,
-        IEnumerable<string> userRoles,
-        CancellationToken cancellationToken = default);
+    /// <summary>Marks a completed request of <paramref name="hostOrgId"/> as paid; another org's request is not found.</summary>
+    Task<ServiceRequest> MarkPaidAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>A request visible in the host scope (org, and the owner's properties when set); <c>null</c> otherwise.</summary>
+    Task<ServiceRequest?> GetByIdForHostAsync(Guid id, HostScope scope, CancellationToken cancellationToken = default);
     Task<ServiceRequest?> GetByIdForSupplierAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
-        Guid orgId,
-        string userId,
-        IEnumerable<string> userRoles,
+        HostScope scope,
         ServiceRequestStatus? status,
         Guid? propertyId,
         Guid? bookingId,

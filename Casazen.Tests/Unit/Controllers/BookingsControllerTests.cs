@@ -996,7 +996,6 @@ public class BookingsControllerTests
             s => s.CompleteCheckoutWizardAsync(
                 It.IsAny<Guid>(),
                 It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
                 It.IsAny<CompleteCheckoutWizardInput>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);

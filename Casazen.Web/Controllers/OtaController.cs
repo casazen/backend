@@ -10,7 +10,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:ota.read")]
 public class OtaController : ControllerBase
 {
     private readonly IOtaManager _otaManager;
@@ -59,6 +59,7 @@ public class OtaController : ControllerBase
     }
 
     [HttpPost("sync")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> SyncAll([FromQuery] Guid propertyId)
     {
         try
@@ -88,6 +89,7 @@ public class OtaController : ControllerBase
     }
 
     [HttpPost("sync-platform")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public IActionResult SyncPlatform([FromQuery] string platform, [FromQuery] string externalId)
     {
         try
@@ -133,6 +135,7 @@ public class OtaController : ControllerBase
     }
 
     [HttpPut("pricing")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> UpdatePricing([FromQuery] Guid propertyId, [FromQuery] decimal newPrice)
     {
         try
@@ -152,6 +155,7 @@ public class OtaController : ControllerBase
     }
 
     [HttpPost("validate")]
+    [Authorize(Policy = "RequireContext:short-rent:ota.write")]
     public async Task<IActionResult> ValidateIntegration([FromQuery] string platform, [FromQuery] string apiKey)
     {
         try

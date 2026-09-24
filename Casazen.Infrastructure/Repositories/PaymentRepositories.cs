@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -38,10 +39,17 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Payment>> GetAllAsync()
+    public async Task<IEnumerable<Payment>> GetByScopeAsync(HostScope scope)
     {
-        return await context.Payments
+        var query = context.Payments
             .Include(p => p.Booking)
+            .Where(p => p.OrgId == scope.OrgId);
+
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(p => p.Booking.Property.OwnerId == ownerId);
+
+        return await query
+            .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
     }
 

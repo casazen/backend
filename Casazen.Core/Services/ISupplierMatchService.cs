@@ -31,9 +31,12 @@ public record SupplierMatchResult(
 
 public interface ISupplierMatchService
 {
+    /// <summary>
+    /// Ranks the active suppliers for a property of <paramref name="orgId"/>. The caller has already authorized the
+    /// property (TN-3); a property of another org is rejected.
+    /// </summary>
     Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
-        string userId,
         Guid propertyId,
         string category,
         ServiceRequestUrgency urgency,
