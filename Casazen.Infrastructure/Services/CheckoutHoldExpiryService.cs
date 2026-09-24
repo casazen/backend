@@ -185,12 +185,13 @@ public sealed class CheckoutHoldExpiryService(
             .Where(p => p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Failed)
             .Select(p => (Id: PaymentRefundService.PaymentIntentIdOf(p), Account: p.StripeAccountId ?? orgAccountId))
             .Where(intent => intent.Id is not null)
+            .Select(intent => (Id: intent.Id!, intent.Account))
             .DistinctBy(intent => intent.Id, StringComparer.Ordinal)
             .ToList();
 
         foreach (var (paymentIntentId, connectedAccountId) in paymentIntents)
         {
-            switch (await ReleasePaymentIntentAsync(booking.Id, paymentIntentId!, connectedAccountId, cancellationToken))
+            switch (await ReleasePaymentIntentAsync(booking.Id, paymentIntentId, connectedAccountId, cancellationToken))
             {
                 case IntentRelease.InFlight:
                     inFlight.Add(paymentIntentId);
@@ -397,8 +398,8 @@ public sealed class CheckoutHoldExpiryService(
     {
         var now = UtcNow();
         foreach (var payment in booking.Payments.Where(p =>
-                     p.StripePaymentIntentId != null &&
-                     paymentIntentIds.Contains(p.StripePaymentIntentId) &&
+                     PaymentRefundService.PaymentIntentIdOf(p) is { } paymentIntentId &&
+                     paymentIntentIds.Contains(paymentIntentId) &&
                      p.Status != PaymentStatus.Completed))
         {
             payment.Status = PaymentStatus.Processing;
