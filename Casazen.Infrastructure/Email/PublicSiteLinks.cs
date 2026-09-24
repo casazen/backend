@@ -76,6 +76,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
 
     /// <summary>
+    /// Payments page of the host console (route <c>/app/short-rent/settings/payments</c> of the web app), where the Stripe
+    /// Connect onboarding starts and ends (BK-09, A3-42).
+    /// </summary>
+    public const string ConnectPaymentsPagePath = "/app/short-rent/settings/payments";
+
+    /// <summary><c>return_url</c> of the Connect Account Link: the payments page with <c>?stripe_return=1</c> (BK-09).</summary>
+    public string ConnectOnboardingReturn() => Build(ConnectPaymentsPagePath + "?stripe_return=1");
+
+    /// <summary>
+    /// <c>refresh_url</c> of the Connect Account Link (expired or already used link): the payments page with
+    /// <c>?stripe_refresh=1</c>, from which the host starts a new link (BK-09).
+    /// </summary>
+    public string ConnectOnboardingRefresh() => Build(ConnectPaymentsPagePath + "?stripe_refresh=1");
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
