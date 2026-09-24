@@ -33,7 +33,7 @@ public class ComplianceWizardServiceTests
             })
             .Build();
 
-    private static ComplianceWizardService CreateService(AppDbContext db)
+    private static ComplianceWizardService CreateService(AppDbContext db, TimeProvider? timeProvider = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.ValidateGuestDataAsync(It.IsAny<Guid>())).ReturnsAsync(false);
@@ -43,7 +43,173 @@ public class ComplianceWizardServiceTests
             CreateConfig(),
             alloggiati.Object,
             Mock.Of<IServiceRequestService>(),
-            Mock.Of<ILogger<ComplianceWizardService>>());
+            Mock.Of<ILogger<ComplianceWizardService>>(),
+            timeProvider);
+    }
+
+    // 2026-09-24 00:30 in Rome is still 2026-09-23 in UTC: "today" must be the Rome date.
+    private static readonly TimeProvider RomeJustAfterMidnight =
+        new FixedTimeProvider(new DateTimeOffset(2026, 9, 23, 22, 30, 0, TimeSpan.Zero));
+
+    [Fact]
+    public async Task Activation_NoRateForCity_ReturnsNonBlockingWarningWithLocalizableMessage()
+    {
+        await using var db = CreateDb(nameof(Activation_NoRateForCity_ReturnsNonBlockingWarningWithLocalizableMessage));
+        var property = await SeedPropertyAsync(db, city: "Seveso");
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("warning", tax.Status);
+        Assert.False(tax.Blocker);
+        Assert.Equal("ActivationTouristTaxNoRate", tax.MessageKey);
+        Assert.Equal(new object[] { "Seveso" }, tax.MessageArgs!);
+        Assert.NotNull(tax.TouristTax);
+        Assert.Null(tax.TouristTax!.Rate);
+        Assert.Null(tax.TouristTax.PublicPageSlug);
+    }
+
+    [Fact]
+    public async Task Activation_RateInForceTodayInRome_ReturnsCompleteStepWithRate()
+    {
+        await using var db = CreateDb(nameof(Activation_RateInForceTodayInRome_ReturnsCompleteStepWithRate));
+        var property = await SeedPropertyAsync(db, city: "Milano");
+        var rate = AddRate(db, "milano", 9.50m, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc));
+        AddRate(db, "Milano", 1m, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), isActive: false);
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db, RomeJustAfterMidnight).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("complete", tax.Status);
+        Assert.False(tax.Blocker);
+        Assert.Null(tax.MessageKey);
+        Assert.Equal(rate.Id, tax.TouristTax!.Rate!.Id);
+        Assert.Equal(9.50m, tax.TouristTax.Rate.RatePerPersonPerNight);
+    }
+
+    [Fact]
+    public async Task Activation_RateNotYetInForceOrExpired_ReturnsWarning()
+    {
+        await using var db = CreateDb(nameof(Activation_RateNotYetInForceOrExpired_ReturnsWarning));
+        var property = await SeedPropertyAsync(db, city: "Milano");
+        AddRate(db, "Milano", 9.50m, new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc));
+        AddRate(
+            db,
+            "Milano",
+            6.30m,
+            new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            effectiveTo: new DateTime(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc));
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db, RomeJustAfterMidnight).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("warning", tax.Status);
+        Assert.Null(tax.TouristTax!.Rate);
+    }
+
+    [Fact]
+    public async Task Activation_ReviewedTouristTaxPage_ReturnsPublicPageSlug()
+    {
+        await using var db = CreateDb(nameof(Activation_ReviewedTouristTaxPage_ReturnsPublicPageSlug));
+        var property = await SeedPropertyAsync(db, city: "Como");
+        db.SeoContentPages.Add(new SeoContentPage
+        {
+            Slug = "tassa-soggiorno/como",
+            ComuneCode = "013075",
+            RegionCode = "LOM",
+            PageType = SeoPageType.TouristTaxCalc,
+            LegalReviewStatus = LegalReviewStatus.Reviewed,
+        });
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        Assert.Equal("como", steps.Single(s => s.Id == "tourist-tax").TouristTax!.PublicPageSlug);
+    }
+
+    [Fact]
+    public async Task Activation_DraftTouristTaxPage_ReturnsNoPublicPageSlug()
+    {
+        await using var db = CreateDb(nameof(Activation_DraftTouristTaxPage_ReturnsNoPublicPageSlug));
+        var property = await SeedPropertyAsync(db, city: "Como");
+        db.SeoContentPages.Add(new SeoContentPage
+        {
+            Slug = "tassa-soggiorno/como",
+            ComuneCode = "013075",
+            RegionCode = "LOM",
+            PageType = SeoPageType.TouristTaxCalc,
+            LegalReviewStatus = LegalReviewStatus.Draft,
+        });
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        Assert.Null(steps.Single(s => s.Id == "tourist-tax").TouristTax!.PublicPageSlug);
+    }
+
+    [Fact]
+    public async Task Activation_CityMissing_ReturnsCityMissingWarning()
+    {
+        await using var db = CreateDb(nameof(Activation_CityMissing_ReturnsCityMissingWarning));
+        var property = await SeedPropertyAsync(db, city: " ");
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("warning", tax.Status);
+        Assert.False(tax.Blocker);
+        Assert.Equal("ActivationTouristTaxCityMissing", tax.MessageKey);
+    }
+
+    [Fact]
+    public async Task Activation_CinStep_ExposesConfiguredGuidanceUrl()
+    {
+        await using var db = CreateDb(nameof(Activation_CinStep_ExposesConfiguredGuidanceUrl));
+        var property = await SeedPropertyAsync(db, cinCode: null);
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        Assert.Equal("https://www.bdsr.it/cin", steps.Single(s => s.Id == "cin").LinkUrl);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_NoTouristTaxRate_SetsActive()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_NoTouristTaxRate_SetsActive));
+        var property = await SeedFullyCompliantPropertyAsync(db, withTouristTaxRate: false);
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
+            property.Id,
+            property.OwnerId,
+            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
+            tosAccepted: true);
+
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+    }
+
+    private static TouristTaxRate AddRate(
+        AppDbContext db,
+        string city,
+        decimal amount,
+        DateTime effectiveFrom,
+        DateTime? effectiveTo = null,
+        bool isActive = true)
+    {
+        var rate = new TouristTaxRate
+        {
+            City = city,
+            RegionCode = "LOM",
+            RatePerPersonPerNight = amount,
+            MinimumAge = 18,
+            IsActive = isActive,
+            EffectiveFrom = effectiveFrom,
+            EffectiveTo = effectiveTo,
+        };
+        db.TouristTaxRates.Add(rate);
+        return rate;
     }
 
     [Fact]
@@ -250,7 +416,8 @@ public class ComplianceWizardServiceTests
         AppDbContext db,
         Guid? orgId = null,
         string? cinCode = "IT058091C27G5FFZDZ",
-        PropertyComplianceStatus complianceStatus = PropertyComplianceStatus.Pending)
+        PropertyComplianceStatus complianceStatus = PropertyComplianceStatus.Pending,
+        string city = "Rome")
     {
         var org = orgId.HasValue
             ? await db.Orgs.FindAsync(orgId.Value)
@@ -268,7 +435,7 @@ public class ComplianceWizardServiceTests
             OwnerId = "auth0|owner",
             Name = "Villa Test",
             Address = "Via Roma 1",
-            City = "Rome",
+            City = city,
             PostalCode = "00100",
             Bedrooms = 2,
             Bathrooms = 1,
@@ -301,17 +468,24 @@ public class ComplianceWizardServiceTests
         TotalPrice = 100,
     };
 
-    private static async Task<Property> SeedFullyCompliantPropertyAsync(AppDbContext db, Guid? orgId = null)
+    private static async Task<Property> SeedFullyCompliantPropertyAsync(
+        AppDbContext db,
+        Guid? orgId = null,
+        bool withTouristTaxRate = true)
     {
         var property = await SeedPropertyAsync(db, orgId, cinCode: "IT058091C27G5FFZDZ");
 
-        db.TouristTaxRates.Add(new TouristTaxRate
+        if (withTouristTaxRate)
         {
-            City = property.City,
-            RegionCode = "LAZ",
-            RatePerPersonPerNight = 2m,
-            IsActive = true,
-        });
+            db.TouristTaxRates.Add(new TouristTaxRate
+            {
+                City = property.City,
+                RegionCode = "LAZ",
+                RatePerPersonPerNight = 2m,
+                IsActive = true,
+                EffectiveFrom = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            });
+        }
 
         db.PropertyDocuments.AddRange(
             new PropertyDocument

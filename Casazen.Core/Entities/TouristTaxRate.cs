@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
@@ -60,6 +61,17 @@ public class TouristTaxRate
 
     [MaxLength(500)]
     public string Notes { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Source of the rate: URL of the page or act of the comune it was read from. Null when nobody recorded it.
+    /// </summary>
+    [MaxLength(500)]
+    public string? SourceUrl { get; set; }
+
+    /// <summary>
+    /// How the amount was checked against <see cref="SourceUrl"/> (U / D / T). Null when not stated.
+    /// </summary>
+    public TouristTaxRateVerification? VerificationLevel { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -94,7 +94,7 @@ Common fixes:
   401 → missing/invalid Bearer token
   403 → user lacks Auth0 role Admin (https://casazen.app/roles)
   409 → pending invite already exists for this email
-  502 → SendGrid/App__PublicSiteBaseUrl missing on Railway test
+  502 → Email__* (Resend) or App__PublicSiteBaseUrl missing on Railway test
 "@
 
 exit 1
