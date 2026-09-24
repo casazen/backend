@@ -201,6 +201,37 @@ public class FixOrphanedSupplierOrgsResponse
     public IReadOnlyList<string> Details { get; set; } = [];
 }
 
+// ─── Service categories (SU-03) ───────────────────────────────────────────────
+
+/// <summary>A service category code (<c>cleaning</c>, <c>maintenance</c>, ...). Clients translate the label.</summary>
+public class ServiceCategoryDto
+{
+    public string Code { get; set; } = string.Empty;
+}
+
+public class ServiceCategoriesResponse
+{
+    public IReadOnlyList<ServiceCategoryDto> Items { get; set; } = [];
+}
+
+/// <summary>A stored category value that is not a canonical code.</summary>
+public class UnmappedServiceCategoryDto
+{
+    /// <summary><c>supplier_profile</c>, <c>supplier_invite</c> or <c>service_request</c>.</summary>
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>Supplier org id, invite id or service request id, depending on <see cref="Source"/>.</summary>
+    public Guid Id { get; set; }
+
+    public string Value { get; set; } = string.Empty;
+}
+
+public class UnmappedServiceCategoriesResponse
+{
+    public IReadOnlyList<UnmappedServiceCategoryDto> Items { get; set; } = [];
+    public int Total { get; set; }
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 public class SupplierDashboardDto

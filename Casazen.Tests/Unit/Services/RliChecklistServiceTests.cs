@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -19,10 +20,9 @@ public class RliChecklistServiceTests
         var lease = BuildLease(extraEu: true);
         var sut = CreateSut(lease);
 
-        var result = await sut.GetAsync(lease.Id, OwnerId);
+        var result = await sut.GetAsync(lease);
 
-        Assert.NotNull(result);
-        Assert.Contains(result.Items, i => i.Key == "questura_extra_eu");
+        Assert.Contains(result.Items, i => i.Key == RliChecklistKeys.QuesturaExtraEu);
         Assert.Equal("2026-08-rli-delega-bozza", result.TosVersion);
     }
 
@@ -32,22 +32,32 @@ public class RliChecklistServiceTests
         var lease = BuildLease(extraEu: false);
         var sut = CreateSut(lease);
 
-        var result = await sut.GetAsync(lease.Id, OwnerId);
+        var result = await sut.GetAsync(lease);
 
-        Assert.NotNull(result);
-        Assert.DoesNotContain(result.Items, i => i.Key == "questura_extra_eu");
+        Assert.DoesNotContain(result.Items, i => i.Key == RliChecklistKeys.QuesturaExtraEu);
+    }
+
+    [Fact]
+    public async Task GetAsync_SignedLease_ReturnsOnlyKnownKeysWithoutTexts()
+    {
+        var lease = BuildLease(extraEu: true);
+        var sut = CreateSut(lease);
+
+        var result = await sut.GetAsync(lease);
+
+        // Labels are localized by the API from the key (A7-26): the service returns no Italian text.
+        Assert.All(result.Items, item => Assert.Contains(item.Key, RliChecklistKeys.All));
+        Assert.True(result.Items.Single(i => i.Key == RliChecklistKeys.ContractSigned).Done);
+        Assert.False(result.Items.Single(i => i.Key == RliChecklistKeys.RliRegistered).Done);
     }
 
     private static RliChecklistService CreateSut(LeaseContract lease)
     {
-        var leases = new Mock<ILeaseContractRepository>();
-        leases.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
         var auths = new Mock<ILeaseRegistrationAuthorizationRepository>();
         auths.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistrationAuthorization?)null);
         var events = new Mock<ILeaseEventRepository>();
         events.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync([]);
         return new RliChecklistService(
-            leases.Object,
             auths.Object,
             events.Object,
             Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", AttestationText = "bozza" }));

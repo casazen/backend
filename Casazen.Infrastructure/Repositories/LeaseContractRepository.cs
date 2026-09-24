@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
@@ -25,17 +27,37 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
             .Include(l => l.Parties)
             .FirstOrDefaultAsync(l => l.ExternalSigningSessionId == externalSessionId);
 
-    public async Task<IEnumerable<LeaseContract>> GetByOwnerAsync(string ownerId, Guid? propertyId = null)
+    public async Task<IReadOnlyList<LeaseSummaryDto>> GetSummariesAsync(HostScope scope, Guid? propertyId = null)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         var query = context.LeaseContracts
-            .Include(l => l.Property)
-            .Include(l => l.Parties)
-            .Where(l => l.Property.OwnerId == ownerId);
+            .AsNoTracking()
+            .Where(l => l.OrgId == scope.OrgId);
+
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(l => l.Property.OwnerId == ownerId);
 
         if (propertyId.HasValue)
             query = query.Where(l => l.PropertyId == propertyId.Value);
 
-        return await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+        return await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Select(l => new LeaseSummaryDto(
+                l.Id,
+                l.PropertyId,
+                new LeasePropertyDto(l.Property.Id, l.Property.Name, l.Property.City),
+                l.Status,
+                l.FiscalRegime,
+                l.StartDate,
+                l.EndDate,
+                l.MonthlyRent,
+                l.RegistrationDeadline,
+                l.Parties.Count,
+                l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
+                l.CreatedAt,
+                l.UpdatedAt))
+            .ToListAsync();
     }
 
     public async Task<IEnumerable<LeaseContract>> GetByPropertyAsync(Guid propertyId)
