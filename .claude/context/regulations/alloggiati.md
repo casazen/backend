@@ -226,6 +226,7 @@ Condizioni e limiti da rispettare in CO-13:
 5. **Comunicazione ISTAT (separata)**
    - Oltre ad Alloggiati Web esiste un obbligo **separato** di comunicazione ISTAT, spesso tramite portali regionali
    - Dati aggregati (arrivi, presenze, nazionalità); scadenza variabile per regione. *Non verificato in RS-1.*
+   - **Verificato in RS-9 per la Lombardia** (`istat-flussi-turistici.md`): il canale è Ross1000, con scadenza il giorno 5 del mese successivo. I dati **non** sono aggregati: sono record per ospite e per giorno, codificati con le stesse tabelle Comuni, Nazioni e Tipi Alloggiato di Alloggiati Web. Le tabelle importate per CO-12 e CO-13 vanno quindi riusate.
 
 ### Criticità Tecniche
 - **Accesso ai documenti ufficiali**: in RS-1 il proxy di egress ha bloccato i domini ufficiali. CO-13 deve partire dalla lettura integrale dei PDF e del WSDL

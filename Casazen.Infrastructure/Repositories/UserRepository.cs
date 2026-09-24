@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Repositories;
 
@@ -33,10 +34,32 @@ public class UserRepository(AppDbContext context) : IUserRepository
         return user;
     }
 
+    public async Task<(User User, bool Created)> AddIfAbsentAsync(User user)
+    {
+        context.Users.Add(user);
+        try
+        {
+            await context.SaveChangesAsync();
+            return (user, true);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // A parallel first request of the same user inserted the row first (A1-14): keep that row.
+            context.Entry(user).State = EntityState.Detached;
+            var stored = await context.Users.FirstOrDefaultAsync(u => u.Id == user.Id);
+            if (stored is null)
+                throw;
+            return (stored, false);
+        }
+    }
+
     public async Task UpdateAsync(User user)
     {
         user.UpdatedAt = DateTime.UtcNow;
-        context.Users.Update(user);
+        // A tracked user saves only the columns that changed. Update() would rewrite every column, and a copy
+        // loaded before a parallel request linked the org would put OrgId back to null (A1-14).
+        if (context.Entry(user).State == EntityState.Detached)
+            context.Users.Update(user);
         await context.SaveChangesAsync();
     }
 

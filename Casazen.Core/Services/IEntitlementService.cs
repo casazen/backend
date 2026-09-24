@@ -27,10 +27,16 @@ public interface IEntitlementService
     Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Atomically reserves a property slot under a Serializable transaction.
-    /// Returns <c>false</c> when the plan limit is already reached.
+    /// Runs <paramref name="createProperty"/> only while the org is below its plan limit, atomically: on
+    /// PostgreSQL the count and the insert run in one transaction holding a per-org advisory lock, so parallel
+    /// creates cannot exceed the limit (A1-21). Returns the created property, or <c>null</c> without calling
+    /// <paramref name="createProperty"/> when the limit is reached. <paramref name="createProperty"/> must write
+    /// through the same scoped <c>AppDbContext</c> (the property service of the request does).
     /// </summary>
-    Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default);
+    Task<Property?> CreatePropertyWithinLimitAsync(
+        Guid orgId,
+        Func<Task<Property>> createProperty,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Downgrades stored plan tier when subscription is canceled or past due beyond grace.</summary>
     Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default);
