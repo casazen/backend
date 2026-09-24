@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
@@ -34,8 +33,6 @@ public class SuppliersController(
     IAuthorizationService authorizationService,
     ILogger<SuppliersController> logger) : ControllerBase
 {
-    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
-
     /// <summary>
     /// Supplier registration (SU-01). Without <c>inviteToken</c> it is self-serve: anonymous or signed in, only for a
     /// configured pilot comune (<c>Suppliers:PilotComuni</c>; none configured = self-serve off). With
@@ -303,17 +300,7 @@ public class SuppliersController(
 
         var suppliers = await supplierService.GetActiveByComune(resolvedComune, query.Category, cancellationToken);
 
-        var items = suppliers.Select(sp => new SupplierPickerDto
-        {
-            OrgId = sp.OrgId,
-            LegalName = sp.LegalName,
-            Phone = sp.Phone,
-            Email = sp.Email,
-            Categories = JsonSerializer.Deserialize<IEnumerable<string>>(sp.CategoriesJson, JsonOpts) ?? [],
-            Comuni = JsonSerializer.Deserialize<IEnumerable<string>>(sp.ComuniJson, JsonOpts) ?? [],
-            Bio = sp.Bio,
-            PhotoUrls = JsonSerializer.Deserialize<IEnumerable<string>>(sp.PhotoUrlsJson, JsonOpts) ?? [],
-        });
+        var items = suppliers.Select(SupplierPickerDto.From).ToList();
 
         return Ok(new PagedResultDto<SupplierPickerDto>
         {

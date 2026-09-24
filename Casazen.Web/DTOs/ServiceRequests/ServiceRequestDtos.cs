@@ -4,6 +4,10 @@ using Casazen.Core.Validation;
 
 namespace Casazen.Web.DTOs.ServiceRequests;
 
+/// <summary>
+/// Body of <c>POST api/service-requests</c> (short-rent: <see cref="BookingId"/> required, a stay of the property) and
+/// <c>POST api/long-rent/service-requests</c> (long-rent: no <see cref="BookingId"/>), decision D2 (SU-07).
+/// </summary>
 public class CreateServiceRequestRequest
 {
     public Guid PropertyId { get; set; }
@@ -79,6 +83,9 @@ public class ServiceRequestDto
     public Guid Id { get; set; }
     public Guid OrgId { get; set; }
     public Guid? BookingId { get; set; }
+
+    /// <summary><c>ShortRent</c> (per stay) or <c>LongRent</c> (per property), decision D2.</summary>
+    public string RentalContext { get; set; } = string.Empty;
     public Guid PropertyId { get; set; }
     public string? PropertyName { get; set; }
     public Guid SupplierOrgId { get; set; }

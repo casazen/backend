@@ -115,19 +115,24 @@ public static partial class EmailTemplates
     }
 
     /// <summary>Tokenized self check-in link, to the guest.</summary>
+    /// <param name="expiresAtUtc">End of validity of the link (CO-09: configurable lifetime), shown in Italian time.</param>
     public static EmailContent GuestCheckInLink(
         CultureInfo culture,
         string guestName,
         string propertyName,
         DateTime checkInDate,
-        string checkInUrl) =>
-        new EmailHtmlBuilder(culture)
+        string checkInUrl,
+        DateTime expiresAtUtc)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
             .Paragraph("GuestCheckInLink_Greeting", guestName)
             .Paragraph("GuestCheckInLink_Body", propertyName, checkInDate)
             .Paragraph("GuestCheckInLink_Instructions")
             .Button("GuestCheckInLink_Cta", checkInUrl)
-            .Muted("GuestCheckInLink_Validity")
+            .Muted("GuestCheckInLink_Validity", builder.FormatInstant(expiresAtUtc))
             .Build("GuestCheckInLink_Subject", propertyName);
+    }
 
     /// <summary>
     /// Guest data for the Alloggiati communication still missing the day before arrival, to the host (first stage of the

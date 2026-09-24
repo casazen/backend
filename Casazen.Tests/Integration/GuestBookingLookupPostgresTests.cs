@@ -8,6 +8,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Email;
 using Microsoft.AspNetCore.Hosting;
@@ -227,9 +228,11 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.Equal(JsonValueKind.Null, before.GetProperty("checkIn").GetProperty("linkSentAt").ValueKind);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.DoesNotContain("/checkin/", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-        var email = Assert.Single(_factory.Emails.Snapshot(), e => e.To == seed.Email);
-        Assert.Equal(EmailTemplates.Names.GuestCheckInLink, email.Template);
-        Assert.Contains("https://casazen-app.vercel.app/checkin/", email.Content.HtmlBody, StringComparison.Ordinal);
+        // CO-09: the link email goes through its own job, which records the real outcome for the host.
+        await _factory.RunCheckInLinkEmailJobsAsync(seed.BookingId);
+        var email = Assert.Single(_factory.LinkEmails.Snapshot(), e => e.To == seed.Email);
+        Assert.Contains("Completa il check-in", email.Subject, StringComparison.Ordinal);
+        Assert.Contains("https://casazen-app.vercel.app/checkin/", email.HtmlBody, StringComparison.Ordinal);
 
         var after = JsonDocument.Parse(await (await PostAsync(LookupPath, credentials)).Content.ReadAsStringAsync()).RootElement;
         Assert.Equal("Open", after.GetProperty("checkIn").GetProperty("status").GetString());
@@ -254,6 +257,8 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             JsonDocument.Parse(await tooEarly.Content.ReadAsStringAsync()).RootElement.GetProperty("code").GetString());
         Assert.Equal(HttpStatusCode.NotFound, wrongEmail.StatusCode);
         Assert.DoesNotContain(_factory.Emails.Snapshot(), e => e.To == seed.Email);
+        await _factory.RunCheckInLinkEmailJobsAsync(seed.BookingId);
+        Assert.DoesNotContain(_factory.LinkEmails.Snapshot(), e => e.To == seed.Email);
     }
 
     [PostgresFact]
@@ -447,6 +452,9 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     {
         internal RecordingEmailQueue Emails { get; } = new();
 
+        /// <summary>Emails handed to the provider by the check-in link email job (CO-09).</summary>
+        internal RecordingEmailService LinkEmails { get; } = new();
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
@@ -455,13 +463,58 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
                 ["RateLimiting:PublicGuestBookingLookup:PermitLimit"] = "4",
                 ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "3",
                 ["CheckIn:SendWindowDays"] = "3",
+                ["Email:Provider"] = "Resend",
+                ["Email:ApiKey"] = "re_test_lookup",
+                ["Email:FromAddress"] = "noreply@casazen.test",
             }));
             builder.ConfigureTestServices(services =>
             {
                 RemoveAllOf<IEmailQueue>(services);
                 services.AddSingleton<IEmailQueue>(Emails);
+                RemoveAllOf<IEmailService>(services);
+                services.AddSingleton<IEmailService>(LinkEmails);
                 services.AddSingleton<IStartupFilter, TestPeerIpStartupFilter>();
             });
+        }
+
+        /// <summary>Runs the check-in link email jobs queued for the sessions of <paramref name="bookingId"/>.</summary>
+        internal async Task RunCheckInLinkEmailJobsAsync(Guid bookingId)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            // No request here: the filter is off anyway, explicit for the reader.
+            var sessionIds = await db.GuestCheckInSessions.IgnoreQueryFilters()
+                .Where(s => s.BookingId == bookingId)
+                .Select(s => s.Id)
+                .ToListAsync();
+            var jobs = BackgroundJobClientMock.Invocations
+                .Where(i => i.Method.Name == "Create")
+                .Select(i => (Hangfire.Common.Job)i.Arguments[0])
+                .Where(j => j.Type == typeof(GuestCheckInLinkEmailJob) && sessionIds.Contains((Guid)j.Args[0]))
+                .ToList();
+            foreach (var job in jobs)
+            {
+                await scope.ServiceProvider.GetRequiredService<GuestCheckInLinkEmailJob>()
+                    .SendAsync((Guid)job.Args[0], (string)job.Args[1], (int)job.Args[2]);
+            }
+        }
+    }
+
+    internal sealed class RecordingEmailService : IEmailService
+    {
+        private readonly List<(string To, string Subject, string HtmlBody)> _sent = [];
+
+        public Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent)
+        {
+            lock (_sent)
+                _sent.Add((to, subject, htmlContent));
+            return Task.FromResult(EmailSendResult.Sent());
+        }
+
+        public IReadOnlyList<(string To, string Subject, string HtmlBody)> Snapshot()
+        {
+            lock (_sent)
+                return _sent.ToList();
         }
     }
 }

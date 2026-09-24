@@ -13,7 +13,14 @@ public class ServiceRequest
 
     public Guid OrgId { get; set; }
 
+    /// <summary>
+    /// The stay the request is for: set for every short-rent request created since SU-07 (D2), null for long-rent
+    /// requests and for older short-rent requests that could not be traced to a single stay.
+    /// </summary>
     public Guid? BookingId { get; set; }
+
+    /// <summary>Rental context the request was opened in (D2): short-rent (per stay) or long-rent (per property).</summary>
+    public ServiceRequestRentalContext RentalContext { get; set; } = ServiceRequestRentalContext.ShortRent;
 
     public Guid PropertyId { get; set; }
 
