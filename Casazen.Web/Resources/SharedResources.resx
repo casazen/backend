@@ -231,6 +231,9 @@
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
+  <data name="OnboardingConsentsRequired" xml:space="preserve">
+    <value>Per creare la tua organizzazione devi accettare i documenti legali obbligatori.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
   </data>

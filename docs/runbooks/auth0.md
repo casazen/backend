@@ -91,6 +91,17 @@ If `rolesSynced` is `false`, `rolesSyncError` tells why: `auth0_management_not_c
 `auth0_management_token_failed` (wrong client id/secret, or the M2M app is not authorized for the Management API),
 `auth0_role_not_found` (role missing in this tenant), `auth0_rate_limited`, `auth0_management_error` (see logs).
 
+What the user sees (web, task PL-01): with `rolesSynced: false` the onboarding page does not redirect silently but
+explains that the workspace is ready and the new permissions reach the sign-in at the next login or with a new
+attempt. It offers **Retry** (repeats the idempotent `PUT /api/users/onboarding`) and **Renew sign-in and continue**
+(fresh access token, or an interactive login when a silent renewal is refused). The backend already authorizes the
+user through the DB memberships, so either choice leads into the app.
+
+Users who have Auth0 roles but no org (roles assigned by hand, org never provisioned) are no longer stuck: platform
+admins and supplier-only users skip the host onboarding, hosts complete it and `PUT`/`POST /api/users/onboarding`
+create or link the org. The first org is created only together with the legal consents: a `PUT` without them from a
+user without org answers **422 `consents_required`** and the web app shows the consents step.
+
 ## 6. Post-login Action (roles + profile claims on the access token)
 
 Actions → Library → **Build from scratch** → name `CasaZen claims`, trigger **Login / Post Login**:
