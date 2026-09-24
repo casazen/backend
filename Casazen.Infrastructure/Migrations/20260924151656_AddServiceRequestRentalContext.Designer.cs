@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924135828_AddServiceRequestRentalContext")]
+    [Migration("20260924151656_AddServiceRequestRentalContext")]
     partial class AddServiceRequestRentalContext
     {
         /// <inheritdoc />
@@ -220,6 +220,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("BookingCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<string>("CancellationNote")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -251,6 +256,15 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DeferredChargeAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DeferredChargeFailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeferredChargeLastAttemptOn")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ExternalId")
@@ -345,6 +359,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("PropertyId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("OrgId", "BookingCode")
+                        .IsUnique();
 
                     b.ToTable("Bookings");
                 });

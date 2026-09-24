@@ -105,47 +105,50 @@ public class AddServiceRequestRentalContextPostgresTests : IAsyncLifetime
         public Guid AlreadyLinked { get; } = Guid.NewGuid();
     }
 
-    /// <summary>Org, two properties (A with four stays, B with none) and the supplier org, through EF: these tables are the same before and after the migration.</summary>
+    /// <summary>
+    /// Org, two properties (A with four stays, B with none), a guest, with raw SQL on the schema right before the
+    /// migration: EF would write the columns that later migrations add.
+    /// </summary>
     private static async Task SeedPropertiesAndStaysAsync(AppDbContext db, Seed s)
     {
-        var host = new OrgEntity { Id = s.Org, Name = "Host", Slug = $"su07-h-{s.Org:N}", DisplayName = "Host", PlanTier = PlanTier.Starter };
-        Property NewProperty(Guid id, string name) => new()
-        {
-            Id = id,
-            OwnerId = "auth0|su07-migration",
-            OrgId = s.Org,
-            Name = name,
-            Address = $"Via {name}",
-            City = "Roma",
-            PostalCode = "00100",
-            Bedrooms = 1,
-            Bathrooms = 1,
-            MaxGuests = 2,
-            NightlyRate = 100m,
-        };
-        var guest = new Guest { Id = s.Guest, OrgId = s.Org, FirstName = "Anna", LastName = "Ospite", Email = "anna@example.com" };
-        Booking NewStay(Guid id, int fromDay, int toDay, BookingStatus status) => new()
-        {
-            Id = id,
-            OrgId = s.Org,
-            PropertyId = s.PropertyA,
-            GuestId = s.Guest,
-            CheckInDate = new DateTime(2026, 6, fromDay, 0, 0, 0, DateTimeKind.Utc),
-            CheckOutDate = new DateTime(2026, 6, toDay, 0, 0, 0, DateTimeKind.Utc),
-            NumberOfGuests = 2,
-            Status = status,
-        };
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO "Orgs" ("Id", "Name", "Slug", "PlanTier", "DisplayName", "ContactEmail", "IsActive", "CreatedAt", "UpdatedAt")
+            VALUES ({s.Org}, 'Host', {"su07-h-" + s.Org.ToString("N")}, 0, 'Host', '', true, now(), now());
 
-        db.AddRange(
-            host,
-            NewProperty(s.PropertyA, "Casa A"),
-            NewProperty(s.PropertyB, "Casa B"),
-            guest,
-            NewStay(s.Stay1, 1, 4, BookingStatus.Confirmed),
-            NewStay(s.Stay2, 5, 8, BookingStatus.CheckedOut),
-            NewStay(s.Stay3, 8, 10, BookingStatus.Confirmed),
-            NewStay(s.CancelledStay, 12, 14, BookingStatus.Cancelled));
-        await db.SaveChangesAsync();
+            INSERT INTO "Properties" (
+                "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
+                "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
+                "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "CreatedAt", "UpdatedAt")
+            VALUES
+              ({s.PropertyA}, 'auth0|su07-migration', {s.Org}, 'Casa A', '', 'Via A 1', 'Roma', '00100',
+               0, 0, 1, 1, 2, 100, 0, 0, ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, now(), now()),
+              ({s.PropertyB}, 'auth0|su07-migration', {s.Org}, 'Casa B', '', 'Via B 1', 'Roma', '00100',
+               0, 0, 1, 1, 2, 100, 0, 0, ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, now(), now());
+
+            INSERT INTO "Guests" (
+                "Id", "OrgId", "FirstName", "LastName", "Email", "PhoneNumber", "Address", "City", "PostalCode", "Country",
+                "PlaceOfBirth", "Nationality", "DocumentNumber", "DocumentIssuingCountry", "ConsentIpAddress",
+                "ErasureRequested", "Notes", "ConsentVersion", "MarketingConsent", "DataRetentionUntil",
+                "DataProcessingPurpose", "IsDeleted", "DeletionReason", "CreatedAt", "UpdatedAt")
+            VALUES ({s.Guest}, {s.Org}, 'Anna', 'Ospite', 'anna@example.com', '', '', '', '', 'IT',
+                    '', '', '', '', '', false, '', '', false, now() + interval '7 years', '', false, '', now(), now());
+            """);
+
+        async Task StayAsync(Guid id, int fromDay, int toDay, BookingStatus status) =>
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO "Bookings" (
+                    "Id", "PropertyId", "OrgId", "GuestId", "CheckInDate", "CheckOutDate", "NumberOfGuests", "Status", "Source",
+                    "ExternalId", "BasePrice", "TouristTax", "TotalPrice", "TouristTaxAmount", "NumberOfAdults", "NumberOfChildren",
+                    "SpecialRequests", "CreatedAt", "UpdatedAt")
+                VALUES ({id}, {s.PropertyA}, {s.Org}, {s.Guest},
+                        {new DateTime(2026, 6, fromDay, 0, 0, 0, DateTimeKind.Utc)}, {new DateTime(2026, 6, toDay, 0, 0, 0, DateTimeKind.Utc)},
+                        2, {(int)status}, 0, '', 100, 0, 100, 0, 2, 0, '', now(), now());
+                """);
+
+        await StayAsync(s.Stay1, 1, 4, BookingStatus.Confirmed);
+        await StayAsync(s.Stay2, 5, 8, BookingStatus.CheckedOut);
+        await StayAsync(s.Stay3, 8, 10, BookingStatus.Confirmed);
+        await StayAsync(s.CancelledStay, 12, 14, BookingStatus.Cancelled);
     }
 
     /// <summary>Requests as the web created them before SU-07 (schema right before the migration: no RentalContext).</summary>
