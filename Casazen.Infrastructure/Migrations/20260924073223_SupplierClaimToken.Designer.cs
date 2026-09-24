@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924071021_SupplierClaimToken")]
+    [Migration("20260924073223_SupplierClaimToken")]
     partial class SupplierClaimToken
     {
         /// <inheritdoc />
@@ -1346,6 +1346,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("StripeAccountId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("StripeIntentOnPlatform")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(255)
