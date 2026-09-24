@@ -48,7 +48,7 @@ Verificate da RS-5 il 2026-09-23 per LT-04 e LT-08. Il dettaglio, con URL e clas
 
 ## Accordi verificati (2026-09)
 
-Verifica **RS-8** del 2026-09-23 sul testo ufficiale dell'accordo territoriale che copre **Seveso** e **Cesano Maderno**: l'Accordo locale "Quadro" per i Comuni della Provincia di Monza e della Brianza. Questa sezione non modifica il seed. Le correzioni al calcolo e al seed spettano a **LT-10**; IMU e dati normativi su DB spettano a **LT-13**.
+Verifica **RS-8** del 2026-09-23 sul testo ufficiale dell'accordo territoriale che copre **Seveso** e **Cesano Maderno**: l'Accordo locale "Quadro" per i Comuni della Provincia di Monza e della Brianza. Le correzioni al calcolo e al seed sono state applicate da **LT-10** (sezione "Cosa ha cambiato LT-10"); IMU e dati normativi su DB spettano a **LT-13**.
 
 **Classi.** **U** = letto sul documento ufficiale indicato. **D** = dedotto (interpretazione o calcolo), da far confermare a un'organizzazione firmataria o a un legale. **T** = fonte terza, oppure estratto di un motore di ricerca di una pagina che non è stato possibile aprire.
 
@@ -190,29 +190,29 @@ Elementi: **A** = A1-A2 (bagno completo areato, impianti essenziali); **B** = B1
 
 ### Valore nel codice e valore ufficiale (solo le discrepanze)
 
-Riferimenti di riga al commit base di RS-8 (`24dd008`).
+Riferimenti di riga al commit base di RS-8 (`24dd008`). Colonna "Stato": esito di LT-10 (2026-09-24).
 
-| # | Dove | Nel codice | Ufficiale | Classe | Task |
-|---|---|---|---|---|---|
-| 1 | `CanoneConcordatoMbSeed.cs:11`, `:24-35`; test `CanoneConcordatoEligibilityServiceTests.cs:262` e `TerritorialRentAgreementMigrationTests.cs:46` | 54 comuni senza **Misinto**; commento "do not invent a 55th"; i test fissano 54 | 55 comuni, compreso Misinto | U | LT-10 |
-| 2 | `CanoneConcordatoEligibilityService.cs:163-166` | +10% per 50 ≤ mq ≤ 60 | +10% solo per 50 < mq < 60 | U | LT-10 |
-| 3 | `:161-162` | +20% sul canone unitario, senza tetto | mq × 1,20 con tetto a 40 mq | U | LT-10 |
-| 4 | `:163-166` | +10% sul canone unitario, senza tetto | mq × 1,10 con tetto a 60 mq | U | LT-10 |
-| 5 | `:167-168` | −20% sul canone unitario, senza minimo | mq × 0,80 e non sotto 120 mq; riduzione facoltativa | U; D (facoltatività) | LT-10 |
-| 6 | `:56-60`, `:147-153` | Range = [min SF n, max SF n] | Tetto = max SF n; si può scendere fino al min della SF 1 (20 €/mq) | U (testo), D (minimo) | LT-10 |
-| 7 | `:143` | SF 3 con almeno 2 elementi D qualsiasi | Almeno 2 tra D1, D2, D4, D6, D7, D9 | U | LT-10 |
-| 8 | `:133-145` | Stufe non gestite | Stufe → SF 1, salvo almeno 4 elementi B | U | LT-10 |
-| 9 | `:143-144` | Max della SF 3 già con 2 elementi D | Max della SF 3 "possibile" con almeno 4 elementi D | U; D | LT-10 |
-| 10 | `:155-179` | Aria condizionata assente | Fino a +5% se copre ≥ 50% della superficie | U | LT-10 |
-| 11 | `RentBandCharacteristics` | Pertinenze assenti | +50/30/25/10% ai mq, prima delle maggiorazioni | U | LT-10 |
-| 12 | `:106-109` | Bande intere `MinSqm ≤ x ≤ MaxSqm` su `decimal`: 50,5 / 74,5 / 99,5 senza banda | Accordo silente sui decimali; superficie catastale intera | U, T, D | LT-10 |
-| 13 | `:170-176` | Anni non validati: 0, 1 e 2 accettati; oltre 6 → 0% | 3+2 almeno 3 anni; maggiorazioni solo per 4, 5, 6 anni; oltre 6 non previsto | U | LT-10 |
-| 14 | `CanoneConcordatoMbSeed.cs:106-111` | 3 organizzazioni (A.S.P.P.I. Comprensorio Brianza, Confabitare, SUNIA) | 11 organizzazioni: 4 degli inquilini e 7 della proprietà (tabella sopra) | U | LT-10 |
-| 15 | FE `src/i18n/locales/it.json:343` e `en.json:343` (`guidanceIntro`) | "Contatta direttamente un'organizzazione firmataria" | Attestazione valida solo se congiunta: una organizzazione della proprietà **e** una degli inquilini | U | LT-10 |
-| 16 | `TerritorialRentAgreement` (entità) | Nessun campo per deposito o scadenza | 18 mesi dal deposito, ultrattività, fasce aggiornabili con il 100% FOI dopo la scadenza | U | LT-13 (A7-22), LT-10 (avviso) |
-| 17 | `CanoneConcordatoMbSeed.cs:18` (`AtaSource`) | "Secondary sources converging on CIPE 13/11/2003" | Le premesse di F1 elencano Seveso e Cesano nell'elenco CIPE (dichiarazione delle parti). Citare F1; `VerifiedDirectly` resta `false` | U, D | LT-13 / RS-5 |
-| 18 | `ComuneImuNotificationService.cs:82-88` | Seveso: tre indirizzi e portale, "canale NON univoco" | Modulo 2025 ai Servizi Sociali, p.c. Ufficio Tributi, via `protocollo@comune.seveso.mb.it`; aliquota agevolata 5,7‰ (2025) | U | LT-13 |
-| 19 | `ComuneImuNotificationService.cs:94` | Cesano: "1,04% x 75% circa 0,78%" per il 2025 | Non verificabile (fonti bloccate); l'1,04% risulta solo per il gruppo D | T | LT-13 |
+| # | Dove | Nel codice | Ufficiale | Classe | Task | Stato (LT-10) |
+|---|---|---|---|---|---|---|
+| 1 | `CanoneConcordatoMbSeed.cs:11`, `:24-35`; test `CanoneConcordatoEligibilityServiceTests.cs:262` e `TerritorialRentAgreementMigrationTests.cs:46` | 54 comuni senza **Misinto**; commento "do not invent a 55th"; i test fissano 54 | 55 comuni, compreso Misinto | U | LT-10 | **Applicata**: Misinto (`Missing`) nel seed e nella migrazione `LeaseContractTypeAndConcordatoRules`; test a 55 |
+| 2 | `CanoneConcordatoEligibilityService.cs:163-166` | +10% per 50 ≤ mq ≤ 60 | +10% solo per 50 < mq < 60 | U | LT-10 | **Applicata** |
+| 3 | `:161-162` | +20% sul canone unitario, senza tetto | mq × 1,20 con tetto a 40 mq | U | LT-10 | **Applicata** (mq, non €/mq) |
+| 4 | `:163-166` | +10% sul canone unitario, senza tetto | mq × 1,10 con tetto a 60 mq | U | LT-10 | **Applicata** |
+| 5 | `:167-168` | −20% sul canone unitario, senza minimo | mq × 0,80 e non sotto 120 mq; riduzione facoltativa | U; D (facoltatività) | LT-10 | **Applicata** la formula; la riduzione è applicata sempre (prudente sul massimo, anche al minimo). Facoltatività: **dubbio** |
+| 6 | `:56-60`, `:147-153` | Range = [min SF n, max SF n] | Tetto = max SF n; si può scendere fino al min della SF 1 (20 €/mq) | U (testo), D (minimo) | LT-10 | **Applicata**: minimo = min SF 1 × mq senza maggiorazioni facoltative × durata. Il minimo resta **dubbio** (D) |
+| 7 | `:143` | SF 3 con almeno 2 elementi D qualsiasi | Almeno 2 tra D1, D2, D4, D6, D7, D9 | U | LT-10 | **Applicata**: nuovo input "elementi D qualificanti"; elenco sull'accordo (`SubFascia3QualifyingTypeDElements`) |
+| 8 | `:133-145` | Stufe non gestite | Stufe → SF 1, salvo almeno 4 elementi B | U | LT-10 | **Applicata** (`StoveHeatingMinTypeBCount` = 4) |
+| 9 | `:143-144` | Max della SF 3 già con 2 elementi D | Max della SF 3 "possibile" con almeno 4 elementi D | U; D | LT-10 | **Parziale**: il massimo SF 3 resta mostrato, con l'avviso `subfascia3_max_needs_more_d` sotto 4 elementi D (`SubFascia3MaxMinTypeDCount`). Quale tetto valga con 2-3 D: **dubbio** |
+| 10 | `:155-179` | Aria condizionata assente | Fino a +5% se copre ≥ 50% della superficie | U | LT-10 | **Applicata** (`AirConditioningUpliftPercent` = 5, solo sul massimo) |
+| 11 | `RentBandCharacteristics` | Pertinenze assenti | +50/30/25/10% ai mq, prima delle maggiorazioni | U | LT-10 | **Applicata** (percentuali sull'accordo); se le soglie 40/50-60/120 si misurino con le pertinenze: **dubbio**, oggi con |
+| 12 | `:106-109` | Bande intere `MinSqm ≤ x ≤ MaxSqm` su `decimal`: 50,5 / 74,5 / 99,5 senza banda | Accordo silente sui decimali; superficie catastale intera | U, T, D | LT-10 | **Applicata** la proposta: bande semiaperte contigue `(0,50] (50,74] (74,99] (99,∞)` nel seed e nel servizio, ricerca sui mq utili arrotondati al metro (0,5 per eccesso). Arrotondamento: **dubbio** (D) |
+| 13 | `:170-176` | Anni non validati: 0, 1 e 2 accettati; oltre 6 → 0% | 3+2 almeno 3 anni; maggiorazioni solo per 4, 5, 6 anni; oltre 6 non previsto | U | LT-10 | **Applicata**: anni dalle date del contratto (mai dal client); sotto 3 anni 422 / non disponibile; oltre 6 anni nessuna maggiorazione con avviso |
+| 14 | `CanoneConcordatoMbSeed.cs:106-111` | 3 organizzazioni (A.S.P.P.I. Comprensorio Brianza, Confabitare, SUNIA) | 11 organizzazioni: 4 degli inquilini e 7 della proprietà (tabella sopra) | U | LT-10 | **Applicata**: 11 organizzazioni con sede e telefono di F1; rimosse le email non riverificate |
+| 15 | FE `src/i18n/locales/it.json:343` e `en.json:343` (`guidanceIntro`) | "Contatta direttamente un'organizzazione firmataria" | Attestazione valida solo se congiunta: una organizzazione della proprietà **e** una degli inquilini | U | LT-10 | **Applicata** (IT e EN) |
+| 16 | `TerritorialRentAgreement` (entità) | Nessun campo per deposito o scadenza | 18 mesi dal deposito, ultrattività, fasce aggiornabili con il 100% FOI dopo la scadenza | U | LT-13 (A7-22), LT-10 (avviso) | LT-10: **avviso** "range indicativo" con fonte e data di verifica. Campi deposito/scadenza: **aperto** (LT-13) |
+| 17 | `CanoneConcordatoMbSeed.cs:18` (`AtaSource`) | "Secondary sources converging on CIPE 13/11/2003" | Le premesse di F1 elencano Seveso e Cesano nell'elenco CIPE (dichiarazione delle parti). Citare F1; `VerifiedDirectly` resta `false` | U, D | LT-13 / RS-5 | Non toccata (LT-13) |
+| 18 | `ComuneImuNotificationService.cs:82-88` | Seveso: tre indirizzi e portale, "canale NON univoco" | Modulo 2025 ai Servizi Sociali, p.c. Ufficio Tributi, via `protocollo@comune.seveso.mb.it`; aliquota agevolata 5,7‰ (2025) | U | LT-13 | Non toccata (LT-13) |
+| 19 | `ComuneImuNotificationService.cs:94` | Cesano: "1,04% x 75% circa 0,78%" per il 2025 | Non verificabile (fonti bloccate); l'1,04% risulta solo per il gruppo D | T | LT-13 | Non toccata (LT-13) |
 
 Esempi per i test (Seveso, sub-fascia 2, 3 anni, nessun altro coefficiente; massimo annuo):
 
@@ -224,7 +224,39 @@ Esempi per i test (Seveso, sub-fascia 2, 3 anni, nessun altro coefficiente; mass
 | 130 mq | 62 × 130 × 0,80 = **6.448,00 €** | 62 × 120 = **7.440,00 €** | minimo a 120 mq; senza la riduzione facoltativa 8.060,00 € (D) |
 | 65 mq (minimo) | 53 × 65 = **3.445,00 €** | 20 × 65 = **1.300,00 €** | le parti possono scegliere una sub-fascia inferiore (D) |
 
-### Cosa deve cambiare LT-10
+### Cosa ha cambiato LT-10 (2026-09-24)
+
+Riepilogo; il dettaglio è nella colonna "Stato" della tabella sopra.
+
+- **Seed e migrazioni.** La migrazione del 2024 legge ora una copia congelata (`CanoneConcordatoMbSeed2024`); le correzioni
+  verificate (Misinto, 11 firmatari, bande semiaperte, regole di calcolo, `LastVerifiedAt` = 2026-09-23 per Seveso e
+  Cesano) sono applicate dalla migrazione `LeaseContractTypeAndConcordatoRules` con valori scritti nella migrazione. Un test
+  su PostgreSQL verifica che il database migrato coincida con `CanoneConcordatoMbSeed`.
+- **Campi sull'accordo** (non costanti nel servizio): soglie 3/3/2, elementi D qualificanti, 4 D per il massimo SF 3,
+  stufe con 4 B, aria condizionata 5%, pertinenze 50/30/25/10%, `CoefficientCombination` (somma, configurabile).
+- **Formula**: quella del punto 4 sotto, con la somma dei coefficienti (interpretazione documentata, marcata D e
+  configurabile per accordo). Le mensilità del range sono arrotondate verso l'interno (min per eccesso, max per difetto),
+  così 12 mensilità non escono mai dal range annuo.
+- **Range sul server** (A7-12): calcolato alla creazione del lease con le caratteristiche dichiarate e la durata dalle
+  date; salvato sul lease (`ConcordatoAssessment`). Dati `Complete`: canone fuori range → 422
+  `concordato_rent_out_of_range`. Dati `Partial`: range **indicativo**, avviso, nessun blocco (A7-23). Nessun endpoint
+  modifica un lease dopo la creazione: la validazione vale per l'unico punto di scrittura.
+- **Tipo di contratto e regime fiscale separati** (A7-13): `ContractType` (Libero 4+4 ≥ 4 anni, Concordato 3+2 ≥ 3
+  anni, Transitorio 1-18 mesi) e `TaxRegime` (cedolare, ordinario). `FiscalRegime` resta come valore derivato per
+  template, IMU e advisory. I lease concordato esistenti hanno `TaxRegime` nullo: il vecchio valore non lo diceva.
+- **Transitorio**: solo la durata. Le esigenze transitorie ammesse sono elencate nell'accordo (F1 p. 10-11) ma non
+  sono riportate qui: non sono modellate, e il transitorio non ha un modello di contratto. Se il canone del transitorio
+  debba stare nelle fasce dell'accordo (F1: "stessi criteri 4.1 a-d") dipende dal comune: non applicato, **dubbio**.
+  Studenti: non modellati.
+- **Dati Partial**: Seveso e Cesano restano `Partial` (motivi in "Esito" sotto).
+
+Dubbi rimasti (da far confermare a un'organizzazione firmataria o a un legale): arrotondamento dei mq e 100 mq; somma o
+prodotto dei coefficienti; riduzione oltre 120 mq e maggiorazioni sul minimo; tetto della SF 3 con 2-3 elementi D;
+pertinenze nelle soglie di superficie; durate oltre 6 anni; canone dei transitori nelle fasce; blocco o no della
+creazione quando i dati del comune mancano (`Missing`: oggi 422 `concordato_range_unavailable`, comportamento
+precedente mantenuto).
+
+### Cosa doveva cambiare LT-10 (analisi RS-8)
 
 1. **Seed dei comuni.** Aggiungere `"Misinto"` tra `"Mezzago"` e `"Monza"` in `ProvinceComuni` (resta `Missing`); correggere il commento (55 comuni); aggiornare i due test da 54 a 55. La migrazione `20260816203709_AddTerritorialRentAgreements` legge la classe di seed "viva" (A7-22): il nuovo comune va inserito con una nuova migrazione di dati, non cambiando il comportamento di quella esistente (coordinarsi con LT-13).
 2. **Seed dei firmatari.** Sostituire le 3 voci con le 11 organizzazioni della tabella "Firmatari", ruolo e telefono da F1. Le email attuali di Confabitare e SUNIA non compaiono nell'accordo (T): tenerle solo se riverificate.
@@ -279,4 +311,4 @@ Esempi per i test (Seveso, sub-fascia 2, 3 anni, nessun altro coefficiente; mass
 
 Ricerca completa con tabelle ufficiali, contatti e gap espliciti: `Sessions/research-canone-concordato-mb.md`. Business analysis: `Sessions/business-analysis-canone-concordato.md`. Spec tecnica: `Sessions/specs/spec-ltr-canone-concordato-calculator.md`.
 
-**Data consultazione ricerca sottostante**: 2026-08-16 · **Verifica RS-5 su fonti ufficiali**: 2026-09-23 (vedi `fiscale.md`) · **Verifica RS-8 dell'accordo territoriale MB**: 2026-09-23 (sezione "Accordi verificati (2026-09)")
+**Data consultazione ricerca sottostante**: 2026-08-16 · **Verifica RS-5 su fonti ufficiali**: 2026-09-23 (vedi `fiscale.md`) · **Verifica RS-8 dell'accordo territoriale MB**: 2026-09-23 (sezione "Accordi verificati (2026-09)") · **Correzioni LT-10 al calcolo e al seed**: 2026-09-24 (sezione "Cosa ha cambiato LT-10"; runbook `docs/runbooks/canone-concordato.md`)

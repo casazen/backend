@@ -111,8 +111,8 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs and Properties are written through the model (the migration drops a column the model no longer has and
-    /// adds none); the old JSON column is written with SQL.
+    /// Orgs are written through the model; Properties and the old JSON column with SQL (later migrations add columns to
+    /// the current Property entity).
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -127,36 +127,33 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
         };
         db.Orgs.Add(org);
 
-        Property NewProperty(string name)
-        {
-            var property = new Property
-            {
-                OwnerId = "auth0|co07",
-                OrgId = org.Id,
-                Name = name,
-                Description = "Casa",
-                Address = $"Via Roma {Guid.NewGuid():N}",
-                City = "Roma",
-                PostalCode = "00100",
-                MaxGuests = 4,
-                NightlyRate = 100m,
-                IsActive = true,
-                ComplianceStatus = PropertyComplianceStatus.Active,
-            };
-            db.Properties.Add(property);
-            return property;
-        }
-
-        var full = NewProperty("Full");
-        var partial = NewProperty("Partial");
-        var malformed = NewProperty("Malformed");
-        var without = NewProperty("Without");
         await db.SaveChangesAsync();
 
-        await SetLegacyJsonAsync(db, full.Id, FullLegacyJson);
-        await SetLegacyJsonAsync(db, partial.Id, PartialLegacyJson);
-        await SetLegacyJsonAsync(db, malformed.Id, MalformedLegacyJson);
-        return new Seed(org.Id, full.Id, partial.Id, malformed.Id, without.Id);
+        // Property rows in SQL: the current Property entity has columns that later migrations add (LT-10).
+        async Task<Guid> NewPropertyAsync(string name)
+        {
+            var id = Guid.NewGuid();
+            var address = $"Via Roma {Guid.NewGuid():N}";
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO "Properties" (
+                    "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
+                    "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
+                    "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "ComplianceStatus", "CreatedAt", "UpdatedAt")
+                VALUES ({id}, 'auth0|co07', {org.Id}, {name}, 'Casa', {address}, 'Roma', '00100', 0, 0, 0, 0, 4, 100, 0, 0,
+                    ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, {(int)PropertyComplianceStatus.Active}, now(), now());
+                """);
+            return id;
+        }
+
+        var full = await NewPropertyAsync("Full");
+        var partial = await NewPropertyAsync("Partial");
+        var malformed = await NewPropertyAsync("Malformed");
+        var without = await NewPropertyAsync("Without");
+
+        await SetLegacyJsonAsync(db, full, FullLegacyJson);
+        await SetLegacyJsonAsync(db, partial, PartialLegacyJson);
+        await SetLegacyJsonAsync(db, malformed, MalformedLegacyJson);
+        return new Seed(org.Id, full, partial, malformed, without);
     }
 
     private static Task SetLegacyJsonAsync(AppDbContext db, Guid propertyId, string json) =>

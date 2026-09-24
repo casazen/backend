@@ -24,6 +24,8 @@ public sealed record LeaseSummaryDto(
     LeasePropertyDto? Property,
     LeaseStatus Status,
     FiscalRegime FiscalRegime,
+    LeaseContractType ContractType,
+    LeaseTaxRegime? TaxRegime,
     DateTime StartDate,
     DateTime EndDate,
     decimal MonthlyRent,
@@ -109,9 +111,13 @@ public sealed record LeaseDetailDto(
     LeasePropertyDto? Property,
     LeaseStatus Status,
     FiscalRegime FiscalRegime,
+    LeaseContractType ContractType,
+    LeaseTaxRegime? TaxRegime,
     DateTime StartDate,
     DateTime EndDate,
     decimal MonthlyRent,
+    decimal? SecurityDeposit,
+    LeaseConcordatoAssessmentDto? ConcordatoAssessment,
     DateTime? StipulaDate,
     DateTime? RegistrationDeadline,
     bool HasSignedPdf,
@@ -121,6 +127,40 @@ public sealed record LeaseDetailDto(
     IReadOnlyList<LeaseEventDto> Events,
     DateTime CreatedAt,
     DateTime UpdatedAt);
+
+/// <summary>
+/// Canone concordato data of a lease (LT-10, A7-12, A7-23): the characteristics declared at creation and the range the
+/// server computed from them and from the lease dates. <c>Indicative</c>: the agreement data were not confirmed
+/// (Partial), the range is a guide and did not block the lease; <c>RentWithinRange</c> false is then a warning.
+/// </summary>
+public sealed record LeaseConcordatoAssessmentDto(
+    decimal Sqm,
+    decimal GarageSqm,
+    decimal BalconySqm,
+    decimal OtherAppurtenanceSqm,
+    decimal PrivateGreenSqm,
+    int TypeAElementCount,
+    int TypeBElementCount,
+    int TypeCElementCount,
+    int TypeDElementCount,
+    int QualifyingTypeDElementCount,
+    bool StoveHeating,
+    bool IsFurnished,
+    bool AirConditioning,
+    string? ZoneName,
+    string? CadastralSheet,
+    int ContractYears,
+    decimal UsableSqm,
+    string Zone,
+    int SubFascia,
+    decimal CanoneMinAnnuo,
+    decimal CanoneMaxAnnuo,
+    decimal CanoneMinMensile,
+    decimal CanoneMaxMensile,
+    DataCompleteness DataCompleteness,
+    bool Indicative,
+    bool RentWithinRange,
+    DateTime CalculatedAt);
 
 /// <summary>Maps lease entities to the API contract.</summary>
 public static class LeaseDtoMapper
@@ -137,9 +177,13 @@ public static class LeaseDtoMapper
             ToProperty(lease.Property),
             lease.Status,
             lease.FiscalRegime,
+            lease.ContractType,
+            lease.TaxRegime,
             lease.StartDate,
             lease.EndDate,
             lease.MonthlyRent,
+            lease.SecurityDeposit,
+            lease.ConcordatoAssessment is null ? null : ToConcordatoAssessment(lease.ConcordatoAssessment),
             lease.StipulaDate,
             RliRegistrationDeadline.Resolve(lease, todayInRome),
             // Only a file of the private bucket can be served (LT-02): a provider path left by the old stub is not one.
@@ -150,6 +194,40 @@ public static class LeaseDtoMapper
             lease.Events.OrderBy(e => e.OccurredAt).Select(e => new LeaseEventDto(e.EventType, e.OccurredAt)).ToList(),
             lease.CreatedAt,
             lease.UpdatedAt);
+    }
+
+    public static LeaseConcordatoAssessmentDto ToConcordatoAssessment(LeaseConcordatoAssessment a)
+    {
+        ArgumentNullException.ThrowIfNull(a);
+
+        return new LeaseConcordatoAssessmentDto(
+            a.Sqm,
+            a.GarageSqm,
+            a.BalconySqm,
+            a.OtherAppurtenanceSqm,
+            a.PrivateGreenSqm,
+            a.TypeAElementCount,
+            a.TypeBElementCount,
+            a.TypeCElementCount,
+            a.TypeDElementCount,
+            a.QualifyingTypeDElementCount,
+            a.StoveHeating,
+            a.IsFurnished,
+            a.AirConditioning,
+            a.ZoneName,
+            a.CadastralSheet,
+            a.ContractYears,
+            a.UsableSqm,
+            a.Zone,
+            a.SubFascia,
+            a.CanoneMinAnnuo,
+            a.CanoneMaxAnnuo,
+            a.CanoneMinMensile,
+            a.CanoneMaxMensile,
+            a.DataCompleteness,
+            a.Indicative,
+            a.RentWithinRange,
+            a.CalculatedAt);
     }
 
     public static LeasePartyDto ToParty(Party party)

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Regulatory;
 
@@ -25,8 +26,29 @@ public class LeaseContract : ITenantOwned
     [Required]
     public LeaseStatus Status { get; set; } = LeaseStatus.Draft;
 
+    /// <summary>
+    /// Legacy combined value, derived from <see cref="ContractType"/> and <see cref="TaxRegime"/> at creation
+    /// (<see cref="LeaseContractTerms.LegacyFiscalRegime"/>). Still the key of the contract template, the IMU notice
+    /// and the cedolare advisory.
+    /// </summary>
     [Required]
     public FiscalRegime FiscalRegime { get; set; }
+
+    /// <summary>Contract type (LT-10, A7-13): fixes the term rules and the canone concordato range.</summary>
+    public LeaseContractType ContractType { get; set; }
+
+    /// <summary>
+    /// Tax regime chosen by the landlord (LT-10). Null only for canone concordato leases created before the contract type
+    /// was separated from the tax regime: the old value did not say it.
+    /// </summary>
+    public LeaseTaxRegime? TaxRegime { get; set; }
+
+    /// <summary>Security deposit in euros (template data, LT-03); null when not declared.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? SecurityDeposit { get; set; }
+
+    /// <summary>Characteristics and range of a canone concordato lease (LT-10, A7-12); null for the other types.</summary>
+    public LeaseConcordatoAssessment? ConcordatoAssessment { get; set; }
 
     [Required]
     public DateTime StartDate { get; set; }
@@ -83,6 +105,16 @@ public class LeaseContract : ITenantOwned
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public bool HasExtraEUTenant => Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU);
+
+    /// <summary>
+    /// Sets the contract type and the tax regime, and the legacy <see cref="FiscalRegime"/> derived from them (LT-10).
+    /// </summary>
+    public void SetContractTerms(LeaseContractType contractType, LeaseTaxRegime? taxRegime)
+    {
+        ContractType = contractType;
+        TaxRegime = taxRegime;
+        FiscalRegime = LeaseContractTerms.LegacyFiscalRegime(contractType, taxRegime);
+    }
 
     /// <summary>
     /// Records the stipula at full signature (every party signed through the e-sign provider, or a declared offline
