@@ -28,6 +28,7 @@ public interface ICheckoutOutcomeService
 /// <summary>The checkout of a booking as its guest sees it. No personal data of the guest.</summary>
 /// <param name="ExpiresAt">Until when the guest can pay, or the request waits; null when nothing is pending.</param>
 /// <param name="DeferredChargeDate">"Paga alla scadenza": the day the saved card is charged.</param>
+/// <param name="BookingCode">The booking code of "Le mie prenotazioni" (BK-11), formatted.</param>
 public sealed record CheckoutOutcome(
     Guid BookingId,
     CheckoutOutcomeState State,
@@ -42,13 +43,20 @@ public sealed record CheckoutOutcome(
     decimal TotalPrice,
     string Currency,
     DateTime? ExpiresAt,
-    DateOnly? DeferredChargeDate);
+    DateOnly? DeferredChargeDate,
+    string BookingCode);
 
 /// <summary>What the Stripe Payment Element needs to pay a hold again.</summary>
-/// <param name="ClientSecret">Immediate payment: the PaymentIntent's client secret.</param>
-/// <param name="SetupIntentClientSecret">"Paga alla scadenza": the SetupIntent's client secret.</param>
+/// <param name="ClientSecret">
+/// Immediate payment: the PaymentIntent's client secret. "Paga alla scadenza" whose deferred charge failed (BK-08): the
+/// client secret of the deferred charge PaymentIntent, confirmed by the guest on-session.
+/// </param>
+/// <param name="SetupIntentClientSecret">"Paga alla scadenza" not confirmed yet: the SetupIntent's client secret.</param>
 /// <param name="StripeAccountId">Connected account the intent lives on (direct charges).</param>
-/// <param name="ExpiresAt">End of the hold: past it the dates are released.</param>
+/// <param name="ExpiresAt">
+/// End of the hold, past it the dates are released; for a failed deferred charge the automatic cancellation, <c>null</c>
+/// when none applies.
+/// </param>
 public sealed record CheckoutPaymentSession(
     Guid BookingId,
     PaymentOption PaymentOption,
@@ -56,7 +64,7 @@ public sealed record CheckoutPaymentSession(
     string? SetupIntentClientSecret,
     string PublishableKey,
     string StripeAccountId,
-    DateTime ExpiresAt);
+    DateTime? ExpiresAt);
 
 /// <summary>Stable error codes of the checkout outcome page (frontend <c>apiErrors.codes.*</c>).</summary>
 public static class CheckoutOutcomeErrorCodes
