@@ -8,7 +8,7 @@ namespace Casazen.Web.Extensions;
 /// Real health checks (FD-12, A9-19, issue #16), all anonymous:
 /// <list type="bullet">
 ///   <item><c>/api/health/live</c>: the process answers; no dependency is checked;</item>
-///   <item><c>/api/health/ready</c>: database, Hangfire and configuration of email, Stripe and Auth0; 200 when
+///   <item><c>/api/health/ready</c>: database, Hangfire and configuration of email, storage, Stripe and Auth0; 200 when
 ///   healthy or degraded (an optional integration is missing), 503 when unhealthy;</item>
 ///   <item><c>/api/health</c>: same as ready (kept for CI and the existing smoke scripts).</item>
 /// </list>
@@ -26,14 +26,16 @@ public static class HealthCheckExtensions
     /// <summary>A dependency that does not answer within this time is reported unhealthy.</summary>
     public static readonly TimeSpan DependencyTimeout = TimeSpan.FromSeconds(5);
 
-    public static IServiceCollection AddCasazenHealthChecks(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddCasazenHealthChecks(this IServiceCollection services)
     {
-        services.AddSingleton(BuildInfo.FromConfiguration(configuration));
+        // Read from the final configuration (environment variables included) when first needed.
+        services.AddSingleton(sp => BuildInfo.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
 
         services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("database", tags: [ReadyTag], timeout: DependencyTimeout)
             .AddCheck<HangfireHealthCheck>("hangfire", tags: [ReadyTag], timeout: DependencyTimeout)
             .AddCheck<EmailConfigurationHealthCheck>("email", tags: [ReadyTag])
+            .AddCheck<StorageConfigurationHealthCheck>("storage", tags: [ReadyTag])
             .AddCheck<StripeConfigurationHealthCheck>("stripe", tags: [ReadyTag])
             .AddCheck<Auth0ConfigurationHealthCheck>("auth0", tags: [ReadyTag]);
 

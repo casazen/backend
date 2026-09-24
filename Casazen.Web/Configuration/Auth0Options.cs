@@ -47,7 +47,7 @@ public sealed class Auth0OptionsValidator : IValidateOptions<Auth0Options>
 
         if (RequiredConfiguration.IsMissing(options.Domain))
         {
-            errors.Add("Auth0__Domain is missing: set the login domain of the Auth0 tenant (e.g. tenant.eu.auth0.com).");
+            errors.Add("Auth0__Domain is missing or a placeholder: set the login domain of the Auth0 tenant (e.g. tenant.eu.auth0.com).");
         }
         else if (options.Domain!.Contains("://", StringComparison.Ordinal) || options.Domain.Contains('/'))
         {
@@ -55,7 +55,7 @@ public sealed class Auth0OptionsValidator : IValidateOptions<Auth0Options>
         }
 
         if (RequiredConfiguration.IsMissing(options.Audience))
-            errors.Add("Auth0__Audience is missing: set the identifier of the Auth0 API (e.g. https://casazen-api).");
+            errors.Add("Auth0__Audience is missing or a placeholder: set the identifier of the Auth0 API (e.g. https://casazen-api).");
 
         return errors;
     }

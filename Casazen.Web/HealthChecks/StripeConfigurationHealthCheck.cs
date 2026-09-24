@@ -36,7 +36,7 @@ public sealed class StripeConfigurationHealthCheck(IConfiguration configuration)
             .Select(s => s.Variable)
             .ToList();
         if (missing.Count > 0)
-            problems.Add($"missing {string.Join(", ", missing)}.");
+            problems.Add($"missing or placeholder {string.Join(", ", missing)}.");
 
         foreach (var setting in Settings.Where(s => !missing.Contains(s.Variable)))
         {

@@ -130,7 +130,7 @@ builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environ
 builder.Services.AddCasazenAuthorization();
 
 // Health checks: /api/health/live, /api/health/ready (database, Hangfire, configuration), /api/health (FD-12)
-builder.Services.AddCasazenHealthChecks(builder.Configuration);
+builder.Services.AddCasazenHealthChecks();
 
 // CORS
 builder.Services.AddCasazenCors(builder.Configuration);

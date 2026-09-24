@@ -100,7 +100,7 @@ Casazen.sln
 - **Stripe webhook signatures**: `StripeWebhookHandler` must verify the `Stripe-Signature` header — never skip this check.
 - **Migrations**: run `dotnet ef migrations add Add<Feature> --project Casazen.Infrastructure` for every schema change; test locally before committing.
 - **Property timezone**: stored as IANA string (`Europe/Rome` default) — use `TimezoneHelper` for conversions, never raw `TimeZoneInfo`.
-- **Auth**: all `/api` endpoints require Auth0 JWT Bearer token. `HealthController` is the only public endpoint.
+- **Auth**: all `/api` endpoints require Auth0 JWT Bearer token. The health endpoints (`/api/health`, `/api/health/live`, `/api/health/ready`) are anonymous, like the public booking, legal and webhook routes.
 - **GDPR**: `GdprDataRetentionJob` handles automatic deletion. `IGdprService` / `GdprController` expose data export/delete for GDPR requests.
 - **Before every commit**: `dotnet test` + `dotnet format --verify-no-changes` — no compiler warnings allowed.
 

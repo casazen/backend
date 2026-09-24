@@ -5,10 +5,11 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Web.HealthChecks;
 
 /// <summary>
-/// Auth0: JWT validation settings (<c>unhealthy</c> without them: nobody can sign in) and the Management API client
-/// used for the role sync (FD-14; <c>degraded</c> without it or with the deprecated static token).
+/// Auth0: JWT validation settings and the Management API client used for the role sync (FD-14; <c>degraded</c>
+/// without it or with the deprecated static token). Without Domain/Audience nobody can sign in: <c>unhealthy</c> where
+/// the configuration is enforced (there the app does not even start), <c>degraded</c> in Development and Testing.
 /// </summary>
-public sealed class Auth0ConfigurationHealthCheck(IOptions<Auth0Options> options) : IHealthCheck
+public sealed class Auth0ConfigurationHealthCheck(IOptions<Auth0Options> options, IHostEnvironment environment) : IHealthCheck
 {
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
@@ -16,7 +17,12 @@ public sealed class Auth0ConfigurationHealthCheck(IOptions<Auth0Options> options
 
         var errors = Auth0OptionsValidator.GetErrors(auth0);
         if (errors.Count > 0)
-            return Task.FromResult(HealthCheckResult.Unhealthy("Authentication is not configured: " + string.Join(" ", errors)));
+        {
+            var description = "Authentication is not configured: " + string.Join(" ", errors);
+            return Task.FromResult(RequiredConfiguration.IsEnforced(environment)
+                ? HealthCheckResult.Unhealthy(description)
+                : HealthCheckResult.Degraded(description));
+        }
 
         if (auth0.UsesLegacyManagementToken)
         {
