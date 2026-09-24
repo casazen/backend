@@ -58,7 +58,7 @@ deployment keeps running meanwhile.
 
 ## 2. API security headers
 
-Nothing to configure. HSTS is sent on both Railway environments (they run with `ASPNETCORE_ENVIRONMENT=Production`),
+Nothing to configure. HSTS is sent on both Railway environments (`Production` and `Staging`: every environment but Development/Testing),
 never locally. There is no `preload`: adding the API host to the browsers' preload list cannot be undone quickly and
 would need the parent domain on HTTPS everywhere. The Hangfire dashboard and the supplier registration page served
 by the API are not meant to be framed either.

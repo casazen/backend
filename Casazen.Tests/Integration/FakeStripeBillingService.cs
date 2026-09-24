@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Tests.Integration;
@@ -37,7 +38,8 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
         // Widen the race window of parallel checkouts, as a real Stripe call would.
         await Task.Delay(50, cancellationToken);
         var id = $"cs_test_{Guid.NewGuid():N}";
-        var url = $"https://checkout.stripe.test/session/{id}?tier={planTier}&success={Uri.EscapeDataString(successUrl)}";
+        var url = $"https://checkout.stripe.test/session/{id}?tier={planTier}" +
+                  $"&success={Uri.EscapeDataString(successUrl)}&cancel={Uri.EscapeDataString(cancelUrl)}";
         _sessions[id] = new FakeSession(id, url, org.StripeCustomerId ?? string.Empty, planTier);
         return new StripeCheckoutSession(id, url, planTier);
     }
@@ -72,26 +74,11 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
         return Task.FromResult(subscriptions);
     }
 
-    public Task<string> CreatePortalSessionAsync(OrgEntity org, CancellationToken cancellationToken = default) =>
-        Task.FromResult($"https://billing.stripe.test/portal/{org.StripeCustomerId ?? "cus_test"}");
+    public Task<string> CreatePortalSessionAsync(OrgEntity org, string returnUrl, CancellationToken cancellationToken = default) =>
+        Task.FromResult(
+            $"https://billing.stripe.test/portal/{org.StripeCustomerId ?? "cus_test"}?return={Uri.EscapeDataString(returnUrl)}");
 
-    public PlanTier? MapPriceIdToTier(string? priceId)
-    {
-        if (string.IsNullOrWhiteSpace(priceId))
-            return null;
-
-        foreach (PlanTier tier in Enum.GetValues<PlanTier>())
-        {
-            var configured = configuration[$"Billing:Prices:{tier}"];
-            if (!string.IsNullOrEmpty(configured) &&
-                string.Equals(configured, priceId, StringComparison.Ordinal))
-            {
-                return tier;
-            }
-        }
-
-        return null;
-    }
+    public PlanTier? MapPriceIdToTier(string? priceId) => BillingPrices.TierOf(configuration, priceId);
 
     public static string CustomerIdFor(Guid orgId) => $"cus_test_{orgId:N}";
 

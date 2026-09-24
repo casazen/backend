@@ -54,7 +54,7 @@ check presence and format only. Placeholders committed in `appsettings.json`, `s
 
 ## Startup validation
 
-Outside `Development` and `Testing` (so on both Railway environments, which run with `ASPNETCORE_ENVIRONMENT=Production`)
+Outside `Development` and `Testing` (so on both Railway environments: `Production` on production, `Staging` on test, PL-11)
 the app **does not start** without the settings it cannot work without. Railway then keeps the previous deployment
 running and the deploy log shows the list of problems.
 

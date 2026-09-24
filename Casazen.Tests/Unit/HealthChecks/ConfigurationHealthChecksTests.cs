@@ -24,6 +24,9 @@ public class ConfigurationHealthChecksTests
         ["Stripe:PublishableKey"] = "pk_live_51PublishableValue",
         ["Stripe:WebhookSecret"] = WebhookValue,
         ["Stripe:ConnectWebhookSecret"] = ConnectWebhookValue,
+        ["Billing:Prices:Starter"] = "price_1Starter",
+        ["Billing:Prices:Pro"] = "price_1Pro",
+        ["Billing:Prices:Scale"] = "price_1Scale",
     };
 
     [Fact]
@@ -79,6 +82,20 @@ public class ConfigurationHealthChecksTests
 
         Assert.Equal(HealthStatus.Degraded, result.Status);
         Assert.Contains("different modes", result.Description);
+    }
+
+    [Fact]
+    public async Task StripeCheck_PlanWithoutPriceId_ReturnsDegradedNamingThePlanVariable()
+    {
+        // PL-11 (A1-31): outside Production a plan without price is not purchasable; the health check says which one.
+        var configuration = new Dictionary<string, string?>(CompleteStripe) { ["Billing:Prices:Scale"] = "price_PLACEHOLDER_scale" };
+
+        var result = await CheckStripeAsync(configuration);
+
+        Assert.Equal(HealthStatus.Degraded, result.Status);
+        Assert.Contains("Billing__Prices__Scale", result.Description);
+        Assert.DoesNotContain("Billing__Prices__Pro", result.Description);
+        Assert.DoesNotContain("price_PLACEHOLDER_scale", result.Description);
     }
 
     [Fact]

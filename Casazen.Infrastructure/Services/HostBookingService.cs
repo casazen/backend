@@ -157,25 +157,6 @@ public sealed class HostBookingService(
         return booking;
     }
 
-    public async Task<Booking> CheckOutAsync(Guid bookingId, CancellationToken cancellationToken = default)
-    {
-        await using var transaction = await LockBookingAsync(bookingId, cancellationToken);
-        var booking = await LoadAsync(bookingId, cancellationToken);
-
-        if (booking.Status != BookingStatus.CheckedIn)
-            throw new DomainConflictException(BookingErrorCodes.NotCheckedIn, "BookingNotCheckedIn");
-        if (booking.CheckOutDate.Date > _clock.TodayInRome())
-            throw new DomainRuleException(BookingErrorCodes.CheckOutTooEarly, "BookingCheckOutTooEarly");
-
-        // Only the status changes: the dates of a stay that has already started are never validated again (A2-08).
-        booking.Status = BookingStatus.CheckedOut;
-        booking.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
-        await SaveAsync(booking, transaction, checkOverlap: false, cancellationToken);
-
-        logger.LogInformation("Booking {BookingId} checked out by the host", booking.Id);
-        return booking;
-    }
-
     private async Task SaveAsync(
         Booking booking,
         IDbContextTransaction? transaction,
