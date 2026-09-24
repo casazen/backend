@@ -209,6 +209,29 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
     }
 
     [PostgresFact]
+    public async Task HostEndpoint_DeactivatedUserWithoutOnboarding_Returns403AccountInactiveNotOnboardingRequired()
+    {
+        // PL-03 takes precedence: a deactivated account is told so, never sent to the onboarding.
+        var sub = NewSub();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var user = NewUser(sub, orgId: null, UserRole.None);
+            user.IsActive = false;
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(sub, roles: "PropertyOwner");
+        var response = await client.GetAsync("/api/properties");
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.Forbidden, $"{(int)response.StatusCode} {body}");
+        using var doc = JsonDocument.Parse(body);
+        Assert.Equal("account_inactive", doc.RootElement.GetProperty("code").GetString());
+    }
+
+    [PostgresFact]
     public async Task RegisterDevice_UserWithoutOrg_Returns403OnboardingRequiredNot401()
     {
         using var client = _factory.CreateAuthenticatedClient(NewSub(), roles: "PropertyOwner");
