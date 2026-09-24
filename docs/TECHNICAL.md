@@ -139,9 +139,10 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/properties` | Properties of the caller's org the caller may handle (own ones; whole org for org-wide roles). Short-rent or long-rent |
-| `GET` | `/api/properties/{id}` | Get a single property. Short-rent or long-rent |
-| `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation) |
-| `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role). Short-rent or long-rent |
+| `GET` | `/api/properties/{id}` | The property record (`PropertyResponse`): no bookings, check-in tokens, OTA integrations or documents (PC-02, A2-32; bookings come from the booking endpoints). Short-rent or long-rent |
+| `GET` | `/api/properties/cancellation-policies` | Cancellation policies a property can reference (global catalog). Short-rent only |
+| `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation); `bedrooms` may be `0` (studio) |
+| `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role) with **PATCH semantics** (PC-02, A2-04): a field left out of the body (or `null`) keeps its stored value; `cinCode`, `slug` and `cancellationPolicyId` sent as `null` are cleared. 400 `validation_error` for an invalid field, 422 `cancellation_policy_not_found`. Short-rent or long-rent |
 | `GET`/`POST` | `/api/properties/{id}/documents` | List (with `documentType`) / upload documents such as the APE. Short-rent or long-rent |
 | `DELETE` | `/api/properties/{id}/documents/{docId}` | Delete a document. Short-rent or long-rent |
 | `GET` | `/api/properties/{id}/documents/{docId}/download` | Authenticated download from the private bucket (FD-07). Short-rent or long-rent |
@@ -151,6 +152,15 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/properties/{id}/images` | List photo URLs |
 | `DELETE` | `/api/properties/{id}/images/{imageIndex}` | Delete a photo by index |
 | `PUT` | `/api/properties/{id}/images/order` | Reorder photos |
+
+Property record choices (PC-02):
+- **Update = PUT with PATCH semantics**, not a full PUT: a client that does not know or show a field (the long-term
+  form, the pause toggle of the list, an older app build) can never reset the cleaning fee, deposit, house rules,
+  timezone or cancellation policy. The web forms still send every field they show (`toPropertyPayload`), never the
+  photos (managed by the image endpoints).
+- **Bathrooms stay a whole number** (`int` in the model and the database, 1-50): the form accepts whole numbers only,
+  no migration. **Bedrooms 0-100**, `0` = studio (monolocale); the activation wizard no longer requires a bedroom.
+- **No country nor currency** on the property: amounts are in euros and the form has no such fields.
 
 #### Bookings
 
