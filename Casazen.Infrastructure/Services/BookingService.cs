@@ -182,6 +182,7 @@ public class BookingService(
             Status = BookingStatus.Pending,
             Source = BookingSource.Direct,
             BasePrice = basePrice,
+            CleaningFee = price.CleaningFee,
             TouristTax = touristTaxAmount,
             TouristTaxAmount = touristTaxAmount,
             TotalPrice = totalPrice,
@@ -296,6 +297,29 @@ public class BookingService(
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
         return property;
+    }
+
+    public async Task<DirectBookingQuote> PriceHostStayAsync(
+        Property property,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        int numberOfAdults,
+        int numberOfChildren,
+        IReadOnlyList<int>? childrenAges,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+
+        if (numberOfAdults + numberOfChildren > property.MaxGuests)
+            throw new DomainRuleException(BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", property.MaxGuests);
+
+        var checkIn = checkInDate.Date;
+        var checkOut = checkOutDate.Date;
+        if (checkOut <= checkIn || (checkOut - checkIn).Days > TouristTaxCalculator.MaxNights)
+            throw new DomainRuleException(BookingErrorCodes.InvalidDates, "BookingInvalidDates");
+
+        return await PriceStayAsync(
+            property, checkIn, checkOut, numberOfAdults, numberOfChildren, childrenAges, cancellationToken);
     }
 
     /// <summary>Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights.</summary>

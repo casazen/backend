@@ -135,6 +135,21 @@
   <data name="GuestRefundConfirmed_Timing" xml:space="preserve">
     <value>Il tempo in cui l'accredito compare nel tuo estratto conto dipende dalla tua banca o dall'emittente della carta.</value>
   </data>
+  <data name="GuestBookingCancelled_Subject" xml:space="preserve">
+    <value>Prenotazione annullata - {0}</value>
+  </data>
+  <data name="GuestBookingCancelled_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestBookingCancelled_Body" xml:space="preserve">
+    <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata dall'host.</value>
+  </data>
+  <data name="GuestBookingCancelled_Refund" xml:space="preserve">
+    <value>È stato avviato un rimborso di &lt;strong&gt;{0} €&lt;/strong&gt; sul metodo di pagamento usato per la prenotazione: riceverai un'altra email quando sarà confermato.</value>
+  </data>
+  <data name="GuestBookingCancelled_Contact" xml:space="preserve">
+    <value>Per qualsiasi domanda contatta direttamente l'host della struttura.</value>
+  </data>
   <data name="GuestLatePaymentConfirmed_Subject" xml:space="preserve">
     <value>Prenotazione confermata - {0}</value>
   </data>
