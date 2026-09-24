@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
@@ -19,6 +20,7 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
+    IAlloggiatiCodeTableService codeTableService,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
@@ -28,7 +30,7 @@ public class PublicGuestCheckInController(
 
     /// <summary>
     /// Returns booking context for the guest form. Transitions session Inviato→InCompilazione on first open.
-    /// Before completion the guest prefill has a masked document number; after completion only the status is
+    /// Before completion the guests on file are returned with masked document numbers; after completion only the status is
     /// returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28).
     /// </summary>
     [HttpGet("{token}")]
@@ -42,7 +44,6 @@ public class PublicGuestCheckInController(
         if (view.IsCompleted)
             return Ok(new PublicCheckInContextResponse { Completed = true, Status = view.Status.ToString() });
 
-        var prefill = view.GuestPrefill;
         var response = new PublicCheckInContextResponse
         {
             Completed = false,
@@ -51,26 +52,41 @@ public class PublicGuestCheckInController(
             PropertyName = view.PropertyName,
             CheckInDate = view.CheckInDate,
             CheckOutDate = view.CheckOutDate,
-            GuestPrefill = prefill is null ? null : new PublicCheckInGuestPrefill
-            {
-                FirstName = prefill.FirstName,
-                LastName = prefill.LastName,
-                Email = prefill.Email,
-                DateOfBirth = prefill.DateOfBirth,
-                Nationality = prefill.Nationality,
-                Gender = prefill.Gender,
-                DocumentNumberMasked = prefill.DocumentNumberMasked,
-                DocumentIssuingCountry = prefill.DocumentIssuingCountry,
-                PlaceOfBirth = prefill.PlaceOfBirth,
-            },
+            DeclaredGuests = view.DeclaredGuests,
+            Guests = view.Guests?.Select(PublicCheckInGuestPrefill.From).ToList(),
+            AvailableCodeTables = view.AvailableCodeTables,
         };
 
         return Ok(response);
     }
 
     /// <summary>
-    /// Accepts guest identity data + GDPR consent. On success schedules the Alloggiati job for the arrival day.
-    /// Invalid data → 400 ValidationProblem with the errors keyed by request property;
+    /// Official Alloggiati codes (<c>list</c> = <c>comuni</c>, <c>stati</c>, <c>documenti</c> or <c>luoghi</c>) whose
+    /// description matches <c>q</c>, for the guest form. Only with a usable, not yet completed session. Empty until an
+    /// admin imports the tables (the form then asks for the names only).
+    /// </summary>
+    [HttpGet("{token}/codes")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<IEnumerable<AlloggiatiCodeEntryDto>>> SearchCodes(
+        string token,
+        [FromQuery] string? list,
+        [FromQuery] string? q)
+    {
+        if (!AlloggiatiCodeLists.TryParse(list, out var tables))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, AlloggiatiController.CodeListUnknownCode, "AlloggiatiCodeListUnknown");
+
+        if (await checkInService.GetSessionByTokenAsync(token) is null)
+            return NotFound();
+
+        var results = await codeTableService.SearchAsync(
+            tables, q ?? string.Empty, AlloggiatiController.CodeSearchLimit, HttpContext.RequestAborted);
+        return Ok(results.Select(AlloggiatiCodeEntryDto.From));
+    }
+
+    /// <summary>
+    /// Accepts the data of every guest of the stay (CO-12) + GDPR consent. On success schedules the Alloggiati job for
+    /// the arrival day. Invalid data → 400 ValidationProblem with the errors keyed by request property
+    /// (<c>Guests[1].DocumentNumber</c>);
     /// duplicate submission → 409 <c>checkin_already_submitted</c>.
     /// </summary>
     [HttpPost("{token}")]
@@ -87,15 +103,7 @@ public class PublicGuestCheckInController(
 
         var submitRequest = new GuestCheckInSubmitRequest
         {
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            DateOfBirth = request.DateOfBirth,
-            Nationality = request.Nationality,
-            Gender = request.Gender,
-            DocumentType = request.DocumentType,
-            DocumentNumber = request.DocumentNumber,
-            DocumentIssuingCountry = request.DocumentIssuingCountry,
-            PlaceOfBirth = request.PlaceOfBirth,
+            Guests = request.Guests.Select(g => g.ToInput()).ToList(),
             GdprConsent = request.GdprConsent,
             MarketingConsent = request.MarketingConsent,
             ConsentIpAddress = ip,
@@ -106,9 +114,15 @@ public class PublicGuestCheckInController(
         if (result.Duplicate)
             return this.ApiProblem(StatusCodes.Status409Conflict, AlreadySubmittedCode, "CheckInAlreadySubmitted");
 
-        if (result.ValidationField is not null && result.ValidationErrorKey is not null)
+        if (result.ValidationErrors.Count > 0)
         {
-            ModelState.AddModelError(result.ValidationField, localizer[result.ValidationErrorKey]);
+            foreach (var error in result.ValidationErrors)
+            {
+                ModelState.AddModelError(
+                    error.ModelStateKey(nameof(request.Guests)),
+                    localizer[error.MessageKey, error.MessageArgs]);
+            }
+
             return ValidationProblem(ModelState);
         }
 

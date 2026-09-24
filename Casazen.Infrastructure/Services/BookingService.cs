@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Infrastructure.External;
@@ -17,7 +18,7 @@ public class BookingService(
     IPropertyRepository propertyRepository,
     IOrgService orgService,
     IGuestRepository guestRepository,
-    ITaxCalculationService taxCalculationService,
+    ITouristTaxQuoteService touristTaxQuoteService,
     IStripeService stripeService,
     IPaymentRepository paymentRepository,
     PropertyICalSyncService propertyICalSyncService,
@@ -134,20 +135,16 @@ public class BookingService(
         }
 
         var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
-        if (totalGuests > property.MaxGuests)
-        {
-            throw new DirectBookingException(
-                $"This property allows a maximum of {property.MaxGuests} guests.",
-                DirectBookingErrorCodes.TooManyGuests);
-        }
+        var (checkIn, checkOut) = ValidateStay(property, input.CheckInDate, input.CheckOutDate, totalGuests);
 
-        var checkIn = DateTime.SpecifyKind(input.CheckInDate.Date, DateTimeKind.Utc);
-        var checkOut = DateTime.SpecifyKind(input.CheckOutDate.Date, DateTimeKind.Utc);
-        if (checkOut <= checkIn)
+        // Same price as the checkout quote (BK-03, R-05): computed before any write, so a missing age leaves nothing behind.
+        var price = await PriceStayAsync(
+            property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges);
+        if (price.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
         {
             throw new DirectBookingException(
-                "Check-out date must be after check-in date",
-                DirectBookingErrorCodes.InvalidDates);
+                "The ages of the minors are needed to compute the tourist tax",
+                DirectBookingErrorCodes.ChildAgesRequired);
         }
 
         var pendingTtlMinutes = GetPendingDirectTtlMinutes();
@@ -162,12 +159,10 @@ public class BookingService(
         var guest = await CreateGuestSnapshotWithConsentAsync(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
-        var nights = (checkOut - checkIn).Days;
-        var basePrice = property.NightlyRate * nights + property.CleaningFee;
-        var touristTaxAmount = await taxCalculationService.CalculateTouristTaxAsync(
-            input.PropertyId, checkIn, checkOut, totalGuests);
-        var totalPrice = basePrice + touristTaxAmount;
-        var currency = "EUR";
+        var basePrice = price.BasePrice;
+        var touristTaxAmount = price.TouristTax.AmountOrZero;
+        var totalPrice = price.TotalPrice;
+        var currency = price.Currency;
         var freeRefundDeadline = checkIn.AddDays(-7);
 
         var booking = new Booking
@@ -256,7 +251,96 @@ public class BookingService(
             basePrice,
             setupIntentClientSecret,
             freeRefundDeadline,
-            input.PaymentOption);
+            input.PaymentOption,
+            price.TouristTax.Status);
+    }
+
+    public async Task<DirectBookingQuote> QuoteDirectBookingAsync(
+        DirectBookingQuoteInput input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        var property = await propertyRepository.GetByIdAsync(input.PropertyId);
+        if (property is null || !property.IsActive || property.ComplianceStatus != PropertyComplianceStatus.Active)
+            throw new DirectBookingException("Property not found", DirectBookingErrorCodes.PropertyNotFound);
+
+        var (checkIn, checkOut) = ValidateStay(
+            property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren);
+
+        return await PriceStayAsync(
+            property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges,
+            cancellationToken);
+    }
+
+    /// <summary>Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights.</summary>
+    private static (DateTime CheckIn, DateTime CheckOut) ValidateStay(
+        Property property,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        int totalGuests)
+    {
+        if (totalGuests > property.MaxGuests)
+        {
+            throw new DirectBookingException(
+                $"This property allows a maximum of {property.MaxGuests} guests.",
+                DirectBookingErrorCodes.TooManyGuests)
+            {
+                MessageArgs = [property.MaxGuests],
+            };
+        }
+
+        var checkIn = DateTime.SpecifyKind(checkInDate.Date, DateTimeKind.Utc);
+        var checkOut = DateTime.SpecifyKind(checkOutDate.Date, DateTimeKind.Utc);
+        if (checkOut <= checkIn || (checkOut - checkIn).Days > TouristTaxCalculator.MaxNights)
+        {
+            throw new DirectBookingException(
+                "Check-out date must be after check-in date",
+                DirectBookingErrorCodes.InvalidDates);
+        }
+
+        return (checkIn, checkOut);
+    }
+
+    /// <summary>
+    /// Nightly rate x nights + cleaning fee, plus the tourist tax of <see cref="ITouristTaxQuoteService"/> when it can
+    /// be calculated. The property has no accommodation category (yet): only the rates for every accommodation of the
+    /// comune apply. The night price for percentage rates is the nightly rate, cleaning excluded.
+    /// </summary>
+    private async Task<DirectBookingQuote> PriceStayAsync(
+        Property property,
+        DateTime checkIn,
+        DateTime checkOut,
+        int adults,
+        int children,
+        IReadOnlyList<int>? childrenAges,
+        CancellationToken cancellationToken = default)
+    {
+        var nights = (checkOut - checkIn).Days;
+        var basePrice = property.NightlyRate * nights + property.CleaningFee;
+        var touristTax = await touristTaxQuoteService.QuoteAsync(
+            TouristTaxComune.ForProperty(property),
+            new TouristTaxStay(
+                RomeCalendar.DateInRome(checkIn),
+                RomeCalendar.DateInRome(checkOut),
+                adults,
+                children,
+                childrenAges,
+                AccommodationCategory: null,
+                NightlyPrice: property.NightlyRate),
+            cancellationToken);
+
+        return new DirectBookingQuote(
+            property.Id,
+            checkIn,
+            checkOut,
+            nights,
+            property.NightlyRate,
+            property.CleaningFee,
+            basePrice,
+            touristTax,
+            basePrice + touristTax.AmountOrZero,
+            "EUR");
     }
 
     private async Task<string> HandleImmediatePaymentAsync(

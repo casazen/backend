@@ -30,7 +30,6 @@ public class TenantQueryFilterArchitectureTests
 
         // Platform reference data and platform-wide state.
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
-        [typeof(TaxRate)] = "Platform reference data: regional tax rates shared by every org.",
         [typeof(CancellationPolicy)] = "Platform catalog of cancellation policies shared by the properties of every org.",
         [typeof(TerritorialRentAgreement)] = "Platform reference data: territorial rent agreements (canone concordato).",
         [typeof(ConcordatoRentBand)] = "Platform reference data: rent bands of a territorial agreement.",
@@ -42,6 +41,8 @@ public class TenantQueryFilterArchitectureTests
         [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
+        [typeof(AlloggiatiCodeEntry)] = "Platform reference data: official Alloggiati Web code tables (comuni, stati, documents), imported by admins and read by every org and by the anonymous guest portal (CO-12).",
+        [typeof(AlloggiatiCodeTableImport)] = "Platform reference data: log of the admin imports of the official Alloggiati code tables, not tenant data (CO-12).",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId. A host-org filter would hide the request from the supplier who takes, completes or rejects it, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository).",

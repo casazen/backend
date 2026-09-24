@@ -370,7 +370,7 @@
     <value>Indica l'età da cui l'imposta è dovuta (0 se non ci sono esenzioni per età).</value>
   </data>
   <data name="TaxRateMinimumAgeOutOfRange" xml:space="preserve">
-    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 120 anni.</value>
+    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 18 anni (gli adulti non sono mai esenti per età).</value>
   </data>
   <data name="TaxRateEffectiveFromRequired" xml:space="preserve">
     <value>Indica la data da cui la tariffa è in vigore.</value>
@@ -392,6 +392,39 @@
   </data>
   <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
     <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
+  </data>
+  <data name="ActivationTouristTaxCategoryRequired" xml:space="preserve">
+    <value>A {0} la tariffa dell'imposta di soggiorno dipende dalla categoria della struttura, che CasaZen non conosce ancora: il calcolo automatico non è disponibile. Non blocca l'attivazione: verifica la tariffa della tua categoria con il comune.</value>
+  </data>
+  <data name="TouristTaxChildAgesRequired" xml:space="preserve">
+    <value>Per calcolare la tassa di soggiorno serve l'età di ogni minore al check-in.</value>
+  </data>
+  <data name="TouristTaxChildAgesInvalid" xml:space="preserve">
+    <value>Indica un'età tra 0 e 17 anni per ogni minore.</value>
+  </data>
+  <data name="TouristTaxQuoteInvalid" xml:space="preserve">
+    <value>Dati del calcolo non validi: controlla date (massimo 366 notti), ospiti, età dei minori e prezzo per notte.</value>
+  </data>
+  <data name="TaxRateIstatCodeInvalid" xml:space="preserve">
+    <value>Il codice ISTAT del comune deve avere 6 cifre.</value>
+  </data>
+  <data name="TaxRateCategoryTooLong" xml:space="preserve">
+    <value>La categoria di struttura può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="TaxRateSeasonInvalid" xml:space="preserve">
+    <value>Indica inizio e fine della stagione nel formato MM-GG (es. 02-01 e 12-31), oppure lascia vuoti entrambi.</value>
+  </data>
+  <data name="TaxRateCalculationMethodInvalid" xml:space="preserve">
+    <value>Il tipo di tariffa non è valido.</value>
+  </data>
+  <data name="TaxRatePercentOutOfRange" xml:space="preserve">
+    <value>Per una tariffa percentuale indica una percentuale tra 0,01 e 100.</value>
+  </data>
+  <data name="TaxRateCapOutOfRange" xml:space="preserve">
+    <value>Il tetto per persona per notte deve essere compreso tra 0,01 e 1000 euro.</value>
+  </data>
+  <data name="TaxRateReducedRateInvalid" xml:space="preserve">
+    <value>Per la tariffa ridotta indica sia l'età massima (tra l'età di esenzione e 17 anni) sia l'importo per persona per notte (tra 0,01 e 1000 euro); solo per tariffe a importo fisso.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>Questo pagamento non è rimborsabile: si possono rimborsare solo i pagamenti incassati.</value>
@@ -476,5 +509,41 @@
   </data>
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>La registrazione autonoma non è disponibile per questo comune: scegli uno dei comuni dell'elenco o chiedi un invito.</value>
+  </data>
+  <data name="CheckInGuestsCount" xml:space="preserve">
+    <value>Inserisci da 1 a {0} ospiti.</value>
+  </data>
+  <data name="CheckInGuestTypeInvalid" xml:space="preserve">
+    <value>Tipo di ospite non valido.</value>
+  </data>
+  <data name="CheckInMemberWithoutHead" xml:space="preserve">
+    <value>Un familiare o un membro del gruppo va inserito dopo il proprio capofamiglia o capogruppo.</value>
+  </data>
+  <data name="CheckInHeadWithoutMembers" xml:space="preserve">
+    <value>Un capofamiglia o capogruppo deve avere almeno un familiare o un membro del gruppo: altrimenti scegli «Ospite singolo».</value>
+  </data>
+  <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
+    <value>La data di nascita non può essere nel futuro.</value>
+  </data>
+  <data name="CheckInProvinceInvalid" xml:space="preserve">
+    <value>Inserisci la sigla della provincia di due lettere (es. RM).</value>
+  </data>
+  <data name="CheckInCodeInvalid" xml:space="preserve">
+    <value>Codice non valido per Alloggiati Web.</value>
+  </data>
+  <data name="CheckInCodeUnknown" xml:space="preserve">
+    <value>Codice non presente nella tabella ufficiale Alloggiati: selezionalo dall'elenco.</value>
+  </data>
+  <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
+    <value>Il numero del documento può contenere solo lettere e cifre, al massimo {0}.</value>
+  </data>
+  <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
+    <value>Elenco di codici sconosciuto: usa comuni, stati, documenti o luoghi.</value>
+  </data>
+  <data name="AlloggiatiCodeTableUnknown" xml:space="preserve">
+    <value>Tabella sconosciuta: usa Comuni, Stati, Documenti o TipiAlloggiato.</value>
+  </data>
+  <data name="AlloggiatiCodeImportInvalid" xml:space="preserve">
+    <value>Il file non è valido e nessun codice è stato importato: correggi le righe indicate e riprova.</value>
   </data>
 </root>

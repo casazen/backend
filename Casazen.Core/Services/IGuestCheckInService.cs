@@ -33,17 +33,12 @@ public interface IGuestCheckInService
     Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep);
 }
 
+/// <summary>Data submitted on the guest portal: every guest of the stay (CO-12) plus the booker's consents.</summary>
 public class GuestCheckInSubmitRequest
 {
-    public string FirstName { get; set; } = string.Empty;
-    public string LastName { get; set; } = string.Empty;
-    public DateTime? DateOfBirth { get; set; }
-    public string Nationality { get; set; } = string.Empty;
-    public Gender? Gender { get; set; }
-    public string DocumentType { get; set; } = string.Empty;
-    public string DocumentNumber { get; set; } = string.Empty;
-    public string DocumentIssuingCountry { get; set; } = string.Empty;
-    public string PlaceOfBirth { get; set; } = string.Empty;
+    /// <summary>Guests in record order: a head of family or group before its members.</summary>
+    public IReadOnlyList<StayGuestInput> Guests { get; set; } = [];
+
     public bool GdprConsent { get; set; }
     public bool MarketingConsent { get; set; }
     public string ConsentIpAddress { get; set; } = string.Empty;
@@ -60,6 +55,15 @@ public static class CheckInValidationKeys
     public const string GenderInvalid = "CheckInGenderInvalid";
     public const string DocumentTypeInvalid = "CheckInDocumentTypeInvalid";
     public const string GdprConsentRequired = "CheckInGdprConsentRequired";
+    public const string GuestsCount = "CheckInGuestsCount";
+    public const string GuestTypeInvalid = "CheckInGuestTypeInvalid";
+    public const string MemberWithoutHead = "CheckInMemberWithoutHead";
+    public const string HeadWithoutMembers = "CheckInHeadWithoutMembers";
+    public const string DateOfBirthInFuture = "CheckInDateOfBirthInFuture";
+    public const string ProvinceInvalid = "CheckInProvinceInvalid";
+    public const string CodeInvalid = "CheckInCodeInvalid";
+    public const string CodeUnknown = "CheckInCodeUnknown";
+    public const string DocumentNumberInvalid = "CheckInDocumentNumberInvalid";
 }
 
 public class GuestCheckInSubmitResult
@@ -70,11 +74,8 @@ public class GuestCheckInSubmitResult
     public Guid? BookingId { get; set; }
     public Guid? GuestId { get; set; }
 
-    /// <summary>Request property (C# name) the validation error refers to; null when the data is valid.</summary>
-    public string? ValidationField { get; set; }
-
-    /// <summary>SharedResources key of the validation message for <see cref="ValidationField"/>.</summary>
-    public string? ValidationErrorKey { get; set; }
+    /// <summary>Field errors of the submitted data (empty when valid); keys via <see cref="StayGuestFieldError.ModelStateKey"/>.</summary>
+    public IReadOnlyList<StayGuestFieldError> ValidationErrors { get; set; } = [];
 }
 
 /// <summary>Public portal view of a check-in session (see <see cref="IGuestCheckInService.GetPublicViewAsync"/>).</summary>
@@ -89,22 +90,39 @@ public sealed class GuestCheckInPublicView
     public string? PropertyName { get; init; }
     public DateTime? CheckInDate { get; init; }
     public DateTime? CheckOutDate { get; init; }
-    public GuestCheckInPrefill? GuestPrefill { get; init; }
+
+    /// <summary>Guests declared on the booking (the form starts with as many).</summary>
+    public int? DeclaredGuests { get; init; }
+
+    /// <summary>Guests on file (or the booker), to prefill the form; document numbers masked.</summary>
+    public IReadOnlyList<StayGuestPrefill>? Guests { get; init; }
+
+    /// <summary>Official tables imported, i.e. the form can offer codes for them.</summary>
+    public IReadOnlyList<AlloggiatiCodeTable>? AvailableCodeTables { get; init; }
 }
 
-/// <summary>Guest data already on file, shown to prefill the portal form before completion.</summary>
-public sealed class GuestCheckInPrefill
+/// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>
+public sealed class StayGuestPrefill
 {
+    public StayGuestType Type { get; init; }
     public string FirstName { get; init; } = string.Empty;
     public string LastName { get; init; } = string.Empty;
-    public string Email { get; init; } = string.Empty;
-    public DateTime? DateOfBirth { get; init; }
-    public string Nationality { get; init; } = string.Empty;
     public Gender? Gender { get; init; }
+    public DateTime? DateOfBirth { get; init; }
+    public bool? BornInItaly { get; init; }
+    public string? BirthComuneCode { get; init; }
+    public string BirthComuneName { get; init; } = string.Empty;
+    public string? BirthProvince { get; init; }
+    public string? BirthCountryCode { get; init; }
+    public string BirthCountryName { get; init; } = string.Empty;
+    public string? CitizenshipCode { get; init; }
+    public string CitizenshipName { get; init; } = string.Empty;
+    public GuestDocumentType? DocumentType { get; init; }
+    public string? DocumentTypeCode { get; init; }
 
     /// <summary>Document number with all but the last characters hidden, or null when none is on file.</summary>
     public string? DocumentNumberMasked { get; init; }
 
-    public string DocumentIssuingCountry { get; init; } = string.Empty;
-    public string PlaceOfBirth { get; init; } = string.Empty;
+    public string? DocumentIssuePlaceCode { get; init; }
+    public string DocumentIssuePlaceName { get; init; } = string.Empty;
 }

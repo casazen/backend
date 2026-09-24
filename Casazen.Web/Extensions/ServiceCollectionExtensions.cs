@@ -204,16 +204,20 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// CORS restricted to the configured origins (<c>Cors:AllowedOrigins</c>, optional <c>Cors:VercelPreviewPattern</c>),
-    /// without credentials (FD-17, A3-29 / A9-28). No origin in code (decision D3): see
-    /// <c>docs/runbooks/cors-security-headers.md</c>. Custom host domains plug in through <see cref="ICorsOriginSource"/>.
+    /// CORS restricted to the configured origins (<c>Cors:AllowedOrigins</c>, optional <c>Cors:VercelPreviewPattern</c>)
+    /// plus the origin of the public web app (<c>App:PublicSiteBaseUrl</c>), without credentials (FD-17, A3-29 / A9-28,
+    /// SE-02). No origin in code (decision D3): see <c>docs/runbooks/cors-security-headers.md</c>. Custom host domains
+    /// plug in through <see cref="ICorsOriginSource"/>.
     /// </summary>
     public static IServiceCollection AddCasazenCors(this IServiceCollection services)
     {
         // Read from the final configuration (IConfiguration from DI), and validated when the host starts.
         services.AddOptions<CorsOriginOptions>()
             .Configure<IConfiguration>((options, configuration) =>
-                CorsOriginOptions.Configure(options, configuration.GetSection(CorsOriginOptions.SectionName)))
+            {
+                CorsOriginOptions.Configure(options, configuration.GetSection(CorsOriginOptions.SectionName));
+                CorsOriginOptions.AddPublicSiteOrigin(options, configuration);
+            })
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<CorsOriginOptions>, CorsOriginOptionsValidator>();
         services.AddSingleton<CorsOriginAllowList>();
@@ -236,7 +240,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
-        services.AddScoped<ITaxRateRepository, TaxRateRepository>();
         services.AddScoped<IOtaIntegrationRepository, OtaIntegrationRepository>();
         services.AddScoped<IPropertyDocumentRepository, PropertyDocumentRepository>();
         return services;
@@ -261,6 +264,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
+        services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
@@ -294,6 +298,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
+        // Guests of a stay and official Alloggiati code tables (CO-12).
+        services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
+        services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
         services.AddScoped<IAttestationGuidanceService, AttestationGuidanceService>();

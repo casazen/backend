@@ -207,17 +207,33 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         var root = doc.RootElement;
         Assert.Equal(3, root.GetProperty("stayDays").GetInt32());
         Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
-        var guest = Assert.Single(root.GetProperty("guests").EnumerateArray());
-        Assert.Equal("HeadOfFamilyOrGroup", guest.GetProperty("kind").GetString());
-        Assert.Equal("Verdi", guest.GetProperty("lastName").GetString());
-        Assert.Equal("Luigi", guest.GetProperty("firstName").GetString());
-        Assert.Equal("Male", guest.GetProperty("gender").GetString());
-        Assert.Equal("Milano", guest.GetProperty("placeOfBirth").GetString());
-        Assert.Equal("Italiana", guest.GetProperty("citizenship").GetString());
-        Assert.Equal("Passport", guest.GetProperty("documentType").GetString());
-        Assert.Equal("AB123456", guest.GetProperty("documentNumber").GetString());
-        Assert.Equal("Italia", guest.GetProperty("documentIssuePlace").GetString());
-        Assert.Equal(0, guest.GetProperty("missingFields").GetArrayLength());
+        Assert.True(root.GetProperty("dataComplete").GetBoolean());
+        // No official code table imported in the test database: the codes are still to complete.
+        Assert.False(root.GetProperty("exportReady").GetBoolean());
+        Assert.Equal(4, root.GetProperty("missingCodeTables").GetArrayLength());
+        var guests = root.GetProperty("guests").EnumerateArray().ToList();
+        Assert.Equal(2, guests.Count);
+        var head = guests[0];
+        Assert.Equal("HeadOfFamily", head.GetProperty("type").GetString());
+        Assert.Equal(0, head.GetProperty("position").GetInt32());
+        Assert.Equal("Verdi", head.GetProperty("lastName").GetString());
+        Assert.Equal("Luigi", head.GetProperty("firstName").GetString());
+        Assert.Equal("Male", head.GetProperty("gender").GetString());
+        Assert.Equal("Milano", head.GetProperty("birthComune").GetString());
+        Assert.Equal("MI", head.GetProperty("birthProvince").GetString());
+        Assert.Equal("Italia", head.GetProperty("citizenship").GetString());
+        Assert.True(head.GetProperty("requiresDocument").GetBoolean());
+        Assert.Equal("Passport", head.GetProperty("documentType").GetString());
+        Assert.Equal("AB123456", head.GetProperty("documentNumber").GetString());
+        Assert.Equal("Milano", head.GetProperty("documentIssuePlace").GetString());
+        Assert.Equal(0, head.GetProperty("missingFields").GetArrayLength());
+        Assert.True(head.GetProperty("codesToComplete").GetArrayLength() > 0);
+        var member = guests[1];
+        Assert.Equal("FamilyMember", member.GetProperty("type").GetString());
+        Assert.True(member.GetProperty("isMinor").GetBoolean());
+        Assert.False(member.GetProperty("requiresDocument").GetBoolean());
+        Assert.Equal(string.Empty, member.GetProperty("documentNumber").GetString());
+        Assert.Equal(0, member.GetProperty("missingFields").GetArrayLength());
     }
 
     [Fact]
@@ -380,15 +396,22 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     private static StringContent BuildPortalPayload() => new(
         """
         {
-          "firstName": "Luigi",
-          "lastName": "Verdi",
-          "dateOfBirth": "1985-03-10",
-          "nationality": "Italiana",
-          "gender": "Male",
-          "documentType": "Passport",
-          "documentNumber": "AB123456",
-          "documentIssuingCountry": "Italia",
-          "placeOfBirth": "Milano",
+          "guests": [
+            {
+              "type": "SingleGuest",
+              "firstName": "Luigi",
+              "lastName": "Verdi",
+              "gender": "Male",
+              "dateOfBirth": "1985-03-10",
+              "bornInItaly": true,
+              "birthComuneName": "Milano",
+              "birthProvince": "MI",
+              "citizenshipName": "Italia",
+              "documentType": "Passport",
+              "documentNumber": "AB123456",
+              "documentIssuePlaceName": "Milano"
+            }
+          ],
           "gdprConsent": true,
           "marketingConsent": false
         }
@@ -524,6 +547,46 @@ public static class AlloggiatiTestSeedExtensions
         };
 
         db.Bookings.Add(booking);
+
+        if (completeGuestData)
+        {
+            // CO-12: the two guests of the stay, as registered by the guest portal (head of family and a child).
+            db.StayGuests.Add(new StayGuest
+            {
+                BookingId = bookingId,
+                OrgId = property.OrgId,
+                GuestId = guestId,
+                Position = 0,
+                Type = StayGuestType.HeadOfFamily,
+                FirstName = "Luigi",
+                LastName = "Verdi",
+                Gender = Gender.Male,
+                DateOfBirth = new DateTime(1985, 3, 10, 0, 0, 0, DateTimeKind.Utc),
+                BornInItaly = true,
+                BirthComuneName = "Milano",
+                BirthProvince = "MI",
+                CitizenshipName = "Italia",
+                DocumentType = GuestDocumentType.Passport,
+                DocumentNumber = "AB123456",
+                DocumentIssuePlaceName = "Milano",
+            });
+            db.StayGuests.Add(new StayGuest
+            {
+                BookingId = bookingId,
+                OrgId = property.OrgId,
+                Position = 1,
+                Type = StayGuestType.FamilyMember,
+                FirstName = "Sofia",
+                LastName = "Verdi",
+                Gender = Gender.Female,
+                DateOfBirth = DateTime.UtcNow.Date.AddYears(-8),
+                BornInItaly = true,
+                BirthComuneName = "Milano",
+                BirthProvince = "MI",
+                CitizenshipName = "Italia",
+            });
+        }
+
         await db.SaveChangesAsync();
 
         return new ConfirmedBookingSeed(bookingId, guestId, property.Id, checkInToken, ownerId);

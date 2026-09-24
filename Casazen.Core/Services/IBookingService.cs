@@ -22,4 +22,14 @@ public interface IBookingService
     Task<bool> IsPropertyAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? pendingDirectTtlMinutes = null);
     Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate);
     Task<DirectBookingCreateResult> CreateDirectBookingAsync(DirectBookingCreateInput input);
+
+    /// <summary>
+    /// Price of a direct booking before it is created (checkout, BK-03): the same calculation
+    /// <see cref="CreateDirectBookingAsync"/> records, tourist tax included. It does not check availability.
+    /// </summary>
+    /// <exception cref="DirectBookingException">
+    /// <see cref="DirectBookingErrorCodes.PropertyNotFound"/>, <see cref="DirectBookingErrorCodes.TooManyGuests"/> or
+    /// <see cref="DirectBookingErrorCodes.InvalidDates"/>.
+    /// </exception>
+    Task<DirectBookingQuote> QuoteDirectBookingAsync(DirectBookingQuoteInput input, CancellationToken cancellationToken = default);
 }

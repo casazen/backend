@@ -3,8 +3,9 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Infrastructure.Email;
 
 /// <summary>
-/// Builds the links of the web app placed in emails, always from <c>App:PublicSiteBaseUrl</c> (decision D3). When the
-/// value is missing or invalid it throws <see cref="EmailConfigurationException"/>: no fallback domain.
+/// Builds the links of the web app placed in emails and the public URLs of its pages (SEO canonical, sitemap), always
+/// from <c>App:PublicSiteBaseUrl</c> (decision D3). When the value is missing or invalid it throws
+/// <see cref="EmailConfigurationException"/>: no fallback domain.
 /// </summary>
 public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
 {
@@ -33,6 +34,32 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/register?inviteToken={Uri.EscapeDataString(inviteToken)}");
     }
 
+    /// <summary>
+    /// Absolute URL of a public page of the web app (<paramref name="path"/> starts with <c>/</c>), e.g. a sitemap
+    /// entry. Throws <see cref="EmailConfigurationException"/> when the public URL is not configured.
+    /// </summary>
+    public string PublicPage(string path) => Build(EnsureAbsolutePath(path));
+
+    /// <summary>
+    /// Like <see cref="PublicPage"/>, but <c>null</c> when the public URL is not configured (only possible in
+    /// Development/Testing: elsewhere the startup fails). Used for the canonical URL of a page served anyway.
+    /// </summary>
+    public string? TryPublicPage(string path)
+    {
+        var absolutePath = EnsureAbsolutePath(path);
+        return PublicSiteOptions.TryGetBaseUri(options.Value.PublicSiteBaseUrl, out var baseUri)
+            ? baseUri.AbsoluteUri.TrimEnd('/') + absolutePath
+            : null;
+    }
+
+    private static string EnsureAbsolutePath(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return path.StartsWith('/')
+            ? path
+            : throw new ArgumentException("The path of a public page must start with '/'.", nameof(path));
+    }
+
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
     private string BaseUrl()
@@ -40,7 +67,7 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         if (!PublicSiteOptions.TryGetBaseUri(options.Value.PublicSiteBaseUrl, out var baseUri))
         {
             throw new EmailConfigurationException(
-                "App:PublicSiteBaseUrl is missing or invalid: email links cannot be built.");
+                "App:PublicSiteBaseUrl is missing or invalid: public links cannot be built.");
         }
 
         return baseUri.AbsoluteUri.TrimEnd('/');

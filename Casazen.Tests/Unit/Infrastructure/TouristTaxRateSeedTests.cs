@@ -78,12 +78,109 @@ public class TouristTaxRateSeedTests
     [Fact]
     public void BuildRates_Ids_AreStableAndUnique()
     {
-        var first = TouristTaxRateSeed.BuildRates().Select(r => r.Id).ToList();
-        var second = TouristTaxRateSeed.BuildRates().Select(r => r.Id).ToList();
+        var first = TouristTaxRateSeed.BuildRates().Concat(TouristTaxRateSeed.BuildCategoryAndSeasonRates())
+            .Select(r => r.Id).ToList();
+        var second = TouristTaxRateSeed.BuildRates().Concat(TouristTaxRateSeed.BuildCategoryAndSeasonRates())
+            .Select(r => r.Id).ToList();
 
         Assert.Equal(first, second);
         Assert.Equal(first.Count, first.Distinct().Count());
         Assert.DoesNotContain(Guid.Empty, first);
+    }
+
+    [Fact]
+    public void BuildCategoryAndSeasonRates_EveryRow_KeepsTheCsvValuesOfAnOfficialRow()
+    {
+        var rows = ReadCsv();
+
+        foreach (var rate in TouristTaxRateSeed.BuildCategoryAndSeasonRates())
+        {
+            // BK-03: one row per category and season; the notes identify the CSV row.
+            var row = rows.Single(r => r.Notes == rate.Notes);
+
+            Assert.Equal("U", row.Verified);
+            Assert.Equal(row.IstatCode, rate.IstatCode);
+            Assert.Equal(row.Comune, rate.City);
+            Assert.Equal(decimal.Parse(row.Rate, CultureInfo.InvariantCulture), rate.RatePerPersonPerNight);
+            Assert.Equal(int.Parse(row.MaxNights, CultureInfo.InvariantCulture), rate.MaxNights);
+            Assert.Equal(int.Parse(row.MinAgeExempt, CultureInfo.InvariantCulture), rate.MinimumAge);
+            Assert.Equal(ParseDate(row.ValidFrom), rate.EffectiveFrom);
+            Assert.Equal(row.SourceUrl, rate.SourceUrl);
+            Assert.Equal(TouristTaxCalculationMethod.PerPersonPerNight, rate.CalculationMethod);
+            Assert.Equal(TouristTaxRateVerification.Official, rate.VerificationLevel);
+            Assert.True(rate.IsActive);
+            Assert.False(string.IsNullOrWhiteSpace(rate.AccommodationCategory));
+            Assert.True(rate.Notes.Length <= 500, $"{rate.City}: notes longer than the column");
+            Assert.Equal(
+                TouristTaxRateSeed.IdFor(row.IstatCode, rate.EffectiveFrom, rate.AccommodationCategory, rate.SeasonStart),
+                rate.Id);
+
+            if (rate.City == "Venezia")
+            {
+                // Season and reduced amount exactly as the notes publish them ("alta stagione 01/02-31/12", "= 1.70").
+                var season = rate.Notes.Contains("alta stagione 01/02-31/12", StringComparison.Ordinal)
+                    ? ("02-01", "12-31")
+                    : ("01-01", "01-31");
+                Assert.Equal(season, (rate.SeasonStart, rate.SeasonEnd));
+                Assert.Equal(16, rate.ReducedRateMaxAge);
+                Assert.Contains(
+                    $"tariffa ridotta 50% = {rate.ReducedRatePerPersonPerNight!.Value.ToString("0.00", CultureInfo.InvariantCulture)}",
+                    rate.Notes);
+            }
+            else
+            {
+                Assert.Null(rate.SeasonStart);
+                Assert.Null(rate.ReducedRateMaxAge);
+            }
+        }
+    }
+
+    [Fact]
+    public void BuildCategoryAndSeasonRates_ThirdPartyDeducedAndPercentageRows_AreNotSeeded()
+    {
+        var rows = ReadCsv();
+        var seededNotes = TouristTaxRateSeed.BuildRates().Concat(TouristTaxRateSeed.BuildCategoryAndSeasonRates())
+            .Select(r => r.Notes)
+            .ToHashSet();
+
+        // T (a hint, not a source), D (our deduction) and rows without a fixed amount (Bologna) stay out.
+        foreach (var row in rows.Where(r => r.Verified != "U" || string.IsNullOrWhiteSpace(r.Rate)))
+            Assert.DoesNotContain(row.Notes, seededNotes);
+
+        var seededCities = TouristTaxRateSeed.BuildCategoryAndSeasonRates().Select(r => r.City).ToHashSet();
+        Assert.Equal(["Roma", "Venezia"], seededCities.Order().ToArray());
+    }
+
+    [Fact]
+    public void IstatCodes_OfTheCo03Rows_MatchTheCsv()
+    {
+        var rows = ReadCsv();
+
+        foreach (var rate in TouristTaxRateSeed.BuildRates())
+        {
+            Assert.Equal(rows.First(r => r.Comune == rate.City).IstatCode, TouristTaxRateSeed.IstatCodes[rate.City]);
+            Assert.Equal(TouristTaxRateSeed.IstatCodes[rate.City], rate.IstatCode);
+        }
+    }
+
+    [Fact]
+    public void UnifyTouristTaxOnTouristTaxRates_Script_DropsTaxRatesAndLoadsTheNewRates()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var migration = keys.Single(k => k.EndsWith("UnifyTouristTaxOnTouristTaxRates", StringComparison.Ordinal));
+        var idx = keys.IndexOf(migration);
+
+        var script = db.GetService<IMigrator>().GenerateScript(fromMigration: keys[idx - 1], toMigration: migration);
+
+        Assert.Contains("DROP TABLE \"TaxRates\"", script);
+        Assert.Contains("ADD \"CalculationMethod\" character varying(30) NOT NULL DEFAULT 'PerPersonPerNight'", script);
+        Assert.Contains("ADD \"SeasonStart\" character varying(5)", script);
+        Assert.Contains("ADD \"ReducedRatePerPersonPerNight\" numeric(18,2)", script);
+        foreach (var rate in TouristTaxRateSeed.BuildRates())
+            Assert.Contains($"SET \"IstatCode\" = '{rate.IstatCode}'", script);
+        foreach (var rate in TouristTaxRateSeed.BuildCategoryAndSeasonRates())
+            Assert.Contains(rate.Id.ToString(), script);
     }
 
     [Fact]
