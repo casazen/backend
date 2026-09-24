@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -310,7 +311,7 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
         var org = await factory.SeedOrgForOwnerAsync(ownerId);
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Users.Add(new User
+        var user = new User
         {
             Id = userId,
             Email = $"{Guid.NewGuid():N}@example.com",
@@ -318,7 +319,10 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
             LastName = "Stessa Org",
             OrgId = org.Id,
             IsActive = true,
-        });
+        };
+        db.Users.Add(user);
+        // A colleague who completed the onboarding for the org (PL-02): the checks are about the lease permissions.
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 
