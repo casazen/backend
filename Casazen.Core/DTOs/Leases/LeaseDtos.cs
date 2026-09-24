@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Utilities;
 
 namespace Casazen.Core.DTOs.Leases;
@@ -12,7 +13,10 @@ namespace Casazen.Core.DTOs.Leases;
 /// <summary>The property a lease belongs to, as shown next to the lease.</summary>
 public sealed record LeasePropertyDto(Guid Id, string Name, string City);
 
-/// <summary>Row of the lease list: no personal data of the parties, only how many they are.</summary>
+/// <summary>
+/// Row of the lease list: no personal data of the parties, only how many they are. <c>RegistrationDeadline</c> is null
+/// while it is to be determined (LT-04, <see cref="RliRegistrationDeadline.Resolve(LeaseStatus, DateTime?, DateTime, DateTime)"/>).
+/// </summary>
 public sealed record LeaseSummaryDto(
     Guid Id,
     Guid PropertyId,
@@ -22,7 +26,8 @@ public sealed record LeaseSummaryDto(
     DateTime StartDate,
     DateTime EndDate,
     decimal MonthlyRent,
-    DateTime RegistrationDeadline,
+    DateTime? StipulaDate,
+    DateTime? RegistrationDeadline,
     int PartyCount,
     bool HasExtraEUTenant,
     DateTime CreatedAt,
@@ -58,7 +63,10 @@ public sealed record LeaseRegistrationDto(
 /// <summary>Timeline entry: the event type only, never its payload.</summary>
 public sealed record LeaseEventDto(LeaseEventType EventType, DateTime OccurredAt);
 
-/// <summary>Lease detail page.</summary>
+/// <summary>
+/// Lease detail page. <c>StipulaDate</c>: the day every party had signed; <c>RegistrationDeadline</c>:
+/// <c>min(stipula, start) + 30</c> days, null while it is to be determined (LT-04).
+/// </summary>
 public sealed record LeaseDetailDto(
     Guid Id,
     Guid PropertyId,
@@ -68,7 +76,8 @@ public sealed record LeaseDetailDto(
     DateTime StartDate,
     DateTime EndDate,
     decimal MonthlyRent,
-    DateTime RegistrationDeadline,
+    DateTime? StipulaDate,
+    DateTime? RegistrationDeadline,
     bool HasSignedPdf,
     bool HasExtraEUTenant,
     IReadOnlyList<LeasePartyDto> Parties,
@@ -80,7 +89,9 @@ public sealed record LeaseDetailDto(
 /// <summary>Maps lease entities to the API contract.</summary>
 public static class LeaseDtoMapper
 {
-    public static LeaseDetailDto ToDetail(LeaseContract lease)
+    /// <param name="lease">The lease with its property, parties, registration and events.</param>
+    /// <param name="todayInRome">Today on the Rome calendar: the deadline of a lease not signed yet depends on it.</param>
+    public static LeaseDetailDto ToDetail(LeaseContract lease, DateTime todayInRome)
     {
         ArgumentNullException.ThrowIfNull(lease);
 
@@ -93,7 +104,8 @@ public static class LeaseDtoMapper
             lease.StartDate,
             lease.EndDate,
             lease.MonthlyRent,
-            lease.RegistrationDeadline,
+            lease.StipulaDate,
+            RliRegistrationDeadline.Resolve(lease, todayInRome),
             HasSignedPdf: !string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath),
             lease.HasExtraEUTenant,
             lease.Parties.OrderBy(p => p.Role).ThenBy(p => p.LastName, StringComparer.Ordinal).Select(ToParty).ToList(),

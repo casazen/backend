@@ -278,6 +278,19 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void RliDeadlineReminder_ContractNotSignedYet_ExplainsDeadlineFromStartDate()
+    {
+        // LT-04: a lease not signed yet whose start date has passed counts its deadline from the start date.
+        var italian = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7, contractNotSignedYet: true);
+        var english = EmailTemplates.RliDeadlineOverdue(CultureInfo.GetCultureInfo("en"), "Villa Rosa", CheckIn, contractNotSignedYet: true);
+        var signed = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
+
+        Assert.Contains("non risulta ancora firmato da tutte le parti", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("has not been signed by every party", english.HtmlBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("non risulta ancora firmato", signed.HtmlBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RliExtraEuNotice_EnglishAndItalian_MentionQuestura()
     {
         var italian = EmailTemplates.RliExtraEuNotice(EmailTemplates.DefaultCulture, "Villa Rosa");

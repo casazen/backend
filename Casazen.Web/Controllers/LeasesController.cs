@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
@@ -35,8 +36,11 @@ public class LeasesController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
-    IStringLocalizer<SharedResources> localizer) : ControllerBase
+    IStringLocalizer<SharedResources> localizer,
+    TimeProvider? timeProvider = null) : ControllerBase
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private const string LeaseNotFoundCode = "lease_not_found";
     private const string PropertyNotFoundCode = "property_not_found";
 
@@ -63,7 +67,7 @@ public class LeasesController(
     public async Task<ActionResult<LeaseDetailDto>> GetById(Guid id)
     {
         var (lease, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
-        return denied ?? Ok(LeaseDtoMapper.ToDetail(lease!));
+        return denied ?? Ok(LeaseDtoMapper.ToDetail(lease!, _clock.TodayInRome()));
     }
 
     /// <summary>Create a new lease contract draft.</summary>
@@ -103,7 +107,7 @@ public class LeasesController(
 
             var lease = await leaseService.CreateDraftAsync(dto.PropertyId, request);
             var created = await leaseService.GetLeaseDetailAsync(lease.Id) ?? lease;
-            return CreatedAtAction(nameof(GetById), new { id = lease.Id }, LeaseDtoMapper.ToDetail(created));
+            return CreatedAtAction(nameof(GetById), new { id = lease.Id }, LeaseDtoMapper.ToDetail(created, _clock.TodayInRome()));
         }
         catch (ApeComplianceException ex)
         {
@@ -385,10 +389,12 @@ public class LeasesController(
 /// <summary>
 /// RLI checklist as returned by the API, with labels in the request language. <c>ProviderFilingAvailable</c>: the
 /// provider path exists (flag on and configured provider); otherwise the landlord registers manually (LT-01).
+/// <c>RegistrationDeadline</c> and <c>DaysRemaining</c> are null while the deadline is to be determined (LT-04);
+/// <c>DaysRemaining</c> is 0 on the deadline day and negative once it has passed.
 /// </summary>
 public record RliChecklistResponse(
-    DateTime RegistrationDeadline,
-    int DaysRemaining,
+    DateTime? RegistrationDeadline,
+    int? DaysRemaining,
     string TosVersion,
     string AttestationText,
     bool ProviderFilingAvailable,

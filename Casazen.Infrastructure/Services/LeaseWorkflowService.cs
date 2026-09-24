@@ -3,8 +3,10 @@ using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -20,8 +22,11 @@ public class LeaseWorkflowService(
     IPropertyRepository propertyRepository,
     IApeComplianceService apeCompliance,
     ICanoneConcordatoEligibilityService canoneConcordatoEligibility,
-    ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
+    ILogger<LeaseWorkflowService> logger,
+    TimeProvider? timeProvider = null) : ILeaseWorkflowService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private static readonly HashSet<string> EuCitizenships =
     [
         "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR","HR",
@@ -59,7 +64,7 @@ public class LeaseWorkflowService(
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             MonthlyRent = request.MonthlyRent,
-            RegistrationDeadline = request.StartDate.AddDays(30),
+            // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04).
             DataRetentionUntil = request.StartDate.AddYears(10),
             Parties = parties.Select(p => new Party
             {
@@ -142,15 +147,24 @@ public class LeaseWorkflowService(
                 return;
             }
 
+            // The provider reports no signing time: the stipula is the Rome day on which CasaZen records the last
+            // signature, the same instant as the AllPartiesSigned event (LT-04).
+            var signedAt = _clock.GetUtcNow().UtcDateTime;
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = esignEvent.SignedDocumentPath;
+            lease.RecordStipula(signedAt);
             await leaseRepository.UpdateAsync(lease);
             await eventRepository.AddAsync(new LeaseEvent
             {
                 LeaseContractId = lease.Id,
-                EventType = LeaseEventType.AllPartiesSigned
+                EventType = LeaseEventType.AllPartiesSigned,
+                OccurredAt = signedAt,
             });
-            logger.LogInformation("All parties signed. LeaseId={LeaseId}", lease.Id);
+            logger.LogInformation(
+                "All parties signed. LeaseId={LeaseId} StipulaDate={StipulaDate:yyyy-MM-dd} RegistrationDeadline={RegistrationDeadline:yyyy-MM-dd}",
+                lease.Id,
+                lease.StipulaDate,
+                lease.RegistrationDeadline);
         }
         else
         {
@@ -168,8 +182,18 @@ public class LeaseWorkflowService(
         }
     }
 
-    public Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
-        => leaseRepository.GetSummariesAsync(scope, propertyId);
+    public async Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
+    {
+        // The deadline of a lease not signed yet depends on today (LT-04): resolved here, not stored.
+        var today = _clock.TodayInRome();
+        var summaries = await leaseRepository.GetSummariesAsync(scope, propertyId);
+        return summaries
+            .Select(s => s with
+            {
+                RegistrationDeadline = RliRegistrationDeadline.Resolve(s.Status, s.StipulaDate, s.StartDate, today),
+            })
+            .ToList();
+    }
 
     public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
         => leaseRepository.GetByIdWithDetailsAsync(leaseId);
