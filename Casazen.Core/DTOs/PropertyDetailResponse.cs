@@ -39,6 +39,11 @@ public class PropertyDocumentDto
     public string FileName { get; set; } = string.Empty;
     public string FileType { get; set; } = string.Empty;
     public DateTime UploadedAt { get; set; }
+
+    /// <summary>
+    /// API path of the authenticated download (<c>GET /api/properties/{id}/documents/{docId}/download</c>):
+    /// call it with the bearer token; it is not a public link.
+    /// </summary>
     public string DownloadUrl { get; set; } = string.Empty;
 }
 

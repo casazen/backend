@@ -54,7 +54,7 @@ public class PropertyDocumentService(
         {
             logger.LogWarning("DB save failed after storage upload for property {PropertyId}; rolling back storage file {StorageUrl}",
                 propertyId, storageUrl);
-            await storageService.DeleteImageAsync(storageUrl);
+            await storageService.DeleteDocumentAsync(storageUrl);
             throw;
         }
     }
@@ -80,6 +80,12 @@ public class PropertyDocumentService(
         logger.LogInformation("Deleting document {DocumentId} with storage URL {StorageUrl}", documentId, document.StorageUrl);
 
         await documentRepository.DeleteAsync(documentId);
-        await storageService.DeleteImageAsync(document.StorageUrl);
+        await storageService.DeleteDocumentAsync(document.StorageUrl);
     }
+
+    public Task<Stream?> OpenContentAsync(PropertyDocument document) =>
+        storageService.OpenReadAsync(document.StorageUrl);
+
+    public Task<SignedFileUrl?> GetSignedDownloadUrlAsync(PropertyDocument document) =>
+        storageService.GetDocumentSignedUrlAsync(document.StorageUrl, document.FileName);
 }

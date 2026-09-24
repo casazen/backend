@@ -1,4 +1,5 @@
-using System.Text.RegularExpressions;
+using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
@@ -6,17 +7,16 @@ namespace Casazen.Core.Services;
 public static class CinComplianceRules
 {
     public static readonly DateOnly RegulatoryDeadline = new(2026, 3, 1);
-    private static readonly Regex CinPattern = new(@"^IT-\d{5}-\d{10}$", RegexOptions.Compiled);
 
-    public static string ResolveStatus(string? cinCode)
+    /// <summary>Computed CIN status as the lowercase API value: "valid", "missing" or "invalid" (see <see cref="CinFormat"/>).</summary>
+    public static string ResolveStatus(string? cinCode) => CinFormat.GetStatus(cinCode) switch
     {
-        if (string.IsNullOrWhiteSpace(cinCode))
-            return "missing";
+        CinStatus.Valid => "valid",
+        CinStatus.Missing => "missing",
+        _ => "invalid",
+    };
 
-        return CinPattern.IsMatch(cinCode) ? "valid" : "invalid";
-    }
-
-    public static bool IsCompliant(string? cinCode) => ResolveStatus(cinCode) == "valid";
+    public static bool IsCompliant(string? cinCode) => CinFormat.IsValid(cinCode);
 
     public static int DaysUntilDeadline(DateOnly? today = null)
     {

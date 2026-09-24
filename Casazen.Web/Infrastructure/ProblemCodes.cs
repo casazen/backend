@@ -19,6 +19,10 @@ public static class ProblemCodes
     public const string UnsupportedMediaType = "unsupported_media_type";
     public const string BusinessRuleViolation = "business_rule_violation";
     public const string TooManyRequests = "too_many_requests";
+
+    /// <summary>429 from a rate limiting policy (with <c>Retry-After</c>), see <c>RateLimitingServiceCollectionExtensions</c>.</summary>
+    public const string RateLimited = "rate_limited";
+
     public const string ClientError = "client_error";
     public const string InternalError = "internal_error";
     public const string PaymentProviderError = "payment_provider_error";

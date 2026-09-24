@@ -1,5 +1,6 @@
-using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
+using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -14,7 +15,6 @@ public class AdminService(
     AppDbContext dbContext,
     ILogger<AdminService> logger) : IAdminService
 {
-    private const string CinPattern = @"^IT-\d{5}-\d{10}$";
     private static readonly TimeSpan OtaSyncThreshold = TimeSpan.FromHours(6);
 
     /// <summary>
@@ -47,9 +47,9 @@ public class AdminService(
         var activeProperties = allProperties.Count(p => p.IsActive);
 
         // CIN compliance
-        var cinValid = allProperties.Count(p => !string.IsNullOrWhiteSpace(p.CinCode) && Regex.IsMatch(p.CinCode, CinPattern));
-        var cinMissing = allProperties.Count(p => string.IsNullOrWhiteSpace(p.CinCode));
-        var cinInvalid = allProperties.Count(p => !string.IsNullOrWhiteSpace(p.CinCode) && !Regex.IsMatch(p.CinCode, CinPattern));
+        var cinValid = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Valid);
+        var cinMissing = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Missing);
+        var cinInvalid = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Invalid);
         var cinTotal = totalProperties;
 
         // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
@@ -114,9 +114,7 @@ public class AdminService(
 
         IEnumerable<CinComplianceItem> items = properties.Select(p =>
         {
-            var status = string.IsNullOrWhiteSpace(p.CinCode) ? "missing"
-                : Regex.IsMatch(p.CinCode, CinPattern) ? "valid"
-                : "invalid";
+            var status = CinComplianceRules.ResolveStatus(p.CinCode);
 
             return new CinComplianceItem(
                 PropertyId: p.Id,

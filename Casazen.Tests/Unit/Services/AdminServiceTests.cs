@@ -72,9 +72,10 @@ public class AdminServiceTests
         using var ctx = CreateInMemoryContext(nameof(GetStatsAsync_WithProperties_ReturnsCinBreakdown));
 
         ctx.Properties.AddRange(
-            new Property { Name = "P1", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789" },  // valid
+            new Property { Name = "P1", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },  // valid
             new Property { Name = "P2", OwnerId = "o1", Address = "a", City = "Roma", CinCode = null },                  // missing
-            new Property { Name = "P3", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "INVALID" }              // invalid
+            new Property { Name = "P3", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "INVALID" },             // invalid
+            new Property { Name = "P4", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT123450123456789" }    // invalid: old invented format
         );
         await ctx.SaveChangesAsync();
 
@@ -84,10 +85,10 @@ public class AdminServiceTests
         var stats = await service.GetStatsAsync();
 
         // Assert
-        Assert.Equal(3, stats.CinTotal);
+        Assert.Equal(4, stats.CinTotal);
         Assert.Equal(1, stats.CinValid);
         Assert.Equal(1, stats.CinMissing);
-        Assert.Equal(1, stats.CinInvalid);
+        Assert.Equal(2, stats.CinInvalid);
     }
 
     // ─── F-H1 regression: admin reads must bypass the tenant filter (cross-org) ──
@@ -111,8 +112,8 @@ public class AdminServiceTests
             new OrgEntity { Id = orgA, Name = "Org A", Slug = "org-a", DisplayName = "Org A", ContactEmail = "a@x.io", PlanTier = PlanTier.Starter },
             new OrgEntity { Id = orgB, Name = "Org B", Slug = "org-b", DisplayName = "Org B", ContactEmail = "b@x.io", PlanTier = PlanTier.Pro });
 
-        var propA = new Property { Id = Guid.NewGuid(), OrgId = orgA, OwnerId = "ownerA", Name = "A1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789", IsActive = true };
-        var propB = new Property { Id = Guid.NewGuid(), OrgId = orgB, OwnerId = "ownerB", Name = "B1", Address = "b", City = "Milano", CinCode = "IT-54321-9876543210", IsActive = true };
+        var propA = new Property { Id = Guid.NewGuid(), OrgId = orgA, OwnerId = "ownerA", Name = "A1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ", IsActive = true };
+        var propB = new Property { Id = Guid.NewGuid(), OrgId = orgB, OwnerId = "ownerB", Name = "B1", Address = "b", City = "Milano", CinCode = "IT015146A12HOLV2MZ", IsActive = true };
         ctx.Properties.AddRange(propA, propB);
 
         var bookingA = new Booking { Id = Guid.NewGuid(), OrgId = orgA, PropertyId = propA.Id, GuestId = Guid.NewGuid(), Status = BookingStatus.Confirmed, CheckInDate = DateTime.UtcNow.AddDays(5), CheckOutDate = DateTime.UtcNow.AddDays(7) };
@@ -122,6 +123,11 @@ public class AdminServiceTests
         ctx.Payments.AddRange(
             new Payment { Id = Guid.NewGuid(), OrgId = orgA, BookingId = bookingA.Id, Amount = 100m, Status = PaymentStatus.Completed },
             new Payment { Id = Guid.NewGuid(), OrgId = orgB, BookingId = bookingB.Id, Amount = 150m, Status = PaymentStatus.Completed });
+
+        // TN-2: OtaIntegrations is tenant-filtered too; the OTA health counters must stay platform-wide.
+        ctx.OtaIntegrations.AddRange(
+            new OtaIntegration { OrgId = orgA, PropertyId = propA.Id, Platform = "Airbnb", ExternalPropertyId = "a" },
+            new OtaIntegration { OrgId = orgB, PropertyId = propB.Id, Platform = "Booking", ExternalPropertyId = "b" });
 
         await ctx.SaveChangesAsync();
 
@@ -142,6 +148,7 @@ public class AdminServiceTests
         Assert.Equal(250m, stats.TotalRevenue);
         Assert.Equal(2, stats.CinTotal);
         Assert.Equal(2, stats.CinValid);
+        Assert.Equal(2, stats.OtaNeverSynced);
     }
 
     [Fact]
@@ -156,7 +163,7 @@ public class AdminServiceTests
             callerOrgId: orgA);
 
         ctx.Properties.AddRange(
-            new Property { Id = Guid.NewGuid(), OrgId = orgA, OwnerId = "ownerA", Name = "A1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789" },
+            new Property { Id = Guid.NewGuid(), OrgId = orgA, OwnerId = "ownerA", Name = "A1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
             new Property { Id = Guid.NewGuid(), OrgId = orgB, OwnerId = "ownerB", Name = "B1", Address = "b", City = "Milano", CinCode = null });
         await ctx.SaveChangesAsync();
 
@@ -177,7 +184,7 @@ public class AdminServiceTests
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_FilterValid_ReturnsOnlyValidProperties));
 
         ctx.Properties.AddRange(
-            new Property { Name = "Valid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789" },
+            new Property { Name = "Valid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
             new Property { Name = "Missing", OwnerId = "o1", Address = "a", City = "Roma", CinCode = null },
             new Property { Name = "Invalid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "INVALID" }
         );
@@ -201,7 +208,7 @@ public class AdminServiceTests
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_FilterMissing_ReturnsOnlyMissingProperties));
 
         ctx.Properties.AddRange(
-            new Property { Name = "Valid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789" },
+            new Property { Name = "Valid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
             new Property { Name = "Missing", OwnerId = "o1", Address = "a", City = "Roma", CinCode = null }
         );
         await ctx.SaveChangesAsync();
@@ -223,7 +230,7 @@ public class AdminServiceTests
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_FilterInvalid_ReturnsOnlyInvalidProperties));
 
         ctx.Properties.AddRange(
-            new Property { Name = "Valid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789" },
+            new Property { Name = "Valid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
             new Property { Name = "Invalid", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "BAD" }
         );
         await ctx.SaveChangesAsync();
@@ -257,7 +264,7 @@ public class AdminServiceTests
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_NullFilter_ReturnsAllProperties));
 
         ctx.Properties.AddRange(
-            new Property { Name = "P1", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT-12345-0123456789" },
+            new Property { Name = "P1", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
             new Property { Name = "P2", OwnerId = "o1", Address = "a", City = "Roma", CinCode = null }
         );
         await ctx.SaveChangesAsync();

@@ -6,6 +6,7 @@ using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
@@ -193,6 +194,7 @@ public class SupplierJobController : ControllerBase
 [ApiController]
 [Route("api/public/check-in")]
 [AllowAnonymous]
+[EnableRateLimiting(RateLimitPolicies.PublicSupplierCheckIn)]
 public class PublicCheckInController : ControllerBase
 {
     private readonly AppDbContext _db;

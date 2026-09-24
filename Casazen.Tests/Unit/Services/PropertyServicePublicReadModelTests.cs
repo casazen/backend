@@ -47,7 +47,7 @@ public class PropertyServicePublicReadModelTests
             MaxGuests = 4,
             NightlyRate = 90m,
             CleaningFee = 30m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,
         });
@@ -171,7 +171,8 @@ public class PropertyServicePublicReadModelTests
 
     [Theory]
     [InlineData(null, CinStatus.Missing)]
-    [InlineData("IT-12345-0123456789", CinStatus.Valid)]
+    [InlineData("IT058091C27G5FFZDZ", CinStatus.Valid)]
+    [InlineData("IT123450123456789", CinStatus.Invalid)] // old invented format after the CO-01 migration
     [InlineData("BAD", CinStatus.Invalid)]
     public async Task SearchAsync_DerivesCinStatus_FromCinCode(string? cinCode, CinStatus expected)
     {

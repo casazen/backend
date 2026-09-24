@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260923233952_BackfillChildEntityOrgIds")]
-    partial class BackfillChildEntityOrgIds
+    [Migration("20260923234340_NormalizeCinCodes")]
+    partial class NormalizeCinCodes
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -52,9 +52,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("ManuallyCompleted")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid?>("OrgId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("ReportedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -72,8 +69,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("BookingId");
 
                     b.HasIndex("GuestId");
-
-                    b.HasIndex("OrgId");
 
                     b.ToTable("AlloggiatiWebReports");
                 });
@@ -1048,9 +1043,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<Guid?>("OrgId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1070,8 +1062,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId");
 
@@ -1399,9 +1389,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("NextScheduledRunAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("OrgId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
@@ -1409,8 +1396,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .IsUnique();
@@ -1445,9 +1430,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<Guid?>("OrgId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("OtasSynced")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -1466,8 +1448,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId", "AdaptationDate");
 
@@ -1647,9 +1627,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<Guid?>("OrgId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
@@ -1667,8 +1644,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(255)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .HasDatabaseName("IX_PropertyDocuments_PropertyId");
@@ -2782,6 +2757,25 @@ namespace Casazen.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("UserContextMemberships");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.AlloggiatiWebReport", b =>

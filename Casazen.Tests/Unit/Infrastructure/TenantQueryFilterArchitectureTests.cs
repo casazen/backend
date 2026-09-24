@@ -2,6 +2,7 @@ using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
@@ -40,6 +41,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
         [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
+        [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId. A host-org filter would hide the request from the supplier who takes, completes or rejects it, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository).",

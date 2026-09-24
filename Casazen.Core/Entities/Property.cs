@@ -74,7 +74,7 @@ public class Property : ITenantOwned
     // Italian regulatory compliance - D.L. 145/2023
     [MaxLength(25)]
     [CinCode]
-    public string? CinCode { get; set; } // Format: IT-XXXXX-XXXXXXXXXX
+    public string? CinCode { get; set; } // Normalized CIN, e.g. IT058091C27G5FFZDZ (see CinFormat)
 
     // Timezone for booking date handling (IANA timezone ID)
     [MaxLength(50)]

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Validation;
 
 namespace Casazen.Web.DTOs;
@@ -76,10 +77,12 @@ public class UpdatePropertyRequest
     public string HouseRules { get; set; } = string.Empty;
 
     /// <summary>
-    /// Italian Codice Identificativo Nazionale (CIN) — format <c>IT-XXXXX-XXXXXXXXXX</c>.
+    /// Italian Codice Identificativo Nazionale (CIN), e.g. <c>IT058091C27G5FFZDZ</c>. Spaces and hyphens are
+    /// ignored and the value is stored normalized (see <c>CinFormat</c>).
     /// Required by D.L. 145/2023 for short-term rentals.
     /// </summary>
-    [MaxLength(25, ErrorMessage = "CIN code cannot exceed 25 characters")]
+    // Raw input may contain spaces or hyphens; the stored (normalized) CIN is at most 18 characters.
+    [MaxLength(40, ErrorMessage = CinFormat.InvalidFormatMessageKey)]
     [CinCode]
     public string? CinCode { get; set; }
 

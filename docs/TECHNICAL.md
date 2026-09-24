@@ -414,7 +414,7 @@ erDiagram
 | `Id` | `Guid` | PK | Auto-generated primary key |
 | `OwnerId` | `string` | Required, max 255 | Auth0 `sub` claim of the owner |
 | `Name` | `string` | Required, max 100 | Display name |
-| `CinCode` | `string?` | Max 25, `[CinCode]` validated | Italian national ID code `IT-XXXXX-XXXXXXXXXX` |
+| `CinCode` | `string?` | Max 25, `[CinCode]` validated, stored normalized | Italian national ID code, e.g. `IT058091C27G5FFZDZ` (`CinFormat`) |
 | `NightlyRate` | `decimal` | Range €0.01–€100,000 | Base nightly rate |
 | `Timezone` | `string` | Default `Europe/Rome` | IANA timezone for date handling |
 
