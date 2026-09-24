@@ -30,7 +30,6 @@ public class TenantQueryFilterArchitectureTests
 
         // Platform reference data and platform-wide state.
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
-        [typeof(TaxRate)] = "Platform reference data: regional tax rates shared by every org.",
         [typeof(CancellationPolicy)] = "Platform catalog of cancellation policies shared by the properties of every org.",
         [typeof(TerritorialRentAgreement)] = "Platform reference data: territorial rent agreements (canone concordato).",
         [typeof(ConcordatoRentBand)] = "Platform reference data: rent bands of a territorial agreement.",

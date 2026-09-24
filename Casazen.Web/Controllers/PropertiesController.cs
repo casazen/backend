@@ -955,13 +955,21 @@ public class PropertiesController(
                 {
                     City = tax.City,
                     PublicPageSlug = tax.PublicPageSlug,
+                    CategoryRequired = tax.CategoryRequired,
                     Rate = tax.Rate is not { } rate
                         ? null
                         : new ActivationTouristTaxRateDto
                         {
+                            CalculationMethod = rate.CalculationMethod,
                             RatePerPersonPerNight = rate.RatePerPersonPerNight,
+                            PercentOfNightlyPrice = rate.PercentOfNightlyPrice,
+                            CapPerPersonPerNight = rate.CapPerPersonPerNight,
                             MaxNights = rate.MaxNights,
                             MinimumAge = rate.MinimumAge,
+                            ReducedRateMaxAge = rate.ReducedRateMaxAge,
+                            ReducedRatePerPersonPerNight = rate.ReducedRatePerPersonPerNight,
+                            SeasonStart = rate.SeasonStart,
+                            SeasonEnd = rate.SeasonEnd,
                             EffectiveFrom = rate.EffectiveFrom,
                             EffectiveTo = rate.EffectiveTo,
                             SourceUrl = rate.SourceUrl,

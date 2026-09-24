@@ -36,7 +36,7 @@ public class CreateDirectBookingConsentRequest
     public string ConsentVersion { get; set; } = string.Empty;
 }
 
-public class CreateDirectBookingRequest
+public class CreateDirectBookingRequest : IValidatableObject
 {
     [Required(ErrorMessage = "Property is required")]
     public Guid PropertyId { get; set; }
@@ -66,4 +66,13 @@ public class CreateDirectBookingRequest
     [Required]
     [EnumDataType(typeof(PaymentOption), ErrorMessage = "Invalid payment option")]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
+
+    /// <summary>
+    /// Age of each minor at check-in (0-17), one per child. Required by the server (422
+    /// <c>tourist_tax_child_ages_required</c>) only when the tourist tax of the comune depends on it (BK-03).
+    /// </summary>
+    public List<int>? ChildrenAges { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
+        ChildrenAgesValidation.Validate(validationContext, ChildrenAges, NumberOfChildren);
 }

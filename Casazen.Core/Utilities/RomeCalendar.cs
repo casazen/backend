@@ -34,6 +34,22 @@ public static class RomeCalendar
     }
 
     /// <summary>
+    /// Europe/Rome calendar date of a stored or received date value. A date-only value is midnight UTC of its date
+    /// (storage convention), which is the same date in Rome; an instant with a time (e.g. <c>2026-01-31T23:30Z</c>) is
+    /// converted, so it gives the Rome date (<c>2026-02-01</c>). <see cref="DateTimeKind.Unspecified"/> counts as UTC.
+    /// </summary>
+    public static DateOnly DateInRome(DateTime value)
+    {
+        var utc = value.Kind switch
+        {
+            DateTimeKind.Local => value.ToUniversalTime(),
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+            _ => value,
+        };
+        return DateOnly.FromDateTime(TodayAt(new DateTimeOffset(utc)));
+    }
+
+    /// <summary>
     /// The UTC instant at which the calendar date of <paramref name="calendarDate"/> (a date-only value, e.g. a
     /// check-in date) starts in Europe/Rome: 22:00 or 23:00 UTC of the day before, depending on daylight saving.
     /// </summary>

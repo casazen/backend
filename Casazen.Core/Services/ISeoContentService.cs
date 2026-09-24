@@ -1,25 +1,53 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.TouristTax;
 
 namespace Casazen.Core.Services;
 
 public record SeoDisclaimersDto(string LastUpdated, string NotLegalAdvice, string AiGenerated);
 public record SeoCtaDto(string ComplianceCheckerUrl, string SignupUrl);
-public record PublicTouristTaxRateSummaryDto(decimal RatePerPersonPerNight, int? MaxNights, int MinimumAge, string City);
+/// <summary>A tourist tax rate of the comune in force today, as shown on the public page (one per category or season).</summary>
+public record PublicTouristTaxRateSummaryDto(
+    string City,
+    string? AccommodationCategory,
+    string? SeasonStart,
+    string? SeasonEnd,
+    TouristTaxCalculationMethod CalculationMethod,
+    decimal RatePerPersonPerNight,
+    decimal? PercentOfNightlyPrice,
+    decimal? CapPerPersonPerNight,
+    int? MaxNights,
+    int MinimumAge,
+    int? ReducedRateMaxAge,
+    decimal? ReducedRatePerPersonPerNight,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    string? SourceUrl);
 
 public record SeoPagePublicDto(
     Guid Id, SeoPageType PageType, string Title, string MetaDescription, string BodyHtml,
     string ComuneName, string ComuneCode, string RegionCode, string RegionSlug, string ComuneSlug,
     string CanonicalUrl, DateTime? LastRefreshedAt, SeoDisclaimersDto Disclaimers, SeoCtaDto Cta,
-    PublicTouristTaxRateSummaryDto? TouristTaxRate);
+    IReadOnlyList<PublicTouristTaxRateSummaryDto> TouristTaxRates);
 
+/// <summary>Public tourist tax calculator (A8-12, A8-23): same engine as the checkout.</summary>
+/// <param name="ChildrenAges">Age of each minor at check-in (0-17), when the comune exempts or reduces minors by age.</param>
+/// <param name="AccommodationCategory">Category of the accommodation, for comuni whose rates depend on it.</param>
+/// <param name="NightlyPrice">Price of one night of the accommodation, for percentage rates.</param>
 public record PublicTouristTaxCalculateRequest(
     string ComuneSlug, int NumberOfAdults, int NumberOfChildren,
-    DateTime CheckInDate, DateTime CheckOutDate);
+    DateTime CheckInDate, DateTime CheckOutDate,
+    IReadOnlyList<int>? ChildrenAges = null,
+    string? AccommodationCategory = null,
+    decimal? NightlyPrice = null);
 
+/// <param name="Status">
+/// <c>Calculated</c>: <paramref name="TaxAmount"/> is set. <c>RateUnavailable</c>: CasaZen has no rate for the comune
+/// or the dates. Otherwise the input the calculation still needs (category, ages of the minors, night price).
+/// </param>
 public record PublicTouristTaxCalculateResponse(
-    string ComuneSlug, string City, decimal TaxAmount, int NumberOfAdults, int NumberOfChildren,
-    int Nights, decimal RatePerPersonPerNight, int MaxNightsApplied,
-    DateTime CheckInDate, DateTime CheckOutDate, string Disclaimer);
+    string ComuneSlug, string City, TouristTaxQuoteStatus Status, decimal? TaxAmount,
+    int NumberOfAdults, int NumberOfChildren, int Nights, int TaxableNights, bool AgeRulesApply,
+    IReadOnlyList<string> Categories, DateTime CheckInDate, DateTime CheckOutDate);
 
 public record SeoRevisionAdminDto(DateTime GeneratedAt, string AiModelTier, int PromptTokens, string SourceDataVersion);
 

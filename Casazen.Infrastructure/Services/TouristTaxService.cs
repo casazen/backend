@@ -1,55 +1,15 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
-using Microsoft.Extensions.Logging;
+using Casazen.Core.TouristTax;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
-public class TouristTaxService(
-    ITouristTaxRateRepository repository,
-    ILogger<TouristTaxService> logger) : ITouristTaxService
+public class TouristTaxService(ITouristTaxRateRepository repository) : ITouristTaxService
 {
-    public async Task<decimal> CalculateTouristTaxAsync(
-        string city,
-        int numberOfAdults,
-        int numberOfChildren,
-        DateTime checkIn,
-        DateTime checkOut)
-    {
-        var taxRate = await GetTaxRateAsync(city, checkIn);
-
-        if (taxRate == null)
-        {
-            logger.LogWarning("No tourist tax rate found for city {City} on {Date}", city, checkIn);
-            return 0m;
-        }
-
-        // Calculate number of nights
-        var nights = (checkOut.Date - checkIn.Date).Days;
-        if (nights <= 0)
-        {
-            return 0m;
-        }
-
-        // Apply maximum nights cap if configured
-        if (taxRate.MaxNights.HasValue && nights > taxRate.MaxNights.Value)
-        {
-            nights = taxRate.MaxNights.Value;
-        }
-
-        // Calculate tax (usually only adults are taxed, children exempt based on age)
-        var taxableGuests = numberOfAdults; // Children typically exempt
-        var totalTax = taxableGuests * nights * taxRate.RatePerPersonPerNight;
-
-        logger.LogInformation(
-            "Tourist tax calculated: {City}, {Adults} adults, {Nights} nights, " +
-            "rate €{Rate}/person/night = €{Total}",
-            city, numberOfAdults, nights, taxRate.RatePerPersonPerNight, totalTax);
-
-        return totalTax;
-    }
-
     public async Task<TouristTaxRate?> GetTaxRateByIdAsync(Guid id)
     {
         return await repository.GetByIdAsync(id);
@@ -57,7 +17,12 @@ public class TouristTaxService(
 
     public async Task<TouristTaxRate?> GetTaxRateAsync(string city, DateTime date)
     {
-        return await repository.GetActiveByCityAsync(city, date);
+        var comune = new TouristTaxComune(null, city);
+        if (comune.IsEmpty)
+            return null;
+
+        var rates = await repository.GetActiveInPeriodAsync(date, date);
+        return TouristTaxCalculator.RateFor(rates.Where(comune.Matches), RomeCalendar.DateInRome(date));
     }
 
     public async Task<IEnumerable<TouristTaxRate>> GetAllTaxRatesAsync()
@@ -114,6 +79,22 @@ public class TouristTaxService(
         taxRate.Notes = input.Notes?.Trim() ?? string.Empty;
         taxRate.SourceUrl = string.IsNullOrWhiteSpace(input.SourceUrl) ? null : input.SourceUrl.Trim();
         taxRate.VerificationLevel = input.VerificationLevel;
+        taxRate.IstatCode = string.IsNullOrWhiteSpace(input.IstatCode) ? null : input.IstatCode.Trim();
+        taxRate.AccommodationCategory = string.IsNullOrWhiteSpace(input.AccommodationCategory)
+            ? null
+            : input.AccommodationCategory.Trim();
+        taxRate.SeasonStart = string.IsNullOrWhiteSpace(input.SeasonStart) ? null : input.SeasonStart.Trim();
+        taxRate.SeasonEnd = string.IsNullOrWhiteSpace(input.SeasonEnd) ? null : input.SeasonEnd.Trim();
+        taxRate.CalculationMethod = input.CalculationMethod;
+        var percentage = input.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice;
+        // A percentage rate has no fixed amount, a fixed rate no percentage or cap: never both.
+        taxRate.RatePerPersonPerNight = percentage ? 0m : input.RatePerPersonPerNight;
+        taxRate.PercentOfNightlyPrice = percentage ? input.PercentOfNightlyPrice : null;
+        taxRate.CapPerPersonPerNight = percentage ? input.CapPerPersonPerNight : null;
+        // The reduced band needs both values and a fixed rate.
+        var reduced = !percentage && input.ReducedRateMaxAge is not null && input.ReducedRatePerPersonPerNight is not null;
+        taxRate.ReducedRateMaxAge = reduced ? input.ReducedRateMaxAge : null;
+        taxRate.ReducedRatePerPersonPerNight = reduced ? input.ReducedRatePerPersonPerNight : null;
     }
 
     private static NotFoundException RateNotFound(Guid id) =>
