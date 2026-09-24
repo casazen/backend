@@ -128,22 +128,25 @@ public static partial class EmailTemplates
 
     /// <summary>
     /// Guest data for the Alloggiati communication still missing the day before arrival, to the host (first stage of the
-    /// stay alerts, CO-10).
+    /// stay alerts, CO-10). <paramref name="bookingUrl"/>: the booking in the console, when known.
     /// </summary>
     public static EmailContent GuestCheckInIncomplete(
         CultureInfo culture,
         string guestName,
         string propertyName,
-        DateTime checkInDate) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("GuestCheckInIncomplete_Body", guestName, propertyName, checkInDate)
-            .Paragraph("GuestCheckInIncomplete_Action")
+        DateTime checkInDate,
+        string? bookingUrl = null) =>
+        WithBookingLink(
+                new EmailHtmlBuilder(culture)
+                    .Paragraph("GuestCheckInIncomplete_Body", guestName, propertyName, checkInDate)
+                    .Paragraph("GuestCheckInIncomplete_Action"),
+                bookingUrl)
             .Build("GuestCheckInIncomplete_Subject", propertyName, checkInDate);
 
     /// <summary>
     /// Alloggiati Web communication not sent with its deadline approaching, to the host (CO-10). The term (24 or 6 hours
     /// from arrival) is always stated; the exact deadline only when the arrival is registered
-    /// (<paramref name="deadlineUtc"/>, shown in Italian time).
+    /// (<paramref name="deadlineUtc"/>, shown in Italian time). <paramref name="bookingUrl"/>: the booking in the console.
     /// </summary>
     public static EmailContent AlloggiatiDeadline(
         CultureInfo culture,
@@ -151,7 +154,8 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         bool shortStay = false,
-        DateTime? deadlineUtc = null)
+        DateTime? deadlineUtc = null,
+        string? bookingUrl = null)
     {
         var builder = new EmailHtmlBuilder(culture)
             .Paragraph("AlloggiatiDeadline_Body", guestName, propertyName, checkInDate)
@@ -159,8 +163,7 @@ public static partial class EmailTemplates
         builder = deadlineUtc is { } deadline
             ? builder.Paragraph("AlloggiatiDeadline_DeadlineAt", builder.FormatInstant(deadline))
             : builder.Muted("AlloggiatiDeadline_ArrivalNotRegistered");
-        return builder
-            .Paragraph("AlloggiatiDeadline_Action")
+        return WithBookingLink(builder.Paragraph("AlloggiatiDeadline_Action"), bookingUrl)
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
     }
 

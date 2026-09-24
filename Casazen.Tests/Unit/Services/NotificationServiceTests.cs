@@ -41,6 +41,10 @@ public class NotificationServiceTests
         Assert.StartsWith(subject, email.Content.Subject, StringComparison.Ordinal);
         Assert.Contains("Test Property", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("<strong>Anna Bianchi</strong>", email.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains(
+            $"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/app/short-rent/bookings/{bookingId:D}\"",
+            email.Content.HtmlBody,
+            StringComparison.Ordinal);
         Assert.NotNull(sent);
         Assert.Equal(pushType, sent.Type);
         Assert.Equal(bookingId, sent.BookingId);
@@ -123,7 +127,7 @@ public class NotificationServiceTests
             .Options);
 
     private static NotificationService CreateService(AppDbContext context, IEmailQueue emails, IPushNotificationService push) =>
-        new(context, emails, push, Mock.Of<ILogger<NotificationService>>());
+        new(context, emails, push, EmailTestHelpers.Links(), Mock.Of<ILogger<NotificationService>>());
 
     private static async Task<Guid> SeedBookingAsync(AppDbContext context, string contactEmail)
     {

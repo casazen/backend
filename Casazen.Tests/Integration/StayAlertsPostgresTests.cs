@@ -516,7 +516,7 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
             new(
                 db,
                 new AlloggiatiWebService(db, NullLogger<AlloggiatiWebService>.Instance, Clock),
-                new NotificationService(db, Emails, Push, NullLogger<NotificationService>.Instance),
+                new NotificationService(db, Emails, Push, EmailTestHelpers.Links(), NullLogger<NotificationService>.Instance),
                 Options.Create(options),
                 Options.Create(new ComplianceOptions { CheckoutReminderHourLocal = CheckoutReminderHour }),
                 NullLogger<StayAlertService>.Instance,

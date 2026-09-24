@@ -111,6 +111,28 @@ public class StayAlertEmailTemplatesTests
         Assert.Equal("Today's check-out - Villa Rosa (8 October 2026)", english.Subject);
     }
 
+    [Fact]
+    public void StayAlertEmails_WithBookingUrl_LinkTheBookingInTheConsole()
+    {
+        const string url = "https://casazen-app.test/app/short-rent/bookings/0b5f0c9e-3f55-4c4b-9d8e-1a2b3c4d5e6f";
+        var culture = EmailTemplates.DefaultCulture;
+        var emails = new[]
+        {
+            EmailTemplates.GuestCheckInIncomplete(culture, "Anna", "Villa Rosa", CheckIn, url),
+            EmailTemplates.AlloggiatiDeadline(culture, "Anna", "Villa Rosa", CheckIn, bookingUrl: url),
+            EmailTemplates.AlloggiatiOverdue(culture, "Anna", "Villa Rosa", CheckIn, null, bookingUrl: url),
+            EmailTemplates.AlloggiatiFailed(culture, "Anna", "Villa Rosa", CheckIn, url),
+            EmailTemplates.CheckoutReminder(culture, "Anna", "Villa Rosa", CheckIn.AddDays(3), url),
+        };
+
+        Assert.All(emails, email =>
+        {
+            Assert.Contains($"href=\"{url}\"", email.HtmlBody);
+            Assert.Contains("Apri la prenotazione", email.HtmlBody);
+        });
+        Assert.DoesNotContain("href=", EmailTemplates.AlloggiatiFailed(culture, "Anna", "Villa Rosa", CheckIn).HtmlBody);
+    }
+
     [Theory]
     [InlineData(StayAlertKind.GuestDataMissing, "Dati ospiti mancanti")]
     [InlineData(StayAlertKind.AlloggiatiDeadlineApproaching, "Alloggiati Web in scadenza")]

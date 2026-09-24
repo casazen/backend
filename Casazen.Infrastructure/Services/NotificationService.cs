@@ -11,6 +11,7 @@ public class NotificationService(
     AppDbContext db,
     IEmailQueue emailQueue,
     IPushNotificationService pushNotificationService,
+    PublicSiteLinks links,
     ILogger<NotificationService> logger) : INotificationService
 {
     public async Task SendStayAlertAsync(StayAlert alert, CancellationToken cancellationToken = default)
@@ -34,24 +35,27 @@ public class NotificationService(
         var culture = EmailTemplates.DefaultCulture;
         var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
         var propertyName = booking.Property.Name;
+        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
+        var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
         var (template, email) = alert.Kind switch
         {
             StayAlertKind.GuestDataMissing => (
                 EmailTemplates.Names.GuestCheckInIncomplete,
-                EmailTemplates.GuestCheckInIncomplete(culture, guestName, propertyName, booking.CheckInDate)),
+                EmailTemplates.GuestCheckInIncomplete(culture, guestName, propertyName, booking.CheckInDate, bookingUrl)),
             StayAlertKind.AlloggiatiDeadlineApproaching => (
                 EmailTemplates.Names.AlloggiatiDeadline,
-                EmailTemplates.AlloggiatiDeadline(culture, guestName, propertyName, booking.CheckInDate, alert.ShortStay, alert.DeadlineUtc)),
+                EmailTemplates.AlloggiatiDeadline(
+                    culture, guestName, propertyName, booking.CheckInDate, alert.ShortStay, alert.DeadlineUtc, bookingUrl)),
             StayAlertKind.AlloggiatiOverdue => (
                 EmailTemplates.Names.AlloggiatiOverdue,
                 EmailTemplates.AlloggiatiOverdue(
-                    culture, guestName, propertyName, booking.CheckInDate, alert.DeadlineUtc, alert.ReminderNumber, alert.MaxReminders)),
+                    culture, guestName, propertyName, booking.CheckInDate, alert.DeadlineUtc, alert.ReminderNumber, alert.MaxReminders, bookingUrl)),
             StayAlertKind.AlloggiatiFailed => (
                 EmailTemplates.Names.AlloggiatiFailed,
-                EmailTemplates.AlloggiatiFailed(culture, guestName, propertyName, booking.CheckInDate)),
+                EmailTemplates.AlloggiatiFailed(culture, guestName, propertyName, booking.CheckInDate, bookingUrl)),
             StayAlertKind.CheckoutReminder => (
                 EmailTemplates.Names.CheckoutReminder,
-                EmailTemplates.CheckoutReminder(culture, guestName, propertyName, booking.CheckOutDate)),
+                EmailTemplates.CheckoutReminder(culture, guestName, propertyName, booking.CheckOutDate, bookingUrl)),
             _ => throw new ArgumentOutOfRangeException(nameof(alert), alert.Kind, "Unknown stay alert"),
         };
 

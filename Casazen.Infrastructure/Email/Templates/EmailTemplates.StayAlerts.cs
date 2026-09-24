@@ -8,7 +8,8 @@ public sealed record PushText(string Title, string Body);
 
 /// <summary>
 /// Host alerts about a stay (CO-10): the stages of the Alloggiati Web sequence and the check-out reminder, as email and
-/// as push text. The first two stages use <see cref="GuestCheckInIncomplete"/> and <see cref="AlloggiatiDeadline"/>.
+/// as push text. The first two stages use <see cref="GuestCheckInIncomplete"/> and <see cref="AlloggiatiDeadline"/>;
+/// every alert links the booking in the console with the button of the new booking email (BK-10).
 /// </summary>
 public static partial class EmailTemplates
 {
@@ -32,14 +33,15 @@ public static partial class EmailTemplates
         DateTime checkInDate,
         DateTime? deadlineUtc,
         int reminderNumber = 0,
-        int maxReminders = 0)
+        int maxReminders = 0,
+        string? bookingUrl = null)
     {
         var builder = new EmailHtmlBuilder(culture)
             .Paragraph("AlloggiatiOverdue_Body", guestName, propertyName, checkInDate);
         builder = deadlineUtc is { } deadline
             ? builder.Paragraph("AlloggiatiDeadline_DeadlineAt", builder.FormatInstant(deadline))
             : builder.Muted("AlloggiatiOverdue_ArrivalNotRegistered");
-        builder = builder.Paragraph("AlloggiatiOverdue_Action");
+        builder = WithBookingLink(builder.Paragraph("AlloggiatiOverdue_Action"), bookingUrl);
         if (reminderNumber > 0)
             builder = builder.Muted("AlloggiatiOverdue_Reminder", reminderNumber, Math.Max(reminderNumber, maxReminders));
         return builder.Build("AlloggiatiOverdue_Subject", propertyName, checkInDate);
@@ -50,10 +52,13 @@ public static partial class EmailTemplates
         CultureInfo culture,
         string guestName,
         string propertyName,
-        DateTime checkInDate) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("AlloggiatiFailed_Body", guestName, propertyName, checkInDate)
-            .Paragraph("AlloggiatiFailed_Action")
+        DateTime checkInDate,
+        string? bookingUrl = null) =>
+        WithBookingLink(
+                new EmailHtmlBuilder(culture)
+                    .Paragraph("AlloggiatiFailed_Body", guestName, propertyName, checkInDate)
+                    .Paragraph("AlloggiatiFailed_Action"),
+                bookingUrl)
             .Build("AlloggiatiFailed_Subject", propertyName, checkInDate);
 
     /// <summary>Check-out day of a confirmed or checked-in stay, to the host (A5-25: email as well as push).</summary>
@@ -61,11 +66,23 @@ public static partial class EmailTemplates
         CultureInfo culture,
         string guestName,
         string propertyName,
-        DateTime checkOutDate) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("CheckoutReminder_Body", guestName, propertyName, checkOutDate)
-            .Paragraph("CheckoutReminder_Action")
+        DateTime checkOutDate,
+        string? bookingUrl = null) =>
+        WithBookingLink(
+                new EmailHtmlBuilder(culture)
+                    .Paragraph("CheckoutReminder_Body", guestName, propertyName, checkOutDate)
+                    .Paragraph("CheckoutReminder_Action"),
+                bookingUrl)
             .Build("CheckoutReminder_Subject", propertyName, checkOutDate);
+
+    /// <summary>
+    /// "Open the booking" button to the booking in the console (<see cref="PublicSiteLinks.HostBooking"/>), with the raw
+    /// link below it, as in the new booking email of BK-10. Nothing when the link is not known.
+    /// </summary>
+    private static EmailHtmlBuilder WithBookingLink(EmailHtmlBuilder builder, string? bookingUrl) =>
+        string.IsNullOrWhiteSpace(bookingUrl)
+            ? builder
+            : builder.Button("HostBookingConfirmed_Cta", bookingUrl).LinkFallback("Booking_LinkFallback", bookingUrl);
 
     /// <summary>
     /// Push text of an Alloggiati stay alert: property name and check-in date. The check-out reminder keeps the push of
