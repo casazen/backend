@@ -379,6 +379,10 @@ public class AppDbContext(
             .Property(l => l.MonthlyRent)
             .HasPrecision(18, 2);
 
+        // Canone concordato characteristics and range of the lease (LT-10): same table, optional.
+        modelBuilder.Entity<LeaseContract>().OwnsOne(l => l.ConcordatoAssessment);
+        modelBuilder.Entity<LeaseContract>().Navigation(l => l.ConcordatoAssessment).IsRequired(false);
+
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
 
@@ -779,6 +783,12 @@ public class AppDbContext(
 
         modelBuilder.Entity<ServiceRequest>()
             .HasIndex(sr => new { sr.SupplierOrgId, sr.Status });
+
+        // A4-19 (SU-10): Npgsql maps a uint row version to the xmin system column, so every state transition is saved
+        // only if the row was not changed since it was read.
+        modelBuilder.Entity<ServiceRequest>()
+            .Property(sr => sr.Version)
+            .IsRowVersion();
 
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()

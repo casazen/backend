@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -24,7 +25,7 @@ public class CanoneConcordatoEligibilityServiceTests
     private const string OwnerId = "auth0|host";
 
     [Fact]
-    public async Task Calculate_Seveso_AllA_AtLeast3B_SubFascia2_FromSeededBand()
+    public async Task Calculate_Seveso65Sqm_SubFascia2_RangeFromSubFascia1MinToSubFascia2Max()
     {
         await using var db = CreateDb();
         var property = SeedProperty(db, "Seveso");
@@ -32,21 +33,32 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(65, typeA: 2, typeB: 3, typeC: 0, typeD: 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, typeA: 2, typeB: 3, typeC: 0, typeD: 0), ThreeYears);
 
         Assert.NotNull(result);
         Assert.True(result.Available);
         Assert.Equal(2, result.SubFascia);
         Assert.Equal("Unica", result.Zone);
-        Assert.Equal(3445.00m, result.CanoneMinAnnuo);
+        // RS-8 (A7-11, #6): the parties may choose a lower sub-fascia, so the minimum is the sub-fascia 1 minimum (20 €/mq).
+        Assert.Equal(1300.00m, result.CanoneMinAnnuo);
         Assert.Equal(5525.00m, result.CanoneMaxAnnuo);
-        Assert.Equal(287.08m, result.CanoneMinMensile);
-        Assert.Equal(460.42m, result.CanoneMaxMensile);
+        // Monthly bounds rounded inwards: twelve months never exceed the annual maximum.
+        Assert.Equal(108.34m, result.CanoneMinMensile);
+        Assert.Equal(460.41m, result.CanoneMaxMensile);
         Assert.True(result.ImuAppliesTheoretical);
         Assert.True(result.AttestationRequired);
         Assert.False(result.AtaApplies);
         Assert.Contains("informativa", result.Disclaimer, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(DataCompleteness.Partial, result.DataCompleteness);
+        // A7-23: Partial data make the range indicative, with the source and the verification date.
+        Assert.True(result.Indicative);
+        Assert.Contains(CanoneConcordatoWarningCodes.PartialData, result.Warnings);
+        Assert.Equal(CanoneConcordatoMbSeed.SourceUrl, result.SourceUrl);
+        Assert.Equal(new DateTime(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc), result.LastVerifiedAt);
+        Assert.Equal(3, result.ContractYears);
+        Assert.Equal(65m, result.UsableSqm);
+        Assert.Equal(50, result.BandMinSqm);
+        Assert.Equal(74, result.BandMaxSqm);
     }
 
     [Fact]
@@ -58,7 +70,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(65, typeA: 2, typeB: 2, typeC: 0, typeD: 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, typeA: 2, typeB: 2, typeC: 0, typeD: 0), ThreeYears);
 
         Assert.NotNull(result);
         Assert.Equal(1, result.SubFascia);
@@ -67,11 +79,135 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Theory]
-    [InlineData("Centrale", null)]
-    [InlineData(null, "999")]
-    public async Task Calculate_SevesoWithMismatchedLocation_ReturnsUnavailable(
-        string? zone,
-        string? foglio)
+    // A7-10: the integer bands of the agreement left decimals without a band; the bands are contiguous half-open
+    // intervals looked up on the usable square metres rounded to the whole metre.
+    [InlineData(50.5, 50, 74, 4721.75)]   // (50,74]: 85 €/mq × min(50,5 × 1,10; 60) = 85 × 55,55
+    [InlineData(74.5, 74, 99, 5289.50)]   // (74,99]: 71 €/mq × 74,5
+    [InlineData(99.5, 99, null, 6169.00)] // (99,∞): 62 €/mq × 99,5
+    [InlineData(50, 0, 50, 4550.00)]      // (0,50]: 91 €/mq × 50, no +10% at exactly 50 mq
+    [InlineData(100, 99, null, 6200.00)]  // 100 mq is "Oltre 100"
+    public async Task Calculate_DecimalAndBoundarySurfaces_FallInTheRightBand(
+        decimal sqm, int expectedBandMin, int? expectedBandMax, decimal expectedMax)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(sqm, 2, 3, 0, 0), ThreeYears);
+
+        Assert.True(result!.Available);
+        Assert.Equal(expectedBandMin, result.BandMinSqm);
+        Assert.Equal(expectedBandMax, result.BandMaxSqm);
+        Assert.Equal(expectedMax, result.CanoneMaxAnnuo);
+    }
+
+    [Theory]
+    // RS-8 examples (Seveso, sub-fascia 2, 3 years): surface uplifts capped, reduction floored (A7-11).
+    [InlineData(35, 700.00, 3640.00)]   // 91 × min(35 × 1,20; 40) = 91 × 40
+    [InlineData(58, 1160.00, 5100.00)]  // 85 × min(58 × 1,10; 60) = 85 × 60
+    [InlineData(130, 2400.00, 7440.00)] // 62 × max(130 × 0,80; 120) = 62 × 120; minimum 20 × 120
+    [InlineData(30, 600.00, 3276.00)]   // 91 × 30 × 1,20 = 91 × 36, under the cap
+    [InlineData(160, 2560.00, 7936.00)] // 62 × 160 × 0,80 = 62 × 128, above the floor
+    public async Task Calculate_SurfaceCoefficients_ApplyCapsAndFloors(decimal sqm, decimal expectedMin, decimal expectedMax)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(sqm, 2, 3, 0, 0), ThreeYears);
+
+        Assert.True(result!.Available);
+        Assert.Equal(expectedMin, result.CanoneMinAnnuo);
+        Assert.Equal(expectedMax, result.CanoneMaxAnnuo);
+    }
+
+    [Theory]
+    // Term from the dates: 4, 5, 6 years raise minimum and maximum by 3, 5, 6 %; none above 6 years.
+    [InlineData("2030-08-31", 4, 1339.00, 5690.75, false)]
+    [InlineData("2031-08-31", 5, 1365.00, 5801.25, false)]
+    [InlineData("2032-08-31", 6, 1378.00, 5856.50, false)]
+    [InlineData("2033-02-28", 6, 1300.00, 5525.00, true)]
+    [InlineData("2033-08-31", 7, 1300.00, 5525.00, true)]
+    public async Task Calculate_TermUplift_ComesFromTheDates(
+        string endDate, int expectedYears, decimal expectedMin, decimal expectedMax, bool overSixYears)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, Characteristics(65, 2, 3, 0, 0), Term("2026-09-01", endDate));
+
+        Assert.True(result!.Available);
+        Assert.Equal(expectedYears, result.ContractYears);
+        Assert.Equal(expectedMin, result.CanoneMinAnnuo);
+        Assert.Equal(expectedMax, result.CanoneMaxAnnuo);
+        Assert.Equal(overSixYears, result.Warnings.Contains(CanoneConcordatoWarningCodes.NoDurationUpliftOverSixYears));
+    }
+
+    [Theory]
+    [InlineData("2027-08-31")]
+    [InlineData("2029-08-30")]
+    public async Task Calculate_TermShorterThanThreeYears_IsUnavailable(string endDate)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), Term("2026-09-01", endDate));
+
+        Assert.False(result!.Available);
+        Assert.Equal(CanoneConcordatoReasonCodes.TermTooShort, result.ReasonCode);
+        Assert.Null(result.CanoneMaxAnnuo);
+    }
+
+    [Fact]
+    public async Task Calculate_FurnishedAndAirConditioning_AddToTheMaximumOnly()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, Characteristics(65, 2, 3, 0, 0) with { IsFurnished = true, AirConditioning = true }, ThreeYears);
+
+        // 85 × 65 × (1 + 15% + 5%): the optional uplifts raise the maximum, the minimum keeps the mandatory ones only.
+        Assert.Equal(6630.00m, result!.CanoneMaxAnnuo);
+        Assert.Equal(1300.00m, result.CanoneMinAnnuo);
+    }
+
+    [Fact]
+    public async Task Calculate_MultiplicativeCombination_IsConfigurablePerAgreement()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        db.TerritorialRentAgreements.Single(a => a.Comune == "Seveso").CoefficientCombination =
+            CoefficientCombination.Multiplicative;
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, Characteristics(65, 2, 3, 0, 0) with { IsFurnished = true, AirConditioning = true },
+            Term("2026-09-01", "2030-08-31"));
+
+        // 85 × 65 × 1,15 × 1,05 × 1,03 instead of × (1 + 15% + 5% + 3%).
+        Assert.Equal(6871.58m, result!.CanoneMaxAnnuo);
+    }
+
+    [Fact]
+    public async Task Calculate_Appurtenances_AddToTheUsableSurfaceAtTheAgreementPercentages()
     {
         await using var db = CreateDb();
         var property = SeedProperty(db, "Seveso");
@@ -81,12 +217,127 @@ public class CanoneConcordatoEligibilityServiceTests
 
         var result = await sut.CalculateAsync(
             property.Id,
-            Characteristics(65, 2, 3, 0, 0, zone: zone, foglio: foglio));
+            Characteristics(60, 2, 3, 0, 0) with
+            {
+                GarageSqm = 10m,
+                BalconySqm = 10m,
+                OtherAppurtenanceSqm = 4m,
+                PrivateGreenSqm = 10m,
+            },
+            ThreeYears);
+
+        // 60 + 10 × 50% + 10 × 30% + 4 × 25% + 10 × 10% = 70 mq utili, band (50,74], 85 €/mq.
+        Assert.Equal(70m, result!.UsableSqm);
+        Assert.Equal(5950.00m, result.CanoneMaxAnnuo);
+    }
+
+    [Theory]
+    [InlineData(3, 1)] // stoves with fewer than 4 B-elements: sub-fascia 1
+    [InlineData(4, 2)] // stoves with at least 4 B-elements: the stove rule does not apply
+    public async Task Calculate_StoveHeating_PutsTheUnitInSubFascia1UnlessFourTypeB(int typeB, int expectedSubFascia)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, Characteristics(65, 2, typeB, 0, 0) with { StoveHeating = true }, ThreeYears);
+
+        Assert.Equal(expectedSubFascia, result!.SubFascia);
+    }
+
+    [Theory]
+    // Sub-fascia 3: 3 C-elements and at least 2 of D1, D2, D4, D6, D7, D9; the maximum of sub-fascia 3 needs 4 D.
+    [InlineData(5, 1, 2, false)]
+    [InlineData(2, 2, 3, true)]
+    [InlineData(4, 2, 3, false)]
+    public async Task Calculate_SubFascia3_NeedsQualifyingTypeDAndFlagsTheMaximumBelowFourD(
+        int typeD, int qualifyingD, int expectedSubFascia, bool expectedWarning)
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id,
+            Characteristics(65, 2, 3, 3, typeD) with { QualifyingTypeDElementCount = qualifyingD },
+            ThreeYears);
+
+        Assert.Equal(expectedSubFascia, result!.SubFascia);
+        Assert.Equal(expectedWarning, result.Warnings.Contains(CanoneConcordatoWarningCodes.SubFascia3MaxNeedsMoreTypeD));
+        Assert.Equal(CanoneConcordatoMbSeed.SubFascia3QualifyingTypeDElements, result.SubFascia3QualifyingTypeDElements);
+    }
+
+    [Fact]
+    public async Task Calculate_MoreQualifyingThanTypeD_IsUnavailable()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, Characteristics(65, 2, 3, 3, 1) with { QualifyingTypeDElementCount = 2 }, ThreeYears);
 
         Assert.False(result!.Available);
-        Assert.Equal(CanoneConcordatoCopy.ReasonZoneRequired, result.Reason);
+        Assert.Equal(CanoneConcordatoReasonCodes.InvalidElementCounts, result.ReasonCode);
+    }
+
+    [Fact]
+    public async Task Calculate_CompleteData_IsNotIndicative()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        db.TerritorialRentAgreements.Single(a => a.Comune == "Seveso").DataCompleteness = DataCompleteness.Complete;
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
+
+        Assert.False(result!.Indicative);
+        Assert.DoesNotContain(CanoneConcordatoWarningCodes.PartialData, result.Warnings);
+    }
+
+    [Fact]
+    public async Task Calculate_SevesoWithUnknownZone_ReturnsZoneNotFound()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(
+            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale"), ThreeYears);
+
+        Assert.False(result!.Available);
+        Assert.Equal(CanoneConcordatoReasonCodes.ZoneNotFound, result.ReasonCode);
+        Assert.Equal(CanoneConcordatoCopy.ReasonZoneNotFound, result.Reason);
         Assert.Null(result.CanoneMinAnnuo);
         Assert.Null(result.CanoneMaxAnnuo);
+    }
+
+    [Fact]
+    public async Task Calculate_SevesoWithAnySheet_UsesTheSingleZone()
+    {
+        // Seveso is one zone over the whole comune: every cadastral sheet is in it.
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0, foglio: "999"), ThreeYears);
+
+        Assert.True(result!.Available);
+        Assert.Equal("Unica", result.Zone);
     }
 
     [Fact]
@@ -98,12 +349,12 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var ata = db.HighTensionAreaComuni.Single(c => c.Comune == "Seveso");
         var sut = CreateSut(db);
-        var unverified = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
+        var unverified = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
         Assert.False(unverified!.AtaApplies);
 
         ata.VerifiedDirectly = true;
         await db.SaveChangesAsync();
-        var verified = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
+        var verified = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
         Assert.True(verified!.AtaApplies);
     }
 
@@ -117,7 +368,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
 
         Assert.True(result!.Available);
         Assert.False(result.AtaApplies);
@@ -132,13 +383,14 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
 
         Assert.False(result!.Available);
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
         Assert.Null(result.CanoneMinAnnuo);
         Assert.Null(result.CanoneMaxAnnuo);
         Assert.Equal(DataCompleteness.Missing, result.DataCompleteness);
+        Assert.Equal(CanoneConcordatoReasonCodes.DataUnavailable, result.ReasonCode);
     }
 
     [Fact]
@@ -150,10 +402,11 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
 
         Assert.False(result!.Available);
         Assert.Equal(CanoneConcordatoCopy.ReasonZoneRequired, result.Reason);
+        Assert.Equal(CanoneConcordatoReasonCodes.ZoneRequired, result.ReasonCode);
         Assert.Null(result.CanoneMinAnnuo);
     }
 
@@ -167,12 +420,29 @@ public class CanoneConcordatoEligibilityServiceTests
         var sut = CreateSut(db);
 
         var result = await sut.CalculateAsync(
-            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale"));
+            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale"), ThreeYears);
 
         Assert.True(result!.Available);
         Assert.Equal("Centrale", result.Zone);
-        Assert.Equal(3965.00m, result.CanoneMinAnnuo);
+        Assert.Equal(1300.00m, result.CanoneMinAnnuo);
         Assert.Equal(6110.00m, result.CanoneMaxAnnuo);
+    }
+
+    [Fact]
+    public async Task Calculate_CesanoWithoutZone_UsesThePropertySheet()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Cesano Maderno");
+        property.CadastralSheet = "2";
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
+
+        Assert.True(result!.Available);
+        Assert.Equal("Semi periferica", result.Zone);
+        Assert.Equal(5525.00m, result.CanoneMaxAnnuo);
     }
 
     [Fact]
@@ -185,9 +455,10 @@ public class CanoneConcordatoEligibilityServiceTests
         var sut = CreateSut(db);
 
         var result = await sut.CalculateAsync(
-            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale", foglio: "2"));
+            property.Id, Characteristics(65, 2, 3, 0, 0, zone: "Centrale", foglio: "2"), ThreeYears);
 
         Assert.False(result!.Available);
+        Assert.Equal(CanoneConcordatoReasonCodes.ZoneNotFound, result.ReasonCode);
         Assert.Null(result.CanoneMinAnnuo);
         Assert.Null(result.CanoneMaxAnnuo);
     }
@@ -203,10 +474,11 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(sqm, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(sqm, 2, 3, 0, 0), ThreeYears);
 
         Assert.False(result!.Available);
         Assert.Equal(CanoneConcordatoCopy.ReasonInvalidSqm, result.Reason);
+        Assert.Equal(CanoneConcordatoReasonCodes.InvalidSurface, result.ReasonCode);
         Assert.Null(result.CanoneMinAnnuo);
         Assert.Null(result.CanoneMaxAnnuo);
     }
@@ -221,7 +493,7 @@ public class CanoneConcordatoEligibilityServiceTests
         var sut = CreateSut(db);
 
         // Who may see the property is decided by the controller (TN-3); the service only needs it to exist.
-        var result = await sut.CalculateAsync(Guid.NewGuid(), Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(Guid.NewGuid(), Characteristics(65, 2, 3, 0, 0), ThreeYears);
 
         Assert.Null(result);
     }
@@ -235,7 +507,7 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0));
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
 
         Assert.False(result!.Available);
         Assert.Null(result.CanoneMinAnnuo);
@@ -260,9 +532,43 @@ public class CanoneConcordatoEligibilityServiceTests
             .Where(a => a.DataCompleteness == DataCompleteness.Missing)
             .ToList();
 
-        Assert.Equal(52, missing.Count);
+        // RS-8 (#1): the agreement covers 55 comuni, Misinto included.
+        Assert.Equal(53, missing.Count);
         Assert.All(missing, a => Assert.Empty(a.Bands));
-        Assert.Equal(54, CanoneConcordatoMbSeed.ProvinceComuni.Length);
+        Assert.Equal(55, CanoneConcordatoMbSeed.ProvinceComuni.Length);
+        Assert.Contains("Misinto", CanoneConcordatoMbSeed.MissingComuni);
+    }
+
+    [Fact]
+    public void MbSeed_PilotBands_AreContiguousHalfOpenIntervals()
+    {
+        foreach (var agreement in CanoneConcordatoMbSeed.BuildAgreements().Where(a => a.Bands.Count > 0))
+        {
+            foreach (var zone in agreement.Bands.GroupBy(b => b.ZoneName))
+            {
+                var bands = zone.OrderBy(b => b.MinSqm).ToList();
+                Assert.Equal(0, bands[0].MinSqm);
+                Assert.Null(bands[^1].MaxSqm);
+                for (var i = 1; i < bands.Count; i++)
+                    Assert.Equal(bands[i - 1].MaxSqm, bands[i].MinSqm);
+                Assert.Equal(new[] { 0, 50, 74, 99 }, bands.Select(b => b.MinSqm));
+            }
+        }
+    }
+
+    [Fact]
+    public void MbSeed_PilotSignatories_AreTheElevenOfTheAgreement()
+    {
+        foreach (var agreement in CanoneConcordatoMbSeed.BuildAgreements().Where(a => a.Bands.Count > 0))
+        {
+            // RS-8 (#14): 4 tenant and 7 owner organizations; an attestation needs one of each (F1 art. 12).
+            Assert.Equal(11, agreement.Signatories.Count);
+            Assert.Equal(4, agreement.Signatories.Count(s => s.Role == SignatoryRole.Inquilini));
+            Assert.Equal(7, agreement.Signatories.Count(s => s.Role == SignatoryRole.Proprieta));
+            Assert.DoesNotContain(agreement.Signatories, s => s.Contact.Contains('@'));
+            Assert.Equal(new DateTime(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc), agreement.LastVerifiedAt);
+            Assert.Equal(DataCompleteness.Partial, agreement.DataCompleteness);
+        }
     }
 
     [Fact]
@@ -303,12 +609,12 @@ public class CanoneConcordatoEligibilityServiceTests
         var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
         var controller = CreateController(eligibility.Object, resource: null, authorized: true);
 
-        var result = await controller.GetEligibility(Guid.NewGuid(), 65, 2, 3, 0, 0, false, 3, null, null, CancellationToken.None);
+        var result = await controller.GetEligibility(Guid.NewGuid(), Query(), CancellationToken.None);
 
         var problem = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
         eligibility.Verify(
-            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()),
+            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -319,11 +625,11 @@ public class CanoneConcordatoEligibilityServiceTests
         var controller = CreateController(
             eligibility.Object, new HostResource(Guid.NewGuid(), "auth0|other"), authorized: false);
 
-        var result = await controller.GetEligibility(Guid.NewGuid(), 65, 2, 3, 0, 0, false, 3, null, null, CancellationToken.None);
+        var result = await controller.GetEligibility(Guid.NewGuid(), Query(), CancellationToken.None);
 
         Assert.IsType<ForbidResult>(result);
         eligibility.Verify(
-            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()),
+            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -332,15 +638,21 @@ public class CanoneConcordatoEligibilityServiceTests
     {
         var dto = new CanoneConcordatoEligibilityDto(
             true, null, "Seveso", "Unica", 2, 3445m, 5525m, 287.08m, 460.42m,
-            DataCompleteness.Partial, true, false, true, CanoneConcordatoCopy.Disclaimer);
+            DataCompleteness.Partial, true, false, true, CanoneConcordatoCopy.Disclaimer)
+        {
+            Indicative = true,
+            Warnings = [CanoneConcordatoWarningCodes.PartialData],
+        };
+        LeaseTerm? usedTerm = null;
         var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
         eligibility
-            .Setup(s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, RentBandCharacteristics _, LeaseTerm term, CancellationToken _) => usedTerm = term)
             .ReturnsAsync(dto);
         var controller = CreateController(
             eligibility.Object, new HostResource(Guid.NewGuid(), OwnerId), authorized: true);
 
-        var result = await controller.GetEligibility(Guid.NewGuid(), 65, 2, 3, 0, 0, false, 3, "Unica", null, CancellationToken.None);
+        var result = await controller.GetEligibility(Guid.NewGuid(), Query(), CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var body = Assert.IsType<CanoneConcordatoEligibilityDto>(ok.Value);
@@ -356,6 +668,27 @@ public class CanoneConcordatoEligibilityServiceTests
         Assert.False(body.AtaApplies);
         Assert.True(body.AttestationRequired);
         Assert.Equal(CanoneConcordatoCopy.Disclaimer, body.Disclaimer);
+        Assert.True(body.Indicative);
+        // A7-12: the term comes from the dates of the query (1/9/2026-31/8/2030 = 4 years).
+        Assert.Equal(new LeaseTerm(48, 0), usedTerm);
+    }
+
+    [Fact]
+    public async Task Controller_Eligibility_EndBeforeStart_Returns422WithoutCalculating()
+    {
+        var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
+        var controller = CreateController(
+            eligibility.Object, new HostResource(Guid.NewGuid(), OwnerId), authorized: true);
+        var query = Query();
+        query.EndDate = query.StartDate;
+
+        var result = await controller.GetEligibility(Guid.NewGuid(), query, CancellationToken.None);
+
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, problem.StatusCode);
+        eligibility.Verify(
+            s => s.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private static CanoneConcordatoController CreateController(
@@ -437,8 +770,36 @@ public class CanoneConcordatoEligibilityServiceTests
         return property;
     }
 
+    private static readonly LeaseTerm ThreeYears = Term("2026-09-01", "2029-08-31");
+
+    private static LeaseTerm Term(string start, string end) =>
+        LeaseTerm.Between(
+            DateTime.Parse(start, System.Globalization.CultureInfo.InvariantCulture),
+            DateTime.Parse(end, System.Globalization.CultureInfo.InvariantCulture))!.Value;
+
+    private static CanoneConcordatoRangeQuery Query() => new()
+    {
+        Sqm = 65,
+        TypeACount = 2,
+        TypeBCount = 3,
+        Zone = "Unica",
+        StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+        EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+    };
+
     private static RentBandCharacteristics Characteristics(
         decimal sqm, int typeA, int typeB, int typeC, int typeD,
-        bool furnished = false, int years = 3, string? zone = null, string? foglio = null) =>
-        new(sqm, typeA, typeB, typeC, typeD, furnished, years, zone, foglio);
+        bool furnished = false, string? zone = null, string? foglio = null) =>
+        new()
+        {
+            Sqm = sqm,
+            TypeAElementCount = typeA,
+            TypeBElementCount = typeB,
+            TypeCElementCount = typeC,
+            TypeDElementCount = typeD,
+            QualifyingTypeDElementCount = typeD,
+            IsFurnished = furnished,
+            ZoneName = zone,
+            CadastralSheet = foglio,
+        };
 }

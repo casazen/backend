@@ -38,6 +38,13 @@ public sealed class PropertyResponse
     public bool IsActive { get; init; }
     public PropertyComplianceStatus ComplianceStatus { get; init; }
     public DateTime? ComplianceCompletedAt { get; init; }
+
+    /// <summary>Cadastral identification of the unit (LT-10): the lease contract states it; edited with <c>PUT {id}/cadastral</c>.</summary>
+    public string? CadastralSheet { get; init; }
+    public string? CadastralParcel { get; init; }
+    public string? CadastralSubaltern { get; init; }
+    public string? CadastralCategory { get; init; }
+    public decimal? CadastralIncome { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
 
@@ -72,6 +79,11 @@ public sealed class PropertyResponse
             IsActive = property.IsActive,
             ComplianceStatus = property.ComplianceStatus,
             ComplianceCompletedAt = property.ComplianceCompletedAt,
+            CadastralSheet = property.CadastralSheet,
+            CadastralParcel = property.CadastralParcel,
+            CadastralSubaltern = property.CadastralSubaltern,
+            CadastralCategory = property.CadastralCategory,
+            CadastralIncome = property.CadastralIncome,
             CreatedAt = property.CreatedAt,
             UpdatedAt = property.UpdatedAt,
         };

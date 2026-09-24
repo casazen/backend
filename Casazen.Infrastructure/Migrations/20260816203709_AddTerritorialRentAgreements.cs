@@ -133,7 +133,7 @@ namespace Casazen.Infrastructure.Migrations
 
         private static void SeedMonzaBrianza(MigrationBuilder migrationBuilder)
         {
-            foreach (var agreement in CanoneConcordatoMbSeed.BuildAgreements())
+            foreach (var agreement in CanoneConcordatoMbSeed2024.BuildAgreements())
             {
                 migrationBuilder.InsertData(
                     table: "TerritorialRentAgreements",
@@ -192,7 +192,7 @@ namespace Casazen.Infrastructure.Migrations
                 }
             }
 
-            foreach (var ata in CanoneConcordatoMbSeed.BuildAtaCandidates())
+            foreach (var ata in CanoneConcordatoMbSeed2024.BuildAtaCandidates())
             {
                 migrationBuilder.InsertData(
                     table: "HighTensionAreaComuni",
