@@ -224,7 +224,9 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal("Italia", head.GetProperty("citizenship").GetString());
         Assert.True(head.GetProperty("requiresDocument").GetBoolean());
         Assert.Equal("Passport", head.GetProperty("documentType").GetString());
-        Assert.Equal("AB123456", head.GetProperty("documentNumber").GetString());
+        // CO-09: masked like on the guest portal, the full number only on an explicit request.
+        Assert.Equal("*****456", head.GetProperty("documentNumberMasked").GetString());
+        Assert.False(head.TryGetProperty("documentNumber", out _));
         Assert.Equal("Milano", head.GetProperty("documentIssuePlace").GetString());
         Assert.Equal(0, head.GetProperty("missingFields").GetArrayLength());
         Assert.True(head.GetProperty("codesToComplete").GetArrayLength() > 0);
@@ -232,7 +234,7 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal("FamilyMember", member.GetProperty("type").GetString());
         Assert.True(member.GetProperty("isMinor").GetBoolean());
         Assert.False(member.GetProperty("requiresDocument").GetBoolean());
-        Assert.Equal(string.Empty, member.GetProperty("documentNumber").GetString());
+        Assert.Equal(JsonValueKind.Null, member.GetProperty("documentNumberMasked").ValueKind);
         Assert.Equal(0, member.GetProperty("missingFields").GetArrayLength());
     }
 

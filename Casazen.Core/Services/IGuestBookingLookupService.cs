@@ -72,7 +72,7 @@ public sealed record GuestBookingHostContact(string? Name, string? Email);
 /// <param name="OpensOn">
 /// <see cref="GuestCheckInAccessStatus.NotYetOpen"/>: the day the link is emailed (check-in minus <c>CheckIn:SendWindowDays</c>).
 /// </param>
-/// <param name="LinkSentAt">When the link that still works was emailed, if any.</param>
+/// <param name="LinkSentAt">When the email of the link that still works was handed to the email provider, if any (CO-09).</param>
 public sealed record GuestCheckInAccess(GuestCheckInAccessStatus Status, DateOnly? OpensOn, DateTime? LinkSentAt);
 
 /// <summary>Online check-in of a booking as its guest sees it. Serialized by name.</summary>

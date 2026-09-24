@@ -100,7 +100,7 @@
     <value>Complete the check-in</value>
   </data>
   <data name="GuestCheckInLink_Validity" xml:space="preserve">
-    <value>The link is valid for 7 days.</value>
+    <value>The link is valid until {0}.</value>
   </data>
   <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
     <value>Guest data missing — {0} ({1})</value>
