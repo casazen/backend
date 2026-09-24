@@ -1,7 +1,8 @@
 # Runbook: downloading user-chosen URLs (iCal import) without SSRF
 
 Task FD-16 (audit defects A2-21, A4-10, A9-32). The code is in place; nothing has to be configured for the
-defaults. This page says what the backend does and which Railway variables can change the limits.
+defaults. This page says what the backend does and which Railway variables can change the limits. What happens after
+the download (valid or empty feed, cancelled and recurring events, per-feed isolation) is in [ical.md](ical.md) (PC-10).
 
 ## What the backend does
 
@@ -20,7 +21,7 @@ may be used for a user-chosen URL.
 | Size | Body read as a stream and aborted past 5 MB (a larger `Content-Length` is refused before reading) | same |
 | Property import | `POST /api/properties/{id}/ical/import-url` validates and saves the URL, sets status `Syncing` and answers **202** at once; the first download runs in the Hangfire job `PropertyICalSyncJob.SyncFeedAsync` (one per property at a time). The recurring `property-ical-sync` job (every 15 min) keeps syncing it | `PropertiesController`, `BackgroundJobs/PropertyICalSyncJob.cs` |
 | Supplier import | `PUT /api/supplier/calendar/ical` validates the URL (`SupplierService.UpdateCalendarSyncAsync`); the download uses the same client (`CalendarSyncService`) | `SupplierProfileController` |
-| Errors shown to users | Stable codes, never exception messages: `ical_invalid_url` (400 on save), `ical_unreachable`, `ical_too_large`, `ical_invalid_format`, `ical_sync_failed`. The sync stores the code in `PropertyICalFeed.LastError` / `SupplierProfile.CalendarSyncError`; the status APIs return it as `lastErrorCode` / `calendarSyncErrorCode` plus the localized text (`SharedResources*.resx`, keys `ICal*`) in `lastError` / `calendarSyncError`. A blocked destination is reported as `ical_unreachable`, like a DNS failure, so the error does not reveal which internal names exist. Errors saved before FD-16 are shown as `ical_sync_failed` | `Services/ICalErrorCodes.cs`, `Web/Infrastructure/ICalErrorMessages.cs` |
+| Errors shown to users | Stable codes, never exception messages: `ical_invalid_url` (400 on save), `ical_unreachable`, `ical_too_large`, `ical_invalid_format` (not a readable iCalendar; a valid calendar with no events is a success, PC-10), `ical_sync_failed`. The sync stores the code in `PropertyICalFeed.LastError` / `SupplierProfile.CalendarSyncError`; the status APIs return it as `lastErrorCode` / `calendarSyncErrorCode` plus the localized text (`SharedResources*.resx`, keys `ICal*`) in `lastError` / `calendarSyncError`. A blocked destination is reported as `ical_unreachable`, like a DNS failure, so the error does not reveal which internal names exist. Errors saved before FD-16 are shown as `ical_sync_failed` | `Services/ICalErrorCodes.cs`, `Web/Infrastructure/ICalErrorMessages.cs` |
 | Logs | The reason (blocked address, redirect, HTTP status, size) is logged with the host name and the property / supplier org id. The full URL is **not** logged: iCal export links carry secret tokens | same files |
 
 ## Configuration (Railway variables, optional)

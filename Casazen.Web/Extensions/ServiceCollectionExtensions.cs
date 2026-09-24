@@ -13,6 +13,7 @@ using Casazen.Infrastructure.OTA;
 using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.ICal;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
@@ -333,6 +334,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
+        // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.
+        services.AddOptions<ICalImportOptions>().BindConfiguration(ICalImportOptions.SectionName);
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();

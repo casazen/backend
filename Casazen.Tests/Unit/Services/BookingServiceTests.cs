@@ -62,13 +62,7 @@ public class BookingServiceTests
 
     private static PropertyICalSyncService CreatePropertyICalSyncService(AppDbContext db, IConfiguration configuration)
     {
-        return new PropertyICalSyncService(
-            db,
-            Mock.Of<ISafeExternalHttpClient>(),
-            new ICalImportService(),
-            new ICalExportService(),
-            configuration,
-            Mock.Of<ILogger<PropertyICalSyncService>>());
+        return ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration);
     }
 
     [Fact]
