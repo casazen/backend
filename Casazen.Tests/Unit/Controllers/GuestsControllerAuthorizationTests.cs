@@ -15,7 +15,8 @@ public class GuestsControllerAuthorizationTests
             .Select(a => a.Policy)
             .ToArray();
 
-        Assert.Contains("PropertyOwner", classPolicies);
+        // TN-3: the context permission alone; the old "PropertyOwner" policy only required a signed-in user.
+        Assert.DoesNotContain("PropertyOwner", classPolicies);
         Assert.Contains("RequireContext:short-rent:guest.read", classPolicies);
     }
 

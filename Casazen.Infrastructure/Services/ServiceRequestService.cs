@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -13,10 +14,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Service requests between a host org and a supplier org. Who may call each operation is decided by the web layer
+/// (policies and the host resource handler, TN-3); this service only enforces the org boundaries it is given
+/// (<see cref="HostScope"/>, host org id, supplier org id) and the state machine.
+/// </summary>
 public class ServiceRequestService(
     AppDbContext db,
     IServiceRequestRepository repository,
-    IPropertyAuthorizationService propertyAuthorization,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotificationService,
@@ -49,10 +54,6 @@ public class ServiceRequestService(
 
         if (property.OrgId != command.OrgId)
             throw new InvalidOperationException("Proprietà non appartiene all'organizzazione.");
-
-        if (!await propertyAuthorization.CanAccessPropertyAsync(
-                command.UserId, command.PropertyId, command.UserRoles ?? []))
-            throw new UnauthorizedAccessException("Accesso negato alla proprietà.");
 
         var supplier = await db.SupplierProfiles
             .Include(sp => sp.Org)
@@ -95,8 +96,8 @@ public class ServiceRequestService(
         emailQueue.Enqueue(supplier.Email, supplierEmail, EmailTemplates.Names.ServiceRequestCreated);
 
         logger.LogInformation(
-            "ServiceRequest {Id} created for property {PropertyId} supplier {SupplierOrgId}",
-            request.Id, request.PropertyId, request.SupplierOrgId);
+            "ServiceRequest {Id} created by {UserId} for property {PropertyId} supplier {SupplierOrgId}",
+            request.Id, command.UserId, request.PropertyId, request.SupplierOrgId);
 
         return (await repository.GetByIdAsync(request.Id, cancellationToken))!;
     }
@@ -170,21 +171,19 @@ public class ServiceRequestService(
     public async Task<ServiceRequest> MarkPaidAsync(
         Guid id,
         Guid hostOrgId,
-        string userId,
         CancellationToken cancellationToken = default)
     {
-        var request = await repository.GetByIdAsync(id, cancellationToken)
-            ?? throw new NotFoundException($"Service request {id} not found")
+        var request = await repository.GetByIdAsync(id, cancellationToken);
+
+        // Another org's request is answered exactly like a missing one.
+        if (request is null || request.OrgId != hostOrgId)
+        {
+            throw new NotFoundException($"Service request {id} not found")
             {
                 Code = "service_request_not_found",
                 MessageKey = "ServiceRequestNotFound",
             };
-
-        if (request.OrgId != hostOrgId)
-            throw new UnauthorizedAccessException("Accesso negato.");
-
-        if (!await propertyAuthorization.CanAccessPropertyAsync(userId, request.PropertyId, ["PropertyOwner", "Admin", "PropertyManager"]))
-            throw new UnauthorizedAccessException("Accesso negato.");
+        }
 
         if (request.Status != ServiceRequestStatus.Completato)
             throw new ServiceRequestStateException("Solo le richieste completate possono essere segnate come pagate.");
@@ -199,21 +198,18 @@ public class ServiceRequestService(
 
     public Task<ServiceRequest?> GetByIdForHostAsync(
         Guid id,
-        Guid hostOrgId,
-        string userId,
-        IEnumerable<string> userRoles,
+        HostScope scope,
         CancellationToken cancellationToken = default)
     {
         // ServiceRequest is not tenant-filtered (two parties, see the TN-2 allow-list); host and supplier
         // reads are scoped by the explicit OrgId / SupplierOrgId predicate, never by the included Property.
-        var query = ApplyHostVisibility(
+        var query = ApplyHostScope(
             db.ServiceRequests
                 .IgnoreQueryFilters()
                 .Include(r => r.Property)
                 .Include(r => r.SupplierOrg)
-                .Where(r => r.Id == id && r.OrgId == hostOrgId),
-            userId,
-            userRoles);
+                .Where(r => r.Id == id),
+            scope);
 
         return query.FirstOrDefaultAsync(cancellationToken);
     }
@@ -228,9 +224,7 @@ public class ServiceRequestService(
             .FirstOrDefaultAsync(r => r.Id == id && r.SupplierOrgId == supplierOrgId, cancellationToken);
 
     public Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
-        Guid orgId,
-        string userId,
-        IEnumerable<string> userRoles,
+        HostScope scope,
         ServiceRequestStatus? status,
         Guid? propertyId,
         Guid? bookingId,
@@ -239,14 +233,12 @@ public class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
-        var query = ApplyHostVisibility(
+        var query = ApplyHostScope(
             db.ServiceRequests
                 .IgnoreQueryFilters()
                 .Include(r => r.Property)
-                .Include(r => r.SupplierOrg)
-                .Where(r => r.OrgId == orgId),
-            userId,
-            userRoles);
+                .Include(r => r.SupplierOrg),
+            scope);
 
         if (status is not null)
             query = query.Where(r => r.Status == status.Value);
@@ -282,15 +274,14 @@ public class ServiceRequestService(
         return request;
     }
 
-    private static IQueryable<ServiceRequest> ApplyHostVisibility(
-        IQueryable<ServiceRequest> query,
-        string userId,
-        IEnumerable<string> userRoles)
+    /// <summary>The host's org and, for a scope bound to an owner, only the requests on that owner's properties.</summary>
+    private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope)
     {
-        if (userRoles.Any(r => r is "PropertyManager" or "Admin"))
-            return query;
+        query = query.Where(r => r.OrgId == scope.OrgId);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(r => r.Property != null && r.Property.OwnerId == ownerId);
 
-        return query.Where(r => r.Property != null && r.Property.OwnerId == userId);
+        return query;
     }
 
     private static async Task<(IReadOnlyList<ServiceRequest> Items, int Total)> MaterializeServiceRequestPageAsync(

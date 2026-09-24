@@ -240,4 +240,49 @@
   <data name="CinAlreadyAssigned" xml:space="preserve">
     <value>Questo CIN è già associato a un altro immobile.</value>
   </data>
+  <data name="TouristTaxRateNotFound" xml:space="preserve">
+    <value>Tariffa dell'imposta di soggiorno non trovata.</value>
+  </data>
+  <data name="TaxRateCityRequired" xml:space="preserve">
+    <value>Indica il comune della tariffa.</value>
+  </data>
+  <data name="TaxRateCityTooLong" xml:space="preserve">
+    <value>Il nome del comune può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="TaxRateRegionCodeTooLong" xml:space="preserve">
+    <value>Il codice regione può avere al massimo 10 caratteri.</value>
+  </data>
+  <data name="TaxRateAmountOutOfRange" xml:space="preserve">
+    <value>La tariffa per persona per notte deve essere compresa tra 0,01 e 1000 euro.</value>
+  </data>
+  <data name="TaxRateMaxNightsOutOfRange" xml:space="preserve">
+    <value>Il numero massimo di notti tassate deve essere compreso tra 1 e 365.</value>
+  </data>
+  <data name="TaxRateMinimumAgeRequired" xml:space="preserve">
+    <value>Indica l'età da cui l'imposta è dovuta (0 se non ci sono esenzioni per età).</value>
+  </data>
+  <data name="TaxRateMinimumAgeOutOfRange" xml:space="preserve">
+    <value>L'età da cui l'imposta è dovuta deve essere compresa tra 0 e 120 anni.</value>
+  </data>
+  <data name="TaxRateEffectiveFromRequired" xml:space="preserve">
+    <value>Indica la data da cui la tariffa è in vigore.</value>
+  </data>
+  <data name="TaxRateEffectiveToBeforeFrom" xml:space="preserve">
+    <value>La data di fine validità non può essere precedente alla data di inizio.</value>
+  </data>
+  <data name="TaxRateNotesTooLong" xml:space="preserve">
+    <value>Le note possono avere al massimo 500 caratteri.</value>
+  </data>
+  <data name="TaxRateSourceUrlInvalid" xml:space="preserve">
+    <value>La fonte deve essere un indirizzo web completo (http o https) di al massimo 500 caratteri.</value>
+  </data>
+  <data name="TaxRateVerificationInvalid" xml:space="preserve">
+    <value>Livello di verifica non valido.</value>
+  </data>
+  <data name="ActivationTouristTaxNoRate" xml:space="preserve">
+    <value>Il comune di {0} non ha ancora una tariffa dell'imposta di soggiorno in CasaZen. Non blocca l'attivazione: verifica tariffa e obblighi con il comune.</value>
+  </data>
+  <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
+    <value>Inserisci la città della proprietà nei dati base per vedere la tariffa dell'imposta di soggiorno. Non blocca l'attivazione.</value>
+  </data>
 </root>

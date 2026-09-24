@@ -199,6 +199,10 @@ public class AppDbContext(
 
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
+        modelBuilder.Entity<TouristTaxRate>()
+            .Property(t => t.VerificationLevel)
+            .HasConversion<string>()
+            .HasMaxLength(20);
 
         modelBuilder.Entity<SeoContentPage>()
             .HasIndex(p => new { p.ComuneCode, p.PageType })

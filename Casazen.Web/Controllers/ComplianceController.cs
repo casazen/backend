@@ -11,7 +11,7 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/compliance")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class ComplianceController(
     IComplianceWizardService complianceWizardService,
     IOrgContextResolver orgContextResolver) : ControllerBase

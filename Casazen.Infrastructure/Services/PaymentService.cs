@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -24,9 +25,9 @@ public class PaymentService(
         return await repository.GetByPropertyAsync(propertyId);
     }
 
-    public async Task<IEnumerable<Payment>> GetAllPaymentsAsync()
+    public async Task<IEnumerable<Payment>> GetPaymentsAsync(HostScope scope)
     {
-        return await repository.GetAllAsync();
+        return await repository.GetByScopeAsync(scope);
     }
 
     public async Task<Payment> CreatePaymentAsync(Payment payment)

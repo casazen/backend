@@ -216,8 +216,14 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     private Task SeedTouristTaxRateAsync(string city, decimal rate) =>
         WithDbAsync(async db =>
         {
-            if (await db.TouristTaxRates.AnyAsync(r => r.City == city))
-                return 0;
+            // The migrations seed real rates for some comuni (CO-03): pin them to the test amount.
+            var existing = await db.TouristTaxRates.Where(r => r.City == city).ToListAsync();
+            if (existing.Count > 0)
+            {
+                foreach (var row in existing)
+                    row.RatePerPersonPerNight = rate;
+                return await db.SaveChangesAsync();
+            }
 
             db.TouristTaxRates.Add(new TouristTaxRate
             {

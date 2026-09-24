@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -177,7 +179,6 @@ public class ComplianceWizardService(
     public async Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
-        IEnumerable<string> userRoles,
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default)
     {
@@ -205,8 +206,7 @@ public class ComplianceWizardService(
                 input.ServiceCategory ?? "cleaning",
                 ServiceRequestUrgency.Normal,
                 input.ServiceNotes,
-                ChargeToGuest: false,
-                UserRoles: userRoles), cancellationToken);
+                ChargeToGuest: false), cancellationToken);
         }
 
         booking.Status = BookingStatus.CheckedOut;
@@ -257,7 +257,7 @@ public class ComplianceWizardService(
     {
         var cinStatus = CinComplianceRules.ResolveStatus(property.CinCode);
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
-            ?? "https://www.bdsr.it/cin";
+            ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
         var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
@@ -278,9 +278,7 @@ public class ComplianceWizardService(
             && safety.AcknowledgedAt.HasValue;
 
         var regionCode = await ResolveRegionCodeAsync(property.City, cancellationToken);
-        var touristTaxConfigured = await db.TouristTaxRates
-            .AsNoTracking()
-            .AnyAsync(t => t.IsActive && t.City.ToLower() == property.City.ToLower(), cancellationToken);
+        var touristTax = await ResolveTouristTaxAsync(property.City, cancellationToken);
 
         var icalFeed = await db.PropertyICalFeeds
             .AsNoTracking()
@@ -302,7 +300,10 @@ public class ComplianceWizardService(
                 true,
                 cinStatus == "valid" ? null : cinStatus == "missing"
                     ? $"Inserisci il CIN (guida: {cinGuidanceUrl})"
-                    : $"Formato CIN non valido (guida: {cinGuidanceUrl})"),
+                    : $"Formato CIN non valido (guida: {cinGuidanceUrl})")
+            {
+                LinkUrl = cinGuidanceUrl,
+            },
             new ComplianceActivationStep(
                 "documents",
                 "Documenti richiesti",
@@ -315,12 +316,7 @@ public class ComplianceWizardService(
                 safetyComplete ? "complete" : "pending",
                 true,
                 safetyComplete ? null : "Conferma rilevatori, estintore e conformità gas"),
-            new ComplianceActivationStep(
-                "tourist-tax",
-                "Imposta di soggiorno",
-                touristTaxConfigured ? "complete" : "pending",
-                true,
-                touristTaxConfigured ? null : $"Configura aliquota per {property.City}"),
+            BuildTouristTaxStep(touristTax),
             new ComplianceActivationStep(
                 "ical",
                 "Sincronizzazione calendario",
@@ -328,6 +324,63 @@ public class ComplianceWizardService(
                 false,
                 icalComplete ? null : "Consigliato: collega feed iCal OTA"),
         ];
+    }
+
+    /// <summary>
+    /// Tourist tax step (PLANNING Wizard 1, step 5): a warning, never a blocker (A5-06). It shows the rate of the
+    /// comune when CasaZen has one in force today, otherwise a warning with the public page of the comune, if any.
+    /// </summary>
+    private static ComplianceActivationStep BuildTouristTaxStep(TouristTaxActivationInfo touristTax)
+    {
+        var step = new ComplianceActivationStep(
+            "tourist-tax",
+            "Imposta di soggiorno",
+            touristTax.Rate is null ? "warning" : "complete",
+            false)
+        {
+            TouristTax = touristTax,
+        };
+
+        if (touristTax.Rate is not null)
+            return step;
+
+        return string.IsNullOrWhiteSpace(touristTax.City)
+            ? step with { MessageKey = "ActivationTouristTaxCityMissing" }
+            : step with { MessageKey = "ActivationTouristTaxNoRate", MessageArgs = [touristTax.City] };
+    }
+
+    private async Task<TouristTaxActivationInfo> ResolveTouristTaxAsync(
+        string? propertyCity,
+        CancellationToken cancellationToken)
+    {
+        var city = propertyCity?.Trim() ?? string.Empty;
+        if (city.Length == 0)
+            return new TouristTaxActivationInfo(city, null, null);
+
+        var today = _clock.TodayInRome();
+        var rate = await db.TouristTaxRates
+            .AsNoTracking()
+            .Where(t => t.IsActive && t.City.ToLower() == city.ToLower())
+            .Where(t => t.EffectiveFrom <= today && (t.EffectiveTo == null || t.EffectiveTo >= today))
+            .OrderByDescending(t => t.EffectiveFrom)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Only a reviewed page is public in production (PublicContentController); the wizard never links a draft.
+        string? publicPageSlug = null;
+        var comune = ItalianComuneRegistry.GetByName(city);
+        if (comune is not null)
+        {
+            var hasPublicPage = await db.SeoContentPages
+                .AsNoTracking()
+                .AnyAsync(p => p.PageType == SeoPageType.TouristTaxCalc
+                               && p.ComuneCode == comune.Code
+                               && p.LegalReviewStatus == LegalReviewStatus.Reviewed,
+                    cancellationToken);
+            if (hasPublicPage)
+                publicPageSlug = comune.ComuneSlug;
+        }
+
+        return new TouristTaxActivationInfo(city, rate, publicPageSlug);
     }
 
     private static IReadOnlyList<ComplianceActivationStep> BuildCheckoutSteps(Booking booking)

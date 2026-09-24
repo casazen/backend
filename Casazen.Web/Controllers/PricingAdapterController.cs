@@ -1,6 +1,7 @@
-using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Hangfire;
@@ -12,15 +13,17 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Manages AI-driven dynamic pricing configuration, history, and manual sync for properties.
+/// Host endpoints (TN-3): <c>property.read</c> to read, <c>property.write</c> to change; the property itself is
+/// authorized as a <see cref="HostResource"/> (org, permission, ownership).
 /// </summary>
 [ApiController]
 [Route("api/pricing-adapter")]
-[Authorize]
+[Authorize(Policy = CasazenPolicies.PropertyRead)]
 [SwaggerTag("Pricing Adapter")]
 public class PricingAdapterController(
     IPricingAdapterService pricingService,
     IPropertyService propertyService,
-    IPropertyAuthorizationService authorizationService,
+    IAuthorizationService authorizationService,
     IBackgroundJobClient backgroundJobClient,
     ILogger<PricingAdapterController> logger) : ControllerBase
 {
@@ -35,6 +38,7 @@ public class PricingAdapterController(
     /// <response code="403">Caller is not the property owner.</response>
     /// <response code="404">Property not found.</response>
     [HttpPost("config/{propertyId:guid}")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(PricingAdapterConfigResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -43,17 +47,8 @@ public class PricingAdapterController(
     public async Task<ActionResult<PricingAdapterConfigResponse>> SaveConfig(
         Guid propertyId, [FromBody] PricingAdapterConfigRequest request)
     {
-        var userId = GetUserId();
-        if (userId == null) return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        if (property == null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to update pricing config for property {PropertyId} owned by {OwnerId}",
-                userId, propertyId, property.OwnerId);
-            return Forbid();
-        }
+        var (property, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Write);
+        if (denied is not null) return denied;
 
         var existing = await pricingService.GetConfigAsync(propertyId);
         var config = existing ?? new PricingAdapterConfig { Id = Guid.Empty, PropertyId = propertyId, OrgId = property.OrgId };
@@ -87,17 +82,8 @@ public class PricingAdapterController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PricingAdapterConfigResponse>> GetConfig(Guid propertyId)
     {
-        var userId = GetUserId();
-        if (userId == null) return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        if (property == null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to read pricing config for property {PropertyId} owned by {OwnerId}",
-                userId, propertyId, property.OwnerId);
-            return Forbid();
-        }
+        var (_, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Read);
+        if (denied is not null) return denied;
 
         var config = await pricingService.GetConfigAsync(propertyId);
         if (config == null)
@@ -115,23 +101,15 @@ public class PricingAdapterController(
     /// <response code="403">Caller is not the property owner.</response>
     /// <response code="404">Property or configuration not found.</response>
     [HttpDelete("config/{propertyId:guid}")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DisableConfig(Guid propertyId)
     {
-        var userId = GetUserId();
-        if (userId == null) return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        if (property == null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to disable pricing config for property {PropertyId} owned by {OwnerId}",
-                userId, propertyId, property.OwnerId);
-            return Forbid();
-        }
+        var (_, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Write);
+        if (denied is not null) return denied;
 
         var config = await pricingService.GetConfigAsync(propertyId);
         if (config == null) return NotFound();
@@ -166,17 +144,8 @@ public class PricingAdapterController(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
-        var userId = GetUserId();
-        if (userId == null) return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        if (property == null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to read pricing history for property {PropertyId} owned by {OwnerId}",
-                userId, propertyId, property.OwnerId);
-            return Forbid();
-        }
+        var (_, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Read);
+        if (denied is not null) return denied;
 
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 50;
@@ -224,6 +193,7 @@ public class PricingAdapterController(
     /// <response code="403">Caller is not the property owner.</response>
     /// <response code="404">Property not found.</response>
     [HttpPost("sync/{propertyId:guid}")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -231,17 +201,8 @@ public class PricingAdapterController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> TriggerSync(Guid propertyId)
     {
-        var userId = GetUserId();
-        if (userId == null) return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        if (property == null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to trigger pricing sync for property {PropertyId} owned by {OwnerId}",
-                userId, propertyId, property.OwnerId);
-            return Forbid();
-        }
+        var (_, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Write);
+        if (denied is not null) return denied;
 
         var config = await pricingService.GetConfigAsync(propertyId);
         if (config == null || !config.IsEnabled)
@@ -268,17 +229,8 @@ public class PricingAdapterController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PricingPreviewResponse>> GetPreview(Guid propertyId)
     {
-        var userId = GetUserId();
-        if (userId == null) return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(propertyId);
-        if (property == null) return NotFound();
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to preview pricing for property {PropertyId} owned by {OwnerId}",
-                userId, propertyId, property.OwnerId);
-            return Forbid();
-        }
+        var (property, denied) = await AuthorizePropertyAsync(propertyId, PropertyOperations.Read);
+        if (denied is not null) return denied;
 
         var config = await pricingService.GetConfigAsync(propertyId);
         if (config == null || !config.IsEnabled)
@@ -302,13 +254,28 @@ public class PricingAdapterController(
         return Ok(response);
     }
 
-    private string? GetUserId() =>
-        User.FindFirst("sub")?.Value
-        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-        ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+    /// <summary>
+    /// Loads the property (tenant-filtered: another org's property is 404) and authorizes <paramref name="operation"/>
+    /// on it; a visible property the caller may not use is 403.
+    /// </summary>
+    private async Task<(Property Property, ActionResult? Denied)> AuthorizePropertyAsync(
+        Guid propertyId,
+        HostOperationRequirement operation)
+    {
+        var property = await propertyService.GetPropertyAsync(propertyId);
+        if (property == null)
+            return (null!, NotFound());
 
-    private IEnumerable<string> GetUserRoles() =>
-        User.FindAll(ClaimTypes.Role).Select(c => c.Value);
+        if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), operation))
+        {
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on pricing of property {PropertyId}",
+                User.GetUserId(), operation.PermissionKey, propertyId);
+            return (property, Forbid());
+        }
+
+        return (property, null);
+    }
 
     private static PricingAdapterConfigResponse ToDefaultResponse(Guid propertyId) => new()
     {

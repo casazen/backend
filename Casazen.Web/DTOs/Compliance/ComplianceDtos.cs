@@ -1,3 +1,5 @@
+using Casazen.Core.Entities.Enums;
+
 namespace Casazen.Web.DTOs.Compliance;
 
 public class ComplianceActivationStepDto
@@ -7,6 +9,35 @@ public class ComplianceActivationStepDto
     public string Status { get; set; } = string.Empty;
     public bool Blocker { get; set; }
     public string? Message { get; set; }
+
+    /// <summary>External guidance link of the step (CIN: <c>Compliance:CinGuidanceUrl</c>), when there is one.</summary>
+    public string? LinkUrl { get; set; }
+
+    /// <summary>Only on the <c>tourist-tax</c> step.</summary>
+    public ActivationTouristTaxDto? TouristTax { get; set; }
+}
+
+/// <summary>Tourist tax of the property's comune, as shown to the host in the activation wizard.</summary>
+public class ActivationTouristTaxDto
+{
+    public string City { get; set; } = string.Empty;
+
+    /// <summary>Rate in force today, or null when CasaZen has no rate for the comune (the step is then a warning).</summary>
+    public ActivationTouristTaxRateDto? Rate { get; set; }
+
+    /// <summary>Slug of the public page <c>/p/tassa-soggiorno/{slug}</c>, only when a reviewed page exists.</summary>
+    public string? PublicPageSlug { get; set; }
+}
+
+public class ActivationTouristTaxRateDto
+{
+    public decimal RatePerPersonPerNight { get; set; }
+    public int? MaxNights { get; set; }
+    public int MinimumAge { get; set; }
+    public DateTime EffectiveFrom { get; set; }
+    public DateTime? EffectiveTo { get; set; }
+    public string? SourceUrl { get; set; }
+    public TouristTaxRateVerification? VerificationLevel { get; set; }
 }
 
 public class PropertyActivationWizardDto
