@@ -140,6 +140,8 @@ Applications → Applications → **Create Application** → *Native* → name `
 
 EAS / Expo variables per profile: `EXPO_PUBLIC_AUTH0_DOMAIN`, `EXPO_PUBLIC_AUTH0_CLIENT_ID` (the Native app,
 not the SPA), `EXPO_PUBLIC_AUTH0_AUDIENCE`.
+Set them in the EAS environment of each profile (`preview` → test tenant, `production` → production
+tenant), not in `eas.json`: [mobile-release.md](mobile-release.md) section 2.
 
 ## 8. Web SPA (reminder)
 

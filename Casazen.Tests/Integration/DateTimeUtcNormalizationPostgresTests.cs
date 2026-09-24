@@ -97,7 +97,7 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
         var owner = $"auth0|fd06-pricing-{Guid.NewGuid():N}";
         var property = await factory.SeedPropertyAsync(owner);
         await SeedPricingHistoryAtAsync(
-            property.Id,
+            property,
             new DateTime(2026, 8, 31, 2, 0, 0, DateTimeKind.Utc),
             new DateTime(2026, 9, 1, 2, 0, 0, DateTimeKind.Utc),
             new DateTime(2026, 9, 10, 2, 0, 0, DateTimeKind.Utc),
@@ -174,7 +174,7 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     public async Task Query_DateMemberOfConvertedColumn_TranslatesOnPostgres()
     {
         var property = await factory.SeedPropertyAsync($"auth0|fd06-query-{Guid.NewGuid():N}");
-        await SeedPricingHistoryAtAsync(property.Id, new DateTime(2026, 9, 10, 2, 0, 0, DateTimeKind.Utc));
+        await SeedPricingHistoryAtAsync(property, new DateTime(2026, 9, 10, 2, 0, 0, DateTimeKind.Utc));
         var day = new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Unspecified);
 
         var count = await WithDbAsync(db => db.PricingHistories
@@ -216,8 +216,14 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     private Task SeedTouristTaxRateAsync(string city, decimal rate) =>
         WithDbAsync(async db =>
         {
-            if (await db.TouristTaxRates.AnyAsync(r => r.City == city))
-                return 0;
+            // The migrations seed real rates for some comuni (CO-03): pin them to the test amount.
+            var existing = await db.TouristTaxRates.Where(r => r.City == city).ToListAsync();
+            if (existing.Count > 0)
+            {
+                foreach (var row in existing)
+                    row.RatePerPersonPerNight = rate;
+                return await db.SaveChangesAsync();
+            }
 
             db.TouristTaxRates.Add(new TouristTaxRate
             {
@@ -231,14 +237,15 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
             return await db.SaveChangesAsync();
         });
 
-    private Task SeedPricingHistoryAtAsync(Guid propertyId, params DateTime[] adaptationDates) =>
+    private Task SeedPricingHistoryAtAsync(Property property, params DateTime[] adaptationDates) =>
         WithDbAsync(db =>
         {
             foreach (var date in adaptationDates)
             {
                 db.PricingHistories.Add(new PricingHistory
                 {
-                    PropertyId = propertyId,
+                    PropertyId = property.Id,
+                    OrgId = property.OrgId,
                     AdaptationDate = date,
                     PreviousPrice = 100m,
                     NewPrice = 110m,

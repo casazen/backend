@@ -103,6 +103,7 @@ public class AlloggiatiReportSchedulingTests
         {
             BookingId = booking.Id,
             GuestId = booking.GuestId,
+            OrgId = booking.OrgId,
             Status = AlloggiatiWebStatus.DaInviare,
             ScheduledJobId = "lost",
             ScheduledFor = RomeMidnightOfCheckIn,

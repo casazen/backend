@@ -9,10 +9,12 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -33,14 +35,6 @@ public class PropertiesController(
     IComplianceWizardService complianceWizardService,
     ILogger<PropertiesController> logger) : ControllerBase
 {
-    [HttpGet("health")]
-    [AllowAnonymous]
-    public IActionResult HealthCheck()
-    {
-        logger.LogInformation("Health check called - backend is working!");
-        return Ok(new { status = "healthy", message = "Backend is running", timestamp = DateTime.UtcNow });
-    }
-
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Property>>> GetAll()
     {
@@ -891,6 +885,7 @@ public class PropertiesController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PropertyActivationWizardDto>> GetComplianceActivation(
         Guid id,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
@@ -910,14 +905,7 @@ public class PropertiesController(
             return Ok(new PropertyActivationWizardDto
             {
                 ComplianceStatus = loaded.ComplianceStatus.ToString(),
-                Steps = steps.Select(s => new ComplianceActivationStepDto
-                {
-                    Id = s.Id,
-                    Label = s.Label,
-                    Status = s.Status,
-                    Blocker = s.Blocker,
-                    Message = s.Message,
-                }),
+                Steps = steps.Select(s => ToActivationStepDto(s, localizer)),
             });
         }
         catch (KeyNotFoundException)
@@ -925,6 +913,39 @@ public class PropertiesController(
             return NotFound();
         }
     }
+
+    private static ComplianceActivationStepDto ToActivationStepDto(
+        ComplianceActivationStep step,
+        IStringLocalizer<SharedResources> localizer) => new()
+        {
+            Id = step.Id,
+            Label = step.Label,
+            Status = step.Status,
+            Blocker = step.Blocker,
+            Message = step.MessageKey is null
+                ? step.Message
+                : localizer[step.MessageKey, step.MessageArgs?.ToArray() ?? []].Value,
+            LinkUrl = step.LinkUrl,
+            TouristTax = step.TouristTax is not { } tax
+                ? null
+                : new ActivationTouristTaxDto
+                {
+                    City = tax.City,
+                    PublicPageSlug = tax.PublicPageSlug,
+                    Rate = tax.Rate is not { } rate
+                        ? null
+                        : new ActivationTouristTaxRateDto
+                        {
+                            RatePerPersonPerNight = rate.RatePerPersonPerNight,
+                            MaxNights = rate.MaxNights,
+                            MinimumAge = rate.MinimumAge,
+                            EffectiveFrom = rate.EffectiveFrom,
+                            EffectiveTo = rate.EffectiveTo,
+                            SourceUrl = rate.SourceUrl,
+                            VerificationLevel = rate.VerificationLevel,
+                        },
+                },
+        };
 
     [HttpPost("{id:guid}/compliance/activation/complete")]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]

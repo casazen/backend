@@ -252,4 +252,49 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
   </data>
+  <data name="TouristTaxRateNotFound" xml:space="preserve">
+    <value>Tourist tax rate not found.</value>
+  </data>
+  <data name="TaxRateCityRequired" xml:space="preserve">
+    <value>Enter the municipality of the rate.</value>
+  </data>
+  <data name="TaxRateCityTooLong" xml:space="preserve">
+    <value>The municipality name can be at most 100 characters.</value>
+  </data>
+  <data name="TaxRateRegionCodeTooLong" xml:space="preserve">
+    <value>The region code can be at most 10 characters.</value>
+  </data>
+  <data name="TaxRateAmountOutOfRange" xml:space="preserve">
+    <value>The rate per person per night must be between 0.01 and 1000 euros.</value>
+  </data>
+  <data name="TaxRateMaxNightsOutOfRange" xml:space="preserve">
+    <value>The maximum number of taxed nights must be between 1 and 365.</value>
+  </data>
+  <data name="TaxRateMinimumAgeRequired" xml:space="preserve">
+    <value>Enter the age from which the tax is due (0 if there are no age exemptions).</value>
+  </data>
+  <data name="TaxRateMinimumAgeOutOfRange" xml:space="preserve">
+    <value>The age from which the tax is due must be between 0 and 120.</value>
+  </data>
+  <data name="TaxRateEffectiveFromRequired" xml:space="preserve">
+    <value>Enter the date from which the rate applies.</value>
+  </data>
+  <data name="TaxRateEffectiveToBeforeFrom" xml:space="preserve">
+    <value>The end date cannot be earlier than the start date.</value>
+  </data>
+  <data name="TaxRateNotesTooLong" xml:space="preserve">
+    <value>Notes can be at most 500 characters.</value>
+  </data>
+  <data name="TaxRateSourceUrlInvalid" xml:space="preserve">
+    <value>The source must be a full web address (http or https) of at most 500 characters.</value>
+  </data>
+  <data name="TaxRateVerificationInvalid" xml:space="preserve">
+    <value>Invalid verification level.</value>
+  </data>
+  <data name="ActivationTouristTaxNoRate" xml:space="preserve">
+    <value>The municipality of {0} has no tourist tax rate in CasaZen yet. This does not block the activation: check the rate and obligations with the municipality.</value>
+  </data>
+  <data name="ActivationTouristTaxCityMissing" xml:space="preserve">
+    <value>Enter the property's city in the basic details to see the tourist tax rate. This does not block the activation.</value>
+  </data>
 </root>

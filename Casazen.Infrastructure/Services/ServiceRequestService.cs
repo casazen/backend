@@ -39,6 +39,8 @@ public class ServiceRequestService(
         if (command.ChargeToGuest)
             throw new InvalidOperationException("L'addebito all'ospite non è consentito per gli affitti brevi.");
 
+        // IgnoreQueryFilters: scoped by the explicit OrgId check below. command.OrgId comes from
+        // OrgContextResolver, which may provision the org after the tenant filter cached a null org.
         var property = await db.Properties
             .IgnoreQueryFilters()
             .Include(p => p.Org)
@@ -202,6 +204,8 @@ public class ServiceRequestService(
         IEnumerable<string> userRoles,
         CancellationToken cancellationToken = default)
     {
+        // ServiceRequest is not tenant-filtered (two parties, see the TN-2 allow-list); host and supplier
+        // reads are scoped by the explicit OrgId / SupplierOrgId predicate, never by the included Property.
         var query = ApplyHostVisibility(
             db.ServiceRequests
                 .IgnoreQueryFilters()
@@ -214,6 +218,8 @@ public class ServiceRequestService(
         return query.FirstOrDefaultAsync(cancellationToken);
     }
 
+    // IgnoreQueryFilters: the supplier reads the host's Property (another org) through the request;
+    // scoped by the explicit SupplierOrgId predicate.
     public Task<ServiceRequest?> GetByIdForSupplierAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default) =>
         db.ServiceRequests
             .IgnoreQueryFilters()
@@ -232,6 +238,7 @@ public class ServiceRequestService(
         int pageSize,
         CancellationToken cancellationToken = default)
     {
+        // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
         var query = ApplyHostVisibility(
             db.ServiceRequests
                 .IgnoreQueryFilters()

@@ -15,6 +15,10 @@ public class ServiceRequestRepository(AppDbContext db) : IServiceRequestReposito
         ServiceRequestStatus.InCorso,
     ];
 
+    // IgnoreQueryFilters in this repository: ServiceRequest has two parties (host OrgId, supplier
+    // SupplierOrgId) and is not tenant-filtered (TN-2 allow-list). The supplier must load the host's
+    // Property, which the tenant filter would hide. Every caller scopes explicitly: GetByIdAsync callers
+    // check OrgId or SupplierOrgId, the list methods filter by it.
     public Task<ServiceRequest?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         db.ServiceRequests
             .IgnoreQueryFilters()

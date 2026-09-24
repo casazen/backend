@@ -39,7 +39,7 @@ CasaZen still transmits nothing, so it now says so.
 
 ## Data migration `AlloggiatiHonestStatus`
 
-EF migration `20260924002611_AlloggiatiHonestStatus`, applied with the others at startup. SQL in the migration class
+EF migration `20260924012639_AlloggiatiHonestStatus`, applied with the others at startup. SQL in the migration class
 (public constants, covered by `AlloggiatiHonestStatusMigrationPostgresTests`):
 
 1. Duplicate reports of the same booking and guest: only the latest (`UpdatedAt`) is kept.

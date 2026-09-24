@@ -34,6 +34,8 @@ builder.Services.AddCasazenDataProtection(builder.Configuration);
 builder.Services.AddCasazenDatabase(builder.Configuration);
 var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
     builder.Configuration.GetConnectionString("DefaultConnection"));
+// Outside Development/Testing a missing connection string stops the startup instead of running in memory (FD-12).
+RequiredConfiguration.EnsureDatabaseConnection(connectionString, builder.Environment);
 
 // Hangfire (skipped when no connection string, e.g. in CI/test), in a schema dedicated to this environment:
 // test and production share the database, never the queue (FD-11, docs/runbooks/hangfire.md).
@@ -124,6 +126,9 @@ builder.Services.AddProblemDetails(options =>
 // Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddCasazenAuthorization();
+
+// Health checks: /api/health/live, /api/health/ready (database, Hangfire, configuration), /api/health (FD-12)
+builder.Services.AddCasazenHealthChecks();
 
 // CORS
 builder.Services.AddCasazenCors(builder.Configuration);
@@ -323,6 +328,7 @@ if (hangfireStorage is not null)
 }
 
 app.MapControllers();
+app.MapCasazenHealthChecks();
 
 // Log application URLs on startup
 app.Lifetime.ApplicationStarted.Register(() =>
@@ -330,6 +336,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("====================================================");
     logger.LogInformation("✅ CasaZen Backend Started Successfully!");
+    logger.LogInformation("Commit: {CommitSha}", app.Services.GetRequiredService<BuildInfo>().CommitSha ?? "unknown");
     logger.LogInformation("====================================================");
     logger.LogInformation("📡 API Endpoints:");
     logger.LogInformation("   → http://localhost:5000/api/");

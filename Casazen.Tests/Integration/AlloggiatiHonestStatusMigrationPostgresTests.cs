@@ -121,14 +121,14 @@ public class AlloggiatiHonestStatusMigrationPostgresTests : IAsyncLifetime
         }
 
         await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO "AlloggiatiWebReports" ("Id", "BookingId", "GuestId", "ReportedAt", "Status", "ConfirmationNumber", "ErrorMessage", "RetryCount", "ManuallyCompleted", "CreatedAt", "UpdatedAt")
+            INSERT INTO "AlloggiatiWebReports" ("Id", "BookingId", "GuestId", "OrgId", "ReportedAt", "Status", "ConfirmationNumber", "ErrorMessage", "RetryCount", "ManuallyCompleted", "CreatedAt", "UpdatedAt")
             VALUES
-              ({s.SimulatedReport}, {s.Bookings[0]}, {s.Guests[0]}, now(), 1, NULL, 'simulated', 0, true, now(), now()),
-              ({s.ReceiptReport},   {s.Bookings[1]}, {s.Guests[1]}, now(), 1, 'RIC-2026-0001', NULL, 0, false, now(), now()),
-              ({s.FailedReport},    {s.Bookings[2]}, {s.Guests[2]}, now(), 3, NULL, 'Validation failed: required Alloggiati Web fields missing', 1, false, now(), now()),
-              ({s.ConfirmedReport}, {s.Bookings[3]}, {s.Guests[3]}, now(), 2, NULL, NULL, 0, false, now(), now()),
-              ({s.OlderDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, now(), 3, NULL, 'missing data', 0, false, now() - interval '2 days', now() - interval '2 days'),
-              ({s.NewerDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, now(), 1, NULL, 'simulated', 0, false, now() - interval '1 day', now() - interval '1 day');
+              ({s.SimulatedReport}, {s.Bookings[0]}, {s.Guests[0]}, {s.Org}, now(), 1, NULL, 'simulated', 0, true, now(), now()),
+              ({s.ReceiptReport},   {s.Bookings[1]}, {s.Guests[1]}, {s.Org}, now(), 1, 'RIC-2026-0001', NULL, 0, false, now(), now()),
+              ({s.FailedReport},    {s.Bookings[2]}, {s.Guests[2]}, {s.Org}, now(), 3, NULL, 'Validation failed: required Alloggiati Web fields missing', 1, false, now(), now()),
+              ({s.ConfirmedReport}, {s.Bookings[3]}, {s.Guests[3]}, {s.Org}, now(), 2, NULL, NULL, 0, false, now(), now()),
+              ({s.OlderDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, {s.Org}, now(), 3, NULL, 'missing data', 0, false, now() - interval '2 days', now() - interval '2 days'),
+              ({s.NewerDuplicate},  {s.Bookings[4]}, {s.Guests[4]}, {s.Org}, now(), 1, NULL, 'simulated', 0, false, now() - interval '1 day', now() - interval '1 day');
 
             INSERT INTO "GuestCheckInSessions" ("Id", "BookingId", "OrgId", "TokenHash", "ExpiresAt", "Status", "CreatedAt", "UpdatedAt")
             VALUES

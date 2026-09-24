@@ -46,7 +46,7 @@ dotnet format --verify-no-changes
 
 ### Health / smoke checks
 
-- `GET http://localhost:5000/api/health` → **200** (public)
+- `GET http://localhost:5000/api/health/live` → **200**; `/api/health/ready` (and `/api/health`) → **200** `degraded` when Stripe/email/Auth0 M2M are not configured locally, **503** when the database or Hangfire is down (`docs/runbooks/health-checks.md`)
 - `GET http://localhost:5000/api/properties` → **401** (auth gate)
 - Swagger: `http://localhost:5000/swagger`
 
@@ -54,5 +54,5 @@ dotnet format --verify-no-changes
 
 - Use local PostgreSQL or Supabase per `docs/INFRA.md`. There is no root `docker-compose.yml`.
 - Integration tests run on real PostgreSQL: export `TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=dev"` (each web factory creates, migrates and drops its own `it_<guid>` database). CI uses a `postgres:16` service (see `ci-cd.yml`); without the variable Testcontainers is used, and InMemory only as a local fallback with a warning (`docs/TECHNICAL.md` § Testing).
-- `dotnet ef` global tool must be installed once: `dotnet tool install --global dotnet-ef --version 10.0.0`
-- Auth0/Stripe/SendGrid keys in `appsettings.Development.json` are placeholders; external services are optional for local API smoke tests.
+- `dotnet ef` global tool, same version as the `Microsoft.EntityFrameworkCore.*` packages (10.0.12): `dotnet tool update --global dotnet-ef --version 10.0.12` (installs it when missing). An older tool prints "The Entity Framework tools version … is older than that of the runtime" (`docs/runbooks/ci-backend.md`).
+- Auth0/Stripe/Resend keys in `appsettings.Development.json` are placeholders; external services are optional for local API smoke tests.

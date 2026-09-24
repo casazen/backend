@@ -145,6 +145,7 @@ public class AlloggiatiWebServiceTests
         var report = await db.AlloggiatiWebReports.SingleAsync();
         Assert.Equal(AlloggiatiWebStatus.DaInviare, report.Status);
         Assert.Equal(report.Id, reservation.ReportId);
+        Assert.Equal(booking.OrgId, report.OrgId); // TN-2: the report belongs to its booking's org
         Assert.Null(report.ReportedAt);
     }
 
@@ -388,6 +389,7 @@ public class AlloggiatiWebServiceTests
 
         var report = await db.AlloggiatiWebReports.SingleAsync();
         Assert.Equal(booking.GuestId, report.GuestId);
+        Assert.Equal(booking.OrgId, report.OrgId);
         Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, report.Status);
         Assert.Equal(CheckIn.AddDays(1), report.ReportedAt);
     }
@@ -583,6 +585,7 @@ public class AlloggiatiWebServiceTests
         {
             BookingId = booking.Id,
             GuestId = booking.GuestId,
+            OrgId = booking.OrgId,
             Status = status,
             ScheduledJobId = jobId,
             ScheduledFor = scheduledFor,

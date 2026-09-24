@@ -59,7 +59,7 @@ graph TD
 All endpoints require a `Bearer` JWT token in the `Authorization` header (issued by Auth0), except anonymous routes noted below (public booking, legal, health, webhooks, guest check-in tokens, supplier register, plan catalogue, SEO sitemap).
 
 Anonymous / public (non-exhaustive highlights):
-- `GET /api/health`, `GET /api/properties/health`, `GET /api/properties/search`
+- `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
 - `POST /api/auth/register`, `GET /api/orgs/plans`
 - All `/api/public/*`, `/api/checkin/*`, `/api/legal/*`, `/sitemap-compliance.xml`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
@@ -118,7 +118,6 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/properties/{id}/images` | List photo URLs |
 | `DELETE` | `/api/properties/{id}/images/{imageIndex}` | Delete a photo by index |
 | `PUT` | `/api/properties/{id}/images/order` | Reorder photos |
-| `GET` | `/api/properties/health` | Anonymous health check |
 
 #### Bookings
 
@@ -321,7 +320,9 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook |
 | `POST` | `/webhooks/ota/{platform}` | Anonymous | OTA inbound webhook |
 | `POST` | `/webhooks/esign` | Anonymous | E-sign provider webhook |
-| `GET` | `/api/health` | Anonymous | Service health check |
+| `GET` | `/api/health/live` | Anonymous | Liveness: the process answers (always 200) |
+| `GET` | `/api/health/ready` | Anonymous | Readiness: database, Hangfire, email, storage, Stripe, Auth0; 200 healthy/degraded, 503 unhealthy; `commit` of the build (`docs/runbooks/health-checks.md`) |
+| `GET` | `/api/health` | Anonymous | Same as `/api/health/ready` |
 
 ---
 
@@ -504,7 +505,7 @@ erDiagram
 |---|---|---|---|
 | Auth0 | Microsoft JWT Bearer middleware | `appsettings.json → Auth0` | JWT validation on all `/api` endpoints |
 | Stripe | Stripe .NET SDK | `appsettings.json → Stripe` | Payment processing and refunds |
-| MailKit (SMTP) | MailKit + SMTP client | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for relay) | Transactional emails |
+| Resend | `Resend` SDK (`ResendEmailService`, the only `IEmailService`) | `Email` section (`Email__Provider`, `Email__ApiKey`, `Email__FromAddress`, `Email__FromName`); see `docs/runbooks/email.md` | Transactional emails (queued on Hangfire) |
 | Alloggiati Web | None yet (manual submission, CO-13 adds the SOAP client) | `AlloggiatiWebService.cs`, `docs/runbooks/alloggiati.md` | Italian police guest registration |
 | OTA platforms (6) | `IChannelAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
 | Public holidays API | `PublicHolidayService` | Configured in service | Feeds AI pricing seasonality |

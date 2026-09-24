@@ -14,7 +14,7 @@ Web reporting, tourist tax, GDPR).
 - **Auth**: Auth0 — JWT Bearer validated on every `/api` endpoint
 - **Background jobs**: Hangfire (OTA sync hourly, booking pull every 15 min, GDPR retention, pricing)
 - **Payments**: Stripe (webhook signature verification required)
-- **Email**: MailKit SMTP (transactional; supplier invite uses `SupplierInviteEmailBuilder` HTML; supports any SMTP server or SendGrid relay)
+- **Email**: Resend (`IEmailService`, templates in `Casazen.Infrastructure/Email/Templates`, sending queued on Hangfire; see `docs/runbooks/email.md`)
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
 - **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`)
@@ -100,7 +100,7 @@ Casazen.sln
 - **Stripe webhook signatures**: `StripeWebhookHandler` must verify the `Stripe-Signature` header — never skip this check.
 - **Migrations**: run `dotnet ef migrations add Add<Feature> --project Casazen.Infrastructure` for every schema change; test locally before committing.
 - **Property timezone**: stored as IANA string (`Europe/Rome` default) — use `TimezoneHelper` for conversions, never raw `TimeZoneInfo`.
-- **Auth**: all `/api` endpoints require Auth0 JWT Bearer token. `HealthController` is the only public endpoint.
+- **Auth**: all `/api` endpoints require Auth0 JWT Bearer token. The health endpoints (`/api/health`, `/api/health/live`, `/api/health/ready`) are anonymous, like the public booking, legal and webhook routes.
 - **GDPR**: `GdprDataRetentionJob` handles automatic deletion. `IGdprService` / `GdprController` expose data export/delete for GDPR requests.
 - **Before every commit**: `dotnet test` + `dotnet format --verify-no-changes` — no compiler warnings allowed.
 
@@ -110,7 +110,7 @@ Casazen.sln
 |---|---|---|
 | Auth0 | JWT authentication for all API endpoints | `appsettings.json → Auth0` |
 | Stripe | Payment processing + webhook events | `appsettings.json → Stripe`; handler in `Casazen.Infrastructure/External/StripeWebhookHandler.cs` |
-| MailKit SMTP | Transactional email (booking confirmations, notifications, supplier invites) | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for SendGrid SMTP relay) |
+| Resend | Transactional email (service requests, supplier invites, guest check-in links, reminders) | `Email` section (`Email__ApiKey`, `Email__FromAddress`, …); see `docs/runbooks/email.md` |
 | Alloggiati Web | Italian police guest reporting (mandatory by law) | `Casazen.Infrastructure/External/AlloggiatiWebService.cs` |
 | Airbnb | OTA booking sync + pricing/availability push | `appsettings.json → OTA.Airbnb` |
 | Booking.com | OTA booking sync + pricing/availability push | `appsettings.json → OTA.BookingCom` |

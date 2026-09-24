@@ -168,6 +168,7 @@ public class AlloggiatiWebService(
             {
                 BookingId = bookingId,
                 GuestId = booking.GuestId,
+                OrgId = booking.OrgId, // the report belongs to its booking's org (TN-2)
                 Status = AlloggiatiWebStatus.DaInviare,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -258,7 +259,13 @@ public class AlloggiatiWebService(
 
         if (report is null)
         {
-            report = new AlloggiatiWebReport { BookingId = bookingId, GuestId = booking.GuestId, CreatedAt = now };
+            report = new AlloggiatiWebReport
+            {
+                BookingId = bookingId,
+                GuestId = booking.GuestId,
+                OrgId = booking.OrgId,
+                CreatedAt = now,
+            };
             context.AlloggiatiWebReports.Add(report);
         }
 

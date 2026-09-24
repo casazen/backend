@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924002611_AlloggiatiHonestStatus")]
-    partial class AlloggiatiHonestStatus
+    [Migration("20260924000837_BackfillChildEntityOrgIds")]
+    partial class BackfillChildEntityOrgIds
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -52,18 +52,14 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("ManuallyCompleted")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime?>("ReportedAt")
+                    b.Property<Guid?>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ReportedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("integer");
-
-                    b.Property<DateTime?>("ScheduledFor")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ScheduledJobId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -73,15 +69,13 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BookingId");
+
                     b.HasIndex("GuestId");
 
-                    b.HasIndex("BookingId", "GuestId")
-                        .IsUnique();
+                    b.HasIndex("OrgId");
 
-                    b.ToTable("AlloggiatiWebReports", t =>
-                        {
-                            t.HasCheckConstraint("CK_AlloggiatiWebReports_SentRequiresReceipt", "\"Status\" <> 2 OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''");
-                        });
+                    b.ToTable("AlloggiatiWebReports");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.AppContext", b =>
@@ -122,9 +116,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ArrivedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("BasePrice")
                         .HasPrecision(18, 2)
@@ -1057,6 +1048,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<Guid?>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1076,6 +1070,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId");
 
@@ -1403,6 +1399,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("NextScheduledRunAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
@@ -1410,6 +1409,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .IsUnique();
@@ -1444,6 +1445,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<Guid?>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("OtasSynced")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -1462,6 +1466,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId", "AdaptationDate");
 
@@ -1641,6 +1647,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<Guid?>("OrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
@@ -1658,6 +1667,8 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(255)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .HasDatabaseName("IX_PropertyDocuments_PropertyId");
