@@ -21,6 +21,9 @@ public static class EmailTemplates
         public const string GuestCheckInLink = "guest-checkin-link";
         public const string GuestCheckInIncomplete = "guest-checkin-incomplete";
         public const string AlloggiatiDeadline = "alloggiati-deadline";
+        public const string RliDeadlineReminder = "rli-deadline-reminder";
+        public const string RliDeadlineOverdue = "rli-deadline-overdue";
+        public const string RliExtraEuNotice = "rli-extra-eu-notice";
     }
 
     /// <summary>New service request, to the supplier.</summary>
@@ -118,4 +121,32 @@ public static class EmailTemplates
             .Paragraph("AlloggiatiDeadline_Body", guestName, propertyName, checkInDate)
             .Paragraph("AlloggiatiDeadline_Action")
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
+
+    /// <summary>RLI registration deadline approaching, to the landlord (LT-11, A7-26).</summary>
+    public static EmailContent RliDeadlineReminder(
+        CultureInfo culture,
+        string propertyName,
+        DateTime registrationDeadline,
+        int daysRemaining) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineReminder_Body", propertyName, registrationDeadline, daysRemaining)
+            .Paragraph("RliDeadline_Responsibility")
+            .Build("RliDeadlineReminder_Subject", propertyName, registrationDeadline);
+
+    /// <summary>RLI registration deadline passed without a completed registration, to the landlord.</summary>
+    public static EmailContent RliDeadlineOverdue(
+        CultureInfo culture,
+        string propertyName,
+        DateTime registrationDeadline) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliDeadlineOverdue_Body", propertyName, registrationDeadline)
+            .Paragraph("RliDeadline_Responsibility")
+            .Build("RliDeadlineOverdue_Subject", propertyName);
+
+    /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
+    public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>
+        new EmailHtmlBuilder(culture)
+            .Paragraph("RliExtraEuNotice_Body", propertyName)
+            .Paragraph("RliExtraEuNotice_Disclaimer")
+            .Build("RliExtraEuNotice_Subject", propertyName);
 }

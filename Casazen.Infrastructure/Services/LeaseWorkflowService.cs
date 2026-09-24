@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -156,11 +158,16 @@ public class LeaseWorkflowService(
         }
         else
         {
+            // The payload names the signer by party id, never by email: event payloads hold no personal data (A7-17).
+            var signer = string.IsNullOrWhiteSpace(esignEvent.SignerEmail)
+                ? null
+                : lease.Parties.FirstOrDefault(p =>
+                    string.Equals(p.ContactEmail.Trim(), esignEvent.SignerEmail.Trim(), StringComparison.OrdinalIgnoreCase));
             await eventRepository.AddAsync(new LeaseEvent
             {
                 LeaseContractId = lease.Id,
                 EventType = LeaseEventType.PartySignedDocument,
-                Payload = esignEvent.SignerEmail
+                Payload = signer?.Id.ToString()
             });
         }
     }
@@ -256,12 +263,6 @@ public class LeaseWorkflowService(
         return registration;
     }
 
-    public async Task<LeaseRegistration?> GetRegistrationAsync(Guid leaseId, string ownerId)
-    {
-        await GetVerifiedLeaseAsync(leaseId, ownerId);
-        return await registrationRepository.GetByLeaseIdAsync(leaseId);
-    }
-
     public async Task<Stream> GetRegistrationReceiptAsync(Guid leaseId, string ownerId)
     {
         await GetVerifiedLeaseAsync(leaseId, ownerId);
@@ -274,15 +275,11 @@ public class LeaseWorkflowService(
         return await registrationService.DownloadReceiptAsync(registration.ExternalRegistrationId);
     }
 
-    public async Task<IEnumerable<LeaseContract>> GetOwnerLeasesAsync(string ownerId, Guid? propertyId = null)
-        => await leaseRepository.GetByOwnerAsync(ownerId, propertyId);
+    public Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
+        => leaseRepository.GetSummariesAsync(scope, propertyId);
 
-    public async Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId, string ownerId)
-    {
-        var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId) return null;
-        return lease;
-    }
+    public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
+        => leaseRepository.GetByIdWithDetailsAsync(leaseId);
 
     private async Task<LeaseContract> GetVerifiedLeaseAsync(Guid leaseId, string ownerId)
     {

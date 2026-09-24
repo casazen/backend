@@ -189,6 +189,24 @@
   <data name="LeaseNotFound" xml:space="preserve">
     <value>Contratto di locazione non trovato</value>
   </data>
+  <data name="RliChecklist_contract_signed" xml:space="preserve">
+    <value>Contratto firmato da tutte le parti</value>
+  </data>
+  <data name="RliChecklist_delega_captured" xml:space="preserve">
+    <value>Delega / attestazione RLI registrata</value>
+  </data>
+  <data name="RliChecklist_rli_exported" xml:space="preserve">
+    <value>Dataset RLI esportato per revisione</value>
+  </data>
+  <data name="RliChecklist_rli_submitted" xml:space="preserve">
+    <value>RLI inviato al canale di filing</value>
+  </data>
+  <data name="RliChecklist_rli_registered" xml:space="preserve">
+    <value>Ricevuta di registrazione disponibile</value>
+  </data>
+  <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
+    <value>Comunicazione Questura (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Bozza da confermare con legale.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Richiesta di servizio non trovata</value>
   </data>
