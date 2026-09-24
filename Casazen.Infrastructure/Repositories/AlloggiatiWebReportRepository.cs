@@ -27,7 +27,7 @@ public class AlloggiatiWebReportRepository(AppDbContext context) : IAlloggiatiWe
         return await context.AlloggiatiWebReports
             .Include(r => r.Booking)
             .Include(r => r.Guest)
-            .Where(r => r.Status == AlloggiatiWebStatus.Pending || r.Status == AlloggiatiWebStatus.Failed)
+            .Where(r => r.Status == AlloggiatiWebStatus.DaInviare || r.Status == AlloggiatiWebStatus.Errore)
             .OrderBy(r => r.CreatedAt)
             .ToListAsync();
     }

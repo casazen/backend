@@ -18,7 +18,7 @@ namespace Casazen.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.1")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -52,11 +52,18 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("ReportedAt")
+                    b.Property<DateTime?>("ReportedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ScheduledFor")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ScheduledJobId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -66,13 +73,17 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BookingId");
-
                     b.HasIndex("GuestId");
 
                     b.HasIndex("OrgId");
 
-                    b.ToTable("AlloggiatiWebReports");
+                    b.HasIndex("BookingId", "GuestId")
+                        .IsUnique();
+
+                    b.ToTable("AlloggiatiWebReports", t =>
+                        {
+                            t.HasCheckConstraint("CK_AlloggiatiWebReports_SentRequiresReceipt", "\"Status\" <> 2 OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.AppContext", b =>
@@ -113,6 +124,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArrivedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("BasePrice")
                         .HasPrecision(18, 2)

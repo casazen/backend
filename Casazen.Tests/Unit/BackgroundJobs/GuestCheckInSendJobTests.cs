@@ -70,7 +70,7 @@ public class GuestCheckInSendJobTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CheckedInBookingWithSubmittedReport_DoesNotSendGuestLink()
+    public async Task ExecuteAsync_CheckedInBookingWithReportDeclaredSent_DoesNotSendGuestLink()
     {
         await using var context = CreateContext();
         var (bookingId, orgId) = await SeedBookingAsync(context, BookingStatus.CheckedIn);
@@ -78,7 +78,8 @@ public class GuestCheckInSendJobTests
         {
             BookingId = bookingId,
             GuestId = context.Bookings.Single(b => b.Id == bookingId).GuestId,
-            Status = AlloggiatiWebStatus.Submitted,
+            Status = AlloggiatiWebStatus.InviatoManualmente,
+            ReportedAt = DateTime.UtcNow.Date,
         });
         await context.SaveChangesAsync();
 

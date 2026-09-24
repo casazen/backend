@@ -386,7 +386,10 @@ App__PublicSiteBaseUrl=[public URL of the web app for this environment]
 Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
 Hangfire__Schema=hangfire_casazen_test
-Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
+# CORS — REQUIRED: the web app origin(s) of THIS environment, no default in code (docs/runbooks/cors-security-headers.md)
+Cors__AllowedOrigins=[https://<web app host of this environment>]
+# Optional, test environment only: regex for the Vercel previews of our own project (empty = no preview allowed)
+Cors__VercelPreviewPattern=[e.g. casazen-app-git-[a-z0-9-]+-<team-slug>]
 # AI supplier discovery (DeepSeek) — replaces Google Places
 Ai__Provider=DeepSeek
 Ai__ApiKey=sk-...
@@ -409,7 +412,7 @@ DataProtection__CertificatePassword=[pfx password]
 
 `App__PublicSiteBaseUrl` is the base of **every link in emails** (supplier invite `/register?inviteToken=…`, supplier inbox, guest check-in `/checkin/{token}`): there is no fallback domain in code. Use the web app URL of the matching environment. Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
-Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
+CORS accepts only `Cors__AllowedOrigins` (exact origins) and, when `Cors__VercelPreviewPattern` is set, the Vercel previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
 
 Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
 
@@ -432,7 +435,8 @@ Both Railway environments run with `ASPNETCORE_ENVIRONMENT=Production` (see `sec
 | `Storage__Provider=S3`, `Storage__PublicBaseUrl`, `Storage__S3__ServiceUrl`, `Storage__S3__Region`, `Storage__S3__AccessKeyId`, `Storage__S3__SecretAccessKey`, `Storage__S3__PublicBucket`, `Storage__S3__PrivateBucket` | yes | startup fails | [`storage.md`](runbooks/storage.md) |
 | `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | recommended | warning at startup: Data Protection keys stored unencrypted | [`storage.md`](runbooks/storage.md) §4 |
 | `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe | this file § Stripe |
-| `Cors__AllowedOrigins` | when the web app is not on a built-in origin | browser calls rejected by CORS | this file |
+| `Cors__AllowedOrigins` | yes (no origin in code) | startup fails; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
+| `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
 | `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |

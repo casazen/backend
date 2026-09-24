@@ -32,4 +32,14 @@ public static class RomeCalendar
         var local = TimeZoneInfo.ConvertTime(instant, TimeZone);
         return new DateTime(local.Year, local.Month, local.Day, 0, 0, 0, DateTimeKind.Utc);
     }
+
+    /// <summary>
+    /// The UTC instant at which the calendar date of <paramref name="calendarDate"/> (a date-only value, e.g. a
+    /// check-in date) starts in Europe/Rome: 22:00 or 23:00 UTC of the day before, depending on daylight saving.
+    /// </summary>
+    public static DateTime StartOfDayUtc(DateTime calendarDate)
+    {
+        var localMidnight = new DateTime(calendarDate.Year, calendarDate.Month, calendarDate.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(localMidnight, TimeZone);
+    }
 }

@@ -74,7 +74,7 @@ public class AlloggiatiDeadlineAlertJobTests
         var alloggiatiMock = new Mock<IAlloggiatiWebService>();
         alloggiatiMock.Setup(s => s.ValidateGuestDataAsync(guestId)).ReturnsAsync(false);
         alloggiatiMock
-            .Setup(s => s.IsOverdue(It.IsAny<DateTime>(), false, It.IsAny<AlloggiatiWebStatus?>()))
+            .Setup(s => s.IsOverdue(It.IsAny<Booking>(), It.IsAny<AlloggiatiWebStatus?>()))
             .Returns(false);
 
         var job = new AlloggiatiDeadlineAlertJob(
@@ -86,5 +86,51 @@ public class AlloggiatiDeadlineAlertJobTests
         await job.ExecuteAsync();
 
         notificationMock.Verify(n => n.SendAlloggiatiDeadlineAlertAsync(bookingId), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CommunicationDeclaredSent_SendsNoAlert()
+    {
+        await using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+        var guestId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        context.Guests.Add(new Guest { Id = guestId, FirstName = "Anna", LastName = "Bianchi", Email = "anna@example.com" });
+        context.Bookings.Add(new Booking
+        {
+            Id = bookingId,
+            PropertyId = Guid.NewGuid(),
+            OrgId = Guid.NewGuid(),
+            GuestId = guestId,
+            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
+            CheckOutDate = DateTime.UtcNow.Date.AddDays(1),
+            Status = BookingStatus.CheckedIn,
+            Source = BookingSource.Direct,
+            NumberOfGuests = 1,
+        });
+        context.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = bookingId,
+            GuestId = guestId,
+            Status = AlloggiatiWebStatus.InviatoManualmente,
+            ReportedAt = DateTime.UtcNow.Date.AddDays(-2),
+        });
+        await context.SaveChangesAsync();
+
+        var notificationMock = new Mock<INotificationService>();
+        var alloggiatiMock = new Mock<IAlloggiatiWebService>();
+        alloggiatiMock.Setup(s => s.ValidateGuestDataAsync(guestId)).ReturnsAsync(false);
+        alloggiatiMock.Setup(s => s.IsOverdue(It.IsAny<Booking>(), It.IsAny<AlloggiatiWebStatus?>())).Returns(true);
+
+        var job = new AlloggiatiDeadlineAlertJob(
+            context,
+            alloggiatiMock.Object,
+            notificationMock.Object,
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<AlloggiatiDeadlineAlertJob>>());
+
+        await job.ExecuteAsync();
+
+        notificationMock.Verify(n => n.SendAlloggiatiDeadlineAlertAsync(It.IsAny<Guid>()), Times.Never);
     }
 }

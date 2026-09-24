@@ -42,21 +42,8 @@ public class PropertiesController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Property>>> GetAll()
     {
-        logger.LogInformation("GetAll properties called");
-        logger.LogInformation($"User authenticated: {User.Identity?.IsAuthenticated}");
-        logger.LogInformation($"User identity name: {User.Identity?.Name}");
-
-        // Try multiple claim types to find user ID
+        // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
-
-        logger.LogInformation($"User ID from claims: {userId}");
-
-        // DEBUG: Log all claims
-        foreach (var claim in User.Claims)
-        {
-            logger.LogInformation($"Claim: {claim.Type} = {claim.Value}");
-        }
-
         if (string.IsNullOrEmpty(userId))
         {
             logger.LogWarning("No user ID claim found in token");

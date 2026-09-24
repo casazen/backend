@@ -5,11 +5,13 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -56,9 +58,9 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     }
 
     [Fact]
-    public async Task AC3_GetAlloggiatiStatus_ReturnsStatusDto()
+    public async Task AC3_GetStatus_ArrivalDayWithoutTransmission_IsToSendManuallyNeverSent()
     {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
 
         var response = await client.GetAsync($"/api/alloggiati/{seed.BookingId}/status");
@@ -67,44 +69,167 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = doc.RootElement;
         Assert.Equal(seed.BookingId, root.GetProperty("bookingId").GetGuid());
-        Assert.True(root.TryGetProperty("status", out _));
-        Assert.True(root.TryGetProperty("dataComplete", out _));
-        Assert.True(root.TryGetProperty("hoursUntilDeadline", out _));
+        // The seeded check-in is today: CasaZen has transmitted nothing, so the host must send it (A5-01, A9-05).
+        Assert.Equal("DaInviareManualmente", root.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("reportedAt").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confirmationNumber").ValueKind);
+        Assert.True(root.GetProperty("dataComplete").GetBoolean());
+        Assert.False(root.GetProperty("isShortStay").GetBoolean());
+        Assert.True(root.TryGetProperty("deadlineAt", out _));
     }
 
     [Fact]
-    public async Task AC4_ManualSend_UpdatesReport()
+    public async Task AC4_SendEndpoint_NoAlloggiatiClient_Returns422AndRecordsNothing()
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
 
         var response = await client.PostAsync($"/api/alloggiati/{seed.BookingId}/send", null);
 
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("alloggiati_transmission_unavailable", doc.RootElement.GetProperty("code").GetString());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(db.AlloggiatiWebReports.Any(r => r.BookingId == seed.BookingId));
+    }
+
+    [Fact]
+    public async Task MarkSentManually_Today_RecordsHostDeclarationAndRejectsASecondOne()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+        var sentOn = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
+
+        var response = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
+        var second = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("Submitted", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("InviatoManualmente", doc.RootElement.GetProperty("status").GetString());
+        Assert.False(doc.RootElement.GetProperty("isOverdue").GetBoolean());
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        using var conflict = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        Assert.Equal("alloggiati_already_sent", conflict.RootElement.GetProperty("code").GetString());
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var report = db.AlloggiatiWebReports.Single(r => r.BookingId == seed.BookingId);
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, report.Status);
         Assert.True(report.ManuallyCompleted);
+        Assert.Null(report.ConfirmationNumber);
     }
 
     [Fact]
-    public async Task AC5_OwnerCheckIn_EnqueuesAlloggiatiReportJob()
+    public async Task MarkSentManually_DateInTheFuture_Returns422()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+        var sentOn = DateTime.UtcNow.Date.AddDays(3).ToString("yyyy-MM-dd");
+
+        var response = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("alloggiati_manual_date_in_future", doc.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task MarkSentManually_WithoutDate_Returns400()
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
 
-        _ = await client.PostAsync($"/api/bookings/{seed.BookingId}/check-in", null);
+        var response = await client.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { });
 
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MarkSentManually_OtherOwnersBooking_Returns403AndRecordsNothing()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var intruder = _factory.CreateAuthenticatedClient($"auth0|intruder-{Guid.NewGuid():N}", roles: "PropertyOwner");
+        var sentOn = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
+
+        var response = await intruder.PostAsJsonAsync($"/api/alloggiati/{seed.BookingId}/mark-sent-manually", new { sentOn });
+
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.Forbidden, HttpStatusCode.NotFound });
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(db.AlloggiatiWebReports.Any(r => r.BookingId == seed.BookingId));
+    }
+
+    [Fact]
+    public async Task AC5_PortalSubmitThenOwnerCheckIn_SchedulesTheAlloggiatiJobOnce()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var token = await CreatePortalSessionAsync(seed.BookingId);
+        var guestClient = _factory.CreateClient();
+        var owner = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+
+        var submit = await guestClient.PostAsync($"/api/public/checkin/{token}", BuildPortalPayload());
+        var checkIn = await owner.PostAsync($"/api/bookings/{seed.BookingId}/check-in", null);
+
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, checkIn.StatusCode);
         _factory.BackgroundJobClientMock.Verify(
             c => c.Create(
-                It.Is<Job>(j =>
-                    j.Type == typeof(AlloggiatiWebReportJob) &&
-                    j.Method.Name == nameof(AlloggiatiWebReportJob.ReportGuestAsync)),
-                It.IsAny<EnqueuedState>()),
+                It.Is<Job>(j => IsReportJobOf(j, seed.BookingId)),
+                It.IsAny<ScheduledState>()),
             Times.Once);
+        _factory.BackgroundJobClientMock.Verify(
+            c => c.Create(It.Is<Job>(j => IsReportJobOf(j, seed.BookingId)), It.IsAny<EnqueuedState>()),
+            Times.Never);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var report = db.AlloggiatiWebReports.Single(r => r.BookingId == seed.BookingId);
+        Assert.Equal(AlloggiatiWebStatus.DaInviare, report.Status);
+        Assert.NotNull(report.ScheduledJobId);
+        Assert.NotNull(db.Bookings.Single(b => b.Id == seed.BookingId).ArrivedAt);
+        // No receipt: the guest session must not claim that Alloggiati was sent.
+        Assert.Equal(
+            GuestCheckInSessionStatus.Completo,
+            db.GuestCheckInSessions.Single(s => s.BookingId == seed.BookingId).Status);
+    }
+
+    [Fact]
+    public async Task GuestSummary_Owner_ReturnsTheRecordFieldsToCopy()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+
+        var response = await client.GetAsync($"/api/alloggiati/{seed.BookingId}/guest-summary");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+        Assert.Equal(3, root.GetProperty("stayDays").GetInt32());
+        Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
+        var guest = Assert.Single(root.GetProperty("guests").EnumerateArray());
+        Assert.Equal("HeadOfFamilyOrGroup", guest.GetProperty("kind").GetString());
+        Assert.Equal("Verdi", guest.GetProperty("lastName").GetString());
+        Assert.Equal("Luigi", guest.GetProperty("firstName").GetString());
+        Assert.Equal("Male", guest.GetProperty("gender").GetString());
+        Assert.Equal("Milano", guest.GetProperty("placeOfBirth").GetString());
+        Assert.Equal("Italiana", guest.GetProperty("citizenship").GetString());
+        Assert.Equal("Passport", guest.GetProperty("documentType").GetString());
+        Assert.Equal("AB123456", guest.GetProperty("documentNumber").GetString());
+        Assert.Equal("Italia", guest.GetProperty("documentIssuePlace").GetString());
+        Assert.Equal(0, guest.GetProperty("missingFields").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GuestSummary_OtherOwnersBooking_DoesNotExposeTheDocument()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var intruder = _factory.CreateAuthenticatedClient($"auth0|intruder-{Guid.NewGuid():N}", roles: "PropertyOwner");
+
+        var response = await intruder.GetAsync($"/api/alloggiati/{seed.BookingId}/guest-summary");
+
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.Forbidden, HttpStatusCode.NotFound });
+        Assert.DoesNotContain("AB123456", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -236,6 +361,40 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         var guest = db.Guests.Single(g => g.Id == seed.GuestId);
         Assert.Null(guest.DocumentScanUrl);
     }
+
+    private static bool IsReportJobOf(Job job, Guid bookingId) =>
+        job.Type == typeof(AlloggiatiWebReportJob)
+        && job.Method.Name == nameof(AlloggiatiWebReportJob.ReportGuestAsync)
+        && job.Args.Count == 2
+        && job.Args[1] is Guid id && id == bookingId;
+
+    private async Task<string> CreatePortalSessionAsync(Guid bookingId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var booking = await db.Bookings.FindAsync(bookingId);
+        var service = new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance);
+        return await service.CreateSessionAsync(bookingId, booking!.OrgId);
+    }
+
+    private static StringContent BuildPortalPayload() => new(
+        """
+        {
+          "firstName": "Luigi",
+          "lastName": "Verdi",
+          "dateOfBirth": "1985-03-10",
+          "nationality": "Italiana",
+          "gender": "Male",
+          "documentType": "Passport",
+          "documentNumber": "AB123456",
+          "documentIssuingCountry": "Italia",
+          "placeOfBirth": "Milano",
+          "gdprConsent": true,
+          "marketingConsent": false
+        }
+        """,
+        Encoding.UTF8,
+        "application/json");
 
     private static string BuildGuestDataPayload(bool includeDob)
     {
