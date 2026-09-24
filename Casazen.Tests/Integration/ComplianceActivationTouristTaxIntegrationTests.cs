@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -59,7 +60,6 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
 
         var response = await client.PostAsJsonAsync($"/api/properties/{propertyId}/compliance/activation/complete", new
         {
-            safetyChecklist = new { smokeDetector = true, fireExtinguisher = true, gasCompliance = true },
             tosAccepted = true,
         });
 
@@ -133,7 +133,7 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
         return body.GetProperty("steps").EnumerateArray().ToList();
     }
 
-    /// <summary>A property where every blocking step is satisfied except the ToS, given at completion.</summary>
+    /// <summary>A property where every blocking step (safety checklist included) is satisfied except the ToS, given at completion.</summary>
     private async Task<(string HostId, Guid PropertyId)> SeedReadyPropertyAsync(string city, string? hostId = null)
     {
         hostId ??= $"auth0|tax-step-{Guid.NewGuid():N}";
@@ -179,6 +179,7 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
                 DocumentType = DocumentType.SafetyCompliance,
                 UploadedBy = hostId,
             });
+        db.PropertySafetyChecklists.Add(SafetyChecklistTestData.CompleteAllElectric(property.Id, org.Id));
         await db.SaveChangesAsync();
         return (hostId, property.Id);
     }

@@ -92,6 +92,8 @@ Non obbligatori per l'art. 13-ter, ma consigliati per sicurezza e qualità:
 ### Funzionalità Coinvolte
 
 > Nota RS-3: per la checklist di sicurezza fa fede la proposta per CO-07 in «Obblighi verificati (2026-09)» → "Proposta di checklist per CO-07". Le voci qui sotto (rilevatori di fumo, segnaletica, scadenze "6-12 mesi") sono l'analisi originale e non vanno trattate come obblighi di legge.
+>
+> Nota CO-07: quello che è stato implementato è descritto in «Implementazione in CasaZen (CO-07, 2026-09-24)» in fondo al file.
 
 1. **Property Onboarding - Safety Checklist**
    - **Checklist requisiti sicurezza**: wizard per verificare:
@@ -356,3 +358,34 @@ Tutte consultate il **2026-09-23** tramite estratti WebSearch (lettura diretta b
 | T16 | UfficioCommercio, FAQ aggiornate all'11/05/2026 | https://www.ufficiocommercio.it/locazioni-brevi-e-strutture-ricettive-nuove-faq-aggiornate-all11-maggio-2026/ |
 | T17 | Investireoggi, FAQ del MiTur aggiornate al 27 novembre | https://www.investireoggi.it/cin-affitti-brevi-nuove-faq-del-mitur-aggiornamento-al-27-novembre/ |
 | T18 | UfficioCommercio, FAQ operative aggiornate al 23/04/2026 | https://www.ufficiocommercio.it/locazioni-turistiche-e-cin-aggiornate-le-faq-operative-al-23-aprile-2026/ |
+
+## Implementazione in CasaZen (CO-07, 2026-09-24)
+
+> Solo cosa fa il codice. I contenuti normativi sono quelli delle sezioni precedenti, non modificati. I «Dubbi per il legale» restano aperti: il codice applica la proposta prudente di RS-3 e non ne decide nessuno.
+
+**Dove**
+- Regole (unica fonte di verità): `Casazen.Core/Regulatory/SafetyChecklistRules.cs`. Dati: `PropertySafetyChecklists` (una per property) e `PropertySafetyChecklistItems` (una riga per voce), entità tenant (`OrgId`).
+- API: `GET` e `PUT /api/properties/{id}/compliance/safety-checklist` (solo affitti brevi, autorizzazione sulla property). Il wizard di attivazione (`ComplianceWizardService`, step `safety`) blocca solo sulle voci obbligatorie. Il 409 di `POST .../compliance/activation/complete` (`property_activation_blocked`) elenca i blocker con codici stabili.
+- Frontend: `src/features/compliance/components/safety-checklist-form.tsx`, nello step "Checklist sicurezza" del wizard. Testi in `compliance.safety.*` (it/en).
+
+**Stati di una voce**: presente, mancante, non risposta, da rivedere (solo risposte importate dalla vecchia checklist) o non applicabile. "Non applicabile" non si salva: si calcola in lettura dai fatti dichiarati, con un motivo dell'elenco chiuso (`NoGasNoCombustion` = `no_gas_no_combustione`, `NotEntrepreneurial` = `non_imprenditoriale`). I fatti sono salvati con utente e data UTC della checklist.
+
+| Voce | Come è implementata |
+|---|---|
+| SC-00 | Non chiesta: il wizard serve solo a pubblicare soggiorni brevi, quindi la checklist si applica sempre e `uso_non_turistico` non viene usato. Casi misti: dubbio 11. |
+| SC-01 | Domanda sì/no obbligatoria. Nessun suggerimento automatico dalla soglia di imprenditorialità (dipende da CO-18/RS-5). |
+| SC-02 | Sempre obbligatoria. Numero di piani (obbligatorio) e m² per piano (facoltativi), numero di estintori, posizione, data dell'ultimo controllo, prova facoltativa. Minimo calcolato con la proposta prudente (per piano); senza m² il minimo è uno per piano, con un avviso. Blocca se il numero dichiarato è sotto il minimo. 13A e 6 kg/6 l sono mostrati come indicazione delle FAQ, non come conferma separata. |
+| SC-03 | Due domande: impianto o fornitura di gas (rete, GPL, bombole) e apparecchi a combustione (caldaia, scaldabagno, piano cottura a gas, stufa, camino, altro, oppure "nessuno"). L'esonero vale solo con entrambe le risposte negative. |
+| SC-04, SC-05 | Obbligatorie salvo esonero SC-03. Numero, posizione, tipo (batteria, rete, impianto fisso), data dell'ultimo test, fine vita del sensore, prova facoltativa. |
+| SC-06 | Obbligatoria solo se SC-01 = sì. Una sola voce, non divisa per impianto (dubbio 10): data della dichiarazione, note, prova facoltativa. |
+| SC-07 | Obbligatoria: sì/no e data. |
+| SC-08 | Conferma finale con utente, data e ora UTC e versione del testo (`2026-09-v1`). Ogni salvataggio senza conferma la cancella. Il testo va validato dal legale (dubbio 12). |
+| SC-F1, SC-F2 | Facoltative ("consigliato, non obbligatorio per legge"), non bloccano mai. |
+
+**Codici dei blocker**: `safety_entrepreneurial_unanswered`, `safety_gas_unanswered`, `safety_floors_unanswered`, `safety_extinguishers_missing`, `safety_extinguishers_below_minimum`, `safety_extinguishers_review`, `safety_gas_detector_missing`, `safety_co_detector_missing`, `safety_systems_compliance_missing`, `safety_systems_compliance_review`, `safety_bdsr_declaration_missing`, `safety_confirmation_missing`. Avviso: `safety_floor_areas_missing`.
+
+**Prove**: foto o documento caricati come documento della property di tipo `SafetyCompliance` (bucket privato, FD-07) e collegati alla voce. Il documento "SafetyCompliance" non è più tra i documenti obbligatori dell'attivazione (`Compliance:RequiredDocuments`), perché l'art. 13-ter non chiede certificati.
+
+**Migrazione `AddDl145SafetyChecklist`** (principio 5): la vecchia colonna `Properties.SafetyChecklistJson` è copiata così com'è in `LegacyChecklistJson`, con schema 1. Estintore sì diventa SC-02 "da rivedere" (numero e piani non erano chiesti); certificato gas sì diventa SC-06 "da rivedere" (era la conformità dell'impianto gas, non i rilevatori); rilevatore di fumo sì resta SC-F1 presente. I "no" restano senza risposta, perché il vecchio form non distingueva "no" da "non risposto". La vecchia conferma non vale per la nuova checklist. Lo stato di attivazione delle property non cambia nella migrazione: la rivalutazione è di CO-06.
+
+**Non implementato qui**: promemoria delle verifiche (da coordinare con CO-10), voce SCIA al SUAP, suggerimento automatico della forma imprenditoriale.

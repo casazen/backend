@@ -759,4 +759,85 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="PropertyActivationBlocked" xml:space="preserve">
+    <value>L'immobile non può ancora essere attivato: completa i punti obbligatori elencati.</value>
+  </data>
+  <data name="ActivationTosRequired" xml:space="preserve">
+    <value>Devi accettare i termini di servizio.</value>
+  </data>
+  <data name="ActivationBaseDataIncomplete" xml:space="preserve">
+    <value>Completa i dati base dell'immobile: nome, indirizzo, città, camere, ospiti e tariffa.</value>
+  </data>
+  <data name="ActivationCinMissing" xml:space="preserve">
+    <value>Inserisci il codice CIN dell'immobile.</value>
+  </data>
+  <data name="ActivationCinInvalid" xml:space="preserve">
+    <value>Il formato del codice CIN non è valido.</value>
+  </data>
+  <data name="ActivationDocumentsMissing" xml:space="preserve">
+    <value>Carica i documenti richiesti: {0}.</value>
+  </data>
+  <data name="ActivationSafetyIncomplete" xml:space="preserve">
+    <value>Punti da completare nella checklist di sicurezza: {0}.</value>
+  </data>
+  <data name="SafetyEntrepreneurialUnanswered" xml:space="preserve">
+    <value>Indica se gestisci la locazione in forma imprenditoriale: da questo dipendono i requisiti di sicurezza degli impianti (art. 13-ter, c. 7, D.L. 145/2023).</value>
+  </data>
+  <data name="SafetyGasUnanswered" xml:space="preserve">
+    <value>Indica se l'unità ha un impianto o una fornitura di gas e quali apparecchi a combustione ci sono: da questo dipendono i rilevatori di gas e di monossido di carbonio.</value>
+  </data>
+  <data name="SafetyFloorsUnanswered" xml:space="preserve">
+    <value>Indica il numero di piani dell'unità: serve a calcolare il numero minimo di estintori (almeno uno per piano).</value>
+  </data>
+  <data name="SafetyFloorAreasMissing" xml:space="preserve">
+    <value>Senza i m² di ogni piano il minimo di estintori è calcolato solo sui piani. La legge ne chiede uno ogni 200 m² di pavimento o frazione, con un minimo di uno per piano.</value>
+  </data>
+  <data name="SafetyExtinguishersMissing" xml:space="preserve">
+    <value>Estintori portatili: obbligatori in tutte le unità in locazione breve o turistica (art. 13-ter, c. 7, D.L. 145/2023).</value>
+  </data>
+  <data name="SafetyExtinguishersBelowMinimum" xml:space="preserve">
+    <value>Estintori insufficienti: ne hai indicati {0}, ne servono almeno {1} (uno ogni 200 m² di pavimento o frazione, minimo uno per piano).</value>
+  </data>
+  <data name="SafetyExtinguishersReview" xml:space="preserve">
+    <value>Estintori: la risposta viene dalla vecchia checklist. Confermala indicando il numero di estintori e i piani dell'unità.</value>
+  </data>
+  <data name="SafetyGasDetectorMissing" xml:space="preserve">
+    <value>Rilevatore di gas combustibili: obbligatorio, perché l'unità ha gas o apparecchi a combustione (art. 13-ter, c. 7, D.L. 145/2023).</value>
+  </data>
+  <data name="SafetyCoDetectorMissing" xml:space="preserve">
+    <value>Rilevatore di monossido di carbonio: obbligatorio, perché l'unità ha gas o apparecchi a combustione (art. 13-ter, c. 7, D.L. 145/2023).</value>
+  </data>
+  <data name="SafetySystemsComplianceMissing" xml:space="preserve">
+    <value>Impianti conformi alla normativa statale e regionale: obbligatori per la gestione in forma imprenditoriale (art. 13-ter, c. 7, D.L. 145/2023).</value>
+  </data>
+  <data name="SafetySystemsComplianceReview" xml:space="preserve">
+    <value>Impianti: la vecchia checklist indicava un certificato di conformità dell'impianto gas. Conferma la risposta.</value>
+  </data>
+  <data name="SafetyBdsrDeclarationMissing" xml:space="preserve">
+    <value>Conferma di aver dichiarato in BDSR i requisiti di sicurezza, con la richiesta o l'aggiornamento del CIN (art. 13-ter, c. 3, D.L. 145/2023).</value>
+  </data>
+  <data name="SafetyConfirmationMissing" xml:space="preserve">
+    <value>Conferma la checklist di sicurezza con le risposte attuali.</value>
+  </data>
+  <data name="SafetyChecklistInvalid" xml:space="preserve">
+    <value>La checklist di sicurezza contiene valori non validi.</value>
+  </data>
+  <data name="SafetyFloorsInvalid" xml:space="preserve">
+    <value>Piani non validi: indica da 1 a {0} piani e, se li inserisci, i m² di ogni piano (più di 0 e al massimo {1}).</value>
+  </data>
+  <data name="SafetyQuantityInvalid" xml:space="preserve">
+    <value>Il numero di dispositivi deve essere tra 1 e {0}.</value>
+  </data>
+  <data name="SafetyExtinguisherQuantityRequired" xml:space="preserve">
+    <value>Indica quanti estintori ci sono nell'unità.</value>
+  </data>
+  <data name="SafetyDateInFuture" xml:space="preserve">
+    <value>La data del controllo non può essere nel futuro.</value>
+  </data>
+  <data name="SafetyEvidenceNotFound" xml:space="preserve">
+    <value>Il documento allegato come prova non appartiene a questo immobile.</value>
+  </data>
+  <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
+    <value>La checklist è stata modificata nello stesso momento da un'altra sessione: ricarica la pagina e riprova.</value>
+  </data>
 </root>

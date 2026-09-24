@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
@@ -30,19 +31,21 @@ public class ComplianceWizardServiceTests
             {
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
-                ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
                 ["Compliance:GdprRetentionYears"] = "7",
             })
             .Build();
 
-    private static ComplianceWizardService CreateService(AppDbContext db, TimeProvider? timeProvider = null)
+    private static ComplianceWizardService CreateService(
+        AppDbContext db,
+        TimeProvider? timeProvider = null,
+        IConfiguration? configuration = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
 
         return new ComplianceWizardService(
             db,
-            CreateConfig(),
+            configuration ?? CreateConfig(),
             alloggiati.Object,
             Mock.Of<IServiceRequestService>(),
             new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
@@ -186,7 +189,6 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
         Assert.Empty(blockers);
@@ -249,7 +251,6 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
         Assert.Empty(blockers);
@@ -263,11 +264,11 @@ public class ComplianceWizardServiceTests
         await using var db = CreateDb(nameof(CompleteActivation_TosOmitted_DoesNotActivateProperty));
         var property = await SeedFullyCompliantPropertyAsync(db);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(db).CompleteActivationAsync(
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: null));
+        Assert.Equal("activation_tos_required", error.Code);
 
         var reloaded = await db.Properties.FindAsync(property.Id);
         Assert.Equal(PropertyComplianceStatus.Pending, reloaded!.ComplianceStatus);
@@ -283,11 +284,75 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
-        Assert.Contains("cin", blockers);
+        var cin = Assert.Single(blockers, b => b.Id == "cin");
+        Assert.Equal("activation_cin_missing", Assert.Single(cin.Blockers).Code);
         Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes()
+    {
+        await using var db = CreateDb(nameof(Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes));
+        var property = await SeedPropertyAsync(db);
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var safety = steps.Single(s => s.Id == "safety");
+        Assert.Equal("pending", safety.Status);
+        Assert.True(safety.Blocker);
+        Assert.Equal("ActivationSafetyIncomplete", safety.MessageKey);
+        Assert.Contains(safety.Blockers, b => b.Code == "safety_extinguishers_missing");
+        Assert.DoesNotContain(safety.Blockers, b => b.Code.Contains("smoke", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CompleteActivation_AllElectricHomeWithoutSmokeDetector_SetsActive()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_AllElectricHomeWithoutSmokeDetector_SetsActive));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var smoke = await db.PropertySafetyChecklistItems.SingleAsync(i => i.Code == SafetyItemCode.SmokeDetector);
+        smoke.Answer = SafetyItemAnswer.Missing;
+        await db.SaveChangesAsync();
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var checklist = await db.PropertySafetyChecklists.SingleAsync(c => c.PropertyId == property.Id);
+        checklist.HasGasSupply = true;
+        checklist.CombustionAppliances = [CombustionAppliance.GasHob];
+        await db.SaveChangesAsync();
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        var safety = Assert.Single(blockers);
+        Assert.Equal("safety", safety.Id);
+        Assert.Equal(
+            ["safety_gas_detector_missing", "safety_co_detector_missing"],
+            safety.Blockers.Select(b => b.Code));
+        Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task Activation_NoRequiredDocumentsConfigured_DoesNotAskForASafetyCertificate()
+    {
+        await using var db = CreateDb(nameof(Activation_NoRequiredDocumentsConfigured_DoesNotAskForASafetyCertificate));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var noDocumentsConfig = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
+
+        var (_, steps) = await CreateService(db, configuration: noDocumentsConfig).GetActivationWizardAsync(property.Id);
+
+        Assert.DoesNotContain(property.PropertyDocuments, d => d.DocumentType == DocumentType.SafetyCompliance);
+        Assert.Equal("complete", steps.Single(s => s.Id == "documents").Status);
     }
 
     [Fact]
@@ -538,7 +603,7 @@ public class ComplianceWizardServiceTests
             });
         }
 
-        db.PropertyDocuments.AddRange(
+        db.PropertyDocuments.Add(
             new PropertyDocument
             {
                 PropertyId = property.Id,
@@ -546,18 +611,9 @@ public class ComplianceWizardServiceTests
                 StorageUrl = "/docs/cin.pdf",
                 DocumentType = DocumentType.CinCertificate,
                 UploadedBy = property.OwnerId,
-            },
-            new PropertyDocument
-            {
-                PropertyId = property.Id,
-                FileName = "safety.pdf",
-                StorageUrl = "/docs/safety.pdf",
-                DocumentType = DocumentType.SafetyCompliance,
-                UploadedBy = property.OwnerId,
             });
 
-        property.SafetyChecklistJson =
-            """{"smokeDetector":true,"fireExtinguisher":true,"gasCompliance":true,"acknowledgedAt":"2026-01-01T00:00:00Z"}""";
+        db.PropertySafetyChecklists.Add(SafetyChecklistTestData.CompleteAllElectric(property.Id, property.OrgId));
 
         await db.SaveChangesAsync();
         return property;

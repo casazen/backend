@@ -18,6 +18,24 @@ public record ComplianceActivationStep(string Id, string Label, string Status, b
 
     /// <summary>Only on the <c>tourist-tax</c> step: what CasaZen knows about the tax in the property's comune.</summary>
     public TouristTaxActivationInfo? TouristTax { get; init; }
+
+    /// <summary>
+    /// What keeps a blocking step from being complete, with stable codes (e.g. the items of the safety checklist,
+    /// <c>safety_gas_detector_missing</c>); empty when the step is complete or not blocking.
+    /// </summary>
+    public IReadOnlyList<ActivationBlocker> Blockers { get; init; } = [];
+}
+
+/// <summary>
+/// One reason why the activation is blocked: stable snake_case <see cref="Code"/> (the frontend translates it) and the
+/// resource key of its message in <c>SharedResources</c>, formatted with <see cref="MessageArgs"/>.
+/// </summary>
+public sealed record ActivationBlocker(string Code, string MessageKey, IReadOnlyList<object> MessageArgs)
+{
+    public ActivationBlocker(string code, string messageKey)
+        : this(code, messageKey, [])
+    {
+    }
 }
 
 /// <summary>
@@ -37,12 +55,6 @@ public record TouristTaxActivationInfo(string City, TouristTaxRate? Rate, string
     public bool CategoryRequired { get; init; }
 }
 
-public record PropertySafetyChecklistInput(
-    bool SmokeDetector,
-    bool FireExtinguisher,
-    bool GasCompliance,
-    string? AcknowledgedBy);
-
 public record CompleteCheckoutWizardInput(
     bool ConfirmDeparture,
     Guid? SupplierOrgId,
@@ -55,10 +67,15 @@ public interface IComplianceWizardService
         Guid propertyId,
         CancellationToken cancellationToken = default);
 
-    Task<(Property Property, IReadOnlyList<string> IncompleteBlockers)> CompleteActivationAsync(
+    /// <summary>
+    /// Activates the property when no blocking step is left, otherwise leaves it pending. The safety checklist is saved
+    /// on its own (<see cref="IPropertySafetyChecklistService"/>), never here. Returns the blocking steps still
+    /// incomplete, each with its <see cref="ComplianceActivationStep.Blockers"/>.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainConflictException"><c>activation_tos_required</c> without the terms accepted.</exception>
+    Task<(Property Property, IReadOnlyList<ComplianceActivationStep> IncompleteBlockers)> CompleteActivationAsync(
         Guid propertyId,
         string userId,
-        PropertySafetyChecklistInput? safetyChecklist,
         bool? tosAccepted,
         CancellationToken cancellationToken = default);
 
