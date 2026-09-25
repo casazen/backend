@@ -379,14 +379,35 @@ public class LeasesController(
         return Ok(LeaseDtoMapper.ToRegistration(registration));
     }
 
+    /// <summary>
+    /// Tax advisory of the lease (LT-08): cedolare secca against the ordinary regime, from the configured parameters. The
+    /// stamp duty and the IRPEF comparison need data CasaZen does not hold: here they come back as "input required".
+    /// </summary>
     [HttpGet("{id:guid}/rli/advisory")]
-    public async Task<IActionResult> GetRliAdvisory(Guid id, CancellationToken cancellationToken)
+    public Task<ActionResult<CedolareAdvisoryResult>> GetRliAdvisory(Guid id, CancellationToken cancellationToken) =>
+        EvaluateAdvisoryAsync(id, CedolareAdvisoryInput.None, cancellationToken);
+
+    /// <summary>
+    /// The same advisory computed with the data the landlord gives (pages and copies of the contract, other taxable
+    /// income). A calculation, not a write: it needs <c>lease.read</c> like the GET. POST so that the income never ends up
+    /// in a URL or an access log; nothing is stored.
+    /// </summary>
+    [HttpPost("{id:guid}/rli/advisory")]
+    public Task<ActionResult<CedolareAdvisoryResult>> EvaluateRliAdvisory(
+        Guid id, [FromBody] CedolareAdvisoryRequest request, CancellationToken cancellationToken) =>
+        EvaluateAdvisoryAsync(
+            id,
+            new CedolareAdvisoryInput(request.WrittenPages, request.Lines, request.Copies, request.OtherTaxableIncomeEur),
+            cancellationToken);
+
+    private async Task<ActionResult<CedolareAdvisoryResult>> EvaluateAdvisoryAsync(
+        Guid id, CedolareAdvisoryInput input, CancellationToken cancellationToken)
     {
         var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
         if (denied is not null)
             return denied;
 
-        var result = await cedolareAdvisory.EvaluateAsync(id, cancellationToken);
+        var result = await cedolareAdvisory.EvaluateAsync(id, input, cancellationToken);
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -637,6 +658,16 @@ public sealed class SignedDocumentForm
 public record TriggerRegistrationDto(
     [param: Required, MaxLength(80)] string TosVersion,
     [param: Required] bool AttestationAccepted);
+
+/// <summary>
+/// Data of the tax advisory that CasaZen does not hold (LT-08); each may be omitted. The stamp duty needs the written
+/// pages and the copies, the IRPEF comparison the landlord's taxable income of the year without this rent.
+/// </summary>
+public sealed record CedolareAdvisoryRequest(
+    [param: Range(1, 1_000)] int? WrittenPages,
+    [param: Range(1, 100_000)] int? Lines,
+    [param: Range(1, 20)] int? Copies,
+    [param: Range(0d, 100_000_000d)] decimal? OtherTaxableIncomeEur);
 
 /// <summary>Manual RLI registration: what the landlord reads on the receipt of the Agenzia delle Entrate, plus the receipt.</summary>
 public sealed class ManualRegistrationForm

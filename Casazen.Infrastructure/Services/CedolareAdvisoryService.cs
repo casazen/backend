@@ -1,51 +1,42 @@
-using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Tax advisory of a lease (LT-08): loads the lease and the ATA status of its comune with the same rule as the canone
+/// concordato calculator (<see cref="HighTensionArea"/>), then computes with <see cref="LeaseTaxAdvisory"/>. The tax year
+/// is the current year on the Europe/Rome calendar.
+/// </summary>
 public class CedolareAdvisoryService(
     ILeaseContractRepository leases,
     IHighTensionAreaComuneRepository ataComuni,
-    IOptions<CedolareAdvisoryOptions> options) : ICedolareAdvisoryService
+    IOptions<CedolareAdvisoryOptions> options,
+    TimeProvider clock) : ICedolareAdvisoryService
 {
     public async Task<CedolareAdvisoryResult?> EvaluateAsync(
-        Guid leaseId, CancellationToken cancellationToken = default)
+        Guid leaseId, CedolareAdvisoryInput? input = null, CancellationToken cancellationToken = default)
     {
         var lease = await leases.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null)
+        if (lease?.Property is null)
             return null;
 
-        var cfg = options.Value;
-        var annual = lease.MonthlyRent * 12m;
-        var cedolareRate = await SelectCedolareRateAsync(lease, cfg, cancellationToken);
-
-        return new CedolareAdvisoryResult(
+        var ata = HighTensionArea.StatusOf(await ataComuni.GetByComuneAsync(lease.Property.City, cancellationToken));
+        var facts = new LeaseTaxFacts(
             lease.FiscalRegime,
-            annual,
-            cedolareRate,
-            decimal.Round(annual * cedolareRate, 2),
-            cfg.RegistroRate,
-            decimal.Round(annual * cfg.RegistroRate, 2),
-            cfg.BolloEur,
-            cfg.OrdinaryIrpefNote,
-            cfg.Disclaimer);
-    }
+            lease.ContractType,
+            lease.TaxRegime,
+            lease.MonthlyRent,
+            LeaseTerm.Between(lease.StartDate, lease.EndDate),
+            ata,
+            lease.HasExtraEUTenant);
 
-    private async Task<decimal> SelectCedolareRateAsync(
-        LeaseContract lease,
-        CedolareAdvisoryOptions cfg,
-        CancellationToken cancellationToken)
-    {
-        if (lease.FiscalRegime != FiscalRegime.CanoneConcordato)
-            return cfg.CedolareSeccaRate;
-
-        var ata = await ataComuni.GetByComuneAsync(lease.Property.City, cancellationToken);
-        return ata is { VerifiedDirectly: true }
-            ? cfg.CanoneConcordatoRate
-            : cfg.CedolareSeccaRate;
+        return LeaseTaxAdvisory.Compute(
+            facts, input ?? CedolareAdvisoryInput.None, options.Value, clock.TodayInRome().Year);
     }
 }

@@ -27,7 +27,7 @@ public class OtaIntegrationsRegistrationTests
         var services = Register(flag: null);
 
         Assert.All(AdapterTypes, type => Assert.DoesNotContain(services, d => d.ServiceType == type));
-        // OtaManager (used by DynamicPricingJob) still resolves: the factory has no adapter to hand out.
+        // OtaManager still resolves: the factory has no adapter to hand out.
         Assert.Contains(services, d => d.ServiceType == typeof(IChannelFactory));
     }
 

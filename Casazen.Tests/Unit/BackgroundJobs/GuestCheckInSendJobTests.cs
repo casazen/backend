@@ -1,5 +1,7 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Options;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
@@ -41,6 +43,27 @@ public class GuestCheckInSendJobTests
         Assert.Equal(GuestCheckInLinkEmailErrors.Rejected, session.LinkEmailError);
         Assert.Null(session.SentAt);
         harness.Email.Verify(s => s.SendEmailAsync(booking.Guest.Email, It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    /// <summary>
+    /// QA-CLOCK: the send window is a Europe/Rome calendar window (today .. today + SendWindowDays) at any hour of the run.
+    /// At 23:30 UTC Rome is already on the next day: an instant bound (now + days) dropped the last day of the window.
+    /// </summary>
+    [Theory]
+    [InlineData("2026-09-24T12:00:00Z")]
+    [InlineData("2026-09-24T23:30:00Z")]
+    public async Task ExecuteAsync_ArrivalOnLastDayOfWindow_IssuesLinkAtAnyHourUtc(string utcNow)
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse(utcNow, CultureInfo.InvariantCulture));
+        await using var db = CreateContext();
+        var lastDay = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 3, clock.TodayInRome());
+        var beyond = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 4, clock.TodayInRome());
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: clock);
+
+        await harness.RunSendJobAsync();
+
+        Assert.True(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == lastDay.Id));
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyond.Id));
     }
 
     [Fact]
@@ -117,7 +140,7 @@ public class GuestCheckInSendJobTests
             BookingId = bookingId,
             GuestId = db.Bookings.Single(b => b.Id == bookingId).GuestId,
             Status = AlloggiatiWebStatus.InviatoManualmente,
-            ReportedAt = DateTime.UtcNow.Date,
+            ReportedAt = TimeProvider.System.TodayInRome(),
         });
         await db.SaveChangesAsync();
         var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
@@ -265,10 +288,17 @@ public class GuestCheckInSendJobTests
         private readonly Mock<IBackgroundJobClient> _jobs = new();
         private readonly string? _publicSiteBaseUrl;
         private readonly IOptions<GuestCheckInOptions> _options;
+        private readonly TimeProvider _clock;
 
-        public Harness(AppDbContext db, EmailSendResult emailResult, string? publicSiteBaseUrl = "https://public.example", int sessionLifetimeDays = 7)
+        public Harness(
+            AppDbContext db,
+            EmailSendResult emailResult,
+            string? publicSiteBaseUrl = "https://public.example",
+            int sessionLifetimeDays = 7,
+            TimeProvider? clock = null)
         {
             _db = db;
+            _clock = clock ?? TimeProvider.System;
             _publicSiteBaseUrl = publicSiteBaseUrl;
             _options = Options.Create(new GuestCheckInOptions { SendWindowDays = 3, SessionLifetimeDays = sessionLifetimeDays });
             Email
@@ -290,7 +320,7 @@ public class GuestCheckInSendJobTests
                         QueuedJobs.Add(call);
                     return Guid.NewGuid().ToString();
                 });
-            CheckIn = new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance, options: _options);
+            CheckIn = new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance, options: _options, timeProvider: _clock);
         }
 
         public Mock<IEmailService> Email { get; } = new();
@@ -313,7 +343,8 @@ public class GuestCheckInSendJobTests
                 new StayGuestService(_db, new AlloggiatiCodeTableService(_db, NullLogger<AlloggiatiCodeTableService>.Instance)),
                 EmailTestHelpers.Links(_publicSiteBaseUrl),
                 _options,
-                Mock.Of<ILogger<GuestCheckInSendJob>>()).ExecuteAsync();
+                Mock.Of<ILogger<GuestCheckInSendJob>>(),
+                _clock).ExecuteAsync();
 
         public async Task RunQueuedEmailJobsAsync()
         {
@@ -343,8 +374,10 @@ public class GuestCheckInSendJobTests
     private static async Task<Booking> SeedBookingEntityAsync(
         AppDbContext context,
         BookingStatus status,
-        int daysUntilCheckIn)
+        int daysUntilCheckIn,
+        DateTime? today = null)
     {
+        var romeToday = today ?? TimeProvider.System.TodayInRome();
         var orgId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var guestId = Guid.NewGuid();
@@ -390,8 +423,8 @@ public class GuestCheckInSendJobTests
             Guest = guest,
             Property = property,
             Org = org,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(daysUntilCheckIn),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(daysUntilCheckIn + 2),
+            CheckInDate = romeToday.AddDays(daysUntilCheckIn),
+            CheckOutDate = romeToday.AddDays(daysUntilCheckIn + 2),
             Status = status,
             Source = BookingSource.Direct,
             NumberOfGuests = 1,

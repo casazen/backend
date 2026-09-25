@@ -1,12 +1,15 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-public class OssRevenueTracker(AppDbContext dbContext) : IOssRevenueTracker
+public class OssRevenueTracker(AppDbContext dbContext, TimeProvider? timeProvider = null) : IOssRevenueTracker
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private const decimal OssThresholdEur = 10_000m;
 
     public async Task<bool> IsOssThresholdReachedAsync(CancellationToken cancellationToken = default)
@@ -32,7 +35,9 @@ public class OssRevenueTracker(AppDbContext dbContext) : IOssRevenueTracker
 
     private async Task<PlatformBillingMetrics> GetOrCreateMetricsAsync(CancellationToken cancellationToken)
     {
-        var year = DateTime.UtcNow.Year;
+        // Calendar year in Europe/Rome (QA-CLOCK): from 23:00 UTC on 31 December Rome is already in the new year, and the
+        // UTC year would still add its revenue to the old one.
+        var year = _clock.TodayInRome().Year;
         var metrics = await dbContext.PlatformBillingMetrics.FirstOrDefaultAsync(m => m.Id == 1, cancellationToken);
         if (metrics is null)
         {

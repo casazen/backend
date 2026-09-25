@@ -40,6 +40,7 @@ public class MultiTenancyModelTests
     [InlineData(typeof(OtaIntegration))]
     [InlineData(typeof(PricingAdapterConfig))]
     [InlineData(typeof(PricingHistory))]
+    [InlineData(typeof(SeasonalPriceSuggestion))]
     [InlineData(typeof(AlloggiatiWebReport))]
     [InlineData(typeof(GuestCheckInSession))]
     public void TenantEntity_HasRequiredRestrictedOrgIdFkAndIndex(Type clrType)

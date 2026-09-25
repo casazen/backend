@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -35,8 +36,8 @@ public class AdminServiceTests
         return new AppDbContext(options, new AuthenticatedTenantContext(callerOrgId));
     }
 
-    private static AdminService CreateService(AppDbContext ctx) =>
-        new AdminService(ctx, new Mock<ILogger<AdminService>>().Object);
+    private static AdminService CreateService(AppDbContext ctx, TimeProvider? clock = null) =>
+        new AdminService(ctx, new Mock<ILogger<AdminService>>().Object, clock);
 
     /// <summary>Authenticated tenant context: the global query filter is ON and scoped to one org.</summary>
     private sealed class AuthenticatedTenantContext(Guid orgId) : ITenantContext
@@ -46,6 +47,28 @@ public class AdminServiceTests
     }
 
     // ─── GetStatsAsync ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// QA-CLOCK: the check-in date is date-only and is compared with today's date in Europe/Rome. At 23:30 UTC Rome is
+    /// already on the next day: the comparison with the UTC instant counted today's arrivals as upcoming, at noon it did not.
+    /// </summary>
+    [Theory]
+    [InlineData("2026-09-25T12:00:00Z")]
+    [InlineData("2026-09-24T23:30:00Z")]
+    public async Task GetStatsAsync_ArrivalsTodayAndTomorrow_CountsOnlyTomorrowAsUpcomingAtAnyHourUtc(string utcNow)
+    {
+        using var ctx = CreateInMemoryContext(nameof(GetStatsAsync_ArrivalsTodayAndTomorrow_CountsOnlyTomorrowAsUpcomingAtAnyHourUtc) + utcNow);
+        var today = new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);
+        ctx.Bookings.AddRange(
+            new Booking { OrgId = Guid.NewGuid(), PropertyId = Guid.NewGuid(), GuestId = Guid.NewGuid(), Status = BookingStatus.Confirmed, CheckInDate = today, CheckOutDate = today.AddDays(2) },
+            new Booking { OrgId = Guid.NewGuid(), PropertyId = Guid.NewGuid(), GuestId = Guid.NewGuid(), Status = BookingStatus.Confirmed, CheckInDate = today.AddDays(1), CheckOutDate = today.AddDays(3) });
+        await ctx.SaveChangesAsync();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse(utcNow, CultureInfo.InvariantCulture));
+
+        var stats = await CreateService(ctx, clock).GetStatsAsync();
+
+        Assert.Equal(1, stats.UpcomingCheckIns);
+    }
 
     [Fact]
     public async Task GetStatsAsync_EmptyDatabase_ReturnsZeroStats()

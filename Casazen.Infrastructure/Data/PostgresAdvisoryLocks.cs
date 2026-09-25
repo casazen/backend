@@ -71,6 +71,12 @@ internal static class PostgresAdvisoryLocks
         OrgConnectAccount = 1_012,
 
         /// <summary>
+        /// Seasonal price suggestions of one property (key: property id): the nightly job, the manual recalculation and a
+        /// configuration save never upsert the same dates at once (PC-15).
+        /// </summary>
+        SeasonalPriceSuggestions = 1_019,
+
+        /// <summary>
         /// Compliance status of one property (key: property id): a host request and the nightly check suspend it once
         /// and email the host once (CO-06, A5-20).
         /// </summary>

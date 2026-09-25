@@ -96,31 +96,6 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     }
 
     [PostgresFact]
-    public async Task GetPricingHistory_DateOnlyFilters_Returns200WithEntriesOfBothBoundaryDays()
-    {
-        var owner = $"auth0|fd06-pricing-{Guid.NewGuid():N}";
-        var property = await factory.SeedPropertyAsync(owner);
-        await SeedPricingHistoryAtAsync(
-            property,
-            new DateTime(2026, 8, 31, 2, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 9, 1, 2, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 9, 10, 2, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 9, 11, 2, 0, 0, DateTimeKind.Utc));
-        using var client = factory.CreateAuthenticatedClient(owner);
-
-        var response = await client.GetAsync(
-            $"/api/pricing-adapter/history/{property.Id}?from=2026-09-01&to=2026-09-10");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        var dates = body.GetProperty("items").EnumerateArray()
-            .Select(i => i.GetProperty("adaptationDate").GetDateTime().ToUniversalTime().Date)
-            .OrderBy(d => d)
-            .ToList();
-        Assert.Equal([new DateTime(2026, 9, 1), new DateTime(2026, 9, 10)], dates);
-    }
-
-    [PostgresFact]
     public async Task CreateLease_DateOnlyPayload_Returns201AndStoresUtcMidnight()
     {
         var owner = $"auth0|fd06-lease-{Guid.NewGuid():N}";

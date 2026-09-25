@@ -518,7 +518,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         var property = await _factory.SeedPropertyAsync(owner);
         using var client = LandlordClient(owner);
         var leaseId = await DriveToSignedAsync(client, property.Id);
-        var registrationDate = DateTime.UtcNow.Date.AddDays(-2);
+        var registrationDate = TimeProvider.System.TodayInRome().AddDays(-2);
 
         var response = await DeclareManualAsync(client, leaseId, "  24091234567890123-000001 ", registrationDate);
 
@@ -575,7 +575,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         using var client = LandlordClient(owner);
         var leaseId = await DriveToSignedAsync(client, property.Id);
 
-        var response = await DeclareManualAsync(client, leaseId, registrationDate: DateTime.UtcNow.Date.AddDays(3));
+        var response = await DeclareManualAsync(client, leaseId, registrationDate: TimeProvider.System.TodayInRome().AddDays(3));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal("rli_registration_date_in_future", (await ReadJson(response)).GetProperty("code").GetString());
@@ -768,7 +768,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         {
             { new StringContent(registrationCode), "registrationCode" },
             {
-                new StringContent((registrationDate ?? DateTime.UtcNow.Date.AddDays(-1)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                new StringContent((registrationDate ?? TimeProvider.System.TodayInRome().AddDays(-1)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 "registrationDate"
             },
         };
