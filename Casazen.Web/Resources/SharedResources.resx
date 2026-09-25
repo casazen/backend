@@ -144,6 +144,9 @@
   <data name="GuestHasOpenBookings" xml:space="preserve">
     <value>L'ospite ha prenotazioni in corso o future: non può essere eliminato finché non sono concluse o annullate.</value>
   </data>
+  <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
+    <value>Periodo non valido: usa CurrentMonth, PreviousMonth, Last30Days o CurrentYear.</value>
+  </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Profilo fornitore non trovato</value>
   </data>
@@ -1095,5 +1098,8 @@
   </data>
   <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
     <value>Per il {0} questo contribuente ha già un altro immobile con la cedolare al 21%: l'aliquota ridotta vale per una sola unità. Assegna prima il 26% a uno dei due immobili.</value>
+  </data>
+  <data name="DashboardInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
   </data>
 </root>

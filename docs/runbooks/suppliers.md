@@ -4,7 +4,8 @@ Task SU-01 (audit defects A4-03, A4-04, A4-21, A4-24) and SU-02 (claim after log
 unverified email: A4-02, A4-23, A1-13). Section 9: one profile per email and the admin repair `fix-orphaned` (SU-14,
 A4-22). The code is in place; the product owner sets the pilot comuni (section 3),
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
-service request is tied to (task SU-07, decision D2).
+service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
+KPIs from the service requests (SU-11, decision D12).
 
 ## 1. How a supplier joins
 
@@ -366,7 +367,8 @@ the migration there are no duplicate emails left, so a run normally only does th
 1. **Duplicates** (same email, trimmed, case-insensitive, blank excluded) are merged into one **keeper**: the
    `Active` profile, then the one an account holds (`User.SupplierOrgId` or `User.OrgId`), then the oldest. For each
    duplicate, in one savepoint per group:
-   - service requests (`ServiceRequests.SupplierOrgId`, any state) and legacy supplier jobs move to the keeper;
+   - service requests (`ServiceRequests.SupplierOrgId`, any state) move to the keeper (the legacy supplier jobs were
+     removed by SU-11, section 10);
    - availability days move; a day the keeper already has keeps the keeper's value (the duplicate's is dropped);
    - the duplicate's categories and comuni the keeper lacks are appended (bio, photos, VAT, calendar settings of the
      duplicate are not copied: the keeper's profile is the one in use);
@@ -384,7 +386,7 @@ the migration there are no duplicate emails left, so a run normally only does th
    email exist: the supplier links the profile from *Collega il profilo* (section 2).
 
 Response (200): `dryRun`, `profilesScanned`, `duplicateGroups`, `duplicatesMerged`, `serviceRequestsMoved`, `merges[]`
-(`keeperOrgId`, `duplicateOrgId`, `serviceRequestsMoved`, `supplierJobsMoved`, `availabilityDaysMoved`,
+(`keeperOrgId`, `duplicateOrgId`, `serviceRequestsMoved`, `availabilityDaysMoved`,
 `availabilityDaysDropped`, `categoriesAdded`, `comuniAdded`, `supplierLinksMoved`, `orgMembersMoved`, `devicesMoved`,
 `duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
 `manualInterventions[]` (`code`, `orgIds`, `userIds`). Ids and counts only: no email, no name.
@@ -412,6 +414,69 @@ user ids, counts; warning level when applied, information in a dry run), and a s
       `manualInterventions`. Then `?dryRun=false` to apply the link repairs.
 - [ ] Self-serve registration with the email of an existing supplier (another case): 409 with *Esiste già un profilo
       fornitore con questa email…*; no second profile.
+
+## 10. Supplier jobs removed; dashboard KPIs from the service requests — SU-11
+
+Audit defect A4-15, decision D12: `SupplierJob` (with QR check-in and a price) had no creation point on the host side
+(`POST /api/supplier/jobs` assigned the job to the calling supplier itself), yet the supplier dashboard counted it. A
+supplier with five completed service requests read "0 completati". Supplier work is now a `ServiceRequest` only.
+
+### 10.1 What is gone
+
+| Removed | Now |
+|---|---|
+| `GET/POST /api/supplier/jobs`, `POST /api/supplier/jobs/{id}/accept\|check-in\|check-out` (`SupplierJobController`) | 404 |
+| `GET /api/public/check-in/{jobId}`, `POST …/check-in`, `POST …/check-out` (`PublicCheckInController`, anonymous, rate limit `PublicSupplierCheckIn`) | 404; the policy and `RateLimiting__PublicSupplierCheckIn__*` are gone (a leftover Railway variable is ignored) |
+| Web page `/check-in/:jobId` (`supplier-check-in.tsx`) | route removed: the SPA shows its not-found page; old QR codes lead nowhere |
+| Entity `SupplierJob`, enum `SupplierJobStatus`, `QrCodeService`, table `SupplierJobs` | migration `RemoveSupplierJobs` drops the table (Down recreates it **empty**) |
+| `supplierJobsMoved` in the `fix-orphaned` report (section 9.3) | removed: only the service requests are moved |
+| `totalJobs`, `completedJobs`, `upcomingJobs` in `GET /api/supplier/dashboard` | replaced by `GET /api/supplier/dashboard/kpis` (10.2) |
+
+The guest online check-in (`/api/public/checkin/{token}`, web `/checkin/:token`) is another feature and is unchanged.
+
+### 10.2 `GET /api/supplier/dashboard/kpis?period=` (policy `RequireSupplier`)
+
+Counts the service requests whose `SupplierOrgId` is the caller's supplier org (never another supplier's, whatever the
+host org). `period`: `CurrentMonth` (default), `PreviousMonth`, `Last30Days`, `CurrentYear`; any other value is 400
+`validation_error`. Dates are Europe/Rome calendar days: "today" comes from `TimeProvider` (`RomeCalendar`), the period
+is `[00:00 Rome of from, 00:00 Rome of the day after to)`.
+
+| Field | Meaning |
+|---|---|
+| `period`, `from`, `to`, `timeZone` | the resolved period (`YYYY-MM-DD`, both ends included) and `Europe/Rome` |
+| `completed` | `Completato` or `Pagato` with `CompletedAt` in the period (a paid request counts on its completion date) |
+| `rejected` | `Rifiutato` with the rejection in the period (`UpdatedAt`: `Rifiutato` is a final state, nothing updates it later) |
+| `awaitingAcceptance` | `Richiesto` now, whatever the period |
+| `upcoming` | `PresoInCarico` or `InCorso` now (taken, not completed), whatever the period |
+| `totalRequests` | every request ever assigned to the supplier org: 0 shows the web dashboard's empty state |
+
+A request completed before `CompletedAt` existed (none expected: the field dates from the first service request
+migration) has no completion date and is never counted as completed in a period.
+
+### 10.3 Before the deploy: rows in `SupplierJobs`
+
+No web, app or host flow ever created a supplier job: rows can only come from direct calls of the removed
+`POST /api/supplier/jobs` (tests, demos). The migration drops the table **with its rows** at startup. Check each
+environment first (read-only):
+
+```sql
+SELECT count(*) AS jobs, min("CreatedAt") AS first, max("CreatedAt") AS last FROM "SupplierJobs";
+```
+
+If the count is not 0 and the rows matter, export them before deploying, e.g. with `psql`:
+
+```sql
+\copy (SELECT * FROM "SupplierJobs") TO 'supplier_jobs_backup.csv' WITH CSV HEADER
+```
+
+A rollback of the migration (`dotnet ef database update <previous migration>`) recreates an **empty** table.
+
+### 10.4 After a deploy
+
+- [ ] `SELECT to_regclass('"SupplierJobs"');` returns null.
+- [ ] As a supplier with completed requests: the web dashboard shows the completed count of the month, the requests
+      waiting to be taken and the upcoming ones; changing the period reloads the counts.
+- [ ] `GET /api/public/check-in/<any id>` answers 404.
 
 ## Known limits (other tasks)
 

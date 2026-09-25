@@ -90,7 +90,6 @@ public class AdminSuppliersController(
                     KeeperOrgId = m.KeeperOrgId,
                     DuplicateOrgId = m.DuplicateOrgId,
                     ServiceRequestsMoved = m.ServiceRequestsMoved,
-                    SupplierJobsMoved = m.SupplierJobsMoved,
                     AvailabilityDaysMoved = m.AvailabilityDaysMoved,
                     AvailabilityDaysDropped = m.AvailabilityDaysDropped,
                     CategoriesAdded = m.CategoriesAdded,

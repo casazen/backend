@@ -144,6 +144,9 @@
   <data name="GuestHasOpenBookings" xml:space="preserve">
     <value>The guest has ongoing or upcoming bookings: it cannot be deleted until they are completed or cancelled.</value>
   </data>
+  <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
+    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days or CurrentYear.</value>
+  </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Supplier profile not found</value>
   </data>
@@ -1095,5 +1098,8 @@
   </data>
   <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
     <value>For {0} this taxpayer already has another property at the 21% cedolare rate: the reduced rate applies to one unit only. First assign 26% to one of the two properties.</value>
+  </data>
+  <data name="DashboardInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
   </data>
 </root>

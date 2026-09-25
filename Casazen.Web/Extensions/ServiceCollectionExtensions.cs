@@ -260,6 +260,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingService, BookingService>();
         // Public availability of the booking site, same nights as the booking checks (BK-05).
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
+        // Host dashboard KPIs per period and iCal feeds widget (PC-16).
+        services.AddScoped<IHostDashboardService, HostDashboardService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
@@ -363,6 +365,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<SupplierRegistrationOptions>, SupplierRegistrationOptionsValidator>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15).
+        services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
         // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.
@@ -377,7 +381,6 @@ public static class ServiceCollectionExtensions
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
         services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
-        services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
