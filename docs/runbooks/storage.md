@@ -81,7 +81,7 @@ The frontend needs no new variable: photo URLs arrive absolute from the API. Whe
 
 ## 4. Data Protection keys: at-rest encryption certificate
 
-Keys are stored in the `DataProtectionKeys` table. **Without a certificate they are stored in clear text**: whoever can read the table (a database dump, a leaked `postgres` password) can decrypt the protected secrets. The API logs this warning at every startup outside Development/Testing. Setting a certificate is strongly recommended.
+Keys are stored in the `DataProtectionKeys` table. **Without a certificate they are stored in clear text**: whoever can read the table (a database dump, a leaked `postgres` password) can decrypt the protected secrets. Since CO-14 the certificate is **required outside Development/Testing**: the API does not start without it, because the keys now also protect the guest identity documents and the Questura credentials ([`encryption.md`](encryption.md)).
 
 Create one certificate **per environment** on a trusted machine:
 
@@ -113,22 +113,12 @@ Adding the certificate later is safe: keys already stored in clear text stay rea
 
 Note: OTA secrets encrypted **before** FD-07 used keys that were lost with the old containers, so they cannot be recovered. Those integrations must be configured again (the OTA partner APIs are hidden behind a feature flag anyway, decision D10).
 
-### Encrypted database columns (one mechanism)
+### Encrypted database columns
 
-Every encrypted column uses the same mechanism: the EF value converter `EncryptedStringConverter`
-(`Casazen.Infrastructure/Data/Encryption`), built in `AppDbContext.OnModelCreating` from the context's Data Protection
-provider with **one purpose per column family** (never change a purpose: stored values would become unreadable).
-Columns today: `OtaIntegrations.ApiKey/ApiSecret` (purpose `Casazen.OtaIntegration.Secrets`, FD-20) and
-`PropertyICalFeeds.ImportUrl` (purpose `Casazen.PropertyICalFeed.ImportUrl`, PC-11).
-
-- **Adding a column**: `HasConversion(new EncryptedStringConverter(EncryptionProvider, "<purpose>"))` inside the
-  `if (EncryptionProvider is not null)` block, a column wide enough for the payload (about 4/3 of the clear text plus
-  ~90 characters), reads and writes through EF only.
-- **Values already stored in clear**: pass a predicate that recognizes them (`isLegacyPlaintext`, e.g.
-  `PropertyICalFeedUrlEncryption.IsLegacyPlaintext`): they stay readable, and a startup step rewrites them through EF
-  (model: `PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync`, called after the migrations in `Program.cs`).
-- **Model cache**: the model is cached per Data Protection provider (`DataProtectionModelCacheKeyFactory`), so a
-  context never encrypts with another context's provider (the FD-20 limit, fixed in PC-11).
+Moved to [`encryption.md`](encryption.md): the list of the encrypted columns (OTA secrets, iCal import URLs, guest
+identity documents, Questura credentials), the one mechanism (`EncryptedStringConverter`,
+`DataProtectionModelCacheKeyFactory`, `EncryptedColumns`), the startup encryption of values stored in clear, key
+rotation and how to add a column.
 
 ## 5. Migrating files from the old local storage (optional)
 
