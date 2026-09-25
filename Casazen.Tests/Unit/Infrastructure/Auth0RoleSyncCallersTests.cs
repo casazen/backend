@@ -131,21 +131,70 @@ public class Auth0RoleSyncCallersTests
     }
 
     [Fact]
-    public async Task OrgBillingAdmin_NoJwtRoleAndOnlyLongRentMembership_DoesNotSucceed()
+    public async Task OrgBillingAdmin_NoJwtRoleAndOnlyLongRentMembership_Succeeds()
     {
+        // PL-16 (A1-36): a landlord with only long-term leases administers the plan and billing of its org.
         const string sub = "auth0|billing-ltr";
+        var handler = CreateBillingHandler(sub, LongRentLandlordSnapshot());
+        var context = BillingContext(sub);
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task OrgBillingAdmin_LongTermLandlordJwtRoleWithoutMembership_Succeeds()
+    {
+        const string sub = "auth0|billing-ltr-jwt";
         var handler = CreateBillingHandler(sub, new UserAuthorizationSnapshot(
             Exists: true,
             IsActive: true,
             Role: UserRole.LongTermLandlord,
             SupplierOrgId: null,
-            Memberships: [new ContextAccess("long-rent", "Affitti lungo termine", "long_term_landlord", ["lease.read"], "/app/long-rent/leases")]));
-        var context = BillingContext(sub);
+            Memberships: []));
+        var context = BillingContext(sub, "LongTermLandlord");
+
+        await handler.HandleAsync(context);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task OrgBillingAdmin_StaffCollaboratorWithLongRentMembership_DoesNotSucceed()
+    {
+        const string sub = "auth0|billing-staff";
+        var handler = CreateBillingHandler(sub, LongRentLandlordSnapshot());
+        var context = BillingContext(sub, "Staff");
 
         await handler.HandleAsync(context);
 
         Assert.False(context.HasSucceeded);
     }
+
+    [Fact]
+    public async Task OrgBillingAdmin_OnlySupplierMembership_DoesNotSucceed()
+    {
+        const string sub = "auth0|billing-supplier";
+        var handler = CreateBillingHandler(sub, new UserAuthorizationSnapshot(
+            Exists: true,
+            IsActive: true,
+            Role: UserRole.Supplier,
+            SupplierOrgId: null,
+            Memberships: [new ContextAccess("supplier", "Fornitore", "supplier", ["supplier.inbox.read"], "/supplier/inbox")]));
+        var context = BillingContext(sub, "Supplier");
+
+        await handler.HandleAsync(context);
+
+        Assert.False(context.HasSucceeded);
+    }
+
+    private static UserAuthorizationSnapshot LongRentLandlordSnapshot() => new(
+        Exists: true,
+        IsActive: true,
+        Role: UserRole.LongTermLandlord,
+        SupplierOrgId: null,
+        Memberships: [new ContextAccess("long-rent", "Affitti lungo termine", "long_term_landlord", ["lease.read"], "/app/long-rent/leases")]);
 
     [Fact]
     public async Task OrgBillingAdmin_AdminWithoutHostOnboarding_FailsWithOnboardingRequired()
@@ -187,9 +236,11 @@ public class Auth0RoleSyncCallersTests
         return new OrgBillingAdminAuthorizationHandler(orgResolver.Object, store.Object, onboarding.Object);
     }
 
-    private static AuthorizationHandlerContext BillingContext(string sub)
+    private static AuthorizationHandlerContext BillingContext(string sub, params string[] jwtRoles)
     {
-        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", sub)], "TestAuth"));
+        var claims = new List<Claim> { new("sub", sub) };
+        claims.AddRange(jwtRoles.Select(role => new Claim(ClaimTypes.Role, role)));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         return new AuthorizationHandlerContext([new OrgBillingAdminRequirement()], principal, resource: null);
     }
 

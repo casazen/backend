@@ -24,20 +24,35 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
 
     public PropertyICalIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    [Fact]
-    public async Task PublicExport_ReturnsCalendarWithoutPii()
+    // PC-12 (A2-22): the imported block (SUMMARY "Reserved" from the OTA) is not sent back, the manual block is exported
+    // as an all-day event with the neutral localized SUMMARY, never with the text the host typed.
+    [Theory]
+    [InlineData(null, "Occupato")]
+    [InlineData("en", "Booked")]
+    public async Task PublicExport_ImportedAndManualBlocks_ExportsOnlyTheManualBlockWithANeutralSummary(
+        string? acceptLanguage, string expectedSummary)
     {
-        var (_, _, exportToken, _) = await SeedFeedWithBlockAsync();
+        var (_, propertyId, exportToken, _) = await SeedFeedWithBlockAsync();
+        var manualBlockId = await SeedManualBlockAsync(propertyId, "Mario Rossi mario.rossi@example.com");
 
         using var client = _factory.CreateClient();
+        if (acceptLanguage is not null)
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(acceptLanguage);
         var response = await client.GetAsync($"/api/public/ical/{exportToken}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("text/calendar", response.Content.Headers.ContentType?.MediaType ?? string.Empty);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("BEGIN:VCALENDAR", body, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("BEGIN:VEVENT", body, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Reserved", body);
+        var lines = body.Split("\r\n");
+        Assert.Contains("BEGIN:VCALENDAR", lines);
+        Assert.Single(lines, l => l == "BEGIN:VEVENT");
+        Assert.Contains($"UID:block-{manualBlockId}", lines);
+        Assert.Contains($"SUMMARY:{expectedSummary}", lines);
+        Assert.Contains("DTSTART;VALUE=DATE:20260801", lines);
+        Assert.Contains("DTEND;VALUE=DATE:20260803", lines);
+        Assert.DoesNotContain("Reserved", body);
+        Assert.DoesNotContain("seed-block-1", body);
+        Assert.DoesNotContain("Mario", body);
         Assert.DoesNotContain("@", body);
     }
 
@@ -271,6 +286,25 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
                     && (Guid)job.Args[0] == feedId),
                 It.IsAny<IState>()),
             times);
+
+    private async Task<Guid> SeedManualBlockAsync(Guid propertyId, string summary)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var orgId = await db.Properties.IgnoreQueryFilters().Where(p => p.Id == propertyId).Select(p => p.OrgId).SingleAsync();
+        var block = new CalendarBlock
+        {
+            PropertyId = propertyId,
+            OrgId = orgId,
+            Source = CalendarBlockSource.Manual,
+            StartUtc = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndUtc = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc),
+            Summary = summary,
+        };
+        db.CalendarBlocks.Add(block);
+        await db.SaveChangesAsync();
+        return block.Id;
+    }
 
     private async Task<(string OwnerId, Guid PropertyId, Guid ExportToken, Guid FeedId)> SeedFeedWithBlockAsync(string? lastError = null)
     {

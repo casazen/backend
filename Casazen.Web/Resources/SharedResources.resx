@@ -177,6 +177,9 @@
   <data name="BillingReturnUrlNotAllowed" xml:space="preserve">
     <value>L'indirizzo di ritorno del pagamento deve essere una pagina di questo sito.</value>
   </data>
+  <data name="BillingReturnPathNotAllowed" xml:space="preserve">
+    <value>La pagina di ritorno del pagamento deve essere la pagina del piano o della fatturazione di questo sito.</value>
+  </data>
   <data name="BillingReturnUrlNotConfigured" xml:space="preserve">
     <value>Il pagamento dei piani non è ancora configurato in questo ambiente.</value>
   </data>
@@ -401,6 +404,10 @@
   </data>
   <data name="ICalFeedInvalidLabel" xml:space="preserve">
     <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
+  </data>
+  <data name="ICalExportBusySummary" xml:space="preserve">
+    <value>Occupato</value>
+    <comment>SUMMARY of every event of the public iCal export read by the OTAs (PC-12): neutral, never a name.</comment>
   </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>Il CIN non è nel formato ufficiale: IT, 6 cifre del codice ISTAT del comune, 2 caratteri di categoria e fino a 8 caratteri alfanumerici (es. IT015146C2ABCDEFGH). Spazi e trattini vengono ignorati.</value>
