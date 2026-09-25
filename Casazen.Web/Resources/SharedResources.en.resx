@@ -661,6 +661,12 @@
   <data name="SupplierAccountAlreadyLinked" xml:space="preserve">
     <value>Your account is already linked to another supplier profile.</value>
   </data>
+  <data name="SupplierEmailTaken" xml:space="preserve">
+    <value>A supplier profile with this email already exists. If it is yours, sign in with this email and use «Link the profile».</value>
+  </data>
+  <data name="SupplierMaintenanceConflict" xml:space="preserve">
+    <value>Another operation changed the supplier profiles during the repair: nothing was saved. Try again.</value>
+  </data>
   <data name="CheckInGuestsCount" xml:space="preserve">
     <value>Enter from 1 to {0} guests.</value>
   </data>

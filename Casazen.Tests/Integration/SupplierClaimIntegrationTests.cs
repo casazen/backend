@@ -192,7 +192,8 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         using var client = factory.CreateAuthenticatedClient(userId, email: linkedEmail);
         Assert.Equal(HttpStatusCode.OK, (await ClaimAsync(client, linkedToken)).StatusCode);
 
-        var (_, otherToken) = await RegisterAnonymouslyAsync(linkedEmail);
+        // Another anonymous registration (another email: one profile per email since SU-14).
+        var (_, otherToken) = await RegisterAnonymouslyAsync(NewEmail("claim-linked-other"));
         var response = await ClaimAsync(client, otherToken);
 
         await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_account_already_linked");
@@ -251,7 +252,7 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
     [PostgresTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task SupplierEndpoint_SupplierRoleWithEmailOfUnclaimedProfile_NeverLinksItAutomatically(bool emailVerified)
+    public async Task SupplierEndpoint_SupplierRoleWithEmailOfUnclaimedProfile_Returns409WithoutLinkOrDuplicate(bool emailVerified)
     {
         var email = NewEmail($"claim-auto-{emailVerified}");
         var orgId = await SeedUnclaimedProfileAsync(email);
@@ -278,7 +279,9 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
 
         var response = await client.GetAsync("/api/supplier/profile/activation");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // Neither linked by email (A4-23) nor given a second profile with the same email (SU-14, A4-22): the account is
+        // told to link the existing profile with the claim.
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_email_taken");
         await AssertNotLinkedAsync(userId, orgId);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -286,6 +289,8 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
             // The invite is accepted only with its token, never consumed by the email.
             Assert.False((await db.SupplierInviteRecords.SingleAsync(i => i.Id == inviteId)).IsUsed);
             Assert.False(await db.Users.AnyAsync(u => u.SupplierOrgId == orgId || u.OrgId == orgId));
+            Assert.Equal(1, await db.SupplierProfiles.CountAsync(sp => sp.Email == email));
+            Assert.Null((await db.Users.SingleAsync(u => u.Id == userId)).SupplierOrgId);
         }
     }
 

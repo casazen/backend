@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260925023421_AddCinAlertStates")]
+    [Migration("20260925025138_AddCinAlertStates")]
     partial class AddCinAlertStates
     {
         /// <inheritdoc />

@@ -770,6 +770,9 @@ public class AppDbContext(
             .IsUnique()
             .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
+        // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
+        // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
+
         modelBuilder.Entity<SupplierAvailability>()
             .HasOne(sa => sa.SupplierProfile)
             .WithMany()
