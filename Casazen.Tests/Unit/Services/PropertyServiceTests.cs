@@ -147,10 +147,13 @@ public class PropertyServiceTests
     }
 
     [Fact]
-    public async Task DeletePropertyAsync_WithValidId_DeletesProperty()
+    public async Task DeletePropertyAsync_NoUpcomingConfirmedBooking_SoftDeletesProperty()
     {
         // Arrange
         var propertyId = Guid.NewGuid();
+        _mockRepository
+            .Setup(x => x.HasUpcomingConfirmedBookingsAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
         _mockRepository.Setup(x => x.DeleteAsync(propertyId)).Returns(Task.CompletedTask);
 
         // Act
@@ -159,6 +162,21 @@ public class PropertyServiceTests
         // Assert
         Assert.True(result);
         _mockRepository.Verify(x => x.DeleteAsync(propertyId), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeletePropertyAsync_HasUpcomingConfirmedBooking_ThrowsConflictAndKeepsProperty()
+    {
+        // Arrange (PC-05, A2-18): a guest already booked must never lose their stay to a delete.
+        var propertyId = Guid.NewGuid();
+        _mockRepository
+            .Setup(x => x.HasUpcomingConfirmedBookingsAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act & Assert
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => _service.DeletePropertyAsync(propertyId));
+        Assert.Equal(PropertyService.HasUpcomingBookingsCode, error.Code);
+        _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]

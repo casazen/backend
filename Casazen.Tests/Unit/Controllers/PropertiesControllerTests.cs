@@ -5,6 +5,7 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -738,6 +739,47 @@ public class PropertiesControllerTests
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(propertyId), Times.Once);
+        VerifyHostAuthorization(existingProperty, SharedPropertyOperations.Write);
+    }
+
+    [Fact]
+    public async Task Delete_PropertyHasUpcomingBookings_PropagatesTheConflictWithoutSwallowingIt()
+    {
+        // The 409 property_has_upcoming_bookings (PC-05) is turned into ProblemDetails by the error middleware
+        // (FD-05): the controller must not catch it.
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property { Id = propertyId, Name = "Booked", OwnerId = userId };
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.DeletePropertyAsync(propertyId))
+            .ThrowsAsync(new DomainConflictException(PropertyService.HasUpcomingBookingsCode, "PropertyHasUpcomingBookings"));
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => _controller.Delete(propertyId));
+
+        Assert.Equal(PropertyService.HasUpcomingBookingsCode, error.Code);
+    }
+
+    [Fact]
+    public async Task Delete_AsAdminCrossOwner_LogsPrivilegedAccess()
+    {
+        var adminId = "auth0|admin_user";
+        SetupUserClaims(adminId, ["Admin"]);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var ownerId = "auth0|owner";
+        var existingProperty = new Property { Id = propertyId, Name = "Someone else's", OwnerId = ownerId };
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.DeletePropertyAsync(propertyId)).ReturnsAsync(true);
+
+        await _controller.Delete(propertyId);
+
+        _mockAuditService.Verify(
+            x => x.LogPrivilegedPropertyAccessAsync(adminId, propertyId, ownerId, "Property.Delete", default),
+            Times.Once);
     }
 
     [Fact]

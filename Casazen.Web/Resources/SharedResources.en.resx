@@ -339,6 +339,9 @@
   <data name="PropertySlugTaken" xml:space="preserve">
     <value>This web address (slug) is already used by another property in your organization.</value>
   </data>
+  <data name="PropertyHasUpcomingBookings" xml:space="preserve">
+    <value>This property cannot be deleted: it has a confirmed booking, or a guest already checked in, whose check-out has not passed yet.</value>
+  </data>
   <data name="BookingUpdateInvalid" xml:space="preserve">
     <value>The booking cannot be changed this way: check the dates, the number of guests and the booking status.</value>
   </data>

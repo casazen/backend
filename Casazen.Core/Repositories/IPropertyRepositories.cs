@@ -24,7 +24,22 @@ public interface IPropertyRepository
     IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null);
     Task<Property> AddAsync(Property property);
     Task<Property> UpdateAsync(Property property);
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): sets <see cref="Property.IsDeleted"/> and
+    /// <see cref="Property.DeletedAt"/> instead of removing the row, so its fiscal history (tourist tax, CIN,
+    /// cedolare secca) stays intact. A no-op when the property does not exist or is already deleted. Callers must
+    /// check <see cref="HasUpcomingConfirmedBookingsAsync"/> first: this method does not enforce that rule.
+    /// </summary>
     Task DeleteAsync(Guid id);
+
+    /// <summary>
+    /// True when the property has a confirmed or checked-in stay whose check-out is today (Europe/Rome) or later
+    /// (<see cref="Casazen.Core.Services.StayKpiRules.UpcomingCheckOut"/>, PC-05): a deletion must be refused while
+    /// one exists, so a guest already booked never loses their stay.
+    /// </summary>
+    Task<bool> HasUpcomingConfirmedBookingsAsync(Guid propertyId, DateTime todayInRome, CancellationToken cancellationToken = default);
+
     Task<bool> ExistsAsync(Guid id);
 
     /// <summary>

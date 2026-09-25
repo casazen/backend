@@ -362,8 +362,23 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row is kept (<c>IsDeleted</c>/<c>DeletedAt</c>), never removed, so
+    /// its historical bookings and fiscal data (tourist tax, CIN, cedolare secca) stay intact for the Italian
+    /// compliance retention; it just stops appearing in every normal read (the property lists, the plan's used slots).
+    /// Refused with 409 <c>property_has_upcoming_bookings</c> while a confirmed or checked-in stay has not checked out
+    /// yet: a property with a guest already booked cannot simply disappear.
+    /// </summary>
+    /// <response code="204">Property soft-deleted.</response>
+    /// <response code="403">The caller may not delete this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="409"><c>property_has_upcoming_bookings</c>: a confirmed or checked-in stay has not checked out yet.</response>
     [HttpDelete("{id}")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -375,15 +390,19 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to delete property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
             return Forbid();
         }
 
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Delete");
+
+        // 409 property_has_upcoming_bookings turned into ProblemDetails by the error middleware (FD-05).
         await propertyService.DeletePropertyAsync(id);
-        logger.LogInformation("Property deleted: {PropertyId} by user {UserId}", id, userId);
+        logger.LogInformation("Property soft-deleted: {PropertyId} by user {UserId}", id, userId);
         return NoContent();
     }
 

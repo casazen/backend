@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -118,6 +120,69 @@ public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplication
             "Questo indirizzo web (slug) è già usato da un altro immobile della tua organizzazione.",
             problem.GetProperty("detail").GetString());
         Assert.DoesNotContain("Slug already in use", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task DeleteProperty_ConfirmedBookingNotYetCheckedOut_Returns409PropertyHasUpcomingBookings()
+    {
+        var owner = $"auth0|error-contract-delete-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(owner);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var guest = new Guest
+            {
+                OrgId = property.OrgId,
+                FirstName = "Anna",
+                LastName = "Verdi",
+                Email = $"anna.{Guid.NewGuid():N}@example.com",
+            };
+            db.Guests.Add(guest);
+            db.Bookings.Add(new Booking
+            {
+                PropertyId = property.Id,
+                OrgId = property.OrgId,
+                GuestId = guest.Id,
+                CheckInDate = DateTime.UtcNow.Date.AddDays(10),
+                CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+                NumberOfGuests = 2,
+                Status = BookingStatus.Confirmed,
+                Source = BookingSource.Direct,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+        var response = await client.DeleteAsync($"/api/properties/{property.Id}");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadJsonAsync(response);
+        Assert.Equal("property_has_upcoming_bookings", problem.GetProperty("code").GetString());
+
+        // The property must still be there, reachable and unchanged.
+        var stillThere = await client.GetAsync($"/api/properties/{property.Id}");
+        Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteProperty_NoUpcomingBookings_Returns204AndSoftDeletesIt()
+    {
+        var owner = $"auth0|error-contract-delete-ok-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+
+        var response = await client.DeleteAsync($"/api/properties/{property.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var afterDelete = await client.GetAsync($"/api/properties/{property.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, afterDelete.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var raw = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property.Id);
+        Assert.True(raw.IsDeleted);
+        Assert.NotNull(raw.DeletedAt);
     }
 
     private static object UpdateBody(string name, string? slug) => new

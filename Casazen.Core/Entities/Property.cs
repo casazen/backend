@@ -158,6 +158,18 @@ public class Property : ITenantOwned
 
     // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
 
+    /// <summary>
+    /// Soft delete (PC-05, A2-18): set instead of removing the row, so fiscal history tied to the property (tourist
+    /// tax reports, CIN, Alloggiati communications, cedolare secca / <see cref="PropertyFiscalYear"/>) stays intact for
+    /// Italian compliance retention. Excluded from every normal read by the <c>SoftDelete</c> global query filter
+    /// (<c>AppDbContext.SoftDeleteQueryFilter</c>); reporting/compliance code reaches a deleted property explicitly with
+    /// <c>IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])</c>. Never physically deleted.
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>UTC instant the property was soft-deleted (PC-05); null while it is not.</summary>
+    public DateTime? DeletedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

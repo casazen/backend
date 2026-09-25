@@ -339,6 +339,9 @@
   <data name="PropertySlugTaken" xml:space="preserve">
     <value>Questo indirizzo web (slug) è già usato da un altro immobile della tua organizzazione.</value>
   </data>
+  <data name="PropertyHasUpcomingBookings" xml:space="preserve">
+    <value>Questo immobile non può essere eliminato: ha una prenotazione confermata o con ospiti già in casa il cui check-out non è ancora passato.</value>
+  </data>
   <data name="BookingUpdateInvalid" xml:space="preserve">
     <value>La prenotazione non può essere modificata così: controlla le date, il numero di ospiti e lo stato della prenotazione.</value>
   </data>

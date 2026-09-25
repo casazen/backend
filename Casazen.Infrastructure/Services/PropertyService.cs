@@ -98,9 +98,22 @@ public class PropertyService(
             throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
+    /// <summary>
+    /// 409: the property has a confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a host
+    /// cannot make a property with a guest already booked disappear. A property without one is soft-deleted, its
+    /// historical bookings and fiscal data kept and reachable, never removed.
+    /// </summary>
+    public const string HasUpcomingBookingsCode = "property_has_upcoming_bookings";
+
     public async Task<bool> DeletePropertyAsync(Guid id)
     {
         logger.LogInformation("Deleting property: {Id}", id);
+        if (await repository.HasUpcomingConfirmedBookingsAsync(id, _clock.TodayInRome()))
+        {
+            logger.LogWarning("Delete of property {Id} refused: it has an upcoming confirmed or checked-in stay", id);
+            throw new DomainConflictException(HasUpcomingBookingsCode, "PropertyHasUpcomingBookings");
+        }
+
         await repository.DeleteAsync(id);
         return true;
     }

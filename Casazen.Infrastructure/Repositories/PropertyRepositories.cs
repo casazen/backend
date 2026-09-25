@@ -4,6 +4,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+// StayKpiRules.UpcomingCheckOut (Casazen.Core.Services) is reused, not reimplemented (PC-05).
 
 namespace Casazen.Infrastructure.Repositories;
 
@@ -90,13 +91,22 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     public async Task DeleteAsync(Guid id)
     {
+        // Soft delete (PC-05, A2-18): the row stays for fiscal history (tourist tax, CIN, cedolare secca), just
+        // excluded from every normal read by the SoftDelete query filter. Never Remove() it.
         var property = await context.Properties.FindAsync(id);
-        if (property != null)
+        if (property != null && !property.IsDeleted)
         {
-            context.Properties.Remove(property);
+            property.IsDeleted = true;
+            property.DeletedAt = DateTime.UtcNow;
+            property.UpdatedAt = DateTime.UtcNow;
             await context.SaveChangesAsync();
         }
     }
+
+    public Task<bool> HasUpcomingConfirmedBookingsAsync(Guid propertyId, DateTime todayInRome, CancellationToken cancellationToken = default) =>
+        context.Bookings
+            .Where(b => b.PropertyId == propertyId)
+            .AnyAsync(StayKpiRules.UpcomingCheckOut(todayInRome), cancellationToken);
 
     public async Task<bool> ExistsAsync(Guid id)
     {

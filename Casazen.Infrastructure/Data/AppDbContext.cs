@@ -312,12 +312,13 @@ public class AppDbContext(
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
-        // Unique constraint on property address for active properties only
-        // Allows soft-deleted properties to be re-created at same address
+        // Unique constraint on property address for active properties only.
+        // Allows a soft-deleted property (PC-05, IsDeleted) to be re-created at the same address: the filter also
+        // excludes it, not just a paused one (IsActive = false, PC-03), so its address frees up on delete too.
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
             .IsUnique()
-            .HasFilter("\"IsActive\" = true");
+            .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
 
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.OrgId, p.Slug })
@@ -1028,11 +1029,24 @@ public class AppDbContext(
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
         });
 
+        // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
+        // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
+        // admin cross-org reads) still excludes deleted properties, and IgnoreQueryFilters([SoftDeleteQueryFilter])
+        // (fiscal/compliance reporting) still respects tenant isolation.
+        modelBuilder.Entity<Property>().HasQueryFilter(SoftDeleteQueryFilter, p => !p.IsDeleted);
+
         ApplyTenantQueryFilters(modelBuilder);
     }
 
     /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
     public const string TenantQueryFilter = "Tenant";
+
+    /// <summary>
+    /// Key of the global soft-delete filter on <see cref="Property"/> (PC-05), for
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> where a deleted property's historical data must still be
+    /// reachable (fiscal reports, compliance exports).
+    /// </summary>
+    public const string SoftDeleteQueryFilter = "SoftDelete";
 
     private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
         .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;
