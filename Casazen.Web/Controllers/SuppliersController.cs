@@ -39,13 +39,15 @@ public class SuppliersController(
     /// <c>inviteToken</c> the caller must be signed in (web app Auth0 login) with the invited email, and the comune is
     /// the invited one; the invite is then used up. A signed-in caller is linked to the new org and gets the Auth0
     /// <c>Supplier</c> role (additive). Errors: 422 with the codes of <see cref="ISupplierService.RegisterAsync"/>,
-    /// 429 <c>rate_limited</c>.
+    /// 409 <c>supplier_email_taken</c> (a supplier profile already has the email, SU-14: its owner links it with
+    /// <c>POST /api/suppliers/claim</c>), 429 <c>rate_limited</c>.
     /// </summary>
     [HttpPost("register")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicRegistration)]
     [ProducesResponseType(typeof(SupplierRegisterResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SupplierRegisterResponse>> Register(
