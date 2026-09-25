@@ -29,8 +29,9 @@ using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Data Protection keys persisted in the database (not the ephemeral container disk): FD-07 / A9-04.
-builder.Services.AddCasazenDataProtection(builder.Configuration);
+// Data Protection keys persisted in the database (not the ephemeral container disk): FD-07 / A9-04. Outside
+// Development/Testing the key-encryption certificate is required, the startup fails without it (CO-14).
+builder.Services.AddCasazenDataProtection(builder.Configuration, builder.Environment);
 
 // Database
 builder.Services.AddCasazenDatabase(builder.Configuration);
@@ -263,8 +264,10 @@ if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("T
     var db = migrateScope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 
-    // iCal import URLs saved in clear before PC-11 (A2-20) are rewritten encrypted; a no-op once done.
-    await PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync(
+    // Values stored in clear before their column was encrypted (iCal import URLs PC-11, guest documents CO-14) are
+    // rewritten encrypted; a no-op once done. Stops the startup when Data Protection is missing
+    // (docs/runbooks/encryption.md).
+    await EncryptedColumns.EncryptLegacyPlaintextAsync(
         db, migrateScope.ServiceProvider.GetRequiredService<ILogger<Program>>());
 }
 
