@@ -48,6 +48,13 @@ public class Org
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Opt-in (A1-22, A1-23): <see cref="ContactEmail"/> is included on the public booking site
+    /// (<c>PublicOrgDto</c>) only when this is true. Off by default — the org must actively choose to
+    /// publish it (GDPR, see <c>.claude/rules/compliance.md</c>); never inferred from having an email set.
+    /// </summary>
+    public bool ContactEmailPublic { get; set; }
+
     /// <summary>Non-secret Stripe customer reference (billing). Set by <c>spec-saas-billing</c>.</summary>
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }

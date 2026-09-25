@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -101,6 +102,160 @@ public class OrgServiceTests
 
         Assert.NotNull(updated);
         Assert.Equal(PlanTier.Scale, updated!.PlanTier);
+    }
+
+    // ── UpdateSettingsAsync (A1-22, A1-23) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidInput_UpdatesNameDisplayNameSlugAndContactEmail()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_ValidInput_UpdatesNameDisplayNameSlugAndContactEmail));
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity
+        {
+            Id = orgId,
+            Name = "La mia organizzazione",
+            Slug = "org-auth0-abc123",
+            DisplayName = "La mia organizzazione",
+            ContactEmail = string.Empty,
+            PlanTier = PlanTier.Starter,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var service = new OrgService(db);
+        var updated = await service.UpdateSettingsAsync(
+            orgId, "  Villa Parco Rentals  ", "Villa Parco Rentals", "host@example.com", contactEmailPublic: true);
+
+        Assert.NotNull(updated);
+        Assert.Equal("Villa Parco Rentals", updated!.Name);
+        Assert.Equal("Villa Parco Rentals", updated.DisplayName);
+        Assert.Equal("villa-parco-rentals", updated.Slug);
+        Assert.Equal("host@example.com", updated.ContactEmail);
+        Assert.True(updated.ContactEmailPublic);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_UnknownOrg_ReturnsNull()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_UnknownOrg_ReturnsNull));
+        var service = new OrgService(db);
+
+        var updated = await service.UpdateSettingsAsync(
+            Guid.NewGuid(), "Name", "slug", "x@y.it", contactEmailPublic: false);
+
+        Assert.Null(updated);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SlugAlreadyUsedByAnotherOrg_ThrowsConflict()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_SlugAlreadyUsedByAnotherOrg_ThrowsConflict));
+        var takenOrgId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        db.Orgs.AddRange(
+            new OrgEntity
+            {
+                Id = takenOrgId,
+                Name = "Other",
+                Slug = "villa-mare",
+                DisplayName = "Other",
+                ContactEmail = "other@example.com",
+                PlanTier = PlanTier.Starter,
+                IsActive = true,
+            },
+            new OrgEntity
+            {
+                Id = orgId,
+                Name = "Mine",
+                Slug = "org-mine",
+                DisplayName = "Mine",
+                ContactEmail = "mine@example.com",
+                PlanTier = PlanTier.Starter,
+                IsActive = true,
+            });
+        await db.SaveChangesAsync();
+
+        var service = new OrgService(db);
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            service.UpdateSettingsAsync(orgId, "Mine", "villa-mare", "mine@example.com", contactEmailPublic: false));
+
+        Assert.Equal("org_slug_taken", ex.Code);
+        var reloaded = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == orgId);
+        Assert.Equal("org-mine", reloaded.Slug);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SameSlugAsBefore_DoesNotThrowConflict()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_SameSlugAsBefore_DoesNotThrowConflict));
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity
+        {
+            Id = orgId,
+            Name = "Mine",
+            Slug = "villa-mare",
+            DisplayName = "Mine",
+            ContactEmail = "mine@example.com",
+            PlanTier = PlanTier.Starter,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var service = new OrgService(db);
+        var updated = await service.UpdateSettingsAsync(
+            orgId, "Mine Updated", "Villa Mare", "mine@example.com", contactEmailPublic: false);
+
+        Assert.NotNull(updated);
+        Assert.Equal("villa-mare", updated!.Slug);
+        Assert.Equal("Mine Updated", updated.Name);
+    }
+
+    [Theory]
+    [InlineData("book")]
+    [InlineData("admin")]
+    public async Task UpdateSettingsAsync_ReservedSlug_ThrowsDomainRuleException(string reserved)
+    {
+        await using var db = CreateDb($"{nameof(UpdateSettingsAsync_ReservedSlug_ThrowsDomainRuleException)}-{reserved}");
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity
+        {
+            Id = orgId,
+            Name = "Mine",
+            Slug = "org-mine",
+            DisplayName = "Mine",
+            ContactEmail = "mine@example.com",
+            PlanTier = PlanTier.Starter,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var service = new OrgService(db);
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.UpdateSettingsAsync(orgId, "Mine", reserved, "mine@example.com", contactEmailPublic: false));
+
+        Assert.Equal("org_slug_reserved", ex.Code);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ContactEmailPublicDefaultsFalse_OnNewOrg()
+    {
+        // A1-22/A1-23: the opt-in is off unless the caller explicitly turns it on.
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_ContactEmailPublicDefaultsFalse_OnNewOrg));
+        var orgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity
+        {
+            Id = orgId,
+            Name = "Mine",
+            Slug = "org-mine",
+            DisplayName = "Mine",
+            ContactEmail = string.Empty,
+            PlanTier = PlanTier.Starter,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.False((await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == orgId)).ContactEmailPublic);
     }
 
     // ── GetPublicBySlugAsync ──────────────────────────────────────────────────────

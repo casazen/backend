@@ -279,6 +279,39 @@ public class PublicOrgControllerTests
         Assert.Equal("villa-parco", dto.Slug);
     }
 
+    // ── ContactEmail opt-in (A1-22, A1-23) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task GetOrg_ContactEmailPublicIsFalse_OmitsContactEmail()
+    {
+        // GDPR: the contact email is never leaked on the anonymous public endpoint without an explicit opt-in.
+        var org = BuildOrg("no-email-org");
+        org.ContactEmailPublic = false;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("no-email-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("no-email-org", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PublicOrgDto>(ok.Value);
+        Assert.Null(dto.ContactEmail);
+    }
+
+    [Fact]
+    public async Task GetOrg_ContactEmailPublicIsTrue_IncludesContactEmail()
+    {
+        var org = BuildOrg("with-email-org");
+        org.ContactEmailPublic = true;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("with-email-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("with-email-org", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PublicOrgDto>(ok.Value);
+        Assert.Equal("contact@casazen-milan.it", dto.ContactEmail);
+    }
+
     private static OrgEntity BuildOrg(string slug) => new()
     {
         Id = Guid.NewGuid(),
@@ -288,6 +321,9 @@ public class PublicOrgControllerTests
         LogoUrl = "https://cdn.example.com/logo.png",
         ThemeColor = "#2563eb",
         ContactEmail = "contact@casazen-milan.it",
+        // Existing tests assert on ContactEmail being surfaced by the branding DTO: opted in by default here
+        // (A1-22/A1-23 add a dedicated off-by-default coverage below).
+        ContactEmailPublic = true,
         PlanTier = PlanTier.Pro,
         StripeCustomerId = "cus_secret",
         StripeConnectedAccountId = "acct_secret",

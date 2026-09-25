@@ -381,6 +381,33 @@
   <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
     <value>CasaZen subdomains are not available yet: use the CasaZen path or a custom domain.</value>
   </data>
+  <data name="OrgNameRequired" xml:space="preserve">
+    <value>The organization name is required.</value>
+  </data>
+  <data name="OrgNameTooLong" xml:space="preserve">
+    <value>The organization name cannot exceed 200 characters.</value>
+  </data>
+  <data name="OrgSlugRequired" xml:space="preserve">
+    <value>The web address (slug) is required.</value>
+  </data>
+  <data name="OrgSlugTooLong" xml:space="preserve">
+    <value>The web address (slug) cannot exceed 100 characters.</value>
+  </data>
+  <data name="OrgContactEmailRequired" xml:space="preserve">
+    <value>The contact email is required.</value>
+  </data>
+  <data name="OrgContactEmailTooLong" xml:space="preserve">
+    <value>The contact email cannot exceed 255 characters.</value>
+  </data>
+  <data name="OrgSlugInvalid" xml:space="preserve">
+    <value>This web address (slug) is not valid: use letters, numbers and hyphens.</value>
+  </data>
+  <data name="OrgSlugReserved" xml:space="preserve">
+    <value>This web address (slug) is reserved for the platform: choose another one.</value>
+  </data>
+  <data name="OrgSlugTaken" xml:space="preserve">
+    <value>This web address (slug) is already used by another organization.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
   </data>

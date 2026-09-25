@@ -381,6 +381,33 @@
   <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
     <value>I sottodomini CasaZen non sono ancora disponibili: usa il percorso CasaZen o un dominio personalizzato.</value>
   </data>
+  <data name="OrgNameRequired" xml:space="preserve">
+    <value>Il nome dell'organizzazione è obbligatorio.</value>
+  </data>
+  <data name="OrgNameTooLong" xml:space="preserve">
+    <value>Il nome dell'organizzazione non può superare i 200 caratteri.</value>
+  </data>
+  <data name="OrgSlugRequired" xml:space="preserve">
+    <value>L'indirizzo web (slug) è obbligatorio.</value>
+  </data>
+  <data name="OrgSlugTooLong" xml:space="preserve">
+    <value>L'indirizzo web (slug) non può superare i 100 caratteri.</value>
+  </data>
+  <data name="OrgContactEmailRequired" xml:space="preserve">
+    <value>L'email di contatto è obbligatoria.</value>
+  </data>
+  <data name="OrgContactEmailTooLong" xml:space="preserve">
+    <value>L'email di contatto non può superare i 255 caratteri.</value>
+  </data>
+  <data name="OrgSlugInvalid" xml:space="preserve">
+    <value>Questo indirizzo web (slug) non è valido: usa lettere, numeri e trattini.</value>
+  </data>
+  <data name="OrgSlugReserved" xml:space="preserve">
+    <value>Questo indirizzo web (slug) è riservato alla piattaforma: scegline un altro.</value>
+  </data>
+  <data name="OrgSlugTaken" xml:space="preserve">
+    <value>Questo indirizzo web (slug) è già usato da un'altra organizzazione.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
   </data>

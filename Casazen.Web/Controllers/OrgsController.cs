@@ -18,6 +18,64 @@ public class OrgsController(
     IEntitlementService entitlementService,
     IOrgService orgService) : ControllerBase
 {
+    /// <summary>
+    /// Returns the caller org's editable identity: name, public slug and contact email with its publication
+    /// opt-in (A1-22, A1-23). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>: unlike
+    /// <c>OrgSummaryDto</c> (any member, via <c>/api/users/me</c>) this carries the contact email.
+    /// </summary>
+    [HttpGet("me/settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgSettingsDto>> GetMySettings(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var org = await orgService.GetByIdAsync(orgId.Value, cancellationToken);
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(OrgSettingsDto.FromOrg(org));
+    }
+
+    /// <summary>
+    /// Updates the caller org's name, public slug and contact email, including whether the contact email is
+    /// published on the public booking site (A1-22, A1-23). 422 <c>org_slug_invalid</c> / <c>org_slug_reserved</c>
+    /// for an unusable slug, 409 <c>org_slug_taken</c> when another org already has it.
+    /// </summary>
+    [HttpPut("me/settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OrgSettingsDto>> UpdateMySettings(
+        [FromBody] UpdateOrgSettingsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var updated = await orgService.UpdateSettingsAsync(
+            orgId.Value,
+            dto.Name,
+            dto.Slug,
+            dto.ContactEmail,
+            dto.ContactEmailPublic,
+            cancellationToken);
+        if (updated is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(OrgSettingsDto.FromOrg(updated));
+    }
+
     /// <summary>Returns available plan tiers and property limits.</summary>
     [HttpGet("plans")]
     [AllowAnonymous]

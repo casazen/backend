@@ -1,9 +1,12 @@
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -167,6 +170,67 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         org.VatIdValidatedAt = vatValidatedAt;
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        return org;
+    }
+
+    /// <remarks>
+    /// The slug is checked for uniqueness and written under a transaction-scoped advisory lock keyed on the
+    /// candidate value (same <see cref="PostgresAdvisoryLocks.Scope.OrgSlug"/> as <see cref="EnsureOrgForUserAsync"/>),
+    /// so two hosts racing for the same slug never both succeed. Name and contact email need no lock: an org row
+    /// is only ever written by its own owner/admin (policy <c>OrgBillingAdmin</c>), never concurrently by design.
+    /// </remarks>
+    public async Task<Org?> UpdateSettingsAsync(
+        Guid orgId,
+        string name,
+        string slug,
+        string contactEmail,
+        bool contactEmailPublic,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return null;
+
+        var trimmedName = name.Trim();
+        var normalizedSlug = OrgSlugHelper.NormalizeRequired(slug);
+        var normalizedEmail = contactEmail.Trim();
+        var slugChanged = !string.Equals(org.Slug, normalizedSlug, StringComparison.Ordinal);
+
+        // Disposing an uncommitted transaction rolls it back, so a thrown DomainException below needs no manual
+        // cleanup; null when the slug is unchanged (no lock needed) or the provider is not PostgreSQL.
+        await using var transaction = slugChanged
+            ? await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                dbContext, cancellationToken, (PostgresAdvisoryLocks.Scope.OrgSlug, normalizedSlug))
+            : null;
+
+        if (slugChanged)
+        {
+            var taken = await dbContext.Orgs.AsNoTracking()
+                .AnyAsync(o => o.Id != orgId && o.Slug == normalizedSlug, cancellationToken);
+            if (taken)
+                throw new DomainConflictException("org_slug_taken", "OrgSlugTaken");
+
+            org.Slug = normalizedSlug;
+        }
+
+        org.Name = trimmedName;
+        org.DisplayName = trimmedName;
+        org.ContactEmail = normalizedEmail;
+        org.ContactEmailPublic = contactEmailPublic;
+        org.UpdatedAt = DateTime.UtcNow;
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new DomainConflictException("org_slug_taken", "OrgSlugTaken");
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
         return org;
     }
 

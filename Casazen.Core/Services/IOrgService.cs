@@ -59,4 +59,20 @@ public interface IOrgService
     Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the org's editable identity (A1-22, A1-23): <c>Name</c> (mirrored into <c>DisplayName</c> — there is
+    /// no separate branding UI yet, both are shown as the org's name), its public <c>Slug</c> (sanitized, validated,
+    /// checked for uniqueness) and its <c>ContactEmail</c>, whose publication on the public booking site is opt-in
+    /// (<c>ContactEmailPublic</c>, off by default — GDPR, see <c>.claude/rules/compliance.md</c>). Returns
+    /// <c>null</c> when the org does not exist. Throws <c>DomainRuleException</c> for an unusable slug and
+    /// <c>DomainConflictException</c> when it is already used by another org.
+    /// </summary>
+    Task<Org?> UpdateSettingsAsync(
+        Guid orgId,
+        string name,
+        string slug,
+        string contactEmail,
+        bool contactEmailPublic,
+        CancellationToken cancellationToken = default);
 }
