@@ -46,8 +46,8 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         var payload = BuildPayload(
             property.Id,
-            checkIn: DateTime.UtcNow.Date.AddDays(10),
-            checkOut: DateTime.UtcNow.Date.AddDays(5));
+            checkIn: TimeProvider.System.TodayInRome().AddDays(10),
+            checkOut: TimeProvider.System.TodayInRome().AddDays(5));
         var response = await PostDirectBookingAsync(client, payload);
 
         // BK-06: a business rule of the checkout is a 422 ProblemDetails with a code the frontend translates.
@@ -360,7 +360,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
-        Assert.NotNull(booking.CheckInToken);
 
         var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
         Assert.Equal(PaymentStatus.Completed, payment.Status);
@@ -513,7 +512,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         var first = await CreateCheckoutAsync(client, BuildPayload(property.Id));
         var second = await CreateCheckoutAsync(
             client,
-            BuildPayload(property.Id, checkIn: DateTime.UtcNow.Date.AddDays(60), checkOut: DateTime.UtcNow.Date.AddDays(62)));
+            BuildPayload(property.Id, checkIn: TimeProvider.System.TodayInRome().AddDays(60), checkOut: TimeProvider.System.TodayInRome().AddDays(62)));
 
         // Another guest's token, a made-up token, a guessed id: the same answer, nothing to enumerate.
         foreach (var (bookingId, token) in new[]
@@ -788,7 +787,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         string guestCountry = "IT",
         PaymentOption paymentOption = PaymentOption.Immediate)
     {
-        var inDate = checkIn ?? DateTime.UtcNow.Date.AddDays(30);
+        var inDate = checkIn ?? TimeProvider.System.TodayInRome().AddDays(30);
         var outDate = checkOut ?? inDate.AddDays(4);
         return new
         {

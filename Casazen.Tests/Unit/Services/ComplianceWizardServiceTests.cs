@@ -4,6 +4,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Repositories;
@@ -407,8 +408,8 @@ public class ComplianceWizardServiceTests
             PropertyId = pending.Id,
             OrgId = org.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
-            CheckOutDate = DateTime.UtcNow.Date,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(-2),
+            CheckOutDate = TimeProvider.System.TodayInRome(),
             Status = BookingStatus.CheckedIn,
             NumberOfGuests = 2,
             BasePrice = 100,

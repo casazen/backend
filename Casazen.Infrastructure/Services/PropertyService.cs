@@ -3,6 +3,7 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Pricing;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -21,8 +22,11 @@ public class PropertyService(
     IPropertyRepository repository,
     IPropertyComplianceStatusService complianceStatus,
     CinDeadlineCalendar cinDeadline,
-    ILogger<PropertyService> logger) : IPropertyService
+    ILogger<PropertyService> logger,
+    TimeProvider? timeProvider = null) : IPropertyService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
     public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
 
@@ -300,7 +304,9 @@ public class PropertyService(
         var property = await repository.GetPropertyDetailAsync(propertyId)
             ?? throw new InvalidOperationException($"Property {propertyId} not found");
 
-        var now = DateTime.UtcNow;
+        // Check-in and check-out are date-only values: they are compared with today's date in Europe/Rome (QA-CLOCK),
+        // never with the UTC instant, which between 22:00 and 24:00 UTC already counted the arrivals of today as upcoming.
+        var today = _clock.TodayInRome();
         return new PropertyDetailResponse
         {
             Id = property.Id,
@@ -339,14 +345,14 @@ public class PropertyService(
             {
                 TotalBookings = property.Bookings.Count,
                 UpcomingBookings = property.Bookings.Count(b =>
-                    b.CheckInDate > now && b.Status == BookingStatus.Confirmed),
+                    b.CheckInDate > today && b.Status == BookingStatus.Confirmed),
                 ActiveBookings = property.Bookings.Count(b =>
-                    b.CheckInDate <= now && b.CheckOutDate > now && b.Status == BookingStatus.CheckedIn),
+                    b.CheckInDate <= today && b.CheckOutDate > today && b.Status == BookingStatus.CheckedIn),
                 NextCheckIn = property.Bookings
-                    .Where(b => b.CheckInDate > now)
+                    .Where(b => b.CheckInDate > today)
                     .MinBy(b => b.CheckInDate)?.CheckInDate,
                 NextCheckOut = property.Bookings
-                    .Where(b => b.CheckOutDate > now)
+                    .Where(b => b.CheckOutDate > today)
                     .MinBy(b => b.CheckOutDate)?.CheckOutDate
             },
             PricingAdapterSummary = property.PricingAdapterConfig == null
@@ -355,7 +361,11 @@ public class PropertyService(
                 {
                     IsEnabled = property.PricingAdapterConfig.IsEnabled,
                     LastAdaptedAt = property.PricingAdapterConfig.LastAdaptedAt,
-                    NextScheduledRunAt = property.PricingAdapterConfig.NextScheduledRunAt
+                    NextRunOn = property.PricingAdapterConfig.IsEnabled
+                        ? SeasonalSuggestionSchedule.NextRunOn(
+                            property.PricingAdapterConfig.AdaptationFrequency,
+                            property.PricingAdapterConfig.LastAdaptedAt)
+                        : null
                 }
         };
     }

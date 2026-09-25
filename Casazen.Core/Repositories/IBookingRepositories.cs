@@ -5,12 +5,12 @@ namespace Casazen.Core.Repositories;
 public interface IBookingRepository
 {
     Task<Booking?> GetByIdAsync(Guid id);
-    Task<Booking?> GetByCheckInTokenAsync(Guid checkInToken);
     Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId);
     Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId);
     Task<IEnumerable<Booking>> GetAllAsync();
     /// <summary>
-    /// Bookings of the property in the range that take their dates: not cancelled and, when
+    /// Bookings of the property shown by the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>
+    /// (stay dates, both included: <see cref="Services.HostCalendarRange.BookingShownIn"/>) that take their dates: not cancelled and, when
     /// <paramref name="directPendingTtlMinutes"/> is given, not expired checkout holds
     /// (<see cref="Services.CheckoutHolds.OccupiesDates"/>, BK-21).
     /// </summary>

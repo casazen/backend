@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Options;
@@ -25,6 +26,48 @@ public class PropertyServiceGetDetailTests
             Mock.Of<IPropertyComplianceStatusService>(),
             new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
             new Mock<ILogger<PropertyService>>().Object);
+    }
+
+    /// <summary>
+    /// QA-CLOCK: check-in and check-out are date-only values, compared with today's date in Europe/Rome. At 23:30 UTC Rome
+    /// is already on the next day: the comparison with the UTC instant counted today's arrival as upcoming and today's
+    /// departure as still active, while at noon it did not.
+    /// </summary>
+    [Theory]
+    [InlineData("2026-09-25T12:00:00Z")]
+    [InlineData("2026-09-24T23:30:00Z")]
+    public async Task GetPropertyDetailAsync_StaysAroundToday_SummarizesByRomeDateAtAnyHourUtc(string utcNow)
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse(utcNow, CultureInfo.InvariantCulture));
+        var service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), clock),
+            Mock.Of<ILogger<PropertyService>>(),
+            clock);
+        var today = new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);
+        var propertyId = Guid.NewGuid();
+        var property = new Property { Id = propertyId, OwnerId = "auth0|owner123", Name = "Villa Roma" };
+        Booking Stay(DateTime checkIn, DateTime checkOut, BookingStatus status) => new()
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId,
+            GuestId = Guid.NewGuid(),
+            CheckInDate = checkIn,
+            CheckOutDate = checkOut,
+            Status = status,
+        };
+        property.Bookings.Add(Stay(today, today.AddDays(2), BookingStatus.Confirmed));
+        property.Bookings.Add(Stay(today.AddDays(-3), today, BookingStatus.CheckedIn));
+        property.Bookings.Add(Stay(today.AddDays(5), today.AddDays(7), BookingStatus.Confirmed));
+        _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
+
+        var summary = (await service.GetPropertyDetailAsync(propertyId)).BookingsSummary;
+
+        Assert.Equal(1, summary.UpcomingBookings);
+        Assert.Equal(0, summary.ActiveBookings);
+        Assert.Equal(today.AddDays(5), summary.NextCheckIn);
+        Assert.Equal(today.AddDays(2), summary.NextCheckOut);
     }
 
     [Fact]
@@ -110,6 +153,7 @@ public class PropertyServiceGetDetailTests
     {
         var propertyId = Guid.NewGuid();
         var now = DateTime.UtcNow;
+        var lastComputed = new DateTime(2026, 9, 23, 2, 0, 0, DateTimeKind.Utc);
         var property = new Property
         {
             Id = propertyId,
@@ -124,8 +168,8 @@ public class PropertyServiceGetDetailTests
             {
                 PropertyId = propertyId,
                 IsEnabled = true,
-                LastAdaptedAt = now.AddHours(-2),
-                NextScheduledRunAt = now.AddHours(22)
+                AdaptationFrequency = "weekly",
+                LastAdaptedAt = lastComputed,
             }
         };
 
@@ -134,8 +178,9 @@ public class PropertyServiceGetDetailTests
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
         Assert.True(result.PricingAdapterSummary.IsEnabled);
-        Assert.Equal(now.AddHours(-2), result.PricingAdapterSummary.LastAdaptedAt);
-        Assert.Equal(now.AddHours(22), result.PricingAdapterSummary.NextScheduledRunAt);
+        Assert.Equal(lastComputed, result.PricingAdapterSummary.LastAdaptedAt);
+        // PC-15: next computation by Rome date, a week after the last one.
+        Assert.Equal(new DateOnly(2026, 9, 30), result.PricingAdapterSummary.NextRunOn);
     }
 
     [Fact]

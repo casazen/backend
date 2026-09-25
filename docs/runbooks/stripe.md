@@ -60,7 +60,7 @@ subscription back to its plan through the same variables: a price not listed her
 ### Return pages and allow-list
 
 Stripe Checkout and the billing portal send the browser back to the web app, always on `App__PublicSiteBaseUrl` (the
-public domain of the environment, SE-02 / decision D3, no domain in code):
+public domain of the environment, SE-02 / decision D3, no domain in code). By default:
 
 | Page | URL |
 |---|---|
@@ -68,13 +68,27 @@ public domain of the environment, SE-02 / decision D3, no domain in code):
 | Checkout abandoned | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=cancel` |
 | Billing portal "return" link | `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan` |
 
+**Page of the context the user started from (PL-16).** `POST /api/billing/checkout-session` (field `returnPath`) and
+`POST /api/billing/portal-session` (optional body `{ "returnPath": … }`) take the page to come back to, a path of this
+allow-list only (`PublicSiteLinks.BillingReturnPagePaths`, exact match, no query string):
+
+| `returnPath` | Shell |
+|---|---|
+| `/app/short-rent/settings/plan` (default), `/app/short-rent/settings/billing` | short-rent (host) |
+| `/app/long-rent/settings/plan`, `/app/long-rent/settings/billing` | long-rent (landlord with only long-term leases) |
+
+The backend builds `{App__PublicSiteBaseUrl}{returnPath}?checkout=success|cancel` (portal: `{App__PublicSiteBaseUrl}{returnPath}`).
+Anything else (another page, an absolute URL, `//host`, a query string) answers **400 `validation_error`** before any
+change. The web app sends the page it is on, so a Vercel preview too comes back to the right shell (on the public domain
+of the environment). The frontend mirror of the list is `src/lib/billing-routes.ts`: add a page to both.
+
 - `App__PublicSiteBaseUrl` is already required outside Development/Testing (the startup stops without it). In
   Development/Testing without it the checkout and the portal answer **503 `billing_return_url_not_configured`**.
-- `POST /api/billing/checkout-session` still accepts `successUrl` / `cancelUrl` from the client (e.g. a billing page of
-  task PL-12 on another route, or `?session_id={CHECKOUT_SESSION_ID}`), but only **absolute URLs on the same scheme,
-  host and port as `App__PublicSiteBaseUrl`**, without user info. Anything else (another host, `http` instead of `https`,
-  another port, a relative path) answers **400 `validation_error`** before any change. Vercel preview URLs are not in
-  the allow-list: a preview sends no return URL and gets the default pages of the test web app.
+- `POST /api/billing/checkout-session` still accepts `successUrl` / `cancelUrl` from the client (e.g.
+  `?session_id={CHECKOUT_SESSION_ID}`), but only **absolute URLs on the same scheme, host and port as
+  `App__PublicSiteBaseUrl`**, without user info, **on one of the allow-listed pages above** (PL-16; any query string).
+  Anything else (another host, `http` instead of `https`, another port, a relative path, another page of the site)
+  answers **400 `validation_error`** before any change. The web app no longer sends them (it sends `returnPath`).
 - `Billing__PortalReturnUrl` no longer exists: delete it from Railway if it was set.
 - Stripe Dashboard: nothing to configure for the return pages (they are sent with each session). For the portal, the
   "default redirect link" of Settings → Billing → Customer portal is only used by portal links created in the
@@ -104,13 +118,20 @@ fallback of step 1.
    Production, live key in Staging/Development/Testing), `BillingReturnUrlTests` (return pages from the configured
    domain, allow-list), `BillingIntegrationTests` (default pages sent to Stripe, allowed and refused client URLs,
    portal return page, plan without price → 422 and `purchasable: false`, 503 without public domain),
-   `ConfigurationHealthChecksTests`, `NoHardcodedPublicDomainTests` (no Stripe URL left in its allow-list).
+   `ConfigurationHealthChecksTests`, `NoHardcodedPublicDomainTests` (no Stripe URL left in its allow-list),
+   `LongRentBillingAccessPostgresTests` (PL-16: long-term landlord 200 on entitlement, checkout and portal with the
+   long-rent return pages, `Staff` collaborator 403, return path outside the allow-list 400).
 2. Test environment (Staging, test keys): from the plans page start the checkout of Pro and pay with
    `4242 4242 4242 4242`: Stripe sends the browser to `{App__PublicSiteBaseUrl}/app/short-rent/settings/plan?checkout=success`
    and the plan becomes Pro after the webhook. Open the billing portal and click the return link: same page without
    parameters.
 3. `curl -X POST …/api/billing/checkout-session -d '{"planTier":"Pro","billingCountry":"IT","successUrl":"https://example.com/"}'`
-   (with a billing admin token): 400 `validation_error`, no Checkout Session in the Stripe Dashboard.
+   (with a billing admin token): 400 `validation_error`, no Checkout Session in the Stripe Dashboard. Same with
+   `"returnPath":"https://example.com/"` or `"returnPath":"/app/long-rent/leases"`.
+4. Long-term landlord (PL-16): sign in with a user onboarded as "Locazioni di lungo periodo" only; the header badge
+   and the menu "Piano" / "Fatturazione" open `/app/long-rent/settings/plan` and `…/billing` in the long-rent shell;
+   start the checkout of Pro: Stripe sends the browser back to `{App__PublicSiteBaseUrl}/app/long-rent/settings/plan?checkout=success`.
+   The billing portal return link opens the page it was opened from.
 
 ## What the backend does
 
@@ -167,8 +188,19 @@ Stripe Dashboard labels may differ slightly between versions.
 ## Web app: plans, checkout, portal and billing profile (PL-12)
 
 Task PL-12 (audit defect A1-07). Pages of the web app, visible in the menu only to the org billing administrator
-(frontend mirror of the policy `OrgBillingAdmin`: host owner or platform admin; the long-term landlords come with
-PL-16). Anyone else who opens them sees "contatta l'amministratore" and no billing call is made.
+(frontend mirror of the policy `OrgBillingAdmin`: owner of either rental context, i.e. host or long-term landlord
+(PL-16), or platform admin). Anyone else who opens them sees "contatta l'amministratore" and no billing call is made.
+
+**Both rental shells (PL-16, A1-36).** The same pages exist as `/app/short-rent/settings/{plan,billing}` and
+`/app/long-rent/settings/{plan,billing}`: a landlord with only long-term leases manages its plan without the short-rent
+context. The header badge opens the plan page of the current shell (from the admin or supplier shell, the one of the
+user's rental context, short-rent first; no link when the user has none). A plan or billing page of a context the user
+does not work in (old link, a Stripe return page created before PL-16) redirects to the same page of its context, query
+string included. On the backend `GET /api/orgs/me/entitlement` and every billing endpoint use the org policy
+`OrgBillingAdmin`, which admits the owner as `PropertyOwner` or `LongTermLandlord` (JWT role or DB membership of the
+short-rent or long-rent context), a `PropertyManager` and the platform admin; a `Staff` collaborator gets 403.
+The same policy protects the custom domain and the Stripe Connect account endpoints: a long-term landlord can call
+them too, but the web app shows those pages only in the short-rent shell.
 
 | Page | What it does |
 |---|---|
@@ -186,9 +218,8 @@ VAT id: the web app only checks its shape (letters and digits, 4-20 characters, 
 says it will be verified. The real check (VIES) and the VAT/OSS treatment are task PL-13: until then a VAT id of a
 country other than Italy is refused by the backend unless `Vies__StubMode=true`.
 
-Return pages: the plan page sends no `successUrl`/`cancelUrl` (the backend default is that same page). A page on another
-route sends its own URLs only when the app runs on `VITE_PUBLIC_SITE_URL`, which must be the same origin as
-`App__PublicSiteBaseUrl`; a Vercel preview sends none.
+Return pages: the plan and billing pages send their own path as `returnPath` (checkout and portal), so Stripe brings the
+user back to the page and the shell it started from (PL-16); the backend accepts only the allow-listed pages.
 
 Verification on the test environment (Staging, test keys): open "Piano" as a host owner, choose Pro, country Italia,
 pay with `4242 4242 4242 4242`; back on the page the banner goes from "Stiamo verificando" to "Pagamento confermato",
@@ -302,7 +333,7 @@ on the Connect endpoint and for every booking payment reported by the platform e
 | Booking when the payment succeeds | Dates | Result |
 |---|---|---|
 | `Pending`, hold still valid (within `DirectBooking:PendingTtlMinutes`, or payment seen in flight by the expiry job) | no other booking on them | `Confirmed` (as before); guest email "Prenotazione confermata" and host email "Nuova prenotazione confermata" (BK-10, [email.md](email.md#booking-emails-bk-10)) |
-| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared, check-in token issued), the same two emails with a note on the late payment |
+| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared), the same two emails with a note on the late payment |
 | same | taken | stays / becomes `Cancelled` (a pending one gets `CancellationReason = 2`, `DatesUnavailableAtPayment`); **full refund** of what is still refundable; guest email "Date non più disponibili, pagamento rimborsato" once Stripe confirms the refund |
 | `Confirmed`, `CheckedIn`, `CheckedOut` | — | payment `Completed`, booking unchanged |
 

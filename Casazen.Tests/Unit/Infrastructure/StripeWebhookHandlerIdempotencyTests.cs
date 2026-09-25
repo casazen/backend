@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
@@ -116,8 +117,8 @@ public class StripeWebhookHandlerIdempotencyTests
             OrgId = org.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(30),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(34),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(30),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(34),
             NumberOfGuests = 2,
             Status = BookingStatus.Pending,
             Source = BookingSource.Direct,

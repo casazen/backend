@@ -154,16 +154,86 @@ public class PushNotificationServiceTests
     }
 
     [Fact]
-    public async Task SendServiceRequestUpdateAsync_WhenRequestHasNoBooking_RoutesToServiceRequest()
+    public async Task SendServiceRequestUpdateAsync_WhenRequestHasNoBooking_RoutesToPropertyList()
     {
+        // MO-03 (A6-19): the app has no /service-requests/{id} screen; a request without a stay opens the property list.
         await using var db = CreateDb();
         var seed = await SeedRoutingAsync(db, includeBooking: false);
         var service = CreateService(db, out _, out var handler);
 
         await service.SendServiceRequestUpdateAsync(seed.ServiceRequestId, "completata");
 
-        Assert.Equal($"/service-requests/{seed.ServiceRequestId}", GetRoute(handler));
+        Assert.Equal(PushRoutes.Properties, GetRoute(handler));
+        Assert.True(PushRoutes.IsAppRoute(GetRoute(handler)));
         Assert.Null(GetDataValue(handler, "bookingId"));
+    }
+
+    [Theory]
+    [InlineData("booking-alert")]
+    [InlineData("service-request-with-booking")]
+    [InlineData("service-request-without-booking")]
+    [InlineData("checkout-reminder")]
+    public async Task PushPayloads_EverySender_UsesAnAppRouteAndTheDefaultAndroidChannel(string sender)
+    {
+        // MO-03 (A6-19): a tap must open a screen that exists in the app, on the channel the app creates.
+        await using var db = CreateDb();
+        var fixture = await SeedNotificationFixtureAsync(db);
+        var service = CreateService(db, out _, out var handler);
+
+        switch (sender)
+        {
+            case "booking-alert":
+                await service.SendToBookingHostsAsync(new PushNotificationPayload(
+                    "Check-in incompleto", "Villa", "guest-checkin-incomplete", fixture.BookingId, PushRoutes.Booking(fixture.BookingId)));
+                break;
+            case "service-request-with-booking":
+            case "service-request-without-booking":
+                var request = new ServiceRequest
+                {
+                    OrgId = fixture.OrgId,
+                    PropertyId = fixture.PropertyId,
+                    BookingId = sender == "service-request-with-booking" ? fixture.BookingId : null,
+                    SupplierOrgId = fixture.SupplierOrgId,
+                    Category = "cleaning",
+                    Status = ServiceRequestStatus.Rifiutato,
+                };
+                db.ServiceRequests.Add(request);
+                await db.SaveChangesAsync();
+                await service.SendServiceRequestUpdateAsync(request.Id, "rifiutata");
+                break;
+            default:
+                await service.SendCheckoutReminderAsync(fixture.BookingId);
+                break;
+        }
+
+        var route = GetRoute(handler);
+        Assert.True(PushRoutes.IsAppRoute(route), $"'{route}' is not a screen of the app");
+        Assert.Equal(PushNotificationService.AndroidChannelId, GetMessageValue(handler, "channelId"));
+    }
+
+    [Theory]
+    [InlineData("/properties", true)]
+    [InlineData("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301", true)]
+    [InlineData("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301/checkout", true)]
+    [InlineData("/service-requests/3f2504e0-4f89-41d3-9a0c-0305e82c3301", false)]
+    [InlineData("/bookings", false)]
+    [InlineData("/bookings/42", false)]
+    [InlineData("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301/service-request", false)]
+    [InlineData("https://example.com/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsAppRoute_Route_MatchesOnlyScreensOfTheApp(string? route, bool expected)
+    {
+        Assert.Equal(expected, PushRoutes.IsAppRoute(route));
+    }
+
+    [Fact]
+    public void Booking_Guid_BuildsLowerCaseAppRoutes()
+    {
+        var bookingId = Guid.Parse("3F2504E0-4F89-41D3-9A0C-0305E82C3301");
+
+        Assert.Equal("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301", PushRoutes.Booking(bookingId));
+        Assert.Equal("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301/checkout", PushRoutes.BookingCheckout(bookingId));
     }
 
     [Fact]
@@ -420,6 +490,13 @@ public class PushNotificationServiceTests
         };
 
     private static string? GetRoute(CapturingExpoHandler handler) => GetDataValue(handler, "route");
+
+    private static string? GetMessageValue(CapturingExpoHandler handler, string propertyName)
+    {
+        using var document = JsonDocument.Parse(handler.RequestBody!);
+        var first = document.RootElement.EnumerateArray().First();
+        return first.TryGetProperty(propertyName, out var value) ? value.GetString() : null;
+    }
 
     private static string? GetDataValue(CapturingExpoHandler handler, string propertyName)
     {

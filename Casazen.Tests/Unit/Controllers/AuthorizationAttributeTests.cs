@@ -85,7 +85,7 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.Quote), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.DisableConfig), "RequireContext:short-rent:property.write")]
-    [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.TriggerSync), "RequireContext:short-rent:property.write")]
+    [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.Recalculate), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Create), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MatchSupplier), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MarkPaid), "RequireContext:short-rent:property.write")]

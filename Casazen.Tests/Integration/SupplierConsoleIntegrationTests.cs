@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -252,7 +253,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var (supplierId, _) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
         var putResponse = await client.PutAsJsonAsync("/api/supplier/availability", new
         {
             dates = new[]
@@ -280,7 +281,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var (supplierId, _) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
         var response = await client.PutAsJsonAsync("/api/supplier/availability", new
         {
             dates = new[]

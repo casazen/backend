@@ -99,8 +99,8 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
     public async Task CreateCheckoutSession_ReturnUrlsOnPublicSite_AreSentToStripe()
     {
         using var client = await NewBillingAdminClientAsync();
-        const string success = PublicSite + "/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}";
-        const string cancel = PublicSite + "/app/billing?checkout=cancel";
+        const string success = PublicSite + "/app/long-rent/settings/plan?checkout=success&session_id={CHECKOUT_SESSION_ID}";
+        const string cancel = PublicSite + "/app/long-rent/settings/billing?checkout=cancel";
 
         var response = await client.PostAsJsonAsync(
             "/api/billing/checkout-session",
@@ -116,6 +116,8 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
     [InlineData(null, "https://casazen-app.vercel.app.evil.example/app")]
     [InlineData("http://casazen-app.vercel.app/app/short-rent/settings/plan", null)]
     [InlineData(null, "/app/short-rent/settings/plan")]
+    [InlineData("https://casazen-app.vercel.app/app/billing", null)]
+    [InlineData(null, "https://casazen-app.vercel.app/app/long-rent/leases")]
     public async Task CreateCheckoutSession_ReturnUrlOutsidePublicSite_Returns400WithoutCheckout(
         string? successUrl,
         string? cancelUrl)

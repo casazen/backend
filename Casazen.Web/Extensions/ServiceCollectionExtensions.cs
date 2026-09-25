@@ -337,6 +337,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPdfDocumentRenderer, MigraDocPdfDocumentRenderer>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
         services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
+        // LTR tax advisory (LT-08, docs/runbooks/rli.md): every rate and minimum from configuration, validated at startup.
+        services.AddOptions<Casazen.Core.Options.CedolareAdvisoryOptions>()
+            .BindConfiguration(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.CedolareAdvisoryOptions>, Casazen.Core.Options.CedolareAdvisoryOptionsValidator>();
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
@@ -386,7 +391,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
-        // Always registered: OtaManager depends on it (DynamicPricingJob uses OtaManager). With the flag off it has no
+        // Always registered: OtaManager depends on it. With the flag off it has no
         // adapter to return, so nothing can call an OTA partner API.
         services.AddScoped<IChannelFactory, ChannelFactory>();
 

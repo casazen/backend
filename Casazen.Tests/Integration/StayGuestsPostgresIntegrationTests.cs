@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
@@ -45,7 +46,7 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
                 Guest("HeadOfFamily", "Luigi", "Male", "1980-02-01", withDocument: true),
                 Guest("FamilyMember", "Anna", "Female", "1982-06-15"),
                 Guest("FamilyMember", "Marco", "Male", "2014-09-03"),
-                Guest("FamilyMember", "Sofia", "Female", DateTime.UtcNow.Date.AddYears(-3).ToString("yyyy-MM-dd")),
+                Guest("FamilyMember", "Sofia", "Female", TimeProvider.System.TodayInRome().AddYears(-3).ToString("yyyy-MM-dd")),
             },
             gdprConsent = true,
             marketingConsent = false,
@@ -247,7 +248,7 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
                     citizenshipCode = "900000100", citizenshipName = "Italia", documentTypeCode = "TSTPA",
                     documentNumber = "AB123456", documentIssuePlaceCode = "900000001", documentIssuePlaceName = "Milano",
                 },
-                Guest("FamilyMember", "Sofia", "Female", DateTime.UtcNow.Date.AddYears(-8).ToString("yyyy-MM-dd")),
+                Guest("FamilyMember", "Sofia", "Female", TimeProvider.System.TodayInRome().AddYears(-8).ToString("yyyy-MM-dd")),
             },
         }));
         Assert.Equal(HttpStatusCode.OK, replace.StatusCode);
