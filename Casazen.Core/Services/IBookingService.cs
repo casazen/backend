@@ -20,6 +20,10 @@ public interface IBookingService
     Task<Booking> UpdateBookingAsync(Booking booking);
     // Cancellation (with refunds and intents on Stripe) is IBookingCancellationService (BK-02).
     Task<bool> IsPropertyAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? pendingDirectTtlMinutes = null);
+    /// <summary>
+    /// Bookings of the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>: stay dates, both
+    /// included, never converted to a time zone (<see cref="HostCalendarRange"/>, MO-06).
+    /// </summary>
     Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate);
     /// <summary>
     /// Public checkout: a <see cref="BookingStatus.Pending"/> hold with its PaymentIntent / SetupIntent, or a "pay at the

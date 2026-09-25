@@ -302,6 +302,100 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_account_email_missing");
     }
 
+    // ─── One profile per email (SU-14, A4-22) ───────────────────────────────
+
+    [PostgresFact]
+    public async Task Register_EmailOfExistingProfileInAnotherCase_Returns409EmailTakenWithoutSecondProfile()
+    {
+        var email = $"taken-{Guid.NewGuid():N}@test.com";
+        using var anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Created, (await RegisterAsync(anonymous, email, PilotCode)).StatusCode);
+
+        // The registrant lost the claim token and registers again, with the same email written differently.
+        var again = await RegisterAsync(anonymous, $" {email.ToUpperInvariant()} ", PilotCode);
+
+        await AssertProblemAsync(again, HttpStatusCode.Conflict, "supplier_email_taken");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await db.SupplierProfiles.CountAsync(p => p.Email.ToLower() == email));
+    }
+
+    [PostgresFact]
+    public async Task Register_SignedInWithEmailOfExistingProfile_Returns409AndDoesNotLink()
+    {
+        var email = $"taken-signed-{Guid.NewGuid():N}@test.com";
+        using (var anonymous = factory.CreateClient())
+            Assert.Equal(HttpStatusCode.Created, (await RegisterAsync(anonymous, email, PilotCode)).StatusCode);
+        var userId = $"auth0|taken-signed-{Guid.NewGuid():N}";
+        using var client = factory.CreateAuthenticatedClient(userId, email: email);
+
+        var response = await RegisterAsync(client, email, PilotCode);
+
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_email_taken");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await db.SupplierProfiles.CountAsync(p => p.Email == email));
+        Assert.Null((await db.Users.SingleAsync(u => u.Id == userId)).SupplierOrgId);
+    }
+
+    [PostgresFact]
+    public async Task Register_InviteForEmailOfExistingProfile_Returns409AndKeepsInviteUnused()
+    {
+        var (inviteId, token, email) = await SeedInviteAsync();
+        using (var anonymous = factory.CreateClient())
+            Assert.Equal(HttpStatusCode.Created, (await RegisterAsync(anonymous, email, PilotCode)).StatusCode);
+        using var client = factory.CreateAuthenticatedClient($"auth0|taken-invite-{Guid.NewGuid():N}", email: email);
+
+        var response = await RegisterAsync(client, email, PilotCode, token);
+
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_email_taken");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False((await db.SupplierInviteRecords.SingleAsync(i => i.Id == inviteId)).IsUsed);
+        Assert.Equal(1, await db.SupplierProfiles.CountAsync(p => p.Email == email));
+    }
+
+    [PostgresFact]
+    public async Task Register_SameEmailConcurrently_CreatesOneProfileAndAnswers409ToTheOther()
+    {
+        var email = $"race-email-{Guid.NewGuid():N}@test.com";
+        using var first = factory.CreateClient();
+        using var second = factory.CreateClient();
+
+        var responses = await Task.WhenAll(
+            RegisterAsync(first, email, PilotCode),
+            RegisterAsync(second, email.ToUpperInvariant(), PilotCode));
+
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
+        await AssertProblemAsync(
+            Assert.Single(responses, r => r.StatusCode != HttpStatusCode.Created),
+            HttpStatusCode.Conflict,
+            "supplier_email_taken");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await db.SupplierProfiles.CountAsync(p => p.Email.ToLower() == email));
+    }
+
+    [PostgresFact]
+    public async Task InviteSupplier_EmailOfExistingProfile_Returns409EmailTaken()
+    {
+        var email = $"taken-admin-{Guid.NewGuid():N}@test.com";
+        using (var anonymous = factory.CreateClient())
+            Assert.Equal(HttpStatusCode.Created, (await RegisterAsync(anonymous, email, PilotCode)).StatusCode);
+        using var admin = factory.CreateAuthenticatedClient(roles: "Admin");
+
+        var response = await admin.PostAsJsonAsync("/api/admin/suppliers/invite", new
+        {
+            email = email.ToUpperInvariant(),
+            comuneCode = PilotCode,
+        });
+
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_email_taken");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.SupplierInviteRecords.AnyAsync(i => i.Email.ToLower() == email));
+    }
+
     // ─── Rate limit ─────────────────────────────────────────────────────────
 
     [PostgresFact]

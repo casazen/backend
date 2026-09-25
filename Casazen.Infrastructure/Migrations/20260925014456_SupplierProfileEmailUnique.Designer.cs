@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260925014456_SupplierProfileEmailUnique")]
+    partial class SupplierProfileEmailUnique
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -437,44 +440,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("CancellationPolicies");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("AlertCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateOnly?>("Deadline")
-                        .HasColumnType("date");
-
-                    b.Property<DateTime?>("LastAlertAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PropertyId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("Stage")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PropertyId")
-                        .IsUnique();
-
-                    b.ToTable("CinAlertStates");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
                 {
                     b.Property<Guid>("Id")
@@ -688,11 +653,13 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("DocumentIssuingCountry")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("DocumentNumber")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("DocumentScanUrl")
                         .HasMaxLength(500)
@@ -1725,18 +1692,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<List<int>>("HighSeasonMonths")
-                        .IsRequired()
-                        .HasColumnType("integer[]");
-
-                    b.Property<decimal>("HighSeasonMultiplier")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
-
-                    b.Property<decimal>("HolidayMultiplier")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
-
                     b.Property<bool>("IncludePublicHolidays")
                         .HasColumnType("boolean");
 
@@ -1749,13 +1704,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastAdaptedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<List<int>>("LowSeasonMonths")
-                        .IsRequired()
-                        .HasColumnType("integer[]");
-
-                    b.Property<decimal>("LowSeasonMultiplier")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
+                    b.Property<DateTime?>("NextScheduledRunAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -2196,30 +2146,25 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Password")
+                    b.Property<string>("PasswordEncrypted")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Username")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("WsKey")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId")
                         .IsUnique();
@@ -2668,55 +2613,6 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SeasonalPriceSuggestion", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("BasePrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime>("ComputedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Holiday")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.Property<decimal>("Multiplier")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PropertyId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Rule")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateOnly>("StayDate")
-                        .HasColumnType("date");
-
-                    b.Property<decimal>("SuggestedPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrgId");
-
-                    b.HasIndex("PropertyId", "StayDate")
-                        .IsUnique();
-
-                    b.ToTable("SeasonalPriceSuggestions");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentPage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3050,11 +2946,13 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("DocumentIssuePlaceName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("DocumentNumber")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<int?>("DocumentType")
                         .HasColumnType("integer");
@@ -3796,17 +3694,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Property", "Property")
-                        .WithMany()
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Property");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.TerritorialRentAgreement", "Agreement")
@@ -4258,12 +4145,6 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyQuesturaCredentials", b =>
                 {
-                    b.HasOne("Casazen.Core.Entities.Org", null)
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
@@ -4380,21 +4261,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.SeasonalPriceSuggestion", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Org", null)
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Casazen.Core.Entities.Property", null)
-                        .WithMany()
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentRevision", b =>

@@ -330,6 +330,9 @@
   <data name="BookingTooManyGuests" xml:space="preserve">
     <value>Questo immobile accoglie al massimo {0} ospiti.</value>
   </data>
+  <data name="BookingCalendarRangeInvalid" xml:space="preserve">
+    <value>La data di fine del calendario non può essere precedente alla data di inizio.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Sincronizzazione del ruolo con Auth0 non riuscita: il ruolo non è stato cambiato. Riprova più tardi.</value>
   </data>
@@ -657,6 +660,12 @@
   </data>
   <data name="SupplierAccountAlreadyLinked" xml:space="preserve">
     <value>Il tuo account è già collegato a un altro profilo fornitore.</value>
+  </data>
+  <data name="SupplierEmailTaken" xml:space="preserve">
+    <value>Esiste già un profilo fornitore con questa email. Se è il tuo, accedi con questa email e collegalo con «Collega il profilo».</value>
+  </data>
+  <data name="SupplierMaintenanceConflict" xml:space="preserve">
+    <value>Un'altra operazione ha modificato i profili fornitore durante la riparazione: non è stato salvato nulla. Riprova.</value>
   </data>
   <data name="CheckInGuestsCount" xml:space="preserve">
     <value>Inserisci da 1 a {0} ospiti.</value>

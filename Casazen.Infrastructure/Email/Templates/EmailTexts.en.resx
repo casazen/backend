@@ -498,4 +498,43 @@
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Open the activation</value>
   </data>
+  <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
+    <value>CIN to be entered by {0}</value>
+  </data>
+  <data name="CinDeadlineAlert_DueToday_Subject" xml:space="preserve">
+    <value>CIN to be entered: the {0} deadline is today</value>
+  </data>
+  <data name="CinDeadlineAlert_Passed_Subject" xml:space="preserve">
+    <value>CIN missing: the {0} deadline has passed</value>
+  </data>
+  <data name="CinDeadlineAlert_NoDeadline_Subject" xml:space="preserve">
+    <value>CIN required: properties without a valid code</value>
+  </data>
+  <data name="CinDeadlineAlert_Upcoming_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0} days&lt;/strong&gt; are left until the {1} deadline for the national identification code (CIN), and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_UpcomingOneDay_Body" xml:space="preserve">
+    <value>&lt;strong&gt;1 day&lt;/strong&gt; is left until the {0} deadline for the national identification code (CIN), and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_DueToday_Body" xml:space="preserve">
+    <value>The {0} deadline for the national identification code (CIN) is &lt;strong&gt;today&lt;/strong&gt;, and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_Passed_Body" xml:space="preserve">
+    <value>The {0} deadline for the national identification code (CIN) &lt;strong&gt;has passed&lt;/strong&gt;, and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_NoDeadline_Body" xml:space="preserve">
+    <value>These properties do not have a valid national identification code (CIN) yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_Obligation" xml:space="preserve">
+    <value>The CIN is mandatory for properties let as short-term or tourist rentals: it must be displayed outside the property and stated in every listing (art. 13-ter, paragraph 8, Decree-Law 145/2023, converted by Law 191/2023). It is requested on the Accommodation Database (BDSR) of the Italian Ministry of Tourism.</value>
+  </data>
+  <data name="CinDeadlineAlert_Penalties" xml:space="preserve">
+    <value>Paragraph 9 of the same article sets a fine of 800 to 8,000 euros for a missing CIN, depending on the size of the accommodation or property, and of 500 to 5,000 euros per accommodation or unit for not displaying it or not stating it in the listings.</value>
+  </data>
+  <data name="CinDeadlineAlert_Action" xml:space="preserve">
+    <value>Enter the CIN of each property on the CIN compliance page of the console: while it is missing or not valid, the property cannot be published on the booking site.</value>
+  </data>
+  <data name="CinDeadlineAlert_Cta" xml:space="preserve">
+    <value>Open CIN compliance</value>
+  </data>
 </root>
