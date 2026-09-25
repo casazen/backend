@@ -68,12 +68,20 @@ public class PropertyIcalExportUrlDto
     public string ExportUrl { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// One entry of <c>GET /api/bookings/calendar</c>: a booking (<see cref="Type"/> <c>booking</c>, opens the booking
+/// detail) or a calendar block (<c>ical-block</c>: dates taken on another channel, it has no guest and no booking detail).
+/// </summary>
 public class CalendarItemDto
 {
     public string Type { get; set; } = "booking";
     public Guid Id { get; set; }
     public Guid PropertyId { get; set; }
+
+    /// <summary>Arrival day (stay date, no time zone: <c>2026-09-30T00:00:00</c>), MO-06.</summary>
     public DateTime StartDate { get; set; }
+
+    /// <summary>Departure day (stay date, no time zone), MO-06.</summary>
     public DateTime EndDate { get; set; }
     public DateTime StartDateUtc { get; set; }
     public DateTime EndDateUtc { get; set; }
@@ -83,4 +91,13 @@ public class CalendarItemDto
     public decimal? TotalPrice { get; set; }
     public string? GuestName { get; set; }
     public string? Summary { get; set; }
+
+    /// <summary>
+    /// <c>ical-block</c> only: channel of the feed the block was imported from (<c>Airbnb</c>, <c>BookingCom</c>,
+    /// <c>Other</c>, as <c>ICalFeedChannel</c>); null for a block that does not come from a feed (MO-06).
+    /// </summary>
+    public string? Channel { get; set; }
+
+    /// <summary><c>ical-block</c> only: label the host gave to the feed (e.g. "Booking.com - camera 2"), or null.</summary>
+    public string? FeedLabel { get; set; }
 }

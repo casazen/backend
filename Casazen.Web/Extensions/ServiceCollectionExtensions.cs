@@ -279,6 +279,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
+        // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
+        services.AddOptions<Casazen.Core.Options.CinOptions>()
+            .BindConfiguration(Casazen.Core.Options.CinOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.CinOptions>, Casazen.Core.Options.CinOptionsValidator>();
+        services.AddSingleton<Casazen.Core.Regulatory.CinDeadlineCalendar>();
+        services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
@@ -328,6 +335,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPdfDocumentRenderer, MigraDocPdfDocumentRenderer>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
         services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
+        // LTR tax advisory (LT-08, docs/runbooks/rli.md): every rate and minimum from configuration, validated at startup.
+        services.AddOptions<Casazen.Core.Options.CedolareAdvisoryOptions>()
+            .BindConfiguration(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.CedolareAdvisoryOptions>, Casazen.Core.Options.CedolareAdvisoryOptionsValidator>();
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
@@ -377,7 +389,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
-        // Always registered: OtaManager depends on it (DynamicPricingJob uses OtaManager). With the flag off it has no
+        // Always registered: OtaManager depends on it. With the flag off it has no
         // adapter to return, so nothing can call an OTA partner API.
         services.AddScoped<IChannelFactory, ChannelFactory>();
 

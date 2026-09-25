@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 
@@ -113,8 +114,8 @@ public class CanoneConcordatoEligibilityService(
         var minAnnuo = RoundMoney(band.SubFascia1MinEurSqmYear * reducedSqm * minFactor);
         var maxAnnuo = RoundMoney(MaxRate(band, subFascia) * maxSqm * maxFactor);
 
-        var ata = await ataComuni.GetByComuneAsync(property.City, cancellationToken);
-        var ataApplies = ata is { VerifiedDirectly: true };
+        // Same rule as the lease tax advisory (LT-08): the ATA reliefs only for a verified listing.
+        var ataApplies = HighTensionArea.ReliefsApply(await ataComuni.GetByComuneAsync(property.City, cancellationToken));
 
         return new CanoneConcordatoEligibilityDto(
             true,

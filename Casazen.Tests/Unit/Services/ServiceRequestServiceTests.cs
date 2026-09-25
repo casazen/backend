@@ -5,6 +5,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -967,8 +968,8 @@ public class ServiceRequestServiceTests
         OrgId = orgId,
         PropertyId = propertyId,
         GuestId = Guid.NewGuid(),
-        CheckInDate = DateTime.UtcNow.Date.AddDays(3),
-        CheckOutDate = DateTime.UtcNow.Date.AddDays(5),
+        CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+        CheckOutDate = TimeProvider.System.TodayInRome().AddDays(5),
         NumberOfGuests = 2,
         Status = BookingStatus.Confirmed,
     };

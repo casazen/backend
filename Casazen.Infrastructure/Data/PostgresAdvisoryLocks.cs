@@ -71,6 +71,12 @@ internal static class PostgresAdvisoryLocks
         OrgConnectAccount = 1_012,
 
         /// <summary>
+        /// Seasonal price suggestions of one property (key: property id): the nightly job, the manual recalculation and a
+        /// configuration save never upsert the same dates at once (PC-15).
+        /// </summary>
+        SeasonalPriceSuggestions = 1_019,
+
+        /// <summary>
         /// Compliance status of one property (key: property id): a host request and the nightly check suspend it once
         /// and email the host once (CO-06, A5-20).
         /// </summary>
@@ -87,6 +93,18 @@ internal static class PostgresAdvisoryLocks
         /// checked and written one request at a time (CO-18, A5-22).
         /// </summary>
         OrgFiscalRegime = 1_023,
+
+        /// <summary>
+        /// One run of the daily CIN alert (single key, session lock held for the whole run): two runs never alert the same
+        /// hosts at once, even outside Hangfire's own lock (CO-20, A5-31).
+        /// </summary>
+        CinDeadlineAlertsRun = 1_042,
+
+        /// <summary>
+        /// One run of the supplier repair <c>fix-orphaned</c> (single key): two admin runs never merge the same duplicate
+        /// profiles at once (SU-14, A4-22). The run also takes <see cref="SupplierClaim"/> for every profile it merges.
+        /// </summary>
+        SupplierMaintenance = 1_054,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

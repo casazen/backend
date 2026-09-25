@@ -19,7 +19,7 @@ public static class RecurringJobsRegistration
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(
-            "dynamic-pricing-adaptation",
+            DynamicPricingJob.RecurringJobId,
             job => job.ExecuteAsync(),
             "0 2 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
@@ -40,10 +40,11 @@ public static class RecurringJobsRegistration
             Cron.Hourly,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
-            "cin-deadline-alert",
+            CinDeadlineAlertJob.RecurringJobId,
             job => job.ExecuteAsync(),
-            "0 8 * * *",
+            CinDeadlineAlertJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         ConfigureESignProviderJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ESignProvider));

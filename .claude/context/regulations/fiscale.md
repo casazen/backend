@@ -278,6 +278,23 @@ decidere con il commercialista, per esempio addebitare IVA come B2C finché la v
 - Cedolare 10% solo con concordato **e** comune ATA verificato (L11-L12), altrimenti 21%.
 - La checklist Questura per conduttori extra-UE resta un adempimento **separato** dalla RLI, con scadenza `consegna + 48h` e spunta solo manuale del locatore (L13-L14).
 
+**Implementato da LT-08 (2026-09-24).** Advisory `GET|POST /api/leases/{id}/rli/advisory`
+(`Casazen.Core/Leases/LeaseTaxAdvisory.cs`), parametri in `appsettings.json` → `CedolareAdvisory` con la fonte di ogni
+gruppo (nessun numero nel codice, validazione all'avvio). Runbook: `docs/runbooks/rli.md` § "Tax advisory (LT-08)".
+- Cedolare 10% solo con contratto `Concordato` **e** comune ATA `VerifiedDirectly` (L11), altrimenti 21%; stessa regola
+  del calcolatore del canone concordato (`Casazen.Core/Regulatory/HighTensionArea.cs`). Nessun comune è oggi verificato.
+- Registro prima annualità `max(67, canone annuo × (concordato && ATA verificato ? 0,70 : 1) × 2%)` (L5, L6, L8);
+  annualità successive solo come regola, senza importo. Pagamento per l'intera durata (L7) e deposito cauzionale (L9)
+  non calcolati.
+- Bollo `16 € × ⌈max(facciate/4, righe/100)⌉ × copie` (L10) solo se il locatore indica facciate e copie (righe
+  facoltative, con avviso se mancano); altrimenti solo la regola. Con la cedolare registro e bollo = 0 (L4, L10).
+- IRPEF (C11, C12): imposta lorda aggiuntiva con gli scaglioni 2026 sul canone ridotto del 5%, solo se il locatore indica
+  il reddito imponibile degli altri redditi (non salvato). Non calcolata: scaglioni di un anno precedente, reddito totale
+  oltre 200.000 €, concordato in comune ATA verificato (riduzione IRPEF non verificata in questo file). Escluse
+  addizionali, detrazioni e confronto con la rendita catastale rivalutata: "da valutare con il commercialista".
+- Stato di emergenza (L12), transitori, durata inferiore all'anno, attestazione di conformità e Questura extra-UE (L13,
+  L14) sono note nel pannello, senza effetto sugli importi.
+
 ### Punti che richiedono il commercialista
 
 1. **PL-13 (billing)**: politica con P.IVA UE in stato VIES `pending/unverified/unavailable`; opzione di tassazione a destinazione sotto soglia (vincolo biennale); conviene aderire all'OSS subito? Obblighi IVA/GST nei paesi extra-UE dei clienti (UK, CH, NO...); fattura agli host senza P.IVA (B2C): emetterla sempre o solo su richiesta; conservazione sostitutiva.
@@ -285,7 +302,7 @@ decidere con il commercialista, per esempio addebitare IVA come B2C finché la v
 3. **CO-18 (ritenuta)**: come l'OTA sa che il locatore opera in regime d'impresa; gestione delle ritenute applicate per errore.
 4. **CO-18 (direct booking)**: CasaZen usa Stripe Connect con **addebiti diretti sull'account del locatore** (`StripeService.cs`, `RequestOptions.StripeAccount`, commissione 0). Va chiarito se CasaZen, gestendo un portale e intervenendo nel pagamento, diventa **intermediario sostituto d'imposta** (ritenuta 21%, CU, 770, comunicazione dati). Va chiarito prima di attivare i pagamenti diretti in produzione.
 5. **CO-18 (impresa)**: IVA sulle locazioni brevi in regime d'impresa (esenzione o 10% con servizi), iscrizione e contributi, coefficiente forfettario.
-6. **LT-08**: cedolare 10% per contratti transitori e per studenti in comune ATA; sanzioni con cedolare in caso di tardiva registrazione; comuni in stato di emergenza (nessun elenco ufficiale).
+6. **LT-08**: cedolare 10% per contratti transitori e per studenti in comune ATA; sanzioni con cedolare in caso di tardiva registrazione; comuni in stato di emergenza (nessun elenco ufficiale). Aperti da LT-08: riduzione forfettaria del 5% (art. 37 c. 4-bis TUIR, fonte T) per gli affitti lunghi; riduzione IRPEF del 30% per il concordato in comune ATA (citata in `canone_concordato.md`, non verificata qui); base del registro per contratti più brevi di un anno; minimo di 67 € e base al 70% sulle annualità successive; numero di copie da registrare e bollo con la registrazione telematica.
 7. **Riordino 2027**: aggiornare i riferimenti normativi mostrati in UI e PDF quando si applicano TU IVA, nuovo TUIR e TU registro.
 
 ---

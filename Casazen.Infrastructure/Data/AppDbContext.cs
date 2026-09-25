@@ -50,6 +50,9 @@ public class AppDbContext(
     // Stages of the host alerts already sent per stay (CO-10)
     public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
 
+    // Stage of the CIN alert already sent per property (CO-20)
+    public DbSet<CinAlertState> CinAlertStates { get; set; } = null!;
+
     // D.L. 145/2023 safety checklist of a short-stay property (CO-07)
     public DbSet<PropertySafetyChecklist> PropertySafetyChecklists { get; set; } = null!;
     public DbSet<PropertySafetyChecklistItem> PropertySafetyChecklistItems { get; set; } = null!;
@@ -62,6 +65,7 @@ public class AppDbContext(
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
+    public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
@@ -175,6 +179,13 @@ public class AppDbContext(
             .HasOne(s => s.Booking)
             .WithMany()
             .HasForeignKey(s => s.BookingId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // CO-20: the CIN alert stage of a property goes with it.
+        modelBuilder.Entity<CinAlertState>()
+            .HasOne(s => s.Property)
+            .WithMany()
+            .HasForeignKey(s => s.PropertyId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
@@ -366,6 +377,21 @@ public class AppDbContext(
 
         modelBuilder.Entity<PricingHistory>()
             .HasIndex(h => new { h.PropertyId, h.AdaptationDate });
+
+        // PC-15: one seasonal suggestion per property and stay date, regenerated in place (upsert by date).
+        modelBuilder.Entity<SeasonalPriceSuggestion>(entity =>
+        {
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(s => s.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(s => new { s.PropertyId, s.StayDate }).IsUnique();
+            entity.HasIndex(s => s.OrgId);
+            entity.Property(s => s.Rule).HasConversion<string>();
+            entity.Property(s => s.Holiday).HasConversion<string>();
+        });
 
         // PropertyDocument → Property
         modelBuilder.Entity<PropertyDocument>()
@@ -746,6 +772,9 @@ public class AppDbContext(
             .HasIndex(sp => sp.ClaimTokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
+
+        // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
+        // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
 
         modelBuilder.Entity<SupplierAvailability>()
             .HasOne(sa => sa.SupplierProfile)

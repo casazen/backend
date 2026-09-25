@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Pricing;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Entities;
@@ -22,7 +23,6 @@ public class PricingAdapterConfigTests
             IncludeSeasonality = true,
             IncludePublicHolidays = true,
             LastAdaptedAt = now.AddHours(-1),
-            NextScheduledRunAt = now.AddHours(1),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -35,7 +35,6 @@ public class PricingAdapterConfigTests
         Assert.True(config.IncludeSeasonality);
         Assert.True(config.IncludePublicHolidays);
         Assert.NotNull(config.LastAdaptedAt);
-        Assert.NotNull(config.NextScheduledRunAt);
     }
 
     [Fact]
@@ -53,7 +52,6 @@ public class PricingAdapterConfigTests
         Assert.False(config.IncludeSeasonality);
         Assert.False(config.IncludePublicHolidays);
         Assert.Null(config.LastAdaptedAt);
-        Assert.Null(config.NextScheduledRunAt);
         Assert.NotEqual(default, config.CreatedAt);
         Assert.NotEqual(default, config.UpdatedAt);
     }
@@ -101,5 +99,29 @@ public class PricingAdapterConfigTests
             Assert.Equal(seasonality, config.IncludeSeasonality);
             Assert.Equal(holidays, config.IncludePublicHolidays);
         }
+    }
+
+    [Fact]
+    public void CreatePricingAdapterConfig_New_StartsFromTheDocumentedExampleRule()
+    {
+        var config = new PricingAdapterConfig { PropertyId = Guid.NewGuid(), AdaptationFrequency = "daily" };
+
+        Assert.Equal(SeasonalPricingRules.Example.HighSeasonMonths, config.HighSeasonMonths);
+        Assert.Equal(1.30m, config.HighSeasonMultiplier);
+        Assert.Equal(SeasonalPricingRules.Example.LowSeasonMonths, config.LowSeasonMonths);
+        Assert.Equal(0.80m, config.LowSeasonMultiplier);
+        Assert.Equal(1.50m, config.HolidayMultiplier);
+    }
+
+    [Fact]
+    public void CreatePricingAdapterConfig_TwoInstances_DoNotShareTheMonthLists()
+    {
+        var first = new PricingAdapterConfig();
+        var second = new PricingAdapterConfig();
+
+        first.HighSeasonMonths.Add(9);
+
+        Assert.DoesNotContain(9, second.HighSeasonMonths);
+        Assert.DoesNotContain(9, SeasonalPricingRules.ExampleHighSeasonMonths);
     }
 }

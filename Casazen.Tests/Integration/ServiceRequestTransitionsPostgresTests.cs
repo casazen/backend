@@ -6,6 +6,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -524,8 +525,8 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
             OrgId = org.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(5),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(8),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(5),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(8),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

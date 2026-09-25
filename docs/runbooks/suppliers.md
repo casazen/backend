@@ -1,7 +1,8 @@
 # Runbook: supplier invites, self-serve registration, claim and service requests
 
 Task SU-01 (audit defects A4-03, A4-04, A4-21, A4-24) and SU-02 (claim after login, supplier onboarding, no link by
-unverified email: A4-02, A4-23, A1-13). The code is in place; the product owner sets the pilot comuni (section 3),
+unverified email: A4-02, A4-23, A1-13). Section 9: one profile per email and the admin repair `fix-orphaned` (SU-14,
+A4-22). The code is in place; the product owner sets the pilot comuni (section 3),
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2).
 
@@ -42,7 +43,9 @@ The backend no longer serves an HTML `/register` page (it sent users to Auth0 wi
 | `supplier_self_serve_unavailable` | No pilot comune configured (section 3) |
 | `supplier_comune_not_pilot` | Self-serve for a comune outside the pilot list |
 
-`429 rate_limited` when the client exceeds the limits of section 5.
+`409 supplier_email_taken` when a supplier profile already has the email (trimmed, case-insensitive; SU-14, section
+9): the owner of that profile links it with the claim (section 2), a second profile is never created. The admin invite
+answers the same 409 for such an email. `429 rate_limited` when the client exceeds the limits of section 5.
 
 ## 2. Claim of an anonymous registration (SU-02)
 
@@ -72,7 +75,7 @@ Body `{ "claimToken": "…" }` (optional). Answer 200 `{ orgId, redirectUrl, rol
 | Case | Rule |
 |---|---|
 | With token | Token of that registration, not expired, profile not yet held by an account, and account email = registered email (case-insensitive). The email need not be verified yet: the token proves the registrant, and a new Auth0 account usually signs in before verifying |
-| Without token | Only when Auth0 says the account email is **verified** (section 2.3): links the **one** supplier profile with that email that no account holds (a lost token, or a registration made before SU-02, which has no token). Several such profiles: 409 `supplier_claim_ambiguous` (admin fixes it) |
+| Without token | Only when Auth0 says the account email is **verified** (section 2.3): links the **one** supplier profile with that email that no account holds (a lost token, or a registration made before SU-02, which has no token). Several such profiles: 409 `supplier_claim_ambiguous`; since SU-14 an email has at most one profile, so this no longer happens |
 | Already linked | A caller already linked to a supplier org gets that org back (idempotent), unless the token belongs to another profile (409 `supplier_account_already_linked`) |
 | Role | Every successful call assigns the Auth0 role `Supplier` (additive, FD-14). `rolesSynced: false` does not undo the link: the console already works through the DB link; the page shows *Riprova ad applicare i permessi* (repeats the claim) and *Rinnova l'accesso e continua* (PL-01) |
 
@@ -299,12 +302,122 @@ request open simply gets the 409 and reloads.
 - [ ] Host: *Segna pagato* on a request that is not completed → 422 with *Solo le richieste completate possono essere
       segnate come pagate.*
 
+## 9. One profile per email and the admin repair `fix-orphaned` — SU-14
+
+Audit A4-22. Before SU-14 supplier emails were not unique (the old auto-provisioning and repeated anonymous
+registrations created duplicates), and `fix-orphaned` deleted the "duplicate" orgs without looking at their service
+requests (FK `Restrict`, so the endpoint answered 500 and repaired nothing) nor at the accounts linked to them, which
+kept pointing to deleted orgs. It also linked accounts to profiles by email (A4-23).
+
+### 9.1 One profile per email
+
+- Unique index `UIX_SupplierProfiles_NormalizedEmail` on `lower(btrim("Email"))` of `SupplierProfiles`, blank emails
+  excluded (they are not an identity). Stricter than `lower("Email")`: also `" a@x.it"` and `"A@X.IT"` collide. Raw
+  SQL in the migration (EF cannot model an expression index), so it is not in the EF model
+  (`Casazen.Infrastructure/Data/SupplierProfileEmailIndex.cs`).
+- Every path that creates a profile answers **409 `supplier_email_taken`** instead of a duplicate: registration (with
+  or without invite, anonymous or signed in), admin invite (it could never be accepted), and the auto-provisioning of a
+  Supplier role given by hand to an account without a link (`/api/supplier/*`: the account links the existing profile
+  with the claim, section 2). A parallel registration that passes the check hits the index (23505) and gets the same
+  409, never a 500.
+- The anonymous registration answer reveals that a supplier profile exists for an email (required to tell the
+  supplier what to do); it is rate limited like every public registration (section 5).
+
+### 9.2 Migration `SupplierProfileEmailUnique` (applied at startup)
+
+Migrations run when the app starts (`Program.cs`): a migration that simply failed on existing duplicates would stop
+the very deployment that ships the safe repair, and the previous deployment's `fix-orphaned` is the broken one. So the
+migration **first merges the duplicates with the rules of section 9.3** (same keeper, same moves; SQL in the migration
+class, kept in step with `SupplierService.Maintenance.cs`), then creates the index. It writes `RAISE NOTICE` lines with
+the merged org ids and the counts (no email): check them in the Railway deploy log.
+
+It **fails on purpose** when a duplicate group needs a decision (codes of section 9.4: `supplier_duplicate_several_accounts`,
+`supplier_duplicate_suspended`). The error lists the org ids, e.g.
+`SupplierProfileEmailUnique: 1 supplier email group(s) need a manual decision and were not merged: [<org>, <org>] supplier_duplicate_several_accounts`.
+The migration runs in one transaction: **nothing is changed**, the index is not created, Railway keeps the previous
+deployment. That case needs a product decision (which account keeps the supplier) and a follow-up release that applies
+it: open an issue with the log line; do not edit the database by hand.
+
+Before promoting to production you can see whether that can happen, read-only:
+
+```sql
+SELECT array_agg(DISTINCT sp."OrgId") AS orgs,
+       count(DISTINCT u."Id") AS accounts,
+       count(DISTINCT sp."OrgId") FILTER (WHERE u."Id" IS NOT NULL) AS held_profiles,
+       bool_or(sp."Status" = 2) AS any_suspended
+FROM "SupplierProfiles" sp
+LEFT JOIN "Users" u ON u."SupplierOrgId" = sp."OrgId" OR u."OrgId" = sp."OrgId"
+WHERE btrim(sp."Email") <> ''
+GROUP BY lower(btrim(sp."Email"))
+HAVING count(DISTINCT sp."OrgId") > 1;
+```
+
+No rows: nothing to merge. Rows with `held_profiles > 1 AND accounts > 1`, or `any_suspended`: the migration will stop.
+Other rows are merged automatically. Down drops the index only (merged profiles are not split again).
+
+### 9.3 `POST /api/admin/suppliers/fix-orphaned` (policy `AdminOnly`)
+
+**Dry run by default**: without `?dryRun=false` every step runs inside a transaction that is rolled back, and the
+report shows what would change. Apply with `?dryRun=false`. One run at a time (PostgreSQL advisory lock
+`SupplierMaintenance`); a claim of a profile being merged waits for the run (per-profile claim lock) and then answers
+`supplier_claim_invalid`/`supplier_claim_not_found` instead of linking an account to a deleted org. Idempotent. After
+the migration there are no duplicate emails left, so a run normally only does the link repairs below.
+
+1. **Duplicates** (same email, trimmed, case-insensitive, blank excluded) are merged into one **keeper**: the
+   `Active` profile, then the one an account holds (`User.SupplierOrgId` or `User.OrgId`), then the oldest. For each
+   duplicate, in one savepoint per group:
+   - service requests (`ServiceRequests.SupplierOrgId`, any state) and legacy supplier jobs move to the keeper;
+   - availability days move; a day the keeper already has keeps the keeper's value (the duplicate's is dropped);
+   - the duplicate's categories and comuni the keeper lacks are appended (bio, photos, VAT, calendar settings of the
+     duplicate are not copied: the keeper's profile is the one in use);
+   - accounts: `SupplierOrgId` = duplicate → keeper; a supplier-only account (`OrgId` = duplicate, no `SupplierOrgId`)
+     gets `SupplierOrgId` = keeper;
+   - the duplicate profile is deleted; its org too, after moving `User.OrgId` and push devices to the keeper, **unless
+     the org also holds host data** (not a supplier org, consents, signup attribution, or rows such as properties or
+     bookings that reference it): then the org stays, without its supplier profile, and its accounts keep it as `orgId`.
+   - the duplicate's claim token dies with it: its registrant links the keeper with the verified-email claim.
+2. **Links**: accounts whose `SupplierOrgId` points to an org that no longer exists are unlinked
+   (`danglingLinksCleared`); accounts whose `OrgId` is a supplier org with a profile get the same `SupplierOrgId`
+   (`supplierLinksBackfilled`, their own link).
+3. **Profiles no account holds**: never linked by email, which the repair cannot prove (no claim token, no Auth0
+   `email_verified`). Listed in `orphanProfiles`, or as `supplier_link_requires_claim` when accounts with the same
+   email exist: the supplier links the profile from *Collega il profilo* (section 2).
+
+Response (200): `dryRun`, `profilesScanned`, `duplicateGroups`, `duplicatesMerged`, `serviceRequestsMoved`, `merges[]`
+(`keeperOrgId`, `duplicateOrgId`, `serviceRequestsMoved`, `supplierJobsMoved`, `availabilityDaysMoved`,
+`availabilityDaysDropped`, `categoriesAdded`, `comuniAdded`, `supplierLinksMoved`, `orgMembersMoved`, `devicesMoved`,
+`duplicateOrgDeleted`), `danglingLinksCleared[]` and `supplierLinksBackfilled[]` (user ids), `orphanProfiles[]`,
+`manualInterventions[]` (`code`, `orgIds`, `userIds`). Ids and counts only: no email, no name.
+
+Errors: 409 `supplier_maintenance_conflict` when a concurrent change stops the run (nothing saved: run it again); 403
+for non-admins. A conflict inside one duplicate group only skips that group (`supplier_duplicate_merge_conflict`).
+
+Audit log: event `SupplierRepair` (id 4140), one line per merge, cleared or backfilled link and manual case (org ids,
+user ids, counts; warning level when applied, information in a dry run), and a summary line per run. No PII.
+
+### 9.4 Manual interventions (`manualInterventions[].code`)
+
+| Code | Meaning | What to do |
+|---|---|---|
+| `supplier_duplicate_several_accounts` | Profiles of one email held by different accounts: merging would show each account the other's requests, and neither proved the email | Product decision: which account keeps the supplier (contact the supplier). Not merged |
+| `supplier_duplicate_suspended` | A profile of the email is suspended: a merge could lift the suspension | Decide after the suspension review. Not merged |
+| `supplier_duplicate_merge_conflict` | A concurrent change or a constraint stopped the merge of the group | Run the repair again |
+| `supplier_link_requires_claim` | A profile no account holds, and accounts with its email exist | Nothing to do in the admin: the supplier links it with *Collega il profilo* (verified email) |
+
+### 9.5 After a deploy
+
+- [ ] Deploy log: the `SupplierProfileEmailUnique` NOTICE lines (merged org ids, counts), and the index exists:
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'UIX_SupplierProfiles_NormalizedEmail';` (read-only).
+- [ ] `POST /api/admin/suppliers/fix-orphaned` (dry run): `duplicateGroups` is 0; review `danglingLinksCleared`,
+      `manualInterventions`. Then `?dryRun=false` to apply the link repairs.
+- [ ] Self-serve registration with the email of an existing supplier (another case): 409 with *Esiste già un profilo
+      fornitore con questa email…*; no second profile.
+
 ## Known limits (other tasks)
 
-- The admin repair `fix-orphaned` still matches users and profiles by email (task SU-14, "fix-orphaned sicuro").
-- Supplier emails are not unique yet (SU-14): a supplier who lost the claim token and registers again gets a second
-  profile; the first one stays `Pending`, invisible to hosts. With a verified email the claim without token links
-  the old one, as long as it is the only unclaimed profile for that email.
+- A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
+  claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
+  the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
 - A supplier-only user who then completes the host onboarding keeps using the supplier org as `User.OrgId`
   (A1-40, task PL-05).
 - The activation requirements (only the ToS today) are task SU-05.

@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Payments;
@@ -205,8 +206,8 @@ public class PaymentsControllerTests
         Id = Guid.NewGuid(),
         PropertyId = propertyId,
         OrgId = orgId ?? OrgId,
-        CheckInDate = DateTime.UtcNow.Date,
-        CheckOutDate = DateTime.UtcNow.Date.AddDays(1),
+        CheckInDate = TimeProvider.System.TodayInRome(),
+        CheckOutDate = TimeProvider.System.TodayInRome().AddDays(1),
         NumberOfGuests = 2,
         Status = BookingStatus.Confirmed,
         Source = BookingSource.Direct,
