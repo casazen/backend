@@ -7,6 +7,7 @@ using Casazen.Web.DTOs.Billing;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Casazen.Web.Controllers;
 
@@ -54,10 +55,13 @@ public class BillingController(
     /// changes plan or pays from the billing portal (<c>POST /api/billing/portal-session</c>), never through a second
     /// subscription (A1-10). A repeated request (double click) returns the same open session.
     /// <para>
-    /// Return pages (PL-11, A1-31): by default the plan page of the web app on <c>App:PublicSiteBaseUrl</c>
-    /// (<c>?checkout=success</c> / <c>?checkout=cancel</c>). <c>successUrl</c> and <c>cancelUrl</c> sent by the client must
-    /// be absolute URLs of that same site, otherwise 400 <c>validation_error</c>: Stripe never sends the browser to
-    /// another site. A plan without a Stripe Price id in this environment answers 422 <c>billing_plan_unavailable</c>.
+    /// Return pages (PL-11, A1-31, PL-16): always on <c>App:PublicSiteBaseUrl</c> (<c>?checkout=success</c> /
+    /// <c>?checkout=cancel</c>), on the page named by <c>returnPath</c> (the plan or billing page of the rental context the
+    /// user started from, e.g. <c>/app/long-rent/settings/plan</c>) or by default on the short-rent plan page.
+    /// <c>returnPath</c> must be one of <see cref="PublicSiteLinks.BillingReturnPagePaths"/>; <c>successUrl</c> and
+    /// <c>cancelUrl</c> sent by the client must be absolute URLs of that same site on one of those pages. Anything else
+    /// answers 400 <c>validation_error</c> before any change: Stripe never sends the browser to another site or page. A
+    /// plan without a Stripe Price id in this environment answers 422 <c>billing_plan_unavailable</c>.
     /// </para>
     /// </summary>
     [HttpPost("checkout-session")]
@@ -86,6 +90,9 @@ public class BillingController(
                 ReturnUrlNotConfiguredCode,
                 "BillingReturnUrlNotConfigured");
         }
+
+        if (!IsAllowedReturnPath(request.ReturnPath))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingReturnPathNotAllowed");
 
         if (!IsAllowedReturnUrl(request.SuccessUrl) || !IsAllowedReturnUrl(request.CancelUrl))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingReturnUrlNotAllowed");
@@ -141,23 +148,28 @@ public class BillingController(
 
         await orgService.UpdateBillingProfileAsync(org.Id, request.BillingCountry, request.VatId, vatValidatedAt, ct);
 
+        var returnPath = NormalizeReturnPath(request.ReturnPath);
         var successUrl = string.IsNullOrWhiteSpace(request.SuccessUrl)
-            ? publicSiteLinks.BillingCheckoutSuccess()
+            ? publicSiteLinks.BillingCheckoutSuccess(returnPath)
             : request.SuccessUrl.Trim();
         var cancelUrl = string.IsNullOrWhiteSpace(request.CancelUrl)
-            ? publicSiteLinks.BillingCheckoutCancel()
+            ? publicSiteLinks.BillingCheckoutCancel(returnPath)
             : request.CancelUrl.Trim();
         var url = await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
         return Ok(new CheckoutSessionResponse { CheckoutUrl = url });
     }
 
     /// <summary>
-    /// Stripe billing portal of the org. It links back to the plan page of the web app on <c>App:PublicSiteBaseUrl</c>
-    /// (PL-11, A1-31); 503 <c>billing_return_url_not_configured</c> when that URL is not set (Development/Testing only).
+    /// Stripe billing portal of the org. It links back to the web app on <c>App:PublicSiteBaseUrl</c> (PL-11, A1-31): the
+    /// page of the optional body's <c>returnPath</c> (one of <see cref="PublicSiteLinks.BillingReturnPagePaths"/>, PL-16),
+    /// otherwise the short-rent plan page; any other path answers 400 <c>validation_error</c>. 503
+    /// <c>billing_return_url_not_configured</c> when the public URL is not set (Development/Testing only).
     /// </summary>
     [HttpPost("portal-session")]
-    [Authorize(Policy = "RequireOrgBillingAdmin")]
-    public async Task<ActionResult<PortalSessionResponse>> CreatePortalSession(CancellationToken ct)
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    public async Task<ActionResult<PortalSessionResponse>> CreatePortalSession(
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CreatePortalSessionRequest? request,
+        CancellationToken ct)
     {
         if (!publicSiteLinks.IsConfigured)
         {
@@ -166,6 +178,9 @@ public class BillingController(
                 ReturnUrlNotConfiguredCode,
                 "BillingReturnUrlNotConfigured");
         }
+
+        if (!IsAllowedReturnPath(request?.ReturnPath))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingReturnPathNotAllowed");
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
@@ -180,12 +195,15 @@ public class BillingController(
 
         return Ok(new PortalSessionResponse
         {
-            PortalUrl = await stripeBillingService.CreatePortalSessionAsync(org, publicSiteLinks.BillingPortalReturn(), ct),
+            PortalUrl = await stripeBillingService.CreatePortalSessionAsync(
+                org,
+                publicSiteLinks.BillingPortalReturn(NormalizeReturnPath(request?.ReturnPath)),
+                ct),
         });
     }
 
     [HttpGet("subscription")]
-    [Authorize(Policy = "RequireOrgBillingAdmin")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     public async Task<ActionResult<SubscriptionDto>> GetSubscription(CancellationToken ct)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
@@ -199,7 +217,7 @@ public class BillingController(
     }
 
     [HttpPut("profile")]
-    [Authorize(Policy = "RequireOrgBillingAdmin")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     public async Task<ActionResult<BillingProfileDto>> UpdateBillingProfile(
         [FromBody] UpdateBillingProfileRequest request,
         CancellationToken ct)
@@ -243,9 +261,19 @@ public class BillingController(
         });
     }
 
-    /// <summary>A return URL of the client: absent (the default page is used) or a page of the public web app.</summary>
+    /// <summary>
+    /// A return URL of the client: absent (the default page is used) or a plan/billing page of the public web app
+    /// (PL-11 same site, PL-16 allow-listed path).
+    /// </summary>
     private bool IsAllowedReturnUrl(string? url) =>
-        string.IsNullOrWhiteSpace(url) || publicSiteLinks.IsOnPublicSite(url);
+        string.IsNullOrWhiteSpace(url) || publicSiteLinks.IsBillingReturnUrl(url);
+
+    /// <summary>A return page of the client: absent (the default page is used) or one of the allow-listed paths (PL-16).</summary>
+    private static bool IsAllowedReturnPath(string? path) =>
+        string.IsNullOrWhiteSpace(path) || PublicSiteLinks.IsBillingReturnPagePath(path.Trim());
+
+    private static string? NormalizeReturnPath(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? null : path.Trim();
 
     private static SubscriptionDto Map(Casazen.Core.Entities.Org org) => new()
     {
