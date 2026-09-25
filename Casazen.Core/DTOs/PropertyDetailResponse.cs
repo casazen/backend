@@ -66,12 +66,25 @@ public class OtaIntegrationSummaryDto
     public OtaSyncStatus? SyncStatus { get; set; }
 }
 
+/// <summary>
+/// Bookings KPIs of the property detail (A2-36), on the rules of the host dashboard (<c>StayKpiRules</c>): Europe/Rome
+/// calendar dates, never a cancelled booking nor a pending request.
+/// </summary>
 public class BookingsSummaryDto
 {
+    /// <summary>Confirmed stays: confirmed, checked in or checked out.</summary>
     public int TotalBookings { get; set; }
+
+    /// <summary>Confirmed check-ins from today on (today's arrivals until the host registers them).</summary>
     public int UpcomingBookings { get; set; }
+
+    /// <summary>Stays in progress today, up to their departure day included.</summary>
     public int ActiveBookings { get; set; }
+
+    /// <summary>Europe/Rome date (midnight UTC) of the next confirmed check-in, today included.</summary>
     public DateTime? NextCheckIn { get; set; }
+
+    /// <summary>Europe/Rome date (midnight UTC) of the next check-out of a confirmed or checked-in stay, today included.</summary>
     public DateTime? NextCheckOut { get; set; }
 }
 

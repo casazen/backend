@@ -21,6 +21,7 @@ namespace Casazen.Infrastructure.Services;
 public class PropertyService(
     IPropertyRepository repository,
     IPropertyComplianceStatusService complianceStatus,
+    CinDeadlineCalendar cinDeadline,
     ILogger<PropertyService> logger,
     TimeProvider? timeProvider = null) : IPropertyService
 {
@@ -300,12 +301,10 @@ public class PropertyService(
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
     {
+        // 404 through the error middleware (FD-05); any other failure stays a 500, never a "not found" (A2-36).
         var property = await repository.GetPropertyDetailAsync(propertyId)
-            ?? throw new InvalidOperationException($"Property {propertyId} not found");
+            ?? throw new NotFoundException($"Property {propertyId} not found");
 
-        // Check-in and check-out are date-only values: they are compared with today's date in Europe/Rome (QA-CLOCK),
-        // never with the UTC instant, which between 22:00 and 24:00 UTC already counted the arrivals of today as upcoming.
-        var today = _clock.TodayInRome();
         return new PropertyDetailResponse
         {
             Id = property.Id,
@@ -340,20 +339,7 @@ public class PropertyService(
                 LastSyncAt = o.LastSyncAt,
                 SyncStatus = o.SyncStatus != null && Enum.TryParse<OtaSyncStatus>(o.SyncStatus, out var status) ? status : null
             }).ToList(),
-            BookingsSummary = new BookingsSummaryDto
-            {
-                TotalBookings = property.Bookings.Count,
-                UpcomingBookings = property.Bookings.Count(b =>
-                    b.CheckInDate > today && b.Status == BookingStatus.Confirmed),
-                ActiveBookings = property.Bookings.Count(b =>
-                    b.CheckInDate <= today && b.CheckOutDate > today && b.Status == BookingStatus.CheckedIn),
-                NextCheckIn = property.Bookings
-                    .Where(b => b.CheckInDate > today)
-                    .MinBy(b => b.CheckInDate)?.CheckInDate,
-                NextCheckOut = property.Bookings
-                    .Where(b => b.CheckOutDate > today)
-                    .MinBy(b => b.CheckOutDate)?.CheckOutDate
-            },
+            BookingsSummary = BuildBookingsSummary(property.Bookings, _clock.TodayInRome()),
             PricingAdapterSummary = property.PricingAdapterConfig == null
                 ? new PricingAdapterSummaryDto()
                 : new PricingAdapterSummaryDto
@@ -366,6 +352,29 @@ public class PropertyService(
                             property.PricingAdapterConfig.LastAdaptedAt)
                         : null
                 }
+        };
+    }
+
+    /// <summary>
+    /// Bookings KPIs of the property detail (A2-36) on the rules of the host dashboard (<see cref="StayKpiRules"/>), so
+    /// a cancelled booking is never the next check-in and an arrival of today (Europe/Rome) is upcoming until the host
+    /// registers it, then in progress.
+    /// </summary>
+    public static BookingsSummaryDto BuildBookingsSummary(IEnumerable<Booking> bookings, DateTime todayInRome)
+    {
+        var all = bookings as IReadOnlyCollection<Booking> ?? bookings.ToList();
+        var confirmed = StayKpiRules.IsConfirmedStay().Compile();
+        var upcoming = StayKpiRules.UpcomingCheckIn(todayInRome).Compile();
+        var inProgress = StayKpiRules.InProgress(todayInRome).Compile();
+        var upcomingCheckOut = StayKpiRules.UpcomingCheckOut(todayInRome).Compile();
+
+        return new BookingsSummaryDto
+        {
+            TotalBookings = all.Count(confirmed),
+            UpcomingBookings = all.Count(upcoming),
+            ActiveBookings = all.Count(inProgress),
+            NextCheckIn = all.Where(upcoming).Select(b => (DateTime?)StayKpiRules.RomeDateOf(b.CheckInDate)).Min(),
+            NextCheckOut = all.Where(upcomingCheckOut).Select(b => (DateTime?)StayKpiRules.RomeDateOf(b.CheckOutDate)).Min(),
         };
     }
 
@@ -420,14 +429,12 @@ public class PropertyService(
         var valid = items.Count(i => i.CinStatus == "valid");
         var missing = items.Count(i => i.CinStatus == "missing");
         var invalid = items.Count(i => i.CinStatus == "invalid");
-        var daysUntilDeadline = CinComplianceRules.DaysUntilDeadline();
 
         var summary = new CinComplianceSummary(
             Valid: valid,
             Missing: missing,
             Invalid: invalid,
-            DaysUntilDeadline: daysUntilDeadline,
-            Deadline: CinComplianceRules.RegulatoryDeadline,
+            Deadline: cinDeadline.Today(),
             HasNonCompliant: missing + invalid > 0);
 
         IEnumerable<OwnerCinComplianceItem> filtered = items;

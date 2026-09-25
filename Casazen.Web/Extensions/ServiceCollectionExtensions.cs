@@ -260,6 +260,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingService, BookingService>();
         // Public availability of the booking site, same nights as the booking checks (BK-05).
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
+        // Host dashboard KPIs per period and iCal feeds widget (PC-16).
+        services.AddScoped<IHostDashboardService, HostDashboardService>();
         services.AddScoped<IOtaManager, OtaManager>();
         services.AddScoped<IPaymentService, PaymentService>();
         // Refunds and cancellations on Stripe Connect (BK-02, docs/runbooks/stripe.md "Refunds").
@@ -279,6 +281,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
+        // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
+        services.AddOptions<Casazen.Core.Options.CinOptions>()
+            .BindConfiguration(Casazen.Core.Options.CinOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.CinOptions>, Casazen.Core.Options.CinOptionsValidator>();
+        services.AddSingleton<Casazen.Core.Regulatory.CinDeadlineCalendar>();
+        services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();

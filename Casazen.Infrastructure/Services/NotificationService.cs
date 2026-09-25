@@ -82,18 +82,43 @@ public class NotificationService(
             cancellationToken);
     }
 
-    /// <summary>
-    /// No email or push exists yet for the CIN deadline (CO-20): the alert is only logged as not delivered, instead of
-    /// pretending to send it.
-    /// </summary>
-    public Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline)
+    public async Task<bool> SendCinDeadlineAlertAsync(CinDeadlineAlert alert, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        // Background job: no tenant filter; the org and its property ids come from the job's own query.
+        var propertyIds = alert.PropertyIds.ToArray();
+        var propertyNames = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.OrgId == alert.OrgId && propertyIds.Contains(p.Id))
+            .OrderBy(p => p.Name)
+            .Select(p => p.Name)
+            .ToListAsync(cancellationToken);
+        if (propertyNames.Count == 0)
+        {
+            logger.LogWarning("CIN deadline alert of org {OrgId} skipped: none of its properties was found", alert.OrgId);
+            return false;
+        }
+
+        var contactEmail = await db.Orgs
+            .AsNoTracking()
+            .Where(o => o.Id == alert.OrgId)
+            .Select(o => o.ContactEmail)
+            .FirstOrDefaultAsync(cancellationToken);
+        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
+        var complianceUrl = links.IsConfigured ? links.HostCinCompliance() : null;
+        var email = EmailTemplates.CinDeadlineAlert(EmailTemplates.DefaultCulture, alert.Deadline, propertyNames, complianceUrl);
+
+        // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged
+        // by the queue.
+        if (emailQueue.Enqueue(contactEmail, email, EmailTemplates.Names.CinDeadlineAlert))
+            return true;
+
         logger.LogWarning(
-            "CIN deadline alert for owner {OwnerId} not delivered: no email or push for it yet ({PropertyCount} properties, {Days} days remaining)",
-            ownerId,
-            propertyIds.Count,
-            daysUntilDeadline);
-        return Task.CompletedTask;
+            "CIN deadline alert email of org {OrgId} not queued ({PropertyCount} properties)",
+            alert.OrgId,
+            propertyNames.Count);
+        return false;
     }
 
     /// <summary>Push <c>type</c> of each Alloggiati alert (the app opens the booking from the route).</summary>
