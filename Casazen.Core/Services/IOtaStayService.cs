@@ -53,28 +53,4 @@ public interface IOtaStayService
 
     /// <summary>The imported block linked to the stay, or null (not a stay from iCal, or its block left the feed). Read only.</summary>
     Task<CalendarBlock?> GetLinkedBlockAsync(Guid bookingId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// The calendar blocks of the property overlapping [<paramref name="startUtc"/>, <paramref name="endUtc"/>) for the host
-    /// calendar, with the channel of their feed and their stay. Read only; the import URL of the feeds is never read.
-    /// </summary>
-    Task<IReadOnlyList<OtaCalendarBlock>> GetCalendarBlocksAsync(
-        Guid propertyId,
-        DateTime startUtc,
-        DateTime endUtc,
-        CancellationToken cancellationToken = default);
 }
-
-/// <summary>A calendar block as the host calendar shows it (CO-21).</summary>
-/// <param name="Channel">Channel of its feed; null for a manual block.</param>
-/// <param name="FeedLabel">Label of its feed, when it has one.</param>
-/// <param name="StayId">The OTA stay created from it, while that stay is not cancelled.</param>
-/// <param name="RepresentedByStay">The stay takes exactly its nights (<see cref="PropertyOccupancy.IsRepresentedByStay"/>).</param>
-/// <param name="Convertible">"Crea soggiorno OTA" is offered (<see cref="OtaStays.IsConvertible"/>).</param>
-public sealed record OtaCalendarBlock(
-    CalendarBlock Block,
-    Entities.Enums.ICalFeedChannel? Channel,
-    string? FeedLabel,
-    Guid? StayId,
-    bool RepresentedByStay,
-    bool Convertible);

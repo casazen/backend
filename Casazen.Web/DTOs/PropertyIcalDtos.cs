@@ -68,12 +68,20 @@ public class PropertyIcalExportUrlDto
     public string ExportUrl { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// One entry of <c>GET /api/bookings/calendar</c>: a booking (<see cref="Type"/> <c>booking</c>, opens the booking
+/// detail) or a calendar block (<c>ical-block</c>: dates taken on another channel, it has no guest and no booking detail).
+/// </summary>
 public class CalendarItemDto
 {
     public string Type { get; set; } = "booking";
     public Guid Id { get; set; }
     public Guid PropertyId { get; set; }
+
+    /// <summary>Arrival day (stay date, no time zone: <c>2026-09-30T00:00:00</c>), MO-06.</summary>
     public DateTime StartDate { get; set; }
+
+    /// <summary>Departure day (stay date, no time zone), MO-06.</summary>
     public DateTime EndDate { get; set; }
     public DateTime StartDateUtc { get; set; }
     public DateTime EndDateUtc { get; set; }
@@ -84,25 +92,33 @@ public class CalendarItemDto
     public string? GuestName { get; set; }
     public string? Summary { get; set; }
 
-    /// <summary>Label of the feed (a block) or of the feed of an OTA stay created from iCal (a booking), CO-21.</summary>
-    public string? ChannelLabel { get; set; }
-
-    /// <summary>Block only: <c>ICalImport</c> or <c>Manual</c>.</summary>
-    public string? BlockSource { get; set; }
-
-    /// <summary>Block only: its import feed and the channel of that feed (<c>Airbnb</c>, <c>BookingCom</c>, <c>Other</c>).</summary>
-    public Guid? FeedId { get; set; }
-
+    /// <summary>
+    /// <c>ical-block</c> only: channel of the feed the block was imported from (<c>Airbnb</c>, <c>BookingCom</c>,
+    /// <c>Other</c>, as <c>ICalFeedChannel</c>); null for a block that does not come from a feed (MO-06).
+    /// </summary>
     public string? Channel { get; set; }
 
-    /// <summary>Block only: the OTA stay created from it, while not cancelled (CO-21).</summary>
+    /// <summary><c>ical-block</c> only: label the host gave to the feed (e.g. "Booking.com - camera 2"), or null.</summary>
+    public string? FeedLabel { get; set; }
+
+    /// <summary><c>ical-block</c> only: <c>ICalImport</c> or <c>Manual</c> (CO-21).</summary>
+    public string? BlockSource { get; set; }
+
+    /// <summary><c>ical-block</c> only: its import feed (CO-21).</summary>
+    public Guid? FeedId { get; set; }
+
+    /// <summary><c>ical-block</c> only: the OTA stay created from it, while not cancelled (CO-21).</summary>
     public Guid? BookingId { get; set; }
 
-    /// <summary>Block only: the host may turn it into an OTA stay ("Crea soggiorno OTA").</summary>
+    /// <summary><c>ical-block</c> only: the host may turn it into an OTA stay ("Crea soggiorno OTA", CO-21).</summary>
     public bool? Convertible { get; set; }
 
-    /// <summary>Booking only: the import feed of an OTA stay created from iCal, and why it is "da verificare".</summary>
+    /// <summary><c>booking</c> only: the import feed of an OTA stay created from iCal (CO-21).</summary>
     public Guid? IcalFeedId { get; set; }
 
+    /// <summary><c>booking</c> only: label of that feed when the stay was created (CO-21).</summary>
+    public string? ChannelLabel { get; set; }
+
+    /// <summary><c>booking</c> only: why the OTA stay is "da verificare" (<c>BlockRemoved</c>, <c>BlockDatesChanged</c>).</summary>
     public string? OtaReviewReason { get; set; }
 }

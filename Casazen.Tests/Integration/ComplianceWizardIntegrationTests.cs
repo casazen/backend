@@ -4,6 +4,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -176,8 +177,8 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
             PropertyId = propertyId,
             OrgId = orgId,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
-            CheckOutDate = DateTime.UtcNow.Date,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(-2),
+            CheckOutDate = TimeProvider.System.TodayInRome(),
             Status = BookingStatus.CheckedIn,
             NumberOfGuests = 2,
             BasePrice = 200,

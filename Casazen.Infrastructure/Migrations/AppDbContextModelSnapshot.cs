@@ -229,10 +229,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("CancellationReason")
                         .HasColumnType("integer");
 
-                    b.Property<string>("ChannelLabel")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)");
-
                     b.Property<DateTime>("CheckInDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -280,9 +276,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("ICalFeedId")
-                        .HasColumnType("uuid");
-
                     b.Property<int>("NumberOfAdults")
                         .HasColumnType("integer");
 
@@ -294,12 +287,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("OtaReviewRaisedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("OtaReviewReason")
-                        .HasColumnType("integer");
 
                     b.Property<int>("PaymentOption")
                         .HasColumnType("integer");
@@ -360,8 +347,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("ICalFeedId", "ExternalId");
-
                     b.HasIndex("OrgId", "BookingCode")
                         .IsUnique();
 
@@ -372,9 +357,6 @@ namespace Casazen.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("EndUtc")
@@ -407,9 +389,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("BookingId")
-                        .IsUnique();
 
                     b.HasIndex("OrgId");
 
@@ -456,6 +435,44 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("CancellationPolicies");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AlertCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("Deadline")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("LastAlertAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Stage")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId")
+                        .IsUnique();
+
+                    b.ToTable("CinAlertStates");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
@@ -3754,11 +3771,6 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.CalendarBlock", b =>
                 {
-                    b.HasOne("Casazen.Core.Entities.Booking", "Booking")
-                        .WithMany()
-                        .HasForeignKey("BookingId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("Casazen.Core.Entities.PropertyICalFeed", "Feed")
                         .WithMany()
                         .HasForeignKey("FeedId")
@@ -3776,11 +3788,20 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Booking");
-
                     b.Navigation("Feed");
 
                     b.Navigation("Org");
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Property");
                 });

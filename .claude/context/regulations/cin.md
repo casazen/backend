@@ -207,6 +207,7 @@ Riferimento: art. 13-ter D.L. 18/10/2023 n. 145, convertito dalla L. 15/12/2023 
 - La sezione "Sanzioni" è stata corretta: prima indicava €800–8.000 anche per la mancata esposizione, che invece costa €500–5.000.
 - "Decreto attuativo" (riga iniziale): il prot. 16726 è il decreto interoperabilità del 06/06/2024, non un D.M. del 03/09/2024.
 - La scadenza "01/03/2026 per operatori già attivi" (righe iniziali e "Scadenze") **non compare in nessuna fonte ufficiale trovata**. Va verificata prima di usarla nel codice (`CinDeadlineAlertJob`, task CO-20).
+  - CO-20 (2026-09-25): la data non è più nel codice. È la configurazione `Cin:ExposureDeadline`, vuota di default: senza data console e alert mostrano solo l'obbligo. Vedi `docs/runbooks/cin-format.md`, "CIN deadline and host alerts (CO-20)".
 
 ### Fonti
 

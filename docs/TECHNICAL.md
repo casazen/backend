@@ -176,6 +176,38 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
 
+#### Host dashboard (PC-16)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period` |
+| `GET` | `/api/dashboard/ical-feeds` | short-rent booking.read + property.read | iCal import feeds of the caller's properties: last sync, status, error code and localized message, feeds with an error first; never the URL |
+
+Both are limited to the caller's `HostScope` (org, and the owned properties unless the role is org-wide), in SQL.
+Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calendar dates, `RomeCalendar`):
+- **Period**: a calendar month, or the 30 nights ending with tonight (`Last30Days`). A night belongs to the date it
+  starts on.
+- **Occupancy** = occupied property-nights / available property-nights, over the active properties of the scope. A
+  night is occupied as in `PropertyOccupancy` (the nights the booking site shows as taken): a booking that occupies
+  its dates (`CheckoutHolds.OccupiesDates`: not cancelled, not an expired checkout hold; a valid hold or a pending "pay
+  at the property" request counts) or a block imported by an iCal feed. A night closed only by a manual block (owner
+  stay, maintenance) is neither occupied nor available. Available = nights of the period × properties − closed nights.
+  `rate` is `null` when nothing is available.
+- **Revenue** of the period: confirmed stays (Confirmed, CheckedIn, CheckedOut) **pro rata per night**: `BasePrice`
+  (lodging + cleaning, tourist tax excluded) × nights of the stay in the period / nights of the stay, rounded to the
+  cent on the total. A stay across two months counts in each for its nights there. Pending requests, cancelled
+  bookings and what a cancellation retains are not counted. Amounts are in euros.
+- **Arrivals / departures today**: confirmed stays whose check-in / check-out date is today in Europe/Rome (between
+  22:00/23:00 UTC and midnight UTC this is already the next day). A stay date stored with a time (e.g. `23:30Z`) counts
+  on its Rome date.
+- **Upcoming check-ins**: `Confirmed` bookings from today on (today's arrivals until the host registers them), soonest
+  first; never a cancelled booking. **Recent bookings**: the last five created, any status.
+
+The bookings summary of `GET /api/properties/{id}/detail` (A2-36) uses the same rules: `totalBookings` = confirmed
+stays, `upcomingBookings` = upcoming check-ins, `activeBookings` = stays in progress today (checked in, or confirmed
+with the check-in day passed), `nextCheckIn` / `nextCheckOut` as Rome dates. The detail answers 404 only when the
+property is not found; any other failure is a 500.
+
 #### Guests & digital check-in
 
 | Method | Path | Auth | Description |
@@ -598,6 +630,14 @@ Integration tests run on **real PostgreSQL**, so FKs, unique indexes, `timestamp
   3. otherwise, on a local run only, EF InMemory with a warning on stderr, and tests marked `[PostgresFact]` (migrations, backfill, RLI reservation) are skipped with the reason. On CI (`CI`/`GITHUB_ACTIONS` set) a missing PostgreSQL fails the run.
 - `PostgresMigrationTests` applies every migration to an empty database and asserts `HasPendingModelChanges() == false`: add a migration whenever the model changes.
 - A test that fails because of a known product bug owned by another task is marked `Skip = "<task id>: <reason>"`.
+
+### Dates, "today" and the clock (FD-06, QA-CLOCK)
+
+The calendar "today" of hosts, guests and properties is the date in **Europe/Rome**. Every night between 22:00 and 24:00 UTC (23:00 and 24:00 in winter) the UTC date is still yesterday in Rome, so code or tests that take "today" from the UTC clock are wrong in that window only.
+
+- **Application code:** "today" comes only from `RomeCalendar` on the injected `TimeProvider`: `timeProvider.TodayInRome()` / `TodayInRomeAsDateOnly()`, `RomeCalendar.DateInRome(instant)` for the Rome date of a stored instant, `RomeCalendar.StartOfDayUtc(date)` for the instant a Rome day starts. Date-only values (check-in, check-out, contract and deadline dates) are compared with that date, never with `DateTime.UtcNow` or `GetUtcNow()`. Instants (`CreatedAt`, token expiries, job windows) keep using the UTC clock.
+- **Tests:** a unit test that depends on "today" injects a `FixedTimeProvider` or `FakeTimeProvider` (`Casazen.Tests/Unit`). When the result depends on the hour, it covers both noon UTC and 23:30 UTC (for example with an `[InlineData]` for each). An integration test against the host's real clock takes "today" from `TimeProvider.System.TodayInRome()`, the same clock the app uses. Never `Skip` or wait for midnight: a test that fails between 22:00 and 24:00 UTC is a bug in the test or in the code.
+- **Guard:** `CalendarTodayArchitectureTests` fails on `DateTime.Today`, `DateTime.Now`/`DateTimeOffset.Now`, `GetLocalNow()` (application code only), `UtcNow.Date`, `GetUtcNow().Date`, `UtcDateTime.Date`, `now.Date` and `DateOnly.FromDateTime(DateTime.UtcNow)`. It checks the application projects, where `RomeCalendar.cs` is the only exception, and the test project. It cannot see a UTC date built in any other way (for example `new DateTime(utcNow.Year, utcNow.Month, utcNow.Day)`): the rule above still applies.
 
 ### Running tests
 

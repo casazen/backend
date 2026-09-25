@@ -330,6 +330,9 @@
   <data name="BookingTooManyGuests" xml:space="preserve">
     <value>This property hosts at most {0} guests.</value>
   </data>
+  <data name="BookingCalendarRangeInvalid" xml:space="preserve">
+    <value>The last day of the calendar cannot be before its first day.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
@@ -657,6 +660,12 @@
   </data>
   <data name="SupplierAccountAlreadyLinked" xml:space="preserve">
     <value>Your account is already linked to another supplier profile.</value>
+  </data>
+  <data name="SupplierEmailTaken" xml:space="preserve">
+    <value>A supplier profile with this email already exists. If it is yours, sign in with this email and use «Link the profile».</value>
+  </data>
+  <data name="SupplierMaintenanceConflict" xml:space="preserve">
+    <value>Another operation changed the supplier profiles during the repair: nothing was saved. Try again.</value>
   </data>
   <data name="CheckInGuestsCount" xml:space="preserve">
     <value>Enter from 1 to {0} guests.</value>
@@ -1128,5 +1137,8 @@
   </data>
   <data name="OtaStayTotalPriceInvalid" xml:space="preserve">
     <value>The amount cannot be negative.</value>
+  </data>
+  <data name="DashboardInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
   </data>
 </root>

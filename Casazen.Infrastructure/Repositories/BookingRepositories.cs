@@ -54,9 +54,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         int? directPendingTtlMinutes = null)
     {
         return await context.Bookings
-            .Where(b => b.PropertyId == propertyId &&
-                   b.CheckInDate <= endDate &&
-                   b.CheckOutDate >= startDate)
+            .Where(HostCalendarRange.BookingShownIn(propertyId, startDate, endDate))
             .Where(CheckoutHolds.OccupiesDates(ExpiredHoldCutoff(directPendingTtlMinutes)))
             .Include(b => b.Guest)
             .ToListAsync();

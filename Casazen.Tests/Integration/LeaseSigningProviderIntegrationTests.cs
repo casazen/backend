@@ -196,7 +196,7 @@ public class LeaseSigningProviderIntegrationTests(LeaseESignProviderFlowWebAppli
         using var form = new MultipartFormDataContent
         {
             { new StringContent("24091234567890123-000009"), "registrationCode" },
-            { new StringContent(DateTime.UtcNow.Date.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), "registrationDate" },
+            { new StringContent(TimeProvider.System.TodayInRome().AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), "registrationDate" },
             { new ByteArrayContent(FakeLeaseRegistrationProvider.ReceiptPdf), "receipt", "ricevuta.pdf" },
         };
         return await client.PostAsync($"/api/leases/{leaseId}/registration/manual", form);

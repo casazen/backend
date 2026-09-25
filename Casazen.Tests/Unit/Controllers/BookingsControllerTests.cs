@@ -64,8 +64,20 @@ public class BookingsControllerTests
             _mockAlloggiatiService.Object,
             _mockPropertyService.Object,
             _mockAuthz.Object,
+            CreatePropertyICalSyncService(),
             Mock.Of<IOtaStayService>(),
             _mockLogger.Object);
+
+    private static PropertyICalSyncService CreatePropertyICalSyncService()
+    {
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["App:ApiBaseUrl"] = "https://api.test" })
+            .Build();
+        return ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration);
+    }
 
     private void SetUser(string userId)
     {

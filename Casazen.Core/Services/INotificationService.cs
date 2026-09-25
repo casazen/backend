@@ -13,7 +13,12 @@ public interface INotificationService
     /// </summary>
     Task SendStayAlertAsync(StayAlert alert, CancellationToken cancellationToken = default);
 
-    Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline);
+    /// <summary>
+    /// Delivers a CIN alert of the <c>cin-deadline-alert</c> job (CO-20) to an org: one email to its contact address,
+    /// queued on Hangfire, listing its properties without a valid CIN. The job decides when; this only renders and
+    /// delivers. False when the email was not queued (no contact address, provider not configured), with a log entry.
+    /// </summary>
+    Task<bool> SendCinDeadlineAlertAsync(CinDeadlineAlert alert, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// An OTA stay created from an iCal block became "da verificare" (CO-21): a sync found its block gone from the feed or

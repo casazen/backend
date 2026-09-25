@@ -5,6 +5,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -125,7 +126,7 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
     public async Task UploadSignedContract_StipulaInTheFuture_Returns422()
     {
         var (client, leaseId) = await DraftLeaseAsync("offline-future");
-        var tomorrow = DateTime.UtcNow.Date.AddDays(2).ToString("yyyy-MM-dd");
+        var tomorrow = TimeProvider.System.TodayInRome().AddDays(2).ToString("yyyy-MM-dd");
 
         var upload = await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId, tomorrow);
 

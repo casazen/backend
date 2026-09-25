@@ -12,6 +12,9 @@ public static class BookingErrorCodes
     /// <summary>422: the new booking breaks a rule (check-in in the past, no guests, negative price).</summary>
     public const string CreateInvalid = "booking_create_invalid";
 
+    /// <summary>400: the last day of the host calendar range is before its first day (MO-06).</summary>
+    public const string CalendarRangeInvalid = "booking_calendar_range_invalid";
+
     /// <summary>422: the check-out is not after the check-in.</summary>
     public const string InvalidDates = "booking_invalid_dates";
 

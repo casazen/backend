@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
@@ -193,7 +194,7 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
         var token = await IssueTokenAsync(seed.BookingId);
         using var host = _factory.CreateAuthenticatedClient(seed.OwnerId, OwnerRole);
-        var future = DateTime.UtcNow.Date.AddYears(1).ToString("yyyy-MM-dd");
+        var future = TimeProvider.System.TodayInRome().AddYears(1).ToString("yyyy-MM-dd");
         object[] invalidGuests =
         [
             new

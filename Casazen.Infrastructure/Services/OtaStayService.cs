@@ -241,47 +241,6 @@ public sealed class OtaStayService(
     public async Task<CalendarBlock?> GetLinkedBlockAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
         await db.CalendarBlocks.AsNoTracking().FirstOrDefaultAsync(b => b.BookingId == bookingId, cancellationToken);
 
-    public async Task<IReadOnlyList<OtaCalendarBlock>> GetCalendarBlocksAsync(
-        Guid propertyId,
-        DateTime startUtc,
-        DateTime endUtc,
-        CancellationToken cancellationToken = default)
-    {
-        var rows = await db.CalendarBlocks
-            .AsNoTracking()
-            .Where(b => b.PropertyId == propertyId && b.StartUtc < endUtc && b.EndUtc > startUtc)
-            .Select(b => new { Block = b, Stay = b.Booking })
-            .ToListAsync(cancellationToken);
-
-        // Channel and label of the feeds, by projection: the encrypted import URL is never read for the calendar.
-        var feedIds = rows.Where(r => r.Block.FeedId != null).Select(r => r.Block.FeedId!.Value).Distinct().ToList();
-        var feeds = feedIds.Count == 0
-            ? new Dictionary<Guid, (ICalFeedChannel Channel, string? Label)>()
-            : await db.PropertyICalFeeds
-                .AsNoTracking()
-                .Where(f => feedIds.Contains(f.Id))
-                .Select(f => new { f.Id, f.Channel, f.Label })
-                .ToDictionaryAsync(f => f.Id, f => (f.Channel, f.Label), cancellationToken);
-
-        var today = _clock.TodayInRome();
-        return rows
-            .Select(r =>
-            {
-                var feed = r.Block.FeedId is { } id && feeds.TryGetValue(id, out var found)
-                    ? found
-                    : ((ICalFeedChannel Channel, string? Label)?)null;
-                var stayActive = r.Stay is not null && r.Stay.Status != BookingStatus.Cancelled;
-                return new OtaCalendarBlock(
-                    r.Block,
-                    feed?.Channel,
-                    feed?.Label,
-                    stayActive ? r.Stay!.Id : null,
-                    PropertyOccupancy.IsRepresentedByStay(r.Block, r.Stay),
-                    OtaStays.IsConvertible(r.Block, r.Stay?.Status, today) && feed is not null);
-            })
-            .ToList();
-    }
-
     // The stay takes the dates its block now has on the channel. Only a confirmed stay whose arrival is not registered
     // (the same limits as a change by the host, PC-07); the price stays the one the host gave.
     private bool ApplyChannelDates(Booking stay, CalendarBlock block)

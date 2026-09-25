@@ -718,16 +718,68 @@ public partial class PropertyICalSyncService
         return _exportService.BuildPropertyFeed(bookings, blocks, busySummary);
     }
 
-    public async Task<IReadOnlyList<CalendarBlock>> GetBlocksInRangeAsync(
+    /// <summary>
+    /// Calendar blocks of the host calendar from <paramref name="firstDay"/> to <paramref name="lastDay"/> (stay dates,
+    /// both included: <see cref="HostCalendarRange.BlockShownIn"/>), each with the channel and label of its feed (MO-06):
+    /// the calendars show "Airbnb" or "Booking.com" instead of a guest. Read through a projection, so the encrypted
+    /// import URL of the feed is never loaded. Each block also says whether it became an OTA stay and whether "Crea
+    /// soggiorno OTA" is offered (CO-21, rules of <see cref="OtaStays"/> and <see cref="PropertyOccupancy"/>).
+    /// </summary>
+    public async Task<IReadOnlyList<HostCalendarBlock>> GetBlocksInRangeAsync(
         Guid propertyId,
-        DateTime startUtc,
-        DateTime endUtc,
-        CancellationToken ct = default) =>
-        await _db.CalendarBlocks
-            .Where(b => b.PropertyId == propertyId &&
-                        b.StartUtc < endUtc &&
-                        b.EndUtc > startUtc)
+        DateTime firstDay,
+        DateTime lastDay,
+        CancellationToken ct = default)
+    {
+        var rows = await _db.CalendarBlocks
+            .AsNoTracking()
+            .Where(HostCalendarRange.BlockShownIn(propertyId, firstDay, lastDay))
+            .OrderBy(b => b.StartUtc)
+            .Select(b => new
+            {
+                Block = new CalendarBlock
+                {
+                    Id = b.Id,
+                    PropertyId = b.PropertyId,
+                    OrgId = b.OrgId,
+                    Source = b.Source,
+                    FeedId = b.FeedId,
+                    StartUtc = b.StartUtc,
+                    EndUtc = b.EndUtc,
+                    Summary = b.Summary,
+                    BookingId = b.BookingId,
+                },
+                Channel = b.Feed != null ? (ICalFeedChannel?)b.Feed.Channel : null,
+                FeedLabel = b.Feed != null ? b.Feed.Label : null,
+                Stay = b.Booking == null
+                    ? null
+                    : new Booking
+                    {
+                        Id = b.Booking.Id,
+                        Status = b.Booking.Status,
+                        CheckInDate = b.Booking.CheckInDate,
+                        CheckOutDate = b.Booking.CheckOutDate,
+                    },
+            })
             .ToListAsync(ct);
+
+        var today = _clock.TodayInRome();
+        return rows
+            .Select(r => new HostCalendarBlock(
+                r.Block.Id,
+                r.Block.PropertyId,
+                r.Block.StartUtc,
+                r.Block.EndUtc,
+                r.Block.Summary,
+                r.Channel,
+                r.FeedLabel,
+                r.Block.Source,
+                r.Block.FeedId,
+                r.Stay is { Status: not BookingStatus.Cancelled } ? r.Stay.Id : null,
+                PropertyOccupancy.IsRepresentedByStay(r.Block, r.Stay),
+                r.Channel is not null && OtaStays.IsConvertible(r.Block, r.Stay?.Status, today)))
+            .ToList();
+    }
 
     public Task<bool> HasOverlappingBlockAsync(
         Guid propertyId,

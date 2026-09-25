@@ -112,6 +112,24 @@ them with `SELECT * FROM "CalendarBlocks" WHERE "Source" = 0 AND "FeedId" IS NUL
 and their blocks are deleted. The URLs stay encrypted: the code before PC-11 cannot use them, those feeds turn to
 `Failure` until the host saves the URL again.
 
+## Host calendar: blocks next to the bookings (MO-06)
+
+`GET /api/bookings/calendar?propertyId=…&startDate=2026-09-01&endDate=2026-09-30` (`BookingRead` plus
+`booking.read` on the property; another org gets 404) is the calendar of the web console and of the app.
+
+- **Range**: `startDate` and `endDate` are stay dates (`YYYY-MM-DD`), both included, never converted to a time zone
+  (`HostCalendarRange`). Clients send the first and the last day of the month as they are written: never
+  `toISOString()` of a local midnight, which in Italy gives the previous day. `endDate` before `startDate` answers 400
+  `booking_calendar_range_invalid`.
+- **Which entries**: every booking (not cancelled, not an expired checkout hold) and every block with a day in the
+  range, from arrival to departure day included (a departure on the 1st is in that month).
+- **Dates of the entries**: `startDate` / `endDate` (and `checkInDate` / `checkOutDate`) are stay dates without time
+  zone, `2026-09-30T00:00:00`; the `…Utc` fields keep the stored value. Read the first 10 characters.
+- **Blocks** are `items` with `type: "ical-block"`: no guest, and their `id` is not a booking (`GET /api/bookings/{id}`
+  answers 404), so the clients never open a booking detail from them. `channel` is the channel of the feed
+  (`Airbnb`, `BookingCom`, `Other`; null for a block without feed), `feedLabel` the label the host gave the feed,
+  `summary` the SUMMARY of the event.
+
 ## Export feed (PC-12)
 
 `GET /api/public/ical/{token}` (anonymous, `text/calendar`) is the link the host pastes on Airbnb, Booking.com and any
@@ -249,7 +267,7 @@ while it becomes a stay.
   checks, checkout). A block whose stay was cancelled, or whose dates changed on the channel, counts again on its own:
   its nights stay taken whatever the host does with the stay.
 - **Host calendar** (`GET /api/bookings/calendar`): the stay is shown once, as a booking item with `icalFeedId`,
-  `channelLabel`, `otaReviewReason`; a block item carries `blockSource`, `feedId`, `channel`, `channelLabel`, `bookingId`
+  `channelLabel`, `otaReviewReason`; a block item carries, besides `channel` and `feedLabel` (MO-06), `blockSource`, `feedId`, `bookingId`
   (its stay) and `convertible` ("Crea soggiorno OTA" offered: imported, not linked to an active stay, not over).
 - **Export (PC-12)**: the stay has an OTA source and the block is imported: neither is ever exported (no echo).
 - **Disconnecting the feed** deletes its blocks, converted ones included; the stays stay (confirmed, dates taken), keep

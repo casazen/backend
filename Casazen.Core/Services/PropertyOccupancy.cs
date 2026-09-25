@@ -31,6 +31,18 @@ public static class PropertyOccupancy
     }
 
     /// <summary>
+    /// A booking of any property that takes at least one night from <paramref name="fromDate"/> (included) to
+    /// <paramref name="toDate"/> (excluded): same rule as <see cref="BookingTakesNightIn(Guid, DateTime, DateTime)"/>, for
+    /// reads over many properties (host dashboard, PC-16) that filter the properties themselves.
+    /// </summary>
+    public static Expression<Func<Booking, bool>> BookingTakesNightIn(DateTime fromDate, DateTime toDate)
+    {
+        var from = fromDate.Date;
+        var to = toDate.Date;
+        return b => b.CheckInDate.Date < to && b.CheckOutDate.Date > from;
+    }
+
+    /// <summary>
     /// A calendar block of <paramref name="propertyId"/> (iCal import or manual) that takes at least one night from
     /// <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded), unless the host turned it into an
     /// OTA stay that stands for it (<see cref="IsRepresentedByStay"/>, CO-21): then its nights are the stay's and count
@@ -41,6 +53,22 @@ public static class PropertyOccupancy
         var from = fromDate.Date;
         var to = toDate.Date;
         return b => b.PropertyId == propertyId && b.StartUtc.Date < to && b.EndUtc.Date > from
+            && (b.BookingId == null
+                || b.Booking!.Status == BookingStatus.Cancelled
+                || b.Booking.CheckInDate.Date != b.StartUtc.Date
+                || b.Booking.CheckOutDate.Date != b.EndUtc.Date);
+    }
+
+    /// <summary>
+    /// A calendar block of any property that takes at least one night from <paramref name="fromDate"/> (included) to
+    /// <paramref name="toDate"/> (excluded): same rule as <see cref="BlockTakesNightIn(Guid, DateTime, DateTime)"/>, a
+    /// block standing for its OTA stay included (CO-21: its nights count once, through the stay).
+    /// </summary>
+    public static Expression<Func<CalendarBlock, bool>> BlockTakesNightIn(DateTime fromDate, DateTime toDate)
+    {
+        var from = fromDate.Date;
+        var to = toDate.Date;
+        return b => b.StartUtc.Date < to && b.EndUtc.Date > from
             && (b.BookingId == null
                 || b.Booking!.Status == BookingStatus.Cancelled
                 || b.Booking.CheckInDate.Date != b.StartUtc.Date
