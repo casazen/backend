@@ -242,7 +242,7 @@ public class GuestsController(
         if (orgId is null)
             return GuestNotFound();
 
-        var result = await guestService.DeleteGuestAsync(orgId.Value, id, HttpContext.RequestAborted);
+        var result = await guestService.DeleteGuestAsync(orgId.Value, id, User.GetUserId(), HttpContext.RequestAborted);
         logger.LogInformation("Guest {GuestId} deletion completed: {Result}", id, result);
         return NoContent();
     }

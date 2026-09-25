@@ -142,8 +142,11 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
         };
 
         db.Orgs.Add(org);
-        db.Guests.AddRange(complete, otherValues);
         await db.SaveChangesAsync();
+        // The guest rows in SQL too (CO-15): the current Guest entity has "AlloggiatiDataErasedAt", which this
+        // migration point does not have yet, and no longer has "DataRetentionUntil", which the table still requires.
+        await InsertGuestBeforeCo15Async(db, complete);
+        await InsertGuestBeforeCo15Async(db, otherValues);
         // The property row in SQL: the current Property entity has columns that later migrations add (LT-10).
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "Properties" (
@@ -178,4 +181,29 @@ public class AddStayGuestsMigrationPostgresTests : IAsyncLifetime
 
         return new Seed(org.Id, complete.Id, otherValues.Id, single, family, noneDeclared);
     }
+
+    /// <summary>
+    /// A guest row as the table accepted it before CO-15 (no "AlloggiatiDataErasedAt" column yet, "DataRetentionUntil"
+    /// still required, matching the entity's own former default of created-at + 7 years).
+    /// </summary>
+    private static Task InsertGuestBeforeCo15Async(AppDbContext db, Guest guest) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Guests" (
+                "Id", "OrgId", "FirstName", "LastName", "Email", "PhoneNumber", "Address", "City", "PostalCode", "Country",
+                "DateOfBirth", "PlaceOfBirth", "Nationality", "DocumentType", "DocumentNumber", "DocumentIssueDate",
+                "DocumentExpiryDate", "DocumentIssuingCountry", "DocumentScanUrl", "DataProcessingConsentDate",
+                "ConsentIpAddress", "DataRetentionExpiryDate", "ErasureRequested", "ErasureRequestedDate",
+                "DataAnonymizedDate", "Notes", "Gender", "ConsentDate", "ConsentVersion", "MarketingConsent",
+                "MarketingConsentDate", "DataRetentionUntil", "DataProcessingPurpose", "IsDeleted", "DeletedAt",
+                "DeletionReason", "CreatedAt", "UpdatedAt")
+            VALUES ({guest.Id}, {guest.OrgId}, {guest.FirstName}, {guest.LastName}, {guest.Email}, {guest.PhoneNumber},
+                {guest.Address}, {guest.City}, {guest.PostalCode}, {guest.Country}, {guest.DateOfBirth}, {guest.PlaceOfBirth},
+                {guest.Nationality}, {(int?)guest.DocumentType}, {guest.DocumentNumber}, {guest.DocumentIssueDate},
+                {guest.DocumentExpiryDate}, {guest.DocumentIssuingCountry}, {guest.DocumentScanUrl},
+                {guest.DataProcessingConsentDate}, {guest.ConsentIpAddress}, {guest.DataRetentionExpiryDate},
+                {guest.ErasureRequested}, {guest.ErasureRequestedDate}, {guest.DataAnonymizedDate}, {guest.Notes},
+                {(int?)guest.Gender}, {guest.ConsentDate}, {guest.ConsentVersion}, {guest.MarketingConsent},
+                {guest.MarketingConsentDate}, {guest.CreatedAt.AddYears(7)}, {guest.DataProcessingPurpose}, {guest.IsDeleted},
+                {guest.DeletedAt}, {guest.DeletionReason}, {guest.CreatedAt}, {guest.UpdatedAt})
+            """);
 }

@@ -586,7 +586,6 @@ public class BookingService(
         string consentIpAddress)
     {
         var now = DateTime.UtcNow;
-        var retentionUntil = now.AddYears(7);
 
         var guest = new Guest
         {
@@ -600,7 +599,6 @@ public class BookingService(
             ConsentIpAddress = consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress,
             ConsentVersion = consentVersion,
             ConsentDate = now,
-            DataRetentionUntil = retentionUntil,
             DataProcessingPurpose = "Direct Booking Checkout",
             CreatedAt = now,
             UpdatedAt = now,

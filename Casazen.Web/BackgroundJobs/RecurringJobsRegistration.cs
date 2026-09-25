@@ -25,7 +25,7 @@ public static class RecurringJobsRegistration
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         recurringJobManager.AddOrUpdate<GdprDataRetentionJob>(
-            "gdpr-data-retention",
+            GdprDataRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(),
             "0 3 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });

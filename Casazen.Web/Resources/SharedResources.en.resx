@@ -393,8 +393,17 @@
   <data name="CheckInDocumentTypeInvalid" xml:space="preserve">
     <value>Invalid document type.</value>
   </data>
-  <data name="CheckInGdprConsentRequired" xml:space="preserve">
-    <value>You must consent to data processing to complete the check-in.</value>
+  <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
+    <value>Consent to promotional communications is not available for this check-in.</value>
+  </data>
+  <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
+    <value>Only the guest can give the marketing consent, on the check-in portal. The host can only withdraw it on the guest's documented request.</value>
+  </data>
+  <data name="GdprMarketingWithdrawalNoteRequired" xml:space="preserve">
+    <value>Describe the guest's request (date and channel) to withdraw the marketing consent.</value>
+  </data>
+  <data name="GdprGuestHasOpenBookings" xml:space="preserve">
+    <value>The guest has ongoing or future bookings: their data cannot be erased or anonymized until those are over or cancelled.</value>
   </data>
   <data name="CheckInAlreadySubmitted" xml:space="preserve">
     <value>The check-in has already been completed.</value>
@@ -1209,5 +1218,20 @@
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
+  </data>
+  <data name="LtrAgreementNotFound" xml:space="preserve">
+    <value>Territorial agreement not found.</value>
+  </data>
+  <data name="LtrBandNotFound" xml:space="preserve">
+    <value>Agreement band not found.</value>
+  </data>
+  <data name="LtrImuChannelNotFound" xml:space="preserve">
+    <value>Comune IMU channel not found.</value>
+  </data>
+  <data name="LtrInvalidBandRange" xml:space="preserve">
+    <value>The band range is not valid: the maximum, when given, must be greater than the minimum.</value>
+  </data>
+  <data name="LtrVerifiedAtInFuture" xml:space="preserve">
+    <value>The verification date cannot be in the future.</value>
   </data>
 </root>

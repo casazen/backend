@@ -97,6 +97,8 @@ public class AppDbContext(
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
     public DbSet<HighTensionAreaComune> HighTensionAreaComuni { get; set; } = null!;
+    public DbSet<ComuneImuChannel> ComuneImuChannels { get; set; } = null!;
+    public DbSet<RegulatoryDataAuditEntry> RegulatoryDataAuditEntries { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
@@ -109,6 +111,8 @@ public class AppDbContext(
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
+    public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
+    public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
@@ -201,6 +205,28 @@ public class AppDbContext(
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(s => s.OrgId);
             entity.HasIndex(s => s.GuestId);
+        });
+
+        // CO-15: privacy history of a guest (notice presented, marketing consent), removed with the guest record.
+        modelBuilder.Entity<GuestConsentRecord>(entity =>
+        {
+            entity.HasOne(r => r.Guest)
+                .WithMany()
+                .HasForeignKey(r => r.GuestId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(r => r.OrgId);
+            entity.HasIndex(r => new { r.GuestId, r.Purpose, r.RecordedAt });
+        });
+
+        // CO-15: audit of the operations on guest data; no foreign key to the guest, so it outlives a removed guest.
+        modelBuilder.Entity<GuestPrivacyAuditEntry>(entity =>
+        {
+            entity.HasOne<Org>().WithMany().HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(a => a.OrgId);
+            entity.HasIndex(a => new { a.GuestId, a.OccurredAt });
         });
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
@@ -963,6 +989,12 @@ public class AppDbContext(
 
         modelBuilder.Entity<HighTensionAreaComune>()
             .HasIndex(c => c.Comune);
+
+        modelBuilder.Entity<ComuneImuChannel>()
+            .HasIndex(c => c.Comune);
+
+        modelBuilder.Entity<RegulatoryDataAuditEntry>()
+            .HasIndex(e => new { e.EntityId, e.OccurredAt });
 
         // Native host app push tokens (US-025 / #299)
         modelBuilder.Entity<DeviceRegistration>(entity =>

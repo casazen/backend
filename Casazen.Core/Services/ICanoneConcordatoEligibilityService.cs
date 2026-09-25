@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
 
@@ -56,6 +57,13 @@ public static class CanoneConcordatoWarningCodes
 
     /// <summary>Term over 6 years: the agreement has no uplift for it, none is applied (prudent on the maximum).</summary>
     public const string NoDurationUpliftOverSixYears = "no_duration_uplift_over_6_years";
+
+    /// <summary>
+    /// Today is past the agreement's formal <see cref="TerritorialRentAgreement.ExpiresAt"/> (LT-13, A7-22). Never
+    /// blocks: most agreements (art. 14-style clauses) remain in force until the signatories sign a new one — see
+    /// <see cref="CanoneConcordatoEligibilityDto.AgreementRemainsInForceUntilReplaced"/>.
+    /// </summary>
+    public const string AgreementExpired = "agreement_expired";
 }
 
 /// <summary>
@@ -153,7 +161,23 @@ public record CanoneConcordatoEligibilityDto(
 
     /// <summary>D-elements that count for sub-fascia 3, as listed by the agreement.</summary>
     public string? SubFascia3QualifyingTypeDElements { get; init; }
+
+    /// <summary>Formal expiry of the territorial agreement used (LT-13, A7-22); null when unknown.</summary>
+    public DateTime? AgreementExpiresAt { get; init; }
+
+    /// <summary>The agreement's own text keeps it in force past its expiry until a new one is signed (LT-13).</summary>
+    public bool AgreementRemainsInForceUntilReplaced { get; init; }
 }
+
+/// <summary>Zone of a territorial agreement with its cadastral sheets, for the calculator's zone picker (LT-13, A7-24).</summary>
+public sealed record ConcordatoZoneDto(string Name, IReadOnlyList<string> CadastralSheets);
+
+/// <summary><c>GET /properties/{id}/canone-concordato/zones</c> response (LT-13, A7-24): never free text on the client.</summary>
+public sealed record CanoneConcordatoZonesDto(
+    string Comune,
+    bool Available,
+    DataCompleteness? DataCompleteness,
+    IReadOnlyList<ConcordatoZoneDto> Zones);
 
 public interface ICanoneConcordatoEligibilityService
 {
@@ -167,4 +191,10 @@ public interface ICanoneConcordatoEligibilityService
         RentBandCharacteristics characteristics,
         LeaseTerm term,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Zones of the territorial agreement of the property's comune, from the agreement data (never typed free text,
+    /// A7-24): or <c>null</c> when the property is not visible (tenant filter).
+    /// </summary>
+    Task<CanoneConcordatoZonesDto?> GetZonesAsync(Guid propertyId, CancellationToken cancellationToken = default);
 }

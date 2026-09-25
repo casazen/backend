@@ -55,7 +55,6 @@ public sealed class GuestDto
     public string ConsentVersion { get; init; } = string.Empty;
     public bool MarketingConsent { get; init; }
     public DateTime? MarketingConsentDate { get; init; }
-    public DateTime DataRetentionUntil { get; init; }
     public DateTime? DataRetentionExpiryDate { get; init; }
     public string DataProcessingPurpose { get; init; } = string.Empty;
     public bool ErasureRequested { get; init; }
@@ -110,7 +109,6 @@ public static class GuestDtoMapper
         ConsentVersion = guest.ConsentVersion,
         MarketingConsent = guest.MarketingConsent,
         MarketingConsentDate = guest.MarketingConsentDate,
-        DataRetentionUntil = guest.DataRetentionUntil,
         DataRetentionExpiryDate = guest.DataRetentionExpiryDate,
         DataProcessingPurpose = guest.DataProcessingPurpose,
         ErasureRequested = guest.ErasureRequested,

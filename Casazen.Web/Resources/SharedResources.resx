@@ -393,8 +393,17 @@
   <data name="CheckInDocumentTypeInvalid" xml:space="preserve">
     <value>Tipo di documento non valido.</value>
   </data>
-  <data name="CheckInGdprConsentRequired" xml:space="preserve">
-    <value>Per completare il check-in devi acconsentire al trattamento dei dati.</value>
+  <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
+    <value>Il consenso alle comunicazioni promozionali non è disponibile per questo check-in.</value>
+  </data>
+  <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
+    <value>Il consenso marketing può darlo solo l'ospite, dal portale del check-in. L'host può solo revocarlo su richiesta documentata dell'ospite.</value>
+  </data>
+  <data name="GdprMarketingWithdrawalNoteRequired" xml:space="preserve">
+    <value>Indica la richiesta dell'ospite (data e canale) per revocare il consenso marketing.</value>
+  </data>
+  <data name="GdprGuestHasOpenBookings" xml:space="preserve">
+    <value>L'ospite ha prenotazioni in corso o future: i suoi dati non possono essere cancellati o anonimizzati finché non sono concluse o annullate.</value>
   </data>
   <data name="CheckInAlreadySubmitted" xml:space="preserve">
     <value>Il check-in è già stato completato.</value>
@@ -1209,5 +1218,20 @@
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
+  </data>
+  <data name="LtrAgreementNotFound" xml:space="preserve">
+    <value>Accordo territoriale non trovato.</value>
+  </data>
+  <data name="LtrBandNotFound" xml:space="preserve">
+    <value>Fascia dell'accordo non trovata.</value>
+  </data>
+  <data name="LtrImuChannelNotFound" xml:space="preserve">
+    <value>Canale IMU del Comune non trovato.</value>
+  </data>
+  <data name="LtrInvalidBandRange" xml:space="preserve">
+    <value>L'intervallo della fascia non è valido: il massimo, se indicato, deve essere superiore al minimo.</value>
+  </data>
+  <data name="LtrVerifiedAtInFuture" xml:space="preserve">
+    <value>La data di verifica non può essere nel futuro.</value>
   </data>
 </root>

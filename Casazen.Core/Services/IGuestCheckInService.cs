@@ -55,8 +55,13 @@ public class GuestCheckInSubmitRequest
     /// <summary>Guests in record order: a head of family or group before its members.</summary>
     public IReadOnlyList<StayGuestInput> Guests { get; set; } = [];
 
-    public bool GdprConsent { get; set; }
+    /// <summary>
+    /// Optional marketing consent ticked by the guest (CO-15). There is no consent for the Alloggiati registration: it is a
+    /// legal obligation, the privacy notice is only presented.
+    /// </summary>
     public bool MarketingConsent { get; set; }
+
+    /// <summary>Client IP recorded with the notice presented and the consent given (proof, art. 7.1 GDPR).</summary>
     public string ConsentIpAddress { get; set; } = string.Empty;
 }
 
@@ -70,7 +75,7 @@ public static class CheckInValidationKeys
     public const string FieldMaxLength = "CheckInFieldMaxLength";
     public const string GenderInvalid = "CheckInGenderInvalid";
     public const string DocumentTypeInvalid = "CheckInDocumentTypeInvalid";
-    public const string GdprConsentRequired = "CheckInGdprConsentRequired";
+    public const string MarketingConsentUnavailable = "CheckInMarketingConsentUnavailable";
     public const string GuestsCount = "CheckInGuestsCount";
     public const string GuestTypeInvalid = "CheckInGuestTypeInvalid";
     public const string MemberWithoutHead = "CheckInMemberWithoutHead";
@@ -115,6 +120,12 @@ public sealed class GuestCheckInPublicView
 
     /// <summary>Official tables imported, i.e. the form can offer codes for them.</summary>
     public IReadOnlyList<AlloggiatiCodeTable>? AvailableCodeTables { get; init; }
+
+    /// <summary>Version of the privacy notice the portal shows (<c>Gdpr:PrivacyNoticeVersion</c>), or null when not configured.</summary>
+    public string? PrivacyNoticeVersion { get; init; }
+
+    /// <summary>Version of the marketing consent text; null when not configured, and then the consent is not offered.</summary>
+    public string? MarketingConsentVersion { get; init; }
 }
 
 /// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>

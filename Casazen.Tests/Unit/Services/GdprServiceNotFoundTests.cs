@@ -1,11 +1,14 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -13,7 +16,7 @@ namespace Casazen.Tests.Unit.Services;
 
 public class GdprServiceNotFoundTests
 {
-    public static TheoryData<string> Operations => new() { "export", "delete", "anonymize", "consent" };
+    public static TheoryData<string> Operations => new() { "summary", "export", "delete", "anonymize", "consent", "files" };
 
     [Theory]
     [MemberData(nameof(Operations))]
@@ -24,7 +27,7 @@ public class GdprServiceNotFoundTests
             .Setup(r => r.GetByIdInOrgAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guest?)null);
         await using var db = NewDb();
-        var service = new GdprService(guestRepository.Object, db, NullLogger<GdprService>.Instance);
+        var service = NewService(db, guestRepository.Object);
 
         var ex = await Assert.ThrowsAsync<NotFoundException>(Act(service, operation, Guid.NewGuid(), Guid.NewGuid()));
 
@@ -49,7 +52,7 @@ public class GdprServiceNotFoundTests
         };
         db.Guests.Add(guest);
         await db.SaveChangesAsync();
-        var service = new GdprService(new GuestRepository(db), db, NullLogger<GdprService>.Instance);
+        var service = NewService(db, new GuestRepository(db));
 
         var ex = await Assert.ThrowsAsync<NotFoundException>(Act(service, operation, orgB, guest.Id));
 
@@ -64,11 +67,22 @@ public class GdprServiceNotFoundTests
 
     private static Func<Task> Act(GdprService service, string operation, Guid orgId, Guid guestId) => operation switch
     {
-        "export" => () => service.ExportGuestDataAsync(orgId, guestId),
-        "delete" => () => service.DeleteGuestDataAsync(orgId, guestId, "User request"),
-        "anonymize" => () => service.AnonymizeGuestDataAsync(orgId, guestId),
-        _ => () => service.UpdateConsentAsync(orgId, guestId, marketingConsent: true),
+        "summary" => () => service.GetGuestPrivacySummaryAsync(orgId, guestId),
+        "export" => () => service.ExportGuestDataAsync(orgId, guestId, "auth0|host"),
+        "delete" => () => service.EraseGuestDataAsync(orgId, guestId, "User request", "auth0|host"),
+        "anonymize" => () => service.AnonymizeGuestDataAsync(orgId, guestId, "auth0|host"),
+        "files" => () => service.EraseStoredFilesBeforeRemovalAsync(orgId, guestId, "auth0|host"),
+        _ => () => service.UpdateMarketingConsentAsync(orgId, guestId, marketingConsent: false, "Richiesta via email", "auth0|host"),
     };
+
+    private static GdprService NewService(AppDbContext db, IGuestRepository guestRepository) =>
+        new(
+            db,
+            guestRepository,
+            new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance),
+            Options.Create(new GdprOptions()),
+            TimeProvider.System,
+            NullLogger<GdprService>.Instance);
 
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>()

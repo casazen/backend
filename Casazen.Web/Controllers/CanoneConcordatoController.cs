@@ -50,6 +50,20 @@ public class CanoneConcordatoController(
         return result is null ? NotFound() : Ok(result);
     }
 
+    /// <summary>
+    /// Zones of the territorial agreement of the property's comune (A7-24): the calculator offers them as a select,
+    /// never free text, so the value always matches a zone the agreement actually defines.
+    /// </summary>
+    [HttpGet("zones")]
+    public async Task<IActionResult> GetZones(Guid propertyId, CancellationToken cancellationToken)
+    {
+        if (await AuthorizePropertyAsync(propertyId, cancellationToken) is { } denied)
+            return denied;
+
+        var result = await eligibility.GetZonesAsync(propertyId, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
     /// <summary>List signatory associations that can issue an attestazione di conformità. Contacts only.</summary>
     [HttpGet("attestation-guidance")]
     public async Task<IActionResult> GetAttestationGuidance(Guid propertyId, CancellationToken cancellationToken)

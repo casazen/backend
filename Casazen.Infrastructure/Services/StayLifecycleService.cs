@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -9,7 +8,6 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -28,7 +26,6 @@ public sealed class StayLifecycleService(
     IAlloggiatiWebService alloggiatiWebService,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IServiceRequestService serviceRequestService,
-    IOptions<ComplianceOptions> complianceOptions,
     ILogger<StayLifecycleService> logger,
     TimeProvider? timeProvider = null) : IStayLifecycleService
 {
@@ -116,7 +113,6 @@ public sealed class StayLifecycleService(
             // Checked out: the stay-alerts job no longer reminds it (CO-10).
             booking.Status = BookingStatus.CheckedOut;
             booking.UpdatedAt = UtcNow();
-            await ExtendGuestRetentionAsync(booking, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
@@ -194,25 +190,6 @@ public sealed class StayLifecycleService(
                 turnover.SupplierOrgId);
             throw new DomainRuleException(BookingErrorCodes.TurnoverRequestInvalid, "CheckoutServiceRequestInvalid");
         }
-    }
-
-    /// <summary>
-    /// The guest data are kept <c>Compliance:GdprRetentionYears</c> after the latest check-out of the guest's bookings,
-    /// never less than already set.
-    /// </summary>
-    private async Task ExtendGuestRetentionAsync(Booking booking, CancellationToken cancellationToken)
-    {
-        var checkoutDates = await db.Bookings
-            .AsNoTracking()
-            .Where(b => b.GuestId == booking.GuestId && b.Status != BookingStatus.Cancelled)
-            .Select(b => b.CheckOutDate)
-            .ToListAsync(cancellationToken);
-        var latestCheckout = checkoutDates.Count == 0 ? UtcNow() : checkoutDates.Max();
-        var retentionUntil = latestCheckout.AddYears(complianceOptions.Value.GdprRetentionYears);
-
-        if (retentionUntil > booking.Guest.DataRetentionUntil)
-            booking.Guest.DataRetentionUntil = retentionUntil;
-        booking.Guest.UpdatedAt = UtcNow();
     }
 
     private Task<IDbContextTransaction?> LockBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
