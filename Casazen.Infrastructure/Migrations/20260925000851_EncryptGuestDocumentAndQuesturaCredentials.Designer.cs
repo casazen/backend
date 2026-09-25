@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260924224011_EncryptGuestDocumentAndQuesturaCredentials")]
+    [Migration("20260925000851_EncryptGuestDocumentAndQuesturaCredentials")]
     partial class EncryptGuestDocumentAndQuesturaCredentials
     {
         /// <inheritdoc />
@@ -1869,11 +1869,20 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime?>("ComplianceCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("ComplianceCompletedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ComplianceStatus")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ComplianceSuspendedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.PrimitiveCollection<List<string>>("ComplianceSuspensionReasons")
+                        .HasColumnType("text[]");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
