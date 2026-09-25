@@ -33,43 +33,6 @@ public class UserService(
         return await repository.GetByEmailAsync(email);
     }
 
-    public async Task<User> RegisterUserAsync(string email, string firstName, string lastName, string password)
-    {
-        // Check if user already exists
-        var existingUser = await repository.GetByEmailAsync(email);
-        if (existingUser != null)
-        {
-            logger.LogWarning("User registration failed: Email already exists for userId {UserId}", existingUser.Id);
-            throw new InvalidOperationException($"User with email {email} already exists");
-        }
-
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
-            throw new ArgumentException("Invalid email address", nameof(email));
-
-        if (string.IsNullOrWhiteSpace(firstName))
-            throw new ArgumentException("First name is required", nameof(firstName));
-
-        if (string.IsNullOrWhiteSpace(lastName))
-            throw new ArgumentException("Last name is required", nameof(lastName));
-
-        var user = new User
-        {
-            Id = Guid.NewGuid().ToString(),
-            Email = email.ToLowerInvariant(),
-            FirstName = firstName,
-            LastName = lastName,
-            // PL-02: no host role before the onboarding and its consents.
-            Role = UserRole.None,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        await repository.AddAsync(user);
-        logger.LogInformation("User registered: {UserId}", user.Id);
-        return user;
-    }
-
     public async Task<User> UpdateUserAsync(User user)
     {
         var existing = await repository.GetByIdAsync(user.Id);
