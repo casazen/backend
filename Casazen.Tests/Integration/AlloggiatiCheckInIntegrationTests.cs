@@ -351,7 +351,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
               "documentIssuePlaceName": "Milano"
             }
           ],
-          "gdprConsent": true,
           "marketingConsent": false
         }
         """,

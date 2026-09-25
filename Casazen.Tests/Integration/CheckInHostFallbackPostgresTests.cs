@@ -216,7 +216,7 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
 
         var byHost = await host.PutAsync($"/api/alloggiati/{seed.BookingId}/stay-guests", Json(new { guests = invalidGuests }));
         var byGuest = await _factory.CreateClient().PostAsync(
-            $"/api/public/checkin/{token}", Json(new { guests = invalidGuests, gdprConsent = true }));
+            $"/api/public/checkin/{token}", Json(new { guests = invalidGuests }));
 
         Assert.Equal(HttpStatusCode.BadRequest, byHost.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, byGuest.StatusCode);

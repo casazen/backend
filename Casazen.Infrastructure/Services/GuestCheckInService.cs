@@ -23,10 +23,12 @@ public class GuestCheckInService(
     IStayGuestService? stayGuestService = null,
     IAlloggiatiCodeTableService? codeTableService = null,
     IOptions<GuestCheckInOptions>? options = null,
-    TimeProvider? timeProvider = null) : IGuestCheckInService
+    TimeProvider? timeProvider = null,
+    IOptions<GdprOptions>? gdprOptions = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
+    private readonly GdprOptions _gdpr = gdprOptions?.Value ?? new GdprOptions();
 
     private readonly IAlloggiatiCodeTableService _codeTables =
         codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
@@ -175,6 +177,8 @@ public class GuestCheckInService(
             DeclaredGuests = Math.Max(1, booking.NumberOfGuests),
             Guests = guests.Select(ToPrefill).ToList(),
             AvailableCodeTables = tables.Where(t => t.RowCount > 0).Select(t => t.Table).ToList(),
+            PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
+            MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
         };
     }
 
@@ -269,12 +273,14 @@ public class GuestCheckInService(
         if (IsCompleted(session.Status))
             return new GuestCheckInSubmitResult { Success = false, Duplicate = true, SessionId = session.Id };
 
-        if (!request.GdprConsent)
+        // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15).
+        var marketingVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion);
+        if (request.MarketingConsent && marketingVersion is null)
         {
             return new GuestCheckInSubmitResult
             {
                 Success = false,
-                ValidationErrors = [new StayGuestFieldError(null, nameof(request.GdprConsent), CheckInValidationKeys.GdprConsentRequired)],
+                ValidationErrors = [new StayGuestFieldError(null, nameof(request.MarketingConsent), CheckInValidationKeys.MarketingConsentUnavailable)],
             };
         }
 
@@ -295,13 +301,7 @@ public class GuestCheckInService(
         // record as before CO-12, so the guest views keep showing it.
         CopyToBooker(saved.Guests[0], guest);
 
-        guest.ConsentDate = now;
-        guest.DataProcessingConsentDate = now;
-        guest.MarketingConsent = request.MarketingConsent;
-        guest.MarketingConsentDate = request.MarketingConsent ? now : null;
-        var ip = request.ConsentIpAddress;
-        guest.ConsentIpAddress = ip.Length > 50 ? ip[..50] : ip;
-        guest.DataRetentionUntil = now.AddYears(7);
+        RecordPrivacyChoices(guest, request, marketingVersion, now);
         guest.DataProcessingPurpose = "Alloggiati Web guest registration (TULPS Art. 109)";
         guest.UpdatedAt = now;
 
@@ -408,6 +408,56 @@ public class GuestCheckInService(
 
     private static bool IsBookingEligibleForPublicCheckIn(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
+
+    /// <summary>
+    /// CO-15 (A5-15): the Alloggiati registration is a legal obligation (art. 109 TULPS, art. 6.1.c GDPR), not a consent:
+    /// only the version of the privacy notice presented is recorded. The marketing consent is optional and recorded only
+    /// when the guest ticks it, with its version; an unticked box leaves an earlier consent as it is (it is not a
+    /// withdrawal). Both rows carry the guest's IP and time as proof (art. 7.1 GDPR).
+    /// </summary>
+    private void RecordPrivacyChoices(Guest guest, GuestCheckInSubmitRequest request, string? marketingVersion, DateTime now)
+    {
+        var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
+        var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
+
+        if (GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) is { } noticeVersion)
+        {
+            db.GuestConsentRecords.Add(new GuestConsentRecord
+            {
+                OrgId = guest.OrgId,
+                GuestId = guest.Id,
+                Purpose = GuestConsentPurpose.PrivacyNotice,
+                Action = GuestConsentAction.NoticePresented,
+                Version = noticeVersion,
+                Source = GuestConsentSource.GuestPortal,
+                IpAddress = ipAddress,
+                RecordedAt = now,
+            });
+        }
+        else
+        {
+            logger.LogWarning(
+                "Gdpr:PrivacyNoticeVersion is not configured: the privacy notice shown for guest {GuestId} is not recorded",
+                guest.Id);
+        }
+
+        if (request.MarketingConsent && marketingVersion is not null)
+        {
+            db.GuestConsentRecords.Add(new GuestConsentRecord
+            {
+                OrgId = guest.OrgId,
+                GuestId = guest.Id,
+                Purpose = GuestConsentPurpose.Marketing,
+                Action = GuestConsentAction.Granted,
+                Version = marketingVersion,
+                Source = GuestConsentSource.GuestPortal,
+                IpAddress = ipAddress,
+                RecordedAt = now,
+            });
+            guest.MarketingConsent = true;
+            guest.MarketingConsentDate = now;
+        }
+    }
 
     /// <summary>Copies the first guest's registration on the booker's record (identity and document, as before CO-12).</summary>
     private static void CopyToBooker(StayGuest first, Guest booker)

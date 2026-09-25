@@ -84,7 +84,11 @@ public class GuestService(
         return updated;
     }
 
-    public async Task<GuestDeletionResult> DeleteGuestAsync(Guid orgId, Guid id, CancellationToken cancellationToken = default)
+    public async Task<GuestDeletionResult> DeleteGuestAsync(
+        Guid orgId,
+        Guid id,
+        string? actorUserId = null,
+        CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
 
@@ -104,14 +108,16 @@ public class GuestService(
 
         if (!usage.HasReferences)
         {
+            // CO-15: the document scan object goes with the row (FD-07 private storage), and the erasure is audited.
+            await gdprService.EraseStoredFilesBeforeRemovalAsync(orgId, id, actorUserId, cancellationToken);
             await repository.DeleteAsync(id);
             logger.LogInformation("Guest deleted: {GuestId}", id);
             return GuestDeletionResult.Deleted;
         }
 
         // Bookings and Alloggiati reports keep their Restrict FK to the guest: the row stays, marked
-        // deleted and anonymized like a GDPR erasure (detailed retention rules: CO-15).
-        await gdprService.DeleteGuestDataAsync(orgId, id, HostDeletionReason);
+        // deleted and anonymized like a GDPR erasure (CO-15, docs/runbooks/gdpr.md).
+        await gdprService.EraseGuestDataAsync(orgId, id, HostDeletionReason, actorUserId, cancellationToken);
         logger.LogInformation("Guest {GuestId} soft-deleted and anonymized: it is referenced by bookings", id);
         return GuestDeletionResult.Anonymized;
     }

@@ -55,6 +55,8 @@ public class PublicGuestCheckInController(
             DeclaredGuests = view.DeclaredGuests,
             Guests = view.Guests?.Select(PublicCheckInGuestPrefill.From).ToList(),
             AvailableCodeTables = view.AvailableCodeTables,
+            PrivacyNoticeVersion = view.PrivacyNoticeVersion,
+            MarketingConsentVersion = view.MarketingConsentVersion,
         };
 
         return Ok(response);
@@ -84,7 +86,8 @@ public class PublicGuestCheckInController(
     }
 
     /// <summary>
-    /// Accepts the data of every guest of the stay (CO-12) + GDPR consent. On success schedules the Alloggiati job for
+    /// Accepts the data of every guest of the stay (CO-12) and the optional marketing consent; the privacy notice shown is
+    /// recorded with its version (CO-15), no consent is asked for the Alloggiati registration. On success schedules the Alloggiati job for
     /// the arrival day. Invalid data → 400 ValidationProblem with the errors keyed by request property
     /// (<c>Guests[1].DocumentNumber</c>);
     /// duplicate submission → 409 <c>checkin_already_submitted</c>.
@@ -93,9 +96,6 @@ public class PublicGuestCheckInController(
     [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
     public async Task<IActionResult> Submit(string token, [FromBody] PublicCheckInSubmitRequest request)
     {
-        if (!request.GdprConsent)
-            ModelState.AddModelError(nameof(request.GdprConsent), localizer[CheckInValidationKeys.GdprConsentRequired]);
-
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
@@ -104,7 +104,6 @@ public class PublicGuestCheckInController(
         var submitRequest = new GuestCheckInSubmitRequest
         {
             Guests = request.Guests.Select(g => g.ToInput()).ToList(),
-            GdprConsent = request.GdprConsent,
             MarketingConsent = request.MarketingConsent,
             ConsentIpAddress = ip,
         };
