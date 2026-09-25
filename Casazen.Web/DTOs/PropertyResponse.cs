@@ -36,6 +36,12 @@ public sealed class PropertyResponse
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
     public bool IsActive { get; init; }
+
+    /// <summary>Host-set pause (PC-03, A2-05): hidden from public bookings until reactivated, own slot and history kept.</summary>
+    public bool IsPaused { get; init; }
+
+    /// <summary>UTC instant the property was paused; null when not paused.</summary>
+    public DateTime? PausedAt { get; init; }
     public PropertyComplianceStatus ComplianceStatus { get; init; }
     public DateTime? ComplianceCompletedAt { get; init; }
 
@@ -77,6 +83,8 @@ public sealed class PropertyResponse
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
             IsActive = property.IsActive,
+            IsPaused = property.IsPaused,
+            PausedAt = property.PausedAt,
             ComplianceStatus = property.ComplianceStatus,
             ComplianceCompletedAt = property.ComplianceCompletedAt,
             CadastralSheet = property.CadastralSheet,

@@ -250,6 +250,79 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Pauses a property (PC-03, A2-05): a dedicated action, separate from <see cref="Update"/>, so it never fails on
+    /// unrelated fields. Hidden from public search, its public page and new guest bookings until reactivated; still
+    /// counts against the plan's property limit, stays fully visible and editable to the host, and its existing
+    /// bookings are untouched. Idempotent.
+    /// </summary>
+    /// <param name="id">The unique identifier of the property to pause.</param>
+    /// <response code="200">The pause state right after the change.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpPost("{id:guid}/pause")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPauseStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPauseStatusResponse>> Pause(Guid id)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyRecordAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
+        {
+            logger.LogWarning("User {UserId} attempted to pause property {PropertyId} owned by {OwnerId}",
+                userId, id, existing.OwnerId);
+            return Forbid();
+        }
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, GetUserRoles(), "Property.Pause");
+
+        var updated = await propertyService.PausePropertyAsync(existing);
+        logger.LogInformation("Property paused: {PropertyId} by user {UserId}", id, userId);
+        return Ok(new PropertyPauseStatusResponse(updated.IsPaused, updated.PausedAt));
+    }
+
+    /// <summary>Reactivates a paused property (PC-03, A2-05): public search, its page and new guest bookings see it again. Idempotent.</summary>
+    /// <param name="id">The unique identifier of the property to reactivate.</param>
+    /// <response code="200">The pause state right after the change.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpPost("{id:guid}/activate")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPauseStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPauseStatusResponse>> Activate(Guid id)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var existing = await propertyService.GetPropertyRecordAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
+        {
+            logger.LogWarning("User {UserId} attempted to activate property {PropertyId} owned by {OwnerId}",
+                userId, id, existing.OwnerId);
+            return Forbid();
+        }
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, GetUserRoles(), "Property.Activate");
+
+        var updated = await propertyService.ActivatePropertyAsync(existing);
+        logger.LogInformation("Property activated: {PropertyId} by user {UserId}", id, userId);
+        return Ok(new PropertyPauseStatusResponse(updated.IsPaused, updated.PausedAt));
+    }
+
     private async Task<bool> HasSubmittedCanoneConcordatoLeaseAsync(Guid propertyId)
     {
         var leases = await leaseContractRepository.GetByPropertyAsync(propertyId);

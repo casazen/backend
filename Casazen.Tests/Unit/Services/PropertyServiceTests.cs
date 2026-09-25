@@ -238,6 +238,58 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
     }
 
+    // ─── Pause / Activate (PC-03, A2-05) ────────────────────────────────────────
+
+    [Fact]
+    public async Task PausePropertyAsync_NotPaused_SetsIsPausedAndPausedAtAndSaves()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = false, PausedAt = null };
+        _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
+
+        var result = await _service.PausePropertyAsync(property);
+
+        Assert.True(result.IsPaused);
+        Assert.NotNull(result.PausedAt);
+        _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
+    }
+
+    [Fact]
+    public async Task PausePropertyAsync_AlreadyPaused_IsIdempotentAndKeepsTheOriginalPausedAt()
+    {
+        var originalPausedAt = DateTime.UtcNow.AddDays(-3);
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = true, PausedAt = originalPausedAt };
+
+        var result = await _service.PausePropertyAsync(property);
+
+        Assert.True(result.IsPaused);
+        Assert.Equal(originalPausedAt, result.PausedAt);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ActivatePropertyAsync_Paused_ClearsIsPausedAndPausedAtAndSaves()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = true, PausedAt = DateTime.UtcNow };
+        _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
+
+        var result = await _service.ActivatePropertyAsync(property);
+
+        Assert.False(result.IsPaused);
+        Assert.Null(result.PausedAt);
+        _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
+    }
+
+    [Fact]
+    public async Task ActivatePropertyAsync_AlreadyActive_IsIdempotentAndDoesNotSave()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = false, PausedAt = null };
+
+        var result = await _service.ActivatePropertyAsync(property);
+
+        Assert.False(result.IsPaused);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
     [Fact]
     public async Task GetPropertyRecordAsync_ReadsTheRowWithoutRelations()
     {

@@ -91,6 +91,34 @@ public class PropertyService(
         return updated;
     }
 
+    public async Task<Property> PausePropertyAsync(Property property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        if (!property.IsPaused)
+        {
+            logger.LogInformation("Pausing property: {Id}", property.Id);
+            property.IsPaused = true;
+            property.PausedAt = DateTime.UtcNow;
+            property.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(property);
+        }
+        return property;
+    }
+
+    public async Task<Property> ActivatePropertyAsync(Property property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        if (property.IsPaused)
+        {
+            logger.LogInformation("Reactivating property: {Id}", property.Id);
+            property.IsPaused = false;
+            property.PausedAt = null;
+            property.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(property);
+        }
+        return property;
+    }
+
     /// <summary>An unknown policy id would otherwise fail on the foreign key as a 500 (A2-04).</summary>
     private async Task EnsureCancellationPolicyExistsAsync(Property property)
     {
@@ -327,6 +355,8 @@ public class PropertyService(
             PhotoUrls = property.PhotoUrls,
             HouseRules = property.HouseRules,
             IsActive = property.IsActive,
+            IsPaused = property.IsPaused,
+            PausedAt = property.PausedAt,
             CreatedAt = property.CreatedAt,
             UpdatedAt = property.UpdatedAt,
             Documents = property.PropertyDocuments.Select(MapDocument).ToList(),
