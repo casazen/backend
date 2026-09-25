@@ -159,6 +159,7 @@ builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
+builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
@@ -267,6 +268,13 @@ if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("T
 if (StorageExtensions.IsLegacyFileMigrationCommand(args))
 {
     Environment.ExitCode = await app.RunLegacyFileMigrationAsync(args);
+    return;
+}
+
+// One-off command: `dotnet Casazen.Web.dll compliance:recalculate [--dry-run]` (docs/runbooks/compliance.md).
+if (PropertyComplianceCheckJob.IsRecalculateCommand(args))
+{
+    Environment.ExitCode = await PropertyComplianceCheckJob.RunRecalculateCommandAsync(app, args);
     return;
 }
 

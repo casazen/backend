@@ -2,6 +2,7 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -17,7 +18,10 @@ public class PropertyServiceTests
     public PropertyServiceTests()
     {
         _mockRepository = new Mock<IPropertyRepository>();
-        _service = new PropertyService(_mockRepository.Object, new Mock<ILogger<PropertyService>>().Object);
+        _service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new Mock<ILogger<PropertyService>>().Object);
     }
 
     [Fact]

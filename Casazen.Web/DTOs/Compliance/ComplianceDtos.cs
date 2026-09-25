@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 
 namespace Casazen.Web.DTOs.Compliance;
@@ -67,7 +68,19 @@ public class ActivationTouristTaxRateDto
 
 public class PropertyActivationWizardDto
 {
+    /// <summary><c>Pending</c>, <c>Active</c> or <c>Suspended</c> (CO-06: an active property that lost a requirement).</summary>
     public string ComplianceStatus { get; set; } = string.Empty;
+
+    /// <summary>When the property was suspended (UTC); null unless <see cref="ComplianceStatus"/> is <c>Suspended</c>.</summary>
+    public DateTime? SuspendedAt { get; set; }
+
+    /// <summary>
+    /// Blocker codes that suspended the property, as they were at the suspension (e.g. <c>activation_cin_missing</c>);
+    /// empty unless suspended. The current blockers are in <see cref="Steps"/>: the change that solves the last one
+    /// reactivates the property.
+    /// </summary>
+    public IReadOnlyList<string> SuspensionReasons { get; set; } = [];
+
     public IEnumerable<ComplianceActivationStepDto> Steps { get; set; } = [];
 }
 
@@ -86,11 +99,25 @@ public class CompletePropertyActivationResponse
     public IEnumerable<string>? IncompleteBlockers { get; set; }
 }
 
+/// <summary>
+/// An item of the compliance cockpit (CO-04, A5-09): the action to take and its target, never a front-end path. The
+/// web app builds the route from its <c>ROUTE_MANIFEST</c> (<c>src/lib/compliance-routes.ts</c>).
+/// </summary>
 public class ComplianceSummaryItemDto
 {
+    /// <summary>Target of the action: equal to <see cref="PropertyId"/> or <see cref="BookingId"/>.</summary>
     public Guid Id { get; set; }
+
     public string Label { get; set; } = string.Empty;
-    public string RouteLink { get; set; } = string.Empty;
+
+    /// <summary>Serialized by name (<c>ActivateProperty</c>, <c>CompleteGuestCheckIn</c>, ...).</summary>
+    public ComplianceCockpitAction Action { get; set; }
+
+    /// <summary>Set for <see cref="ComplianceCockpitAction.ActivateProperty"/>, null otherwise.</summary>
+    public Guid? PropertyId { get; set; }
+
+    /// <summary>Set for every action on a booking, null for <see cref="ComplianceCockpitAction.ActivateProperty"/>.</summary>
+    public Guid? BookingId { get; set; }
 }
 
 public class ComplianceSummarySectionDto

@@ -1,24 +1,23 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
 public class ComplianceWizardService(
     AppDbContext db,
-    IConfiguration configuration,
     IAlloggiatiWebService alloggiatiWebService,
     IStayLifecycleService stayLifecycle,
     ITouristTaxQuoteService touristTaxQuoteService,
+    IPropertyComplianceStatusService complianceStatus,
     ILogger<ComplianceWizardService> logger,
     TimeProvider? timeProvider = null) : IComplianceWizardService
 {
@@ -47,24 +46,13 @@ public class ComplianceWizardService(
         if (tosAccepted != true)
             throw new DomainConflictException("activation_tos_required", "ActivationTosRequired");
 
-        var steps = await BuildActivationStepsAsync(property, cancellationToken);
-        var blockers = steps.Where(s => s.Blocker && s.Status != "complete").ToList();
-
-        if (blockers.Count == 0)
-        {
-            property.ComplianceStatus = PropertyComplianceStatus.Active;
-            property.ComplianceCompletedAt = DateTime.UtcNow;
+        // Same evaluation and transitions as the re-evaluation after a change (CO-06): Active without blockers; with
+        // blockers a pending or suspended property stays as it is and an active one is suspended.
+        var check = await complianceStatus.ActivateAsync(propertyId, cancellationToken);
+        if (check.Status == PropertyComplianceStatus.Active)
             logger.LogInformation("Property {PropertyId} compliance activated", propertyId);
-        }
-        else
-        {
-            property.ComplianceStatus = PropertyComplianceStatus.Pending;
-            property.ComplianceCompletedAt = null;
-        }
 
-        property.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
-        return (property, blockers);
+        return (property, check.IncompleteSteps);
     }
 
     public async Task<ComplianceSummaryResult> GetSummaryAsync(Guid orgId, CancellationToken cancellationToken = default)
@@ -93,10 +81,10 @@ public class ComplianceWizardService(
             var dataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
             if (!dataComplete)
             {
-                incompleteCheckIns.Add(new ComplianceSummaryItem(
+                incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
+                    ComplianceCockpitAction.CompleteGuestCheckIn,
                     booking.Id,
-                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
-                    $"/bookings/{booking.Id}/check-in"));
+                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()));
             }
         }
 
@@ -109,7 +97,7 @@ public class ComplianceWizardService(
                 .OrderBy(b => b.CheckOutDate)
                 .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
                 .ToListAsync(cancellationToken))
-            .Select(b => new ComplianceSummaryItem(b.Id, b.GuestName, $"/bookings/{b.Id}/checkout-wizard"))
+            .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName))
             .ToList();
 
         var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
@@ -117,8 +105,9 @@ public class ComplianceWizardService(
         return new ComplianceSummaryResult(
             new ComplianceSummarySection(
                 pendingProperties.Count,
-                pendingProperties.Select(p => new ComplianceSummaryItem(
-                    p.Id, p.Name, $"/properties/{p.Id}/compliance/activation")).ToList()),
+                // Pending and suspended alike: the activation wizard opens on the first blocking step still open.
+                pendingProperties.Select(p => ComplianceSummaryItem.ForProperty(
+                    ComplianceCockpitAction.ActivateProperty, p.Id, p.Name)).ToList()),
             new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns),
             new ComplianceSummarySection(checkoutDue.Count, checkoutDue),
             alloggiatiFailures,
@@ -170,12 +159,16 @@ public class ComplianceWizardService(
             var report = ofStay.FirstOrDefault(r => r.GuestId == stay.GuestId)
                 ?? ofStay.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
             var status = AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today);
-            var item = new ComplianceSummaryItem(stay.Id, stay.GuestName, $"/bookings/{stay.Id}/alloggiati");
-
             if (AlloggiatiStatusRules.IsFailure(status))
-                failures.Add((stay.CheckInDate, item));
+            {
+                failures.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
+                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName)));
+            }
             else if (status == AlloggiatiWebStatus.DaInviareManualmente)
-                manual.Add((stay.CheckInDate, item));
+            {
+                manual.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
+                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName)));
+            }
         }
 
         return (Section(failures), Section(manual));
@@ -220,40 +213,17 @@ public class ComplianceWizardService(
         return (booking, true);
     }
 
+    // The documents and the checklist are read by the evaluation itself (IPropertyComplianceStatusService).
     private async Task<Property?> LoadPropertyAsync(Guid propertyId, CancellationToken cancellationToken) =>
-        await db.Properties
-            .Include(p => p.PropertyDocuments)
-            .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken);
+        await db.Properties.FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken);
 
     private async Task<IReadOnlyList<ComplianceActivationStep>> BuildActivationStepsAsync(
         Property property,
         CancellationToken cancellationToken)
     {
-        var cinStatus = CinComplianceRules.ResolveStatus(property.CinCode);
-        var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
-            ?? ComplianceOptions.DefaultCinGuidanceUrl;
-
-        // Bedrooms are not checked: 0 is a studio flat (monolocale, A2-27).
-        var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
-            && !string.IsNullOrWhiteSpace(property.Address)
-            && !string.IsNullOrWhiteSpace(property.City)
-            && property.MaxGuests > 0
-            && property.NightlyRate > 0;
-
-        var requiredDocs = ResolveRequiredDocuments(property);
-        var uploadedTypes = property.PropertyDocuments
-            .Select(d => d.DocumentType.ToString())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var missingDocs = requiredDocs.Where(d => !uploadedTypes.Contains(d)).ToList();
-        var docsComplete = missingDocs.Count == 0;
-
-        // D.L. 145/2023 art. 13-ter (CO-07): only the required items of the checklist block.
-        var safetyChecklist = await db.PropertySafetyChecklists
-            .AsNoTracking()
-            .Include(c => c.Items)
-            .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
-        var safety = SafetyChecklistRules.Evaluate(safetyChecklist);
-        var safetyComplete = safety.IsComplete;
+        // Base data, CIN, documents and safety checklist: the single evaluation shared with the activation, the
+        // re-evaluation after every change and the nightly check (CO-06).
+        var blockingSteps = await complianceStatus.GetBlockingStepsAsync(property, cancellationToken);
 
         var regionCode = await ResolveRegionCodeAsync(property.City, cancellationToken);
         var touristTax = await ResolveTouristTaxAsync(property.City, cancellationToken);
@@ -264,53 +234,7 @@ public class ComplianceWizardService(
 
         return
         [
-            new ComplianceActivationStep(
-                "base-data",
-                "Dati base proprietà",
-                baseComplete ? "complete" : "pending",
-                true,
-                baseComplete ? null : "Completa nome, indirizzo, città e tariffe")
-            {
-                Blockers = baseComplete ? [] : [new("activation_base_data_incomplete", "ActivationBaseDataIncomplete")],
-            },
-            new ComplianceActivationStep(
-                "cin",
-                "Codice CIN",
-                cinStatus == "valid" ? "complete" : "pending",
-                true,
-                cinStatus == "valid" ? null : cinStatus == "missing"
-                    ? $"Inserisci il CIN (guida: {cinGuidanceUrl})"
-                    : $"Formato CIN non valido (guida: {cinGuidanceUrl})")
-            {
-                LinkUrl = cinGuidanceUrl,
-                Blockers = cinStatus switch
-                {
-                    "valid" => [],
-                    "missing" => [new("activation_cin_missing", "ActivationCinMissing")],
-                    _ => [new("activation_cin_invalid", "ActivationCinInvalid")],
-                },
-            },
-            new ComplianceActivationStep(
-                "documents",
-                "Documenti richiesti",
-                docsComplete ? "complete" : "pending",
-                true,
-                docsComplete ? null : $"Documenti mancanti: {string.Join(", ", missingDocs)}")
-            {
-                Blockers = docsComplete
-                    ? []
-                    : [new("activation_documents_missing", "ActivationDocumentsMissing", [string.Join(", ", missingDocs)])],
-            },
-            new ComplianceActivationStep(
-                "safety",
-                "Checklist sicurezza",
-                safetyComplete ? "complete" : "pending",
-                true)
-            {
-                MessageKey = safetyComplete ? null : "ActivationSafetyIncomplete",
-                MessageArgs = safetyComplete ? null : [safety.Blockers.Count],
-                Blockers = safety.Blockers.Select(b => new ActivationBlocker(b.Code, b.MessageKey, b.MessageArgs)).ToList(),
-            },
+            .. blockingSteps,
             BuildTouristTaxStep(touristTax),
             new ComplianceActivationStep(
                 "ical",
@@ -416,23 +340,6 @@ public class ComplianceWizardService(
                 booking.Status == BookingStatus.CheckedOut ? "complete" : "pending",
                 true),
         ];
-    }
-
-    private IReadOnlyList<string> ResolveRequiredDocuments(Property property)
-    {
-        var section = configuration.GetSection("Compliance:RequiredDocuments");
-        var regionCode = section.GetChildren()
-            .Select(c => c.Key)
-            .FirstOrDefault(k => k.Equals(property.City, StringComparison.OrdinalIgnoreCase));
-
-        regionCode ??= section.GetChildren()
-            .Select(c => c.Key)
-            .FirstOrDefault(k => k.Equals("default", StringComparison.OrdinalIgnoreCase))
-            ?? "default";
-
-        var docs = section.GetSection(regionCode).Get<string[]>();
-        // No safety certificate is required by D.L. 145/2023 art. 13-ter: proofs are optional on the checklist (CO-07).
-        return docs is { Length: > 0 } ? docs : ["CinCertificate"];
     }
 
     private async Task<string> ResolveRegionCodeAsync(string city, CancellationToken cancellationToken)
