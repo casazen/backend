@@ -129,18 +129,6 @@ public class ServiceRequestDto
     public DateTime UpdatedAt { get; set; }
 }
 
-public class ServiceRequestSummaryDto
-{
-    public Guid Id { get; set; }
-    public Guid PropertyId { get; set; }
-    public string PropertyName { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public string Urgency { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-    public string? Notes { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
 public class ServiceRequestListResponse
 {
     public IEnumerable<ServiceRequestDto> Items { get; set; } = [];

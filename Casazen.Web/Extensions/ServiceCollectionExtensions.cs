@@ -378,6 +378,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         // Supplier dashboard KPIs from the service requests (SU-11, A4-15).
         services.AddScoped<ISupplierKpiService, SupplierKpiService>();
+        // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
+        services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
         // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.

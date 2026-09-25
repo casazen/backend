@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Web.DTOs.ServiceRequests;
 
 namespace Casazen.Web.DTOs.Supplier;
 
@@ -205,10 +204,13 @@ public class CompleteActivationResponse
     public string Status { get; set; } = string.Empty;
 }
 
+/// <summary>A page of <c>GET /api/supplier/inbox</c> (open requests, history, or one status; SU-08).</summary>
 public class SupplierInboxResponse
 {
-    public IEnumerable<ServiceRequestSummaryDto> Items { get; set; } = [];
+    public IEnumerable<SupplierServiceRequestDto> Items { get; set; } = [];
     public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
 }
 
 public class UpdateAvailabilityResponse

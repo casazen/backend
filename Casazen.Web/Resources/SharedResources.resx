@@ -1219,6 +1219,12 @@
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
   </data>
+  <data name="SupplierInboxStatusInvalid" xml:space="preserve">
+    <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
+  </data>
+  <data name="SupplierInboxPeriodInvalid" xml:space="preserve">
+    <value>Periodo non valido: la data di inizio (from) non può essere successiva alla data di fine (to).</value>
+  </data>
   <data name="LtrAgreementNotFound" xml:space="preserve">
     <value>Accordo territoriale non trovato.</value>
   </data>
