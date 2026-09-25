@@ -47,6 +47,7 @@ and production never block each other.
 | `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
+| `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once.
@@ -439,3 +440,28 @@ WHERE invocationdata ->> 'Type' LIKE 'Casazen.Web.BackgroundJobs.CheckoutReminde
 
 The second query counts the stays alerted per day (a row keeps only its last message): for exact volumes use the
 provider's dashboard (Resend → Emails, filter by subject).
+
+## 10. Property compliance check (CO-06)
+
+Audit defects A5-20 (P1) and A5-36. Full procedure, rules and SQL: [compliance.md](compliance.md).
+
+**What runs**: `property-compliance-check`, daily at 04:00 UTC: `PropertyComplianceCheckJob` →
+`IPropertyComplianceStatusService.RecalculateAllAsync`. Every property with `ComplianceStatus` `Active` or `Suspended`
+is evaluated with the activation blockers (base data, CIN, required documents, D.L. 145/2023 safety checklist): an
+active one with a blocker becomes `Suspended` (not published, reason stored) and its host gets one
+`property-compliance-suspended` email; a suspended one without blockers becomes `Active` again (no email). Nothing else
+changes: pending properties are not touched, bookings are never cancelled.
+
+- **Idempotent**: only the `Active` → `Suspended` transition emails the host, and a suspended property still
+  incomplete stays as it is, so a retry, a manual trigger or the next night sends no second email. The transition of each property runs under the advisory lock `PropertyComplianceStatus` (1030): a host
+  request suspending the same property at the same time sends one email in total.
+- **One run at a time**: `[DisableConcurrentExecution]` plus the session advisory lock `PropertyComplianceCheckRun`
+  (1031), shared with the one-shot command `dotnet Casazen.Web.dll compliance:recalculate [--dry-run]`; a run that
+  finds it taken logs `Property compliance check skipped: another run is in progress` and does nothing.
+- **Isolation**: a property whose evaluation fails is logged (`Compliance check of property … failed; continuing with
+  the next property`) and counted as `failed`; the run goes on. A run that fails as a whole (database down) is retried
+  by Hangfire and is safe to repeat.
+- **First run after the CO-06 deploy** = recalculation of the historic properties: the email of that first evaluation
+  follows `Compliance__StatusCheck__NotifyOnFirstCheck` (default `false`), see [compliance.md §5](compliance.md#5-recalculation-of-the-historic-properties-a5-36).
+- **Log**: `Property compliance check completed: N active or suspended properties checked, S suspended, R reactivated,
+  E hosts notified, F failed, blockers …`.
