@@ -281,6 +281,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
+        // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
+        services.AddOptions<Casazen.Core.Options.CinOptions>()
+            .BindConfiguration(Casazen.Core.Options.CinOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.CinOptions>, Casazen.Core.Options.CinOptionsValidator>();
+        services.AddSingleton<Casazen.Core.Regulatory.CinDeadlineCalendar>();
+        services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
         services.AddScoped<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();

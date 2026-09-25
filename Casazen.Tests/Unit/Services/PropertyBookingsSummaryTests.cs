@@ -1,10 +1,13 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -89,11 +92,13 @@ public class PropertyBookingsSummaryTests
         property.Bookings.Add(Stay(BookingStatus.Confirmed, new DateTime(2026, 6, 15, 23, 30, 0, DateTimeKind.Utc), Date(6, 20)));
         var repository = new Mock<IPropertyRepository>();
         repository.Setup(r => r.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 15, 23, 30, 0, TimeSpan.Zero));
         var service = new PropertyService(
             repository.Object,
             Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), clock),
             Mock.Of<ILogger<PropertyService>>(),
-            new FakeTimeProvider(new DateTimeOffset(2026, 6, 15, 23, 30, 0, TimeSpan.Zero)));
+            clock);
 
         var summary = (await service.GetPropertyDetailAsync(propertyId)).BookingsSummary;
 

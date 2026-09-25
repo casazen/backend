@@ -2,10 +2,13 @@ using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -22,6 +25,7 @@ public class PropertyServiceGetDetailTests
         _service = new PropertyService(
             _mockRepository.Object,
             Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
             new Mock<ILogger<PropertyService>>().Object);
     }
 
@@ -40,6 +44,7 @@ public class PropertyServiceGetDetailTests
         var service = new PropertyService(
             _mockRepository.Object,
             Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), clock),
             Mock.Of<ILogger<PropertyService>>(),
             clock);
         var today = new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);

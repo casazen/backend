@@ -498,4 +498,43 @@
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Apri l'attivazione</value>
   </data>
+  <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
+    <value>CIN da inserire entro il {0}</value>
+  </data>
+  <data name="CinDeadlineAlert_DueToday_Subject" xml:space="preserve">
+    <value>CIN da inserire: la scadenza del {0} è oggi</value>
+  </data>
+  <data name="CinDeadlineAlert_Passed_Subject" xml:space="preserve">
+    <value>CIN mancante: scadenza del {0} superata</value>
+  </data>
+  <data name="CinDeadlineAlert_NoDeadline_Subject" xml:space="preserve">
+    <value>CIN obbligatorio: proprietà senza codice valido</value>
+  </data>
+  <data name="CinDeadlineAlert_Upcoming_Body" xml:space="preserve">
+    <value>Mancano &lt;strong&gt;{0} giorni&lt;/strong&gt; alla scadenza del {1} per il codice identificativo nazionale (CIN) e queste proprietà non hanno ancora un CIN valido:</value>
+  </data>
+  <data name="CinDeadlineAlert_UpcomingOneDay_Body" xml:space="preserve">
+    <value>Manca &lt;strong&gt;1 giorno&lt;/strong&gt; alla scadenza del {0} per il codice identificativo nazionale (CIN) e queste proprietà non hanno ancora un CIN valido:</value>
+  </data>
+  <data name="CinDeadlineAlert_DueToday_Body" xml:space="preserve">
+    <value>La scadenza del {0} per il codice identificativo nazionale (CIN) è &lt;strong&gt;oggi&lt;/strong&gt; e queste proprietà non hanno ancora un CIN valido:</value>
+  </data>
+  <data name="CinDeadlineAlert_Passed_Body" xml:space="preserve">
+    <value>La scadenza del {0} per il codice identificativo nazionale (CIN) è &lt;strong&gt;superata&lt;/strong&gt; e queste proprietà non hanno ancora un CIN valido:</value>
+  </data>
+  <data name="CinDeadlineAlert_NoDeadline_Body" xml:space="preserve">
+    <value>Queste proprietà non hanno ancora un codice identificativo nazionale (CIN) valido:</value>
+  </data>
+  <data name="CinDeadlineAlert_Obligation" xml:space="preserve">
+    <value>Il CIN è obbligatorio per gli immobili in locazione breve o per finalità turistiche: va esposto all'esterno dell'immobile e indicato in ogni annuncio (art. 13-ter, comma 8, D.L. 145/2023, convertito dalla L. 191/2023). Si richiede sulla Banca Dati delle Strutture Ricettive (BDSR) del Ministero del Turismo.</value>
+  </data>
+  <data name="CinDeadlineAlert_Penalties" xml:space="preserve">
+    <value>Il comma 9 dello stesso articolo prevede, per l'assenza del CIN, una sanzione da 800 a 8.000 euro in relazione alle dimensioni della struttura o dell'immobile e, per la mancata esposizione o indicazione negli annunci, da 500 a 5.000 euro per ogni struttura o unità.</value>
+  </data>
+  <data name="CinDeadlineAlert_Action" xml:space="preserve">
+    <value>Inserisci il CIN di ogni proprietà nella pagina Conformità CIN della console: finché manca o non è valido, la proprietà non può essere pubblicata sul sito di prenotazione.</value>
+  </data>
+  <data name="CinDeadlineAlert_Cta" xml:space="preserve">
+    <value>Apri Conformità CIN</value>
+  </data>
 </root>

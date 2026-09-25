@@ -21,6 +21,7 @@ namespace Casazen.Infrastructure.Services;
 public class PropertyService(
     IPropertyRepository repository,
     IPropertyComplianceStatusService complianceStatus,
+    CinDeadlineCalendar cinDeadline,
     ILogger<PropertyService> logger,
     TimeProvider? timeProvider = null) : IPropertyService
 {
@@ -428,14 +429,12 @@ public class PropertyService(
         var valid = items.Count(i => i.CinStatus == "valid");
         var missing = items.Count(i => i.CinStatus == "missing");
         var invalid = items.Count(i => i.CinStatus == "invalid");
-        var daysUntilDeadline = CinComplianceRules.DaysUntilDeadline();
 
         var summary = new CinComplianceSummary(
             Valid: valid,
             Missing: missing,
             Invalid: invalid,
-            DaysUntilDeadline: daysUntilDeadline,
-            Deadline: CinComplianceRules.RegulatoryDeadline,
+            Deadline: cinDeadline.Today(),
             HasNonCompliant: missing + invalid > 0);
 
         IEnumerable<OwnerCinComplianceItem> filtered = items;

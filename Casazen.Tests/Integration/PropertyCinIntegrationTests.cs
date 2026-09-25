@@ -36,6 +36,24 @@ public class PropertyCinIntegrationTests : IClassFixture<CasazenWebApplicationFa
     }
 
     [Fact]
+    public async Task GetCinCompliance_NoDeadlineConfigured_ReturnsStatusNoneWithoutDateOrDays()
+    {
+        // CO-20: no Cin:ExposureDeadline by default (the date was not found in official sources, RS-2).
+        var owner = $"auth0|cin-summary-{Guid.NewGuid():N}";
+        await _factory.SeedPropertyAsync(owner);
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+
+        var response = await client.GetAsync("/api/properties/cin-compliance");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var summary = (await ReadJsonAsync(response)).GetProperty("summary");
+        Assert.Equal("none", summary.GetProperty("deadlineStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, summary.GetProperty("deadline").ValueKind);
+        Assert.Equal(JsonValueKind.Null, summary.GetProperty("daysUntilDeadline").ValueKind);
+        Assert.True(summary.GetProperty("hasNonCompliant").GetBoolean());
+    }
+
+    [Fact]
     public async Task UpdateCin_OldInventedFormat_Returns400WithLocalizedFieldError()
     {
         var owner = $"auth0|cin-legacy-{Guid.NewGuid():N}";
