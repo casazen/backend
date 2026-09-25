@@ -301,6 +301,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+        // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
+        services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
@@ -348,6 +350,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
+        // Questura communication for an extra-EU tenant (LT-07): declared by the landlord, never inferred from a reminder.
+        services.AddScoped<IQuesturaCommunicationService, QuesturaCommunicationService>();
         // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
         // provider path stays unavailable even with Features:RliProvider on.
         services.AddScoped<IRliRegistrationService, RliRegistrationService>();

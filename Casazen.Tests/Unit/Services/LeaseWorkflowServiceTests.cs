@@ -172,6 +172,21 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task CreateDraftAsync_LowerCaseEuCitizenship_StoredUpperCaseAndNotExtraEu()
+    {
+        // LT-07: the EU list (EuMemberStates) is compared on the normalized code, which is also what is stored.
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+        _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>())).ReturnsAsync((LeaseContract l) => l);
+        _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
+
+        var result = await _sut.CreateDraftAsync(PropertyId, BuildCreateRequest(tenantCitizenship: "de"));
+
+        var tenant = result.Parties.Single(p => p.Role == PartyRole.Tenant);
+        Assert.Equal("DE", tenant.Citizenship);
+        Assert.False(tenant.IsExtraEU);
+    }
+
+    [Fact]
     public async Task GetLeaseDetailAsync_ExistingLease_ReturnsItForTheCallerToAuthorize()
     {
         // Arrange: ownership is no longer decided here but by the controller (TN-3 HostResource check).

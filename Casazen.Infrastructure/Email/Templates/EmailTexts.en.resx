@@ -240,14 +240,26 @@
   <data name="RliDeadline_Responsibility" xml:space="preserve">
     <value>CasaZen does not file unattended. Filing remains the responsibility of the landlord or an authorized intermediary. Draft wording pending counsel.</value>
   </data>
-  <data name="RliExtraEuNotice_Subject" xml:space="preserve">
-    <value>Questura notice required (cessione di fabbricato) — {0}</value>
+  <data name="QuesturaReminder_Subject" xml:space="preserve">
+    <value>Questura communication due by {1} — {0}</value>
   </data>
-  <data name="RliExtraEuNotice_Body" xml:space="preserve">
-    <value>The lease for &lt;strong&gt;{0}&lt;/strong&gt; includes a non-EU tenant. Check the Questura communication (Art. 7 D.Lgs 286/1998).</value>
+  <data name="QuesturaReminder_Body" xml:space="preserve">
+    <value>The lease for &lt;strong&gt;{0}&lt;/strong&gt; has a non-EU tenant. Within 48 hours of the delivery of the property (&lt;strong&gt;{1}&lt;/strong&gt;) the landlord must notify the local public-security authority in writing (art. 7 D.Lgs. 286/1998). The 48 hours end at the latest on &lt;strong&gt;{2}&lt;/strong&gt;. Registering the contract does not replace this communication.</value>
   </data>
-  <data name="RliExtraEuNotice_Disclaimer" xml:space="preserve">
-    <value>Draft wording pending counsel. CasaZen does not send the communication.</value>
+  <data name="QuesturaOverdue_Subject" xml:space="preserve">
+    <value>Questura communication not declared — {0}</value>
+  </data>
+  <data name="QuesturaOverdue_Body" xml:space="preserve">
+    <value>For the lease for &lt;strong&gt;{0}&lt;/strong&gt; (non-EU tenant, property delivered on &lt;strong&gt;{1}&lt;/strong&gt;) the 48-hour term for the written communication to the local public-security authority (art. 7 D.Lgs. 286/1998) ended on &lt;strong&gt;{2}&lt;/strong&gt; and the communication is not declared in CasaZen.</value>
+  </data>
+  <data name="Questura_DeliveryDateDefault" xml:space="preserve">
+    <value>CasaZen uses the start date of the lease as the delivery date: if the property is delivered on another day, enter it on the lease page.</value>
+  </data>
+  <data name="Questura_Channel" xml:space="preserve">
+    <value>The competent office and how to send it (in person, PEC, registered mail) change from province to province: check the page of your Questura. CasaZen does not send the communication.</value>
+  </data>
+  <data name="Questura_MarkDone" xml:space="preserve">
+    <value>Once sent, mark the communication as done on the lease page, with its date (and, if you wish, the receipt): only then the checklist item is completed.</value>
   </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Cleaning</value>

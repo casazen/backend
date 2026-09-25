@@ -1,26 +1,38 @@
 using System.Security.Cryptography.X509Certificates;
 using Casazen.Infrastructure.Data;
+using Casazen.Web.Configuration;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace Casazen.Web.Extensions;
 
 /// <summary>
-/// Data Protection keys persisted in the database (table <c>DataProtectionKeys</c>) so that secrets
-/// encrypted with them (e.g. <c>OtaIntegration.ApiKey</c>) survive redeploys (FD-07, A9-04).
-/// The key ring is encrypted at rest with an X.509 certificate supplied through configuration:
+/// Data Protection keys persisted in the database (table <c>DataProtectionKeys</c>) so that the values encrypted with
+/// them (the encrypted columns: OTA secrets, iCal URLs, guest identity data, Questura credentials) survive redeploys
+/// (FD-07, A9-04, CO-14). The key ring is encrypted at rest with an X.509 certificate supplied through configuration:
 /// <list type="bullet">
 /// <item><c>DataProtection:CertificatePfxBase64</c> + <c>DataProtection:CertificatePassword</c>: current certificate.</item>
 /// <item><c>DataProtection:PreviousCertificatePfxBase64</c> + <c>DataProtection:PreviousCertificatePassword</c>:
 /// optional, still able to decrypt keys written before a certificate rotation.</item>
 /// </list>
-/// Without a certificate the keys are stored unencrypted: anyone who can read the table can decrypt
-/// the protected secrets. Runbook: docs/runbooks/storage.md.
+/// Without a certificate the keys would be stored in clear next to the data they protect: whoever reads the database
+/// could decrypt everything. The certificate is therefore <b>required</b> outside Development and Testing (CO-14): the
+/// startup fails without it (<see cref="RequiredConfiguration.IsEnforced"/>). Runbooks: docs/runbooks/encryption.md,
+/// docs/runbooks/storage.md.
 /// </summary>
 public static class DataProtectionExtensions
 {
     public const string ApplicationName = "Casazen";
 
-    public static IServiceCollection AddCasazenDataProtection(this IServiceCollection services, IConfiguration configuration)
+    public const string CertificateVariable = "DataProtection__CertificatePfxBase64";
+    public const string CertificatePasswordVariable = "DataProtection__CertificatePassword";
+
+    /// <exception cref="InvalidOperationException">
+    /// No key-encryption certificate outside Development and Testing, or a certificate that cannot be loaded.
+    /// </exception>
+    public static IServiceCollection AddCasazenDataProtection(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         var builder = services.AddDataProtection()
             .SetApplicationName(ApplicationName)
@@ -28,7 +40,18 @@ public static class DataProtectionExtensions
 
         var current = LoadCertificate(configuration, "DataProtection:CertificatePfxBase64", "DataProtection:CertificatePassword");
         if (current is null)
+        {
+            if (RequiredConfiguration.IsEnforced(environment))
+            {
+                throw new InvalidOperationException(
+                    $"{CertificateVariable} is missing (environment {environment.EnvironmentName}): the Data Protection " +
+                    "keys, which encrypt the guest identity data, the Questura credentials and the other encrypted " +
+                    "columns, would be stored in clear in the same database. Set " + CertificateVariable + " and " +
+                    CertificatePasswordVariable + ", see docs/runbooks/encryption.md.");
+            }
+
             return services;
+        }
 
         builder.ProtectKeysWithCertificate(current);
         var previous = LoadCertificate(configuration, "DataProtection:PreviousCertificatePfxBase64", "DataProtection:PreviousCertificatePassword");
@@ -47,12 +70,13 @@ public static class DataProtectionExtensions
         {
             app.Logger.LogInformation("Data Protection keys: persisted in the database, encrypted with the configured certificate.");
         }
-        else if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
+        else
         {
+            // Development/Testing only: elsewhere the startup already failed (AddCasazenDataProtection).
             app.Logger.LogWarning(
-                "Data Protection keys are persisted in the database WITHOUT at-rest encryption: whoever can read the " +
-                "DataProtectionKeys table can decrypt the protected secrets. Set DataProtection__CertificatePfxBase64 and " +
-                "DataProtection__CertificatePassword (docs/runbooks/storage.md).");
+                "Data Protection keys are persisted in the database WITHOUT at-rest encryption (allowed only in " +
+                "Development and Testing). Set " + CertificateVariable + " and " + CertificatePasswordVariable +
+                " (docs/runbooks/encryption.md).");
         }
 
         return app;
