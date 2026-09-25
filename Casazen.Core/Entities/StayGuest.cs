@@ -93,16 +93,20 @@ public class StayGuest : ITenantOwned
     [MaxLength(5)]
     public string? DocumentTypeCode { get; set; }
 
-    /// <summary>Document number; only for a single guest or a head of family or group (the record allows 20 characters).</summary>
-    [MaxLength(50)]
+    /// <summary>
+    /// Document number; only for a single guest or a head of family or group (the record allows 20 characters, checked
+    /// on input). Encrypted at rest (CO-14, <c>EncryptedColumns</c>): the column is <c>text</c>.
+    /// </summary>
     public string DocumentNumber { get; set; } = string.Empty;
 
     /// <summary>Code of the place of issue: a comune code (issued in Italy) or a state code (issued abroad).</summary>
     [MaxLength(9)]
     public string? DocumentIssuePlaceCode { get; set; }
 
-    /// <summary>Place of issue of the document as entered (comune or state).</summary>
-    [MaxLength(100)]
+    /// <summary>
+    /// Place of issue of the document as entered (comune or state; at most 100 characters, checked on input). Encrypted
+    /// at rest like <see cref="DocumentNumber"/>.
+    /// </summary>
     public string DocumentIssuePlaceName { get; set; } = string.Empty;
 
     /// <summary>Who entered the data of this row last (CO-09 audit): the guest portal or the host; not recorded before CO-09.</summary>

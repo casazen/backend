@@ -1048,6 +1048,27 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
   </data>
+  <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
+    <value>Inserisci il nome utente di Alloggiati Web.</value>
+  </data>
+  <data name="QuesturaCredentialsUsernameTooLong" xml:space="preserve">
+    <value>Il nome utente può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordRequired" xml:space="preserve">
+    <value>Inserisci la password di Alloggiati Web.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordTooLong" xml:space="preserve">
+    <value>La password può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyRequired" xml:space="preserve">
+    <value>Inserisci la chiave del web service (WSKey) di Alloggiati Web.</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyTooLong" xml:space="preserve">
+    <value>La chiave del web service può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="GuestDocumentNumberMissing" xml:space="preserve">
+    <value>Nessun numero di documento registrato per questo ospite.</value>
+  </data>
   <data name="ServiceRequestPropertyRequired" xml:space="preserve">
     <value>Indica l'immobile della richiesta.</value>
   </data>

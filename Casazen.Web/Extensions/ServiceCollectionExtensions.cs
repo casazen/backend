@@ -300,6 +300,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+        // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
+        services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
