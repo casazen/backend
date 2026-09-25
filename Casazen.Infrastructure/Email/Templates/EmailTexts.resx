@@ -510,6 +510,69 @@
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Apri l'attivazione</value>
   </data>
+  <data name="OtaStayReview_Subject" xml:space="preserve">
+    <value>Soggiorno {0} da verificare - {1} ({2})</value>
+  </data>
+  <data name="OtaStayReview_Removed_Body" xml:space="preserve">
+    <value>La prenotazione di &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{3}&lt;/strong&gt; al &lt;strong&gt;{4}&lt;/strong&gt;, creata da un blocco del calendario {2}, non è più nel calendario collegato: potrebbe essere stata cancellata o spostata sul canale.</value>
+  </data>
+  <data name="OtaStayReview_DatesChanged_Body" xml:space="preserve">
+    <value>Sul calendario {2} collegato la prenotazione di &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt; ha ora le date dal &lt;strong&gt;{5}&lt;/strong&gt; al &lt;strong&gt;{6}&lt;/strong&gt;; il soggiorno in CasaZen è dal &lt;strong&gt;{3}&lt;/strong&gt; al &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_DatesChangedUnknown_Body" xml:space="preserve">
+    <value>Sul calendario {2} collegato sono cambiate le date della prenotazione di &lt;strong&gt;{0}&lt;/strong&gt; presso &lt;strong&gt;{1}&lt;/strong&gt;; il soggiorno in CasaZen è dal &lt;strong&gt;{3}&lt;/strong&gt; al &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_NothingChanged" xml:space="preserve">
+    <value>CasaZen non ha modificato né cancellato il soggiorno e le date restano occupate sul sito di prenotazione.</value>
+  </data>
+  <data name="OtaStayReview_Action" xml:space="preserve">
+    <value>Controlla la prenotazione sul canale: se è stata cancellata, annulla il soggiorno in CasaZen; se le date sono cambiate, aggiorna il soggiorno. Poi segnalo come verificato dalla prenotazione.</value>
+  </data>
+  <data name="OtaStayReviewPush_Title" xml:space="preserve">
+    <value>Soggiorno da verificare</value>
+  </data>
+  <data name="OtaStayReviewPush_Removed_Body" xml:space="preserve">
+    <value>{0}: la prenotazione {1} del {2} non è più nel calendario del canale.</value>
+  </data>
+  <data name="OtaStayReviewPush_DatesChanged_Body" xml:space="preserve">
+    <value>{0}: la prenotazione {1} del {2} ha cambiato date sul canale.</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Title" xml:space="preserve">
+    <value>Nuova richiesta di servizio</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
+    <value>{0} presso {1}: accetta o rifiuta la richiesta dalla tua area fornitore.</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
+    <value>Richiesta presa in carico</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha preso in carico la richiesta.</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Title" xml:space="preserve">
+    <value>Servizio completato</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha completato il servizio.</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Title" xml:space="preserve">
+    <value>Richiesta rifiutata dal fornitore</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha rifiutato la richiesta. Scegli un altro fornitore.</value>
+  </data>
+  <data name="Push_NewBooking_Title" xml:space="preserve">
+    <value>Nuova prenotazione confermata</value>
+  </data>
+  <data name="Push_NewBooking_Body" xml:space="preserve">
+    <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
+  </data>
+  <data name="Push_CheckoutReminder_Title" xml:space="preserve">
+    <value>Promemoria check-out</value>
+  </data>
+  <data name="Push_CheckoutReminder_Body" xml:space="preserve">
+    <value>{0}: oggi è il giorno del check-out, completalo in CasaZen.</value>
+  </data>
   <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
     <value>CIN da inserire entro il {0}</value>
   </data>

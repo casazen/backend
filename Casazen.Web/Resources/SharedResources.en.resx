@@ -1144,6 +1144,48 @@
   <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
     <value>For {0} this taxpayer already has another property at the 21% cedolare rate: the reduced rate applies to one unit only. First assign 26% to one of the two properties.</value>
   </data>
+  <data name="OtaStayBlockNotFound" xml:space="preserve">
+    <value>Calendar block not found.</value>
+  </data>
+  <data name="OtaStayBlockNotImported" xml:space="preserve">
+    <value>Only a block imported from a linked OTA calendar can become a stay.</value>
+  </data>
+  <data name="OtaStayBlockAlreadyConverted" xml:space="preserve">
+    <value>A stay was already created from this block.</value>
+  </data>
+  <data name="OtaStayBlockOverlapsBooking" xml:space="preserve">
+    <value>The dates of the block overlap a booking already on the calendar: check the calendar.</value>
+  </data>
+  <data name="OtaStayBlockEnded" xml:space="preserve">
+    <value>The stay of this block is already over.</value>
+  </data>
+  <data name="OtaStaySourceRequired" xml:space="preserve">
+    <value>Choose the channel of the reservation (Airbnb, Booking.com, Expedia, Vrbo, Tripadvisor or Agoda).</value>
+  </data>
+  <data name="OtaStayChannelDatesUnavailable" xml:space="preserve">
+    <value>The block of this stay is no longer in the channel's calendar: there are no dates to apply.</value>
+  </data>
+  <data name="OtaStayFirstNameRequired" xml:space="preserve">
+    <value>The guest's first name is required.</value>
+  </data>
+  <data name="OtaStayLastNameRequired" xml:space="preserve">
+    <value>The guest's last name is required.</value>
+  </data>
+  <data name="OtaStayNameTooLong" xml:space="preserve">
+    <value>First and last name can have at most 100 characters.</value>
+  </data>
+  <data name="OtaStayEmailRequired" xml:space="preserve">
+    <value>The guest's email is required.</value>
+  </data>
+  <data name="OtaStayEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address.</value>
+  </data>
+  <data name="OtaStayNumberOfGuestsInvalid" xml:space="preserve">
+    <value>The number of guests must be between 1 and 100.</value>
+  </data>
+  <data name="OtaStayTotalPriceInvalid" xml:space="preserve">
+    <value>The amount cannot be negative.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
   </data>
@@ -1191,5 +1233,20 @@
   </data>
   <data name="CheckoutPropertyNotReady" xml:space="preserve">
     <value>The property has not been declared ready for the next guest yet.</value>
+  </data>
+  <data name="LtrAgreementNotFound" xml:space="preserve">
+    <value>Territorial agreement not found.</value>
+  </data>
+  <data name="LtrBandNotFound" xml:space="preserve">
+    <value>Agreement band not found.</value>
+  </data>
+  <data name="LtrImuChannelNotFound" xml:space="preserve">
+    <value>Comune IMU channel not found.</value>
+  </data>
+  <data name="LtrInvalidBandRange" xml:space="preserve">
+    <value>The band range is not valid: the maximum, when given, must be greater than the minimum.</value>
+  </data>
+  <data name="LtrVerifiedAtInFuture" xml:space="preserve">
+    <value>The verification date cannot be in the future.</value>
   </data>
 </root>

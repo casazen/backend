@@ -25,7 +25,7 @@ public class ServiceRequestService(
     IServiceRequestRepository repository,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
-    IPushNotificationService pushNotificationService,
+    IPushNotificationService pushNotifications,
     ILogger<ServiceRequestService> logger) : IServiceRequestService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -110,6 +110,7 @@ public class ServiceRequestService(
         await repository.AddAsync(request, cancellationToken);
 
         emailQueue.Enqueue(supplier.Email, supplierEmail, EmailTemplates.Names.ServiceRequestCreated);
+        QueueSupplierPush(request, property.Name);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
@@ -175,7 +176,7 @@ public class ServiceRequestService(
             },
             cancellationToken);
 
-        await NotifyHostAsync(request, "presa in carico", cancellationToken);
+        await NotifyHostAsync(request, cancellationToken);
         return request;
     }
 
@@ -199,7 +200,7 @@ public class ServiceRequestService(
             },
             cancellationToken);
 
-        await NotifyHostAsync(request, "completata", cancellationToken);
+        await NotifyHostAsync(request, cancellationToken);
         return request;
     }
 
@@ -220,7 +221,8 @@ public class ServiceRequestService(
             r => r.RejectionReason = reason.Trim(),
             cancellationToken);
 
-        await QueueHostStatusEmailAsync(request, cancellationToken);
+        // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions.
+        await NotifyHostAsync(request, cancellationToken);
         return request;
     }
 
@@ -396,20 +398,63 @@ public class ServiceRequestService(
     }
 
     /// <summary>
-    /// Host notifications after a supplier status change. The status is already saved, so a failure here is logged and
-    /// never turned into an error for the supplier (A4-20); the email itself is sent by a Hangfire job.
+    /// Host notifications after a supplier status change (take, complete, reject): an email to the org's contact address
+    /// and a push to the property's hosts, both queued on Hangfire, never sent inside the supplier's request (A6-29).
+    /// The status is already saved, so a failure here is logged and never turned into an error for the supplier (A4-20).
+    /// Called only by the winner of a transition (SU-10), and the push key is the transition, so the host gets one push.
     /// </summary>
-    private async Task NotifyHostAsync(ServiceRequest request, string pushStatusLabel, CancellationToken cancellationToken)
+    private async Task NotifyHostAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         await QueueHostStatusEmailAsync(request, cancellationToken);
 
         try
         {
-            await pushNotificationService.SendServiceRequestUpdateAsync(request.Id, pushStatusLabel, cancellationToken);
+            var push = EmailTemplates.ServiceRequestStatusPush(
+                EmailTemplates.DefaultCulture, request.Status, request.Category, request.Property.Name);
+            // A request tied to a stay opens it; one without a stay opens the property list: the app has no service
+            // request screen (MO-03, A6-19).
+            var route = request.BookingId is Guid bookingId ? PushRoutes.Booking(bookingId) : PushRoutes.Properties;
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status),
+                PushAudience.PropertyHosts(request.PropertyId),
+                new PushNotificationPayload(
+                    push.Title,
+                    push.Body,
+                    PushTypes.ForServiceRequestStatus(request.Status),
+                    request.BookingId,
+                    route,
+                    request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Push notification for service request {Id} ({Status}) failed", request.Id, request.Status);
+            logger.LogError(ex, "Push notification for service request {Id} ({Status}) could not be queued", request.Id, request.Status);
+        }
+    }
+
+    /// <summary>
+    /// Push of a new request to the supplier org's users (A6-08), next to the supplier email. The stay belongs to the host
+    /// (the supplier cannot open it), so the push carries no booking and opens the property list of the app, which has
+    /// no supplier screens yet; <c>serviceRequestId</c> is in the data for a supplier app.
+    /// </summary>
+    private void QueueSupplierPush(ServiceRequest request, string propertyName)
+    {
+        try
+        {
+            var push = EmailTemplates.ServiceRequestCreatedPush(EmailTemplates.DefaultCulture, request.Category, propertyName);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestCreated(request.Id),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title,
+                    push.Body,
+                    PushTypes.ServiceRequestCreated,
+                    BookingId: null,
+                    PushRoutes.Properties,
+                    request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Push notification for new service request {Id} could not be queued", request.Id);
         }
     }
 

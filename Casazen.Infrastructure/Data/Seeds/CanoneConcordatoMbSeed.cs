@@ -32,8 +32,24 @@ public static class CanoneConcordatoMbSeed
     public static readonly DateTime SignedDate = new(2024, 3, 15, 0, 0, 0, DateTimeKind.Utc);
     public static readonly DateTime EffectiveDate = new(2024, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>
+    /// Formal duration "18 mesi dal deposito" (F1 art. 14, class U), from <see cref="EffectiveDate"/>: 2025-11-01. The
+    /// same article keeps the agreement in force until a new one is signed (<see cref="RemainsInForceUntilReplaced"/>),
+    /// so this alone never blocks a range — only flags it (LT-13, A7-22, <c>agreement_expired</c>).
+    /// </summary>
+    public static readonly DateTime ExpiresAt = EffectiveDate.AddMonths(18);
+
+    public const bool RemainsInForceUntilReplaced = true;
+
+    /// <summary>RS-8, August 2026 (research-canone-concordato-mb.md § 2): no more recent agreement was found.</summary>
+    public const string ExpiryNote =
+        "Nessun accordo più recente reperito nelle ricerche (RS-8, agosto 2026) — verificare con le associazioni firmatarie o i Comuni prima di un uso vincolante.";
+
     /// <summary>RS-8 check of the tables and zones of Seveso and Cesano Maderno against the official text (F1).</summary>
     public static readonly DateTime PilotTablesVerifiedAt = new(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc);
+
+    public const string PilotVerificationSource =
+        "RS-8: research-canone-concordato-mb.md, confronto con il testo ufficiale dell'accordo (PDF)";
 
     /// <summary>The 55 comuni of the agreement (F1 p. 1, p. 4 art. 3).</summary>
     public static readonly string[] ProvinceComuni =
@@ -101,6 +117,46 @@ public static class CanoneConcordatoMbSeed
         Ata("Cesano Maderno"),
     ];
 
+    /// <summary>
+    /// Comune offices receiving the IMU communication (LT-13, A7-22): destinatari, PEC and aliquota out of the code and
+    /// onto the database, an admin CRUD (<c>AdminCanoneConcordatoController</c>) away from a fix. Same uncertainty the
+    /// hand-written draft used to carry (a PEC seen in two channels for Seveso, a rate derived — not published — for
+    /// Cesano Maderno), now data instead of a literal in <c>ComuneImuNotificationService</c>.
+    /// </summary>
+    public static IReadOnlyList<ComuneImuChannel> BuildImuChannels() =>
+    [
+        new ComuneImuChannel
+        {
+            Id = IdFor("imu:Seveso"),
+            Comune = "Seveso",
+            Region = Region,
+            RecipientOffice = "Ufficio Tributi",
+            Email = "protocollo@comune.seveso.mb.it",
+            Pec = "comune.seveso@pec.it",
+            Instructions =
+                "Canale ufficiale NON univoco — la ricerca registra anche tributi@comune.seveso.mb.it e il portale " +
+                "SPID/CIE/CNS Servizi Sociali (Contratti di locazione a canone concordato). Verificare con l'Ufficio Tributi prima dell'invio.",
+            DataCompleteness = DataCompleteness.Partial,
+            SourceUrl = SourceUrl,
+        },
+        new ComuneImuChannel
+        {
+            Id = IdFor("imu:Cesano Maderno"),
+            Comune = "Cesano Maderno",
+            Region = Region,
+            RecipientOffice = "U.O. Risorse Tributarie",
+            Email = "risorse.tributarie@comune.cesano-maderno.mb.it",
+            Pec = "risorse.finanziarie@pec.comune.cesano-maderno.mb.it",
+            RatePercent = 1.04m,
+            EffectiveRatePercent = 0.78m,
+            RateYear = 2025,
+            RateKind = ImuRateKind.Derived,
+            RateNotes = "Valore derivato (aliquota 1,04% x riduzione nazionale 75% ex L. 160/2019 art. 1 c. 760), NON un'aliquota ufficiale pubblicata. Delibera 2026 non reperita alla data della ricerca.",
+            DataCompleteness = DataCompleteness.Partial,
+            SourceUrl = SourceUrl,
+        },
+    ];
+
     private static HighTensionAreaComune Ata(string comune) => new()
     {
         Id = IdFor("ata:" + comune),
@@ -118,6 +174,7 @@ public static class CanoneConcordatoMbSeed
             return agreement;
 
         agreement.LastVerifiedAt = PilotTablesVerifiedAt;
+        agreement.VerificationSource = PilotVerificationSource;
         agreement.Signatories = Signatories
             .Select(s => new TerritorialAgreementSignatory
             {
@@ -148,6 +205,9 @@ public static class CanoneConcordatoMbSeed
         EffectiveDate = EffectiveDate,
         SourceUrl = SourceUrl,
         DataCompleteness = completeness,
+        ExpiresAt = ExpiresAt,
+        RemainsInForceUntilReplaced = RemainsInForceUntilReplaced,
+        ExpiryNote = ExpiryNote,
         RequiredTypeACount = 2,
         SubFascia2MinTypeBCount = 3,
         SubFascia3MinTypeCCount = 3,

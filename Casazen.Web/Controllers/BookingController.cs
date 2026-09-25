@@ -23,6 +23,7 @@ public class BookingsController(
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
     PropertyICalSyncService propertyICalSyncService,
+    IOtaStayService otaStays,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -69,7 +70,15 @@ public class BookingsController(
         if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
-        return Ok(BookingMapper.ToResponse(booking));
+        var response = BookingMapper.ToResponse(booking);
+        // OTA stay from iCal (CO-21): the dates its block has now on the channel, for the "da verificare" notice.
+        if (booking.ICalFeedId is not null)
+        {
+            var block = await otaStays.GetLinkedBlockAsync(id, HttpContext.RequestAborted);
+            response.ChannelBlock = block is null ? null : OtaChannelBlockDto.From(block);
+        }
+
+        return Ok(response);
     }
 
     /// <summary>
@@ -246,7 +255,18 @@ public class BookingsController(
             GuestName = b.GuestName,
         }).ToList();
 
-        items.AddRange(blocks.Select(block => new CalendarItemDto
+        // OTA stays created from iCal (CO-21): feed and "da verificare" on the booking item.
+        var stays = bookings.ToDictionary(b => b.Id);
+        foreach (var item in items)
+        {
+            var stay = stays[item.Id];
+            item.IcalFeedId = stay.ICalFeedId;
+            item.ChannelLabel = stay.ChannelLabel;
+            item.OtaReviewReason = stay.Status == BookingStatus.Cancelled ? null : stay.OtaReviewReason?.ToString();
+        }
+
+        // A block that became an OTA stay with the same dates is shown once, as the stay (its nights count once too).
+        items.AddRange(blocks.Where(block => !block.RepresentedByStay).Select(block => new CalendarItemDto
         {
             Type = "ical-block",
             Id = block.Id,
@@ -258,6 +278,10 @@ public class BookingsController(
             Summary = block.Summary,
             Channel = block.Channel?.ToString(),
             FeedLabel = block.FeedLabel,
+            BlockSource = block.Source.ToString(),
+            FeedId = block.FeedId,
+            BookingId = block.StayId,
+            Convertible = block.Convertible,
         }));
 
         var response = new CalendarResponseDto

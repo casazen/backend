@@ -1,8 +1,10 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
+using Casazen.Tests.Unit.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -17,6 +19,7 @@ public class BookingNotifierTests : IDisposable
         .Options);
 
     private readonly RecordingEmailQueue _emails = new();
+    private readonly RecordingPushQueue _pushes = new();
 
     public void Dispose() => _db.Dispose();
 
@@ -40,6 +43,30 @@ public class BookingNotifierTests : IDisposable
         Assert.Contains($"href=\"https://casazen-app.test/app/short-rent/bookings/{bookingId:D}\"", emails[1].Content.HtmlBody);
     }
 
+    [Theory]
+    [InlineData(BookingConfirmationKind.PaidOnline)]
+    [InlineData(BookingConfirmationKind.PaidOnlineLate)]
+    [InlineData(BookingConfirmationKind.DeferredCharge)]
+    public async Task BookingConfirmedAsync_ConfirmedWithoutTheHost_QueuesOneNewBookingPushToTheHosts(BookingConfirmationKind kind)
+    {
+        var bookingId = await SeedAsync(BookingStatus.Confirmed, paid: kind == BookingConfirmationKind.DeferredCharge ? 0m : 362m);
+
+        await Notifier().BookingConfirmedAsync(bookingId, kind);
+
+        // MO-04 (A6-08): next to the host email, through the extension point of BK-10.
+        var push = Assert.Single(_pushes.Queued);
+        Assert.Equal(PushDeliveryKeys.NewBooking(bookingId), push.DeliveryKey);
+        Assert.Equal(PushAudience.BookingHosts(bookingId), push.Audience);
+        Assert.Equal(PushTypes.NewBooking, push.Payload.Type);
+        Assert.Equal("Nuova prenotazione confermata", push.Payload.Title);
+        Assert.Equal("Villa Rosa: dal 05/10/2026 al 08/10/2026, ospiti: 2.", push.Payload.Body);
+        Assert.Equal(PushRoutes.Booking(bookingId), push.Payload.Route);
+        Assert.Equal(bookingId, push.Payload.BookingId);
+        // No guest name on the lock screen.
+        Assert.DoesNotContain("Anna", push.Payload.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Verdi", push.Payload.Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task BookingConfirmedAsync_OnSiteAcceptedByHost_EmailsTheGuestOnly()
     {
@@ -50,6 +77,37 @@ public class BookingNotifierTests : IDisposable
         var email = Assert.Single(_emails.Snapshot());
         Assert.Equal(EmailTemplates.Names.GuestBookingConfirmed, email.Template);
         Assert.Contains("direttamente in struttura", email.Content.HtmlBody);
+        // The host confirmed it: no "new booking" push either.
+        Assert.Empty(_pushes.Queued);
+    }
+
+    [Fact]
+    public async Task BookingConfirmedAsync_WithTheRealQueueAndJob_HostDevicesGetTheNewBookingPush()
+    {
+        var bookingId = await SeedAsync(BookingStatus.Confirmed, paid: 362m);
+        var booking = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        _db.Users.Add(new User { Id = "auth0|host", Email = "host@example.com", OrgId = booking.OrgId, Role = UserRole.PropertyOwner, IsActive = true });
+        _db.DeviceRegistrations.Add(new DeviceRegistration
+        {
+            UserId = "auth0|host",
+            OrgId = booking.OrgId,
+            Platform = "ios",
+            PushToken = "ExponentPushToken[host]",
+            DeviceId = Guid.NewGuid().ToString(),
+        });
+        await _db.SaveChangesAsync();
+        var pipeline = new PushPipeline();
+        var notifier = new BookingNotifier(_db, _emails, EmailTestHelpers.Links(), pipeline.Queue, NullLogger<BookingNotifier>.Instance);
+
+        await notifier.BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+        Assert.Empty(pipeline.Expo.SendRequests);
+        await pipeline.RunQueuedJobsAsync(_db);
+        await pipeline.RunQueuedJobsAsync(_db);
+
+        var message = Assert.Single(pipeline.Expo.Messages);
+        Assert.Equal("ExponentPushToken[host]", message.To);
+        Assert.Equal(PushTypes.NewBooking, message.Data["type"]);
+        Assert.Equal(PushRoutes.Booking(bookingId), message.Data["route"]);
     }
 
     [Fact]
@@ -60,13 +118,14 @@ public class BookingNotifierTests : IDisposable
         await Notifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
 
         Assert.Empty(_emails.Snapshot());
+        Assert.Empty(_pushes.Queued);
     }
 
     [Fact]
     public async Task BookingConfirmedAsync_PublicSiteNotConfigured_DoesNotThrowAndQueuesNothing()
     {
         var bookingId = await SeedAsync(BookingStatus.Confirmed, paid: 362m);
-        var notifier = new BookingNotifier(_db, _emails, EmailTestHelpers.Links(null), NullLogger<BookingNotifier>.Instance);
+        var notifier = new BookingNotifier(_db, _emails, EmailTestHelpers.Links(null), _pushes, NullLogger<BookingNotifier>.Instance);
 
         await notifier.BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
 
@@ -74,7 +133,7 @@ public class BookingNotifierTests : IDisposable
     }
 
     private BookingNotifier Notifier() =>
-        new(_db, _emails, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance);
+        new(_db, _emails, EmailTestHelpers.Links(), _pushes, NullLogger<BookingNotifier>.Instance);
 
     private async Task<Guid> SeedAsync(BookingStatus status, decimal paid)
     {

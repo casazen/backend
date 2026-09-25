@@ -35,6 +35,8 @@ public class TenantQueryFilterArchitectureTests
         [typeof(ConcordatoRentBand)] = "Platform reference data: rent bands of a territorial agreement.",
         [typeof(TerritorialAgreementSignatory)] = "Platform reference data: signatories of a territorial agreement.",
         [typeof(HighTensionAreaComune)] = "Platform reference data: comuni in high housing-tension areas.",
+        [typeof(ComuneImuChannel)] = "Platform reference data: comune office and rate receiving the canone concordato IMU communication (LT-13, A7-22), managed by admins and read by every org.",
+        [typeof(RegulatoryDataAuditEntry)] = "Platform-wide audit log of admin changes to regulatory reference data (LT-13), not tenant data: written and read only by AdminCanoneConcordatoController.",
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
@@ -51,6 +53,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
 
         // Rows owned by a user, not by an org.
+        [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",
         [typeof(DeviceRegistration)] = "Owned by the user (UserId), not the org: DevicesController only touches the caller's own rows and must drop the same push token from users of any org; push delivery crosses orgs by design (supplier to host) with explicit OrgId and UserId predicates. No endpoint lists devices.",
 
         // Children never addressed by their own id: reached only through a tenant-filtered parent.
