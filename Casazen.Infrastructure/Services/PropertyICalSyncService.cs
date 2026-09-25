@@ -24,6 +24,7 @@ public partial class PropertyICalSyncService
     private readonly IConfiguration _configuration;
     private readonly IOptions<ICalImportOptions> _importOptions;
     private readonly ILogger<PropertyICalSyncService> _logger;
+    private readonly TimeProvider _clock;
 
     public PropertyICalSyncService(
         AppDbContext db,
@@ -33,7 +34,8 @@ public partial class PropertyICalSyncService
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
         IOptions<ICalImportOptions> importOptions,
-        ILogger<PropertyICalSyncService> logger)
+        ILogger<PropertyICalSyncService> logger,
+        TimeProvider clock)
     {
         _db = db;
         _externalHttpClient = externalHttpClient;
@@ -43,6 +45,7 @@ public partial class PropertyICalSyncService
         _configuration = configuration;
         _importOptions = importOptions;
         _logger = logger;
+        _clock = clock;
     }
 
     /// <summary>Import feeds of the property, oldest first (PC-11). Read-only.</summary>
@@ -554,7 +557,9 @@ public partial class PropertyICalSyncService
         // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21). A pending
         // "pay at the property" request is left out until the host accepts it: an anonymous request must not block the
         // OTAs (BK-06, A3-06); the approval checks the imported OTA blocks again.
-        var expiredHoldCutoff = CheckoutHolds.CutoffAt(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(_configuration));
+        // Same clock as the public availability (BK-05): a hold is expired for both at the same instant.
+        var expiredHoldCutoff = CheckoutHolds.CutoffAt(
+            _clock.GetUtcNow().UtcDateTime, CheckoutHolds.GetTtlMinutes(_configuration));
         var bookings = await _db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

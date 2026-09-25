@@ -142,8 +142,8 @@ other channel so that they close the dates taken on CasaZen. It is built by `ICa
 | | **Every block imported from an iCal feed** (`Source = ICalImport`, any channel) |
 | | Bookings whose source is an OTA channel (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`: `FiscalCopy.IsOtaBookingSource`) |
 
-Which bookings take their dates is the single rule of the booking site: `CheckoutHolds.OccupiesDates` (the same TTL as
-public availability and the booking checks), then `OnSiteRequests.IsExportedToOtas`; the export adds only the two
+Which bookings take their dates is the single rule of the booking site: `CheckoutHolds.OccupiesDates` (the same TTL and
+the same clock, `TimeProvider`, as public availability and the booking checks), then `OnSiteRequests.IsExportedToOtas`; the export adds only the two
 "no echo" filters (`ICalExportService.ExportsBooking`, `ExportsBlock`). The nights are the dates of `PropertyOccupancy`.
 
 ### No echo: why imported blocks are never exported
@@ -170,8 +170,16 @@ is left to a product decision (PC-12 DUBBI).
   of the property: another org gets 404, a user without write permission 403). The new link is returned and shown by
   `GET .../ical/export-url` and `.../ical/status`; the old link answers 404 at once. The host must paste the new link
   on every channel where the old one was: until then those channels see no CasaZen booking (tell the host before
-  regenerating). The log line `iCal export link of property … regenerated` names the property, never the token. The
-  button in the host UI is PC-13.
+  regenerating). The log line `iCal export link of property … regenerated` names the property, never the token.
+- **Contract for the host UI** (button of PC-13):
+  - request: `POST /api/properties/{propertyId}/ical/export-url/regenerate`, authenticated (JWT), no body;
+  - 200: `{ "exportUrl": "<App:ApiBaseUrl>/api/public/ical/<new uuid>" }` (`PropertyIcalExportUrlDto`, same shape as
+    `GET /api/properties/{propertyId}/ical/export-url`): show and copy this link, and refresh the `ical/status` and
+    `ical/export-url` queries;
+  - 404: property not found or of another org; 403: the user has no write permission on the property;
+    errors go through `getProblemMessage(err, t)`;
+  - ask for a confirmation first: the old link stops working at once and the host has to paste the new one on every
+    channel.
 - **Stored in clear, not hashed** (decision documented here): the host must be able to copy the link again at any time
   (`GET .../ical/export-url`, used by the calendar settings page), so the server has to be able to rebuild it; a hash
   would show the link only once, at creation or regeneration. The feed publishes only busy dates, which the database

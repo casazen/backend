@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -22,6 +23,10 @@ namespace Casazen.Tests.Integration;
 public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTests.Factory>
 {
     private const string HostRole = "PropertyOwner";
+
+    // Fixed clock of the export for the tests on holds (FD-06): never the real time.
+    private static readonly DateTimeOffset ExportNow =
+        new(PublicAvailabilityPostgresTests.NextYear(9, 1).AddHours(10), TimeSpan.Zero);
 
     private readonly PropertyICalSyncPostgresTests.Factory _factory;
 
@@ -76,18 +81,24 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
     {
         var property = await PublishedPropertyTests.SeedAsync(_factory, "pc12-hold");
         using var owner = _factory.CreateAuthenticatedClient(property.OwnerId, HostRole);
+        var now = ExportNow.UtcDateTime;
         var expired = await SeedBookingAsync(
             property, PublicAvailabilityPostgresTests.NextYear(11, 1), PublicAvailabilityPostgresTests.NextYear(11, 4),
-            b => b.CreatedAt = DateTime.UtcNow.AddHours(-2), paymentIntentId: $"pi_pc12_{Guid.NewGuid():N}");
+            b => b.CreatedAt = now.AddHours(-2), paymentIntentId: $"pi_pc12_{Guid.NewGuid():N}");
         var valid = await SeedBookingAsync(
             property, PublicAvailabilityPostgresTests.NextYear(11, 10), PublicAvailabilityPostgresTests.NextYear(11, 12),
-            b => b.CreatedAt = DateTime.UtcNow.AddMinutes(-2), paymentIntentId: $"pi_pc12_{Guid.NewGuid():N}");
+            b => b.CreatedAt = now.AddMinutes(-2), paymentIntentId: $"pi_pc12_{Guid.NewGuid():N}");
 
-        var ics = await PublicFeedAsync(await ExportPathAsync(owner, property.Id));
+        var path = await ExportPathAsync(owner, property.Id);
+
+        var ics = await ExportAtAsync(path, ExportNow);
 
         Assert.DoesNotContain($"booking-{expired}", ics);
         Assert.DoesNotContain($"{PublicAvailabilityPostgresTests.NextYear(11, 1):yyyyMMdd}", ics);
         Assert.Contains($"UID:booking-{valid}", ics.Split("\r\n"));
+        // Five minutes after its creation the same hold was still valid and exported: the TTL decides, not the status.
+        var beforeExpiry = await ExportAtAsync(path, ExportNow.AddHours(-2).AddMinutes(5));
+        Assert.Contains($"UID:booking-{expired}", beforeExpiry.Split("\r\n"));
     }
 
     [PostgresFact]
@@ -95,13 +106,15 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
     {
         var property = await PublishedPropertyTests.SeedAsync(_factory, "pc12-onsite");
         using var owner = _factory.CreateAuthenticatedClient(property.OwnerId, HostRole);
+        var now = ExportNow.UtcDateTime;
         var pending = await SeedBookingAsync(
             property, PublicAvailabilityPostgresTests.NextYear(12, 1), PublicAvailabilityPostgresTests.NextYear(12, 3),
             b =>
             {
                 b.PaymentOption = PaymentOption.OnSite;
-                b.GuestEmailVerifiedAt = DateTime.UtcNow.AddMinutes(-5);
-                b.RequestExpiresAt = DateTime.UtcNow.AddHours(20);
+                b.CreatedAt = now.AddMinutes(-10);
+                b.GuestEmailVerifiedAt = now.AddMinutes(-5);
+                b.RequestExpiresAt = now.AddHours(20);
             });
         var accepted = await SeedBookingAsync(
             property, PublicAvailabilityPostgresTests.NextYear(12, 10), PublicAvailabilityPostgresTests.NextYear(12, 12),
@@ -111,7 +124,7 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
                 b.Status = BookingStatus.Confirmed;
             });
 
-        var ics = await PublicFeedAsync(await ExportPathAsync(owner, property.Id));
+        var ics = await ExportAtAsync(await ExportPathAsync(owner, property.Id), ExportNow);
 
         Assert.DoesNotContain($"booking-{pending}", ics);
         Assert.Contains($"UID:booking-{accepted}", ics.Split("\r\n"));
@@ -173,6 +186,16 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
         var response = await anonymous.GetAsync(path);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await response.Content.ReadAsStringAsync();
+    }
+
+    // The feed of the export link at the instant `now` (fixed clock): the service of the public endpoint, resolved with
+    // the test's clock instead of the system one.
+    private async Task<string> ExportAtAsync(string path, DateTimeOffset now)
+    {
+        var token = Guid.Parse(path[(path.LastIndexOf('/') + 1)..]);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var sync = ActivatorUtilities.CreateInstance<PropertyICalSyncService>(scope.ServiceProvider, new FakeTimeProvider(now));
+        return await sync.BuildPublicExportAsync(token, "Occupato");
     }
 
     // What the queued Hangfire job does (the test host mocks the job client).
