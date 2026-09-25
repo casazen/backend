@@ -38,6 +38,30 @@ public class TerritorialRentAgreement
     /// <summary>Date of the last check of the tables against the official text (RS-8: 2026-09-23 for Seveso and Cesano).</summary>
     public DateTime? LastVerifiedAt { get; set; }
 
+    /// <summary>What <see cref="LastVerifiedAt"/> was checked against (an admin's free text, e.g. a PDF or a call log).</summary>
+    [MaxLength(500)]
+    public string? VerificationSource { get; set; }
+
+    /// <summary>
+    /// Formal expiry of the agreement (typically <see cref="EffectiveDate"/> plus the deposit term it states), when
+    /// known. Not itself a cutoff: see <see cref="RemainsInForceUntilReplaced"/> (LT-13, A7-22).
+    /// </summary>
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>
+    /// True when the agreement's own text keeps it in force past <see cref="ExpiresAt"/> until the signatories sign a
+    /// new one (common clause on Italian canone concordato agreements). A range past the expiry is then only flagged
+    /// (<c>agreement_expired</c> warning), never blocked.
+    /// </summary>
+    public bool RemainsInForceUntilReplaced { get; set; }
+
+    /// <summary>Admin's free-text note on the expiry (e.g. "nessun accordo più recente reperito, verificare con...").</summary>
+    [MaxLength(500)]
+    public string? ExpiryNote { get; set; }
+
+    /// <summary>Last admin edit (fields or verification); null for a row never touched since the seed.</summary>
+    public DateTime? UpdatedAt { get; set; }
+
     /// <summary>A-elements the unit must all have, otherwise sub-fascia 1.</summary>
     public int RequiredTypeACount { get; set; } = 2;
 

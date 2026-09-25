@@ -1204,4 +1204,19 @@
   <data name="SeoPageNotPublished" xml:space="preserve">
     <value>The page is not published: there is nothing to withdraw.</value>
   </data>
+  <data name="LtrAgreementNotFound" xml:space="preserve">
+    <value>Territorial agreement not found.</value>
+  </data>
+  <data name="LtrBandNotFound" xml:space="preserve">
+    <value>Agreement band not found.</value>
+  </data>
+  <data name="LtrImuChannelNotFound" xml:space="preserve">
+    <value>Comune IMU channel not found.</value>
+  </data>
+  <data name="LtrInvalidBandRange" xml:space="preserve">
+    <value>The band range is not valid: the maximum, when given, must be greater than the minimum.</value>
+  </data>
+  <data name="LtrVerifiedAtInFuture" xml:space="preserve">
+    <value>The verification date cannot be in the future.</value>
+  </data>
 </root>

@@ -78,6 +78,26 @@ public class TerritorialRentAgreementMigrationTests
         Assert.Contains("UNIONCASA", script, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AddLtrReferenceDataAdmin_SeedsImuChannelsExpiryAndAdminPermission()
+    {
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var migration = keys.Single(k => k.EndsWith("AddLtrReferenceDataAdmin", StringComparison.Ordinal));
+
+        var script = db.GetService<IMigrator>().GenerateScript(
+            fromMigration: keys[keys.IndexOf(migration) - 1], toMigration: migration);
+
+        Assert.Contains("CREATE TABLE \"ComuneImuChannels\"", script, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE \"RegulatoryDataAuditEntries\"", script, StringComparison.Ordinal);
+        Assert.Contains("ADD \"ExpiresAt\"", script, StringComparison.Ordinal);
+        Assert.Contains("ADD \"VerificationSource\"", script, StringComparison.Ordinal);
+        // Literal values frozen at migration-write time: the migration never reads CanoneConcordatoMbSeed (A7-22).
+        Assert.Contains("Seveso", script, StringComparison.Ordinal);
+        Assert.Contains("Cesano Maderno", script, StringComparison.Ordinal);
+        Assert.Contains("admin.ltr.manage", script, StringComparison.Ordinal);
+    }
+
     private static AppDbContext NewNpgsqlContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(

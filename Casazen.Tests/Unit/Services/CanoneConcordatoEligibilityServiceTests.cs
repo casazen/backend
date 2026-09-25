@@ -306,6 +306,108 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Fact]
+    public async Task Calculate_TodayPastAgreementExpiry_FlagsAgreementExpiredAndExposesItsFields()
+    {
+        // Reality today (RS-8, class U): the MB agreement's 18-month formal term ran out on 2025-11-01, but art. 14
+        // keeps it in force until a new one is signed — a warning, never a block (LT-13, A7-22).
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
+
+        Assert.True(result!.Available);
+        Assert.Contains(CanoneConcordatoWarningCodes.AgreementExpired, result.Warnings);
+        Assert.Equal(CanoneConcordatoMbSeed.ExpiresAt, result.AgreementExpiresAt);
+        Assert.True(result.AgreementRemainsInForceUntilReplaced);
+    }
+
+    [Fact]
+    public async Task Calculate_TodayBeforeAgreementExpiry_NoAgreementExpiredWarning()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db, new FakeTimeProvider(new DateTimeOffset(2024, 6, 1, 10, 0, 0, TimeSpan.Zero)));
+
+        var result = await sut.CalculateAsync(property.Id, Characteristics(65, 2, 3, 0, 0), ThreeYears);
+
+        Assert.DoesNotContain(CanoneConcordatoWarningCodes.AgreementExpired, result!.Warnings);
+    }
+
+    [Fact]
+    public async Task GetZonesAsync_Cesano_ReturnsZonesWithCadastralSheets()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Cesano Maderno");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.GetZonesAsync(property.Id);
+
+        Assert.NotNull(result);
+        Assert.True(result.Available);
+        Assert.Equal("Cesano Maderno", result.Comune);
+        Assert.Equal(DataCompleteness.Partial, result.DataCompleteness);
+        var zoneNames = result.Zones.Select(z => z.Name).ToList();
+        Assert.Contains("Centrale", zoneNames);
+        Assert.Contains("Semi periferica", zoneNames);
+        var centrale = result.Zones.Single(z => z.Name == "Centrale");
+        Assert.Contains("1", centrale.CadastralSheets);
+        Assert.Contains("33", centrale.CadastralSheets);
+    }
+
+    [Fact]
+    public async Task GetZonesAsync_SevesoSingleZoneWithoutSheets_ReturnsEmptySheets()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Seveso");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.GetZonesAsync(property.Id);
+
+        Assert.NotNull(result);
+        var zone = Assert.Single(result.Zones);
+        Assert.Equal("Unica", zone.Name);
+        Assert.Empty(zone.CadastralSheets);
+    }
+
+    [Fact]
+    public async Task GetZonesAsync_ComuneWithoutUsableAgreement_NotAvailableWithNoZones()
+    {
+        await using var db = CreateDb();
+        var property = SeedProperty(db, "Monza");
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.GetZonesAsync(property.Id);
+
+        Assert.NotNull(result);
+        Assert.False(result.Available);
+        Assert.Empty(result.Zones);
+    }
+
+    [Fact]
+    public async Task GetZonesAsync_PropertyNotVisible_ReturnsNull()
+    {
+        await using var db = CreateDb();
+        SeedReference(db);
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+
+        var result = await sut.GetZonesAsync(Guid.NewGuid());
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task Calculate_SevesoWithUnknownZone_ReturnsZoneNotFound()
     {
         await using var db = CreateDb();
@@ -691,6 +793,37 @@ public class CanoneConcordatoEligibilityServiceTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task Controller_Zones_AuthorizedProperty_ReturnsZonesDto()
+    {
+        var dto = new CanoneConcordatoZonesDto("Cesano Maderno", true, DataCompleteness.Partial,
+            [new ConcordatoZoneDto("Centrale", ["1", "12"]), new ConcordatoZoneDto("Semi periferica", [])]);
+        var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
+        eligibility.Setup(s => s.GetZonesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(dto);
+        var controller = CreateController(
+            eligibility.Object, new HostResource(Guid.NewGuid(), OwnerId), authorized: true);
+
+        var result = await controller.GetZones(Guid.NewGuid(), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var body = Assert.IsType<CanoneConcordatoZonesDto>(ok.Value);
+        Assert.Equal("Cesano Maderno", body.Comune);
+        Assert.Equal(2, body.Zones.Count);
+    }
+
+    [Fact]
+    public async Task Controller_Zones_PropertyNotVisible_Returns404WithoutCalling()
+    {
+        var eligibility = new Mock<ICanoneConcordatoEligibilityService>();
+        var controller = CreateController(eligibility.Object, resource: null, authorized: true);
+
+        var result = await controller.GetZones(Guid.NewGuid(), CancellationToken.None);
+
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        eligibility.Verify(s => s.GetZonesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static CanoneConcordatoController CreateController(
         ICanoneConcordatoEligibilityService eligibility,
         HostResource? resource,
@@ -720,11 +853,18 @@ public class CanoneConcordatoEligibilityServiceTests
         };
     }
 
-    private static ICanoneConcordatoEligibilityService CreateSut(AppDbContext db) =>
+    /// <summary>
+    /// Fixed "today" for every test, after the MB agreement's formal 18-month expiry (2025-11-01): the reality today
+    /// (RS-8, agreement not replaced), so <c>agreement_expired</c> is expected on the pilot comuni's warnings.
+    /// </summary>
+    private static readonly DateTimeOffset Today = new(2026, 9, 25, 10, 0, 0, TimeSpan.Zero);
+
+    private static ICanoneConcordatoEligibilityService CreateSut(AppDbContext db, TimeProvider? clock = null) =>
         new CanoneConcordatoEligibilityService(
             new TerritorialRentAgreementRepository(db),
             new HighTensionAreaComuneRepository(db),
-            new PropertyRepository(db));
+            new PropertyRepository(db),
+            clock ?? new FakeTimeProvider(Today));
 
     private static AppDbContext CreateDb()
     {

@@ -553,6 +553,21 @@ public class LeasesController(
         return File(receipt.Content, "application/pdf", receipt.FileName);
     }
 
+    /// <summary>
+    /// Whether the IMU notification applies to the lease and can be exported/marked sent now (A7-24): the export and
+    /// mark-sent buttons must never guess this from the lease status alone.
+    /// </summary>
+    [HttpGet("{id:guid}/canone-concordato/imu-notification")]
+    public async Task<IActionResult> GetImuNotificationStatus(Guid id, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var status = await imuNotification.GetStatusAsync(id, cancellationToken);
+        return status is null ? NotFound() : Ok(status);
+    }
+
     /// <summary>Export a draft comune IMU-reduction notification (PDF). Landlord sends it themselves.</summary>
     [HttpGet("{id:guid}/canone-concordato/imu-notification/export")]
     public async Task<IActionResult> ExportImuNotification(Guid id, CancellationToken cancellationToken)
