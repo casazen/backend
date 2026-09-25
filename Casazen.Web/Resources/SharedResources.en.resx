@@ -402,6 +402,10 @@
   <data name="ICalFeedInvalidLabel" xml:space="preserve">
     <value>The calendar label can have at most 60 characters, without line breaks.</value>
   </data>
+  <data name="ICalExportBusySummary" xml:space="preserve">
+    <value>Booked</value>
+    <comment>SUMMARY of every event of the public iCal export read by the OTAs (PC-12): neutral, never a name.</comment>
+  </data>
   <data name="CinInvalidFormat" xml:space="preserve">
     <value>The CIN is not in the official format: IT, the 6-digit ISTAT code of the municipality, a 2-character category and up to 8 alphanumeric characters (e.g. IT015146C2ABCDEFGH). Spaces and hyphens are ignored.</value>
   </data>
