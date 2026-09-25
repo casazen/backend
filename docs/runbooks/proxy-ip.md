@@ -10,7 +10,7 @@ variables of section 2.
 |---|---|---|
 | Forwarded headers | `app.UseForwardedHeaders()` is the **first** middleware. It processes `X-Forwarded-For` and `X-Forwarded-Proto` **right to left**, only through trusted proxies and at most `ForwardLimit` entries | `Casazen.Web/Program.cs`, `Extensions/ForwardedHeadersServiceCollectionExtensions.cs` |
 | Client IP | Read only from `HttpContext.Connection.RemoteIpAddress` (after the middleware), through `ClientIp`. No code reads `X-Forwarded-For` any more | `Infrastructure/ClientIp.cs` |
-| Consent evidence | `ConsentRecord.IpAddress` (onboarding), `Guest.ConsentIpAddress` (direct booking, guest check-in) store that IP | `UsersController`, `PublicBookingsController`, `PublicGuestCheckInController`, `GuestCheckInController` |
+| Consent evidence | `ConsentRecord.IpAddress` (onboarding), `Guest.ConsentIpAddress` (direct booking, guest check-in) store that IP | `UsersController`, `PublicBookingsController`, `PublicGuestCheckInController` |
 | Rate limiting | Every policy is a fixed window **partitioned per client IP** (IPv4 address, or IPv6 /64); the guest check-in policies per IP **and** SHA-256 of the token. One client using up its quota never blocks the others | `Extensions/RateLimitingServiceCollectionExtensions.cs`, `Infrastructure/RateLimitPolicies.cs` |
 | 429 response | ProblemDetails (`application/problem+json`) with `code: "rate_limited"`, localized `detail`, `retryAfterSeconds`, `traceId`, plus the `Retry-After` header (seconds) | same file |
 | Logs | `Rate limit exceeded: policy … on {Method} {Route}` with the trace id. The client IP is **not** logged | same file |
@@ -94,7 +94,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `PublicBookingCreate` | `POST api/public/bookings` | 10 / min | `RateLimiting__PublicBookingCreate__PermitLimit` (`DirectBooking__RateLimitPermitLimit`) |
 | `PublicBookingLookup` | `POST api/public/bookings/{id}/outcome` and `…/payment-session` (the outcome page polls it, BK-07), `POST api/public/bookings/{id}/confirm-email` ("pay at the property" link, BK-06) | 30 / min | `RateLimiting__PublicBookingLookup__PermitLimit` |
 | `PublicGuestBookingLookup` | `POST api/public/bookings/lookup` and `…/lookup/check-in-link` ("Le mie prenotazioni", BK-11); plus a per-email limit `GuestBookingLookupPerEmail` (5 / 15 min, `RateLimiting__GuestBookingLookupPerEmail__PermitLimit`) | 10 / 5 min | `RateLimiting__PublicGuestBookingLookup__PermitLimit` |
-| `GuestCheckIn` | `GET api/public/checkin/{token}`; legacy `api/checkin/*` | 10 / min per IP+token | `RateLimiting__GuestCheckIn__PermitLimit` (`CheckIn__RateLimitPermitLimit`) |
+| `GuestCheckIn` | `GET api/public/checkin/{token}`, `GET api/public/checkin/{token}/codes` | 10 / min per IP+token | `RateLimiting__GuestCheckIn__PermitLimit` (`CheckIn__RateLimitPermitLimit`) |
 | `GuestCheckInSubmit` | `POST api/public/checkin/{token}` | 3 / min per IP+token | `RateLimiting__GuestCheckInSubmit__PermitLimit` (`CheckIn__SubmitRateLimitPermitLimit`) |
 | `PublicTouristTaxCalc` | `POST api/public/tourist-tax/calculate` | 30 / min | `RateLimiting__PublicTouristTaxCalc__PermitLimit` (`SeoTouristTax__RateLimitPermitLimit`) |
 | `PublicResolveHost` | `GET api/public/resolve-host` | 60 / min | `RateLimiting__PublicResolveHost__PermitLimit` (`PublicHost__RateLimitPermitLimit`) |

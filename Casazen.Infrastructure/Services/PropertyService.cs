@@ -3,6 +3,7 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Pricing;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -344,7 +345,11 @@ public class PropertyService(
                 {
                     IsEnabled = property.PricingAdapterConfig.IsEnabled,
                     LastAdaptedAt = property.PricingAdapterConfig.LastAdaptedAt,
-                    NextScheduledRunAt = property.PricingAdapterConfig.NextScheduledRunAt
+                    NextRunOn = property.PricingAdapterConfig.IsEnabled
+                        ? SeasonalSuggestionSchedule.NextRunOn(
+                            property.PricingAdapterConfig.AdaptationFrequency,
+                            property.PricingAdapterConfig.LastAdaptedAt)
+                        : null
                 }
         };
     }

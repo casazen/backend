@@ -330,6 +330,9 @@
   <data name="BookingTooManyGuests" xml:space="preserve">
     <value>This property hosts at most {0} guests.</value>
   </data>
+  <data name="BookingCalendarRangeInvalid" xml:space="preserve">
+    <value>The last day of the calendar cannot be before its first day.</value>
+  </data>
   <data name="Auth0RoleSyncFailed" xml:space="preserve">
     <value>Role sync with Auth0 failed: the role was not changed. Please try again later.</value>
   </data>
@@ -1012,6 +1015,21 @@
   <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
     <value>The checklist was changed at the same time by another session: reload the page and try again.</value>
   </data>
+  <data name="PricingFrequencyInvalid" xml:space="preserve">
+    <value>The update frequency must be 'daily' or 'weekly'.</value>
+  </data>
+  <data name="PricingMultiplierRange" xml:space="preserve">
+    <value>The multiplier must be between {1} and {2}.</value>
+  </data>
+  <data name="PricingSeasonMonthsInvalid" xml:space="preserve">
+    <value>The months of a season must be numbers from 1 to 12, without repetitions.</value>
+  </data>
+  <data name="PricingSeasonMonthsOverlap" xml:space="preserve">
+    <value>A month cannot be both high and low season.</value>
+  </data>
+  <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
+    <value>Seasonal suggestions are not enabled for this property: enable them before recalculating.</value>
+  </data>
   <data name="ServiceRequestBookingRequired" xml:space="preserve">
     <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
   </data>
@@ -1062,6 +1080,15 @@
   </data>
   <data name="ServiceRequestStateChanged" xml:space="preserve">
     <value>The request was just changed by another operation: reload the page and check its current status.</value>
+  </data>
+  <data name="FiscalShortStayThresholdExceeded" xml:space="preserve">
+    <value>In {1} this taxpayer would let more than {0} apartments short-term: beyond this threshold the activity is presumed to be a business, and neither the cedolare secca flat tax nor ordinary IRPEF without a VAT number can be chosen. Check the regime with your accountant.</value>
+  </data>
+  <data name="FiscalTaxpayerCodeInvalid" xml:space="preserve">
+    <value>The taxpayer's tax code (codice fiscale) is not valid: it must be 16 letters and digits (individual).</value>
+  </data>
+  <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
+    <value>For {0} this taxpayer already has another property at the 21% cedolare rate: the reduced rate applies to one unit only. First assign 26% to one of the two properties.</value>
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>

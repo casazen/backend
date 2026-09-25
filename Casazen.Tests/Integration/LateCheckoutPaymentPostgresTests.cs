@@ -75,7 +75,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         var booking = await LoadBookingAsync(late.BookingId);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
         Assert.Null(booking.CancellationReason);
-        Assert.NotNull(booking.CheckInToken);
         var payment = Assert.Single(booking.Payments);
         Assert.Equal(PaymentStatus.Completed, payment.Status);
         Assert.Equal(account, payment.StripeAccountId);

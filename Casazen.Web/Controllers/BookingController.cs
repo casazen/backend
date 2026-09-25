@@ -163,52 +163,72 @@ public class BookingsController(
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, response);
     }
 
+    /// <summary>
+    /// Host calendar of a property, read by the web console and the app (MO-06): its bookings and calendar blocks from
+    /// <paramref name="startDate"/> to <paramref name="endDate"/>. The two ends are stay dates (<c>2026-09-01</c>,
+    /// <c>2026-09-30</c>), both included, never converted to a time zone; an entry is returned when a day of it, from
+    /// arrival to departure, falls in the range (<see cref="HostCalendarRange"/>). The dates of the entries are stay
+    /// dates too. <paramref name="timezone"/> (default: the property's) only fills <c>timezone</c> and
+    /// <c>utcOffsetMinutes</c>. Blocks are <c>ical-block</c> items with the channel of their feed: they have no guest and
+    /// no booking detail.
+    /// </summary>
     [HttpGet("calendar")]
+    [ProducesResponseType(typeof(CalendarResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CalendarResponseDto>> GetCalendar(
         [FromQuery] Guid propertyId,
         [FromQuery] DateTime startDate,
         [FromQuery] DateTime endDate,
+        [FromServices] IAuthorizationService hostAuthorization,
         [FromQuery] string? timezone = null)
     {
+        // TN-3: the tenant filter hides a property of another org (404); a visible one still needs booking.read on it.
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null)
-            return NotFound("Property not found");
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
 
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized();
+        if (!await hostAuthorization.IsAuthorizedAsync(User, HostResource.ForProperty(property), BookingOperations.Read))
+        {
+            logger.LogWarning(
+                "User {UserId} denied booking.read on the calendar of property {PropertyId}",
+                User.GetUserId(), propertyId);
+            return Forbid();
+        }
 
-        if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId, GetUserRoles()))
-            return NotFound();
+        if (endDate.Date < startDate.Date)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest, BookingErrorCodes.CalendarRangeInvalid, "BookingCalendarRangeInvalid");
+        }
 
         var targetTimezone = timezone ?? property.Timezone;
-
         if (!TimezoneHelper.IsValidTimezone(targetTimezone))
-            return BadRequest($"Invalid timezone: {targetTimezone}");
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.BadRequest, "PropertyTimezoneInvalid");
 
-        var startDateUtc = TimezoneHelper.ConvertLocalToUtc(startDate, targetTimezone);
-        var endDateUtc = TimezoneHelper.ConvertLocalToUtc(endDate, targetTimezone);
-
-        var bookings = await bookingService.GetCalendarAsync(propertyId, startDateUtc, endDateUtc);
-        var icalBlocks = await propertyICalSyncService.GetBlocksInRangeAsync(propertyId, startDateUtc, endDateUtc);
+        var bookings = await bookingService.GetCalendarAsync(propertyId, startDate, endDate);
+        var blocks = await propertyICalSyncService.GetBlocksInRangeAsync(propertyId, startDate, endDate);
 
         var utcOffsetMinutes = TimezoneHelper.GetUtcOffsetMinutes(targetTimezone, DateTime.UtcNow);
 
-        var calendarBookings = bookings.Select(b => new CalendarBookingDto
-        {
-            Id = b.Id,
-            PropertyId = b.PropertyId,
-            GuestId = b.GuestId,
-            CheckInDate = TimezoneHelper.ConvertUtcToLocal(b.CheckInDate, targetTimezone),
-            CheckOutDate = TimezoneHelper.ConvertUtcToLocal(b.CheckOutDate, targetTimezone),
-            CheckInDateUtc = b.CheckInDate,
-            CheckOutDateUtc = b.CheckOutDate,
-            Status = b.Status.ToString(),
-            Source = b.Source.ToString(),
-            NumberOfGuests = b.NumberOfGuests,
-            TotalPrice = b.TotalPrice,
-            GuestName = b.Guest != null ? $"{b.Guest.FirstName} {b.Guest.LastName}".Trim() : ""
-        }).ToList();
+        var calendarBookings = bookings
+            .OrderBy(b => b.CheckInDate)
+            .Select(b => new CalendarBookingDto
+            {
+                Id = b.Id,
+                PropertyId = b.PropertyId,
+                GuestId = b.GuestId,
+                CheckInDate = HostCalendarRange.StayDate(b.CheckInDate),
+                CheckOutDate = HostCalendarRange.StayDate(b.CheckOutDate),
+                CheckInDateUtc = b.CheckInDate,
+                CheckOutDateUtc = b.CheckOutDate,
+                Status = b.Status.ToString(),
+                Source = b.Source.ToString(),
+                NumberOfGuests = b.NumberOfGuests,
+                TotalPrice = b.TotalPrice,
+                GuestName = b.Guest != null ? $"{b.Guest.FirstName} {b.Guest.LastName}".Trim() : ""
+            }).ToList();
 
         var items = calendarBookings.Select(b => new CalendarItemDto
         {
@@ -226,27 +246,26 @@ public class BookingsController(
             GuestName = b.GuestName,
         }).ToList();
 
-        foreach (var block in icalBlocks)
+        items.AddRange(blocks.Select(block => new CalendarItemDto
         {
-            items.Add(new CalendarItemDto
-            {
-                Type = "ical-block",
-                Id = block.Id,
-                PropertyId = block.PropertyId,
-                StartDate = TimezoneHelper.ConvertUtcToLocal(block.StartUtc, targetTimezone),
-                EndDate = TimezoneHelper.ConvertUtcToLocal(block.EndUtc, targetTimezone),
-                StartDateUtc = block.StartUtc,
-                EndDateUtc = block.EndUtc,
-                Summary = block.Summary,
-            });
-        }
+            Type = "ical-block",
+            Id = block.Id,
+            PropertyId = block.PropertyId,
+            StartDate = HostCalendarRange.StayDate(block.StartUtc),
+            EndDate = HostCalendarRange.StayDate(block.EndUtc),
+            StartDateUtc = block.StartUtc,
+            EndDateUtc = block.EndUtc,
+            Summary = block.Summary,
+            Channel = block.Channel?.ToString(),
+            FeedLabel = block.FeedLabel,
+        }));
 
         var response = new CalendarResponseDto
         {
             Timezone = targetTimezone,
             UtcOffsetMinutes = utcOffsetMinutes,
             Bookings = calendarBookings,
-            Items = items,
+            Items = items.OrderBy(i => i.StartDate).ThenBy(i => i.Type).ToList(),
         };
 
         return Ok(response);

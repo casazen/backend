@@ -4,6 +4,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,7 +39,8 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
         { "GET", "/api/guests/{guest}" },
         { "GET", "/api/gdpr/guests/{guest}/export" },
         { "GET", "/api/pricing-adapter/config/{property}" },
-        { "POST", "/api/pricing-adapter/sync/{property}" },
+        { "POST", "/api/pricing-adapter/recalculate/{property}" },
+        { "GET", "/api/pricing-adapter/suggestions/{property}" },
         { "GET", "/api/service-requests" },
         { "POST", "/api/service-requests/match-supplier" },
         { "POST", "/api/service-requests" },
@@ -306,8 +308,8 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
             PropertyId = property.Id,
             OrgId = hostOrg.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(12),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

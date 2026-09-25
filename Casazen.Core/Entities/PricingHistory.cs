@@ -6,10 +6,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// Audit trail of every AI-driven price change for a property.
-/// Records previous and new prices, confidence scores, and OTA sync status
-/// as part of the AI-Driven Dynamic Pricing Engine.
-/// Part of Epic: AI-Driven Dynamic Pricing Engine.
+/// Log of the batch price pushes to the OTA partner APIs (<c>IOtaManager.BatchUpdatePricingAsync</c>, in freeze behind
+/// <c>Features:OtaPartnerApi</c>). The seasonal price suggestions (PC-15) never write here: their rows are
+/// <see cref="SeasonalPriceSuggestion"/>. The rows invented by the old "AI pricing" job (base 100 EUR, confidence 0.85) were
+/// deleted by the migration <c>SeasonalPriceSuggestions</c>.
 /// </summary>
 [Table("PricingHistories")]
 public class PricingHistory : ITenantOwned
@@ -44,7 +44,7 @@ public class PricingHistory : ITenantOwned
     public string ChangeReason { get; set; } = string.Empty;
 
     /// <summary>
-    /// AI model confidence score for this pricing decision, between 0 and 1.
+    /// Legacy column, between 0 and 1: no model computes it (the OTA batch push writes 1). Never shown to users.
     /// </summary>
     [Precision(5, 4)]
     [Range(0.0, 1.0)]

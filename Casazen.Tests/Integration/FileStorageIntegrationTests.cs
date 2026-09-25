@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.AspNetCore.Hosting;
@@ -201,34 +200,6 @@ public class FileStorageIntegrationTests : IClassFixture<CasazenWebApplicationFa
         {
             Directory.Delete(uploadsExisted ? Path.GetDirectoryName(folder)! : uploadsRoot, recursive: true);
         }
-    }
-
-    [PostgresFact]
-    public async Task GuestDocumentUpload_StoresScanInPrivateBucketOnly()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        using var guestClient = _factory.CreateClient();
-        using var form = new MultipartFormDataContent();
-        var scan = new ByteArrayContent(PngBytes);
-        scan.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        form.Add(scan, "file", "carta-identita.png");
-
-        var response = await guestClient.PostAsync($"/api/checkin/{seed.CheckInToken}/document", form);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var reference = body.RootElement.GetProperty("documentScanUrl").GetString()!;
-        Assert.StartsWith("guest-documents/", reference);
-        Assert.True(StorageKeys.IsValid(reference));
-        Assert.True(File.Exists(Path.Combine(_factory.StorageRoot, "private", reference)));
-        Assert.Equal(HttpStatusCode.NotFound, (await guestClient.GetAsync($"/storage/public/{reference}")).StatusCode);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var booking = await db.Bookings.IgnoreQueryFilters().AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
-        var guest = await db.Guests.IgnoreQueryFilters().AsNoTracking().SingleAsync(g => g.Id == booking.GuestId);
-        Assert.Equal(reference, guest.DocumentScanUrl);
-        Assert.StartsWith($"guest-documents/{booking.OrgId}/{guest.Id}/", reference);
     }
 
     private static async Task<(Guid DocumentId, string DownloadUrl)> UploadDocumentAsync(

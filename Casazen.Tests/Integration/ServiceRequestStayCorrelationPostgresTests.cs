@@ -4,6 +4,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -381,8 +382,8 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
             OrgId = org.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(fromDay),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(fromDay + nights),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(fromDay),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(fromDay + nights),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

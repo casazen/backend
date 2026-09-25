@@ -101,9 +101,6 @@ public sealed class HostBookingService(
 
             booking.CheckInDate = checkIn;
             booking.CheckOutDate = checkOut;
-            // The guest check-in link lasts until a week after the check-out: it follows the new dates.
-            if (booking.CheckInTokenExpiresAt.HasValue)
-                booking.CheckInTokenExpiresAt = checkOut.AddDays(7);
         }
 
         booking.SpecialRequests = update.SpecialRequests?.Trim() ?? string.Empty;

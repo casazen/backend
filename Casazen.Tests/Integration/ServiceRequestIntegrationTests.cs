@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -310,8 +311,8 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
             OrgId = hostOrg.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(7),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(10),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(7),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(10),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

@@ -134,6 +134,7 @@ public class TenantQueryFilterArchitectureTests
     [InlineData(typeof(OtaIntegration))]
     [InlineData(typeof(PricingAdapterConfig))]
     [InlineData(typeof(PricingHistory))]
+    [InlineData(typeof(SeasonalPriceSuggestion))]
     [InlineData(typeof(AlloggiatiWebReport))]
     [InlineData(typeof(GuestCheckInSession))]
     [InlineData(typeof(ConsentRecord))]

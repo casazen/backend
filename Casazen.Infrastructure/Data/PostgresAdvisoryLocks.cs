@@ -71,6 +71,12 @@ internal static class PostgresAdvisoryLocks
         OrgConnectAccount = 1_012,
 
         /// <summary>
+        /// Seasonal price suggestions of one property (key: property id): the nightly job, the manual recalculation and a
+        /// configuration save never upsert the same dates at once (PC-15).
+        /// </summary>
+        SeasonalPriceSuggestions = 1_019,
+
+        /// <summary>
         /// Compliance status of one property (key: property id): a host request and the nightly check suspend it once
         /// and email the host once (CO-06, A5-20).
         /// </summary>
@@ -81,6 +87,12 @@ internal static class PostgresAdvisoryLocks
         /// the nightly job and the one-shot command never run together (CO-06, A5-36).
         /// </summary>
         PropertyComplianceCheckRun = 1_031,
+
+        /// <summary>
+        /// STR fiscal regimes and taxpayers of one org (key: org id): the one 21% cedolare unit per taxpayer and tax year is
+        /// checked and written one request at a time (CO-18, A5-22).
+        /// </summary>
+        OrgFiscalRegime = 1_023,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
