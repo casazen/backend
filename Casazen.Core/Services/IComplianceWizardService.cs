@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -112,7 +113,46 @@ public interface IComplianceWizardService
         CancellationToken cancellationToken = default);
 }
 
-public record ComplianceSummaryItem(Guid Id, string Label, string RouteLink);
+/// <summary>
+/// An item of the compliance cockpit (CO-04, A5-09): what to do (<see cref="Action"/>) and on what, never a front-end
+/// path. <see cref="Id"/> is the target of the action: the property for
+/// <see cref="ComplianceCockpitAction.ActivateProperty"/> (<see cref="PropertyId"/>), the booking for every other
+/// action (<see cref="BookingId"/>).
+/// </summary>
+public sealed record ComplianceSummaryItem
+{
+    private ComplianceSummaryItem(Guid id, string label, ComplianceCockpitAction action, Guid? propertyId, Guid? bookingId)
+    {
+        Id = id;
+        Label = label;
+        Action = action;
+        PropertyId = propertyId;
+        BookingId = bookingId;
+    }
+
+    public Guid Id { get; }
+
+    public string Label { get; }
+
+    public ComplianceCockpitAction Action { get; }
+
+    public Guid? PropertyId { get; }
+
+    public Guid? BookingId { get; }
+
+    /// <summary>True when the target of <paramref name="action"/> is a property, false when it is a booking.</summary>
+    public static bool TargetsProperty(ComplianceCockpitAction action) => action == ComplianceCockpitAction.ActivateProperty;
+
+    public static ComplianceSummaryItem ForProperty(ComplianceCockpitAction action, Guid propertyId, string label) =>
+        TargetsProperty(action)
+            ? new ComplianceSummaryItem(propertyId, label, action, propertyId, null)
+            : throw new ArgumentException($"{action} targets a booking, not a property.", nameof(action));
+
+    public static ComplianceSummaryItem ForBooking(ComplianceCockpitAction action, Guid bookingId, string label) =>
+        !TargetsProperty(action)
+            ? new ComplianceSummaryItem(bookingId, label, action, null, bookingId)
+            : throw new ArgumentException($"{action} targets a property, not a booking.", nameof(action));
+}
 
 public record ComplianceSummarySection(int Count, IReadOnlyList<ComplianceSummaryItem> Items);
 
