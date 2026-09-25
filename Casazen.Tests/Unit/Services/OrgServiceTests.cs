@@ -80,6 +80,90 @@ public class OrgServiceTests
     }
 
     [Fact]
+    public async Task EnsureOrgForUserAsync_UserOrgIdPointsToSupplierOrg_ProvisionsNewHostOrgAndKeepsSupplierLink()
+    {
+        // A1-40: a supplier registers first (OrgId and SupplierOrgId both point at the Supplier org, as
+        // SupplierService links them), then does the host onboarding. The Supplier org must never become the
+        // host org, and the existing supplier link must survive.
+        await using var db = CreateDb(
+            nameof(EnsureOrgForUserAsync_UserOrgIdPointsToSupplierOrg_ProvisionsNewHostOrgAndKeepsSupplierLink));
+        var userId = "auth0|supplier-then-host";
+        var supplierOrgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity
+        {
+            Id = supplierOrgId,
+            Name = "Fornitore Srl",
+            Slug = "supplier-org",
+            DisplayName = "Fornitore Srl",
+            ContactEmail = "fornitore@example.com",
+            OrgType = OrgType.Supplier,
+            IsActive = true,
+        });
+        db.Users.Add(new User
+        {
+            Id = userId,
+            Email = "fornitore@example.com",
+            FirstName = "Mario",
+            LastName = "Fornitore",
+            Role = UserRole.Supplier,
+            OrgId = supplierOrgId,
+            SupplierOrgId = supplierOrgId,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var service = new OrgService(db);
+        var org = await service.EnsureOrgForUserAsync(userId, "fornitore@example.com", "Mario Fornitore");
+
+        Assert.NotEqual(supplierOrgId, org.Id);
+        Assert.Equal(OrgType.Host, org.OrgType);
+        var user = await db.Users.SingleAsync(u => u.Id == userId);
+        Assert.Equal(org.Id, user.OrgId);
+        Assert.Equal(supplierOrgId, user.SupplierOrgId);
+    }
+
+    [Fact]
+    public async Task EnsureOrgForUserAsync_UserOrgIdPointsToSupplierOrgWithoutSupplierOrgIdSet_BackfillsSupplierLink()
+    {
+        // Legacy data (pre-SU-08): OrgId already points at the Supplier org but SupplierOrgId was never set.
+        // The host onboarding must not lose that supplier link once it stops reusing the Supplier org (A1-40).
+        await using var db = CreateDb(
+            nameof(EnsureOrgForUserAsync_UserOrgIdPointsToSupplierOrgWithoutSupplierOrgIdSet_BackfillsSupplierLink));
+        var userId = "auth0|legacy-supplier";
+        var supplierOrgId = Guid.NewGuid();
+        db.Orgs.Add(new OrgEntity
+        {
+            Id = supplierOrgId,
+            Name = "Fornitore Legacy",
+            Slug = "supplier-legacy",
+            DisplayName = "Fornitore Legacy",
+            ContactEmail = "legacy@example.com",
+            OrgType = OrgType.Supplier,
+            IsActive = true,
+        });
+        db.Users.Add(new User
+        {
+            Id = userId,
+            Email = "legacy@example.com",
+            FirstName = "Anna",
+            LastName = "Legacy",
+            Role = UserRole.Supplier,
+            OrgId = supplierOrgId,
+            SupplierOrgId = null,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var service = new OrgService(db);
+        var org = await service.EnsureOrgForUserAsync(userId, "legacy@example.com", "Anna Legacy");
+
+        Assert.Equal(OrgType.Host, org.OrgType);
+        var user = await db.Users.SingleAsync(u => u.Id == userId);
+        Assert.Equal(org.Id, user.OrgId);
+        Assert.Equal(supplierOrgId, user.SupplierOrgId);
+    }
+
+    [Fact]
     public async Task UpdatePlanTierAsync_ChangesTier()
     {
         await using var db = CreateDb(nameof(UpdatePlanTierAsync_ChangesTier));

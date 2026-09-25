@@ -567,13 +567,55 @@ request: saving the URL answers 202 `Syncing` and queues the first sync, "Sincro
 of the feed (`SupplierAvailability.Source`), never those the supplier set by hand. API, rules, migration of the
 existing days and checks: [ical.md](ical.md#supplier-calendars-su-15).
 
+## 13. The Supplier org never becomes the host org — PL-05 (A1-40)
+
+A supplier-only account has `User.OrgId` pointing at its own Supplier org (section 1: `SupplierService` sets it
+when it was still null). Before PL-05, a supplier who then completed the **host** onboarding kept that same org as
+their host tenant: `OrgService.EnsureOrgForUserAsync` reused whatever `OrgId` was already there without checking
+its type, so properties, bookings, plan and public site all landed on `OrgType.Supplier`.
+
+**Fix**: every place that resolves the caller's *host* org now requires `Org.OrgType == Host`, and treats any other
+type exactly like "no org yet" (same as a brand-new user, PL-02/A1-05) instead of reusing it:
+
+- `TenantContext.ResolveAsync` (the EF tenant query filter, read once per request) — the primary gate: it runs
+  before every controller, so a fix elsewhere alone would never be reached.
+- `OrgContextResolver.GetOrProvisionOrgIdAsync` (used by ~20 host controllers).
+- `OrgService.EnsureOrgForUserAsync` / `GetLinkedOrgAsync` (`POST`/`PUT /api/users/onboarding`): when the previous
+  `OrgId` was a non-Host org, it provisions a **new** Host org and backfills `SupplierOrgId` from it first if that
+  was somehow still unset, so the supplier console keeps working.
+
+`SupplierService` is unchanged: a supplier-only account still gets `OrgId` = its Supplier org (section 2.4), which
+is correct — there is no host org to point to until the host onboarding runs.
+
+**Data migration** `SeparateSupplierOrgFromHostOrgId` (applied at startup, like `SupplierProfileEmailUnique`):
+for every `User.OrgId` that pointed at a Supplier-type org, it backfills `SupplierOrgId` first if unset, then
+clears `OrgId` to `null` — **but only when that Supplier org holds no host data** (no `Properties`, `Bookings`,
+`LeaseContracts`, `Payments` or `Guests` reference it). A Supplier org that already accumulated host data (the bug
+ran to completion for that user before this fix) is left untouched on purpose: moving that data to a fresh Host org
+is a product decision (which org keeps the Stripe customer, the plan, the bookings) that this migration does not
+make on its own. It logs `RAISE NOTICE 'SeparateSupplierOrgFromHostOrgId: ...'` with the three counts; a non-zero
+`needs_manual_repair` names a real case to follow up by hand (there is no automated repair for it, unlike
+`fix-orphaned` in section 9, which is a different problem — merging duplicate *supplier* profiles — and only
+tolerates this scenario without crashing, section 9.3 "unless the org also holds host data").
+
+### 13.1 After a deploy
+
+- [ ] Deploy log: `SeparateSupplierOrgFromHostOrgId` NOTICE line; if `needs_manual_repair` is not 0, find the
+      affected orgs and open a product decision (do not edit the database by hand):
+      ```sql
+      SELECT u."Id" AS user_id, o."Id" AS org_id, o."Name"
+      FROM "Users" u JOIN "Orgs" o ON o."Id" = u."OrgId"
+      WHERE o."OrgType" = 1;
+      ```
+- [ ] Register as a supplier (self-serve or invite), then open the host onboarding as the same account: the org
+      created is a **new** Host org (`GET /api/orgs/me` after onboarding is not the supplier org from
+      `GET /api/users/me`'s `supplierOrgId`), and the supplier console (`/app/supplier/*`) still works.
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
-- A supplier-only user who then completes the host onboarding keeps using the supplier org as `User.OrgId`
-  (A1-40, task PL-05).
 - The activation requirements (only the ToS today) are task SU-05.
 - Service requests: host timeline, rejection reason and "paid" confirmation are SU-09 (the history of section 11.3
   can be reused there); the app's supplier choice (today the first result) is MO-10 and its

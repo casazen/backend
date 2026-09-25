@@ -226,6 +226,60 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal(4, await db.ConsentRecords.IgnoreQueryFilters().CountAsync(c => c.UserId == userId && c.OrgId == orgId));
     }
 
+    [Fact]
+    public async Task PostOnboarding_UserAlreadyLinkedToSupplierOrg_ProvisionsANewHostOrgAndKeepsTheSupplierLink()
+    {
+        // A1-40: a supplier registers first (User.OrgId = User.SupplierOrgId = the Supplier org, as
+        // SupplierService links them), then does the host onboarding. It must get a real, new Host org — never
+        // the Supplier org — and the supplier link must survive.
+        var userId = $"auth0|plg-supplier-then-host-{Guid.NewGuid():N}";
+        Guid supplierOrgId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var supplierOrg = new Org
+            {
+                Name = "Fornitore Srl",
+                Slug = $"plg-supplier-{Guid.NewGuid():N}"[..30],
+                DisplayName = "Fornitore Srl",
+                ContactEmail = "fornitore@example.com",
+                OrgType = OrgType.Supplier,
+            };
+            db.Orgs.Add(supplierOrg);
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Email = "fornitore@example.com",
+                FirstName = "Mario",
+                LastName = "Fornitore",
+                Role = UserRole.Supplier,
+                OrgId = supplierOrg.Id,
+                SupplierOrgId = supplierOrg.Id,
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+            supplierOrgId = supplierOrg.Id;
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: "Supplier", email: "fornitore@example.com");
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var orgId = Guid.Parse(body.GetProperty("orgId").GetString()!);
+        // The core A1-40 guarantee: never the Supplier org (orgProvisioned is not asserted here — it reflects
+        // whether the account had *any* OrgId before the call, which was already true for this supplier).
+        Assert.NotEqual(supplierOrgId, orgId);
+
+        using var checkScope = _factory.Services.CreateScope();
+        var checkDb = checkScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await checkDb.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == userId);
+        Assert.Equal(orgId, user.OrgId);
+        Assert.Equal(supplierOrgId, user.SupplierOrgId);
+        var hostOrg = await checkDb.Orgs.IgnoreQueryFilters().SingleAsync(o => o.Id == orgId);
+        Assert.Equal(OrgType.Host, hostOrg.OrgType);
+    }
+
     private async Task SeedActivationMilestonesAsync(string userId, Guid orgId)
     {
         using var scope = _factory.Services.CreateScope();

@@ -83,6 +83,19 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         }
 
         var user = await dbContext.Users.FirstAsync(u => u.Id == userId, cancellationToken);
+
+        // A1-40: the previous OrgId, if any, was rejected above by GetLinkedOrgAsync because it is not a Host
+        // org — most often the caller's own Supplier org, linked at supplier registration before the host
+        // onboarding ever ran. Keep that link on SupplierOrgId (normally already set by SupplierService) so the
+        // supplier console keeps working, instead of silently losing it once OrgId is replaced below.
+        if (user.OrgId is Guid previousOrgId && user.SupplierOrgId is null)
+        {
+            var previousOrg = await dbContext.Orgs.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == previousOrgId, cancellationToken);
+            if (previousOrg?.OrgType == OrgType.Supplier)
+                user.SupplierOrgId = previousOrgId;
+        }
+
         var slug = await AllocateUniqueSlugAsync(baseSlug, cancellationToken);
         var orgName = string.IsNullOrWhiteSpace(displayName) ? "La mia organizzazione" : displayName.Trim();
         var org = new Org
@@ -107,9 +120,17 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
     }
 
     /// <summary>
-    /// The org linked to the user in the database, or <c>null</c> when none. Reads the committed row, not a copy
-    /// this context may already track, and aligns that tracked copy so the caller sees the same <c>OrgId</c>.
+    /// The <b>Host</b> org linked to the user in the database, or <c>null</c> when none. Reads the committed row,
+    /// not a copy this context may already track, and aligns that tracked copy so the caller sees the same
+    /// <c>OrgId</c>.
     /// </summary>
+    /// <remarks>
+    /// A1-40: <c>User.OrgId</c> can point at a non-Host org — the caller's own Supplier org, linked at supplier
+    /// registration before the host onboarding ever ran (<c>SupplierService</c> sets <c>OrgId</c> when it was
+    /// still null). That link is never reused as the host org: the caller (<see cref="EnsureOrgForUserAsync"/>)
+    /// provisions a real Host org instead, exactly as <c>OrgContextResolver</c> and <c>TenantContext</c> also
+    /// refuse to treat it as the host tenant.
+    /// </remarks>
     private async Task<Org?> GetLinkedOrgAsync(string userId, CancellationToken cancellationToken)
     {
         var row = await dbContext.Users.AsNoTracking()
@@ -121,6 +142,10 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         if (row.OrgId is not Guid orgId)
             return null;
 
+        var org = await dbContext.Orgs.FirstAsync(o => o.Id == orgId, cancellationToken);
+        if (org.OrgType != OrgType.Host)
+            return null;
+
         var tracked = dbContext.Users.Local.FirstOrDefault(u => u.Id == userId);
         if (tracked is not null && tracked.OrgId != orgId)
         {
@@ -129,7 +154,7 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
             orgIdProperty.OriginalValue = orgId;
         }
 
-        return await dbContext.Orgs.FirstAsync(o => o.Id == orgId, cancellationToken);
+        return org;
     }
 
     public async Task<Org?> UpdatePlanTierAsync(
