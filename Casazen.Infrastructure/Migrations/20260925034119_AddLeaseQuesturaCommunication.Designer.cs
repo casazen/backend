@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260925015252_AddLeaseQuesturaCommunication")]
+    [Migration("20260925034119_AddLeaseQuesturaCommunication")]
     partial class AddLeaseQuesturaCommunication
     {
         /// <inheritdoc />
@@ -438,6 +438,44 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("CancellationPolicies");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AlertCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("Deadline")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("LastAlertAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Stage")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId")
+                        .IsUnique();
+
+                    b.ToTable("CinAlertStates");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
@@ -1706,6 +1744,18 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.PrimitiveCollection<List<int>>("HighSeasonMonths")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<decimal>("HighSeasonMultiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("numeric(4,2)");
+
+                    b.Property<decimal>("HolidayMultiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("numeric(4,2)");
+
                     b.Property<bool>("IncludePublicHolidays")
                         .HasColumnType("boolean");
 
@@ -1718,8 +1768,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastAdaptedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("NextScheduledRunAt")
-                        .HasColumnType("timestamp with time zone");
+                    b.PrimitiveCollection<List<int>>("LowSeasonMonths")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<decimal>("LowSeasonMultiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("numeric(4,2)");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -2625,6 +2680,55 @@ namespace Casazen.Infrastructure.Migrations
                             RoleId = 3,
                             PermissionKey = "admin.seo.read"
                         });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SeasonalPriceSuggestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("BasePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Holiday")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("numeric(4,2)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Rule")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateOnly>("StayDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("SuggestedPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "StayDate")
+                        .IsUnique();
+
+                    b.ToTable("SeasonalPriceSuggestions");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentPage", b =>
@@ -3708,6 +3812,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Property");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ConcordatoRentBand", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.TerritorialRentAgreement", "Agreement")
@@ -4275,6 +4390,21 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SeasonalPriceSuggestion", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentRevision", b =>
