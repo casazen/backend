@@ -105,6 +105,12 @@ internal static class PostgresAdvisoryLocks
         /// profiles at once (SU-14, A4-22). The run also takes <see cref="SupplierClaim"/> for every profile it merges.
         /// </summary>
         SupplierMaintenance = 1_054,
+
+        /// <summary>
+        /// Availability days of one supplier (key: supplier org id): the iCal sync (15-minute job, first sync, "sync
+        /// now") and the supplier's manual changes never write the same days at once (SU-15).
+        /// </summary>
+        SupplierCalendarSync = 1_065,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

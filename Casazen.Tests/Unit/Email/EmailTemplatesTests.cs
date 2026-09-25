@@ -24,7 +24,7 @@ public class EmailTemplatesTests
     public static TheoryData<string> TemplateNames => new()
     {
         "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
-        "late-payment-refunded", "rli-reminder", "rli-overdue", "rli-extra-eu", "onsite-received", "onsite-to-host",
+        "late-payment-refunded", "rli-reminder", "rli-overdue", "questura-reminder", "questura-overdue", "onsite-received", "onsite-to-host",
         "onsite-declined", "onsite-expired", "booking-cancelled", "booking-confirmed-paid", "booking-confirmed-late",
         "booking-confirmed-deferred", "booking-confirmed-onsite", "host-booking-confirmed", "host-booking-confirmed-deferred",
         "deferred-failed-guest", "deferred-failed-host", "deferred-cancelled-guest", "deferred-cancelled-host",
@@ -434,15 +434,34 @@ public class EmailTemplatesTests
     }
 
     [Fact]
-    public void RliExtraEuNotice_EnglishAndItalian_MentionQuestura()
+    public void QuesturaCommunicationReminder_EnglishAndItalian_DeliveryDeadlineAndHowToMarkDone()
     {
-        var italian = EmailTemplates.RliExtraEuNotice(EmailTemplates.DefaultCulture, "Villa Rosa");
-        var english = EmailTemplates.RliExtraEuNotice(CultureInfo.GetCultureInfo("en"), "Villa Rosa");
+        // LT-07 (A7-08): 48 hours from the delivery (5/10) end at the latest on 7/10.
+        var italian = EmailTemplates.QuesturaCommunicationReminder(
+            EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, CheckIn.AddDays(2), deliveryDateDeclared: false);
+        var english = EmailTemplates.QuesturaCommunicationReminder(
+            CultureInfo.GetCultureInfo("en"), "Villa Rosa", CheckIn, CheckIn.AddDays(2), deliveryDateDeclared: true);
 
-        Assert.Contains("Questura", italian.Subject);
-        Assert.Contains("Questura", english.Subject);
-        Assert.Contains("conduttore extra-UE", italian.HtmlBody);
-        Assert.Contains("non-EU tenant", english.HtmlBody);
+        Assert.Equal("Comunicazione alla Questura entro il 07/10/2026 — Villa Rosa", italian.Subject);
+        Assert.Contains("conduttore extra-UE", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("48 ore dalla consegna dell'immobile (<strong>05/10/2026</strong>)", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("art. 7 D.Lgs. 286/1998", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("data di inizio del contratto", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("segna la comunicazione come fatta", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("Questura", english.Subject, StringComparison.Ordinal);
+        Assert.Contains("non-EU tenant", english.HtmlBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("start date of the lease as the delivery date", english.HtmlBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void QuesturaCommunicationOverdue_Italian_SaysNotDeclared()
+    {
+        var italian = EmailTemplates.QuesturaCommunicationOverdue(
+            EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, CheckIn.AddDays(2), deliveryDateDeclared: true);
+
+        Assert.Equal("Comunicazione alla Questura non dichiarata — Villa Rosa", italian.Subject);
+        Assert.Contains("è scaduto il <strong>07/10/2026</strong>", italian.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("non risulta dichiarata", italian.HtmlBody, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -569,7 +588,8 @@ public class EmailTemplatesTests
                 culture, value, value, CheckIn, CheckIn.AddDays(3), 1234.5m),
             "rli-reminder" => EmailTemplates.RliDeadlineReminder(culture, value, CheckIn, 7),
             "rli-overdue" => EmailTemplates.RliDeadlineOverdue(culture, value, CheckIn),
-            "rli-extra-eu" => EmailTemplates.RliExtraEuNotice(culture, value),
+            "questura-reminder" => EmailTemplates.QuesturaCommunicationReminder(culture, value, CheckIn, CheckIn.AddDays(2), false),
+            "questura-overdue" => EmailTemplates.QuesturaCommunicationOverdue(culture, value, CheckIn, CheckIn.AddDays(2), true),
             "booking-cancelled" => EmailTemplates.GuestBookingCancelled(
                 culture, value, value, CheckIn, CheckIn.AddDays(3), 50m, 99.5m, new BookingHostContact(value, value)),
             "booking-confirmed-paid" => BookingConfirmed(culture, value, BookingConfirmationKind.PaidOnline),

@@ -212,7 +212,7 @@ public partial class SupplierService
                 dryRun ? LogLevel.Information : LogLevel.Warning,
                 SupplierRepairEvent,
                 "Supplier duplicate {DuplicateOrgId} {Action} into {KeeperOrgId}: serviceRequests={ServiceRequests}, " +
-                "supplierJobs={SupplierJobs}, availabilityMoved={AvailabilityMoved}, " +
+                "availabilityMoved={AvailabilityMoved}, " +
                 "availabilityDropped={AvailabilityDropped}, categoriesAdded={CategoriesAdded}, comuniAdded={ComuniAdded}, " +
                 "supplierLinks={SupplierLinks}, orgMembers={OrgMembers}, devices={Devices}, " +
                 "duplicateOrgDeleted={DuplicateOrgDeleted}",
@@ -220,7 +220,6 @@ public partial class SupplierService
                 dryRun ? "would be merged (dry run)" : "merged",
                 merge.KeeperOrgId,
                 merge.ServiceRequestsMoved,
-                merge.SupplierJobsMoved,
                 merge.AvailabilityDaysMoved,
                 merge.AvailabilityDaysDropped,
                 merge.CategoriesAdded.Count,
@@ -240,14 +239,11 @@ public partial class SupplierService
     {
         var now = DateTime.UtcNow;
 
-        // ServiceRequests (host org filter only by explicit scopes), SupplierJobs and SupplierAvailability have no tenant
-        // filter: the supplier side of the duplicate moves whatever host org the rows belong to.
+        // ServiceRequests (host org filter only by explicit scopes) and SupplierAvailability have no tenant filter: the
+        // supplier side of the duplicate moves whatever host org the rows belong to.
         var requests = await db.ServiceRequests
             .Where(sr => sr.SupplierOrgId == duplicateId)
             .ExecuteUpdateAsync(set => set.SetProperty(sr => sr.SupplierOrgId, keeperId), cancellationToken);
-        var jobs = await db.SupplierJobs
-            .Where(j => j.SupplierOrgId == duplicateId)
-            .ExecuteUpdateAsync(set => set.SetProperty(j => j.SupplierOrgId, keeperId), cancellationToken);
 
         // A day the keeper already has keeps the keeper's value: the keeper is the profile in use.
         var daysMoved = await db.SupplierAvailability
@@ -286,7 +282,6 @@ public partial class SupplierService
             keeperId,
             duplicateId,
             requests,
-            jobs,
             daysMoved,
             daysDropped,
             categoriesAdded,

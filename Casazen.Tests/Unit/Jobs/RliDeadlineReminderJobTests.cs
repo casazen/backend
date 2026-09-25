@@ -8,13 +8,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using Questura = Casazen.Web.BackgroundJobs.RliDeadlineReminderJob.QuesturaThresholds;
 
 namespace Casazen.Tests.Unit.Jobs;
 
 /// <summary>
 /// LT-04 (A7-04) on real PostgreSQL: the RLI reminder job works on thresholds of the deadline min(stipula, start) + 30
 /// (≤ 15, ≤ 7, ≤ 1 days, overdue from the day after), for every lease not registered yet, once per threshold and
-/// deadline, recorded only when the email was sent. Each test has its own database and runs the job with a fake clock.
+/// deadline, recorded only when the email was sent. LT-07 (A7-08): the Questura communication of an extra-EU tenant has
+/// its own thresholds on the 48 hours from the delivery and is never declared by a reminder. Each test has its own
+/// database and runs the job with a fake clock.
 /// </summary>
 public class RliDeadlineReminderJobTests : IAsyncLifetime
 {
@@ -189,27 +192,143 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         Assert.Equal([$"t-7:{Deadline}"], await PayloadsAsync(lease));
     }
 
+    // LT-07 (A7-08): Questura communication for an extra-EU tenant. Start 1/10/2026 = delivery by default, so the
+    // 48 hours end at the latest on 3/10/2026.
+    private const string QuesturaDeadline = "2026-10-03";
+
     [PostgresFact]
-    public async Task ExecuteAsync_ExtraEuTenant_SendsDistinctNoticeOnce()
+    public async Task ExecuteAsync_ExtraEuTenant_QuesturaThresholdsEachSentOnce()
     {
         var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true);
 
-        await RunAsync("2026-08-02T08:00:00Z"); // deadline 29 days away: no deadline reminder
-        await RunAsync("2026-08-03T08:00:00Z");
+        await RunAsync("2026-09-27T08:00:00Z"); // delivery in 4 days: nothing yet
+        Assert.Empty(await QuesturaPayloadsAsync(lease));
+        await RunAsync("2026-09-28T08:00:00Z"); // delivery in 3 days
+        await RunAsync("2026-09-28T18:00:00Z"); // same day: no duplicate
+        await RunAsync("2026-09-29T08:00:00Z"); // still "before delivery"
+        await RunAsync("2026-10-01T08:00:00Z"); // delivery day
+        await RunAsync("2026-10-02T08:00:00Z"); // still within the 48 hours
+        await RunAsync("2026-10-03T08:00:00Z"); // the 48 hours end
+        await RunAsync("2026-10-04T08:00:00Z"); // overdue
+        await RunAsync("2026-10-05T08:00:00Z"); // overdue already sent
 
-        Assert.Equal([RliDeadlineReminderJob.ExtraEuPayload], await PayloadsAsync(lease));
-        Assert.Contains("Questura", Assert.Single(_sent).Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            [
+                $"{Questura.BeforeDelivery}:{QuesturaDeadline}",
+                $"{Questura.Delivery}:{QuesturaDeadline}",
+                $"{Questura.Deadline}:{QuesturaDeadline}",
+                $"{Questura.Overdue}:{QuesturaDeadline}",
+            ],
+            await QuesturaPayloadsAsync(lease));
+        var questuraEmails = _sent.Where(e => e.Subject.Contains("Questura", StringComparison.Ordinal)).ToList();
+        Assert.Equal(4, questuraEmails.Count);
+        Assert.Equal("Comunicazione alla Questura entro il 03/10/2026 — Casa Seveso", questuraEmails[0].Subject);
+        Assert.Contains("data di inizio del contratto", questuraEmails[0].Body, StringComparison.Ordinal);
+        Assert.Equal("Comunicazione alla Questura non dichiarata — Casa Seveso", questuraEmails[^1].Subject);
+        Assert.All(questuraEmails, e => Assert.Equal("host@example.com", e.To));
     }
 
     [PostgresFact]
-    public async Task ExecuteAsync_EuOnly_NoExtraEuNotice()
+    public async Task ExecuteAsync_ExtraEuTenant_ReminderDoesNotDeclareTheCommunication()
     {
-        var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt);
+        var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true);
 
-        await RunAsync("2026-08-02T08:00:00Z");
+        await RunAsync("2026-10-01T08:00:00Z");
+
+        await using var db = _database!.CreateContext();
+        var stored = await db.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == lease);
+        Assert.Null(stored.QuesturaCommunicationDate);
+        Assert.False(await db.LeaseEvents.AnyAsync(e =>
+            e.LeaseContractId == lease && e.EventType == LeaseEventType.QuesturaCommunicationMarkedDone));
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_FirstRunAfterTheDeadline_SendsOnlyOverdue()
+    {
+        var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true);
+
+        await RunAsync("2026-10-20T08:00:00Z");
+
+        Assert.Equal([$"{Questura.Overdue}:{QuesturaDeadline}"], await QuesturaPayloadsAsync(lease));
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_RegisteredLeaseWithExtraEuTenant_StillRemindsTheQuestura()
+    {
+        // The RLI registration does not replace the Questura communication (fiscale.md L14).
+        var lease = await SeedLeaseAsync(LeaseStatus.Registered, StartOctober, SignedAt, extraEu: true);
+
+        await RunAsync("2026-10-01T08:00:00Z");
+
+        Assert.Equal([$"{Questura.Delivery}:{QuesturaDeadline}"], await PayloadsAsync(lease));
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_DeclaredDeliveryDate_ThresholdsCountFromIt()
+    {
+        var lease = await SeedLeaseAsync(
+            LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true,
+            deliveryDate: new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc));
+
+        await RunAsync("2026-10-01T08:00:00Z"); // start date, but the property is delivered on 10/10
+        Assert.Empty(await QuesturaPayloadsAsync(lease));
+
+        await RunAsync("2026-10-12T08:00:00Z");
+        Assert.Equal([$"{Questura.Deadline}:2026-10-12"], await QuesturaPayloadsAsync(lease));
+        Assert.DoesNotContain(
+            "data di inizio del contratto",
+            _sent.Single(e => e.Subject.Contains("Questura", StringComparison.Ordinal)).Body,
+            StringComparison.Ordinal);
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_QuesturaCommunicationDeclared_NoReminder()
+    {
+        var lease = await SeedLeaseAsync(
+            LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true,
+            questuraCommunicationDate: new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        await RunAsync("2026-10-01T08:00:00Z");
+        await RunAsync("2026-10-05T08:00:00Z");
+
+        Assert.Empty(await QuesturaPayloadsAsync(lease));
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_LeaseEnded_NoQuesturaReminder()
+    {
+        var lease = await SeedLeaseAsync(
+            LeaseStatus.Registered, new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), SignedAt, extraEu: true,
+            endDate: new DateTime(2026, 6, 30, 0, 0, 0, DateTimeKind.Utc));
+
+        await RunAsync("2026-10-01T08:00:00Z");
+
+        Assert.Empty(await PayloadsAsync(lease));
+    }
+
+    [PostgresFact]
+    public async Task ExecuteAsync_EuOnly_NoQuesturaReminder()
+    {
+        var lease = await SeedLeaseAsync(LeaseStatus.Registered, StartOctober, SignedAt);
+
+        await RunAsync("2026-10-01T08:00:00Z");
 
         Assert.Empty(await PayloadsAsync(lease));
         Assert.Empty(_sent);
+    }
+
+    [Theory]
+    [InlineData(6, null)]
+    [InlineData(5, Questura.BeforeDelivery)]
+    [InlineData(3, Questura.BeforeDelivery)]
+    [InlineData(2, Questura.Delivery)]
+    [InlineData(1, Questura.Delivery)]
+    [InlineData(0, Questura.Deadline)]
+    [InlineData(-1, Questura.Overdue)]
+    [InlineData(-90, Questura.Overdue)]
+    public void QuesturaThresholds_Reached_MostUrgentThresholdOfTheDay(int daysToDeadline, string? expected)
+    {
+        Assert.Equal(expected, Questura.Reached(daysToDeadline));
     }
 
     [Theory]
@@ -245,7 +364,17 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
             .ToListAsync();
     }
 
-    private async Task<Guid> SeedLeaseAsync(LeaseStatus status, DateTime startDate, DateTime? signedAt, bool extraEu = false)
+    private async Task<List<string?>> QuesturaPayloadsAsync(Guid leaseId) =>
+        (await PayloadsAsync(leaseId)).Where(p => p!.StartsWith("questura-", StringComparison.Ordinal)).ToList();
+
+    private async Task<Guid> SeedLeaseAsync(
+        LeaseStatus status,
+        DateTime startDate,
+        DateTime? signedAt,
+        bool extraEu = false,
+        DateTime? deliveryDate = null,
+        DateTime? questuraCommunicationDate = null,
+        DateTime? endDate = null)
     {
         var org = new OrgEntity { Name = "Org LT-04", Slug = $"lt04-{Guid.NewGuid():N}", DisplayName = "Org LT-04", IsActive = true };
         var property = new Property
@@ -267,9 +396,11 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
             Status = status,
             FiscalRegime = FiscalRegime.CedolareSecca,
             StartDate = startDate,
-            EndDate = startDate.AddYears(4),
+            EndDate = endDate ?? startDate.AddYears(4),
             MonthlyRent = 800m,
             DataRetentionUntil = startDate.AddYears(10),
+            PropertyDeliveryDate = deliveryDate,
+            QuesturaCommunicationDate = questuraCommunicationDate,
             Parties =
             [
                 new Party
