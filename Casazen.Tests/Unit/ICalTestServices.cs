@@ -22,7 +22,8 @@ internal static class ICalTestServices
         IConfiguration configuration,
         IServiceScopeFactory? scopeFactory = null,
         ILogger<PropertyICalSyncService>? logger = null,
-        ICalImportOptions? importOptions = null)
+        ICalImportOptions? importOptions = null,
+        TimeProvider? clock = null)
     {
         var options = Options.Create(importOptions ?? new ICalImportOptions());
         return new(
@@ -33,6 +34,7 @@ internal static class ICalTestServices
             scopeFactory ?? Mock.Of<IServiceScopeFactory>(),
             configuration,
             options,
-            logger ?? Mock.Of<ILogger<PropertyICalSyncService>>());
+            logger ?? Mock.Of<ILogger<PropertyICalSyncService>>(),
+            clock ?? TimeProvider.System);
     }
 }
