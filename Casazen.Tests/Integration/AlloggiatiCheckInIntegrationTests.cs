@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -22,40 +21,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     private readonly CasazenWebApplicationFactory _factory;
 
     public AlloggiatiCheckInIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
-
-    [Fact]
-    public async Task AC1_GuestDataMissingDob_Returns400()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        var client = _factory.CreateClient();
-
-        var payload = BuildGuestDataPayload(includeDob: false);
-        var response = await client.PostAsync(
-            $"/api/checkin/{seed.CheckInToken}/guest-data",
-            new StringContent(payload, Encoding.UTF8, "application/json"));
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task AC2_DocumentUpload_ReturnsUrl()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        var client = _factory.CreateClient();
-
-        using var content = new MultipartFormDataContent();
-        var bytes = Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        content.Add(fileContent, "file", "id-scan.png");
-
-        var response = await client.PostAsync($"/api/checkin/{seed.CheckInToken}/document", content);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("documentScanUrl").GetString()));
-    }
 
     [Fact]
     public async Task AC3_GetStatus_ArrivalDayWithoutTransmission_IsToSendManuallyNeverSent()
@@ -283,103 +248,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.DoesNotContain(otherSeed.BookingId, bookingIds);
     }
 
-    [Fact]
-    public async Task AC11_GuestDataSubmit_SetsConsentFields()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        var client = _factory.CreateClient();
-
-        var payload = BuildGuestDataPayload(includeDob: true);
-        var response = await client.PostAsync(
-            $"/api/checkin/{seed.CheckInToken}/guest-data",
-            new StringContent(payload, Encoding.UTF8, "application/json"));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var guest = db.Guests.Single(g => g.Id == seed.GuestId);
-        Assert.NotNull(guest.ConsentDate);
-        Assert.Equal("2026-06-alloggiati-checkin-v1", guest.ConsentVersion);
-    }
-
-    [Fact]
-    public async Task GuestDataSubmit_SharedGuest_CreatesSnapshotAndLeavesOriginalGuestUnchanged()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        var sharedBookingId = await SeedBookingSharingGuestAsync(seed.GuestId);
-        var client = _factory.CreateClient();
-
-        var payload = BuildGuestDataPayload(includeDob: true);
-        var response = await client.PostAsync(
-            $"/api/checkin/{seed.CheckInToken}/guest-data",
-            new StringContent(payload, Encoding.UTF8, "application/json"));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        var originalGuest = db.Guests.Single(g => g.Id == seed.GuestId);
-        Assert.Equal(string.Empty, originalGuest.DocumentNumber);
-        Assert.Null(originalGuest.ConsentDate);
-
-        var submittedBooking = db.Bookings.Single(b => b.Id == seed.BookingId);
-        Assert.NotEqual(seed.GuestId, submittedBooking.GuestId);
-
-        var snapshot = db.Guests.Single(g => g.Id == submittedBooking.GuestId);
-        Assert.Equal("YA1234567", snapshot.DocumentNumber);
-        Assert.NotNull(snapshot.ConsentDate);
-
-        var sharedBooking = db.Bookings.Single(b => b.Id == sharedBookingId);
-        Assert.Equal(seed.GuestId, sharedBooking.GuestId);
-    }
-
-    [Fact]
-    public async Task GuestDataSubmit_CheckedOutBooking_Returns404AndDoesNotUpdateGuest()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        await MarkBookingStatusAsync(seed.BookingId, BookingStatus.CheckedOut);
-        var client = _factory.CreateClient();
-
-        var payload = BuildGuestDataPayload(includeDob: true);
-        var response = await client.PostAsync(
-            $"/api/checkin/{seed.CheckInToken}/guest-data",
-            new StringContent(payload, Encoding.UTF8, "application/json"));
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var guest = db.Guests.Single(g => g.Id == seed.GuestId);
-        Assert.Null(guest.ConsentDate);
-        Assert.Equal(string.Empty, guest.DocumentNumber);
-    }
-
-    [Fact]
-    public async Task DocumentUpload_CheckedOutBooking_Returns404AndDoesNotUpdateGuest()
-    {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
-        await MarkBookingStatusAsync(seed.BookingId, BookingStatus.CheckedOut);
-        var client = _factory.CreateClient();
-
-        using var content = new MultipartFormDataContent();
-        var bytes = Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        content.Add(fileContent, "file", "id-scan.png");
-
-        var response = await client.PostAsync($"/api/checkin/{seed.CheckInToken}/document", content);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var guest = db.Guests.Single(g => g.Id == seed.GuestId);
-        Assert.Null(guest.DocumentScanUrl);
-    }
-
     private static bool IsReportJobOf(Job job, Guid bookingId) =>
         job.Type == typeof(AlloggiatiWebReportJob)
         && job.Method.Name == nameof(AlloggiatiWebReportJob.ReportGuestAsync)
@@ -420,73 +288,12 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         """,
         Encoding.UTF8,
         "application/json");
-
-    private static string BuildGuestDataPayload(bool includeDob)
-    {
-        var dob = includeDob ? "\"1990-05-15\"" : "null";
-        return $$"""
-            {
-              "dateOfBirth": {{dob}},
-              "placeOfBirth": "Roma",
-              "nationality": "Italiana",
-              "gender": "Male",
-              "documentType": "Passport",
-              "documentNumber": "YA1234567",
-              "documentExpiryDate": "2030-12-31",
-              "documentIssuingCountry": "Italia",
-              "address": "Via Roma 1",
-              "city": "Roma",
-              "postalCode": "00100",
-              "country": "Italia",
-              "consentAccepted": true
-            }
-            """;
-    }
-
-    private async Task MarkBookingStatusAsync(Guid bookingId, BookingStatus status)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var booking = db.Bookings.Single(b => b.Id == bookingId);
-        booking.Status = status;
-        await db.SaveChangesAsync();
-    }
-
-    private async Task<Guid> SeedBookingSharingGuestAsync(Guid guestId)
-    {
-        var ownerId = $"auth0|shared-guest-{Guid.NewGuid():N}";
-        var property = await _factory.SeedPropertyAsync(ownerId);
-        var bookingId = Guid.NewGuid();
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Bookings.Add(new Booking
-        {
-            Id = bookingId,
-            PropertyId = property.Id,
-            OrgId = property.OrgId,
-            GuestId = guestId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
-            NumberOfGuests = 1,
-            Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
-            BasePrice = 200m,
-            TotalPrice = 208m,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        });
-        await db.SaveChangesAsync();
-
-        return bookingId;
-    }
 }
 
 public sealed record ConfirmedBookingSeed(
     Guid BookingId,
     Guid GuestId,
     Guid PropertyId,
-    Guid CheckInToken,
     string OwnerId);
 
 public static class AlloggiatiTestSeedExtensions
@@ -498,7 +305,6 @@ public static class AlloggiatiTestSeedExtensions
     {
         ownerId ??= $"auth0|alloggiati-{Guid.NewGuid():N}";
         var property = await factory.SeedPropertyAsync(ownerId);
-        var checkInToken = Guid.NewGuid();
         var guestId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
 
@@ -541,7 +347,6 @@ public static class AlloggiatiTestSeedExtensions
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
-            CheckInToken = checkInToken,
             BasePrice = 300m,
             TotalPrice = 312m,
             CreatedAt = DateTime.UtcNow,
@@ -591,6 +396,6 @@ public static class AlloggiatiTestSeedExtensions
 
         await db.SaveChangesAsync();
 
-        return new ConfirmedBookingSeed(bookingId, guestId, property.Id, checkInToken, ownerId);
+        return new ConfirmedBookingSeed(bookingId, guestId, property.Id, ownerId);
     }
 }

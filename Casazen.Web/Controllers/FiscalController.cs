@@ -1,5 +1,7 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +14,9 @@ namespace Casazen.Web.Controllers;
 public class FiscalController(
     IFiscalRegimeService fiscalRegime,
     IFiscalReportingService fiscalReporting,
-    IOrgContextResolver orgContextResolver) : ControllerBase
+    IOrgContextResolver orgContextResolver,
+    IHostResourceLookup hostResources,
+    IAuthorizationService authorizationService) : ControllerBase
 {
     [HttpGet("regime")]
     public async Task<IActionResult> GetRegime([FromQuery] int taxYear, CancellationToken cancellationToken)
@@ -52,9 +56,34 @@ public class FiscalController(
         {
             return BadRequest(new ProblemDetails { Title = "Validation error", Detail = ex.Message, Status = 400 });
         }
-        catch (FiscalConflictException ex)
+        // Over the short-rental threshold the service throws DomainConflictException (409, code
+        // fiscal_short_stay_threshold_exceeded), turned into a localized problem by the error middleware.
+    }
+
+    /// <summary>
+    /// Records the taxpayer (titolare fiscale) who lets the property, by codice fiscale, or clears it (<c>null</c>: the org
+    /// tax profile). The short-rental threshold and the 21% cedolare unit are counted per taxpayer (CO-18, A5-22).
+    /// </summary>
+    [HttpPut("properties/{propertyId:guid}/taxpayer")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    public async Task<IActionResult> SetTaxpayer(Guid propertyId, [FromBody] SetPropertyTaxpayerRequest request, CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return Unauthorized();
+
+        // A property of another org, or of another owner for a caller without org-wide access, answers 404.
+        var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
+        if (resource is null || !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
+            return NotFound();
+
+        try
         {
-            return Conflict(new ProblemDetails { Title = "Cedolare not allowed", Detail = ex.Message, Status = 409 });
+            return Ok(await fiscalRegime.SetPropertyTaxpayerAsync(orgId.Value, propertyId, request.FiscalCode, cancellationToken));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
         }
     }
 
@@ -157,3 +186,6 @@ public class FiscalController(
 public record AssignRegimeRequest(int TaxYear, StrFiscalRegime Regime, bool? IsPrimaryForCedolare);
 public record UpdateTaxProfileRequest(bool HasPartitaIva, string? PartitaIvaNumber, string? FiscalCode);
 public record FiscalSimulateRequest(int TaxYear, int? HypotheticalStrCount);
+
+/// <param name="FiscalCode">Codice fiscale of the taxpayer (16 characters; spaces ignored), or null to clear it.</param>
+public record SetPropertyTaxpayerRequest([StringLength(32)] string? FiscalCode);

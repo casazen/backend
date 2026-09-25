@@ -175,6 +175,11 @@ builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName));
+// Short-term rental fiscal rules (CO-18): threshold, rates and their sources, from fiscale.md.
+builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
+    .Bind(builder.Configuration.GetSection(Casazen.Core.Options.ShortStayFiscalOptions.SectionName))
+    .Validate(o => o.IsValid(), "ShortStayFiscal: threshold, nights and rates must be positive (rates below 1) and every source set.")
+    .ValidateOnStart();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API

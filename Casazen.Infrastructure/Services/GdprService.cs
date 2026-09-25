@@ -139,6 +139,11 @@ public class GdprService(
             .Where(y => y.OrgId == orgId)
             .Select(y => new { y.PropertyId, y.TaxYear, Regime = y.Regime.ToString(), y.IsPrimaryForCedolare })
             .ToListAsync(cancellationToken);
+        // Taxpayers recorded per property (CO-18).
+        var propertyTaxpayers = await db.Properties.AsNoTracking()
+            .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
+            .Select(p => new { PropertyId = p.Id, FiscalCode = p.TaxpayerFiscalCode })
+            .ToListAsync(cancellationToken);
         return new Dictionary<string, object>
         {
             ["hasPartitaIva"] = org.HasPartitaIva,
@@ -146,6 +151,7 @@ public class GdprService(
             ["fiscalCode"] = org.FiscalCode ?? "",
             ["fiscalDataRetentionUntil"] = org.FiscalDataRetentionUntil?.ToString("O") ?? "",
             ["propertyFiscalYears"] = years,
+            ["propertyTaxpayers"] = propertyTaxpayers,
             ["exportedAt"] = DateTime.UtcNow.ToString("O"),
         };
     }
@@ -159,6 +165,12 @@ public class GdprService(
         org.FiscalCode = token.Length > 16 ? token[..16] : token;
         org.PartitaIvaNumber = "00000000000";
         org.UpdatedAt = DateTime.UtcNow;
+        // Codici fiscali of the taxpayers recorded on the org's properties (CO-18): removed, the org profile applies again.
+        var properties = await db.Properties
+            .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
+            .ToListAsync(cancellationToken);
+        foreach (var property in properties)
+            property.TaxpayerFiscalCode = null;
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Org {OrgId} fiscal identifiers anonymized", orgId);
     }

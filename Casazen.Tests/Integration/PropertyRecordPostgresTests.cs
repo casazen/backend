@@ -127,18 +127,19 @@ public class PropertyRecordPostgresTests : IClassFixture<CasazenWebApplicationFa
     }
 
     [PostgresFact]
-    public async Task GetById_PropertyWithBookings_ReturnsRecordWithoutBookingsNorCheckInTokens()
+    public async Task GetById_PropertyWithBookings_ReturnsRecordWithoutBookingsNorGuestData()
     {
         var owner = NewOwner();
         var (property, policyId) = await SeedPricedPropertyAsync(owner);
-        var checkInToken = await SeedBookingWithCheckInTokenAsync(property);
+        var (bookingId, guestEmail) = await SeedBookingAsync(property);
         using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
 
         var response = await client.GetAsync($"/api/properties/{property.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.DoesNotContain(checkInToken.ToString(), body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(bookingId.ToString(), body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(guestEmail, body, StringComparison.OrdinalIgnoreCase);
         var record = JsonSerializer.Deserialize<JsonElement>(body);
         Assert.False(record.TryGetProperty("bookings", out _));
         Assert.False(record.TryGetProperty("otaIntegrations", out _));
@@ -211,7 +212,7 @@ public class PropertyRecordPostgresTests : IClassFixture<CasazenWebApplicationFa
         return (stored, policy.Id);
     }
 
-    private async Task<Guid> SeedBookingWithCheckInTokenAsync(Property property)
+    private async Task<(Guid BookingId, string GuestEmail)> SeedBookingAsync(Property property)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -224,10 +225,11 @@ public class PropertyRecordPostgresTests : IClassFixture<CasazenWebApplicationFa
             PhoneNumber = "+390000000000",
             Country = "Italy",
         };
-        var token = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
         db.Guests.Add(guest);
         db.Bookings.Add(new Booking
         {
+            Id = bookingId,
             PropertyId = property.Id,
             OrgId = property.OrgId,
             GuestId = guest.Id,
@@ -238,11 +240,9 @@ public class PropertyRecordPostgresTests : IClassFixture<CasazenWebApplicationFa
             Source = BookingSource.Direct,
             BasePrice = 200m,
             TotalPrice = 200m,
-            CheckInToken = token,
-            CheckInTokenExpiresAt = DateTime.UtcNow.AddDays(12),
         });
         await db.SaveChangesAsync();
-        return token;
+        return (bookingId, guest.Email);
     }
 
     private async Task<Property> ReadStoredAsync(Guid propertyId)

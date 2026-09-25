@@ -61,7 +61,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 Anonymous / public (non-exhaustive highlights):
 - `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
 - `POST /api/auth/register`, `GET /api/orgs/plans`
-- All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml`), `/api/checkin/*`, `/api/legal/*`
+- All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml` and the guest check-in portal `/api/public/checkin/*`), `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
 ### Authorization (TN-3)
@@ -185,9 +185,6 @@ Property record choices (PC-02):
 | `POST` | `/api/guests` | JWT | Create a guest record |
 | `PUT` | `/api/guests/{id}` | JWT | Update guest details |
 | `DELETE` | `/api/guests/{id}` | JWT | Delete a guest |
-| `GET` | `/api/checkin/{token}` | Anonymous | Guest check-in session by magic token |
-| `POST` | `/api/checkin/{token}/guest-data` | Anonymous | Submit guest identity data |
-| `POST` | `/api/checkin/{token}/document` | Anonymous | Upload ID document for check-in |
 
 #### Leases (long-term)
 
