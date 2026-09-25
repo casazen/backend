@@ -8,7 +8,7 @@ Task FD-07. Audit defects: A2-03, A2-31, A9-04. Product decision D8: Supabase St
 |---|---|---|
 | Property photos, supplier photos | Container disk (`wwwroot/uploads/properties`), relative URL `/uploads/...` | **Public** bucket, absolute URL `{Storage:PublicBaseUrl}/{key}` |
 | Property documents (APE, CIN certificate, …) | Container disk under `wwwroot`, **downloadable anonymously** | **Private** bucket. The database stores the object key. Read only through `GET /api/properties/{id}/documents/{docId}/download` (JWT, tenant filter, ownership) or a 5-minute signed URL from `GET /api/properties/{id}/documents/{docId}/signed-url` |
-| Guest ID scans (check-in) | Container disk (`uploads/guest-documents`) | **Private** bucket. `Guest.DocumentScanUrl` holds the object key |
+| Guest ID scans (check-in) | Container disk (`uploads/guest-documents`), uploaded anonymously by the legacy `/api/checkin` portal | **Private** bucket. `Guest.DocumentScanUrl` holds the object key, read only through `GET /api/guests/{id}/document-scan` (JWT, tenant filter, `guest.read`). Since CO-16 no endpoint uploads a scan: the legacy portal is removed and the guest portal (`/api/public/checkin`) collects the data only (see § 5) |
 | Data Protection keys (encrypt `OtaIntegration.ApiKey/ApiSecret` and, since PC-11, the iCal import URLs `PropertyICalFeeds.ImportUrl`) | Container disk, lost on every deploy | Table `DataProtectionKeys` (EF migration `AddDataProtectionKeys`), optionally encrypted with a certificate |
 
 Object keys:
@@ -139,6 +139,24 @@ dotnet run --project Casazen.Web -- storage:migrate-legacy --dry-run
 - Output: `uploaded=… alreadyPresent=… missing=… referencesRewritten=…`, exit code 0, or 1 on error. `missing` counts references whose file is neither on disk nor in the bucket. Those references are left unchanged:
   - photos are hidden by the frontend (a relative URL is never displayed);
   - documents answer `404 document_file_missing` and must be uploaded again by the host.
+
+### Guest ID scans of the legacy check-in portal (CO-16)
+
+The anonymous portal `/api/checkin/{token}` (`GuestCheckInController`) was removed in CO-16 (defects A5-29, A9-30):
+it answered with all the guest's personal data to anyone holding the token stored in clear on the booking, and before
+FD-07 it wrote the scans to the container disk, unencrypted. Its routes now answer 404, the token columns
+`Bookings.CheckInToken` / `CheckInTokenExpiresAt` are dropped (migration `RemoveLegacyBookingCheckInToken`) and the
+guest check-in goes through the portal of CO-02 only (`/api/public/checkin/{token}`, hashed token, links built by
+`PublicSiteLinks`).
+
+- **Scans written to the container disk before FD-07** (`uploads/guest-documents/...`): Railway never had a volume, so
+  they were lost at the first redeploy. Nothing to delete or clean up: there is no script for it on purpose. The
+  `Guest.DocumentScanUrl` rows that still hold an `/uploads/...` path are never read from disk; the host download
+  answers `404 guest_document_scan_missing`. If an environment still has those files (a volume or a backup), the
+  migration command above moves them to the private bucket.
+- **Scans uploaded after FD-07** are in the private bucket (`guest-documents/{orgId}/{guestId}/…`) and stay downloadable
+  by the host through `GET /api/guests/{id}/document-scan`. Deleting the object at the end of retention or on erasure
+  is part of the GDPR retention work (CO-15, A5-12), not of CO-16.
 
 ## 6. Verification after deploy
 

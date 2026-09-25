@@ -30,7 +30,6 @@ public static class StorageExtensions
                 : ActivatorUtilities.CreateInstance<S3FileStorage>(sp));
 
         services.AddScoped<IImageStorageService, ImageStorageService>();
-        services.AddScoped<IGuestDocumentStorage, GuestDocumentStorageService>();
         services.AddScoped<LegacyFileMigrationService>();
         return services;
     }

@@ -240,11 +240,6 @@ public class AppDbContext(
             entity.HasIndex(c => c.OrgId);
         });
 
-        modelBuilder.Entity<Booking>()
-            .HasIndex(b => b.CheckInToken)
-            .IsUnique()
-            .HasFilter("\"CheckInToken\" IS NOT NULL");
-
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
             .HasIndex(b => new { b.OrgId, b.BookingCode })
@@ -611,10 +606,10 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyFiscalYear>()
             .HasIndex(y => new { y.PropertyId, y.TaxYear })
             .IsUnique();
+        // No unique "one primary per org and year" index any more: the 21% unit is one per taxpayer (CO-18), and one org
+        // can manage several taxpayers. FiscalService checks it under the OrgFiscalRegime advisory lock.
         modelBuilder.Entity<PropertyFiscalYear>()
-            .HasIndex(y => new { y.OrgId, y.TaxYear })
-            .IsUnique()
-            .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
+            .HasIndex(y => new { y.OrgId, y.TaxYear });
         modelBuilder.Entity<PropertyFiscalYear>().HasIndex(y => y.OrgId);
         modelBuilder.Entity<Payment>()
             .Property(p => p.OtaWithholdingTax)
