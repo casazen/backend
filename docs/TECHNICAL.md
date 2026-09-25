@@ -203,6 +203,9 @@ Property record choices (PC-02):
 | `POST` | `/api/leases/{id}/registration` | lease.register | Submit lease registration |
 | `GET` | `/api/leases/{id}/registration` | lease.read | Registration status |
 | `GET` | `/api/leases/{id}/registration/receipt` | lease.read | Registration receipt |
+| `PUT` | `/api/leases/{id}/rli/questura/delivery-date` | lease.register | Delivery date of the property (48 hours of the Questura communication count from it; null = start date, LT-07) |
+| `POST` | `/api/leases/{id}/rli/questura/mark-done` | lease.register | Landlord declares the Questura communication for an extra-EU tenant: date + optional receipt PDF (LT-07) |
+| `GET` | `/api/leases/{id}/rli/questura/receipt` | lease.read | Receipt of the Questura communication (private bucket) |
 
 #### Payments & Stripe Connect
 
