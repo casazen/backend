@@ -148,6 +148,7 @@ public class PropertyServiceGetDetailTests
     {
         var propertyId = Guid.NewGuid();
         var now = DateTime.UtcNow;
+        var lastComputed = new DateTime(2026, 9, 23, 2, 0, 0, DateTimeKind.Utc);
         var property = new Property
         {
             Id = propertyId,
@@ -162,8 +163,8 @@ public class PropertyServiceGetDetailTests
             {
                 PropertyId = propertyId,
                 IsEnabled = true,
-                LastAdaptedAt = now.AddHours(-2),
-                NextScheduledRunAt = now.AddHours(22)
+                AdaptationFrequency = "weekly",
+                LastAdaptedAt = lastComputed,
             }
         };
 
@@ -172,8 +173,9 @@ public class PropertyServiceGetDetailTests
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
         Assert.True(result.PricingAdapterSummary.IsEnabled);
-        Assert.Equal(now.AddHours(-2), result.PricingAdapterSummary.LastAdaptedAt);
-        Assert.Equal(now.AddHours(22), result.PricingAdapterSummary.NextScheduledRunAt);
+        Assert.Equal(lastComputed, result.PricingAdapterSummary.LastAdaptedAt);
+        // PC-15: next computation by Rome date, a week after the last one.
+        Assert.Equal(new DateOnly(2026, 9, 30), result.PricingAdapterSummary.NextRunOn);
     }
 
     [Fact]

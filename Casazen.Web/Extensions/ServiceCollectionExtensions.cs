@@ -384,7 +384,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
-        // Always registered: OtaManager depends on it (DynamicPricingJob uses OtaManager). With the flag off it has no
+        // Always registered: OtaManager depends on it. With the flag off it has no
         // adapter to return, so nothing can call an OTA partner API.
         services.AddScoped<IChannelFactory, ChannelFactory>();
 

@@ -56,8 +56,6 @@ builder.Services.AddScoped<IPricingHistoryRepository, PricingHistoryRepository>(
 builder.Services.AddScoped<ILeaseContractRepository, LeaseContractRepository>();
 builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 
-// External Services
-builder.Services.AddHttpClient<PublicHolidayService>();
 builder.Services.AddMemoryCache();
 
 // Dates: UTC normalization of JSON/query/route DateTime values + clock for "today" in Europe/Rome (FD-06)
@@ -92,7 +90,6 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
-builder.Services.AddScoped<IPublicHolidayService, PublicHolidayService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Lease services

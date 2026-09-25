@@ -1012,6 +1012,21 @@
   <data name="SafetyChecklistConcurrentUpdate" xml:space="preserve">
     <value>The checklist was changed at the same time by another session: reload the page and try again.</value>
   </data>
+  <data name="PricingFrequencyInvalid" xml:space="preserve">
+    <value>The update frequency must be 'daily' or 'weekly'.</value>
+  </data>
+  <data name="PricingMultiplierRange" xml:space="preserve">
+    <value>The multiplier must be between {1} and {2}.</value>
+  </data>
+  <data name="PricingSeasonMonthsInvalid" xml:space="preserve">
+    <value>The months of a season must be numbers from 1 to 12, without repetitions.</value>
+  </data>
+  <data name="PricingSeasonMonthsOverlap" xml:space="preserve">
+    <value>A month cannot be both high and low season.</value>
+  </data>
+  <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
+    <value>Seasonal suggestions are not enabled for this property: enable them before recalculating.</value>
+  </data>
   <data name="ServiceRequestBookingRequired" xml:space="preserve">
     <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
   </data>

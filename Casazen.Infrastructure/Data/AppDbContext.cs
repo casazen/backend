@@ -62,6 +62,7 @@ public class AppDbContext(
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
+    public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
@@ -363,6 +364,21 @@ public class AppDbContext(
 
         modelBuilder.Entity<PricingHistory>()
             .HasIndex(h => new { h.PropertyId, h.AdaptationDate });
+
+        // PC-15: one seasonal suggestion per property and stay date, regenerated in place (upsert by date).
+        modelBuilder.Entity<SeasonalPriceSuggestion>(entity =>
+        {
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(s => s.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(s => new { s.PropertyId, s.StayDate }).IsUnique();
+            entity.HasIndex(s => s.OrgId);
+            entity.Property(s => s.Rule).HasConversion<string>();
+            entity.Property(s => s.Holiday).HasConversion<string>();
+        });
 
         // PropertyDocument → Property
         modelBuilder.Entity<PropertyDocument>()
