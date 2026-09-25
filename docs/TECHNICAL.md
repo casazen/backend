@@ -262,7 +262,7 @@ Property record choices (PC-02):
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/compliance/summary` | PropertyOwner | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually) |
+| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below) |
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
@@ -284,6 +284,25 @@ Property record choices (PC-02):
 | `PUT` | `/api/tourist-tax-rates/{id}` | Admin | Update rate |
 | `DELETE` | `/api/tourist-tax-rates/{id}` | Admin | Delete rate |
 | `GET` | `/api/public/sitemap.xml` | Anonymous | Compliance SEO sitemap, URLs on `App:PublicSiteBaseUrl`; served on the web app domain as `/sitemap.xml` (runbook `seo-domain.md`) |
+
+**Cockpit links (CO-04, A5-09).** Each item of `GET /api/compliance/summary` is
+`{ id, label, action, propertyId, bookingId }`: `action` is the enum `ComplianceCockpitAction` by name and `id` its
+target, repeated in `propertyId` (`ActivateProperty`) or `bookingId` (every other action; the other field is `null`).
+The API sends no front-end path: the paths it used to invent (`/bookings/{id}/check-in`, ...) were no page of the web
+app, whose router sent every row to the dashboard. Each client builds the route from its own routing table; the web app
+from the `ROUTE_MANIFEST` in `src/lib/compliance-routes.ts`, whose vitest checks that every action opens a route of the
+manifest, short-rent context.
+
+| `action` | Section | Web screen |
+|---|---|---|
+| `ActivateProperty` | `propertiesPending` (pending or suspended) | `/app/short-rent/properties/{id}/activation`, first blocking step still open (CO-05); property detail without `property.write` |
+| `CompleteGuestCheckIn` | `guestCheckInsIncomplete` | `/app/short-rent/bookings/{id}?tab=alloggiati`: missing data guest by guest and the host form (CO-09, CO-12), same tab as the other "complete the guest data" links; the check-in link to send or copy is on the "Ospite" tab |
+| `CheckOut` | `checkoutsDue` | `/app/short-rent/bookings/{id}/checkout`; booking detail without `booking.write` |
+| `SendAlloggiati` | `alloggiatiManualRequired` | `/app/short-rent/bookings/{id}?tab=alloggiati` (CO-11) |
+| `ResolveAlloggiatiFailure` | `alloggiatiFailures` | `/app/short-rent/bookings/{id}?tab=alloggiati` |
+
+A new action is added to the enum and to the clients together: until then the web app shows the item without a link,
+never a link to the dashboard.
 
 #### Supplier marketplace
 
