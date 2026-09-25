@@ -1117,4 +1117,7 @@
   <data name="FiscalPropertyNotEligible" xml:space="preserve">
     <value>In {0} this property is not one of the short-term rentals (it is deactivated or let long-term): no regime can be assigned to it.</value>
   </data>
+  <data name="DashboardInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
+  </data>
 </root>
