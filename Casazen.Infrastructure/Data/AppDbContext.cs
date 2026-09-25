@@ -94,6 +94,8 @@ public class AppDbContext(
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
     public DbSet<HighTensionAreaComune> HighTensionAreaComuni { get; set; } = null!;
+    public DbSet<ComuneImuChannel> ComuneImuChannels { get; set; } = null!;
+    public DbSet<RegulatoryDataAuditEntry> RegulatoryDataAuditEntries { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
@@ -944,6 +946,12 @@ public class AppDbContext(
 
         modelBuilder.Entity<HighTensionAreaComune>()
             .HasIndex(c => c.Comune);
+
+        modelBuilder.Entity<ComuneImuChannel>()
+            .HasIndex(c => c.Comune);
+
+        modelBuilder.Entity<RegulatoryDataAuditEntry>()
+            .HasIndex(e => new { e.EntityId, e.OccurredAt });
 
         // Native host app push tokens (US-025 / #299)
         modelBuilder.Entity<DeviceRegistration>(entity =>

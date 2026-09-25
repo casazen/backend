@@ -4,6 +4,7 @@ using Casazen.Core.Leases;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -30,7 +31,8 @@ namespace Casazen.Infrastructure.Services;
 public class CanoneConcordatoEligibilityService(
     ITerritorialRentAgreementRepository agreements,
     IHighTensionAreaComuneRepository ataComuni,
-    IPropertyRepository properties) : ICanoneConcordatoEligibilityService
+    IPropertyRepository properties,
+    TimeProvider timeProvider) : ICanoneConcordatoEligibilityService
 {
     private const int SixYearsInMonths = 72;
 
@@ -93,6 +95,8 @@ public class CanoneConcordatoEligibilityService(
         var warnings = new List<string>();
         if (agreement.DataCompleteness != DataCompleteness.Complete)
             warnings.Add(CanoneConcordatoWarningCodes.PartialData);
+        if (agreement.ExpiresAt is { } expiresAt && timeProvider.TodayInRomeAsDateOnly() > DateOnly.FromDateTime(expiresAt))
+            warnings.Add(CanoneConcordatoWarningCodes.AgreementExpired);
 
         var subFascia = DetermineSubFascia(agreement, characteristics);
         if (subFascia == 3 && characteristics.TypeDElementCount < agreement.SubFascia3MaxMinTypeDCount)
@@ -142,7 +146,32 @@ public class CanoneConcordatoEligibilityService(
             SourceUrl = NullIfBlank(agreement.SourceUrl),
             LastVerifiedAt = agreement.LastVerifiedAt,
             SubFascia3QualifyingTypeDElements = agreement.SubFascia3QualifyingTypeDElements,
+            AgreementExpiresAt = agreement.ExpiresAt,
+            AgreementRemainsInForceUntilReplaced = agreement.RemainsInForceUntilReplaced,
         };
+    }
+
+    public async Task<CanoneConcordatoZonesDto?> GetZonesAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        var property = await properties.GetByIdAsync(propertyId);
+        if (property is null)
+            return null;
+
+        var agreement = await agreements.GetByComuneAsync(property.City, cancellationToken);
+        if (agreement is null || agreement.DataCompleteness == DataCompleteness.Missing || agreement.Bands.Count == 0)
+            return new CanoneConcordatoZonesDto(property.City, false, agreement?.DataCompleteness, []);
+
+        var zones = agreement.Bands
+            .GroupBy(b => b.ZoneName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ConcordatoZoneDto(
+                g.Key,
+                g.First().CadastralSheets is { } sheets
+                    ? sheets.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    : []))
+            .OrderBy(z => z.Name)
+            .ToList();
+
+        return new CanoneConcordatoZonesDto(property.City, true, agreement.DataCompleteness, zones);
     }
 
     private static CanoneConcordatoEligibilityDto Unavailable(

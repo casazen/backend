@@ -35,6 +35,8 @@ public class TenantQueryFilterArchitectureTests
         [typeof(ConcordatoRentBand)] = "Platform reference data: rent bands of a territorial agreement.",
         [typeof(TerritorialAgreementSignatory)] = "Platform reference data: signatories of a territorial agreement.",
         [typeof(HighTensionAreaComune)] = "Platform reference data: comuni in high housing-tension areas.",
+        [typeof(ComuneImuChannel)] = "Platform reference data: comune office and rate receiving the canone concordato IMU communication (LT-13, A7-22), managed by admins and read by every org.",
+        [typeof(RegulatoryDataAuditEntry)] = "Platform-wide audit log of admin changes to regulatory reference data (LT-13), not tenant data: written and read only by AdminCanoneConcordatoController.",
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",

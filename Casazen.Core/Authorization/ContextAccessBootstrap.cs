@@ -55,6 +55,7 @@ public static class ContextAccessBootstrap
                 "admin.jobs.read",
                 "admin.seo.read",
                 "admin.tax.manage",
+                "admin.ltr.manage",
             ]),
         new(
             JwtRole: "Supplier",

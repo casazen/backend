@@ -1144,4 +1144,19 @@
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
   </data>
+  <data name="LtrAgreementNotFound" xml:space="preserve">
+    <value>Accordo territoriale non trovato.</value>
+  </data>
+  <data name="LtrBandNotFound" xml:space="preserve">
+    <value>Fascia dell'accordo non trovata.</value>
+  </data>
+  <data name="LtrImuChannelNotFound" xml:space="preserve">
+    <value>Canale IMU del Comune non trovato.</value>
+  </data>
+  <data name="LtrInvalidBandRange" xml:space="preserve">
+    <value>L'intervallo della fascia non è valido: il massimo, se indicato, deve essere superiore al minimo.</value>
+  </data>
+  <data name="LtrVerifiedAtInFuture" xml:space="preserve">
+    <value>La data di verifica non può essere nel futuro.</value>
+  </data>
 </root>
