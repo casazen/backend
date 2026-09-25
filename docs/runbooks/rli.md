@@ -349,7 +349,8 @@ The frontend shows "Da determinare" / "To be determined" and the rule; the RLI p
 - Email to the landlord party (`IEmailService`, templates `RliDeadlineReminder` / `RliDeadlineOverdue`, IT/EN in
   `EmailTexts*.resx`); for a lease not signed yet the email adds that the deadline counts from the start date.
 - A signed lease without a stipula date gets no reminder and logs a warning (`No RLI reminder for LeaseId=…`).
-- The extra-EU Questura notice is unchanged (signed leases, once, payload `extra-eu`; task LT-07).
+- The Questura communication of an extra-EU tenant has its own reminders in the same job: see
+  [Questura communication (LT-07)](#questura-communication-for-extra-eu-tenants-lt-07).
 
 ### Data migration `AddLeaseStipulaDate`
 
@@ -386,6 +387,123 @@ GROUP BY 1;
 
 A signed lease without a stipula date needs its signing date from the landlord: the lease page offers "Dichiara data di
 stipula" (`POST /api/leases/{id}/stipula`, LT-02), which records it once together with the deadline.
+
+## Questura communication for extra-EU tenants (LT-07)
+
+Task **LT-07** (defect A7-08), rule verified by **RS-5** (`.claude/context/regulations/fiscale.md` L13-L15,
+`canone_concordato.md` "Adempimenti separati"). Before LT-07 the checklist item "Comunicazione Questura (art. 7 D.Lgs
+286/1998)" was ticked as soon as CasaZen **sent a reminder email** (event `DeadlineReminderSent`, payload `extra-eu`),
+sent once on any day, even months before the delivery: the landlord could believe the communication was done.
+
+### The rule
+
+- Whoever lets a property, in any form, to a foreign citizen (not EU) or a stateless person must notify the **local
+  public-security authority** in writing **within 48 hours of the delivery of the property** (art. 7 D.Lgs. 286/1998;
+  L13, Polizia di Stato, class U). The competent office and the channel (in person, PEC, registered mail) change from
+  province to province: the landlord checks the page of the local Questura.
+- The RLI registration **does not replace it** (L14): registered leases keep the item and the reminders.
+- Sanction: 160 to 1.100 € (art. 7 c. 2-bis; L15, Polizia di Stato). The range 103-1.549 € cited by the audit is the
+  one of art. 12 D.L. 59/1978, not of art. 7: it is not shown anywhere.
+- CasaZen **does not send** the communication.
+
+### Who is extra-EU (choice documented)
+
+The lease form already asks each party's **citizenship as a 2-letter ISO 3166-1 code** (`Party.Citizenship`, now
+checked as two letters: 400 `LeasePartyCitizenshipInvalid`). `Party.IsExtraEU` is set at creation by comparing it with
+the explicit list of the **27 EU member states** in `Casazen.Core/Regulatory/EuMemberStates.cs` (source: European Union,
+"EU countries", checked 2026-09-25; Greece is `GR`). No list of all countries is kept. Any code outside the 27 counts as
+extra-EU, including EEA and Swiss citizens (`NO`, `IS`, `LI`, `CH`) and a code used for a stateless person: the item is
+then shown (conservative; open point below). Only **tenants** count, not the landlord.
+
+### Delivery date and deadline
+
+- `LeaseContract.PropertyDeliveryDate` (new, nullable). Without it the **start date** is the delivery date (documented
+  default: the property is usually delivered on the first day of the lease).
+- The landlord sets or clears it from the Questura panel of the lease page:
+  `PUT /api/leases/{id}/rli/questura/delivery-date` `{ "deliveryDate": "2026-09-28" | null }` (`lease.register`; 422
+  `questura_delivery_date_after_end` after the end of the lease; event `PropertyDeliveryDateDeclared`).
+- CasaZen knows the delivery **day**, not the hour: the 48 hours end at the latest on **delivery + 2 calendar days**
+  (Europe/Rome), shown as the deadline (`QuesturaCommunicationDeadline`). From the day after, the communication is
+  overdue.
+
+### Declaring the communication (the only way to tick the item)
+
+`POST /api/leases/{id}/rli/questura/mark-done`, multipart: `communicationDate` (calendar date, not after today) and an
+optional `receipt` (PDF checked on its content, at most 10 MB, stored in the **private bucket** under
+`leases/{orgId}/{leaseId}/questura/`, FD-07). Needs `lease.register` on the lease (TN-3); another org's lease answers 404.
+
+| Answer | When |
+|---|---|
+| 200 + updated checklist | Declared: `QuesturaCommunicationDate`, receipt key and declaring user stored, event `QuesturaCommunicationMarkedDone` |
+| 422 `questura_not_required` | No tenant is extra-EU (or the lease is rejected) |
+| 422 `questura_communication_date_in_future` | Date after today (Europe/Rome) |
+| 422 `questura_receipt_invalid` | Receipt not a PDF or over 10 MB |
+| 409 `questura_already_marked_done` | Already declared (one declaration per lease, row lock) |
+
+The receipt is served only by `GET /api/leases/{id}/rli/questura/receipt` (`lease.read`, 404
+`questura_receipt_not_available` without one). The checklist (`GET /rli/checklist`) returns the item
+`questura_extra_eu` only for an extra-EU tenant, `done` only after the declaration, and a `questura` block:
+`deliveryDate`, `deliveryDateDeclared`, `deadline`, `daysRemaining`, `communicationDate`, `hasReceipt`.
+
+### Reminders (same job `rli-deadline-reminder`, daily 08:00 UTC)
+
+For every lease with an extra-EU tenant, in any status except `Rejected` (**registered leases included**), not ended
+yet (`EndDate` ≥ today) and not declared. Same threshold logic as the RLI deadline: only the most urgent threshold
+reached today, once per deadline, recorded as `DeadlineReminderSent` with payload `{threshold}:{deadline}` only when the
+email was accepted; a changed delivery date starts its own thresholds. Thresholds are a product choice:
+
+| Days to the deadline (delivery + 2) | Threshold | Meaning |
+|---|---|---|
+| more than 5 | none | |
+| 5 … 3 | `questura-before-delivery` | delivery in 3 … 1 days |
+| 2 … 1 | `questura-delivery` | delivery day and the day after |
+| 0 | `questura-deadline` | the 48 hours end |
+| from −1 | `questura-overdue` | not declared after the deadline (once) |
+
+Emails `QuesturaCommunicationReminder` / `QuesturaCommunicationOverdue` (IT/EN in `EmailTexts*.resx`) to the landlord
+party: property, delivery date, deadline, the default delivery date when none was declared, "CasaZen does not send it",
+how to mark it done. A reminder **never** ticks the item.
+
+### After the deploy (migration `AddLeaseQuesturaCommunication`)
+
+Four nullable columns on `LeaseContracts`, no data change. Consequences:
+
+1. Leases with an extra-EU tenant lose the false ✓: the old `extra-eu` events stay in the timeline as history and are
+   no longer read.
+2. Active leases (not ended) whose default deadline (start + 2 days) has already passed get **one** `questura-overdue`
+   email at the next run: intended, CasaZen has no declaration. The landlord declares it (with the real date) and the
+   reminders stop.
+
+```sql
+-- Active leases with an extra-EU tenant and no declared Questura communication
+SELECT l."Id", l."Status", l."StartDate", l."PropertyDeliveryDate"
+FROM casazen_prod."LeaseContracts" l
+WHERE l."Status" <> 7 AND l."QuesturaCommunicationDate" IS NULL AND l."EndDate" >= now()
+  AND EXISTS (SELECT 1 FROM casazen_prod."Parties" p
+              WHERE p."LeaseContractId" = l."Id" AND p."Role" = 1 AND p."IsExtraEU");
+
+-- Questura reminders sent in the last 7 days, per threshold
+SELECT split_part("Payload", ':', 1) AS threshold, count(*)
+FROM casazen_prod."LeaseEvents"
+WHERE "EventType" = 12 AND "Payload" LIKE 'questura-%' AND "OccurredAt" > now() - interval '7 days'
+GROUP BY 1;
+```
+
+### Open points (product owner / counsel)
+
+- EEA and Swiss citizens counted as extra-EU (the TUI defines "stranieri" as non-EU citizens; whether free-movement
+  rules exempt them is not in the verified sources).
+- No "undo" or correction of a declaration (409 on a second one): a wrong date needs a support intervention.
+- The hour of delivery is not recorded: the deadline is the calendar day, the texts say "entro 48 ore".
+
+### Tests
+
+`QuesturaCommunicationDeadlineTests` (EU list, delivery default, deadline, Rome calendar), `RliChecklistServiceTests`
+(item not ticked after the reminder emails, ticked after the declaration, rejected lease),
+`RliDeadlineReminderJobTests` (thresholds once each, first run late → only overdue, registered lease still reminded,
+declared delivery date, declared communication, ended lease, EU tenant), `LeaseQuesturaCommunicationIntegrationTests`
+(PostgreSQL, fixed clock: EU tenant → no item, extra-EU → not ticked after the email, mark-done with and without
+receipt, 422/409, delivery date, other org 404, 403/401). Frontend: `questura-communication-panel.test.tsx`.
 
 ## Tax advisory (LT-08)
 
@@ -470,6 +588,8 @@ computed), `CedolareAdvisoryConfigurationTests` (committed values and validator)
   closed.
 - Remove, if present, the variables no longer read: `Rli__FilingEnabled`, `Openapi__BaseUrl`, `Openapi__ClientId`,
   `Openapi__ClientSecret` (the Openapi model has no client id/secret, `rli-esign.md` §1.2).
+- Questura communication (LT-07): nothing to set. After the deploy expect one `questura-overdue` email per active lease
+  with an extra-EU tenant whose default deadline has passed (see "After the deploy").
 - Storage: the receipts and the signed contracts use the private bucket configured for FD-07
   (`docs/runbooks/storage.md`); `application/pdf` must be among its allowed MIME types if a restriction was set, and
   the bucket size limit must allow 20 MB files (signed contracts).

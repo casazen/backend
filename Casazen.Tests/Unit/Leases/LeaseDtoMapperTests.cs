@@ -30,6 +30,7 @@ public class LeaseDtoMapperTests
         "ownerId", "orgId", "safetyChecklistJson", "fiscalCode", "contactEmail", "citizenship", "payload",
         "signedPdfStoragePath", "externalSigningSessionId", "externalRegistrationId", "receiptStoragePath",
         "declaredByUserId", "stipulaDeclaredByUserId", "requestedAt", "dataRetentionUntil", "erasureRequested", "leaseContract",
+        "questuraCommunicationReceiptPath", "questuraCommunicationDeclaredByUserId",
     ];
 
     [Fact]
@@ -221,6 +222,9 @@ public class LeaseDtoMapperTests
             ExternalSigningSessionId = "session-1",
             SignedPdfStoragePath = $"leases/{Guid.Empty}/{leaseId}/signed-contract/signed.pdf",
             StipulaDeclaredByUserId = "auth0|owner",
+            QuesturaCommunicationDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            QuesturaCommunicationReceiptPath = $"leases/{Guid.Empty}/{leaseId}/questura/receipt.pdf",
+            QuesturaCommunicationDeclaredByUserId = "auth0|owner",
             Property = new Property
             {
                 Id = Guid.NewGuid(),
