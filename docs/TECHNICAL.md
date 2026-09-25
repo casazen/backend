@@ -75,8 +75,8 @@ registered, registered but unused, or an action with neither).
 | `Authenticated` | any signed-in user, suppliers included: only user-scoped endpoints, each listed with its reason in the test allow-list |
 | `AdminOnly` | JWT role `Admin` |
 | `Supplier` (`RequireSupplier`) | JWT role `Supplier` (backfilled from the DB supplier link) |
-| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator: plan, billing, domain |
-| `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE, plan entitlement) — A7-06 |
+| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator in either rental context (PL-16): owner `PropertyOwner` or `LongTermLandlord` (JWT role or short-rent/long-rent membership), `PropertyManager`, platform `Admin`; never `Staff`/`Guest`. Plan, entitlement, billing, domain, Stripe Connect account |
+| `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE) — A7-06 |
 | `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
 | `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
 | `LeaseRead/Create/Sign/Register` | long-rent context permission |
@@ -122,7 +122,7 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 |---|---|---|---|
 | `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships` |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
-| `GET` | `/api/orgs/me/entitlement` | property.read (short-rent or long-rent) | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
+| `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
 | `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
@@ -226,8 +226,8 @@ Property record choices (PC-02):
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/billing/plans` | JWT | Stripe plan catalogue |
-| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session; one per org at a time, same open session reused, 409 `already_subscribed` when a subscription exists (A1-10, `docs/runbooks/stripe.md`) |
-| `POST` | `/api/billing/portal-session` | OrgBillingAdmin | Create Stripe Customer Portal session |
+| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session; one per org at a time, same open session reused, 409 `already_subscribed` when a subscription exists (A1-10). Optional `returnPath`: plan/billing page of the caller's shell (allow-list, PL-16), otherwise 400 (`docs/runbooks/stripe.md`) |
+| `POST` | `/api/billing/portal-session` | OrgBillingAdmin | Create Stripe Customer Portal session; optional body `{ returnPath }`, same allow-list (PL-16) |
 | `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription; `status`: `none`, `trialing`, `active`, `past_due`, `unpaid`, `incomplete`, `canceled` |
 | `PUT` | `/api/billing/profile` | OrgBillingAdmin | Update billing profile |
 

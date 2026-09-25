@@ -33,10 +33,11 @@ public class OrgsController(
 
     /// <summary>
     /// Returns the caller org's plan entitlement: tier, limits, current usage, and whether
-    /// another property may be created (AC8).
+    /// another property may be created (AC8). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>, like the billing
+    /// endpoints: the org's owner reads it from the short-rent or the long-rent context alike (PL-16, A1-36).
     /// </summary>
     [HttpGet("me/entitlement")]
-    [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -69,7 +70,7 @@ public class OrgsController(
     /// but new creates are blocked until usage is under the limit.
     /// </summary>
     [HttpPut("me/plan")]
-    [Authorize(Policy = "RequireOrgBillingAdmin")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
