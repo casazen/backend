@@ -356,7 +356,7 @@ public class BookingCancellationServiceTests : IDisposable
 
     private BookingCancellationService Service()
     {
-        var notifier = new BookingNotifier(_db, _emails.Object, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance);
+        var notifier = new BookingNotifier(_db, _emails.Object, EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), NullLogger<BookingNotifier>.Instance);
         return new BookingCancellationService(
             _db, RefundService(), _stripe.Object, notifier, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
     }

@@ -10,6 +10,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Email;
+using Casazen.Tests.Unit.Push;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -93,6 +94,10 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Equal(BookingStatus.Confirmed, (await LoadAsync(seed.BookingId)).Status);
         Assert.Equal([EmailTemplates.Names.GuestBookingConfirmed], Emails(seed).Select(e => e.Template));
         Assert.Equal([EmailTemplates.Names.HostBookingConfirmed], HostEmails(host).Select(e => e.Template));
+        // MO-04 (A6-08): one "new booking" push to the hosts, queued with the host email.
+        var push = Assert.Single(Pushes(seed));
+        Assert.Equal(PushTypes.NewBooking, push.Payload.Type);
+        Assert.Equal(PushAudience.BookingHosts(seed.BookingId), push.Audience);
     }
 
     [PostgresFact]
@@ -134,6 +139,7 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Contains("l'host ha accettato la tua richiesta", guest.Content.HtmlBody);
         Assert.Contains("Pagherai <strong>362,00 €</strong> direttamente in struttura.", guest.Content.HtmlBody);
         Assert.Empty(HostEmails(host));
+        Assert.Empty(Pushes(seed));
     }
 
     [PostgresFact]
@@ -192,6 +198,10 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
     /// <summary>Emails of the guest of <paramref name="seed"/>, in queue order.</summary>
     private List<(string? To, EmailContent Content, string Template)> Emails(BookingSeed seed) =>
         _factory.Emails.Snapshot().Where(e => e.To == seed.GuestEmail).ToList();
+
+    /// <summary>Pushes queued about the booking (MO-04).</summary>
+    private List<QueuedPushRecord> Pushes(BookingSeed seed) =>
+        _factory.Pushes.Queued.Where(p => p.Payload.BookingId == seed.BookingId).ToList();
 
     private List<(string? To, EmailContent Content, string Template)> HostEmails(HostSeed host) =>
         _factory.Emails.Snapshot().Where(e => e.To == host.ContactEmail).ToList();
@@ -424,6 +434,8 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
     {
         internal RecordingEmailQueue Emails { get; } = new();
 
+        internal RecordingPushQueue Pushes { get; } = new();
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
@@ -431,6 +443,8 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
             {
                 RemoveAllOf<IEmailQueue>(services);
                 services.AddSingleton<IEmailQueue>(Emails);
+                RemoveAllOf<IPushNotificationService>(services);
+                services.AddSingleton<IPushNotificationService>(Pushes);
             });
         }
     }

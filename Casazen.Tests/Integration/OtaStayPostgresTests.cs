@@ -236,7 +236,7 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
 
         var email = Assert.Single(_factory.Emails, e => e.Template == "host-ota-stay-review" && e.Content.HtmlBody.Contains(stayId.ToString()));
         Assert.Contains("Airbnb (Camera 2)", email.Content.Subject);
-        Assert.Single(_factory.Pushes, p => p.BookingId == stayId && p.Type == NotificationService.OtaStayReviewPushType);
+        Assert.Single(_factory.Pushes, p => p.BookingId == stayId && p.Type == PushTypes.OtaStayReview);
 
         // The next syncs find nothing new: no second alert.
         await SyncAsync(seeded.FeedId);
@@ -465,21 +465,10 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
 
     private sealed class RecordingPushService(ConcurrentQueue<PushNotificationPayload> pushes) : IPushNotificationService
     {
-        public Task SendToUserAsync(string userId, PushNotificationPayload payload, CancellationToken cancellationToken = default)
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload)
         {
             pushes.Enqueue(payload);
-            return Task.CompletedTask;
+            return true;
         }
-
-        public Task SendToBookingHostsAsync(PushNotificationPayload payload, CancellationToken cancellationToken = default)
-        {
-            pushes.Enqueue(payload);
-            return Task.CompletedTask;
-        }
-
-        public Task SendServiceRequestUpdateAsync(Guid serviceRequestId, string statusLabel, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
-
-        public Task SendCheckoutReminderAsync(Guid bookingId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

@@ -523,7 +523,7 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
                 Clock);
     }
 
-    /// <summary>Records the booking pushes with the time of the (fake) clock.</summary>
+    /// <summary>Records the booking pushes queued, with the time of the (fake) clock.</summary>
     private sealed class RecordingPushService(FakeTimeProvider clock) : IPushNotificationService
     {
         private readonly List<(string Type, Guid BookingId, DateTime At)> _sent = [];
@@ -537,23 +537,17 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
             }
         }
 
-        public Task SendToUserAsync(string userId, PushNotificationPayload payload, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload)
+        {
+            Assert.Equal(PushAudience.BookingHosts(payload.BookingId!.Value), audience);
+            Record(payload.Type, payload.BookingId.Value);
+            return true;
+        }
 
-        public Task SendToBookingHostsAsync(PushNotificationPayload payload, CancellationToken cancellationToken = default) =>
-            Record(payload.Type, payload.BookingId!.Value);
-
-        public Task SendServiceRequestUpdateAsync(Guid serviceRequestId, string statusLabel, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task SendCheckoutReminderAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
-            Record("checkout-reminder", bookingId);
-
-        private Task Record(string type, Guid bookingId)
+        private void Record(string type, Guid bookingId)
         {
             lock (_sent)
                 _sent.Add((type, bookingId, clock.GetUtcNow().UtcDateTime));
-            return Task.CompletedTask;
         }
     }
 }

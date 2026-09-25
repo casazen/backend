@@ -11,7 +11,8 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Emails of the booking status (BK-10, A3-11, #58), rendered from <see cref="EmailTemplates"/> and queued on Hangfire
 /// (<see cref="IEmailQueue"/>): confirmation to the guest and new booking to the host, cancellation to the guest, and the
-/// deferred charge of "Paga più tardi" (BK-08: failed charge with the link to pay, automatic cancellation). Called
+/// deferred charge of "Paga più tardi" (BK-08: failed charge with the link to pay, automatic cancellation); with the new
+/// booking email, the push to the host's devices (MO-04, <see cref="IPushNotificationService"/>). Called
 /// once the change is committed, by the code that made the transition (payment webhook, saved card, host acceptance,
 /// host cancellation), so a duplicate webhook that changes nothing sends nothing. A failure is logged with the booking
 /// id only and never undoes the change.
@@ -26,6 +27,7 @@ public sealed class BookingNotifier(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
+    IPushNotificationService pushNotifications,
     ILogger<BookingNotifier> logger)
 {
     /// <summary>
@@ -211,11 +213,12 @@ public sealed class BookingNotifier(
     }
 
     /// <summary>
-    /// The only place where the host learns of a new booking confirmed without their action: today by email to
-    /// <c>Org.ContactEmail</c>. Extension point of MO-04: the push "new booking" to the host's devices goes here, next
-    /// to the email, so both channels fire once per confirmation.
+    /// The only place where the host learns of a new booking confirmed without their action: an email to
+    /// <c>Org.ContactEmail</c> and a push to the hosts' devices (MO-04, A6-08), both queued on Hangfire. The caller runs
+    /// once per confirmation, and the push key is the booking, so a duplicate webhook or a retried job sends no second push.
     /// </summary>
-    private void AlertHostOfNewBooking(BookingEmailData data, BookingConfirmationKind kind) =>
+    private void AlertHostOfNewBooking(BookingEmailData data, BookingConfirmationKind kind)
+    {
         Queue(data.BookingId, EmailTemplates.Names.HostBookingConfirmed, data.HostEmail, () =>
             EmailTemplates.HostBookingConfirmed(
                 EmailTemplates.DefaultCulture,
@@ -225,6 +228,27 @@ public sealed class BookingNotifier(
                 data.PaidAmount,
                 data.FreeRefundDeadline,
                 links.HostBooking(data.BookingId)));
+
+        try
+        {
+            // No guest name on the lock screen: property, dates and number of guests.
+            var push = EmailTemplates.NewBookingPush(
+                EmailTemplates.DefaultCulture,
+                data.Summary.PropertyName,
+                data.Summary.CheckInDate,
+                data.Summary.CheckOutDate,
+                data.Summary.Guests);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.NewBooking(data.BookingId),
+                PushAudience.BookingHosts(data.BookingId),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.NewBooking, data.BookingId, PushRoutes.Booking(data.BookingId)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "New booking push for booking {BookingId} could not be prepared", data.BookingId);
+        }
+    }
 
     private void Queue(Guid bookingId, string template, string? to, Func<EmailContent> render)
     {

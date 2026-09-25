@@ -51,6 +51,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
 
         // Rows owned by a user, not by an org.
+        [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",
         [typeof(DeviceRegistration)] = "Owned by the user (UserId), not the org: DevicesController only touches the caller's own rows and must drop the same push token from users of any org; push delivery crosses orgs by design (supplier to host) with explicit OrgId and UserId predicates. No endpoint lists devices.",
 
         // Children never addressed by their own id: reached only through a tenant-filtered parent.
