@@ -144,6 +144,9 @@
   <data name="GuestHasOpenBookings" xml:space="preserve">
     <value>The guest has ongoing or upcoming bookings: it cannot be deleted until they are completed or cancelled.</value>
   </data>
+  <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
+    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days or CurrentYear.</value>
+  </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Supplier profile not found</value>
   </data>
