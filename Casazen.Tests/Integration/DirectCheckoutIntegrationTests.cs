@@ -360,7 +360,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
-        Assert.NotNull(booking.CheckInToken);
 
         var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
         Assert.Equal(PaymentStatus.Completed, payment.Status);

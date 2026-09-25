@@ -83,12 +83,6 @@ public class Booking : ITenantOwned
     [MaxLength(1000)]
     public string SpecialRequests { get; set; } = string.Empty;
 
-    /// <summary>Secret token for guest self check-in link (generated when booking is confirmed).</summary>
-    public Guid? CheckInToken { get; set; }
-
-    /// <summary>UTC expiry for the check-in token (checkout + 7 days when issued).</summary>
-    public DateTime? CheckInTokenExpiresAt { get; set; }
-
     /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
     [Required]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;

@@ -60,12 +60,6 @@ public class AlloggiatiWebService(
     private readonly IStayGuestService _stayGuests = stayGuestService
         ?? new StayGuestService(context, codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance), timeProvider);
 
-    public async Task<bool> ValidateGuestDataAsync(Guid guestId)
-    {
-        var guest = await context.Guests.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guestId);
-        return guest is not null && MissingFields(guest).Count == 0;
-    }
-
     public async Task<bool> IsStayDataCompleteAsync(Guid bookingId)
     {
         var booking = await context.Bookings.AsNoTracking().Include(b => b.Guest).FirstOrDefaultAsync(b => b.Id == bookingId);
@@ -341,26 +335,6 @@ public class AlloggiatiWebService(
 
     public bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus) =>
         IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
-
-    /// <summary>
-    /// Fields of the Alloggiati record the booker's guest record lacks (legacy <c>/api/checkin</c> portal only; the
-    /// communication uses the guests of the stay, <see cref="AlloggiatiRecordRules.MissingFields"/>).
-    /// Sex must be male or female: the only values the record accepts.
-    /// </summary>
-    public static IReadOnlyList<string> MissingFields(Guest guest)
-    {
-        var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(guest.LastName)) missing.Add("lastName");
-        if (string.IsNullOrWhiteSpace(guest.FirstName)) missing.Add("firstName");
-        if (guest.Gender is not (Gender.Male or Gender.Female)) missing.Add("gender");
-        if (!guest.DateOfBirth.HasValue) missing.Add("dateOfBirth");
-        if (string.IsNullOrWhiteSpace(guest.PlaceOfBirth)) missing.Add("placeOfBirth");
-        if (string.IsNullOrWhiteSpace(guest.Nationality)) missing.Add("citizenship");
-        if (!guest.DocumentType.HasValue) missing.Add("documentType");
-        if (string.IsNullOrWhiteSpace(guest.DocumentNumber)) missing.Add("documentNumber");
-        if (string.IsNullOrWhiteSpace(guest.DocumentIssuingCountry)) missing.Add("documentIssuePlace");
-        return missing;
-    }
 
     private async Task<AlloggiatiReportReservation?> MoveSlotToGuestAsync(
         AlloggiatiWebReport previous,

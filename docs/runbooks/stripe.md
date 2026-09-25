@@ -333,7 +333,7 @@ on the Connect endpoint and for every booking payment reported by the platform e
 | Booking when the payment succeeds | Dates | Result |
 |---|---|---|
 | `Pending`, hold still valid (within `DirectBooking:PendingTtlMinutes`, or payment seen in flight by the expiry job) | no other booking on them | `Confirmed` (as before); guest email "Prenotazione confermata" and host email "Nuova prenotazione confermata" (BK-10, [email.md](email.md#booking-emails-bk-10)) |
-| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared, check-in token issued), the same two emails with a note on the late payment |
+| `Pending` hold expired, or `Cancelled` (expiry job, host, legacy) | free: no confirmed / checked-in booking, no valid hold, no iCal block | **confirmed again** (`CancellationReason` cleared), the same two emails with a note on the late payment |
 | same | taken | stays / becomes `Cancelled` (a pending one gets `CancellationReason = 2`, `DatesUnavailableAtPayment`); **full refund** of what is still refundable; guest email "Date non più disponibili, pagamento rimborsato" once Stripe confirms the refund |
 | `Confirmed`, `CheckedIn`, `CheckedOut` | — | payment `Completed`, booking unchanged |
 
