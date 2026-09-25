@@ -579,15 +579,29 @@ public partial class PropertyICalSyncService
         return _exportService.BuildPropertyFeed(bookings, blocks, busySummary);
     }
 
-    public async Task<IReadOnlyList<CalendarBlock>> GetBlocksInRangeAsync(
+    /// <summary>
+    /// Calendar blocks of the host calendar from <paramref name="firstDay"/> to <paramref name="lastDay"/> (stay dates,
+    /// both included: <see cref="HostCalendarRange.BlockShownIn"/>), each with the channel and label of its feed (MO-06):
+    /// the calendars show "Airbnb" or "Booking.com" instead of a guest. Read through a projection, so the encrypted
+    /// import URL of the feed is never loaded.
+    /// </summary>
+    public async Task<IReadOnlyList<HostCalendarBlock>> GetBlocksInRangeAsync(
         Guid propertyId,
-        DateTime startUtc,
-        DateTime endUtc,
+        DateTime firstDay,
+        DateTime lastDay,
         CancellationToken ct = default) =>
         await _db.CalendarBlocks
-            .Where(b => b.PropertyId == propertyId &&
-                        b.StartUtc < endUtc &&
-                        b.EndUtc > startUtc)
+            .AsNoTracking()
+            .Where(HostCalendarRange.BlockShownIn(propertyId, firstDay, lastDay))
+            .OrderBy(b => b.StartUtc)
+            .Select(b => new HostCalendarBlock(
+                b.Id,
+                b.PropertyId,
+                b.StartUtc,
+                b.EndUtc,
+                b.Summary,
+                b.Feed != null ? (ICalFeedChannel?)b.Feed.Channel : null,
+                b.Feed != null ? b.Feed.Label : null))
             .ToListAsync(ct);
 
     public Task<bool> HasOverlappingBlockAsync(

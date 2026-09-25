@@ -70,8 +70,8 @@ public class BookingServiceTests
     {
         var input = new DirectBookingCreateInput(
             Guid.NewGuid(),
-            DateTime.UtcNow.Date.AddDays(10),
-            DateTime.UtcNow.Date.AddDays(12),
+            TimeProvider.System.TodayInRome().AddDays(10),
+            TimeProvider.System.TodayInRome().AddDays(12),
             1,
             0,
             new DirectBookingGuestInput(
@@ -117,7 +117,7 @@ public class BookingServiceTests
             StripeConnectedAccountId = "acct_onsite",
             ConnectChargesEnabled = true,
         });
-        var checkIn = DateTime.UtcNow.Date.AddDays(30);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreateDirectBookingAsync(OnSiteInput(
             property.Id, checkIn, checkIn.AddDays(15))));
@@ -173,7 +173,7 @@ public class BookingServiceTests
         _db.Orgs.Add(org);
         _db.Properties.Add(property);
         await _db.SaveChangesAsync();
-        var checkIn = DateTime.UtcNow.Date.AddDays(30);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
 
         var result = await _service.CreateDirectBookingAsync(OnSiteInput(property.Id, checkIn, checkIn.AddDays(14)));
 
@@ -309,8 +309,8 @@ public class BookingServiceTests
         {
             PropertyId = Guid.NewGuid(),
             OrgId = orgId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(1),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(5),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(1),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(5),
             TotalPrice = 500m,
             NumberOfGuests = 2,
             Status = BookingStatus.Pending,
@@ -345,8 +345,8 @@ public class BookingServiceTests
         {
             PropertyId = Guid.NewGuid(),
             OrgId = Guid.NewGuid(),
-            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(1),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(-2),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(1),
             TotalPrice = 500m,
             NumberOfGuests = 2,
         };
@@ -366,8 +366,8 @@ public class BookingServiceTests
         {
             PropertyId = Guid.NewGuid(),
             OrgId = Guid.NewGuid(),
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(14),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(14),
             TotalPrice = 500m,
             NumberOfGuests = 2,
         };
@@ -390,8 +390,8 @@ public class BookingServiceTests
         {
             PropertyId = Guid.NewGuid(),
             OrgId = Guid.NewGuid(),
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(14),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(14),
             TotalPrice = 500m,
             NumberOfGuests = 2,
         };
@@ -414,8 +414,8 @@ public class BookingServiceTests
     public async Task IsPropertyAvailableAsync_WithAvailableProperty_ExpiresOverlappingHoldsFirstAndReturnsTrue()
     {
         var propertyId = Guid.NewGuid();
-        var checkIn = DateTime.Now.AddDays(10);
-        var checkOut = DateTime.Now.AddDays(15);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(10);
+        var checkOut = TimeProvider.System.TodayInRome().AddDays(15);
         var sequence = new List<string>();
         _mockHoldExpiry
             .Setup(x => x.ExpireOverlappingHoldsAsync(propertyId, checkIn, checkOut, It.IsAny<CancellationToken>()))
@@ -436,7 +436,7 @@ public class BookingServiceTests
     public async Task GetCalendarAsync_ReadsWithHoldTtlAndCancelsNothing()
     {
         var propertyId = Guid.NewGuid();
-        var start = DateTime.UtcNow.Date;
+        var start = TimeProvider.System.TodayInRome();
         var end = start.AddDays(30);
         _mockRepository.Setup(x => x.GetByDateRangeAsync(propertyId, start, end, 15))
             .ReturnsAsync([]);
@@ -455,8 +455,8 @@ public class BookingServiceTests
         var bookingId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var guestId = Guid.NewGuid();
-        var checkIn = DateTime.UtcNow.Date.AddDays(-2);
-        var checkOut = DateTime.UtcNow.Date;
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(-2);
+        var checkOut = TimeProvider.System.TodayInRome();
         var existing = new Booking
         {
             Id = bookingId,
@@ -534,7 +534,7 @@ public class BookingServiceTests
         var bookingId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var guestId = Guid.NewGuid();
-        var checkIn = DateTime.UtcNow.Date.AddDays(10);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(10);
         var checkOut = checkIn.AddDays(3);
         Booking Create(BookingStatus status) => new()
         {

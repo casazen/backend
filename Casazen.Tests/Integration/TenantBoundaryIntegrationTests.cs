@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -160,8 +161,8 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
                 PropertyId = propertyA.Id,
                 OrgId = propertyA.OrgId,
                 GuestId = existingGuest.Id,
-                CheckInDate = DateTime.UtcNow.Date.AddDays(1),
-                CheckOutDate = DateTime.UtcNow.Date.AddDays(3),
+                CheckInDate = TimeProvider.System.TodayInRome().AddDays(1),
+                CheckOutDate = TimeProvider.System.TodayInRome().AddDays(3),
                 NumberOfGuests = 2,
                 Status = BookingStatus.Confirmed,
                 Source = BookingSource.Direct,
@@ -177,8 +178,8 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
         var create = await clientB.PostAsJsonAsync("/api/bookings", new
         {
             propertyId = propertyB.Id,
-            checkInDate = DateTime.UtcNow.Date.AddDays(10),
-            checkOutDate = DateTime.UtcNow.Date.AddDays(12),
+            checkInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            checkOutDate = TimeProvider.System.TodayInRome().AddDays(12),
             numberOfGuests = 2,
             guest = new
             {

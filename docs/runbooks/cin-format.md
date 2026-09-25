@@ -64,6 +64,81 @@ compliance page.
   of an active property suspends it from the booking site at once; a valid CIN entered again publishes it again (when
   the other requirements are complete).
 
+## CIN deadline and host alerts (CO-20)
+
+Task CO-20 (audit defect A5-31). Before it the deadline was a constant (01/03/2026) in the code, the "days left" stopped
+at 0, so from March 2026 the console said "the deadline is today" every day, and the daily alert only wrote a log line.
+
+### The deadline is configuration, off by default
+
+The date "01/03/2026 for existing operators" was **not found in any official source** (RS-2, `.claude/context/regulations/cin.md`,
+"Note di verifica"): the official sources found give applicability from 02/11/2024 and 01/01/2025 as the term to obtain
+the CIN. So the code has no date and never calls it a legal deadline.
+
+| Variable (Railway) | Value | Default |
+|---|---|---|
+| `Cin__ExposureDeadline` | Date `yyyy-MM-dd` (Europe/Rome calendar), e.g. `2026-03-01`. Empty or missing = no deadline | empty (`appsettings.json`) |
+| `Cin__AlertDaysBefore__0`, `__1`, … | Days before the deadline at which hosts are alerted, 1–366 | 30, 7, 1 |
+
+A value that is not a `yyyy-MM-dd` date, or a threshold outside 1–366, **stops the startup** with a message naming the
+variable (`CinOptionsValidator`). Code: `Casazen.Core/Options/CinOptions.cs`, `Casazen.Core/Regulatory/CinDeadline.cs`.
+
+To set it (product owner decision): Railway → environment `test` → backend service → Variables → add
+`Cin__ExposureDeadline`, redeploy, check the console (below), then the same in `production`. To remove it, delete the
+variable or leave it empty.
+
+### What hosts see (console, CIN compliance page and property list)
+
+`GET /api/properties/cin-compliance` → `summary.deadlineStatus`, computed on the Europe/Rome day of the request:
+
+| `deadlineStatus` | `deadline` / `daysUntilDeadline` | Banner (only with properties without a valid CIN) | Deadline card |
+|---|---|---|---|
+| `none` (no deadline) | `null` / `null` | "Il CIN è obbligatorio: va esposto all'esterno dell'immobile e indicato in ogni annuncio." | hidden |
+| `upcoming` | date / days left (> 0) | "Mancano N giorni alla scadenza del …" | "Mancano N giorni" |
+| `today` | date / `0` | "La scadenza del … è oggi." | "Oggi" |
+| `passed` | date / negative | "La scadenza del … è superata: inserisci il CIN al più presto." | "Superata" |
+
+The penalties line cites art. 13-ter, comma 9, D.L. 145/2023 (€800–8,000 for a missing CIN, €500–5,000 for not
+displaying or stating it), as documented in `cin.md`. Texts in `src/i18n/locales/it.json` / `en.json` (`cin.banner.*`,
+`cin.summary.*`) of the frontend.
+
+### Daily alert (`cin-deadline-alert`, 08:00 UTC)
+
+`CinDeadlineAlertJob` → `CinDeadlineAlertService` (`Casazen.Infrastructure/Services/CinDeadlineAlertService.cs`). It runs
+after the nightly compliance check of CO-06 (`property-compliance-check`, 04:00 UTC).
+
+- **Properties:** `IsActive` with compliance status `Pending` or `Active` and a CIN missing or not valid (`CinFormat`).
+- **Stages**, each sent **once per property**: every `Cin__AlertDaysBefore` threshold reached (a run 10 days before the
+  deadline sends the 30-day stage, saying "10 days left"), the deadline day, the day after it or later ("deadline
+  passed", once). Without a deadline: **one** reminder of the obligation, without a date. Before the first threshold the
+  run stops at once and logs nothing.
+- **No duplicates:** each stage is claimed with a compare-and-set on the table `CinAlertStates` (one row per property:
+  `Deadline`, `Stage`, `AlertCount`, `LastAlertAt`), so reruns, retries, a manual trigger or two runs at once never send
+  it again. One run at a time: Hangfire `DisableConcurrentExecution` plus the PostgreSQL advisory lock
+  `CinDeadlineAlertsRun` (1042).
+- **No duplicate with the suspension (CO-06):** a `Suspended` property never gets the CIN alert, its host already has the
+  "Annuncio sospeso" email. A published (`Active`) property without a valid CIN is first re-evaluated by CO-06: it is
+  suspended and its host gets the CO-06 email only (none when it is the first evaluation of a historic property and
+  `Compliance__StatusCheck__NotifyOnFirstCheck` is off, see [compliance.md](compliance.md)).
+- **Email:** template `cin-deadline-alert` (`EmailTemplates.CinDeadlineAlert`, texts `CinDeadlineAlert_*` in
+  `EmailTexts.resx` / `.en.resx`), in Italian, one per org to `Org.ContactEmail`, listing its properties of the stage,
+  with the "Apri Conformità CIN" button to `/app/short-rent/compliance/cin` (from `App__PublicSiteBaseUrl`). Queued on
+  Hangfire (FD-13). A delivery that fails after the claim is logged and not repeated.
+- **Changes:** a different `Cin__ExposureDeadline` (or setting one after the reminder without date) starts the sequence
+  again for the new date. A property whose CIN becomes valid gets nothing more; if its CIN is removed later, the stages
+  already sent are not repeated (an active property is suspended by CO-06 with its own email).
+- **Logs:** one `Information` line per run that sent something ("CIN deadline alert (passed, stage -1): N properties
+  alerted, M emails queued"); errors per property or org with its id. No daily line when nothing is due.
+
+Check (read-only, environment schema):
+
+```sql
+-- Stage reached per property (-1 = after the deadline or the reminder without date, 0 = deadline day)
+SELECT "PropertyId", "Deadline", "Stage", "AlertCount", "LastAlertAt" FROM "CinAlertStates" ORDER BY "LastAlertAt" DESC;
+```
+
+The Hangfire dashboard can trigger `cin-deadline-alert` by hand: it sends only what is due and not yet sent.
+
 ## Not done yet
 
 - **ISTAT check (warning only):** `CinFormat.HasIstatComuneMismatch` compares the ISTAT code inside the CIN with a

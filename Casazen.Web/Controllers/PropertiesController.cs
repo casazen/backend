@@ -1,10 +1,12 @@
-﻿using System.Security.Claims;
+﻿using System.Globalization;
+using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -292,8 +294,9 @@ public class PropertiesController(
                     Valid = result.Summary.Valid,
                     Missing = result.Summary.Missing,
                     Invalid = result.Summary.Invalid,
-                    DaysUntilDeadline = result.Summary.DaysUntilDeadline,
-                    Deadline = result.Summary.Deadline.ToString("yyyy-MM-dd"),
+                    DaysUntilDeadline = result.Summary.Deadline.DaysUntilDeadline,
+                    Deadline = result.Summary.Deadline.Deadline?.ToString(CinOptions.DateFormat, CultureInfo.InvariantCulture),
+                    DeadlineStatus = result.Summary.Deadline.PhaseApiValue,
                     HasNonCompliant = result.Summary.HasNonCompliant,
                 },
             });

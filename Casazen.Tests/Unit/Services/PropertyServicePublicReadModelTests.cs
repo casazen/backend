@@ -2,12 +2,15 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -19,7 +22,11 @@ namespace Casazen.Tests.Unit.Services;
 public class PropertyServicePublicReadModelTests
 {
     private static PropertyService CreateService(AppDbContext context) =>
-        new(new PropertyRepository(context), Mock.Of<IPropertyComplianceStatusService>(), new Mock<ILogger<PropertyService>>().Object);
+        new(
+            new PropertyRepository(context),
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object);
 
     private static AppDbContext CreateContext()
     {

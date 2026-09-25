@@ -28,11 +28,4 @@ public class CinComplianceRulesTests
     {
         Assert.Equal(expected, CinComplianceRules.IsCompliant(cinCode));
     }
-
-    [Fact]
-    public void DaysUntilDeadline_UsesRegulatoryDate()
-    {
-        var days = CinComplianceRules.DaysUntilDeadline(new DateOnly(2026, 2, 22));
-        Assert.Equal(7, days);
-    }
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -202,7 +203,7 @@ public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicati
     /// <summary>A stay a few months ahead, far from the start dates of the seeded rates.</summary>
     private static (string CheckIn, string CheckOut) Stay(int nights)
     {
-        var checkIn = DateTime.UtcNow.Date.AddDays(60);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(60);
         return (checkIn.ToString("yyyy-MM-dd"), checkIn.AddDays(nights).ToString("yyyy-MM-dd"));
     }
 

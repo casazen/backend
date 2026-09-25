@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -163,7 +164,7 @@ public class StripeRefundPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task CancelAsync_DoubleClickInParallel_CancelsAndRefundsOnce()
     {
-        var seed = await SeedPaidBookingAsync(300m, freeRefundDeadline: DateTime.UtcNow.Date.AddDays(10));
+        var seed = await SeedPaidBookingAsync(300m, freeRefundDeadline: TimeProvider.System.TodayInRome().AddDays(10));
         var refundRequests = 0;
         _stripe
             .Setup(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()))
@@ -318,8 +319,8 @@ public class StripeRefundPostgresTests : IAsyncLifetime
             OrgId = org.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(30),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(33),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(30),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(33),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
