@@ -4,6 +4,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Fakes;
@@ -297,7 +298,7 @@ public class LeaseRegistrationProviderIntegrationTests(LeaseProviderFlowWebAppli
         using var form = new MultipartFormDataContent
         {
             { new StringContent("24091234567890123-000002"), "registrationCode" },
-            { new StringContent(DateTime.UtcNow.Date.AddDays(-1).ToString("yyyy-MM-dd")), "registrationDate" },
+            { new StringContent(TimeProvider.System.TodayInRome().AddDays(-1).ToString("yyyy-MM-dd")), "registrationDate" },
             { new ByteArrayContent(FakeLeaseRegistrationProvider.ReceiptPdf), "receipt", "ricevuta.pdf" },
         };
         return await client.PostAsync($"/api/leases/{leaseId}/registration/manual", form);

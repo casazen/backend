@@ -3,6 +3,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Hangfire;
 using Hangfire.Storage;
@@ -13,8 +14,11 @@ namespace Casazen.Infrastructure.Services;
 
 public class AdminService(
     AppDbContext dbContext,
-    ILogger<AdminService> logger) : IAdminService
+    ILogger<AdminService> logger,
+    TimeProvider? timeProvider = null) : IAdminService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private static readonly TimeSpan OtaSyncThreshold = TimeSpan.FromHours(6);
 
     /// <summary>
@@ -55,8 +59,10 @@ public class AdminService(
         // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
         var totalBookings = await dbContext.Bookings.IgnoreQueryFilters().CountAsync();
         var bookingsThisMonth = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b => b.CreatedAt >= startOfMonth);
+        // Check-in is date-only: compared with today's date in Europe/Rome, not with the UTC instant (QA-CLOCK).
+        var today = _clock.TodayInRome();
         var upcomingCheckIns = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b =>
-            b.Status == BookingStatus.Confirmed && b.CheckInDate >= now);
+            b.Status == BookingStatus.Confirmed && b.CheckInDate > today);
 
         // Revenue — sum of completed payments (filter bypassed — platform-wide)
         var totalRevenue = await dbContext.Payments

@@ -141,11 +141,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveAllOf<IDataProtectionProvider>(services);
             services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
 
-            RemoveService<IPublicHolidayService>(services);
-            var holidayMock = new Mock<IPublicHolidayService>();
-            holidayMock.Setup(h => h.IsPublicHolidayAsync(It.IsAny<DateTime>())).ReturnsAsync(false);
-            services.AddScoped(_ => holidayMock.Object);
-
             RemoveService<IBackgroundJobClient>(services);
             BackgroundJobClientMock
                 .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
@@ -320,32 +315,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, user.OrgId ?? org.Id, legal);
         return org;
-    }
-
-    public async Task SeedPricingHistoryAsync(Guid propertyId, int count = 3)
-    {
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var orgId = await db.Properties.Where(p => p.Id == propertyId).Select(p => p.OrgId).SingleAsync();
-
-        for (var i = 0; i < count; i++)
-        {
-            db.PricingHistories.Add(new PricingHistory
-            {
-                PropertyId = propertyId,
-                OrgId = orgId,
-                AdaptationDate = DateTime.UtcNow.AddDays(-i),
-                PreviousPrice = 100m,
-                NewPrice = 110m + i,
-                ChangeReason = $"Adaptation {i + 1}",
-                AiConfidence = 0.85m,
-                OtasSynced = "airbnb",
-                SyncStatus = "Synced",
-                CreatedAt = DateTime.UtcNow.AddDays(-i),
-            });
-        }
-
-        await db.SaveChangesAsync();
     }
 
     public override async ValueTask DisposeAsync()

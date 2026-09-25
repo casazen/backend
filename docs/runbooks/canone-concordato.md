@@ -14,6 +14,7 @@ sezioni "Accordi verificati (2026-09)" e "Cosa ha cambiato LT-10".
 | Dati `Complete` | Canone fuori range → 422 `concordato_rent_out_of_range` |
 | Dati `Partial` | Range **indicativo** (`indicative: true`, avviso `partial_data`, fonte e data di verifica): il lease si crea anche con un canone fuori range, l'avviso resta sul lease (`rentWithinRange: false`) |
 | Dati `Missing` | 422 `concordato_range_unavailable` (comportamento precedente mantenuto, vedi "Decisioni aperte") |
+| Comune ATA | `ataApplies` solo con `HighTensionAreaComuni.VerifiedDirectly` (`HighTensionArea.ReliefsApply`): la stessa regola dell'advisory fiscale del lease (LT-08), che applica cedolare 10% e base del registro al 70% solo in quel caso. Come verificare un comune: `rli.md`, "Tax advisory (LT-08)" |
 | Dati per il contratto | Dati catastali dell'immobile (`PUT /api/properties/{id}/cadastral`), codice e classe dell'APE (`PUT /api/properties/{id}/documents/{docId}/ape`), deposito cauzionale del lease: vedi `lease-contract-templates.md` |
 
 ## Passare un accordo da Partial a Complete

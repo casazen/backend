@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -307,7 +308,7 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
                 GuestId = guestId,
                 OrgId = property.OrgId,
                 Status = AlloggiatiWebStatus.InviatoManualmente,
-                ReportedAt = DateTime.UtcNow.Date.AddDays(-10),
+                ReportedAt = TimeProvider.System.TodayInRome().AddDays(-10),
             });
             await db.SaveChangesAsync();
         }
@@ -357,8 +358,8 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         var create = await clientB.PostAsJsonAsync("/api/bookings", new
         {
             propertyId = propertyB.Id,
-            checkInDate = DateTime.UtcNow.Date.AddDays(20),
-            checkOutDate = DateTime.UtcNow.Date.AddDays(22),
+            checkInDate = TimeProvider.System.TodayInRome().AddDays(20),
+            checkOutDate = TimeProvider.System.TodayInRome().AddDays(22),
             numberOfGuests = 2,
             guest = new
             {
@@ -424,8 +425,8 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
             PropertyId = property.Id,
             OrgId = property.OrgId,
             GuestId = guestId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(daysFromToday),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(daysFromToday + 2),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(daysFromToday),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(daysFromToday + 2),
             NumberOfGuests = 2,
             Status = status,
             Source = BookingSource.Direct,

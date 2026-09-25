@@ -62,7 +62,10 @@ public class GuestCheckInSendJob(
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var today = _clock.TodayInRome();
-        var windowEnd = now.AddDays(options.Value.SendWindowDays);
+        // Calendar window in Europe/Rome (QA-CLOCK): arrivals from today to today + SendWindowDays, whatever the hour
+        // of the run, as the guest page opens the check-in (GuestBookingLookupService). An instant bound would drop the
+        // last day of the window between 22:00 and 24:00 UTC, when Rome is already on the next day.
+        var windowEnd = today.AddDays(options.Value.SendWindowDays);
 
         var bookings = await db.Bookings
             .AsNoTracking()

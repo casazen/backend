@@ -21,7 +21,11 @@ namespace Casazen.Infrastructure.Services;
 /// apartments with short-term stays in that year. Over the threshold the activity is presumed a business: cedolare and
 /// IRPEF-ordinaria are refused, the host is warned, and no OTA withholding is computed by default.
 /// </summary>
-public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer, IOptions<ShortStayFiscalOptions> fiscalOptions)
+public class FiscalService(
+    AppDbContext db,
+    IPdfDocumentRenderer pdfRenderer,
+    IOptions<ShortStayFiscalOptions> fiscalOptions,
+    TimeProvider? timeProvider = null)
     : IFiscalRegimeService, IFiscalReportingService
 {
     /// <summary>Taxpayer key of the org tax profile when it has no codice fiscale.</summary>
@@ -30,6 +34,7 @@ public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer, IO
     private static readonly Regex TaxpayerFiscalCodePattern = new("^[A-Z0-9]{16}$", RegexOptions.Compiled);
 
     private readonly ShortStayFiscalOptions _rules = fiscalOptions.Value;
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<FiscalRegimeSnapshot> GetRegimeAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default)
     {
@@ -197,7 +202,7 @@ public class FiscalService(AppDbContext db, IPdfDocumentRenderer pdfRenderer, IO
         }
 
         org.HasPartitaIva = hasPartitaIva;
-        org.FiscalDataRetentionUntil ??= new DateTime(DateTime.UtcNow.Year + 10, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        org.FiscalDataRetentionUntil ??= new DateTime(_clock.TodayInRome().Year + 10, 12, 31, 0, 0, 0, DateTimeKind.Utc);
         org.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return MapProfile(org);

@@ -17,6 +17,12 @@ public class PushNotificationService(
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
     private static readonly UserRole[] OrgWideRecipientRoles = [UserRole.Admin, UserRole.PropertyManager];
 
+    /// <summary>
+    /// Android notification channel created by the app before it asks for the permission (MO-03,
+    /// <c>mobile/src/notifications/push-registration.ts</c>). Ignored on iOS.
+    /// </summary>
+    public const string AndroidChannelId = "default";
+
     public async Task SendToUserAsync(
         string userId,
         PushNotificationPayload payload,
@@ -70,9 +76,11 @@ public class PushNotificationService(
         if (request is null)
             return;
 
+        // A short-rent request opens its stay. A request without a stay (long-rent, or short-rent created before SU-07)
+        // opens the property list: the app has no service request screen (MO-03, A6-19).
         var route = request.BookingId is Guid bookingId
-            ? $"/bookings/{bookingId}"
-            : $"/service-requests/{request.Id}";
+            ? PushRoutes.Booking(bookingId)
+            : PushRoutes.Properties;
 
         var payload = new PushNotificationPayload(
             "Aggiornamento fornitore",
@@ -95,7 +103,7 @@ public class PushNotificationService(
         if (booking is null)
             return;
 
-        var route = $"/bookings/{booking.Id}/checkout";
+        var route = PushRoutes.BookingCheckout(booking.Id);
         var payload = new PushNotificationPayload(
             "Promemoria check-out",
             $"Completa il check-out per {booking.Property.Name}.",
@@ -159,6 +167,7 @@ public class PushNotificationService(
             To = device.PushToken,
             Title = payload.Title,
             Body = payload.Body,
+            ChannelId = AndroidChannelId,
             Data = new Dictionary<string, string>
             {
                 ["type"] = payload.Type,
@@ -224,6 +233,9 @@ public class PushNotificationService(
 
         [JsonPropertyName("body")]
         public string Body { get; set; } = string.Empty;
+
+        [JsonPropertyName("channelId")]
+        public string ChannelId { get; set; } = string.Empty;
 
         [JsonPropertyName("data")]
         public Dictionary<string, string> Data { get; set; } = new();

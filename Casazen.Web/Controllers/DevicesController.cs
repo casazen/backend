@@ -6,6 +6,7 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Casazen.Web.Controllers;
 
@@ -43,38 +44,20 @@ public class DevicesController(
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(pushToken))
             return BadRequest(new { error = "DeviceId and PushToken are required." });
 
-        var staleRegistrations = await db.DeviceRegistrations
-            .Where(d => d.PushToken == pushToken && d.UserId != userId)
-            .ToListAsync(cancellationToken);
-        if (staleRegistrations.Count > 0)
-            db.DeviceRegistrations.RemoveRange(staleRegistrations);
-
-        var existing = await db.DeviceRegistrations
-            .FirstOrDefaultAsync(d => d.UserId == userId && d.DeviceId == deviceId, cancellationToken);
-
-        if (existing is not null)
+        DeviceRegistration registration;
+        try
         {
-            existing.PushToken = pushToken;
-            existing.Platform = platform;
-            existing.OrgId = orgId.Value;
-            existing.UpdatedAt = DateTime.UtcNow;
+            registration = await UpsertAsync(userId, orgId.Value, platform, deviceId, pushToken, cancellationToken);
         }
-        else
+        catch (DbUpdateException ex) when (IsConcurrentRegistration(ex))
         {
-            existing = new DeviceRegistration
-            {
-                UserId = userId,
-                OrgId = orgId.Value,
-                Platform = platform,
-                PushToken = pushToken,
-                DeviceId = deviceId,
-            };
-            db.DeviceRegistrations.Add(existing);
+            // The same installation (or push token) registered by a concurrent request, e.g. at app start and after the
+            // permission grant: the loser re-reads the rows written by the winner and applies its registration again.
+            db.ChangeTracker.Clear();
+            registration = await UpsertAsync(userId, orgId.Value, platform, deviceId, pushToken, cancellationToken);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
-
-        return CreatedAtAction(nameof(Register), new { id = existing.Id }, Map(existing));
+        return CreatedAtAction(nameof(Register), new { id = registration.Id }, Map(registration));
     }
 
     /// <summary>
@@ -93,7 +76,7 @@ public class DevicesController(
             return Unauthorized();
 
         // The path is percent-decoded before routing except for "%2F", which ASP.NET Core leaves encoded so a segment
-        // cannot become two: Android device ids are build fingerprints full of '/', sent encoded by the app.
+        // cannot become two: app builds before MO-03 registered Android build fingerprints full of '/', sent encoded.
         var id = deviceId.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase).Trim();
 
         var registration = await db.DeviceRegistrations
@@ -106,6 +89,59 @@ public class DevicesController(
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
+
+    /// <summary>
+    /// One row per (user, installation), the push token updated in place (MO-03, A6-06). The app sends a random UUID
+    /// generated at the first launch and kept in SecureStore; older builds sent the OS build id, shared by every phone
+    /// on the same OS build. An Expo push token belongs to one installation, so any other row carrying it (another user
+    /// who used this phone, or the same user under an old OS build id) is removed: the old ids disappear as the phones
+    /// register again, without a data migration that could drop a phone still on an old build.
+    /// </summary>
+    private async Task<DeviceRegistration> UpsertAsync(
+        string userId,
+        Guid orgId,
+        string platform,
+        string deviceId,
+        string pushToken,
+        CancellationToken cancellationToken)
+    {
+        var staleRegistrations = await db.DeviceRegistrations
+            .Where(d => d.PushToken == pushToken && (d.UserId != userId || d.DeviceId != deviceId))
+            .ToListAsync(cancellationToken);
+        if (staleRegistrations.Count > 0)
+            db.DeviceRegistrations.RemoveRange(staleRegistrations);
+
+        var registration = await db.DeviceRegistrations
+            .FirstOrDefaultAsync(d => d.UserId == userId && d.DeviceId == deviceId, cancellationToken);
+
+        if (registration is not null)
+        {
+            registration.PushToken = pushToken;
+            registration.Platform = platform;
+            registration.OrgId = orgId;
+            registration.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            registration = new DeviceRegistration
+            {
+                UserId = userId,
+                OrgId = orgId,
+                Platform = platform,
+                PushToken = pushToken,
+                DeviceId = deviceId,
+            };
+            db.DeviceRegistrations.Add(registration);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return registration;
+    }
+
+    /// <summary>23505 on (UserId, DeviceId), or a stale row already removed by a concurrent registration.</summary>
+    private static bool IsConcurrentRegistration(DbUpdateException ex) =>
+        ex is DbUpdateConcurrencyException
+        || ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     private string? GetUserId() =>
         User.FindFirstValue("sub")
