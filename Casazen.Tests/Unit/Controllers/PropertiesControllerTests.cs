@@ -1351,6 +1351,14 @@ public class PropertiesControllerTests
 
     // ─── GetDetail ───────────────────────────────────────────────────────────────
 
+    /// <summary>The record of a property of the caller's org, as the tenant-filtered lookup returns it.</summary>
+    private Property SetupDetailRecord(Guid propertyId, string ownerId)
+    {
+        var property = new Property { Id = propertyId, OwnerId = ownerId, OrgId = DefaultOrgId };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(property);
+        return property;
+    }
+
     [Fact]
     public async Task GetDetail_AsOwner_ReturnsOk()
     {
@@ -1359,6 +1367,7 @@ public class PropertiesControllerTests
         AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
+        var property = SetupDetailRecord(propertyId, userId);
         var detail = new PropertyDetailResponse { Id = propertyId, OwnerId = userId };
         _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(detail);
 
@@ -1367,19 +1376,20 @@ public class PropertiesControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<PropertyDetailResponse>(ok.Value);
         Assert.Equal(propertyId, response.Id);
+        VerifyHostAuthorization(property, PropertyOperations.Read);
     }
 
     [Fact]
-    public async Task GetDetail_AsNonOwner_ReturnsForbidden()
+    public async Task GetDetail_AsNonOwner_ReturnsForbiddenWithoutReadingTheDetail()
     {
         SetupUserClaims("auth0|attacker");
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
-            .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = "auth0|owner" });
+        SetupDetailRecord(propertyId, "auth0|owner");
 
         var result = await _controller.GetDetail(propertyId);
 
         Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyDetailAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
@@ -1387,12 +1397,28 @@ public class PropertiesControllerTests
     {
         SetupUserClaims("auth0|user");
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
-            .ThrowsAsync(new InvalidOperationException("not found"));
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         var result = await _controller.GetDetail(propertyId);
 
         Assert.IsType<NotFoundResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyDetailAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    // A2-36: a failure of the detail (e.g. a database error) is never answered as "not found": it reaches the error
+    // middleware (500), while a property gone in between is a NotFoundException (404).
+    [Fact]
+    public async Task GetDetail_DetailFails_DoesNotAnswerNotFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var propertyId = Guid.NewGuid();
+        SetupDetailRecord(propertyId, userId);
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
+            .ThrowsAsync(new InvalidOperationException("database failure"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.GetDetail(propertyId));
     }
 
     // ─── GetDocuments ────────────────────────────────────────────────────────────
@@ -1761,6 +1787,7 @@ public class PropertiesControllerTests
 
         var propertyId = Guid.NewGuid();
         var ownerId = "auth0|owner";
+        SetupDetailRecord(propertyId, ownerId);
         _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
             .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = ownerId });
 
@@ -1780,6 +1807,7 @@ public class PropertiesControllerTests
         AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
+        SetupDetailRecord(propertyId, userId);
         _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
             .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = userId });
 

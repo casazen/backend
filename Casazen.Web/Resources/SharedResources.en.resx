@@ -144,6 +144,9 @@
   <data name="GuestHasOpenBookings" xml:space="preserve">
     <value>The guest has ongoing or upcoming bookings: it cannot be deleted until they are completed or cancelled.</value>
   </data>
+  <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
+    <value>Invalid period: use CurrentMonth, PreviousMonth, Last30Days or CurrentYear.</value>
+  </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Supplier profile not found</value>
   </data>
@@ -1048,6 +1051,27 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
   </data>
+  <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
+    <value>Enter the Alloggiati Web username.</value>
+  </data>
+  <data name="QuesturaCredentialsUsernameTooLong" xml:space="preserve">
+    <value>The username can be at most {1} characters long.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordRequired" xml:space="preserve">
+    <value>Enter the Alloggiati Web password.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordTooLong" xml:space="preserve">
+    <value>The password can be at most {1} characters long.</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyRequired" xml:space="preserve">
+    <value>Enter the Alloggiati Web service key (WSKey).</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyTooLong" xml:space="preserve">
+    <value>The web service key can be at most {1} characters long.</value>
+  </data>
+  <data name="GuestDocumentNumberMissing" xml:space="preserve">
+    <value>No document number is recorded for this guest.</value>
+  </data>
   <data name="ServiceRequestPropertyRequired" xml:space="preserve">
     <value>Select the property of the request.</value>
   </data>
@@ -1098,5 +1122,8 @@
   </data>
   <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
     <value>For {0} this taxpayer already has another property at the 21% cedolare rate: the reduced rate applies to one unit only. First assign 26% to one of the two properties.</value>
+  </data>
+  <data name="DashboardInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
   </data>
 </root>

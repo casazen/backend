@@ -73,8 +73,8 @@ in clear.
   show the host only.
 - **Logs** name feed and property ids, never the URL.
 - **URLs saved before PC-11** are rewritten encrypted at every startup, right after the migrations
-  (`PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync`, idempotent, log line
-  `Encrypted N iCal import URLs stored in clear before PC-11`). Until then they are still readable (a value starting
+  (`EncryptedColumns.EncryptLegacyPlaintextAsync`, the step shared by every encrypted column, idempotent, log line
+  `Encrypted N PropertyICalFeed rows stored in clear`; see [`encryption.md`](encryption.md)). Until then they are still readable (a value starting
   with `http://` or `https://` is read as it is). The same startup step **stops the application** if the context has
   no Data Protection (the URLs would otherwise be stored in clear).
 - **Key ring lost** (table `DataProtectionKeys` emptied, certificate lost, see storage.md): the URLs cannot be read any

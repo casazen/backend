@@ -870,9 +870,8 @@ public partial class SupplierService(
             .FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
 
         if (profile is null)
-            return new SupplierDashboard(0, "Unknown", 0, 0, 0, 0, "None", null, null, null, nameof(SupplierCalendarSyncStatus.None), DateTime.UtcNow);
+            return new SupplierDashboard(0, "Unknown", 0, "None", null, null, null, nameof(SupplierCalendarSyncStatus.None), DateTime.UtcNow);
 
-        var now = DateTime.UtcNow;
         var today = TimeProvider.System.TodayInRomeAsDateOnly();
 
         // Profile completion: 5 dimensions — identity(=1) + categories + comuni + bio + tos
@@ -882,17 +881,6 @@ public partial class SupplierService(
         var hasTos = profile.TosAcceptedAt.HasValue;
         int completionSteps = 1 + (categories.Length > 0 ? 1 : 0) + (comuni.Length > 0 ? 1 : 0) + (hasBio ? 1 : 0) + (hasTos ? 1 : 0);
         int profileCompletionPercent = (int)Math.Round(completionSteps / 5.0 * 100);
-
-        // Jobs aggregation
-        var jobs = await db.SupplierJobs.AsNoTracking()
-            .Where(j => j.SupplierOrgId == orgId)
-            .ToListAsync(cancellationToken);
-
-        int totalJobs = jobs.Count;
-        int completedJobs = jobs.Count(j => j.Status == SupplierJobStatus.Completed);
-        int upcomingJobs = jobs.Count(j =>
-            j.Status is SupplierJobStatus.Accepted or SupplierJobStatus.Offered &&
-            j.ScheduledStartUtc > now);
 
         // Availability rate over the next 30 days
         var thirtyDaysFromNow = today.AddDays(29);
@@ -910,9 +898,6 @@ public partial class SupplierService(
         return new SupplierDashboard(
             profileCompletionPercent,
             profile.Status.ToString(),
-            totalJobs,
-            completedJobs,
-            upcomingJobs,
             availabilityRate,
             profile.CalendarSyncType.ToString(),
             profile.IcalFeedUrl,

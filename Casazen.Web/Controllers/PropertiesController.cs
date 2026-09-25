@@ -586,31 +586,32 @@ public class PropertiesController(
     /// <returns>A <see cref="PropertyDetailResponse"/> with aggregate data.</returns>
     /// <response code="200">Property detail returned successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
-    /// <response code="403">The caller does not own this property.</response>
-    /// <response code="404">No property found with the given <paramref name="id"/>.</response>
+    /// <response code="403">The caller may not read this property (TN-3).</response>
+    /// <response code="404">No property found with the given <paramref name="id"/> in the caller's org. Any other
+    /// failure is a 500, never a 404 (A2-36).</response>
     [HttpGet("{id}/detail")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyDetailResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PropertyDetailResponse>> GetDetail(Guid id)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        PropertyDetailResponse detail;
-        try
-        {
-            detail = await propertyService.GetPropertyDetailAsync(id);
-        }
-        catch (InvalidOperationException)
-        {
+        // TN-3: the row is checked before its bookings and documents are read; another org's property is 404.
+        var property = await propertyService.GetPropertyRecordAsync(id);
+        if (property == null)
             return NotFound();
-        }
 
-        var roles = GetUserRoles();
-        if (!authorizationService.CanAccess(userId, detail.OwnerId, roles))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
             return Forbid();
 
-        await AuditPrivilegedAccessIfNeededAsync(userId, id, detail.OwnerId, roles, "PropertyDetail.Read");
+        // A property that disappears in between answers 404 (NotFoundException, FD-05).
+        var detail = await propertyService.GetPropertyDetailAsync(id);
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, detail.OwnerId, GetUserRoles(), "PropertyDetail.Read");
 
         return Ok(detail);
     }

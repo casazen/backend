@@ -2,6 +2,7 @@ using System.Text.Json;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Infrastructure.Services;
@@ -257,9 +258,6 @@ public class SupplierProfileController(
         {
             ProfileCompletionPercent = stats.ProfileCompletionPercent,
             Status = stats.Status,
-            TotalJobs = stats.TotalJobs,
-            CompletedJobs = stats.CompletedJobs,
-            UpcomingJobs = stats.UpcomingJobs,
             AvailabilityRate = stats.AvailabilityRate,
             CalendarSyncStatus = new CalendarSyncStatusDto
             {
@@ -271,6 +269,43 @@ public class SupplierProfileController(
                 CalendarSyncError = syncErrorMessage,
             },
             LastUpdated = stats.LastUpdated,
+        });
+    }
+
+    /// <summary>
+    /// Work KPIs of the caller's supplier org from its service requests (SU-11, A4-15): completed and rejected in the
+    /// Europe/Rome <paramref name="period"/>, waiting to be taken and taken (upcoming) now.
+    /// </summary>
+    [HttpGet("dashboard/kpis")]
+    [ProducesResponseType(typeof(SupplierKpisDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierKpisDto>> GetKpis(
+        [FromServices] ISupplierKpiService kpiService,
+        [FromQuery] SupplierKpiPeriod period = SupplierKpiPeriod.CurrentMonth,
+        CancellationToken cancellationToken = default)
+    {
+        // A number that is not a period ("?period=9") binds as an undefined enum value.
+        if (!Enum.IsDefined(period))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierKpiPeriodInvalid");
+
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var kpis = await kpiService.GetKpisAsync(orgId.Value, period, cancellationToken);
+
+        return Ok(new SupplierKpisDto
+        {
+            Period = kpis.Period.ToString(),
+            From = kpis.From,
+            To = kpis.To,
+            TimeZone = RomeCalendar.TimeZoneId,
+            Completed = kpis.Completed,
+            Rejected = kpis.Rejected,
+            AwaitingAcceptance = kpis.AwaitingAcceptance,
+            Upcoming = kpis.Upcoming,
+            TotalRequests = kpis.TotalRequests,
         });
     }
 
