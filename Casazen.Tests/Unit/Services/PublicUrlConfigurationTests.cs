@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
@@ -59,26 +58,6 @@ public class PublicUrlConfigurationTests
         var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
         Assert.Equal(PublicHostMode.CasazenPath, stored.PublicHostMode);
         Assert.Null(stored.Subdomain);
-    }
-
-    [Fact]
-    public void BuildCheckInUrl_ConfiguredPublicSite_IsOnThatDomain()
-    {
-        var jobId = Guid.NewGuid();
-
-        var url = new QrCodeService(EmailTestHelpers.Links(PublicSite + "/")).BuildCheckInUrl(jobId, "ABC", "Via Roma 1");
-
-        Assert.Equal($"{PublicSite}/check-in/{jobId}?token=ABC&loc=Via%20Roma%201", url);
-    }
-
-    [Fact]
-    public void BuildCheckInUrl_PublicSiteMissing_IsRelativeNotOnAFallbackDomain()
-    {
-        var jobId = Guid.NewGuid();
-
-        var url = new QrCodeService(EmailTestHelpers.Links(null)).BuildCheckInUrl(jobId, "ABC", null);
-
-        Assert.Equal($"/check-in/{jobId}?token=ABC&loc=Property", url);
     }
 
     private static OrgDomainService CreateOrgDomainService(AppDbContext db, string? publicSite, string? baseDomain)

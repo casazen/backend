@@ -40,7 +40,6 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicResolveHost, 60, OneMinute, "PublicHost:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicIcal, 60, OneMinute),
         new(RateLimitPolicies.PublicRegistration, 5, TimeSpan.FromMinutes(10)),
-        new(RateLimitPolicies.PublicSupplierCheckIn, 20, OneMinute),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

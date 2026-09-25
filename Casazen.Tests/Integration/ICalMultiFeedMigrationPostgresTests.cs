@@ -74,8 +74,8 @@ public class ICalMultiFeedMigrationPostgresTests : IAsyncLifetime
         Assert.Equal(AirbnbUrl, (await context.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == Seed.FeedA)).ImportUrl);
 
         // ... and the startup step encrypts every one of them, once.
-        Assert.Equal(2, await PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync(context, NullLogger.Instance));
-        Assert.Equal(0, await PropertyICalFeedUrlEncryption.EncryptLegacyPlaintextUrlsAsync(context, NullLogger.Instance));
+        Assert.Equal(2, await EncryptedColumns.EncryptLegacyPlaintextAsync(context, NullLogger.Instance));
+        Assert.Equal(0, await EncryptedColumns.EncryptLegacyPlaintextAsync(context, NullLogger.Instance));
 
         var rawA = await RawImportUrlAsync(context, Seed.FeedA);
         var rawC = await RawImportUrlAsync(context, Seed.FeedC);

@@ -29,6 +29,9 @@ public class GuestsController(
     /// <summary>404: the guest has no document scan, or its file is not in the storage.</summary>
     public const string DocumentScanMissingCode = "guest_document_scan_missing";
 
+    /// <summary>404: the guest has no document number (<c>GET /api/guests/{id}/document-number</c>).</summary>
+    public const string DocumentNumberMissingCode = "guest_document_number_missing";
+
     /// <summary>Prefix of the private storage keys of guest document scans (<see cref="StorageKeys.GuestDocument"/>).</summary>
     private const string GuestDocumentKeyPrefix = "guest-documents/";
 
@@ -69,6 +72,36 @@ public class GuestsController(
             return GuestNotFound();
 
         return Ok(GuestDtoMapper.ToDto(guest));
+    }
+
+    /// <summary>
+    /// Full document number of a guest (CO-14): every other answer shows it masked (<c>*****</c> plus the last 3
+    /// characters). Explicit action like the stay guests' one (CO-09): guest of the caller's org (another org's guest
+    /// answers 404), <c>guest.read</c> on it (TN-3, otherwise 403), never cached; every request is logged with the user
+    /// and the guest (audit), never with the number. 404 <c>guest_document_number_missing</c> when there is none.
+    /// </summary>
+    [HttpGet("{id:guid}/document-number")]
+    [ProducesResponseType(typeof(GuestDocumentNumberDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<GuestDocumentNumberDto>> GetDocumentNumber(Guid id)
+    {
+        var guest = await FindGuestInOrgAsync(id);
+        if (guest is null)
+            return GuestNotFound();
+
+        if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForOrg(guest.OrgId), GuestOperations.Read))
+        {
+            logger.LogWarning("User {UserId} denied the document number of guest {GuestId}", User.GetUserId(), id);
+            return Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(guest.DocumentNumber))
+            return this.ApiProblem(StatusCodes.Status404NotFound, DocumentNumberMissingCode, "GuestDocumentNumberMissing");
+
+        logger.LogInformation("User {UserId} viewed the document number of guest {GuestId}", User.GetUserId(), id);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(new GuestDocumentNumberDto { GuestId = guest.Id, DocumentNumber = guest.DocumentNumber.Trim() });
     }
 
     /// <summary>

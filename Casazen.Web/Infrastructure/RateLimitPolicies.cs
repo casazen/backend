@@ -40,7 +40,4 @@ public static class RateLimitPolicies
 
     /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>, <c>api/auth/register</c>).</summary>
     public const string PublicRegistration = "PublicRegistration";
-
-    /// <summary>Supplier QR check-in/check-out (<c>api/public/check-in</c>).</summary>
-    public const string PublicSupplierCheckIn = "PublicSupplierCheckIn";
 }

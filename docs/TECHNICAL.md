@@ -94,7 +94,7 @@ org-wide role (`HostRoles.OrgWide`: `PropertyManager`, `Admin`). Lists use `User
 filtered in SQL. Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
 the caller's org answers 404; a visible row the caller may not use answers 403.
 
-There are **41** controller source files under `Casazen.Web/Controllers/` (plus nested `PublicCheckInController` in `SupplierJobController.cs`).
+There are **48** controller source files under `Casazen.Web/Controllers/`. The supplier jobs with QR check-in (`SupplierJobController`, `PublicCheckInController`) were removed by SU-11 (decision D12): supplier work is a `ServiceRequest` only.
 
 ### Endpoints
 
@@ -350,14 +350,10 @@ never a link to the dashboard.
 | `GET` | `/api/supplier/inbox` | Supplier | Service-request inbox |
 | `GET` | `/api/supplier/availability` | Supplier | Availability for date range |
 | `PUT` | `/api/supplier/availability` | Supplier | Upsert availability by date |
-| `GET` | `/api/supplier/dashboard` | Supplier | Aggregated KPIs |
+| `GET` | `/api/supplier/dashboard` | Supplier | Profile completion, activation, availability and calendar sync |
+| `GET` | `/api/supplier/dashboard/kpis?period=` | Supplier | Service-request KPIs of the caller's supplier org (Europe/Rome period, SU-11) |
 | `GET` | `/api/supplier/calendar/status` | Supplier | Calendar sync status |
 | `PUT` | `/api/supplier/calendar/ical` | Supplier | Set iCal feed URL and sync |
-| `GET` | `/api/supplier/jobs` | Supplier | List supplier jobs |
-| `POST` | `/api/supplier/jobs` | Supplier | Create job (host/admin assignment path) |
-| `POST` | `/api/supplier/jobs/{jobId}/accept` | Supplier | Accept job; generates QR check-in token |
-| `POST` | `/api/supplier/jobs/{jobId}/check-in` | Supplier | Job check-in |
-| `POST` | `/api/supplier/jobs/{jobId}/check-out` | Supplier | Job check-out |
 | `POST` | `/api/service-requests/match-supplier` | JWT | Match suppliers for a request |
 | `POST` | `/api/service-requests` | JWT | Create service request |
 | `GET` | `/api/service-requests` | JWT | List service requests |
@@ -393,9 +389,6 @@ never a link to the dashboard.
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
 | `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session |
 | `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in |
-| `GET` | `/api/public/check-in/{jobId}` | Anonymous | Supplier job check-in status (`?token=`) |
-| `POST` | `/api/public/check-in/{jobId}/check-in` | Anonymous | Supplier job public check-in |
-| `POST` | `/api/public/check-in/{jobId}/check-out` | Anonymous | Supplier job public check-out |
 
 #### Admin
 

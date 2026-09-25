@@ -300,6 +300,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
+        // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
+        services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
@@ -365,6 +367,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<SupplierRegistrationOptions>, SupplierRegistrationOptionsValidator>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        // Supplier dashboard KPIs from the service requests (SU-11, A4-15).
+        services.AddScoped<ISupplierKpiService, SupplierKpiService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         services.AddScoped<CalendarSyncService>();
         // iCal import (PC-10, runbook ical.md): recurrence window, optional section ICalImport.
@@ -379,7 +383,6 @@ public static class ServiceCollectionExtensions
         // Outcome page of the public checkout, read with the checkout token (BK-07, A3-15).
         services.AddScoped<ICheckoutOutcomeService, CheckoutOutcomeService>();
         services.AddScoped<IGuestBookingLookupService, GuestBookingLookupService>();
-        services.AddSingleton<QrCodeService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
