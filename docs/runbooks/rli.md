@@ -387,8 +387,81 @@ GROUP BY 1;
 A signed lease without a stipula date needs its signing date from the landlord: the lease page offers "Dichiara data di
 stipula" (`POST /api/leases/{id}/stipula`, LT-02), which records it once together with the deadline.
 
+## Tax advisory (LT-08)
+
+Task **LT-08** (defect A7-09). The panel "Cedolare secca o regime ordinario" on the lease page compared the options with
+wrong numbers: the 10% cedolare on every canone concordato lease, the registration tax at 2% of the annual rent with
+neither the 70% base nor the 67 € minimum, a flat 16 € stamp duty, and no IRPEF. Example of the audit: concordato in
+Seveso at 800 €/month showed cedolare 10% = 960 € although the ATA listing of Seveso is not verified (21% = 2.016 €).
+
+### Endpoints
+
+- `GET /api/leases/{id}/rli/advisory`: the advisory with the data CasaZen holds.
+- `POST /api/leases/{id}/rli/advisory` with `{ writtenPages, lines, copies, otherTaxableIncomeEur }` (each optional,
+  400 when out of range): the same, with the stamp duty and the IRPEF comparison computed from the landlord's data.
+  A calculation (`lease.read`), not a write: nothing is stored; POST keeps the income out of URLs and access logs.
+
+The response carries codes and statuses (`Computed`, `InputRequired`, `NotComputed`), never texts: the frontend
+localizes them (`leases.rli.advisory.*`).
+
+### Rules (verified by RS-5, `fiscale.md` L4-L14, C11-C12)
+
+| Item | Computation | When not computed |
+|---|---|---|
+| Cedolare | 10% only for a `Concordato` lease in a comune whose ATA listing is `VerifiedDirectly`, otherwise 21%. Same rule as the canone concordato calculator (`HighTensionArea`). No registration tax, no stamp duty | — |
+| Registration tax, first annuity | `max(67, annual rent × (concordato and verified ATA ? 70% : 100%) × 2%)`. Later annuities: 2% of each annuity's rent within 30 days of the end of the previous one, no minimum (shown as a rule) | — |
+| Stamp duty | `16 € × ceil(max(pages / 4, lines / 100)) × copies` | Without pages and copies: only the rule. Without lines: amount on the pages, with a warning |
+| IRPEF | `tax(other income + rent × 95%) − tax(other income)` with the brackets of `Irpef:TaxYear`; national gross tax only | Without the other income (asked); brackets of an earlier year; total income over 200.000 €; concordato in a verified ATA comune (its IRPEF reduction is not verified) |
+
+Notes (codes, no effect on the amounts): ATA not verified or not listed, comuni in a state of emergency (L12, no
+official list), attestation of conformity for the concordato, transitorio reliefs to confirm, term shorter than a year
+(figures on 12 months), tax regime unknown (older concordato leases), extra-EU tenant: the registration does **not**
+replace the 48-hour communication to the Questura (L13-L14).
+
+### Configuration (`appsettings.json` → `CedolareAdvisory`)
+
+Every rate, minimum and threshold is there with its `Source`; there is no default in code. `CedolareAdvisoryOptionsValidator`
+stops the startup when a value is missing or impossible (a rate outside (0, 1), the reduced rate above the standard one,
+brackets not ascending, a missing source). The IRPEF block is optional: without `Brackets` the comparison is "to be
+assessed with the accountant".
+
+Railway overrides use the usual names, e.g. `CedolareAdvisory__Registro__FirstYearMinimumEur`,
+`CedolareAdvisory__Irpef__Brackets__1__Rate`. Do not override them unless a verified source changes a value: update
+`appsettings.json` and `fiscale.md` instead.
+
+**Every January:** the IRPEF brackets are those of `CedolareAdvisory:Irpef:TaxYear` (2026). From 1 January of the next
+year the comparison shows "brackets outdated" until the brackets of the new year are verified on an official source
+(budget law, MEF) and committed with the new `TaxYear`. From 1/1/2027 the new TUIR and the TU registro apply
+(`fiscale.md`, "Avviso di riordino normativo"): check whether the article numbers in the sources change.
+
+### Marking an ATA comune as verified
+
+Only after reading the official text (D.L. 551/1988 art. 1 for the big cities, their neighbouring comuni and the
+provincial capitals; the CIPE resolution of 13/11/2003 for the others). The same flag drives the calculator and the
+advisory, so both switch together:
+
+```sql
+UPDATE "HighTensionAreaComuni"
+SET "VerifiedDirectly" = true, "LastVerifiedAt" = '<date of the check>', "SourceReference" = '<official text and URL>'
+WHERE "Comune" = 'Seveso';
+```
+
+Record the source in `canone_concordato.md` and report the change in the seed (`CanoneConcordatoMbSeed.BuildAtaCandidates`)
+with a data migration (LT-13 will bring an administration of these data).
+
+### Tests
+
+`CedolareAdvisoryServiceTests` (audit cases: Seveso 800 €/month with ATA not verified → 21%; 70% base → 134,40 €;
+250 €/month → 67 €; cedolare without registration tax and stamp duty; stamp duty rule; IRPEF brackets and the cases not
+computed), `CedolareAdvisoryConfigurationTests` (committed values and validator), `LeaseTaxAdvisoryIntegrationTests`
+(GET/POST on PostgreSQL, 400, another org). Frontend: `cedolare-decision-panel.test.tsx`.
+
 ## Product owner steps (Railway)
 
+- Tax advisory (LT-08): nothing to set, the parameters are in `appsettings.json`. Remove, if present, the variables no
+  longer read: `CedolareAdvisory__CedolareSeccaRate`, `CedolareAdvisory__CanoneConcordatoRate`,
+  `CedolareAdvisory__RegistroRate`, `CedolareAdvisory__BolloEur`, `CedolareAdvisory__Disclaimer`,
+  `CedolareAdvisory__OrdinaryIrpefNote`. Every January update the IRPEF brackets (see "Tax advisory (LT-08)").
 - Nothing to set: the default is manual registration and offline signature. Do **not** set `Features__ESignProvider`
   until a real e-signature client exists and the open points of `rli-esign.md` §5 (FEA opinion, budget) are closed;
   with the flag on the service does not start without `ESign__WebhookSecret`.

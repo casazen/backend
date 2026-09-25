@@ -330,6 +330,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPdfDocumentRenderer, MigraDocPdfDocumentRenderer>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
         services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
+        // LTR tax advisory (LT-08, docs/runbooks/rli.md): every rate and minimum from configuration, validated at startup.
+        services.AddOptions<Casazen.Core.Options.CedolareAdvisoryOptions>()
+            .BindConfiguration(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.CedolareAdvisoryOptions>, Casazen.Core.Options.CedolareAdvisoryOptionsValidator>();
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
