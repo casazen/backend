@@ -22,7 +22,8 @@ namespace Casazen.Web.Controllers;
 /// org's lease is invisible (404), a lease of the org the caller may not handle answers 403. The signature endpoints
 /// (LT-02) need <c>lease.sign</c> on the lease, the signed contract and the signers <c>lease.read</c>; the provider
 /// filing delega and the IMU "sent" attestation still act for the property owner only (services); the manual RLI
-/// declaration needs <c>lease.register</c> on the lease (LT-01).
+/// declaration needs <c>lease.register</c> on the lease (LT-01), as do the Questura declaration and the delivery date of
+/// the property (LT-07).
 /// Responses are DTOs (LT-11, A7-17): never EF entities, no clear personal data of the parties.
 /// </summary>
 [ApiController]
@@ -50,6 +51,9 @@ public class LeasesController(
 
     /// <summary>The signed contract (at most <see cref="LeaseSigningLimits.MaxSignedContractBytes"/>) plus the other form fields.</summary>
     private const long SignedDocumentRequestLimit = LeaseSigningLimits.MaxSignedContractBytes + 64 * 1024;
+
+    /// <summary>The Questura receipt (at most <see cref="QuesturaCommunicationLimits.MaxReceiptBytes"/>) plus the other form fields.</summary>
+    private const long QuesturaRequestLimit = QuesturaCommunicationLimits.MaxReceiptBytes + 64 * 1024;
 
     private string? GetOwnerId() => User.GetUserId();
 
@@ -440,7 +444,80 @@ public class LeasesController(
             result.TosVersion,
             result.AttestationText,
             result.ProviderFilingAvailable,
-            result.Items.Select(i => new RliChecklistItemResponse(i.Key, ChecklistLabel(i.Key), i.Done, i.Failed)).ToList()));
+            result.Items.Select(i => new RliChecklistItemResponse(i.Key, ChecklistLabel(i.Key), i.Done, i.Failed)).ToList(),
+            result.Questura));
+    }
+
+    /// <summary>
+    /// Delivery date of the property (LT-07): the 48 hours of the Questura communication for an extra-EU tenant count
+    /// from it; without it the start date applies. <c>null</c> clears it. 422 <c>questura_delivery_date_after_end</c>.
+    /// Returns the updated checklist.
+    /// </summary>
+    [HttpPut("{id:guid}/rli/questura/delivery-date")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    public async Task<ActionResult<RliChecklistResponse>> DeclareDeliveryDate(
+        Guid id,
+        [FromBody] DeclareDeliveryDateDto dto,
+        [FromServices] IQuesturaCommunicationService questura,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } userId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null)
+            return denied;
+
+        await questura.DeclareDeliveryDateAsync(id, userId, dto.DeliveryDate, cancellationToken);
+        return await GetRliChecklist(id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The landlord declares they sent the communication to the public-security authority for an extra-EU tenant
+    /// (art. 7 D.Lgs. 286/1998, LT-07, A7-08): the date (not after today) and, optionally, the receipt (PDF, at most
+    /// 10 MB, private bucket, FD-07). Only this ticks the checklist item (event <c>QuesturaCommunicationMarkedDone</c>).
+    /// 422 <c>questura_not_required</c> / <c>questura_communication_date_in_future</c> / <c>questura_receipt_invalid</c>,
+    /// 409 <c>questura_already_marked_done</c>. Multipart fields: <c>communicationDate</c>, <c>receipt</c> (optional).
+    /// Returns the updated checklist.
+    /// </summary>
+    [HttpPost("{id:guid}/rli/questura/mark-done")]
+    [Consumes("multipart/form-data")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    [RequestSizeLimit(QuesturaRequestLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = QuesturaRequestLimit)]
+    public async Task<ActionResult<RliChecklistResponse>> MarkQuesturaCommunicationDone(
+        Guid id,
+        [FromForm] QuesturaCommunicationForm form,
+        [FromServices] IQuesturaCommunicationService questura,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is not { } userId) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null)
+            return denied;
+
+        await using var receipt = form.Receipt?.OpenReadStream();
+        await questura.MarkDoneAsync(
+            id,
+            userId,
+            new QuesturaCommunicationDeclaration(form.CommunicationDate!.Value, receipt, form.Receipt?.Length),
+            cancellationToken);
+        return await GetRliChecklist(id, cancellationToken);
+    }
+
+    /// <summary>
+    /// The receipt of the Questura communication from the private bucket (FD-07): only through this authenticated
+    /// endpoint, for a caller who may read the lease (TN-3). 404 <c>questura_receipt_not_available</c> without one.
+    /// </summary>
+    [HttpGet("{id:guid}/rli/questura/receipt")]
+    public async Task<IActionResult> GetQuesturaReceipt(
+        Guid id, [FromServices] IQuesturaCommunicationService questura, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var receipt = await questura.OpenReceiptAsync(id, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(receipt.Content, "application/pdf", receipt.FileName);
     }
 
     /// <summary>Get current RLI registration status.</summary>
@@ -559,7 +636,8 @@ public class LeasesController(
 /// RLI checklist as returned by the API, with labels in the request language. <c>ProviderFilingAvailable</c>: the
 /// provider path exists (flag on and configured provider); otherwise the landlord registers manually (LT-01).
 /// <c>RegistrationDeadline</c> and <c>DaysRemaining</c> are null while the deadline is to be determined (LT-04);
-/// <c>DaysRemaining</c> is 0 on the deadline day and negative once it has passed.
+/// <c>DaysRemaining</c> is 0 on the deadline day and negative once it has passed. <c>Questura</c>: the communication to
+/// the public-security authority for an extra-EU tenant (LT-07), null when no tenant is extra-EU.
 /// </summary>
 public record RliChecklistResponse(
     DateTime? RegistrationDeadline,
@@ -567,7 +645,8 @@ public record RliChecklistResponse(
     string TosVersion,
     string AttestationText,
     bool ProviderFilingAvailable,
-    IReadOnlyList<RliChecklistItemResponse> Items);
+    IReadOnlyList<RliChecklistItemResponse> Items,
+    QuesturaCommunicationStatus? Questura);
 
 /// <summary>A checklist item: <c>Done</c> only when the step happened, <c>Failed</c> when its last attempt failed.</summary>
 public record RliChecklistItemResponse(string Key, string Label, bool Done, bool Failed);
@@ -637,11 +716,26 @@ public record CreatePartyDto(
     [param: Required, MaxLength(100), MinLength(1)] string FirstName,
     [param: Required, MaxLength(100), MinLength(1)] string LastName,
     [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
-    [param: Required, MaxLength(2), MinLength(2)] string Citizenship,
+    [param: Required, MaxLength(2), MinLength(2), RegularExpression("^[A-Za-z]{2}$", ErrorMessage = "LeasePartyCitizenshipInvalid")] string Citizenship,
     [param: Required, EmailAddress] string ContactEmail);
 
 /// <summary>Stipula date of a lease already signed (calendar date, not after today).</summary>
 public record DeclareStipulaDto([param: Required] DateTime? StipulaDate);
+
+/// <summary>Delivery date of the property (calendar date, not after the end of the lease); null clears it (LT-07).</summary>
+public record DeclareDeliveryDateDto(DateTime? DeliveryDate);
+
+/// <summary>
+/// Questura communication declared by the landlord (LT-07): the date it was sent (calendar date, not after today) and,
+/// optionally, the receipt (PDF of at most 10 MB).
+/// </summary>
+public sealed class QuesturaCommunicationForm
+{
+    [Required]
+    public DateTime? CommunicationDate { get; set; }
+
+    public IFormFile? Receipt { get; set; }
+}
 
 /// <summary>Offline signature: the stipula date and the contract signed by every party.</summary>
 public sealed class SignedDocumentForm

@@ -278,6 +278,12 @@ decidere con il commercialista, per esempio addebitare IVA come B2C finché la v
 - Cedolare 10% solo con concordato **e** comune ATA verificato (L11-L12), altrimenti 21%.
 - La checklist Questura per conduttori extra-UE resta un adempimento **separato** dalla RLI, con scadenza `consegna + 48h` e spunta solo manuale del locatore (L13-L14).
 
+**Implementato da LT-07 (2026-09-25).** Voce Questura solo con un conduttore non cittadino dei 27 Stati UE
+(`Casazen.Core/Regulatory/EuMemberStates.cs`); consegna = data dichiarata dal locatore o, in mancanza, data di inizio;
+scadenza = consegna + 2 giorni di calendario (`QuesturaCommunicationDeadline`); spunta solo con
+`POST /api/leases/{id}/rli/questura/mark-done` (data e ricevuta facoltativa); promemoria a soglie. Sanzione mostrata:
+160-1.100 € (L15). Runbook: `docs/runbooks/rli.md` § "Questura communication for extra-EU tenants (LT-07)".
+
 **Implementato da LT-08 (2026-09-24).** Advisory `GET|POST /api/leases/{id}/rli/advisory`
 (`Casazen.Core/Leases/LeaseTaxAdvisory.cs`), parametri in `appsettings.json` → `CedolareAdvisory` con la fonte di ogni
 gruppo (nessun numero nel codice, validazione all'avvio). Runbook: `docs/runbooks/rli.md` § "Tax advisory (LT-08)".
