@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
@@ -23,7 +24,8 @@ internal static class ICalTestServices
         IServiceScopeFactory? scopeFactory = null,
         ILogger<PropertyICalSyncService>? logger = null,
         ICalImportOptions? importOptions = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        INotificationService? notifications = null)
     {
         var options = Options.Create(importOptions ?? new ICalImportOptions());
         return new(
@@ -35,6 +37,7 @@ internal static class ICalTestServices
             configuration,
             options,
             logger ?? Mock.Of<ILogger<PropertyICalSyncService>>(),
-            clock ?? TimeProvider.System);
+            clock ?? TimeProvider.System,
+            notifications ?? Mock.Of<INotificationService>());
     }
 }

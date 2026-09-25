@@ -42,9 +42,48 @@ public class BookingResponseDto
     /// <summary>Deadline of an open "pay at the property" request (the host's answer once the email is confirmed).</summary>
     public DateTime? RequestExpiresAt { get; set; }
 
+    /// <summary>
+    /// OTA stay created by the host from an iCal block (CO-21): the import feed it came from, kept when the calendar is
+    /// disconnected. Null for every other booking.
+    /// </summary>
+    public Guid? IcalFeedId { get; set; }
+
+    /// <summary>Label of that feed when the stay was created (e.g. "camera 2"), shown next to the source.</summary>
+    public string? ChannelLabel { get; set; }
+
+    /// <summary>
+    /// OTA stay "da verificare" (CO-21): <c>BlockRemoved</c> (the reservation left the channel's calendar) or
+    /// <c>BlockDatesChanged</c> (other dates on the channel). Null when there is nothing to check, and for a cancelled stay.
+    /// </summary>
+    public string? OtaReviewReason { get; set; }
+
+    /// <summary>When the iCal sync found the change (UTC).</summary>
+    public DateTime? OtaReviewRaisedAt { get; set; }
+
+    /// <summary>
+    /// The linked block with its dates on the channel (booking detail only, <c>GET /api/bookings/{id}</c>); null when the
+    /// stay has no block (not from iCal, or the block left the feed).
+    /// </summary>
+    public OtaChannelBlockDto? ChannelBlock { get; set; }
+
     public BookingGuestDto Guest { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>The iCal block of an OTA stay (CO-21): its dates as the channel publishes them (check-out day excluded).</summary>
+public class OtaChannelBlockDto
+{
+    public Guid Id { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+
+    public static OtaChannelBlockDto From(Casazen.Core.Entities.CalendarBlock block) => new()
+    {
+        Id = block.Id,
+        StartDate = block.StartUtc.Date,
+        EndDate = block.EndUtc.Date,
+    };
 }
 
 public class BookingGuestDto

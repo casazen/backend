@@ -65,6 +65,7 @@ public class BookingsControllerTests
             _mockPropertyService.Object,
             _mockAuthz.Object,
             CreatePropertyICalSyncService(),
+            Mock.Of<IOtaStayService>(),
             _mockLogger.Object);
 
     private static PropertyICalSyncService CreatePropertyICalSyncService()

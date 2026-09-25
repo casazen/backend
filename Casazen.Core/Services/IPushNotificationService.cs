@@ -78,6 +78,13 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string StayAlert(Guid bookingId, StayAlertKind kind, DateTime referenceDate, int reminderNumber) =>
         $"stay-alert:{bookingId:N}:{kind}:{referenceDate:yyyyMMdd}:{reminderNumber}";
+
+    /// <summary>
+    /// An OTA stay "da verificare" (CO-21): the reason and, for <c>BlockDatesChanged</c>, the channel's dates, so a host
+    /// already pushed for the same unresolved dates is not pushed again, while dates that changed once more start a new key.
+    /// </summary>
+    public static string OtaStayReview(Guid bookingId, OtaStayReviewReason reason, DateTime? channelCheckIn, DateTime? channelCheckOut) =>
+        $"ota-stay-review:{bookingId:N}:{reason}:{channelCheckIn:yyyyMMdd}:{channelCheckOut:yyyyMMdd}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -93,6 +100,9 @@ public static class PushTypes
     public const string AlloggiatiOverdue = "alloggiati-overdue";
     public const string AlloggiatiFailed = "alloggiati-failed";
     public const string CheckoutReminder = "checkout-reminder";
+
+    /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
+    public const string OtaStayReview = "ota-stay-review";
 
     /// <summary>Type of the push to the host when a service request reaches <paramref name="status"/>.</summary>
     public static string ForServiceRequestStatus(ServiceRequestStatus status) => status switch
