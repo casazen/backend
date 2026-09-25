@@ -432,6 +432,9 @@
   <data name="ICalFeedInvalidLabel" xml:space="preserve">
     <value>The calendar label can have at most 60 characters, without line breaks.</value>
   </data>
+  <data name="ICalSupplierNoFeed" xml:space="preserve">
+    <value>You have not linked an iCal calendar yet: paste the URL of your calendar first.</value>
+  </data>
   <data name="ICalExportBusySummary" xml:space="preserve">
     <value>Booked</value>
     <comment>SUMMARY of every event of the public iCal export read by the OTAs (PC-12): neutral, never a name.</comment>

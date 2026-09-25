@@ -6,9 +6,11 @@ using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -262,6 +264,7 @@ public class SupplierProfileController(
                 CalendarSyncType = stats.CalendarSyncType,
                 IcalFeedUrl = stats.IcalFeedUrl,
                 CalendarLastSyncAt = stats.CalendarLastSyncAt,
+                LastSyncStatus = stats.CalendarSyncStatus,
                 CalendarSyncErrorCode = syncErrorCode,
                 CalendarSyncError = syncErrorMessage,
             },
@@ -362,7 +365,7 @@ public class SupplierProfileController(
 
     // ─── Calendar Sync ───────────────────────────────────────────────────────
 
-    /// <summary>Returns the supplier's calendar sync status.</summary>
+    /// <summary>Returns the supplier's calendar sync status (<c>lastSyncStatus</c> <c>Syncing</c> while a sync is queued).</summary>
     [HttpGet("calendar/status")]
     [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -375,25 +378,23 @@ public class SupplierProfileController(
 
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
-        var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(profile.CalendarSyncError, localizer);
 
-        return Ok(new CalendarSyncStatusDto
-        {
-            CalendarSyncType = profile.CalendarSyncType.ToString(),
-            IcalFeedUrl = profile.IcalFeedUrl,
-            CalendarLastSyncAt = profile.CalendarLastSyncAt,
-            CalendarSyncErrorCode = syncErrorCode,
-            CalendarSyncError = syncErrorMessage,
-        });
+        return Ok(MapCalendarStatus(profile, localizer));
     }
 
-    /// <summary>Sets or updates the supplier's iCal feed URL and triggers an initial sync.</summary>
+    /// <summary>
+    /// Sets or updates the supplier's iCal feed URL and queues its first sync in a Hangfire job (SU-15, A4-11, A9-14):
+    /// the download never runs inside the request. 202 with <c>lastSyncStatus</c> <c>Syncing</c>; the calendar is
+    /// synced when <c>GET calendar/status</c> leaves <c>Syncing</c>. 400 <c>ical_invalid_url</c>.
+    /// </summary>
     [HttpPut("calendar/ical")]
-    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CalendarSyncStatusDto>> SetIcalFeed(
         [FromBody] SetIcalFeedRequest request,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
@@ -417,18 +418,65 @@ public class SupplierProfileController(
 
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
-        // Trigger initial sync
-        _ = Task.Run(() => calendarSyncService.SyncIcalFeedAsync(orgId.Value, CancellationToken.None));
+        QueueSupplierSync(orgId.Value, backgroundJobClient);
+        return Accepted(MapCalendarStatus(profile, localizer));
+    }
 
-        return Ok(new CalendarSyncStatusDto
+    /// <summary>
+    /// "Sync now": 202 with <c>lastSyncStatus</c> <c>Syncing</c> and a queued job, or the current state when a sync is
+    /// already queued (nothing more is queued). 422 <c>ical_supplier_no_feed</c> when no iCal URL is saved.
+    /// </summary>
+    [HttpPost("calendar/sync")]
+    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CalendarSyncStatusDto>> SyncCalendarNow(
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var (profile, queue) = await calendarSyncService.RequestSyncAsync(orgId.Value, cancellationToken);
+        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+
+        if (queue)
+            QueueSupplierSync(orgId.Value, backgroundJobClient);
+
+        return Accepted(MapCalendarStatus(profile, localizer));
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private void QueueSupplierSync(Guid orgId, IBackgroundJobClient backgroundJobClient)
+    {
+        try
+        {
+            backgroundJobClient.Enqueue<IcalSupplierSyncJob>(job => job.SyncSupplierAsync(orgId, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            // The URL is saved and the state says Syncing: the recurring ical-supplier-sync job (every 15 minutes) syncs it.
+            logger.LogError(ex, "Could not queue the iCal sync of supplier {OrgId}", orgId);
+        }
+    }
+
+    private static CalendarSyncStatusDto MapCalendarStatus(
+        Casazen.Core.Entities.SupplierProfile profile,
+        IStringLocalizer<SharedResources> localizer)
+    {
+        var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(profile.CalendarSyncError, localizer);
+        return new CalendarSyncStatusDto
         {
             CalendarSyncType = profile.CalendarSyncType.ToString(),
             IcalFeedUrl = profile.IcalFeedUrl,
             CalendarLastSyncAt = profile.CalendarLastSyncAt,
-        });
+            LastSyncStatus = profile.CalendarSyncStatus.ToString(),
+            CalendarSyncErrorCode = syncErrorCode,
+            CalendarSyncError = syncErrorMessage,
+        };
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private static SupplierProfileDto MapProfile(Casazen.Core.Entities.SupplierProfile profile) => new()
     {

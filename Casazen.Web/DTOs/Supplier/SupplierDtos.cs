@@ -275,6 +275,12 @@ public class CalendarSyncStatusDto
     public string? IcalFeedUrl { get; set; }
     public DateTime? CalendarLastSyncAt { get; set; }
 
+    /// <summary>
+    /// <c>None</c>, <c>Syncing</c> (a sync is queued or running: poll until it changes), <c>Success</c> or
+    /// <c>Failure</c> (SU-15). The calendar is synced only once it leaves <c>Syncing</c>.
+    /// </summary>
+    public string LastSyncStatus { get; set; } = "None";
+
     /// <summary>Stable code of the last sync error (<c>ical_unreachable</c>, <c>ical_too_large</c>, ...).</summary>
     public string? CalendarSyncErrorCode { get; set; }
 

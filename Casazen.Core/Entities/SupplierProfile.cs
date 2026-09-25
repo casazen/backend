@@ -61,6 +61,9 @@ public class SupplierProfile
     [MaxLength(500)]
     public string? CalendarSyncError { get; set; }
 
+    /// <summary>State of the iCal sync (SU-15): <c>Syncing</c> while its Hangfire job is queued or running.</summary>
+    public SupplierCalendarSyncStatus CalendarSyncStatus { get; set; } = SupplierCalendarSyncStatus.None;
+
     /// <summary>URL-friendly slug for the public showcase page at /s/{slug}.</summary>
     [MaxLength(100)]
     public string? ShowcaseSlug { get; set; }
