@@ -49,7 +49,6 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SupplierProfile)] = "Keyed by the supplier org: hosts of every org read active profiles to match and create requests, the public showcase reads them anonymously, admins approve them. The owner reaches it as User.SupplierOrgId, which the tenant filter (User.OrgId) does not know.",
         [typeof(SupplierAvailability)] = "Supplier-org data (see SupplierProfile): written and read by the supplier through User.SupplierOrgId, read anonymously by the public showcase; every query filters by the supplier OrgId explicitly.",
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
-        [typeof(SupplierJob)] = "Legacy supplier jobs keyed by SupplierOrgId, to be removed by SU-11 (decision D12).",
 
         // Rows owned by a user, not by an org.
         [typeof(DeviceRegistration)] = "Owned by the user (UserId), not the org: DevicesController only touches the caller's own rows and must drop the same push token from users of any org; push delivery crosses orgs by design (supplier to host) with explicit OrgId and UserId predicates. No endpoint lists devices.",

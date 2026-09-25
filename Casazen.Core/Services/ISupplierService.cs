@@ -257,12 +257,13 @@ public record SupplierInvitePreview(
     IReadOnlyList<string> Categories,
     DateTime ExpiresAt);
 
+/// <summary>
+/// Profile, availability and calendar state of a supplier org. The work KPIs are computed from its service requests by
+/// <see cref="ISupplierKpiService"/> (SU-11).
+/// </summary>
 public record SupplierDashboard(
     int ProfileCompletionPercent,
     string Status,
-    int TotalJobs,
-    int CompletedJobs,
-    int UpcomingJobs,
     double AvailabilityRate,
     string CalendarSyncType,
     string? IcalFeedUrl,
@@ -297,7 +298,6 @@ public record SupplierDuplicateMerge(
     Guid KeeperOrgId,
     Guid DuplicateOrgId,
     int ServiceRequestsMoved,
-    int SupplierJobsMoved,
     int AvailabilityDaysMoved,
     int AvailabilityDaysDropped,
     IReadOnlyList<string> CategoriesAdded,
