@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.DTOs;
 
@@ -20,6 +21,8 @@ public sealed class GuestSummaryDto
 /// <summary>
 /// Guest detail of <c>/api/guests/{id}</c> (TN-1). Replaces the entity: no navigation properties
 /// (bookings, Alloggiati reports), no tenant key, no storage path of the document scan and no consent IP.
+/// The document number is masked like everywhere else in the app (CO-14): the full number only comes from the audited
+/// <c>GET /api/guests/{id}/document-number</c>.
 /// </summary>
 public sealed class GuestDto
 {
@@ -38,7 +41,8 @@ public sealed class GuestDto
     public string Nationality { get; init; } = string.Empty;
     public Gender? Gender { get; init; }
     public GuestDocumentType? DocumentType { get; init; }
-    public string DocumentNumber { get; init; } = string.Empty;
+    /// <summary>Document number masked as <c>*****</c> plus the last 3 characters; null when there is none.</summary>
+    public string? DocumentNumberMasked { get; init; }
     public DateTime? DocumentIssueDate { get; init; }
     public DateTime? DocumentExpiryDate { get; init; }
     public string DocumentIssuingCountry { get; init; } = string.Empty;
@@ -95,7 +99,7 @@ public static class GuestDtoMapper
         Nationality = guest.Nationality,
         Gender = guest.Gender,
         DocumentType = guest.DocumentType,
-        DocumentNumber = guest.DocumentNumber,
+        DocumentNumberMasked = GuestCheckInService.MaskDocumentNumber(guest.DocumentNumber),
         DocumentIssueDate = guest.DocumentIssueDate,
         DocumentExpiryDate = guest.DocumentExpiryDate,
         DocumentIssuingCountry = guest.DocumentIssuingCountry,
@@ -118,4 +122,14 @@ public static class GuestDtoMapper
         CreatedAt = guest.CreatedAt,
         UpdatedAt = guest.UpdatedAt,
     };
+}
+
+/// <summary>
+/// Full document number of a guest, from the explicit and audited <c>GET /api/guests/{id}/document-number</c> (CO-14):
+/// every other guest answer carries it masked.
+/// </summary>
+public sealed class GuestDocumentNumberDto
+{
+    public Guid GuestId { get; init; }
+    public string DocumentNumber { get; init; } = string.Empty;
 }

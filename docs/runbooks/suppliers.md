@@ -6,7 +6,7 @@ A4-22). The code is in place; the product owner sets the pilot comuni (section 3
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
 KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
-host contact), request detail page and inbox history (SU-08, A4-14).
+host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15).
 
 ## 1. How a supplier joins
 
@@ -558,6 +558,14 @@ record no member (the request keeps no user for them): the page shows "Il tuo te
       phone in the profile) the phone; the history shows the take with the member's name.
 - [ ] *Storico*: filter *Rifiutato* and a month → only the requests rejected in that month; pages of 20.
 - [ ] Opening `/app/supplier/inbox/<id of another supplier's request>` shows "Incarico non trovato".
+
+## 12. Calendar sync (iCal) — SU-15
+
+The supplier's iCal feed (activation wizard and *Sincronizza calendario*) is synced in Hangfire, never inside the
+request: saving the URL answers 202 `Syncing` and queues the first sync, "Sincronizza ora" queues another one, the
+15-minute job `ical-supplier-sync` also covers suppliers still in activation (`Pending`). The sync frees only the days
+of the feed (`SupplierAvailability.Source`), never those the supplier set by hand. API, rules, migration of the
+existing days and checks: [ical.md](ical.md#supplier-calendars-su-15).
 
 ## Known limits (other tasks)
 
