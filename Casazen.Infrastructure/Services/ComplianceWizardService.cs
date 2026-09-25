@@ -288,7 +288,7 @@ public class ComplianceWizardService(
         var categoryRequired = rate is null
             && ratesInForce.Any(r => !string.IsNullOrWhiteSpace(r.AccommodationCategory));
 
-        // Only a reviewed page is public in production (PublicContentController); the wizard never links a draft.
+        // Only a page with an approved revision is public (SE-01); the wizard never links a draft or a withdrawn page.
         string? publicPageSlug = null;
         var comune = ItalianComuneRegistry.GetByName(city);
         if (comune is not null)
@@ -297,7 +297,7 @@ public class ComplianceWizardService(
                 .AsNoTracking()
                 .AnyAsync(p => p.PageType == SeoPageType.TouristTaxCalc
                                && p.ComuneCode == comune.Code
-                               && p.LegalReviewStatus == LegalReviewStatus.Reviewed,
+                               && p.PublishedRevisionId != null,
                     cancellationToken);
             if (hasPublicPage)
                 publicPageSlug = comune.ComuneSlug;

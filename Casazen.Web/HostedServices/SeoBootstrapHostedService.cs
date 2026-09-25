@@ -10,7 +10,8 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Web.HostedServices;
 
 /// <summary>
-/// Seeds SEO pages on first deploy when the sitemap would otherwise be empty. The generation is queued <b>once per
+/// Seeds SEO pages on first deploy, as <b>drafts</b> waiting for the review in the admin dashboard (SE-01: never
+/// published automatically). The generation is queued <b>once per
 /// environment</b> (A8-26): under a Hangfire distributed lock, so several replicas starting together queue it once,
 /// and with a marker in the Hangfire storage of this environment, so a failed or empty generation is not queued
 /// (and paid) again at every deploy. Rerun it from the admin SEO dashboard ("Genera"); runbook
@@ -67,8 +68,7 @@ public class SeoBootstrapHostedService(
 
             var codes = ItalianComuneRegistry.AllCodes;
             var jobClient = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-            var jobId = jobClient.Enqueue<SeoPageGenerationJob>(job =>
-                job.ExecuteAsync(codes, options.Value.AutoApproveAfterBootstrap));
+            var jobId = jobClient.Enqueue<SeoPageGenerationJob>(job => job.ExecuteAsync(codes));
 
             connection.SetRangeInHash(MarkerKey,
             [

@@ -37,6 +37,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(HighTensionAreaComune)] = "Platform reference data: comuni in high housing-tension areas.",
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
+        [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
         [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",

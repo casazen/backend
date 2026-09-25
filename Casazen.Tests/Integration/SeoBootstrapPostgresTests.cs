@@ -60,7 +60,7 @@ public class SeoBootstrapPostgresTests : IAsyncLifetime
 
         return new SeoBootstrapHostedService(
             services.BuildServiceProvider(),
-            Options.Create(new SeoBootstrapOptions { BootstrapOnStartup = true, AutoApproveAfterBootstrap = false }),
+            Options.Create(new SeoBootstrapOptions { BootstrapOnStartup = true }),
             NullLogger<SeoBootstrapHostedService>.Instance);
     }
 }

@@ -405,11 +405,12 @@ never a link to the dashboard.
 | `GET` | `/api/admin/cin-compliance` | Admin | Paginated CIN compliance report |
 | `GET` | `/api/admin/jobs` | Admin | Hangfire recurring job statuses |
 | `PATCH` | `/api/admin/orgs/{orgId}/plan` | Admin | Change org plan tier: 409 `managed_by_stripe` with an active subscription, 409 `subscription_required` for an upgrade without one |
-| `GET` | `/api/admin/seo/pages` | Admin | SEO pages list / filter |
+| `GET` | `/api/admin/seo/pages` | Admin | SEO pages list / filter, server-side paging (`page` ≥ 1, `pageSize` 1-100, else 400) |
+| `GET` | `/api/admin/seo/pages/{id}` | Admin | Review screen: published and pending revision (sanitized), review audit |
+| `POST` | `/api/admin/seo/pages/{id}/approve` | Admin | Publish the revision read (`revisionId`, `counselApproved`, `note`): 409 newer revision / already published, 422 not publishable / legal review not confirmed (SE-01) |
+| `POST` | `/api/admin/seo/pages/{id}/withdraw` | Admin | Withdraw the published text (back to draft, off the public site and the sitemap), audited |
 | `GET` | `/api/admin/seo/comuni` | Admin | Comuni catalogue for SEO |
-| `POST` | `/api/admin/seo/approve-all-drafts` | Admin | Approve all draft SEO pages |
-| `POST` | `/api/admin/seo/generate` | Admin | Generate SEO content |
-| `PATCH` | `/api/admin/seo/pages/{id}/review-status` | Admin | Update page review status |
+| `POST` | `/api/admin/seo/generate` | Admin | Generate SEO content as drafts (never approved automatically) |
 | `GET` | `/api/admin/seo/budget` | Admin | SEO generation budget |
 | `POST` | `/api/admin/suppliers/invite` | Admin | See Supplier marketplace |
 
