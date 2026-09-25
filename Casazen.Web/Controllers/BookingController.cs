@@ -4,7 +4,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
-using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Alloggiati;
@@ -22,7 +21,7 @@ public class BookingsController(
     IAlloggiatiWebService alloggiatiWebService,
     IPropertyService propertyService,
     IPropertyAuthorizationService authorizationService,
-    PropertyICalSyncService propertyICalSyncService,
+    IOtaStayService otaStays,
     ILogger<BookingsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -69,7 +68,15 @@ public class BookingsController(
         if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
-        return Ok(BookingMapper.ToResponse(booking));
+        var response = BookingMapper.ToResponse(booking);
+        // OTA stay from iCal (CO-21): the dates its block has now on the channel, for the "da verificare" notice.
+        if (booking.ICalFeedId is not null)
+        {
+            var block = await otaStays.GetLinkedBlockAsync(id, HttpContext.RequestAborted);
+            response.ChannelBlock = block is null ? null : OtaChannelBlockDto.From(block);
+        }
+
+        return Ok(response);
     }
 
     /// <summary>
@@ -190,7 +197,7 @@ public class BookingsController(
         var endDateUtc = TimezoneHelper.ConvertLocalToUtc(endDate, targetTimezone);
 
         var bookings = await bookingService.GetCalendarAsync(propertyId, startDateUtc, endDateUtc);
-        var icalBlocks = await propertyICalSyncService.GetBlocksInRangeAsync(propertyId, startDateUtc, endDateUtc);
+        var icalBlocks = await otaStays.GetCalendarBlocksAsync(propertyId, startDateUtc, endDateUtc, HttpContext.RequestAborted);
 
         var utcOffsetMinutes = TimezoneHelper.GetUtcOffsetMinutes(targetTimezone, DateTime.UtcNow);
 
@@ -226,8 +233,20 @@ public class BookingsController(
             GuestName = b.GuestName,
         }).ToList();
 
-        foreach (var block in icalBlocks)
+        // OTA stays created from iCal (CO-21): channel and "da verificare" on the booking item.
+        var stays = bookings.ToDictionary(b => b.Id);
+        foreach (var item in items)
         {
+            var stay = stays[item.Id];
+            item.IcalFeedId = stay.ICalFeedId;
+            item.ChannelLabel = stay.ChannelLabel;
+            item.OtaReviewReason = stay.Status == BookingStatus.Cancelled ? null : stay.OtaReviewReason?.ToString();
+        }
+
+        // A block that became an OTA stay with the same dates is shown once, as the stay (its nights count once too).
+        foreach (var view in icalBlocks.Where(v => !v.RepresentedByStay))
+        {
+            var block = view.Block;
             items.Add(new CalendarItemDto
             {
                 Type = "ical-block",
@@ -238,6 +257,12 @@ public class BookingsController(
                 StartDateUtc = block.StartUtc,
                 EndDateUtc = block.EndUtc,
                 Summary = block.Summary,
+                BlockSource = block.Source.ToString(),
+                FeedId = block.FeedId,
+                Channel = view.Channel?.ToString(),
+                ChannelLabel = view.FeedLabel,
+                BookingId = view.StayId,
+                Convertible = view.Convertible,
             });
         }
 

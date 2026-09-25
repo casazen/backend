@@ -498,4 +498,31 @@
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Open the activation</value>
   </data>
+  <data name="OtaStayReview_Subject" xml:space="preserve">
+    <value>{0} stay to check - {1} ({2})</value>
+  </data>
+  <data name="OtaStayReview_Removed_Body" xml:space="preserve">
+    <value>The reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;, created from a block of the {2} calendar, is no longer in the linked calendar: it may have been cancelled or moved on the channel.</value>
+  </data>
+  <data name="OtaStayReview_DatesChanged_Body" xml:space="preserve">
+    <value>In the linked {2} calendar the reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; now runs from &lt;strong&gt;{5}&lt;/strong&gt; to &lt;strong&gt;{6}&lt;/strong&gt;; the stay in CasaZen runs from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_DatesChangedUnknown_Body" xml:space="preserve">
+    <value>In the linked {2} calendar the dates of the reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; changed; the stay in CasaZen runs from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_NothingChanged" xml:space="preserve">
+    <value>CasaZen did not change or cancel the stay, and its dates stay taken on the booking site.</value>
+  </data>
+  <data name="OtaStayReview_Action" xml:space="preserve">
+    <value>Check the reservation on the channel: if it was cancelled, cancel the stay in CasaZen; if its dates changed, update the stay. Then mark it as verified from the booking.</value>
+  </data>
+  <data name="OtaStayReviewPush_Title" xml:space="preserve">
+    <value>Stay to check</value>
+  </data>
+  <data name="OtaStayReviewPush_Removed_Body" xml:space="preserve">
+    <value>{0}: the {1} reservation starting {2} is no longer in the channel's calendar.</value>
+  </data>
+  <data name="OtaStayReviewPush_DatesChanged_Body" xml:space="preserve">
+    <value>{0}: the {1} reservation starting {2} changed dates on the channel.</value>
+  </data>
 </root>

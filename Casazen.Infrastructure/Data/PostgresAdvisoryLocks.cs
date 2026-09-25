@@ -54,7 +54,8 @@ internal static class PostgresAdvisoryLocks
         /// <summary>
         /// iCal import feeds of one property (key: property id): two sync runs of a feed (the 15-minute job and a first
         /// sync or "sync now") never write the same blocks at once (PC-10, A2-12); adding a feed (count and duplicate
-        /// check) and removing one never interleave with them (PC-11). Also taken to create the export link.
+        /// check) and removing one never interleave with them (PC-11). Also taken to create the export link, and to turn a
+        /// block into an OTA stay or change that stay after a sync (CO-21): a sync never removes the block meanwhile.
         /// </summary>
         PropertyICalSync = 1_010,
 

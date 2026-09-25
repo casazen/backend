@@ -83,4 +83,26 @@ public class CalendarItemDto
     public decimal? TotalPrice { get; set; }
     public string? GuestName { get; set; }
     public string? Summary { get; set; }
+
+    /// <summary>Label of the feed (a block) or of the feed of an OTA stay created from iCal (a booking), CO-21.</summary>
+    public string? ChannelLabel { get; set; }
+
+    /// <summary>Block only: <c>ICalImport</c> or <c>Manual</c>.</summary>
+    public string? BlockSource { get; set; }
+
+    /// <summary>Block only: its import feed and the channel of that feed (<c>Airbnb</c>, <c>BookingCom</c>, <c>Other</c>).</summary>
+    public Guid? FeedId { get; set; }
+
+    public string? Channel { get; set; }
+
+    /// <summary>Block only: the OTA stay created from it, while not cancelled (CO-21).</summary>
+    public Guid? BookingId { get; set; }
+
+    /// <summary>Block only: the host may turn it into an OTA stay ("Crea soggiorno OTA").</summary>
+    public bool? Convertible { get; set; }
+
+    /// <summary>Booking only: the import feed of an OTA stay created from iCal, and why it is "da verificare".</summary>
+    public Guid? IcalFeedId { get; set; }
+
+    public string? OtaReviewReason { get; set; }
 }

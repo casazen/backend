@@ -1,8 +1,9 @@
 # Runbook: Alloggiati Web, honest status and manual submission
 
 Task CO-11 (audit defects A5-01, A9-05, A5-03, A5-37, A5-35; decision D6), CO-12 (A5-02: guests of the stay and
-official code tables, sections at the end) and CO-09 (A5-26, A5-27: check-in link and host fallback, see
-"Guest check-in link and host fallback"). CO-11 needs no external configuration; CO-12 needs an admin to import the
+official code tables, sections at the end), CO-09 (A5-26, A5-27: check-in link and host fallback, see
+"Guest check-in link and host fallback") and CO-21 (OTA stays from iCal blocks, see "Reservations of the OTAs linked by
+iCal"). CO-11 needs no external configuration; CO-12 needs an admin to import the
 official code tables (see "Tabelle codici Alloggiati"). This page explains what the code does, what the migrations
 change and what hosts see. The web service client
 (credentials per host, WSKEY, `Test`/`Send`/`Ricevuta`) is task CO-13; sources in
@@ -342,3 +343,25 @@ SELECT "BookingId", "AlertCount" FROM casazen_prod."StayAlertStates" WHERE "Type
 
 The second query can list a stay whose check-in date was moved after some alerts (the sequence restarts and the count
 keeps the earlier messages).
+
+## Reservations of the OTAs linked by iCal (CO-21)
+
+Task CO-21 (audit GC-AC9, decision D7). The communication to the Questura is due for every guest, whatever the channel of
+the reservation (art. 109 TULPS; `.claude/context/regulations/alloggiati.md`). A reservation received on Airbnb or
+Booking.com and imported by iCal is only a block of dates: until CO-21 it had no guest, so none of the steps above
+started. Now the host turns the block into an **OTA stay** (calendar → block → "Crea soggiorno OTA", name and email of the
+guest; API and rules in [ical.md](ical.md#ota-stays-from-ical-blocks-co-21)).
+
+- The stay is a confirmed booking with the OTA source (`Airbnb`, `BookingCom`, ...): the check-in link (tab Ospite,
+  "Copia link" / "Invia link", and the daily job within the send window), the guest portal, "Modifica ospiti", the
+  scheduling on the arrival day, "Segna come inviato manualmente", the cockpit sections and the CO-10 alerts work exactly
+  as for a direct or manual booking. No separate flow.
+- Guests of the stay: at the start only the booker (name and email, as entered by the host), `SingleGuest` when the host
+  gives 1 guest or none, `HeadOfFamily` otherwise (CO-12 rule). The guest completes identity and document through the
+  link, or the host with "Modifica ospiti".
+- A stay "da verificare" (reservation gone from the channel's calendar, or other dates) keeps its Alloggiati status: if the
+  reservation was cancelled before the arrival the host cancels the stay (nothing is to send); if the dates changed the
+  host applies the channel's dates ("Applica le date del canale"): status, deadline, cockpit and CO-10 alerts follow the
+  new check-in date (a report job already scheduled for an earlier day reschedules itself, see "Scheduling" above).
+- A stay already over cannot be created from a block (422 `ota_stay_block_ended`): a late communication is handled with
+  the Questura as explained above.

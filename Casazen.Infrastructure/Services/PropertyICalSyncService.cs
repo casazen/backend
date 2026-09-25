@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services.ICal;
@@ -25,6 +26,7 @@ public partial class PropertyICalSyncService
     private readonly IOptions<ICalImportOptions> _importOptions;
     private readonly ILogger<PropertyICalSyncService> _logger;
     private readonly TimeProvider _clock;
+    private readonly INotificationService _notifications;
 
     public PropertyICalSyncService(
         AppDbContext db,
@@ -35,7 +37,8 @@ public partial class PropertyICalSyncService
         IConfiguration configuration,
         IOptions<ICalImportOptions> importOptions,
         ILogger<PropertyICalSyncService> logger,
-        TimeProvider clock)
+        TimeProvider clock,
+        INotificationService notifications)
     {
         _db = db;
         _externalHttpClient = externalHttpClient;
@@ -46,6 +49,7 @@ public partial class PropertyICalSyncService
         _importOptions = importOptions;
         _logger = logger;
         _clock = clock;
+        _notifications = notifications;
     }
 
     /// <summary>Import feeds of the property, oldest first (PC-11). Read-only.</summary>
@@ -352,22 +356,42 @@ public partial class PropertyICalSyncService
                 feedId, propertyId, parsed.UnreadableEvents, parsed.UnsupportedRecurrences, parsed.FirstUnreadableError);
         }
 
-        var removed = await ApplyBlocksAsync(feedId, propertyId, importUrl, incoming.Blocks, parsed.UnreadableUids, ct);
-        if (removed is null)
+        var applied = await ApplyBlocksAsync(feedId, propertyId, importUrl, incoming.Blocks, parsed.UnreadableUids, ct);
+        if (applied is not { } outcome)
             return;
 
         _logger.LogInformation(
             "iCal sync completed for feed {FeedId} of property {PropertyId}: {BlockCount} blocks, {Removed} removed, {Cancelled} cancelled and {Transparent} free events ignored, {Merged} duplicates merged",
-            feedId, propertyId, incoming.Blocks.Count, removed, parsed.CancelledEvents, parsed.TransparentEvents, incoming.MergedDuplicates);
+            feedId, propertyId, incoming.Blocks.Count, outcome.Removed, parsed.CancelledEvents, parsed.TransparentEvents, incoming.MergedDuplicates);
+
+        await AlertOtaStayReviewsAsync(feedId, outcome.Reviews, ct);
+    }
+
+    // After the commit: the stays are already marked "da verificare", an alert that cannot be delivered never undoes that
+    // nor turns the sync into a failure.
+    private async Task AlertOtaStayReviewsAsync(Guid feedId, IReadOnlyList<OtaStayReviewAlert> reviews, CancellationToken ct)
+    {
+        foreach (var review in reviews)
+        {
+            try
+            {
+                await _notifications.SendOtaStayReviewAlertAsync(review, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(
+                    ex, "Review alert of OTA stay {BookingId} (feed {FeedId}, {Reason}) not delivered", review.BookingId, feedId, review.Reason);
+            }
+        }
     }
 
     /// <summary>
     /// Replaces the blocks of the feed with <paramref name="incoming"/> and marks the feed
     /// <see cref="PropertyICalImportStatus.Success"/>. The blocks of <paramref name="unreadableUids"/> (events still in
-    /// the feed that could not be read) are kept. Returns the number of blocks removed, or null when the feed was
-    /// removed or its URL changed during the download (nothing is written).
+    /// the feed that could not be read) are kept. Returns the number of blocks removed and the OTA stays marked "da
+    /// verificare" (CO-21), or null when the feed was removed or its URL changed during the download (nothing is written).
     /// </summary>
-    private async Task<int?> ApplyBlocksAsync(
+    private async Task<(int Removed, IReadOnlyList<OtaStayReviewAlert> Reviews)?> ApplyBlocksAsync(
         Guid feedId,
         Guid propertyId,
         string importUrl,
@@ -395,6 +419,12 @@ public partial class PropertyICalSyncService
             .GroupBy(b => b.ExternalUid!, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
+        // Dates of the blocks turned into OTA stays before this sync (CO-21): a change is reported, never applied to the stay.
+        var linkedDates = existing
+            .Where(b => b.BookingId is not null)
+            .ToDictionary(b => b.Id, b => (Start: b.StartUtc.Date, End: b.EndUtc.Date));
+        var added = new List<CalendarBlock>();
+
         var now = DateTime.UtcNow;
         foreach (var block in incoming)
         {
@@ -407,7 +437,7 @@ public partial class PropertyICalSyncService
                 continue;
             }
 
-            _db.CalendarBlocks.Add(new CalendarBlock
+            var newBlock = new CalendarBlock
             {
                 PropertyId = propertyId,
                 OrgId = feed.OrgId,
@@ -418,7 +448,9 @@ public partial class PropertyICalSyncService
                 EndUtc = block.EndUtc,
                 Summary = block.Summary,
                 LastSyncedAt = now,
-            });
+            };
+            _db.CalendarBlocks.Add(newBlock);
+            added.Add(newBlock);
         }
 
         // An empty feed removes every block of this feed (A2-10, A9-13), never those of the property's other feeds. An
@@ -431,6 +463,8 @@ public partial class PropertyICalSyncService
             .ToList();
         _db.CalendarBlocks.RemoveRange(orphans);
 
+        var reviews = await ReviewOtaStaysAsync(feedId, existing, linkedDates, orphans, added, now, ct);
+
         feed.LastImportStatus = PropertyICalImportStatus.Success;
         feed.LastError = null;
         feed.LastImportAt = now;
@@ -439,7 +473,112 @@ public partial class PropertyICalSyncService
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        return orphans.Count;
+        return (orphans.Count, reviews);
+    }
+
+    /// <summary>
+    /// OTA stays created from blocks of this feed (CO-21, decision D7). A sync never changes nor cancels them: the
+    /// reservation may have been cancelled on the channel, or the feed may be wrong for a while.
+    /// <list type="bullet">
+    /// <item>A linked block gone from the feed while its stay is not over (<see cref="OtaStays.IsReviewable"/>): the stay
+    /// becomes "da verificare" (<see cref="OtaStayReviewReason.BlockRemoved"/>), stays confirmed and keeps its dates taken.
+    /// Once a stay is over the OTAs drop its reservation from the feed: nothing is reported.</item>
+    /// <item>A linked block with other dates than at the previous sync, and than its stay:
+    /// <see cref="OtaStayReviewReason.BlockDatesChanged"/>. The block keeps following the feed and takes its new nights on
+    /// its own (<see cref="PropertyOccupancy.BlockTakesNightIn"/>); the stay keeps its dates until the host applies the new
+    /// ones.</item>
+    /// <item>A new block with the UID of a stay of this feed whose block had left it (the reservation is back) is linked
+    /// to it again; other dates than the stay's are reported as a change.</item>
+    /// </list>
+    /// Each change found is reported once (an alert per change, after the commit); the host clears the mark.
+    /// </summary>
+    private async Task<IReadOnlyList<OtaStayReviewAlert>> ReviewOtaStaysAsync(
+        Guid feedId,
+        IReadOnlyList<CalendarBlock> existing,
+        IReadOnlyDictionary<Guid, (DateTime Start, DateTime End)> linkedDates,
+        IReadOnlyCollection<CalendarBlock> orphans,
+        IReadOnlyList<CalendarBlock> added,
+        DateTime now,
+        CancellationToken ct)
+    {
+        var removed = orphans.Where(b => b.BookingId is not null).ToList();
+        var moved = existing
+            .Where(b => b.BookingId is not null
+                        && !orphans.Contains(b)
+                        && linkedDates.TryGetValue(b.Id, out var before)
+                        && (before.Start != b.StartUtc.Date || before.End != b.EndUtc.Date))
+            .ToList();
+
+        var addedUids = added.Select(b => b.ExternalUid!).ToList();
+        var comeBack = addedUids.Count == 0
+            ? []
+            : await _db.Bookings
+                .Where(s => s.ICalFeedId == feedId
+                            && addedUids.Contains(s.ExternalId)
+                            && s.Status != BookingStatus.Cancelled
+                            && !_db.CalendarBlocks.Any(b => b.BookingId == s.Id))
+                .ToListAsync(ct);
+
+        var stayIds = removed.Select(b => b.BookingId!.Value).Concat(moved.Select(b => b.BookingId!.Value)).ToList();
+        var stays = stayIds.Count == 0
+            ? []
+            : await _db.Bookings.Where(s => stayIds.Contains(s.Id)).ToListAsync(ct);
+        var staysById = stays.Concat(comeBack).DistinctBy(s => s.Id).ToDictionary(s => s.Id);
+
+        var today = _clock.TodayInRome();
+        var reviews = new List<OtaStayReviewAlert>();
+
+        foreach (var block in removed)
+        {
+            if (staysById.TryGetValue(block.BookingId!.Value, out var stay)
+                && OtaStays.IsReviewable(stay, today)
+                && stay.OtaReviewReason != OtaStayReviewReason.BlockRemoved)
+            {
+                MarkForReview(stay, OtaStayReviewReason.BlockRemoved);
+                reviews.Add(new OtaStayReviewAlert(stay.Id, OtaStayReviewReason.BlockRemoved));
+            }
+        }
+
+        foreach (var block in moved)
+        {
+            if (staysById.TryGetValue(block.BookingId!.Value, out var stay))
+                ReportDates(stay, block);
+        }
+
+        foreach (var stay in comeBack)
+        {
+            var block = added.FirstOrDefault(b => string.Equals(b.ExternalUid, stay.ExternalId, StringComparison.Ordinal));
+            if (block is null)
+                continue;
+
+            block.BookingId = stay.Id;
+            _logger.LogInformation(
+                "iCal block of feed {FeedId} linked again to OTA stay {BookingId}: it is back in the feed", feedId, stay.Id);
+            ReportDates(stay, block);
+        }
+
+        return reviews;
+
+        void ReportDates(Booking stay, CalendarBlock block)
+        {
+            var channelIn = block.StartUtc.Date;
+            var channelOut = block.EndUtc.Date;
+            if (!OtaStays.IsReviewable(stay, today)
+                || (channelIn == stay.CheckInDate.Date && channelOut == stay.CheckOutDate.Date))
+                return;
+
+            MarkForReview(stay, OtaStayReviewReason.BlockDatesChanged);
+            reviews.Add(new OtaStayReviewAlert(stay.Id, OtaStayReviewReason.BlockDatesChanged, channelIn, channelOut));
+        }
+
+        void MarkForReview(Booking stay, OtaStayReviewReason reason)
+        {
+            stay.OtaReviewReason = reason;
+            stay.OtaReviewRaisedAt = now;
+            stay.UpdatedAt = now;
+            _logger.LogWarning(
+                "OTA stay {BookingId} of feed {FeedId} to check: {Reason}; the stay was not changed", stay.Id, feedId, reason);
+        }
     }
 
     // Stores the stable error code, never the exception message (FD-16: no oracle on what the server can reach). The

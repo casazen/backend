@@ -843,6 +843,22 @@ public class AppDbContext(
             .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
 
+        // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
+        // which takes its nights again on its own.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasOne(b => b.Booking)
+            .WithMany()
+            .HasForeignKey(b => b.BookingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.BookingId)
+            .IsUnique();
+
+        // The stays of a feed, found again by the sync (feed + block UID) when a block comes back.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.ICalFeedId, b.ExternalId });
+
         modelBuilder.Entity<PropertyICalFeed>()
             .HasOne(f => f.Property)
             .WithMany()

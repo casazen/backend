@@ -32,14 +32,33 @@ public static class PropertyOccupancy
 
     /// <summary>
     /// A calendar block of <paramref name="propertyId"/> (iCal import or manual) that takes at least one night from
-    /// <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded).
+    /// <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded), unless the host turned it into an
+    /// OTA stay that stands for it (<see cref="IsRepresentedByStay"/>, CO-21): then its nights are the stay's and count
+    /// once, through the stay.
     /// </summary>
     public static Expression<Func<CalendarBlock, bool>> BlockTakesNightIn(Guid propertyId, DateTime fromDate, DateTime toDate)
     {
         var from = fromDate.Date;
         var to = toDate.Date;
-        return b => b.PropertyId == propertyId && b.StartUtc.Date < to && b.EndUtc.Date > from;
+        return b => b.PropertyId == propertyId && b.StartUtc.Date < to && b.EndUtc.Date > from
+            && (b.BookingId == null
+                || b.Booking!.Status == BookingStatus.Cancelled
+                || b.Booking.CheckInDate.Date != b.StartUtc.Date
+                || b.Booking.CheckOutDate.Date != b.EndUtc.Date);
     }
+
+    /// <summary>
+    /// An imported block converted into an OTA stay (CO-21, D7) that stands for it: the stay is not cancelled and takes
+    /// exactly the block's nights, so the stay counts them and the block does not (no double occupancy). A block whose
+    /// stay was cancelled, or whose dates changed on the channel, counts on its own again: its nights stay taken whatever
+    /// the host does with the stay.
+    /// </summary>
+    public static bool IsRepresentedByStay(CalendarBlock block, Booking? stay) =>
+        stay is not null
+        && block.BookingId == stay.Id
+        && stay.Status != BookingStatus.Cancelled
+        && stay.CheckInDate.Date == block.StartUtc.Date
+        && stay.CheckOutDate.Date == block.EndUtc.Date;
 
     /// <summary>
     /// The nights taken by a stay or block from <paramref name="start"/> to <paramref name="end"/> (see the class

@@ -268,6 +268,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
+        services.AddScoped<IOtaStayService, OtaStayService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();

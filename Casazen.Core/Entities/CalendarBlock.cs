@@ -43,6 +43,17 @@ public class CalendarBlock : ITenantOwned
 
     public DateTime? LastSyncedAt { get; set; }
 
+    /// <summary>
+    /// The OTA stay the host created from this imported block (CO-21, decision D7). The block stays linked to it and keeps
+    /// following its feed; while the stay is not cancelled and has the block's dates, the nights are counted once,
+    /// through the stay (<see cref="Services.PropertyOccupancy.BlockTakesNightIn"/>). Null for a block not converted.
+    /// Unique: one stay per block.
+    /// </summary>
+    public Guid? BookingId { get; set; }
+
+    [ForeignKey(nameof(BookingId))]
+    public Booking? Booking { get; set; }
+
     [ForeignKey(nameof(PropertyId))]
     public Property Property { get; set; } = null!;
 

@@ -96,6 +96,55 @@ public class NotificationService(
         return Task.CompletedTask;
     }
 
+    public async Task SendOtaStayReviewAlertAsync(OtaStayReviewAlert alert, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        // Called by the iCal sync job: no tenant filter; the booking id comes from the sync's own query.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Include(b => b.Org)
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == alert.BookingId, cancellationToken);
+        if (booking is null)
+        {
+            logger.LogWarning("OTA stay review alert skipped because booking {BookingId} was not found", alert.BookingId);
+            return;
+        }
+
+        var culture = EmailTemplates.DefaultCulture;
+        var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
+        var propertyName = booking.Property.Name;
+        var channelName = EmailTemplates.OtaChannelName(booking.Source, booking.ChannelLabel);
+        var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
+        var email = EmailTemplates.HostOtaStayReview(
+            culture,
+            alert.Reason,
+            guestName,
+            propertyName,
+            channelName,
+            booking.CheckInDate,
+            booking.CheckOutDate,
+            alert.ChannelCheckIn,
+            alert.ChannelCheckOut,
+            bookingUrl);
+
+        if (!emailQueue.Enqueue(booking.Org?.ContactEmail, email, EmailTemplates.Names.HostOtaStayReview))
+        {
+            logger.LogWarning(
+                "OTA stay review email of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
+        }
+
+        var push = EmailTemplates.OtaStayReviewPush(culture, alert.Reason, propertyName, channelName, booking.CheckInDate);
+        await pushNotificationService.SendToBookingHostsAsync(
+            new PushNotificationPayload(push.Title, push.Body, OtaStayReviewPushType, booking.Id, PushRoutes.Booking(booking.Id)),
+            cancellationToken);
+    }
+
+    /// <summary>Push <c>type</c> of the "OTA stay to check" alert (CO-21); the app opens the booking from the route.</summary>
+    public const string OtaStayReviewPushType = "ota-stay-review";
+
     /// <summary>Push <c>type</c> of each Alloggiati alert (the app opens the booking from the route).</summary>
     private static string PushType(StayAlertKind kind) => kind switch
     {
