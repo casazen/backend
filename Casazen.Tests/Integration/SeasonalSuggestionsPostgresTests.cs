@@ -124,23 +124,34 @@ public sealed class SeasonalSuggestionsPostgresTests : IAsyncLifetime
         var target = migrations.Single(m => m.EndsWith("_SeasonalPriceSuggestions", StringComparison.Ordinal));
         migrator.Migrate(migrations[migrations.IndexOf(target) - 1]);
 
-        var (org, property) = await SeedOrgAndPropertyAsync(db, 180m);
+        // Seeded with SQL, not with the entities: the current model has columns that later migrations add.
+        var (orgId, propertyId) = (Guid.NewGuid(), Guid.NewGuid());
         var configId = Guid.NewGuid();
         var otaPushId = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Orgs" ("Id", "Name", "Slug", "PlanTier", "DisplayName", "ContactEmail", "IsActive", "CreatedAt", "UpdatedAt")
+            VALUES ({orgId}, 'Org PC-15', {"pc15-" + orgId.ToString("N")}, 0, 'Org PC-15', '', true, now(), now());
+
+            INSERT INTO "Properties" (
+                "Id", "OwnerId", "OrgId", "Name", "Description", "Address", "City", "PostalCode",
+                "Latitude", "Longitude", "Bedrooms", "Bathrooms", "MaxGuests", "NightlyRate", "CleaningFee", "DamageDeposit",
+                "Amenities", "PhotoUrls", "HouseRules", "Timezone", "IsActive", "CreatedAt", "UpdatedAt")
+            VALUES ({propertyId}, 'auth0|pc15', {orgId}, 'Casa PC-15', 'Seasonal suggestions', 'Via Roma 1', 'Roma', '00100',
+                0, 0, 2, 1, 4, 180, 0, 0, ARRAY[]::integer[], ARRAY[]::text[], '', 'Europe/Rome', true, now(), now());
+
             INSERT INTO "PricingAdapterConfigs" ("Id", "PropertyId", "OrgId", "IsEnabled", "AdaptationFrequency",
                 "IncludeSeasonality", "IncludePublicHolidays", "NextScheduledRunAt", "CreatedAt", "UpdatedAt")
-            VALUES ({configId}, {property.Id}, {org.Id}, true, 'weekly', true, true, now(), now(), now());
+            VALUES ({configId}, {propertyId}, {orgId}, true, 'weekly', true, true, now(), now(), now());
 
             INSERT INTO "PricingHistories" ("Id", "PropertyId", "OrgId", "AdaptationDate", "PreviousPrice", "NewPrice",
                 "ChangeReason", "AiConfidence", "OtasSynced", "SyncStatus", "CreatedAt")
-            SELECT gen_random_uuid(), {property.Id}, {org.Id}, now() + make_interval(days => d), 100, 130,
+            SELECT gen_random_uuid(), {propertyId}, {orgId}, now() + make_interval(days => d), 100, 130,
                 'Dynamic pricing adaptation (multiplier: 1.30x)', 0.85, '', 'Pending', now()
             FROM generate_series(0, 90) AS d;
 
             INSERT INTO "PricingHistories" ("Id", "PropertyId", "OrgId", "AdaptationDate", "PreviousPrice", "NewPrice",
                 "ChangeReason", "AiConfidence", "OtasSynced", "SyncStatus", "CreatedAt")
-            VALUES ({otaPushId}, {property.Id}, {org.Id}, now(), 180, 190, 'Batch OTA price update', 1.0, '["Airbnb"]', 'synced', now());
+            VALUES ({otaPushId}, {propertyId}, {orgId}, now(), 180, 190, 'Batch OTA price update', 1.0, '["Airbnb"]', 'synced', now());
             """);
 
         migrator.Migrate(target);
@@ -152,7 +163,7 @@ public sealed class SeasonalSuggestionsPostgresTests : IAsyncLifetime
         Assert.Equal(0.80m, config.LowSeasonMultiplier);
         Assert.Equal(1.50m, config.HolidayMultiplier);
         Assert.Equal("weekly", config.AdaptationFrequency);
-        var history = await db.PricingHistories.AsNoTracking().Where(h => h.PropertyId == property.Id).ToListAsync();
+        var history = await db.PricingHistories.AsNoTracking().Where(h => h.PropertyId == propertyId).ToListAsync();
         Assert.Equal(otaPushId, Assert.Single(history).Id);
         Assert.Contains("DELETE FROM \"PricingHistories\"", SeasonalPriceSuggestions.DeleteInventedHistorySql);
     }
