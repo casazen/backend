@@ -320,8 +320,13 @@ public class FieldEncryptionPostgresTests
             await db.SaveChangesAsync();
             await InsertGuestBeforeCo15Async(db, guest);
             await InsertGuestBeforeCo15Async(db, empty);
+            // CO-21 (unrelated to CO-15) added 4 nullable Bookings columns after this migration point too. They have no
+            // constraint of their own, so it is simplest to create them here just for the insert below and drop them
+            // again right after: the real migration (already ahead in the migrations list) recreates them properly.
+            await AddBookingsColumnsBeforeCo21Async(db);
             db.Add(booking);
             await db.SaveChangesAsync();
+            await DropBookingsColumnsBeforeCo21Async(db);
             await InsertStayGuestBeforeCo15Async(db, stay);
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO "PropertyQuesturaCredentials" ("Id", "PropertyId", "Username", "PasswordEncrypted", "WsKey", "CreatedAt")
@@ -370,6 +375,25 @@ public class FieldEncryptionPostgresTests
                 {guest.MarketingConsentDate}, {guest.CreatedAt.AddYears(7)}, {guest.DataProcessingPurpose}, {guest.IsDeleted},
                 {guest.DeletedAt}, {guest.DeletionReason}, {guest.CreatedAt}, {guest.UpdatedAt})
             """);
+
+    /// <summary>
+    /// Adds the 4 nullable "Bookings" columns of the CO-21 migration (<c>AddOtaStayFromICalBlock</c>), so the
+    /// model-based insert of a booking works at this "before CO-15" migration point too. Paired with
+    /// <see cref="DropBookingsColumnsBeforeCo21Async"/>.
+    /// </summary>
+    private static Task AddBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Bookings" ADD COLUMN "ChannelLabel" character varying(60);
+        ALTER TABLE "Bookings" ADD COLUMN "ICalFeedId" uuid;
+        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewRaisedAt" timestamp with time zone;
+        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewReason" integer;
+        """);
+
+    private static Task DropBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Bookings" DROP COLUMN "ChannelLabel";
+        ALTER TABLE "Bookings" DROP COLUMN "ICalFeedId";
+        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewRaisedAt";
+        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewReason";
+        """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>
     private static Task InsertStayGuestBeforeCo15Async(AppDbContext db, StayGuest stay) =>
