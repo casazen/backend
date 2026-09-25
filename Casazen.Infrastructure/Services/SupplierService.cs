@@ -491,6 +491,10 @@ public partial class SupplierService(
         var entriesList = entries.ToList();
         var dates = entriesList.Select(e => e.Date).ToList();
 
+        // Same lock as the iCal sync (SU-15): a sync running meanwhile never writes or frees the same days.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, CalendarSyncService.AvailabilityLock(orgId));
+
         var existing = await db.SupplierAvailability
             .Where(sa => sa.OrgId == orgId && dates.Contains(sa.Date))
             .ToListAsync(cancellationToken);
@@ -506,16 +510,25 @@ public partial class SupplierService(
                     OrgId = orgId,
                     Date = date,
                     Available = available,
+                    Source = SupplierAvailabilitySource.Manual,
                 });
             }
-            else
+            else if (record.Available != available)
             {
+                // A change by the supplier makes the day manual: the iCal sync no longer frees it.
                 record.Available = available;
+                record.Source = SupplierAvailabilitySource.Manual;
             }
+
+            // Same value: the day keeps its source. The page saves every visible day, and a busy day of the feed saved
+            // unchanged must stay a feed day (freed when its event leaves the calendar).
             count++;
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
         return count;
     }
 
@@ -857,7 +870,7 @@ public partial class SupplierService(
             .FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
 
         if (profile is null)
-            return new SupplierDashboard(0, "Unknown", 0, "None", null, null, null, DateTime.UtcNow);
+            return new SupplierDashboard(0, "Unknown", 0, "None", null, null, null, nameof(SupplierCalendarSyncStatus.None), DateTime.UtcNow);
 
         var today = TimeProvider.System.TodayInRomeAsDateOnly();
 
@@ -890,6 +903,7 @@ public partial class SupplierService(
             profile.IcalFeedUrl,
             profile.CalendarLastSyncAt,
             profile.CalendarSyncError,
+            profile.CalendarSyncStatus.ToString(),
             profile.UpdatedAt);
     }
 
@@ -915,6 +929,10 @@ public partial class SupplierService(
         profile.CalendarSyncType = syncType;
         profile.IcalFeedUrl = icalFeedUrl?.Trim();
         profile.CalendarSyncError = calendarSyncError;
+        // An iCal URL is synced by a queued job (SU-15): the caller queues it, the state says so until it has run.
+        profile.CalendarSyncStatus = syncType == CalendarSyncType.ICalFeed && !string.IsNullOrWhiteSpace(profile.IcalFeedUrl)
+            ? SupplierCalendarSyncStatus.Syncing
+            : SupplierCalendarSyncStatus.None;
         profile.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);

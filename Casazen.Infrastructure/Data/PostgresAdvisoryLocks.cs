@@ -54,7 +54,8 @@ internal static class PostgresAdvisoryLocks
         /// <summary>
         /// iCal import feeds of one property (key: property id): two sync runs of a feed (the 15-minute job and a first
         /// sync or "sync now") never write the same blocks at once (PC-10, A2-12); adding a feed (count and duplicate
-        /// check) and removing one never interleave with them (PC-11). Also taken to create the export link.
+        /// check) and removing one never interleave with them (PC-11). Also taken to create the export link, and to turn a
+        /// block into an OTA stay or change that stay after a sync (CO-21): a sync never removes the block meanwhile.
         /// </summary>
         PropertyICalSync = 1_010,
 
@@ -105,6 +106,12 @@ internal static class PostgresAdvisoryLocks
         /// profiles at once (SU-14, A4-22). The run also takes <see cref="SupplierClaim"/> for every profile it merges.
         /// </summary>
         SupplierMaintenance = 1_054,
+
+        /// <summary>
+        /// Availability days of one supplier (key: supplier org id): the iCal sync (15-minute job, first sync, "sync
+        /// now") and the supplier's manual changes never write the same days at once (SU-15).
+        /// </summary>
+        SupplierCalendarSync = 1_065,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

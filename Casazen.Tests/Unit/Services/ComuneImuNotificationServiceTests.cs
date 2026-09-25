@@ -25,7 +25,7 @@ public class ComuneImuNotificationServiceTests
     private const string OwnerId = "auth0|host";
 
     [Fact]
-    public async Task ExportAsync_RegisteredSeveso_ReturnsPdfWithChannelUncertainty()
+    public async Task ExportAsync_RegisteredSeveso_ReturnsPdfWithChannelDataFromDb()
     {
         var (sut, events) = CreateSut(BuildLease("Seveso", LeaseStatus.Registered));
 
@@ -35,17 +35,15 @@ public class ComuneImuNotificationServiceTests
         Assert.True(result.PdfBytes.Length > 4);
         Assert.Equal("%PDF", Encoding.ASCII.GetString(result.PdfBytes, 0, 4));
         var text = PdfTestReader.Text(result.PdfBytes);
-        Assert.Contains("Incertezza", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("NON univoco", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("canale ufficiale NON univoco", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("protocollo@comune.seveso.mb.it", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SPID", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("canale ufficiale e'", text, StringComparison.OrdinalIgnoreCase);
         events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e => e.EventType == LeaseEventType.ImuNotificationExported)), Times.Once);
         events.Verify(r => r.AddAsync(It.Is<LeaseEvent>(e => e.EventType == LeaseEventType.ImuNotificationMarkedSent)), Times.Never);
     }
 
     [Fact]
-    public async Task ExportAsync_RegisteredCesano_LabelsDerivedImu()
+    public async Task ExportAsync_RegisteredCesano_LabelsDerivedImuFromDb()
     {
         var (sut, _) = CreateSut(BuildLease("Cesano Maderno", LeaseStatus.Registered));
 
@@ -56,7 +54,18 @@ public class ComuneImuNotificationServiceTests
         Assert.Contains("valore derivato", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("2025", text);
         Assert.Contains("0,78", text);
-        Assert.DoesNotContain("aliquota ufficiale", text.ToLowerInvariant().Replace("non e' un'aliquota ufficiale", ""));
+    }
+
+    [Fact]
+    public async Task ExportAsync_RegisteredComuneWithoutChannel_FallsBackToGenericRecipient()
+    {
+        var (sut, _) = CreateSut(BuildLease("Monza", LeaseStatus.Registered), BuildAgreement("Monza"));
+
+        var result = await sut.ExportAsync(Guid.NewGuid());
+
+        Assert.NotNull(result);
+        var text = PdfTestReader.Text(result.PdfBytes);
+        Assert.Contains("da verificare con l'ufficio tributi", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -75,7 +84,8 @@ public class ComuneImuNotificationServiceTests
         var (sut, events) = CreateSut(BuildLease(
             "Seveso",
             LeaseStatus.Registered,
-            FiscalRegime.CedolareSecca));
+            FiscalRegime.CedolareSecca,
+            LeaseContractType.Libero));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
             () => sut.ExportAsync(Guid.NewGuid()));
@@ -172,7 +182,8 @@ public class ComuneImuNotificationServiceTests
         var (sut, events) = CreateSut(BuildLease(
             "Seveso",
             LeaseStatus.Registered,
-            FiscalRegime.RegimeOrdinario));
+            FiscalRegime.RegimeOrdinario,
+            LeaseContractType.Libero));
 
         await Assert.ThrowsAsync<ImuNotificationNotReadyException>(
             () => sut.MarkSentAsync(Guid.NewGuid(), OwnerId));
@@ -244,6 +255,75 @@ public class ComuneImuNotificationServiceTests
     }
 
     [Fact]
+    public async Task GetStatusAsync_NonCanoneConcordatoLease_NotApplicable()
+    {
+        var (sut, _) = CreateSut(BuildLease(
+            "Seveso", LeaseStatus.Registered, FiscalRegime.CedolareSecca, LeaseContractType.Libero));
+
+        var status = await sut.GetStatusAsync(Guid.NewGuid());
+
+        Assert.NotNull(status);
+        Assert.False(status.Applicable);
+        Assert.False(status.Available);
+        Assert.Equal(ImuNotificationReasonCodes.NotConcordato, status.ReasonCode);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_NotRegistered_ApplicableButNotAvailable()
+    {
+        var (sut, _) = CreateSut(BuildLease("Seveso", LeaseStatus.Signed));
+
+        var status = await sut.GetStatusAsync(Guid.NewGuid());
+
+        Assert.NotNull(status);
+        Assert.True(status.Applicable);
+        Assert.False(status.Available);
+        Assert.Equal(ImuNotificationReasonCodes.LeaseNotRegistered, status.ReasonCode);
+        Assert.NotNull(status.Channel);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_RegisteredWithoutUsableAgreement_DataUnavailable()
+    {
+        var (sut, _) = CreateSut(
+            BuildLease("Monza", LeaseStatus.Registered),
+            BuildAgreement("Monza", DataCompleteness.Missing, includeBand: false));
+
+        var status = await sut.GetStatusAsync(Guid.NewGuid());
+
+        Assert.NotNull(status);
+        Assert.True(status.Applicable);
+        Assert.False(status.Available);
+        Assert.Equal(ImuNotificationReasonCodes.DataUnavailable, status.ReasonCode);
+        Assert.Null(status.Channel);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_RegisteredWithUsableAgreement_AvailableWithChannel()
+    {
+        var (sut, _) = CreateSut(BuildLease("Cesano Maderno", LeaseStatus.Registered));
+
+        var status = await sut.GetStatusAsync(Guid.NewGuid());
+
+        Assert.NotNull(status);
+        Assert.True(status.Applicable);
+        Assert.True(status.Available);
+        Assert.Null(status.ReasonCode);
+        Assert.NotNull(status.Channel);
+        Assert.Equal("U.O. Risorse Tributarie", status.Channel!.RecipientOffice);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_LeaseNotVisible_ReturnsNull()
+    {
+        var (sut, _) = CreateSut(lease: null);
+
+        var status = await sut.GetStatusAsync(Guid.NewGuid());
+
+        Assert.Null(status);
+    }
+
+    [Fact]
     public async Task Controller_Export_Registered_ReturnsPdfFile()
     {
         var imu = new Mock<IComuneImuNotificationService>();
@@ -258,6 +338,35 @@ public class ComuneImuNotificationServiceTests
         Assert.Equal("%PDF", Encoding.ASCII.GetString(file.FileContents, 0, 4));
     }
 
+    [Fact]
+    public async Task Controller_GetImuNotificationStatus_AuthorizedLease_ReturnsStatus()
+    {
+        var status = new ImuNotificationStatusDto(true, true, null, "Cesano Maderno", null);
+        var imu = new Mock<IComuneImuNotificationService>();
+        imu.Setup(s => s.GetStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(status);
+        var controller = CreateController(imu.Object, BuildLease("Cesano Maderno", LeaseStatus.Registered));
+
+        var result = await controller.GetImuNotificationStatus(Guid.NewGuid(), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var body = Assert.IsType<ImuNotificationStatusDto>(ok.Value);
+        Assert.True(body.Available);
+        Assert.Equal("Cesano Maderno", body.Comune);
+    }
+
+    [Fact]
+    public async Task Controller_GetImuNotificationStatus_LeaseNotVisible_Returns404WithoutCalling()
+    {
+        var imu = new Mock<IComuneImuNotificationService>();
+        var controller = CreateController(imu.Object, lease: null);
+
+        var result = await controller.GetImuNotificationStatus(Guid.NewGuid(), CancellationToken.None);
+
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        imu.Verify(s => s.GetStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static (ComuneImuNotificationService Sut, Mock<ILeaseEventRepository> Events) CreateSut(
         LeaseContract? lease,
         TerritorialRentAgreement? agreement = null)
@@ -270,8 +379,43 @@ public class ComuneImuNotificationServiceTests
         territorialAgreements
             .Setup(r => r.GetByComuneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(agreement ?? BuildAgreement(lease?.Property.City ?? "Seveso"));
-        return (new ComuneImuNotificationService(leases.Object, events.Object, territorialAgreements.Object, new MigraDocPdfDocumentRenderer()), events);
+        var imuChannels = new Mock<IComuneImuChannelRepository>();
+        imuChannels
+            .Setup(r => r.GetByComuneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string city, CancellationToken _) => BuildChannel(city));
+        return (
+            new ComuneImuNotificationService(
+                leases.Object, events.Object, territorialAgreements.Object, imuChannels.Object, new MigraDocPdfDocumentRenderer()),
+            events);
     }
+
+    /// <summary>Reference-data rows a real migration would seed for the two verified pilot comuni (LT-13, A7-22).</summary>
+    private static ComuneImuChannel? BuildChannel(string city) => city switch
+    {
+        "Seveso" => new ComuneImuChannel
+        {
+            Comune = city,
+            Region = "Lombardia",
+            RecipientOffice = "Ufficio Tributi",
+            Email = "protocollo@comune.seveso.mb.it",
+            Pec = "comune.seveso@pec.it",
+            Instructions = "Canale ufficiale NON univoco: la ricerca registra anche il portale SPID/CIE/CNS Servizi Sociali.",
+            DataCompleteness = DataCompleteness.Partial,
+        },
+        "Cesano Maderno" => new ComuneImuChannel
+        {
+            Comune = city,
+            Region = "Lombardia",
+            RecipientOffice = "U.O. Risorse Tributarie",
+            Email = "risorse.tributarie@comune.cesano-maderno.mb.it",
+            Pec = "risorse.finanziarie@pec.comune.cesano-maderno.mb.it",
+            RatePercent = 0.78m,
+            RateYear = 2025,
+            RateKind = ImuRateKind.Derived,
+            DataCompleteness = DataCompleteness.Partial,
+        },
+        _ => null,
+    };
 
     /// <summary>
     /// Controller whose lease lookup returns <paramref name="lease"/> (null = not in the caller's org) and whose
@@ -321,11 +465,13 @@ public class ComuneImuNotificationServiceTests
     private static LeaseContract BuildLease(
         string city,
         LeaseStatus status,
-        FiscalRegime fiscalRegime = FiscalRegime.CanoneConcordato) => new()
+        FiscalRegime fiscalRegime = FiscalRegime.CanoneConcordato,
+        LeaseContractType contractType = LeaseContractType.Concordato) => new()
         {
             Id = Guid.NewGuid(),
             Status = status,
             FiscalRegime = fiscalRegime,
+            ContractType = contractType,
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent = 400m,

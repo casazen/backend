@@ -1,10 +1,12 @@
 # Runbook: iCal import and export (property OTA calendars, supplier calendars)
 
-Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20) and PC-12 (A2-22). The download of the
-feed (anti-SSRF client, size and time limits, error codes) is described in [external-fetch.md](external-fetch.md)
-(FD-16). This page covers the import feeds of a property (many per property, URL encrypted), what happens after the
-download (how a feed is read, when it is an error), how the sync job isolates feeds, and the export feed read by the
-OTAs ([Export feed](#export-feed-pc-12)).
+Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22), SU-15 (A4-11, A9-14:
+supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)) and CO-21 (GC-AC9, decision D7). The
+download of the feed (anti-SSRF client, size and time limits, error codes) is described in
+[external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
+encrypted), what happens after the download (how a feed is read, when it is an error), how the sync job isolates feeds,
+the export feed read by the OTAs ([Export feed](#export-feed-pc-12)) and the OTA stays the host creates from imported
+blocks ([OTA stays from iCal blocks](#ota-stays-from-ical-blocks-co-21)).
 
 Nothing has to be configured: the defaults below apply when the `ICalImport` section is missing. The encryption of the
 import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07), already required by the OTA secrets.
@@ -20,7 +22,8 @@ import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07
 | Encryption of the import URL, startup re-encryption | `Data/Encryption/EncryptedStringConverter.cs`, `Data/Encryption/PropertyICalFeedUrlEncryption.cs` |
 | Masked URL of the API | `Web/Infrastructure/ICalFeedUrlMask.cs` |
 | Export link of a property, token and its regeneration (PC-12) | entity `PropertyICalExport` (table `PropertyICalExports`), `PropertyICalSyncService.RegenerateExportTokenAsync` |
-| Supplier sync | `Services/CalendarSyncService.cs`, job `IcalSupplierSyncJob` |
+| Supplier sync (SU-15): state, "sync now", days of the feed vs manual days | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs` |
+| OTA stay from a block (CO-21): rules, conversion, "da verificare" | `Core/Services/OtaStays.cs`, `Services/OtaStayService.cs`, `PropertyICalSyncService.ReviewOtaStaysAsync`, `Web/Controllers/OtaStaysController.cs` |
 
 The former F0 spike (`Casazen.Infrastructure/ICalSpike`, `ICalImportSpike`) no longer exists.
 
@@ -218,6 +221,109 @@ is left to a product decision (PC-12 DUBBI).
 3. Regenerate the link (`POST …/ical/export-url/regenerate`): the old URL answers 404, the new one 200; paste the new
    one on the OTAs.
 
+## OTA stays from iCal blocks (CO-21)
+
+An iCal feed publishes dates only: a reservation received on Airbnb or Booking.com arrives in CasaZen as a block, with
+no guest, so no check-in link, no Alloggiati Web and no cockpit (audit GC-AC9). Decision D7: the host **turns the block
+into an "OTA stay"** by giving the guest's name and email. The stay is an ordinary confirmed booking; from it the guest
+check-in link (CO-09), Alloggiati Web (CO-11, CO-12, see [alloggiati.md](alloggiati.md)), the cockpit (CO-04, CO-10) and
+"registra arrivo" / check-out (CO-08) work as for any other stay. Nothing to configure.
+
+### Conversion
+
+`POST /api/ical-blocks/{blockId}/ota-stay` (`BookingWrite` plus the resource check on the property of the block: another
+org gets 404, a user without `booking.write` on the property 403). Body:
+
+| Field | |
+|---|---|
+| `firstName`, `lastName`, `email` | Required (max 100, 100, 255). The email receives the check-in link. A new guest of the property's org (TN-1), never a lookup by email |
+| `numberOfGuests` | Optional, 1-100 and at most the property's maximum (422 `booking_too_many_guests`); 1 when omitted |
+| `totalPrice` | Optional, >= 0: the amount the channel shows. **CasaZen never computes a price** for an OTA stay (no nightly rate, no tourist tax): without it the amounts are 0 |
+| `source` | Only for a feed of channel `Other`: the OTA of the reservation (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`); ignored for an Airbnb or Booking.com feed |
+
+201 with the booking: `status` `Confirmed`, `source` the channel of the feed (Airbnb feed → `Airbnb`, Booking.com feed →
+`BookingCom`), the dates of the block (check-out = end of the block), `icalFeedId` and `channelLabel` (label of the feed),
+`channelBlock` (the block). The stay stores the feed (`Bookings.ICalFeedId`) and the UID of the block
+(`Bookings.ExternalId`); the block stores its stay (`CalendarBlocks.BookingId`, unique). No email is sent at the
+conversion: the guest booked on the channel, which confirmed it. The check-in link is sent by the host from the booking
+(tab Ospite) or by the daily `guest-checkin-send` job for stays starting within `CheckIn__SendWindowDays`.
+
+| Error | When |
+|---|---|
+| 404 `ical_block_not_found` | No such block, or of another org |
+| 422 `ota_stay_block_not_imported` | A manual block (only a block imported from a feed is a reservation of a channel) |
+| 409 `ota_stay_block_already_converted` | The block is already linked to a stay that is not cancelled. After the host cancels that stay, the block can be converted again |
+| 409 `ota_stay_block_overlaps_booking` | Another booking not cancelled takes one of its nights (checked under the property's dates lock, as for any booking; expired checkout holds are released first) |
+| 422 `ota_stay_block_ended` | The check-out of the block is before today (Europe/Rome): a stay already over is not converted |
+| 422 `ota_stay_source_required` | Feed of channel `Other` without an OTA `source` |
+| 400 `validation_error` | Name or email missing or invalid (localized field messages) |
+
+The conversion holds the lock `PropertyICalSync` of the property (the one of the sync): a sync never removes the block
+while it becomes a stay.
+
+### Occupancy, calendar and export
+
+- **Counted once.** A block linked to a stay that is not cancelled and has the block's dates stands for that stay:
+  `PropertyOccupancy.BlockTakesNightIn` leaves it out and the stay counts the nights (public availability, overlap
+  checks, checkout). A block whose stay was cancelled, or whose dates changed on the channel, counts again on its own:
+  its nights stay taken whatever the host does with the stay.
+- **Host calendar** (`GET /api/bookings/calendar`): the stay is shown once, as a booking item with `icalFeedId`,
+  `channelLabel`, `otaReviewReason`; a block item carries, besides `channel` and `feedLabel` (MO-06), `blockSource`, `feedId`, `bookingId`
+  (its stay) and `convertible` ("Crea soggiorno OTA" offered: imported, not linked to an active stay, not over).
+- **Export (PC-12)**: the stay has an OTA source and the block is imported: neither is ever exported (no echo).
+- **Disconnecting the feed** deletes its blocks, converted ones included; the stays stay (confirmed, dates taken), keep
+  `icalFeedId` and are not marked: the host chose to disconnect.
+
+### Later syncs: "da verificare" (documented rule)
+
+A sync **never changes nor cancels** an OTA stay. For the blocks of the feed linked to a stay:
+
+| Found by the sync | Stay (only if confirmed or checked in, with check-out today or later, Europe/Rome) | Alert |
+|---|---|---|
+| The block is gone from a valid feed (reservation cancelled or moved on the channel) | `OtaReviewReason = BlockRemoved`; stays confirmed, its dates stay taken; the block is deleted as any orphan | Once (not again while the mark is on) |
+| The block has other dates than at the previous sync and than the stay | `OtaReviewReason = BlockDatesChanged`; the stay keeps its dates, the block takes its new nights on its own | Once per change of dates |
+| A block with the UID of a stay of this feed whose block had left it comes back | Linked to the stay again; other dates → `BlockDatesChanged` | As above |
+
+A stay already over is never marked: the OTAs drop past reservations from their feeds. A feed that fails (download,
+format) keeps its blocks and marks nothing. A feed whose events have no UID gets a key from dates and summary: a change of
+dates there reads as a block removed plus a new block (the stay is marked `BlockRemoved`).
+
+**Alert** (after the commit; a delivery failure never undoes the mark): email `host-ota-stay-review` to the org's
+contact address (queued on Hangfire, FD-13; texts `EmailTexts*.resx` `OtaStayReview_*`) with the stay, the channel, the
+dates in CasaZen and, for new dates, the channel's; push `ota-stay-review` to the property's hosts (route
+`/bookings/{id}`). The web app shows "Da verificare" in the booking list, in the calendar and as a notice on the booking.
+
+**Host actions** (`POST /api/bookings/{id}/ota-review/resolve`, `BookingWrite` + resource check, body optional):
+
+- `{}`: "Segna come verificato", the mark is cleared, nothing else changes. For a cancelled reservation the host cancels
+  the stay with the usual cancellation (BK-02; it emails the guest the cancellation like any booking).
+- `{ "applyChannelDates": true }`: "Applica le date del canale", the stay takes the current dates of its block, then the
+  mark is cleared. Only a confirmed stay (422 `booking_stay_locked` after the arrival), new check-in not in the past
+  (422 `booking_checkin_in_past`), other bookings checked (409 `booking_dates_unavailable`), the block must still be in the
+  feed (422 `ota_stay_channel_dates_unavailable`). The amount stays the host's.
+
+### Migration `AddOtaStayFromICalBlock`
+
+Adds `Bookings.ICalFeedId` (uuid, a plain reference, no foreign key), `ChannelLabel` (varchar 60), `OtaReviewReason`
+(int), `OtaReviewRaisedAt` (timestamptz), index `ICalFeedId + ExternalId`; `CalendarBlocks.BookingId` (uuid, FK to
+`Bookings` `ON DELETE SET NULL`, unique index). No data is rewritten; Down drops them.
+
+```sql
+-- OTA stays created from iCal and those to check
+SELECT "OtaReviewReason", count(*) FROM "Bookings" WHERE "ICalFeedId" IS NOT NULL GROUP BY 1;
+-- Blocks standing for a stay (expected: as many as the stays above whose block is still in the feed)
+SELECT count(*) FROM "CalendarBlocks" WHERE "BookingId" IS NOT NULL;
+```
+
+### Checks after a deploy
+
+1. Property with an Airbnb feed: in the calendar open a purple block → "Crea soggiorno OTA", name and email → the
+   booking opens on the tab Ospite; the calendar shows the stay once, the public availability the same nights, the
+   export link no event for it.
+2. From the stay: "Copia link" of the check-in works; on the arrival day the cockpit lists it.
+3. Remove the reservation from the test calendar and "Sincronizza ora": the stay stays confirmed with "Da verificare",
+   the org's contact address receives "Soggiorno … da verificare"; "Segna come verificato" clears it.
+
 ## When a feed is valid
 
 | Downloaded document | Result | Stored |
@@ -278,14 +384,85 @@ varchar(500)).
   carries a property id: no feed has that id, the job does nothing and the 15-minute job syncs the feed.
 - After a rejected write the context is cleared before the `Failure` state is saved: the same changes are never
   saved twice.
-- The supplier batch has the same per-supplier try/catch.
+- The supplier batch (`ical-supplier-sync`) works the same way: each supplier in its own DI scope and try/catch, its
+  days written in one transaction under the advisory lock `SupplierCalendarSync` on the supplier org (details in
+  [Supplier calendars](#supplier-calendars-su-15)).
 
-## Supplier calendars: known limit
+## Supplier calendars (SU-15)
 
-A supplier feed marks busy the days its events touch (`SupplierAvailability.Available = false`). A valid calendar
-without events is a success (no error shown), but days marked busy by earlier syncs are **not** freed when their events
-disappear: `SupplierAvailability` does not record whether a day came from the feed or from the supplier, so the sync
-cannot tell which days it may release. Fixing it needs a source column (migration) and is left open (see PC-10 report).
+A supplier links **one** iCal feed (Google Calendar, Apple, Outlook, ...) in *Sincronizza calendario* or in the
+activation wizard. Its busy days go into `SupplierAvailability` (one row per day, `Available = false`).
+
+### API (policy `RequireSupplier`, the caller's supplier org only)
+
+| Action | Answer |
+|---|---|
+| `PUT /api/supplier/calendar/ical` `{ icalFeedUrl }` | Saves the URL (external https only, FD-16: 400 `ical_invalid_url` otherwise) and **queues** the first sync: **202** with `lastSyncStatus: "Syncing"` |
+| `POST /api/supplier/calendar/sync` ("sync now") | **202** `Syncing` and a queued job; if a sync is already queued, the current state and nothing more queued; **422** `ical_supplier_no_feed` without a URL |
+| `GET /api/supplier/calendar/status` (and `calendarSyncStatus` of `GET /api/supplier/dashboard`) | `lastSyncStatus` `None` / `Syncing` / `Success` / `Failure`, `calendarLastSyncAt` (last attempt), `calendarSyncErrorCode` + localized `calendarSyncError` |
+
+Before SU-15 the controller started the first sync with `Task.Run` on the request's scoped services: it always failed
+with `ObjectDisposedException` while the page said "synced", and the 15-minute job skipped suppliers still in the
+wizard. Now the download never runs inside a request: `IcalSupplierSyncJob.SyncSupplierAsync(orgId)` runs in Hangfire
+(`[DisableConcurrentExecution]` per supplier, resource `IcalSupplierSyncJob.SyncSupplierAsync:<orgId>`, 60 s). The web
+page shows "Sincronizzazione avviata" after saving, polls the status while it is `Syncing` (every 3 s for a minute,
+then every 15 s) and shows "Sincronizzato" only when it becomes `Success`. If Hangfire cannot queue the job the URL
+stays saved in `Syncing` and the 15-minute job syncs it (error logged: `Could not queue the iCal sync of supplier …`).
+
+### Recurring job `ical-supplier-sync` (every 15 minutes)
+
+- **Which suppliers**: status `Active` **and `Pending`** (still in the activation wizard) with an iCal URL, least
+  recently synced first. Decision SU-15: a supplier in activation has linked its calendar on purpose, and its days must
+  be right when the profile is activated (hosts see it at once); the URL was validated when saved and is downloaded
+  through the anti-SSRF client, only one per profile, so the cost is small. `Suspended` suppliers are skipped (hosts do
+  not see them); their days are updated again when they are reactivated.
+- **Isolation**: each supplier runs in its own DI scope and try/catch. A supplier whose feed fails, even with an
+  unexpected exception, gets its own `Failure` state and code, and the batch goes on.
+- **No concurrency**: `[DisableConcurrentExecution]` on the recurring job (FD-11) and, for the days themselves, the
+  PostgreSQL advisory lock `SupplierCalendarSync` (scope 1065, key: supplier org id), also taken by the supplier's
+  manual changes (`PUT /api/supplier/availability`). The 15-minute job and a queued first sync on the same supplier wait
+  for each other instead of inserting the same day twice (unique index `OrgId + Date`).
+- **Idempotent**: running it again with the same feeds writes nothing new. A run whose URL was replaced during the
+  download discards its result (the run of the new URL writes).
+
+### Days of the feed vs manual days (column `SupplierAvailability.Source`)
+
+`Source` is `Manual` (0, the supplier) or `ICalFeed` (1, the sync). The sync manages only the days of the feed:
+
+| Situation at a successful sync | Result |
+|---|---|
+| Busy in the feed, no row | New row `Available = false`, `ICalFeed` |
+| Busy in the feed, row open (`Available = true`, any source) | Becomes busy, `ICalFeed`: the supplier's own calendar says busy. When the event goes, the row is removed and the day is open again (open is the default of a day without row) |
+| Busy in the feed, row already closed by the supplier (`Manual`) | Unchanged, stays `Manual`: when the event goes the day stays closed |
+| `ICalFeed` row no longer in the feed (event deleted, **valid feed with no events**) | Row removed: the day is free again (A9-13) |
+| `Manual` row not in the feed | Never touched |
+| Feed with events that cannot be read (no start, end before start) | Days added as usual, **no feed day freed** at that run (an unreadable event is not proof that the commitment is gone) |
+| Download or format error, database failure | Nothing changes, `Failure` + code |
+
+The availability page saves every visible day: a day sent with its current value keeps its source (a feed day saved
+unchanged stays a feed day); a day whose value the supplier changes becomes `Manual`. A feed day the supplier opens by
+hand is taken again by the next sync while the event is still in the feed (the calendar wins over an opening; a
+closure by hand always wins).
+
+### Migration `AddSupplierCalendarSyncSource` (existing data, prudent choice)
+
+- `SupplierAvailability.Source` is added with default `Manual` for **every existing row**. Before SU-15 nothing recorded
+  where a day came from, so an existing busy day may be a closure decided by the supplier: treating it as a feed day
+  could free it and show the supplier available on a day they closed. The prudent choice is the opposite error: a day
+  the old sync had marked busy stays busy (manual) even after its event disappears, until the supplier opens it on the
+  availability page. It only affects suppliers that already had a feed synced before the deploy (the first sync never
+  worked, so only `Active` ones synced by the 15-minute job); new busy days are `ICalFeed` from the first sync on.
+- `SupplierProfiles.CalendarSyncStatus` is added and filled from the stored data: iCal URL with an error →
+  `Failure` (3), with a last sync and no error → `Success` (2), otherwise `None` (0).
+- Support, only for a supplier who confirms they never closed days by hand (optional, run in the Supabase SQL editor
+  of the environment, schema of the environment):
+
+  ```sql
+  UPDATE "SupplierAvailability" SET "Source" = 1
+  WHERE "OrgId" = '<supplier org id>' AND "Available" = false AND "Source" = 0 AND "Date" >= CURRENT_DATE;
+  ```
+
+  The next sync (max 15 minutes, or "Sincronizza ora") then frees those days if they are no longer in the feed.
 
 ## Logs
 
@@ -301,9 +478,18 @@ message can quote the document). Skipped events are logged as counts with the ty
 | `iCal sync failed for feed …` | Error | Database write rejected or other unexpected failure, `ical_sync_failed` stored |
 | `iCal sync of feed … failed; continuing with the next feed` | Error | Even the failure state could not be saved (e.g. database down, URL not decryptable); the batch goes on |
 | `iCal feed … changed during the sync: result discarded` | Information | Feed removed during the download |
+| `iCal sync completed for supplier …: N busy days, M marked busy, K freed` | Information | Supplier feed applied (SU-15) |
+| `iCal download failed for supplier …` / `iCal feed of supplier … is not a readable iCalendar` / `iCal sync failed for supplier …` | Warning / Warning / Error | Supplier `Failure` with `ical_unreachable` (or `_too_large`, `_invalid_url`) / `ical_invalid_format` / `ical_sync_failed`, days kept |
+| `iCal sync of supplier … failed; continuing with the next supplier` | Error | Even the failure state could not be saved; the batch goes on |
+| `Could not queue the iCal sync of supplier …` | Error | Hangfire storage unavailable when the URL was saved or "sync now" was clicked; the 15-minute job syncs it |
 | `iCal feed … added to property …` / `iCal feed … removed from property … with N blocks` | Information | Host linked or disconnected a calendar |
 | `Encrypted N iCal import URLs stored in clear before PC-11` | Information | Startup re-encryption (first start after the PC-11 deploy) |
 | `iCal export link of property … regenerated` | Information | Host replaced the export token (PC-12): the old link answers 404 |
+| `iCal block … of property … converted into OTA stay …` | Information | Host created an OTA stay from a block (CO-21); ids only, never the guest |
+| `OTA stay … of feed … to check: …; the stay was not changed` | Warning | A sync marked the stay "da verificare" (block removed or dates changed) |
+| `iCal block of feed … linked again to OTA stay …` | Information | The reservation came back in the feed |
+| `Review alert of OTA stay … not delivered` | Error | The mark is saved, the email/push failed (see email and push logs) |
+| `OTA stay … verified by the host (channel dates applied: …)` | Information | Host cleared the mark (and maybe applied the channel's dates) |
 
 ## Configuration (Railway variables, optional)
 
@@ -325,7 +511,13 @@ message can quote the document). Skipped events are logged as counts with the ty
    (max 15 min, or "sync now") that feed has `blockCount` 0 and `Success`; the other feed keeps its blocks.
 4. Add as import URL a public https page that is not a calendar: the feed becomes `Failure` with
    `lastErrorCode: "ical_invalid_format"`; the other feeds are unaffected. Disconnect it: its blocks disappear.
-5. Public booking site (BK-05): on the page of a published property with imported blocks, the availability calendar
+5. Supplier (SU-15): as a supplier still in the activation wizard, save a public Google Calendar iCal link. The
+   answer is 202 with `lastSyncStatus: "Syncing"`, the Hangfire dashboard shows a succeeded
+   `IcalSupplierSyncJob.SyncSupplierAsync` job, and within seconds `GET /api/supplier/calendar/status` gives `Success`
+   and the busy days are closed on the availability page. Delete the event in Google Calendar and click
+   "Sincronizza ora": the day is open again, while a day closed by hand stays closed. The API log has no
+   `ObjectDisposedException`.
+6. Public booking site (BK-05): on the page of a published property with imported blocks, the availability calendar
    shows those nights as taken (`GET /api/public/bookings/property/{propertyId}/availability` lists them in
    `bookedDates`, dates only), and a checkout over one of them answers 409 `booking_dates_unavailable`. The check-out
    day of a block stays free. A property not published (inactive or compliance not activated) answers 404

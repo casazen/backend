@@ -29,7 +29,8 @@ public static partial class EmailTemplates
         public const string GuestPaymentRefundedDatesUnavailable = "guest-payment-refunded-dates-unavailable";
         public const string RliDeadlineReminder = "rli-deadline-reminder";
         public const string RliDeadlineOverdue = "rli-deadline-overdue";
-        public const string RliExtraEuNotice = "rli-extra-eu-notice";
+        public const string QuesturaCommunicationReminder = "questura-communication-reminder";
+        public const string QuesturaCommunicationOverdue = "questura-communication-overdue";
         public const string OnSiteRequestReceived = "onsite-request-received";
         public const string OnSiteRequestToHost = "onsite-request-to-host";
         public const string OnSiteRequestDeclined = "onsite-request-declined";
@@ -560,12 +561,52 @@ public static partial class EmailTemplates
             .Build("HostDeferredChargeCancelled_Subject", booking.PropertyName, booking.CheckInDate);
     }
 
-    /// <summary>Lease with an extra-EU tenant: check the Questura communication, to the landlord.</summary>
-    public static EmailContent RliExtraEuNotice(CultureInfo culture, string propertyName) =>
-        new EmailHtmlBuilder(culture)
-            .Paragraph("RliExtraEuNotice_Body", propertyName)
-            .Paragraph("RliExtraEuNotice_Disclaimer")
-            .Build("RliExtraEuNotice_Subject", propertyName);
+    /// <summary>
+    /// Lease with an extra-EU tenant (LT-07): the written communication to the public-security authority is due within
+    /// 48 hours of the delivery of the property (art. 7 D.Lgs. 286/1998), to the landlord. Sent a few days before the
+    /// delivery, at the delivery and on the last day. <paramref name="deliveryDateDeclared"/> false: the delivery date is
+    /// the start date, the email says how to change it.
+    /// </summary>
+    public static EmailContent QuesturaCommunicationReminder(
+        CultureInfo culture,
+        string propertyName,
+        DateTime deliveryDate,
+        DateTime deadline,
+        bool deliveryDateDeclared) =>
+        QuesturaCommunication(
+            culture, "QuesturaReminder_Body", "QuesturaReminder_Subject", propertyName, deliveryDate, deadline, deliveryDateDeclared);
+
+    /// <summary>
+    /// The 48 hours of the Questura communication have passed and the landlord has not declared it (LT-07), to the
+    /// landlord. See <see cref="QuesturaCommunicationReminder"/>.
+    /// </summary>
+    public static EmailContent QuesturaCommunicationOverdue(
+        CultureInfo culture,
+        string propertyName,
+        DateTime deliveryDate,
+        DateTime deadline,
+        bool deliveryDateDeclared) =>
+        QuesturaCommunication(
+            culture, "QuesturaOverdue_Body", "QuesturaOverdue_Subject", propertyName, deliveryDate, deadline, deliveryDateDeclared);
+
+    private static EmailContent QuesturaCommunication(
+        CultureInfo culture,
+        string bodyKey,
+        string subjectKey,
+        string propertyName,
+        DateTime deliveryDate,
+        DateTime deadline,
+        bool deliveryDateDeclared)
+    {
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph(bodyKey, propertyName, deliveryDate, deadline);
+        if (!deliveryDateDeclared)
+            builder.Paragraph("Questura_DeliveryDateDefault");
+        return builder
+            .Paragraph("Questura_Channel")
+            .Paragraph("Questura_MarkDone")
+            .Build(subjectKey, propertyName, deadline);
+    }
 
     /// <summary>Nights, guests, lodging, cleaning and tourist tax (only when charged) and total of a booking.</summary>
     private static IEnumerable<(string Key, object?[] Args)> SummaryLines(BookingEmailSummary booking, CultureInfo culture)

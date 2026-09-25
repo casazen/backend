@@ -80,6 +80,8 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
+// Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
+builder.Services.AddCasazenPush(builder.Configuration);
 // Object storage (Supabase Storage via S3; filesystem only in Development/Testing): FD-07.
 builder.Services.AddCasazenFileStorage(builder.Configuration);
 builder.Services.AddScoped<IStripeService, StripeService>();

@@ -240,14 +240,26 @@
   <data name="RliDeadline_Responsibility" xml:space="preserve">
     <value>CasaZen does not file unattended. Filing remains the responsibility of the landlord or an authorized intermediary. Draft wording pending counsel.</value>
   </data>
-  <data name="RliExtraEuNotice_Subject" xml:space="preserve">
-    <value>Questura notice required (cessione di fabbricato) — {0}</value>
+  <data name="QuesturaReminder_Subject" xml:space="preserve">
+    <value>Questura communication due by {1} — {0}</value>
   </data>
-  <data name="RliExtraEuNotice_Body" xml:space="preserve">
-    <value>The lease for &lt;strong&gt;{0}&lt;/strong&gt; includes a non-EU tenant. Check the Questura communication (Art. 7 D.Lgs 286/1998).</value>
+  <data name="QuesturaReminder_Body" xml:space="preserve">
+    <value>The lease for &lt;strong&gt;{0}&lt;/strong&gt; has a non-EU tenant. Within 48 hours of the delivery of the property (&lt;strong&gt;{1}&lt;/strong&gt;) the landlord must notify the local public-security authority in writing (art. 7 D.Lgs. 286/1998). The 48 hours end at the latest on &lt;strong&gt;{2}&lt;/strong&gt;. Registering the contract does not replace this communication.</value>
   </data>
-  <data name="RliExtraEuNotice_Disclaimer" xml:space="preserve">
-    <value>Draft wording pending counsel. CasaZen does not send the communication.</value>
+  <data name="QuesturaOverdue_Subject" xml:space="preserve">
+    <value>Questura communication not declared — {0}</value>
+  </data>
+  <data name="QuesturaOverdue_Body" xml:space="preserve">
+    <value>For the lease for &lt;strong&gt;{0}&lt;/strong&gt; (non-EU tenant, property delivered on &lt;strong&gt;{1}&lt;/strong&gt;) the 48-hour term for the written communication to the local public-security authority (art. 7 D.Lgs. 286/1998) ended on &lt;strong&gt;{2}&lt;/strong&gt; and the communication is not declared in CasaZen.</value>
+  </data>
+  <data name="Questura_DeliveryDateDefault" xml:space="preserve">
+    <value>CasaZen uses the start date of the lease as the delivery date: if the property is delivered on another day, enter it on the lease page.</value>
+  </data>
+  <data name="Questura_Channel" xml:space="preserve">
+    <value>The competent office and how to send it (in person, PEC, registered mail) change from province to province: check the page of your Questura. CasaZen does not send the communication.</value>
+  </data>
+  <data name="Questura_MarkDone" xml:space="preserve">
+    <value>Once sent, mark the communication as done on the lease page, with its date (and, if you wish, the receipt): only then the checklist item is completed.</value>
   </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Cleaning</value>
@@ -497,6 +509,69 @@
   </data>
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Open the activation</value>
+  </data>
+  <data name="OtaStayReview_Subject" xml:space="preserve">
+    <value>{0} stay to check - {1} ({2})</value>
+  </data>
+  <data name="OtaStayReview_Removed_Body" xml:space="preserve">
+    <value>The reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;, created from a block of the {2} calendar, is no longer in the linked calendar: it may have been cancelled or moved on the channel.</value>
+  </data>
+  <data name="OtaStayReview_DatesChanged_Body" xml:space="preserve">
+    <value>In the linked {2} calendar the reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; now runs from &lt;strong&gt;{5}&lt;/strong&gt; to &lt;strong&gt;{6}&lt;/strong&gt;; the stay in CasaZen runs from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_DatesChangedUnknown_Body" xml:space="preserve">
+    <value>In the linked {2} calendar the dates of the reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; changed; the stay in CasaZen runs from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_NothingChanged" xml:space="preserve">
+    <value>CasaZen did not change or cancel the stay, and its dates stay taken on the booking site.</value>
+  </data>
+  <data name="OtaStayReview_Action" xml:space="preserve">
+    <value>Check the reservation on the channel: if it was cancelled, cancel the stay in CasaZen; if its dates changed, update the stay. Then mark it as verified from the booking.</value>
+  </data>
+  <data name="OtaStayReviewPush_Title" xml:space="preserve">
+    <value>Stay to check</value>
+  </data>
+  <data name="OtaStayReviewPush_Removed_Body" xml:space="preserve">
+    <value>{0}: the {1} reservation starting {2} is no longer in the channel's calendar.</value>
+  </data>
+  <data name="OtaStayReviewPush_DatesChanged_Body" xml:space="preserve">
+    <value>{0}: the {1} reservation starting {2} changed dates on the channel.</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Title" xml:space="preserve">
+    <value>New service request</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
+    <value>{0} at {1}: accept or decline the request from your supplier area.</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
+    <value>Request taken</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has taken the request.</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Title" xml:space="preserve">
+    <value>Service completed</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has completed the service.</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Title" xml:space="preserve">
+    <value>Request declined by the supplier</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier declined the request. Choose another supplier.</value>
+  </data>
+  <data name="Push_NewBooking_Title" xml:space="preserve">
+    <value>New confirmed booking</value>
+  </data>
+  <data name="Push_NewBooking_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}, guests: {3}.</value>
+  </data>
+  <data name="Push_CheckoutReminder_Title" xml:space="preserve">
+    <value>Check-out reminder</value>
+  </data>
+  <data name="Push_CheckoutReminder_Body" xml:space="preserve">
+    <value>{0}: today is check-out day, complete it in CasaZen.</value>
   </data>
   <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
     <value>CIN to be entered by {0}</value>

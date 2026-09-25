@@ -217,6 +217,74 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     }
 
     [Fact]
+    public async Task GetGuestProgress_Owner_ReturnsTheCountsWithoutPersonalData()
+    {
+        // Arrange: MO-08, the app booking detail shows "2 ospiti completi su 2".
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+
+        // Act
+        var response = await client.GetAsync($"/api/alloggiati/{seed.BookingId}/guest-progress");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        Assert.Equal(seed.BookingId, root.GetProperty("bookingId").GetGuid());
+        Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
+        Assert.Equal(2, root.GetProperty("registeredGuests").GetInt32());
+        Assert.Equal(2, root.GetProperty("completeGuests").GetInt32());
+        Assert.True(root.GetProperty("dataComplete").GetBoolean());
+        Assert.False(root.GetProperty("stayExceedsMaxDays").GetBoolean());
+        // Counts only: no name, birth place or document of the guests.
+        Assert.DoesNotContain("Verdi", body);
+        Assert.DoesNotContain("Milano", body);
+        Assert.DoesNotContain("AB123456", body);
+        Assert.DoesNotContain("*****", body);
+    }
+
+    [Fact]
+    public async Task GetGuestProgress_BookerOnly_CountsNoCompleteGuestOfTheDeclared()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: false);
+        var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+
+        var response = await client.GetAsync($"/api/alloggiati/{seed.BookingId}/guest-progress");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+        Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
+        Assert.Equal(1, root.GetProperty("registeredGuests").GetInt32());
+        Assert.Equal(0, root.GetProperty("completeGuests").GetInt32());
+        Assert.False(root.GetProperty("dataComplete").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetGuestProgress_OtherOwnersBooking_IsDenied()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var intruder = _factory.CreateAuthenticatedClient($"auth0|intruder-{Guid.NewGuid():N}", roles: "PropertyOwner");
+
+        var response = await intruder.GetAsync($"/api/alloggiati/{seed.BookingId}/guest-progress");
+
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.Forbidden, HttpStatusCode.NotFound });
+        Assert.DoesNotContain("completeGuests", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task GetGuestProgress_UnknownBooking_Returns404()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
+        var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
+
+        var response = await client.GetAsync($"/api/alloggiati/{Guid.NewGuid()}/guest-progress");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task AC7_SummaryListsBookings()
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync();

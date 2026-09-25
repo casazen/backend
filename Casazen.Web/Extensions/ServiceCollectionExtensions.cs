@@ -243,6 +243,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
         services.AddScoped<ITerritorialRentAgreementRepository, TerritorialRentAgreementRepository>();
         services.AddScoped<IHighTensionAreaComuneRepository, HighTensionAreaComuneRepository>();
+        services.AddScoped<IComuneImuChannelRepository, ComuneImuChannelRepository>();
+        services.AddScoped<IRegulatoryDataAuditLogRepository, RegulatoryDataAuditLogRepository>();
         services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
@@ -270,6 +272,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
+        services.AddScoped<IOtaStayService, OtaStayService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -288,8 +291,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.CinOptions>, Casazen.Core.Options.CinOptionsValidator>();
         services.AddSingleton<Casazen.Core.Regulatory.CinDeadlineCalendar>();
         services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
-        services.AddScoped<IPushNotificationService, PushNotificationService>();
-        services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
@@ -345,6 +346,7 @@ public static class ServiceCollectionExtensions
         // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.
         services.AddSingleton<IPdfDocumentRenderer, MigraDocPdfDocumentRenderer>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
+        services.AddScoped<IRegulatoryReferenceDataAdminService, RegulatoryReferenceDataAdminService>();
         services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
         // LTR tax advisory (LT-08, docs/runbooks/rli.md): every rate and minimum from configuration, validated at startup.
         services.AddOptions<Casazen.Core.Options.CedolareAdvisoryOptions>()
@@ -354,6 +356,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
+        // Questura communication for an extra-EU tenant (LT-07): declared by the landlord, never inferred from a reminder.
+        services.AddScoped<IQuesturaCommunicationService, QuesturaCommunicationService>();
         // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
         // provider path stays unavailable even with Features:RliProvider on.
         services.AddScoped<IRliRegistrationService, RliRegistrationService>();

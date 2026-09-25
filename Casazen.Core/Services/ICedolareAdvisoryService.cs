@@ -212,13 +212,35 @@ public interface IRliChecklistService
 /// The provider path exists (<c>Features:RliProvider</c> on and a configured provider): only then the delega item is
 /// listed and the frontend offers "submit through the provider". Otherwise the landlord registers manually (LT-01).
 /// </param>
+/// <param name="Questura">
+/// The communication to the public-security authority for an extra-EU tenant (LT-07); null when no tenant is extra-EU.
+/// </param>
 public record RliChecklistResult(
     DateTime? RegistrationDeadline,
     int? DaysRemaining,
     string TosVersion,
     string AttestationText,
     bool ProviderFilingAvailable,
-    IReadOnlyList<RliChecklistItem> Items);
+    IReadOnlyList<RliChecklistItem> Items,
+    QuesturaCommunicationStatus? Questura = null);
+
+/// <summary>
+/// State of the Questura communication of a lease with an extra-EU tenant (art. 7 D.Lgs. 286/1998, LT-07). Dates are
+/// midnight UTC of the Rome calendar date.
+/// </summary>
+/// <param name="DeliveryDate">Delivery of the property: the declared date, or the start date when none was declared.</param>
+/// <param name="DeliveryDateDeclared">False while <paramref name="DeliveryDate"/> is the start date used by default.</param>
+/// <param name="Deadline">The day the 48 hours from the delivery end at the latest.</param>
+/// <param name="DaysRemaining">Days to <paramref name="Deadline"/>: 0 on that day, negative once it has passed.</param>
+/// <param name="CommunicationDate">Date of the communication declared by the landlord; null until the explicit declaration.</param>
+/// <param name="HasReceipt">A receipt was uploaded with the declaration (downloadable through the API).</param>
+public record QuesturaCommunicationStatus(
+    DateTime DeliveryDate,
+    bool DeliveryDateDeclared,
+    DateTime Deadline,
+    int DaysRemaining,
+    DateTime? CommunicationDate,
+    bool HasReceipt);
 
 /// <summary>
 /// A checklist item. <paramref name="Done"/> is true only when the step really happened (LT-01: the registration item
