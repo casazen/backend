@@ -89,6 +89,21 @@ public class AlloggiatiController(
     }
 
     /// <summary>
+    /// Counts of the guest data of the stay (MO-08): declared, registered and complete guests, with no personal data. The
+    /// host app shows "K ospiti completi su N" in the booking detail without downloading the identity data of the guests.
+    /// </summary>
+    [HttpGet("{bookingId:guid}/guest-progress")]
+    public async Task<ActionResult<AlloggiatiGuestProgressDto>> GetGuestProgress(Guid bookingId)
+    {
+        var (_, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var summary = await alloggiatiWebService.GetGuestSummaryAsync(bookingId);
+        return Ok(AlloggiatiGuestProgressDto.From(summary));
+    }
+
+    /// <summary>
     /// Full document numbers of the guests of the stay (the summary shows them masked, CO-09). Host of the booking with
     /// <c>guest.read</c> only; every request is logged with the user and the positions (audit), never the numbers.
     /// <paramref name="position"/> limits the answer to one guest.
