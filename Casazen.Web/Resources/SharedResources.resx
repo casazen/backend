@@ -36,6 +36,12 @@
   <data name="UserInactiveRoleChange" xml:space="preserve">
     <value>L'utente è disattivato: riattivalo prima di cambiarne il ruolo.</value>
   </data>
+  <data name="UserRoleUnknown" xml:space="preserve">
+    <value>Ruolo sconosciuto.</value>
+  </data>
+  <data name="RentalTypeUnknown" xml:space="preserve">
+    <value>Tipo di affitto sconosciuto.</value>
+  </data>
   <data name="UserDeactivated" xml:space="preserve">
     <value>Utente disattivato: CasaZen rifiuta ogni sua richiesta e su Auth0 l'account è bloccato, senza ruoli.</value>
   </data>

@@ -28,6 +28,19 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    /// <summary>
+    /// A1-35, A7-31: <c>Enum.TryParse</c> alone accepts a numeric string with no declared member ("7" is outside
+    /// RentalType's 0-2 range) and would reach <c>MapRentalTypeToRoles</c> as a value nothing handles, throwing
+    /// <c>ArgumentOutOfRangeException</c> -> 500 instead of a clean 400.
+    /// </summary>
+    [Fact]
+    public async Task PostOnboarding_NumericRentalType_Returns400NotServerError()
+    {
+        using var client = _factory.CreateAuthenticatedClient(roles: string.Empty);
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload("7"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task PostOnboarding_ShortTerm_ReturnsPropertyOwner()
     {

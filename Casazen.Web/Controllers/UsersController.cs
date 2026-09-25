@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.Validation;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
 using Casazen.Web.Infrastructure;
@@ -164,8 +165,10 @@ public class UsersController(
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> ChangeRole(string id, [FromBody] ChangeRoleDto dto)
     {
-        if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out var newRole))
-            return BadRequest(new { error = $"Unknown role: {dto.Role}" });
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"), which would
+        // otherwise reach Auth0 sync and persistence as an undefined role (A1-35).
+        if (!EnumNames.TryParseDefined<UserRole>(dto.Role, out var newRole))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "UserRoleUnknown");
 
         var adminSub = GetSub();
         if (adminSub == null)
@@ -239,8 +242,11 @@ public class UsersController(
         OnboardingRequestDto dto,
         bool requireConsents)
     {
-        if (!Enum.TryParse<RentalType>(dto.RentalType, ignoreCase: true, out var rentalType))
-            return BadRequest(new { error = $"Unknown rentalType: {dto.RentalType}" });
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "7"), which then reached
+        // MapRentalTypeToRoles as a value nothing was written to handle: ArgumentOutOfRangeException -> 500 instead
+        // of a clean 400 (A1-35, A7-31).
+        if (!EnumNames.TryParseDefined<RentalType>(dto.RentalType, out var rentalType))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "RentalTypeUnknown");
 
         // The requested plan is only validated: the org starts on Starter, paid tiers come from Stripe (#274).
         if (!string.IsNullOrWhiteSpace(dto.PlanTier) && !PlanCatalog.TryParseTier(dto.PlanTier, out _))
