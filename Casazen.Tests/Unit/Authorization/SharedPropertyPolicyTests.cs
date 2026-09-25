@@ -16,14 +16,14 @@ namespace Casazen.Tests.Unit.Authorization;
 
 /// <summary>
 /// LT-05 (A7-06): a long-term landlord (only the long-rent context) reaches the property core it needs to write leases
-/// (list, record, documents such as the APE, plan entitlement) and nothing about short stays.
+/// (list, record, documents such as the APE) and nothing about short stays. The plan entitlement moved to the org policy
+/// <see cref="CasazenPolicies.OrgBillingAdmin"/> (PL-16).
 /// </summary>
 public class SharedPropertyPolicyTests
 {
     /// <summary>Every action a caller with only the long-rent <c>property.*</c> permissions may pass the policies of.</summary>
     private static readonly string[] SharedPropertyActions =
     [
-        "OrgsController.GetMyEntitlement",
         "PropertiesController.Create",
         "PropertiesController.DeleteDocument",
         "PropertiesController.DownloadDocument",

@@ -9,25 +9,33 @@ namespace Casazen.Web.Infrastructure;
 public sealed class OrgBillingAdminRequirement : IAuthorizationRequirement;
 
 /// <summary>
-/// Plan, billing and domain of the caller's host org. Like the host contexts, it waits for the host onboarding and the
-/// current consents (PL-02): refused with <see cref="HostOnboarding.RequiredCode"/> until then, platform admins included,
-/// since billing an org means using it as a host.
+/// Plan, entitlement, billing and domain of the caller's host org: an org policy, not a context one (PL-16, A1-36). The
+/// owner of the org passes whichever rental context it works in (short-rent <c>PropertyOwner</c> or long-rent
+/// <c>LongTermLandlord</c>), as do a <c>PropertyManager</c> and a platform admin; a <c>Staff</c> collaborator or a guest
+/// never does. Like the host contexts, it waits for the host onboarding and the current consents (PL-02): refused with
+/// <see cref="HostOnboarding.RequiredCode"/> until then, platform admins included, since billing an org means using it
+/// as a host.
 /// </summary>
 public class OrgBillingAdminAuthorizationHandler(
     IOrgContextResolver orgContextResolver,
     IUserAuthorizationSnapshotStore snapshotStore,
     IHostOnboardingGate hostOnboardingGate) : AuthorizationHandler<OrgBillingAdminRequirement>
 {
-    /// <summary>DB context memberships that grant billing administration without relying on JWT roles.</summary>
+    /// <summary>
+    /// DB context memberships that grant billing administration without relying on JWT roles: the owner of either rental
+    /// context (a landlord with only long-term leases pays its plan too, PL-16) and the platform admin.
+    /// </summary>
     private static readonly HashSet<string> AllowedMembershipContexts = new(StringComparer.OrdinalIgnoreCase)
     {
         "short-rent",
+        "long-rent",
         "admin",
     };
 
     private static readonly HashSet<string> AllowedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "PropertyOwner",
+        "LongTermLandlord",
         "PropertyManager",
         "Admin",
     };
