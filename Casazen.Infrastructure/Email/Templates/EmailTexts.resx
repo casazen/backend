@@ -498,4 +498,40 @@
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Apri l'attivazione</value>
   </data>
+  <data name="Push_ServiceRequestCreated_Title" xml:space="preserve">
+    <value>Nuova richiesta di servizio</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
+    <value>{0} presso {1}: accetta o rifiuta la richiesta dalla tua area fornitore.</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
+    <value>Richiesta presa in carico</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha preso in carico la richiesta.</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Title" xml:space="preserve">
+    <value>Servizio completato</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha completato il servizio.</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Title" xml:space="preserve">
+    <value>Richiesta rifiutata dal fornitore</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha rifiutato la richiesta. Scegli un altro fornitore.</value>
+  </data>
+  <data name="Push_NewBooking_Title" xml:space="preserve">
+    <value>Nuova prenotazione confermata</value>
+  </data>
+  <data name="Push_NewBooking_Body" xml:space="preserve">
+    <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
+  </data>
+  <data name="Push_CheckoutReminder_Title" xml:space="preserve">
+    <value>Promemoria check-out</value>
+  </data>
+  <data name="Push_CheckoutReminder_Body" xml:space="preserve">
+    <value>{0}: oggi è il giorno del check-out, completalo in CasaZen.</value>
+  </data>
 </root>

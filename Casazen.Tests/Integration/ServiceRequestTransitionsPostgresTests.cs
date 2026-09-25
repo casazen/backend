@@ -77,11 +77,13 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Assert.Equal(takeWon, stored.RejectionReason is null);
         Assert.Equal(takeWon ? "PresoInCarico" : "Rifiutato", (await ReadJsonAsync(takeWon ? take : reject)).GetProperty("status").GetString());
 
-        // One host email, for the winner's status; a push only when "take" won (a rejection sends the email only).
+        // One host email and one host push, for the winner's status (MO-04: a rejection is pushed too, A6-08).
         var hostEmail = Assert.Single(emails.Snapshot());
         Assert.Equal(w.HostContactEmail, hostEmail.To);
         Assert.Equal(EmailTemplates.Names.ServiceRequestStatusChanged, hostEmail.Template);
-        Assert.Equal(takeWon ? 1 : 0, pushes.Sent.Count);
+        var push = Assert.Single(pushes.Sent);
+        Assert.Equal(id, push.Id);
+        Assert.Equal(takeWon ? PushTypes.ServiceRequestTaken : PushTypes.ServiceRequestRejected, push.Type);
     }
 
     [PostgresFact]
@@ -404,21 +406,13 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
 
     private sealed class RecordingPushNotifications : IPushNotificationService
     {
-        public ConcurrentQueue<(Guid Id, string Status)> Sent { get; } = new();
+        public ConcurrentQueue<(Guid Id, string Type)> Sent { get; } = new();
 
-        public Task SendToUserAsync(string userId, PushNotificationPayload payload, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
-
-        public Task SendToBookingHostsAsync(PushNotificationPayload payload, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
-
-        public Task SendServiceRequestUpdateAsync(Guid serviceRequestId, string statusLabel, CancellationToken cancellationToken = default)
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload)
         {
-            Sent.Enqueue((serviceRequestId, statusLabel));
-            return Task.CompletedTask;
+            Sent.Enqueue((payload.ServiceRequestId ?? Guid.Empty, payload.Type));
+            return true;
         }
-
-        public Task SendCheckoutReminderAsync(Guid bookingId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private static HttpClient CreateClient(Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> app, string userId, string roles)

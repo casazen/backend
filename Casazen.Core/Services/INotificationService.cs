@@ -9,7 +9,8 @@ public interface INotificationService
 {
     /// <summary>
     /// Delivers a stay alert of the <c>stay-alerts</c> job (CO-10) to the property's hosts: an email to the org's contact
-    /// address, queued on Hangfire, and a push. The job decides when; this only renders and delivers.
+    /// address and a push to their devices, both queued on Hangfire (the push once per stage and device, MO-04). The job
+    /// decides when; this only renders and queues.
     /// </summary>
     Task SendStayAlertAsync(StayAlert alert, CancellationToken cancellationToken = default);
 

@@ -12,6 +12,7 @@ using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration;
 using Casazen.Tests.Unit.Email;
+using Casazen.Tests.Unit.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -710,8 +711,8 @@ public class ServiceRequestServiceTests
         queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
             .Throws(new InvalidOperationException("storage down"));
         var push = new Mock<IPushNotificationService>();
-        push.Setup(p => p.SendServiceRequestUpdateAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("push provider timeout"));
+        push.Setup(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>()))
+            .Throws(new InvalidOperationException("job storage down"));
         var service = CreateService(db, queue.Object, push: push.Object);
 
         var taken = await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
@@ -719,7 +720,157 @@ public class ServiceRequestServiceTests
         Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
         var saved = await db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == created.Id);
         Assert.Equal(ServiceRequestStatus.PresoInCarico, saved.Status);
-        push.Verify(p => p.SendServiceRequestUpdateAsync(created.Id, "presa in carico", It.IsAny<CancellationToken>()), Times.Once);
+        push.Verify(
+            p => p.Enqueue(
+                PushDeliveryKeys.ServiceRequestStatus(created.Id, ServiceRequestStatus.PresoInCarico),
+                PushAudience.PropertyHosts(propertyId),
+                It.IsAny<PushNotificationPayload>()),
+            Times.Once);
+    }
+
+    // ─── MO-04 (A6-08): pushes of the supplier decisions and of a new request ───
+
+    [Theory]
+    [InlineData(ServiceRequestStatus.PresoInCarico, "service-request-taken", "Richiesta presa in carico", "Pulizie presso Test Property: il fornitore ha preso in carico la richiesta.")]
+    [InlineData(ServiceRequestStatus.Completato, "service-request-completed", "Servizio completato", "Pulizie presso Test Property: il fornitore ha completato il servizio.")]
+    [InlineData(ServiceRequestStatus.Rifiutato, "service-request-rejected", "Richiesta rifiutata dal fornitore", "Pulizie presso Test Property: il fornitore ha rifiutato la richiesta. Scegli un altro fornitore.")]
+    public async Task SupplierStatusChange_ValidTransition_QueuesOneHostPushWithItsOwnText(
+        ServiceRequestStatus target,
+        string type,
+        string title,
+        string body)
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var push = new RecordingPushQueue();
+        var service = CreateService(db, push: push);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+
+        switch (target)
+        {
+            case ServiceRequestStatus.PresoInCarico:
+                await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+                break;
+            case ServiceRequestStatus.Completato:
+                await service.TakeAsync(created.Id, supplierOrgId, "supplier-user");
+                await service.CompleteAsync(created.Id, supplierOrgId, null);
+                break;
+            default:
+                await service.RejectAsync(created.Id, supplierOrgId, "Non disponibile");
+                break;
+        }
+
+        var toHost = Assert.Single(push.Queued, q => q.DeliveryKey == PushDeliveryKeys.ServiceRequestStatus(created.Id, target));
+        Assert.Equal(PushAudience.PropertyHosts(propertyId), toHost.Audience);
+        Assert.Equal(type, toHost.Payload.Type);
+        Assert.Equal(title, toHost.Payload.Title);
+        Assert.Equal(body, toHost.Payload.Body);
+        Assert.Equal(PushRoutes.Booking(bookingId), toHost.Payload.Route);
+        Assert.Equal(bookingId, toHost.Payload.BookingId);
+        Assert.Equal(created.Id, toHost.Payload.ServiceRequestId);
+        // The rejection reason is the supplier's free text: email only, never on the lock screen.
+        Assert.DoesNotContain("Non disponibile", toHost.Payload.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RejectAsync_WithoutStay_QueuesHostPushOpeningThePropertyList()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var push = new RecordingPushQueue();
+        var service = CreateService(db, push: push);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.LongRent));
+
+        await service.RejectAsync(created.Id, supplierOrgId, "Non disponibile");
+
+        var rejected = Assert.Single(push.Queued, q => q.Payload.Type == PushTypes.ServiceRequestRejected);
+        Assert.Equal(PushRoutes.Properties, rejected.Payload.Route);
+        Assert.Null(rejected.Payload.BookingId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NewRequest_QueuesOnePushToTheSupplierOrg()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var push = new RecordingPushQueue();
+
+        var created = await CreateService(db, push: push).CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, "Chiavi in portineria", false));
+
+        var toSupplier = Assert.Single(push.Queued);
+        Assert.Equal(PushDeliveryKeys.ServiceRequestCreated(created.Id), toSupplier.DeliveryKey);
+        Assert.Equal(PushAudience.SupplierOrg(supplierOrgId), toSupplier.Audience);
+        Assert.Equal(PushTypes.ServiceRequestCreated, toSupplier.Payload.Type);
+        Assert.Equal("Nuova richiesta di servizio", toSupplier.Payload.Title);
+        Assert.Equal("Pulizie presso Test Property: accetta o rifiuta la richiesta dalla tua area fornitore.", toSupplier.Payload.Body);
+        // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
+        Assert.Null(toSupplier.Payload.BookingId);
+        Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
+        Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequestRefused_QueuesNoPush()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Suspended);
+        var push = new RecordingPushQueue();
+
+        await Assert.ThrowsAsync<DomainRuleException>(() => CreateService(db, push: push).CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false)));
+
+        Assert.Empty(push.Queued);
+    }
+
+    [Fact]
+    public async Task CreateThenReject_WithTheRealQueueAndJob_SupplierThenHostDevicesGetOnePushEach()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        await SeedDevicesAsync(db, hostOrgId, supplierOrgId);
+        var pipeline = new PushPipeline();
+        var service = CreateService(db, push: pipeline.Queue);
+
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        await service.RejectAsync(created.Id, supplierOrgId, "Non disponibile");
+
+        // Nothing is sent by the service itself: only jobs are queued.
+        Assert.Empty(pipeline.Expo.SendRequests);
+        Assert.Equal(2, pipeline.Jobs.Count);
+
+        // The Hangfire worker runs the jobs, then runs them again (retry): one message per device and event.
+        await pipeline.RunQueuedJobsAsync(db);
+        await pipeline.RunQueuedJobsAsync(db);
+
+        var messages = pipeline.Expo.Messages;
+        Assert.Equal(2, messages.Count);
+        var toSupplier = Assert.Single(messages, m => m.Data["type"] == PushTypes.ServiceRequestCreated);
+        Assert.Equal("ExponentPushToken[supplier]", toSupplier.To);
+        var toHost = Assert.Single(messages, m => m.Data["type"] == PushTypes.ServiceRequestRejected);
+        Assert.Equal("ExponentPushToken[host]", toHost.To);
+        Assert.Equal("Richiesta rifiutata dal fornitore", toHost.Title);
+        Assert.Equal(PushRoutes.Booking(bookingId), toHost.Data["route"]);
+    }
+
+    /// <summary>The property owner (host) and a member of the supplier org, one phone each.</summary>
+    private static async Task SeedDevicesAsync(AppDbContext db, Guid hostOrgId, Guid supplierOrgId)
+    {
+        db.Users.AddRange(
+            new User { Id = TestAuthHandler.DefaultUserId, Email = "host@test.com", OrgId = hostOrgId, Role = UserRole.PropertyOwner, IsActive = true },
+            new User { Id = "auth0|supplier-member", Email = "sup@test.com", OrgId = supplierOrgId, SupplierOrgId = supplierOrgId, Role = UserRole.Supplier, IsActive = true });
+        db.DeviceRegistrations.AddRange(
+            new DeviceRegistration { UserId = TestAuthHandler.DefaultUserId, OrgId = hostOrgId, Platform = "ios", PushToken = "ExponentPushToken[host]", DeviceId = Guid.NewGuid().ToString() },
+            new DeviceRegistration { UserId = "auth0|supplier-member", OrgId = supplierOrgId, Platform = "android", PushToken = "ExponentPushToken[supplier]", DeviceId = Guid.NewGuid().ToString() });
+        await db.SaveChangesAsync();
     }
 
     private static ServiceRequestService CreateService(

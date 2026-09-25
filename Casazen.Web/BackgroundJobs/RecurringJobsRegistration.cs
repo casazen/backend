@@ -92,6 +92,13 @@ public static class RecurringJobsRegistration
             "0 8 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // MO-04: Expo receipts of the pushes (DeviceNotRegistered removes the device), purge of old delivery rows.
+        recurringJobManager.AddOrUpdate<PushReceiptsJob>(
+            PushReceiptsJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PushReceiptsJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).
         recurringJobManager.AddOrUpdate<PropertyComplianceCheckJob>(
             PropertyComplianceCheckJob.RecurringJobId,

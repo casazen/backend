@@ -333,7 +333,7 @@ public class DirectBookingChargeJobTests
         var service = new DeferredChargeService(
             context,
             _stripe.Object,
-            new BookingNotifier(context, _emails, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance),
+            new BookingNotifier(context, _emails, EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), NullLogger<BookingNotifier>.Instance),
             new ConfigurationBuilder().AddInMemoryCollection().Build(),
             NullLogger<DeferredChargeService>.Instance,
             new FixedTimeProvider(now));

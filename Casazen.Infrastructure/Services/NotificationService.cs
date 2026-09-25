@@ -10,7 +10,7 @@ namespace Casazen.Infrastructure.Services;
 public class NotificationService(
     AppDbContext db,
     IEmailQueue emailQueue,
-    IPushNotificationService pushNotificationService,
+    IPushNotificationService pushNotifications,
     PublicSiteLinks links,
     ILogger<NotificationService> logger) : INotificationService
 {
@@ -70,16 +70,28 @@ public class NotificationService(
                 booking.OrgId);
         }
 
-        if (alert.Kind == StayAlertKind.CheckoutReminder)
+        // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
+        var isCheckoutReminder = alert.Kind == StayAlertKind.CheckoutReminder;
+        var push = isCheckoutReminder
+            ? EmailTemplates.CheckoutReminderPush(culture, propertyName)
+            : EmailTemplates.StayAlertPush(culture, alert.Kind, propertyName, booking.CheckInDate);
+        var deliveryKey = PushDeliveryKeys.StayAlert(
+            booking.Id,
+            alert.Kind,
+            isCheckoutReminder ? booking.CheckOutDate : booking.CheckInDate,
+            alert.ReminderNumber);
+        var route = isCheckoutReminder ? PushRoutes.BookingCheckout(booking.Id) : PushRoutes.Booking(booking.Id);
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.ForStayAlert(alert.Kind), booking.Id, route)))
         {
-            await pushNotificationService.SendCheckoutReminderAsync(booking.Id, cancellationToken);
-            return;
+            logger.LogWarning(
+                "Stay alert {Kind} push of booking {BookingId} not queued (org {OrgId})",
+                alert.Kind,
+                booking.Id,
+                booking.OrgId);
         }
-
-        var push = EmailTemplates.StayAlertPush(culture, alert.Kind, propertyName, booking.CheckInDate);
-        await pushNotificationService.SendToBookingHostsAsync(
-            new PushNotificationPayload(push.Title, push.Body, PushType(alert.Kind), booking.Id, PushRoutes.Booking(booking.Id)),
-            cancellationToken);
     }
 
     /// <summary>
@@ -95,14 +107,4 @@ public class NotificationService(
             daysUntilDeadline);
         return Task.CompletedTask;
     }
-
-    /// <summary>Push <c>type</c> of each Alloggiati alert (the app opens the booking from the route).</summary>
-    private static string PushType(StayAlertKind kind) => kind switch
-    {
-        StayAlertKind.GuestDataMissing => "guest-data-missing",
-        StayAlertKind.AlloggiatiDeadlineApproaching => "alloggiati-deadline",
-        StayAlertKind.AlloggiatiOverdue => "alloggiati-overdue",
-        StayAlertKind.AlloggiatiFailed => "alloggiati-failed",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No push type for this alert."),
-    };
 }
