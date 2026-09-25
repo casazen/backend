@@ -90,6 +90,9 @@ public class AppDbContext(
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
+    // Push messages per event and device, with their Expo ticket (MO-04)
+    public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
@@ -839,6 +842,22 @@ public class AppDbContext(
         modelBuilder.Entity<CalendarBlock>()
             .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
+
+        // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
+        // which takes its nights again on its own.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasOne(b => b.Booking)
+            .WithMany()
+            .HasForeignKey(b => b.BookingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.BookingId)
+            .IsUnique();
+
+        // The stays of a feed, found again by the sync (feed + block UID) when a block comes back.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.ICalFeedId, b.ExternalId });
 
         modelBuilder.Entity<PropertyICalFeed>()
             .HasOne(f => f.Property)

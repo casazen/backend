@@ -40,6 +40,12 @@ public static class BookingMapper
         response.PaymentOption = booking.PaymentOption.ToString();
         response.OnSiteRequestState = OnSiteRequests.StateOf(booking, nowUtc)?.ToString();
         response.RequestExpiresAt = OnSiteRequests.StateOf(booking, nowUtc) is null ? null : booking.RequestExpiresAt;
+        response.IcalFeedId = booking.ICalFeedId;
+        response.ChannelLabel = booking.ChannelLabel;
+        // A cancelled stay has nothing left to check (CO-21).
+        var review = booking.Status == BookingStatus.Cancelled ? null : booking.OtaReviewReason;
+        response.OtaReviewReason = review?.ToString();
+        response.OtaReviewRaisedAt = review is null ? null : booking.OtaReviewRaisedAt;
         response.Guest = booking.Guest is null
             ? new BookingGuestDto()
             : new BookingGuestDto

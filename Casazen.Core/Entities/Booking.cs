@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -44,8 +45,32 @@ public class Booking : ITenantOwned
     [Required]
     public BookingSource Source { get; set; } = BookingSource.Direct;
 
+    /// <summary>
+    /// Reference of the booking on its channel. For an OTA stay created from an iCal block (CO-21) it is the block's UID
+    /// (<see cref="CalendarBlock.ExternalUid"/>), which with <see cref="ICalFeedId"/> finds the block again after a sync.
+    /// </summary>
     [MaxLength(500)]
     public string ExternalId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Import feed of the iCal block the host turned into this stay (CO-21, decision D7); null for every other booking.
+    /// A plain reference, not a foreign key: it stays when the host disconnects the calendar, so the stay keeps showing
+    /// that it came from iCal.
+    /// </summary>
+    public Guid? ICalFeedId { get; set; }
+
+    /// <summary>Label of that feed when the stay was created (e.g. "Booking.com - camera 2"), shown next to the source.</summary>
+    [MaxLength(PropertyICalFeed.LabelMaxLength)]
+    public string? ChannelLabel { get; set; }
+
+    /// <summary>
+    /// OTA stay from iCal "da verificare" (CO-21): why a sync of its feed asks the host to check the reservation on the
+    /// channel. Null when nothing is to check or the host marked it verified. The stay itself is never changed by a sync.
+    /// </summary>
+    public OtaStayReviewReason? OtaReviewReason { get; set; }
+
+    /// <summary>When the sync raised <see cref="OtaReviewReason"/> (UTC).</summary>
+    public DateTime? OtaReviewRaisedAt { get; set; }
 
     /// <summary>Lodging (nightly rate x nights) plus <see cref="CleaningFee"/>; tourist tax excluded.</summary>
     [Precision(18, 2)]
