@@ -325,7 +325,8 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
             Name = "SR Supplier",
             Slug = $"sr-sup-{Guid.NewGuid():N}"[..25],
             DisplayName = "SR Supplier",
-            ContactEmail = "sr-supplier@test.com",
+            // One supplier profile per email (SU-14): every scenario gets its own.
+            ContactEmail = $"sr-supplier-{Guid.NewGuid():N}@test.com",
             OrgType = OrgType.Supplier,
             PlanTier = PlanTier.Starter,
         };

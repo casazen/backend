@@ -18,7 +18,8 @@ public class AdminSuppliersController(
 {
     /// <summary>
     /// Creates an invite for a prospective supplier of a given comune and queues its email (delivered by a Hangfire
-    /// job, so a provider error no longer fails the request).
+    /// job, so a provider error no longer fails the request). 409 <c>duplicate_invite</c> when a pending invite exists
+    /// for the email, 409 <c>supplier_email_taken</c> when a supplier profile already has it (SU-14).
     /// </summary>
     [HttpPost("invite")]
     [ProducesResponseType(typeof(AdminInviteResponse), StatusCodes.Status201Created)]
@@ -55,27 +56,57 @@ public class AdminSuppliersController(
     }
 
     /// <summary>
-    /// Retroactive fix: repairs orphaned/duplicate supplier profiles and links users to their orgs.
-    /// Idempotent — safe to run multiple times. Returns a report of actions taken.
+    /// Repairs supplier profiles (SU-14, A4-22): merges the profiles that share an email into one keeper (service
+    /// requests, availability, categories, comuni and accounts move, nothing answers 500), unlinks accounts from deleted
+    /// supplier orgs and reports the profiles no account holds. Nothing is ever linked by email (A4-23).
+    /// <paramref name="dryRun"/> defaults to true: the report shows what would change and nothing is saved; send
+    /// <c>dryRun=false</c> to apply. Idempotent. Runbook <c>docs/runbooks/suppliers.md</c> section 9.
     /// </summary>
     [HttpPost("fix-orphaned")]
     [ProducesResponseType(typeof(FixOrphanedSupplierOrgsResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<FixOrphanedSupplierOrgsResponse>> FixOrphaned(CancellationToken cancellationToken)
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<FixOrphanedSupplierOrgsResponse>> FixOrphaned(
+        [FromQuery] bool dryRun = true,
+        CancellationToken cancellationToken = default)
     {
-        var report = await supplierService.FixOrphanedSupplierOrgsAsync(cancellationToken);
+        var report = await supplierService.FixOrphanedSupplierOrgsAsync(dryRun, cancellationToken);
 
         logger.LogInformation(
-            "Admin fix-orphaned: scanned={Scanned}, linked={Linked}, merged={Merged}, deleted={Deleted}, orphans={Orphans}",
-            report.ProfilesScanned, report.UsersLinked, report.DuplicatesMerged, report.EmptyOrgsDeleted, report.OrphansSkipped);
+            "Admin fix-orphaned (dryRun={DryRun}): scanned={Scanned}, duplicateGroups={Groups}, merged={Merged}, " +
+            "manualInterventions={Manual}",
+            report.DryRun, report.ProfilesScanned, report.DuplicateGroups, report.Merges.Count,
+            report.ManualInterventions.Count);
 
         return Ok(new FixOrphanedSupplierOrgsResponse
         {
+            DryRun = report.DryRun,
             ProfilesScanned = report.ProfilesScanned,
-            UsersLinked = report.UsersLinked,
-            DuplicatesMerged = report.DuplicatesMerged,
-            EmptyOrgsDeleted = report.EmptyOrgsDeleted,
-            OrphansSkipped = report.OrphansSkipped,
-            Details = report.Details,
+            DuplicateGroups = report.DuplicateGroups,
+            DuplicatesMerged = report.Merges.Count,
+            ServiceRequestsMoved = report.Merges.Sum(m => m.ServiceRequestsMoved),
+            Merges = report.Merges
+                .Select(m => new SupplierDuplicateMergeDto
+                {
+                    KeeperOrgId = m.KeeperOrgId,
+                    DuplicateOrgId = m.DuplicateOrgId,
+                    ServiceRequestsMoved = m.ServiceRequestsMoved,
+                    SupplierJobsMoved = m.SupplierJobsMoved,
+                    AvailabilityDaysMoved = m.AvailabilityDaysMoved,
+                    AvailabilityDaysDropped = m.AvailabilityDaysDropped,
+                    CategoriesAdded = m.CategoriesAdded,
+                    ComuniAdded = m.ComuniAdded,
+                    SupplierLinksMoved = m.SupplierLinksMoved,
+                    OrgMembersMoved = m.OrgMembersMoved,
+                    DevicesMoved = m.DevicesMoved,
+                    DuplicateOrgDeleted = m.DuplicateOrgDeleted,
+                })
+                .ToList(),
+            DanglingLinksCleared = report.DanglingLinksCleared,
+            SupplierLinksBackfilled = report.SupplierLinksBackfilled,
+            OrphanProfiles = report.OrphanProfiles,
+            ManualInterventions = report.ManualInterventions
+                .Select(m => new SupplierManualInterventionDto { Code = m.Code, OrgIds = m.OrgIds, UserIds = m.UserIds })
+                .ToList(),
         });
     }
 

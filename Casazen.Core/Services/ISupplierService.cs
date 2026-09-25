@@ -20,6 +20,10 @@ public interface ISupplierService
     /// <c>supplier_invite_comune_mismatch</c>, <c>supplier_account_email_missing</c>,
     /// <c>supplier_account_email_mismatch</c>, <c>supplier_self_serve_unavailable</c>, <c>supplier_comune_not_pilot</c>.
     /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Code <c>supplier_email_taken</c>: another supplier profile already has this email (trimmed, case-insensitive;
+    /// SU-14). Its owner links it with <see cref="ClaimAsync"/>.
+    /// </exception>
     Task<SupplierRegistrationResult> RegisterAsync(
         SupplierRegistration registration,
         CancellationToken cancellationToken = default);
@@ -121,6 +125,10 @@ public interface ISupplierService
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
     /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Code <c>supplier_email_taken</c>: a supplier profile already has this email, so the invite could never be
+    /// accepted (SU-14).
+    /// </exception>
     Task<SupplierInvite> CreateInviteAsync(
         string email,
         string comuneCode,
@@ -135,6 +143,10 @@ public interface ISupplierService
     /// token does not prove (A4-23, A1-13); an existing profile is joined through an invite or <see cref="ClaimAsync"/>.
     /// <paramref name="email"/> only fills the contact of a provisioned profile.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Code <c>supplier_email_taken</c>: a profile would have to be provisioned, but another profile already has the
+    /// email (SU-14). The account links that profile with <see cref="ClaimAsync"/> instead of getting a duplicate.
+    /// </exception>
     Task<Guid?> GetOrProvisionSupplierOrgIdAsync(
         string userId,
         string email,
@@ -143,11 +155,27 @@ public interface ISupplierService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retroactive fix: detects and repairs orphaned/duplicate supplier profiles.
-    /// Links users to their supplier orgs, merges duplicates, and cleans up auto-provisioned
-    /// empty profiles. Returns a report of actions taken. Idempotent.
+    /// Admin repair of supplier profiles (SU-14, A4-22), in one transaction under an advisory lock. Idempotent.
+    /// <list type="number">
+    /// <item>Profiles with the same email (trimmed, case-insensitive; blank emails are never merged) are merged into one
+    /// keeper: the active profile, then the one with linked accounts, then the oldest. Service requests, availability
+    /// (the keeper's day wins), categories, comuni, accounts (<c>User.SupplierOrgId</c>, <c>User.OrgId</c>) and devices
+    /// move to the keeper, then the duplicate profile and org are deleted (the org is kept, without its supplier
+    /// profile, when it also holds host data). A group with a suspended profile, or with profiles held by several
+    /// accounts, is not merged: it is reported as a manual intervention.</item>
+    /// <item>Accounts whose <c>SupplierOrgId</c> points to a deleted org are unlinked; accounts whose <c>OrgId</c> is a
+    /// supplier org get the matching <c>SupplierOrgId</c>.</item>
+    /// <item>Profiles held by no account are only reported: nothing is ever linked by email (A4-23). Accounts with the
+    /// same email are listed as a manual intervention (the supplier links the profile with the claim, SU-02).</item>
+    /// </list>
+    /// With <paramref name="dryRun"/> every step runs and is reported, then the transaction is rolled back.
     /// </summary>
-    Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default);
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Code <c>supplier_maintenance_conflict</c>: a concurrent change stopped the run (nothing was saved; retry).
+    /// </exception>
+    Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(
+        bool dryRun,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns aggregated dashboard statistics for a supplier org.
@@ -242,10 +270,42 @@ public record SupplierDashboard(
     string? CalendarSyncError,
     DateTime LastUpdated);
 
+/// <summary>Outcome of <see cref="ISupplierService.FixOrphanedSupplierOrgsAsync"/>. Ids and counts only, no personal data.</summary>
+/// <param name="DryRun">True when nothing was saved.</param>
+/// <param name="ProfilesScanned">Supplier profiles at the start of the run.</param>
+/// <param name="DuplicateGroups">Emails used by more than one profile.</param>
+/// <param name="Merges">One entry per duplicate profile merged into its keeper.</param>
+/// <param name="DanglingLinksCleared">Accounts whose <c>SupplierOrgId</c> pointed to a deleted org (now unlinked).</param>
+/// <param name="SupplierLinksBackfilled">Accounts whose <c>OrgId</c> is a supplier org that got the matching <c>SupplierOrgId</c>.</param>
+/// <param name="OrphanProfiles">Profiles held by no account and with no account of the same email: left for their claim.</param>
+/// <param name="ManualInterventions">Cases the repair does not decide alone; nothing was changed for them.</param>
 public record FixOrphanedSupplierOrgsReport(
+    bool DryRun,
     int ProfilesScanned,
-    int UsersLinked,
-    int DuplicatesMerged,
-    int EmptyOrgsDeleted,
-    int OrphansSkipped,
-    IReadOnlyList<string> Details);
+    int DuplicateGroups,
+    IReadOnlyList<SupplierDuplicateMerge> Merges,
+    IReadOnlyList<string> DanglingLinksCleared,
+    IReadOnlyList<string> SupplierLinksBackfilled,
+    IReadOnlyList<Guid> OrphanProfiles,
+    IReadOnlyList<SupplierManualIntervention> ManualInterventions);
+
+/// <summary>A duplicate supplier profile merged into (or, in a dry run, to be merged into) its keeper.</summary>
+/// <param name="DuplicateOrgDeleted">
+/// False when the duplicate org also holds host data (properties, consents, ...): only its supplier profile is removed.
+/// </param>
+public record SupplierDuplicateMerge(
+    Guid KeeperOrgId,
+    Guid DuplicateOrgId,
+    int ServiceRequestsMoved,
+    int SupplierJobsMoved,
+    int AvailabilityDaysMoved,
+    int AvailabilityDaysDropped,
+    IReadOnlyList<string> CategoriesAdded,
+    IReadOnlyList<string> ComuniAdded,
+    int SupplierLinksMoved,
+    int OrgMembersMoved,
+    int DevicesMoved,
+    bool DuplicateOrgDeleted);
+
+/// <summary>A case left untouched for an admin decision (<see cref="Code"/>: see <c>docs/runbooks/suppliers.md</c>).</summary>
+public record SupplierManualIntervention(string Code, IReadOnlyList<Guid> OrgIds, IReadOnlyList<string> UserIds);
