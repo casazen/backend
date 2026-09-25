@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -56,8 +57,8 @@ public class GuestCheckInServiceTests
             PropertyId = propertyId,
             GuestId = guestId,
             OrgId = orgId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(3),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(6),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(6),
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
         });
@@ -583,8 +584,8 @@ public class GuestCheckInServiceTests
             PropertyId = propertyId,
             GuestId = guestId,
             OrgId = orgId,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(12),
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,
         });

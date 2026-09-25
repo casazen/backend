@@ -282,14 +282,76 @@ public class CalendarSyncStatusDto
     public string? CalendarSyncError { get; set; }
 }
 
+/// <summary>
+/// Report of <c>POST /api/admin/suppliers/fix-orphaned</c> (SU-14). Ids and counts only, no personal data. Runbook
+/// <c>docs/runbooks/suppliers.md</c> section 9.
+/// </summary>
 public class FixOrphanedSupplierOrgsResponse
 {
+    /// <summary>True: nothing was saved, the report shows what an applied run would do.</summary>
+    public bool DryRun { get; set; }
+
     public int ProfilesScanned { get; set; }
-    public int UsersLinked { get; set; }
+
+    /// <summary>Emails (trimmed, case-insensitive) used by more than one profile.</summary>
+    public int DuplicateGroups { get; set; }
+
+    /// <summary>Duplicate profiles merged into their keeper.</summary>
     public int DuplicatesMerged { get; set; }
-    public int EmptyOrgsDeleted { get; set; }
-    public int OrphansSkipped { get; set; }
-    public IReadOnlyList<string> Details { get; set; } = [];
+
+    public int ServiceRequestsMoved { get; set; }
+
+    public IReadOnlyList<SupplierDuplicateMergeDto> Merges { get; set; } = [];
+
+    /// <summary>Accounts unlinked from a supplier org that no longer exists.</summary>
+    public IReadOnlyList<string> DanglingLinksCleared { get; set; } = [];
+
+    /// <summary>Accounts whose own org is a supplier org and that got the matching supplier link.</summary>
+    public IReadOnlyList<string> SupplierLinksBackfilled { get; set; } = [];
+
+    /// <summary>Profiles held by no account and with no account of their email: left for their registrant's claim.</summary>
+    public IReadOnlyList<Guid> OrphanProfiles { get; set; } = [];
+
+    /// <summary>Cases left untouched for a decision (codes in the runbook).</summary>
+    public IReadOnlyList<SupplierManualInterventionDto> ManualInterventions { get; set; } = [];
+}
+
+public class SupplierDuplicateMergeDto
+{
+    public Guid KeeperOrgId { get; set; }
+    public Guid DuplicateOrgId { get; set; }
+    public int ServiceRequestsMoved { get; set; }
+    public int SupplierJobsMoved { get; set; }
+    public int AvailabilityDaysMoved { get; set; }
+
+    /// <summary>Days the keeper already had: the keeper's value is kept.</summary>
+    public int AvailabilityDaysDropped { get; set; }
+
+    public IReadOnlyList<string> CategoriesAdded { get; set; } = [];
+    public IReadOnlyList<string> ComuniAdded { get; set; } = [];
+
+    /// <summary>Accounts whose supplier link moved to the keeper.</summary>
+    public int SupplierLinksMoved { get; set; }
+
+    /// <summary>Accounts whose <c>orgId</c> moved to the keeper (the duplicate org was deleted).</summary>
+    public int OrgMembersMoved { get; set; }
+
+    public int DevicesMoved { get; set; }
+
+    /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
+    public bool DuplicateOrgDeleted { get; set; }
+}
+
+public class SupplierManualInterventionDto
+{
+    /// <summary>
+    /// <c>supplier_duplicate_several_accounts</c>, <c>supplier_duplicate_suspended</c>,
+    /// <c>supplier_duplicate_merge_conflict</c> or <c>supplier_link_requires_claim</c>.
+    /// </summary>
+    public string Code { get; set; } = string.Empty;
+
+    public IReadOnlyList<Guid> OrgIds { get; set; } = [];
+    public IReadOnlyList<string> UserIds { get; set; } = [];
 }
 
 // ─── Service categories (SU-03) ───────────────────────────────────────────────

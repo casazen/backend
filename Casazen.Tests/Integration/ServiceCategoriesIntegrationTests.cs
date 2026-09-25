@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -310,8 +311,8 @@ public class ServiceCategoriesIntegrationTests : IClassFixture<CasazenWebApplica
             OrgId = orgId,
             PropertyId = propertyId,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(3),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(5),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(5),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
         };

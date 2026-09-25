@@ -1,13 +1,14 @@
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
-using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
 
+/// <summary>
+/// CIN status as the API exposes it. The deadline is configuration (<c>Cin:ExposureDeadline</c>), not a constant: see
+/// <see cref="CinDeadlineCalendar"/> (CO-20).
+/// </summary>
 public static class CinComplianceRules
 {
-    public static readonly DateOnly RegulatoryDeadline = new(2026, 3, 1);
-
     /// <summary>Computed CIN status as the lowercase API value: "valid", "missing" or "invalid" (see <see cref="CinFormat"/>).</summary>
     public static string ResolveStatus(string? cinCode) => CinFormat.GetStatus(cinCode) switch
     {
@@ -17,10 +18,4 @@ public static class CinComplianceRules
     };
 
     public static bool IsCompliant(string? cinCode) => CinFormat.IsValid(cinCode);
-
-    public static int DaysUntilDeadline(DateOnly? today = null)
-    {
-        var reference = today ?? TimeProvider.System.TodayInRomeAsDateOnly();
-        return Math.Max(0, RegulatoryDeadline.DayNumber - reference.DayNumber);
-    }
 }

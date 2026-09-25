@@ -18,7 +18,7 @@ using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
-public class SupplierService(
+public partial class SupplierService(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
@@ -120,6 +120,11 @@ public class SupplierService(
             comuneCode = pilot.Code.Trim();
         }
 
+        // One profile per email (SU-14, A4-22): a second registration would create the duplicate that fix-orphaned had
+        // to merge. The unique index is the guarantee under concurrency (23505 below); this check answers early.
+        if (await IsSupplierEmailTakenAsync(email, cancellationToken))
+            throw SupplierEmailTaken();
+
         var slug = $"supplier-{Guid.NewGuid():N}"[..30];
         var org = new Org
         {
@@ -169,7 +174,16 @@ public class SupplierService(
             logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (SupplierProfileEmailIndex.IsViolation(ex))
+        {
+            // A parallel registration took the email between the check and the insert.
+            throw SupplierEmailTaken();
+        }
+
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
@@ -249,6 +263,11 @@ public class SupplierService(
                 ?? throw ClaimInvalid();
             await LockSupplierClaimAsync(profile.OrgId, cancellationToken);
 
+            // Merged into another profile by fix-orphaned while this claim waited for the lock (SU-14): the token no
+            // longer names a profile, and linking it would point the account to a deleted org.
+            if (!await db.SupplierProfiles.AsNoTracking().AnyAsync(sp => sp.OrgId == profile.OrgId, cancellationToken))
+                throw ClaimInvalid();
+
             if (await IsSupplierProfileHeldAsync(profile.OrgId, cancellationToken))
                 throw new DomainRuleException("supplier_claim_used", "SupplierClaimUsed");
             if (profile.ClaimTokenExpiresAt is not DateTime expiresAt || expiresAt <= DateTime.UtcNow)
@@ -279,7 +298,9 @@ public class SupplierService(
                 throw new DomainConflictException("supplier_claim_ambiguous", "SupplierClaimAmbiguous");
 
             await LockSupplierClaimAsync(candidates[0], cancellationToken);
-            profile = await db.SupplierProfiles.FirstAsync(sp => sp.OrgId == candidates[0], cancellationToken);
+            // Null when fix-orphaned merged it into another profile while this claim waited for the lock (SU-14).
+            profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == candidates[0], cancellationToken)
+                ?? throw new DomainRuleException("supplier_claim_not_found", "SupplierClaimNotFound");
             // Taken by a parallel claim while this one waited for the lock.
             if (await IsSupplierProfileHeldAsync(profile.OrgId, cancellationToken))
                 throw new DomainRuleException("supplier_claim_used", "SupplierClaimUsed");
@@ -350,6 +371,23 @@ public class SupplierService(
         !string.IsNullOrWhiteSpace(a)
         && !string.IsNullOrWhiteSpace(b)
         && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static DomainConflictException SupplierEmailTaken() =>
+        new("supplier_email_taken", "SupplierEmailTaken");
+
+    /// <summary>
+    /// True when a supplier profile already has <paramref name="email"/> (trimmed, case-insensitive), the key of the
+    /// unique index <see cref="SupplierProfileEmailIndex"/>. A blank email is never taken.
+    /// </summary>
+    private async Task<bool> IsSupplierEmailTakenAsync(string? email, CancellationToken cancellationToken)
+    {
+        var normalized = SupplierProfileEmailIndex.Normalize(email);
+        if (normalized.Length == 0)
+            return false;
+
+        return await db.SupplierProfiles.AsNoTracking()
+            .AnyAsync(sp => sp.Email.Trim().ToLower() == normalized, cancellationToken);
+    }
 
     public async Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
@@ -590,6 +628,11 @@ public class SupplierService(
         if (existing is not null)
             throw new InvalidOperationException($"Pending invite already exists for {email}");
 
+        // Accepting the invite creates a profile with this email: with a profile already there it could never succeed
+        // (SU-14). The owner of that profile links it with the claim instead.
+        if (await IsSupplierEmailTakenAsync(email, cancellationToken))
+            throw SupplierEmailTaken();
+
         // The token only travels in the email; the database keeps its hash (A4-04).
         var token = SupplierInviteTokens.Generate();
         var invite = new SupplierInviteRecord
@@ -637,6 +680,11 @@ public class SupplierService(
                 var orgId = await GetOrProvisionSupplierOrgIdCoreAsync(userId, email, firstName, lastName, cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return orgId;
+            }
+            catch (DbUpdateException ex) when (SupplierProfileEmailIndex.IsViolation(ex))
+            {
+                // Another account provisioned or registered a profile with this email in parallel (SU-14).
+                throw SupplierEmailTaken();
             }
             catch (Exception ex) when (attempt == 1 && IsProvisioningSerializationRace(ex))
             {
@@ -708,7 +756,17 @@ public class SupplierService(
         // and an unverified Auth0 account could take over that supplier. An existing profile is joined only through
         // its invite (RegisterAsync) or an explicit claim (ClaimAsync: claim token, or verified email).
 
-        // Step 2: Auto-provisioning — last resort (a Supplier role given by hand, without any profile)
+        // Step 2: Auto-provisioning — last resort (a Supplier role given by hand, without any profile).
+        // Never a second profile for an email that already has one (SU-14, A4-22: that is how the duplicates were
+        // born): the account links the existing profile with the claim (token or verified email, SU-02) instead.
+        if (await IsSupplierEmailTakenAsync(resolvedEmail, cancellationToken))
+        {
+            logger.LogWarning(
+                "Supplier org not provisioned for user {UserId}: a supplier profile already has the email {MaskedEmail}",
+                userId, LogRedaction.MaskEmail(resolvedEmail));
+            throw SupplierEmailTaken();
+        }
+
         logger.LogWarning(
             "Auto-provisioning supplier org for user {UserId} (email={MaskedEmail})",
             userId, LogRedaction.MaskEmail(resolvedEmail));
@@ -732,7 +790,7 @@ public class SupplierService(
         var profile = new SupplierProfile
         {
             OrgId = org.Id,
-            Email = resolvedEmail,
+            Email = resolvedEmail.Trim(),
             LegalName = displayName,
             Phone = string.Empty,
         };
@@ -877,138 +935,6 @@ public class SupplierService(
         await db.SaveChangesAsync(cancellationToken);
         return profile;
     }
-
-    public async Task<FixOrphanedSupplierOrgsReport> FixOrphanedSupplierOrgsAsync(CancellationToken cancellationToken = default)
-    {
-        var details = new List<string>();
-        int usersLinked = 0, duplicatesMerged = 0, emptyOrgsDeleted = 0, orphansSkipped = 0;
-
-        var allProfiles = await db.SupplierProfiles
-            .Include(sp => sp.Org)
-            .OrderBy(sp => sp.CreatedAt)
-            .ToListAsync(cancellationToken);
-
-        // Group by normalized email to detect duplicates. Blank email is not an
-        // identity key, so those profiles are never merged together.
-        var profilesByEmail = allProfiles
-            .GroupBy(sp => NormalizeSupplierEmail(sp.Email))
-            .ToList();
-
-        foreach (var group in profilesByEmail)
-        {
-            var email = group.Key;
-            var profiles = group.ToList();
-
-            // Case C: Duplicate profiles — keep the richest one
-            if (!string.IsNullOrWhiteSpace(email) && profiles.Count > 1)
-            {
-                static int Score(SupplierProfile p)
-                {
-                    int s = 0;
-                    if (!string.IsNullOrWhiteSpace(p.LegalName) && p.LegalName != "Fornitore") s += 3;
-                    if (p.CategoriesJson is not null && p.CategoriesJson != "[]") s += 1;
-                    if (p.ComuniJson is not null && p.ComuniJson != "[]") s += 1;
-                    if (!string.IsNullOrWhiteSpace(p.Bio)) s += 1;
-                    if (p.Status == SupplierStatus.Active) s += 1;
-                    return s;
-                }
-
-                var ordered = profiles.OrderByDescending(Score).ThenBy(p => p.CreatedAt).ToList();
-                var keeper = ordered[0];
-                var victims = ordered.Skip(1).ToList();
-
-                foreach (var victim in victims)
-                {
-                    var victimOrg = victim.Org;
-                    db.SupplierProfiles.Remove(victim);
-                    if (victimOrg is not null)
-                        db.Orgs.Remove(victimOrg);
-                    duplicatesMerged++;
-                    details.Add($"Duplicate merged: kept {keeper.OrgId} (score={Score(keeper)}), deleted {victim.OrgId} (score={Score(victim)}) — email='{email}'");
-                    logger.LogWarning("FixOrphaned: deleted duplicate {VictimOrgId}, kept {KeeperOrgId}", victim.OrgId, keeper.OrgId);
-                }
-
-                profiles = [keeper];
-            }
-
-            // Link the surviving profile to its user
-            foreach (var profile in profiles)
-            {
-                // Find the user: by email first, then by OrgId/SupplierOrgId linkage
-                User? user = null;
-                if (!string.IsNullOrWhiteSpace(email))
-                {
-                    user = await db.Users
-                        .FirstOrDefaultAsync(u => u.Email.ToLower() == email, cancellationToken);
-                }
-
-                // Fallback: find user linked via OrgId or SupplierOrgId
-                if (user is null)
-                {
-                    user = await db.Users
-                        .FirstOrDefaultAsync(u =>
-                            u.SupplierOrgId == profile.OrgId ||
-                            (u.OrgId == profile.OrgId && u.SupplierOrgId == null),
-                            cancellationToken);
-                }
-
-                if (user is null)
-                {
-                    orphansSkipped++;
-                    details.Add($"Orphan: profile {profile.OrgId} (email='{email}') has no matching user");
-                    logger.LogWarning("FixOrphaned: no user for profile {OrgId}", profile.OrgId);
-                    continue;
-                }
-
-                // Set SupplierOrgId on the user (always) and OrgId only if empty
-                if (user.SupplierOrgId != profile.OrgId)
-                {
-                    user.SupplierOrgId = profile.OrgId;
-                    usersLinked++;
-                    details.Add($"Linked: user {user.Id} SupplierOrgId → {profile.OrgId}");
-                }
-
-                // Only set OrgId if the user doesn't already have a host org
-                if (user.OrgId is Guid existingOrgId && existingOrgId != profile.OrgId)
-                {
-                    var existingOrg = await db.Orgs.AsNoTracking()
-                        .FirstOrDefaultAsync(o => o.Id == existingOrgId, cancellationToken);
-                    if (existingOrg?.OrgType == OrgType.Host)
-                    {
-                        details.Add($"Dual-role: user {user.Id} keeps host OrgId={existingOrgId}, SupplierOrgId={profile.OrgId}");
-                        continue;
-                    }
-                }
-
-                if (user.OrgId is null)
-                {
-                    user.OrgId = profile.OrgId;
-                    details.Add($"Set OrgId: user {user.Id} OrgId → {profile.OrgId}");
-                }
-
-                user.UpdatedAt = DateTime.UtcNow;
-            }
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-
-        var report = new FixOrphanedSupplierOrgsReport(
-            ProfilesScanned: allProfiles.Count,
-            UsersLinked: usersLinked,
-            DuplicatesMerged: duplicatesMerged,
-            EmptyOrgsDeleted: emptyOrgsDeleted,
-            OrphansSkipped: orphansSkipped,
-            Details: details);
-
-        logger.LogInformation(
-            "FixOrphaned completed: scanned={Scanned}, linked={Linked}, merged={Merged}, deletedOrgs={Deleted}, orphans={Orphans}",
-            report.ProfilesScanned, report.UsersLinked, report.DuplicatesMerged, report.EmptyOrgsDeleted, report.OrphansSkipped);
-
-        return report;
-    }
-
-    private static string NormalizeSupplierEmail(string? email) =>
-        string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
     private EmailContent BuildInviteEmail(SupplierInviteRecord invite, string token) =>
         EmailTemplates.SupplierInvite(

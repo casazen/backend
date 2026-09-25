@@ -54,6 +54,18 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             : Append($"<ul style=\"padding-left:20px;\">{string.Concat(items)}</ul>");
     }
 
+    /// <summary>A bulleted list of dynamic values (e.g. property names), each HTML-encoded; skipped when empty.</summary>
+    public EmailHtmlBuilder ValueList(IEnumerable<string?> values)
+    {
+        var items = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => $"<li>{Encode(value)}</li>")
+            .ToList();
+        return items.Count == 0
+            ? this
+            : Append($"<ul style=\"padding-left:20px;\">{string.Concat(items)}</ul>");
+    }
+
     public EmailHtmlBuilder Button(string key, string url) =>
         Append(
             $"<p><a href=\"{EncodeUrl(url)}\" style=\"display:inline-block;padding:12px 20px;background:#0d8abc;"
