@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260925000851_EncryptGuestDocumentAndQuesturaCredentials")]
+    [Migration("20260925013824_EncryptGuestDocumentAndQuesturaCredentials")]
     partial class EncryptGuestDocumentAndQuesturaCredentials
     {
         /// <inheritdoc />
@@ -235,12 +235,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CheckInDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("CheckInToken")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CheckInTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime>("CheckOutDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -347,10 +341,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CheckInDate");
-
-                    b.HasIndex("CheckInToken")
-                        .IsUnique()
-                        .HasFilter("\"CheckInToken\" IS NOT NULL");
 
                     b.HasIndex("GuestId");
 
@@ -1945,6 +1935,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("TaxpayerFiscalCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -2057,9 +2051,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId");
 
-                    b.HasIndex("OrgId", "TaxYear")
-                        .IsUnique()
-                        .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
+                    b.HasIndex("OrgId", "TaxYear");
 
                     b.HasIndex("PropertyId", "TaxYear")
                         .IsUnique();
