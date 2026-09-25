@@ -177,6 +177,9 @@
   <data name="BillingReturnUrlNotAllowed" xml:space="preserve">
     <value>The payment return address must be a page of this site.</value>
   </data>
+  <data name="BillingReturnPathNotAllowed" xml:space="preserve">
+    <value>The payment return page must be the plan or billing page of this site.</value>
+  </data>
   <data name="BillingReturnUrlNotConfigured" xml:space="preserve">
     <value>Plan payments are not configured in this environment yet.</value>
   </data>
@@ -1074,5 +1077,14 @@
   </data>
   <data name="ServiceRequestStateChanged" xml:space="preserve">
     <value>The request was just changed by another operation: reload the page and check its current status.</value>
+  </data>
+  <data name="FiscalShortStayThresholdExceeded" xml:space="preserve">
+    <value>In {1} this taxpayer would let more than {0} apartments short-term: beyond this threshold the activity is presumed to be a business, and neither the cedolare secca flat tax nor ordinary IRPEF without a VAT number can be chosen. Check the regime with your accountant.</value>
+  </data>
+  <data name="FiscalTaxpayerCodeInvalid" xml:space="preserve">
+    <value>The taxpayer's tax code (codice fiscale) is not valid: it must be 16 letters and digits (individual).</value>
+  </data>
+  <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
+    <value>For {0} this taxpayer already has another property at the 21% cedolare rate: the reduced rate applies to one unit only. First assign 26% to one of the two properties.</value>
   </data>
 </root>

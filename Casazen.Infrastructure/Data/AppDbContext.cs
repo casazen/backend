@@ -644,10 +644,10 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyFiscalYear>()
             .HasIndex(y => new { y.PropertyId, y.TaxYear })
             .IsUnique();
+        // No unique "one primary per org and year" index any more: the 21% unit is one per taxpayer (CO-18), and one org
+        // can manage several taxpayers. FiscalService checks it under the OrgFiscalRegime advisory lock.
         modelBuilder.Entity<PropertyFiscalYear>()
-            .HasIndex(y => new { y.OrgId, y.TaxYear })
-            .IsUnique()
-            .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
+            .HasIndex(y => new { y.OrgId, y.TaxYear });
         modelBuilder.Entity<PropertyFiscalYear>().HasIndex(y => y.OrgId);
         modelBuilder.Entity<Payment>()
             .Property(p => p.OtaWithholdingTax)

@@ -87,6 +87,12 @@ internal static class PostgresAdvisoryLocks
         /// the nightly job and the one-shot command never run together (CO-06, A5-36).
         /// </summary>
         PropertyComplianceCheckRun = 1_031,
+
+        /// <summary>
+        /// STR fiscal regimes and taxpayers of one org (key: org id): the one 21% cedolare unit per taxpayer and tax year is
+        /// checked and written one request at a time (CO-18, A5-22).
+        /// </summary>
+        OrgFiscalRegime = 1_023,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
