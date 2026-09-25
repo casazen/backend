@@ -50,6 +50,9 @@ public class AppDbContext(
     // Stages of the host alerts already sent per stay (CO-10)
     public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
 
+    // Check-out of a stay: wizard progress and what the host declared (CO-17)
+    public DbSet<StayCheckout> StayCheckouts { get; set; } = null!;
+
     // Stage of the CIN alert already sent per property (CO-20)
     public DbSet<CinAlertState> CinAlertStates { get; set; } = null!;
 
@@ -177,6 +180,19 @@ public class AppDbContext(
             .WithMany()
             .HasForeignKey(s => s.BookingId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // CO-17: the check-out of a stay goes with it; its cleaning request survives it as a plain request.
+        modelBuilder.Entity<StayCheckout>(entity =>
+        {
+            entity.HasOne(c => c.Booking)
+                .WithMany()
+                .HasForeignKey(c => c.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.CleaningRequest)
+                .WithMany()
+                .HasForeignKey(c => c.CleaningRequestId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
 
         // CO-20: the CIN alert stage of a property goes with it.
         modelBuilder.Entity<CinAlertState>()

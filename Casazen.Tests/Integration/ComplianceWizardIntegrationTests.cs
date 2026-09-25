@@ -59,12 +59,31 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
         var complete = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/checkout-wizard/complete", new
         {
             confirmDeparture = true,
+            propertyReady = true,
         });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
 
         var body = await complete.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("propertyReady").GetBoolean());
         Assert.Equal("CheckedOut", body.GetProperty("bookingStatus").GetString());
+    }
+
+    [Fact]
+    public async Task CheckoutWizard_PropertyReadyNotDeclared_IsNotReported()
+    {
+        var (hostId, org, propertyId) = await SeedPropertyScenarioAsync(PropertyComplianceStatus.Active);
+        var bookingId = await SeedCheckedInBookingAsync(hostId, org.Id, propertyId);
+
+        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        await client.PostAsync($"/api/bookings/{bookingId}/checkout-wizard/start", null);
+        var complete = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/checkout-wizard/complete", new
+        {
+            confirmDeparture = true,
+        });
+
+        // A5-24: the quick check-out of the app declares nothing, so the property is not ready (never a fixed true).
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+        Assert.False((await complete.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("propertyReady").GetBoolean());
     }
 
     [Fact]

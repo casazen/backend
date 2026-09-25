@@ -82,6 +82,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.CheckOut), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.StartCheckoutWizard), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.CompleteCheckoutWizard), "RequireContext:short-rent:booking.write")]
+    [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.SaveCheckoutProgress), "RequireContext:short-rent:booking.write")]
+    [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.ConfirmPropertyReady), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(BookingLifecycleController), nameof(BookingLifecycleController.Quote), "RequireContext:short-rent:booking.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.DisableConfig), "RequireContext:short-rent:property.write")]

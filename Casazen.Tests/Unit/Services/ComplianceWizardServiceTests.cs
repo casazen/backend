@@ -47,6 +47,17 @@ public class ComplianceWizardServiceTests
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
+        alloggiati.Setup(a => a.GetStatusAsync(It.IsAny<Guid>())).ReturnsAsync((Guid id) => new AlloggiatiStatusInfo(
+            id,
+            AlloggiatiWebStatus.DaInviareManualmente,
+            null,
+            null,
+            null,
+            new DateTime(2026, 9, 22, 22, 0, 0, DateTimeKind.Utc),
+            false,
+            0,
+            true,
+            false));
 
         var stayLifecycle = new StayLifecycleService(
             db,
@@ -498,6 +509,21 @@ public class ComplianceWizardServiceTests
             OrgId = org.Id,
             Status = AlloggiatiWebStatus.Rifiutato,
         });
+        // Checked out yesterday, property not declared ready (CO-17); its Alloggiati communication was declared sent.
+        var turnover = AddStay(pending, "Turnover", todayInRome.AddDays(-1), BookingStatus.CheckedOut);
+        db.StayCheckouts.Add(new StayCheckout
+        {
+            BookingId = turnover.Id,
+            OrgId = org.Id,
+            CompletedAt = todayInRome.AddDays(-1).AddHours(9),
+        });
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = turnover.Id,
+            GuestId = turnover.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.InviatoManualmente,
+        });
         await db.SaveChangesAsync();
 
         var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(org.Id);
@@ -509,6 +535,7 @@ public class ComplianceWizardServiceTests
         AssertTarget(Assert.Single(summary.CheckoutsDue.Items), ComplianceCockpitAction.CheckOut, bookingId: departing.Id);
         AssertTarget(Assert.Single(summary.AlloggiatiManualRequired.Items), ComplianceCockpitAction.SendAlloggiati, bookingId: departing.Id);
         AssertTarget(Assert.Single(summary.AlloggiatiFailures.Items), ComplianceCockpitAction.ResolveAlloggiatiFailure, bookingId: rejected.Id);
+        AssertTarget(Assert.Single(summary.TurnoversPending.Items), ComplianceCockpitAction.ConfirmPropertyReady, bookingId: turnover.Id);
         // Every action the clients must route is produced by one section.
         Assert.Equal(
             Enum.GetValues<ComplianceCockpitAction>().Order(),
@@ -519,6 +546,7 @@ public class ComplianceWizardServiceTests
                 summary.CheckoutsDue,
                 summary.AlloggiatiManualRequired,
                 summary.AlloggiatiFailures,
+                summary.TurnoversPending,
             }.SelectMany(section => section.Items).Select(i => i.Action).Distinct().Order());
 
         Booking AddStay(Property property, string name, DateTime checkout, BookingStatus status)
@@ -582,9 +610,8 @@ public class ComplianceWizardServiceTests
         var service = CreateService(db, RomeJustAfterMidnight);
 
         var deadEnd = await Assert.ThrowsAsync<DomainConflictException>(() => service.StartCheckoutWizardAsync(booking.Id));
-        var (started, steps) = await service.StartCheckoutWizardAsync(booking.Id, registerArrival: true);
-        var statusAfterStart = started.Status;
-        var (updated, propertyReady) = await service.CompleteCheckoutWizardAsync(
+        var started = await service.StartCheckoutWizardAsync(booking.Id, registerArrival: true);
+        var completed = await service.CompleteCheckoutWizardAsync(
             booking.Id,
             property.OwnerId,
             new CompleteCheckoutWizardInput(
@@ -594,12 +621,223 @@ public class ComplianceWizardServiceTests
                 ServiceCategory: null));
 
         Assert.Equal(BookingErrorCodes.ArrivalNotRegistered, deadEnd.Code);
-        Assert.Equal(BookingStatus.CheckedIn, statusAfterStart);
-        Assert.NotNull(started.CheckoutWizardStartedAt);
-        Assert.Contains(steps, s => s.Id == "confirm-departure" && s.Status == "complete");
-        Assert.True(propertyReady);
-        Assert.Equal(BookingStatus.CheckedOut, updated.Status);
-        Assert.Equal(checkout.AddYears(7), updated.Guest.DataRetentionUntil);
+        Assert.Equal(BookingStatus.CheckedIn, started.Booking.Status);
+        Assert.NotNull(started.Booking.CheckoutWizardStartedAt);
+        Assert.Equal(
+            new[] { "stay-summary", "alloggiati", "cleaning", "tourist-tax", "property-ready" },
+            started.Steps.Select(s => s.Id));
+        Assert.Equal(CheckoutWizardStep.StaySummary, started.CurrentStep);
+        // Nothing declared: the property is not assumed ready (A5-24), it stays a turnover of the cockpit.
+        Assert.False(completed.PropertyReady);
+        Assert.Equal(BookingStatus.CheckedOut, completed.Booking.Status);
+        Assert.Equal(checkout.AddYears(7), completed.Booking.Guest.DataRetentionUntil);
+    }
+
+    [Fact]
+    public async Task CompleteCheckoutWizard_WithoutStart_Throws409AndKeepsTheStayOpen()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_WithoutStart_Throws409AndKeepsTheStayOpen));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db, RomeJustAfterMidnight)
+            .CompleteCheckoutWizardAsync(booking.Id, property.OwnerId, new CompleteCheckoutWizardInput(true, null, null, null)));
+
+        Assert.Equal(BookingErrorCodes.CheckoutWizardNotStarted, error.Code);
+        Assert.Equal(BookingStatus.CheckedIn, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).Status);
+        Assert.False(await db.StayCheckouts.AnyAsync());
+    }
+
+    [Theory]
+    [InlineData(CheckoutCleaningChoice.Skip, true)]
+    [InlineData(CheckoutCleaningChoice.Request, false)]
+    public async Task CompleteCheckoutWizard_ContradictoryCleaningChoice_Throws422(CheckoutCleaningChoice choice, bool withSupplier)
+    {
+        await using var db = CreateDb($"{nameof(CompleteCheckoutWizard_ContradictoryCleaningChoice_Throws422)}-{choice}");
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        booking.CheckoutWizardStartedAt = new DateTime(2026, 9, 23, 20, 0, 0, DateTimeKind.Utc);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => CreateService(db, RomeJustAfterMidnight)
+            .CompleteCheckoutWizardAsync(
+                booking.Id,
+                property.OwnerId,
+                new CompleteCheckoutWizardInput(true, withSupplier ? Guid.NewGuid() : null, null, null) { CleaningChoice = choice }));
+
+        Assert.Equal(BookingErrorCodes.CleaningChoiceInvalid, error.Code);
+        Assert.Equal(BookingStatus.CheckedIn, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).Status);
+    }
+
+    [Fact]
+    public async Task SaveCheckoutProgress_ThenStartAgain_ResumesOnTheSavedStepWithTheAnswers()
+    {
+        await using var db = CreateDb(nameof(SaveCheckoutProgress_ThenStartAgain_ResumesOnTheSavedStepWithTheAnswers));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeJustAfterMidnight);
+
+        await service.StartCheckoutWizardAsync(booking.Id);
+        await service.SaveCheckoutProgressAsync(booking.Id, new StayCheckoutProgress(
+            CheckoutWizardStep.TouristTax,
+            DepartureConfirmed: true,
+            CheckoutCleaningChoice.Skip,
+            CleaningSupplierOrgId: Guid.NewGuid(),
+            CleaningCategory: "cleaning",
+            CleaningNotes: "ignored when skipped",
+            TouristTaxCollection.CollectedAtProperty,
+            PropertyReady: null,
+            PropertyNotes: "  "));
+        var reopened = await service.StartCheckoutWizardAsync(booking.Id);
+
+        Assert.Equal(CheckoutWizardStep.TouristTax, reopened.CurrentStep);
+        Assert.NotNull(reopened.Checkout);
+        Assert.True(reopened.Checkout!.DepartureConfirmed);
+        Assert.Equal(CheckoutCleaningChoice.Skip, reopened.Checkout.CleaningChoice);
+        Assert.Null(reopened.Checkout.CleaningSupplierOrgId);
+        Assert.Null(reopened.Checkout.CleaningNotes);
+        Assert.Null(reopened.Checkout.PropertyNotes);
+        Assert.Equal(TouristTaxCollection.CollectedAtProperty, reopened.TouristTax.Collection);
+        Assert.Equal(1, await db.StayCheckouts.CountAsync());
+        Assert.Contains(reopened.Steps, s => s.Id == "cleaning" && s.Status == "complete");
+        Assert.Contains(reopened.Steps, s => s.Id == "property-ready" && s.Status == "pending");
+        // Progress only: nothing was closed.
+        Assert.Equal(BookingStatus.CheckedIn, reopened.Booking.Status);
+        Assert.Null(reopened.Checkout.CompletedAt);
+    }
+
+    [Fact]
+    public async Task SaveCheckoutProgress_BeforeTheStart_Throws409()
+    {
+        await using var db = CreateDb(nameof(SaveCheckoutProgress_BeforeTheStart_Throws409));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db, RomeJustAfterMidnight)
+            .SaveCheckoutProgressAsync(booking.Id, new StayCheckoutProgress(
+                CheckoutWizardStep.Alloggiati, true, null, null, null, null, null, null, null)));
+
+        Assert.Equal(BookingErrorCodes.CheckoutWizardNotStarted, error.Code);
+    }
+
+    [Theory]
+    [InlineData(BookingSource.Direct, 12.5, 12.5)]
+    [InlineData(BookingSource.Manual, 12.5, 12.5)]
+    [InlineData(BookingSource.Airbnb, 12.5, null)]
+    [InlineData(BookingSource.Manual, 0, null)]
+    public async Task StartCheckoutWizard_TouristTax_ShowsOnlyTheAmountCasaZenRecorded(
+        BookingSource source,
+        double stored,
+        double? expected)
+    {
+        await using var db = CreateDb($"{nameof(StartCheckoutWizard_TouristTax_ShowsOnlyTheAmountCasaZenRecorded)}-{source}-{stored}");
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        booking.Source = source;
+        booking.TouristTax = (decimal)stored;
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var state = await CreateService(db, RomeJustAfterMidnight).StartCheckoutWizardAsync(booking.Id);
+
+        Assert.Equal((decimal?)expected, state.TouristTax.RecordedAmount);
+        Assert.False(state.TouristTax.CollectedWithOnlinePayment);
+        Assert.Null(state.TouristTax.Collection);
+    }
+
+    [Fact]
+    public async Task StartCheckoutWizard_DirectBookingPaidOnline_SaysTheTaxWasCollectedWithThePayment()
+    {
+        await using var db = CreateDb(nameof(StartCheckoutWizard_DirectBookingPaidOnline_SaysTheTaxWasCollectedWithThePayment));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        booking.Source = BookingSource.Direct;
+        booking.PaymentOption = PaymentOption.Immediate;
+        booking.TouristTax = 8m;
+        db.Bookings.Add(booking);
+        db.Payments.Add(new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = property.OrgId,
+            Amount = 108m,
+            Status = PaymentStatus.Completed,
+            StripePaymentIntentId = "pi_test",
+        });
+        await db.SaveChangesAsync();
+
+        var state = await CreateService(db, RomeJustAfterMidnight).StartCheckoutWizardAsync(booking.Id);
+
+        Assert.Equal(8m, state.TouristTax.RecordedAmount);
+        Assert.True(state.TouristTax.CollectedWithOnlinePayment);
+    }
+
+    [Fact]
+    public async Task Summary_TurnoversPending_CountsCheckedOutStaysWhosePropertyIsNotReadyUntilDeclaredOrNextArrival()
+    {
+        await using var db = CreateDb(nameof(Summary_TurnoversPending_CountsCheckedOutStaysWhosePropertyIsNotReadyUntilDeclaredOrNextArrival));
+        var property = await SeedPropertyAsync(db);
+        var otherProperty = await SeedPropertyAsync(db, property.OrgId);
+        var today = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
+        Booking Stay(Property of, DateTime checkout, BookingStatus status, bool? declaredReady, bool completed = true)
+        {
+            var guest = new Guest { FirstName = "Ospite", LastName = Guid.NewGuid().ToString("N")[..6], Email = $"{Guid.NewGuid():N}@test.com", OrgId = of.OrgId };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(of, guest, checkout, status);
+            db.Bookings.Add(booking);
+            if (declaredReady is { } ready)
+            {
+                db.StayCheckouts.Add(new StayCheckout
+                {
+                    BookingId = booking.Id,
+                    OrgId = of.OrgId,
+                    CompletedAt = completed ? checkout.AddHours(9) : null,
+                    PropertyReady = ready,
+                    PropertyReadyAt = ready ? checkout.AddHours(10) : null,
+                });
+            }
+
+            return booking;
+        }
+
+        var notReady = Stay(property, today, BookingStatus.CheckedOut, declaredReady: false);
+        Stay(property, today.AddDays(-3), BookingStatus.CheckedOut, declaredReady: true);
+        // Not ready, but a later stay of the same property has arrived: it was ready for it.
+        Stay(otherProperty, today.AddDays(-5), BookingStatus.CheckedOut, declaredReady: false);
+        var laterStay = Stay(otherProperty, today.AddDays(1), BookingStatus.CheckedIn, declaredReady: null);
+        laterStay.CheckInDate = today.AddDays(-2);
+        // Checked out before CO-17: no record, not listed.
+        Stay(property, today.AddDays(-10), BookingStatus.CheckedOut, declaredReady: null);
+        // Wizard still open: not a turnover yet.
+        Stay(property, today, BookingStatus.CheckedIn, declaredReady: false, completed: false);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+
+        var item = Assert.Single(summary.TurnoversPending.Items);
+        Assert.Equal(1, summary.TurnoversPending.Count);
+        Assert.Equal(notReady.Id, item.BookingId);
+        Assert.Equal(ComplianceCockpitAction.ConfirmPropertyReady, item.Action);
+        Assert.StartsWith("Villa Test · Ospite", item.Label);
     }
 
     [Fact]
@@ -674,6 +912,7 @@ public class ComplianceWizardServiceTests
         var earlyCheckout = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
         var laterCheckout = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc);
         var earlyBooking = BuildBooking(property, guest, earlyCheckout, BookingStatus.CheckedIn);
+        earlyBooking.CheckoutWizardStartedAt = earlyCheckout;
         var laterBooking = BuildBooking(property, guest, laterCheckout, BookingStatus.Confirmed);
         db.Bookings.AddRange(earlyBooking, laterBooking);
         await db.SaveChangesAsync();
