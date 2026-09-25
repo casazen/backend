@@ -218,6 +218,157 @@ public class UserServiceTests
         _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
     }
 
+    // ─── UpdateRolesAsync / GetRolesAsync (A1-17) ────────────────────────────
+
+    [Fact]
+    public async Task UpdateRolesAsync_AddsSupplierWithoutTouchingExistingHostRoles()
+    {
+        // Arrange: a dual-role "Both" host (PropertyOwner + LongTermLandlord) that the admin also makes a supplier.
+        var userId = "auth0|dual-role";
+        var user = new User { Id = userId, Role = UserRole.PropertyOwner };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner, UserRole.LongTermLandlord]));
+
+        // Act
+        var result = await _service.UpdateRolesAsync(
+            userId, [UserRole.PropertyOwner, UserRole.LongTermLandlord, UserRole.Supplier], "auth0|admin");
+
+        // Assert
+        Assert.True(result.RoleSync.Succeeded);
+        Assert.Equal(UserRole.PropertyOwner, user.Role); // highest-priority role still held stays primary
+        Assert.Equal([UserRole.Supplier], result.RolesGranted);
+        Assert.Empty(result.RolesRevoked);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(
+            userId, It.Is<IReadOnlyCollection<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Supplier })), It.IsAny<CancellationToken>()), Times.Once);
+        _auth0Mock.Verify(a => a.RemoveRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _membershipMock.Verify(m => m.GrantAsync(
+            userId, It.Is<IEnumerable<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Supplier })), It.IsAny<CancellationToken>()), Times.Once);
+        _membershipMock.Verify(m => m.RevokeAsync(It.IsAny<string>(), It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_RemovesOneOfSeveralRoles_KeepsTheOthers()
+    {
+        // Arrange: admin unchecks Supplier only; Admin (primary) and PropertyOwner stay.
+        var userId = "auth0|multi-admin";
+        var user = new User { Id = userId, Role = UserRole.Admin };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.HasOtherActiveAdminAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.Admin, UserRole.PropertyOwner, UserRole.Supplier]));
+
+        // Act
+        var result = await _service.UpdateRolesAsync(userId, [UserRole.Admin, UserRole.PropertyOwner], "auth0|admin");
+
+        // Assert
+        Assert.True(result.RoleSync.Succeeded);
+        Assert.Equal(UserRole.Admin, user.Role);
+        Assert.Equal([UserRole.Supplier], result.RolesRevoked);
+        Assert.Empty(result.RolesGranted);
+        _auth0Mock.Verify(a => a.RemoveRolesAsync(
+            userId, It.Is<IReadOnlyCollection<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Supplier })), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_RemovingAdminFromLastActiveAdmin_ThrowsWithoutAuth0Calls()
+    {
+        var userId = "auth0|only-admin";
+        var user = new User { Id = userId, Role = UserRole.Admin };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.HasOtherActiveAdminAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.Admin]));
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.UpdateRolesAsync(userId, [UserRole.PropertyOwner], "auth0|only-admin"));
+
+        Assert.Equal(UserActivationErrors.LastActiveAdmin, ex.Code);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_CannotReadCurrentAuth0Roles_ReturnsFailureAndLeavesDbUnchanged()
+    {
+        var userId = "auth0|user-fail";
+        var user = new User { Id = userId, Role = UserRole.PropertyOwner };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0UserRolesResult.Failed(Auth0SyncResult.Failed(Auth0SyncResult.ApiErrorCode)));
+
+        var result = await _service.UpdateRolesAsync(userId, [UserRole.Admin], "auth0|admin");
+
+        Assert.False(result.RoleSync.Succeeded);
+        Assert.Equal(Auth0SyncResult.ApiErrorCode, result.RoleSync.ErrorCode);
+        Assert.Equal(UserRole.PropertyOwner, user.Role);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_SameRolesAsCurrent_NoOpWithoutAuth0WriteCalls()
+    {
+        var userId = "auth0|unchanged";
+        var user = new User { Id = userId, Role = UserRole.PropertyOwner };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner]));
+
+        var result = await _service.UpdateRolesAsync(userId, [UserRole.PropertyOwner], "auth0|admin");
+
+        Assert.True(result.RoleSync.Succeeded);
+        Assert.Empty(result.RolesGranted);
+        Assert.Empty(result.RolesRevoked);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_UserNotFound_ThrowsKeyNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdAsync("nonexistent")).ReturnsAsync((User?)null);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => _service.UpdateRolesAsync("nonexistent", [UserRole.Admin], "admin"));
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_DeactivatedUser_ThrowsUserInactiveWithoutAuth0Calls()
+    {
+        var userId = "auth0|user-inactive";
+        _repoMock.Setup(r => r.GetByIdAsync(userId))
+            .ReturnsAsync(new User { Id = userId, Role = UserRole.PropertyOwner, IsActive = false });
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.UpdateRolesAsync(userId, [UserRole.Admin], "auth0|admin"));
+
+        Assert.Equal(UserActivationErrors.UserInactive, ex.Code);
+        _auth0Mock.Verify(a => a.GetUserRolesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetRolesAsync_UserExists_ReturnsAuth0Roles()
+    {
+        var userId = "auth0|user123";
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(new User { Id = userId, Role = UserRole.PropertyOwner });
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner, UserRole.Supplier]));
+
+        var result = await _service.GetRolesAsync(userId);
+
+        Assert.True(result.Sync.Succeeded);
+        Assert.Equal([UserRole.PropertyOwner, UserRole.Supplier], result.Roles);
+    }
+
+    [Fact]
+    public async Task GetRolesAsync_UserNotFound_ThrowsKeyNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdAsync("nonexistent")).ReturnsAsync((User?)null);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.GetRolesAsync("nonexistent"));
+    }
+
     // ─── DeactivateUserAsync / ReactivateUserAsync (PL-03) ──────────────────
 
     [Fact]

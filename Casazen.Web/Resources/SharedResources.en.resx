@@ -36,6 +36,9 @@
   <data name="UserInactiveRoleChange" xml:space="preserve">
     <value>The user is deactivated: reactivate it before changing its role.</value>
   </data>
+  <data name="UserLastActiveAdminRoleChange" xml:space="preserve">
+    <value>You cannot remove the Administrator role from the last active administrator: appoint another administrator first.</value>
+  </data>
   <data name="UserDeactivated" xml:space="preserve">
     <value>User deactivated: CasaZen refuses all of its requests and the Auth0 account is blocked, without roles.</value>
   </data>

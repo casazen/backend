@@ -31,6 +31,14 @@ public interface IUserRepository
         bool isActive,
         string actorId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when at least one active user other than <paramref name="excludingUserId"/> holds
+    /// <see cref="UserRole.Admin"/> (A1-17). Guards the removal of the Admin role via
+    /// <see cref="Casazen.Core.Services.IUserService.UpdateRolesAsync"/> the same way <see cref="SetActiveAsync"/>
+    /// guards a deactivation, so the platform can never end up with zero active administrators.
+    /// </summary>
+    Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Result of <see cref="IUserRepository.SetActiveAsync"/>.</summary>

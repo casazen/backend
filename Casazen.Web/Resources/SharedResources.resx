@@ -36,6 +36,9 @@
   <data name="UserInactiveRoleChange" xml:space="preserve">
     <value>L'utente è disattivato: riattivalo prima di cambiarne il ruolo.</value>
   </data>
+  <data name="UserLastActiveAdminRoleChange" xml:space="preserve">
+    <value>Non puoi togliere il ruolo Amministratore all'ultimo amministratore attivo: nomina prima un altro amministratore.</value>
+  </data>
   <data name="UserDeactivated" xml:space="preserve">
     <value>Utente disattivato: CasaZen rifiuta ogni sua richiesta e su Auth0 l'account è bloccato, senza ruoli.</value>
   </data>

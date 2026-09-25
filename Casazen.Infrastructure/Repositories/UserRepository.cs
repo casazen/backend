@@ -71,6 +71,8 @@ public class UserRepository(AppDbContext context) : IUserRepository
     public async Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(
         string? search, string? role, bool? isActive, int page, int pageSize)
     {
+        // A page below 1 would turn into a negative OFFSET, which Postgres rejects with a 500 (A1-26).
+        page = Math.Max(page, 1);
         var query = context.Users.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -95,13 +97,21 @@ public class UserRepository(AppDbContext context) : IUserRepository
         var totalCount = await query.CountAsync();
 
         var users = await query
-            .OrderBy(u => u.Email)
+            // Newest first (A1-26): an admin looking for a just-created or just-changed account expects it near
+            // the top, not sorted alphabetically by e-mail.
+            .OrderByDescending(u => u.CreatedAt)
+            .ThenBy(u => u.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
 
         return (users, totalCount);
     }
+
+    /// <inheritdoc />
+    public Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default) =>
+        context.Users.AnyAsync(
+            u => u.Id != excludingUserId && u.IsActive && u.Role == UserRole.Admin, cancellationToken);
 
     public async Task<(UserActivationOutcome Outcome, User? User)> SetActiveAsync(
         string id,

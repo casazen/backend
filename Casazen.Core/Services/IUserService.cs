@@ -55,6 +55,31 @@ public interface IUserService
     Task<Auth0SyncResult> ChangeRoleAsync(string id, UserRole newRole, string adminSub);
 
     /// <summary>
+    /// The roles <paramref name="id"/> currently holds in Auth0, restricted to <see cref="AdminManageableRoles.All"/>
+    /// (A1-17). Read fresh (not cached) so the admin's multi-role dialog reflects reality even after an out-of-band
+    /// change; <see cref="Auth0UserRolesResult.Sync"/> tells whether the read succeeded.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">The user does not exist.</exception>
+    Task<Auth0UserRolesResult> GetRolesAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Admin multi-role change (A1-17): <paramref name="roles"/> becomes the user's exact role set among
+    /// <see cref="AdminManageableRoles.All"/> (<see cref="UserRole.Guest"/>, <see cref="UserRole.Staff"/> and
+    /// <see cref="UserRole.PropertyManager"/> have no app context and are not managed here). Compares it against the
+    /// roles currently held in Auth0 and grants/revokes only the difference, in Auth0 first and then in the DB
+    /// (primary <see cref="User.Role"/> — the highest-priority role of <see cref="AdminManageableRoles.All"/> still
+    /// held, or <see cref="UserRole.None"/> — and context memberships). When Auth0 fails (including when the current
+    /// roles cannot be read) nothing changes and the failed result is returned, so the admin can retry.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">The user does not exist.</exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// <see cref="UserActivationErrors.UserInactive"/>: the roles of a deactivated user are suspended, reactivate it
+    /// first. <see cref="UserActivationErrors.LastActiveAdmin"/>: removing Admin would leave no active administrator.
+    /// </exception>
+    Task<RoleSetUpdateResult> UpdateRolesAsync(
+        string id, IReadOnlyCollection<UserRole> roles, string adminSub, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Completes or updates onboarding: persists rental type, writes the context memberships of every
     /// selected role and syncs the Auth0 onboarding roles. <c>RoleSync</c> reports the Auth0 outcome;
     /// the DB changes are kept even when Auth0 fails.
@@ -90,3 +115,37 @@ public static class UserActivationErrors
     /// <summary>The user is deactivated: its roles are suspended until the reactivation.</summary>
     public const string UserInactive = "user_inactive";
 }
+
+/// <summary>
+/// Roles an admin can grant or revoke individually with <see cref="IUserService.UpdateRolesAsync"/> (A1-17): only
+/// the roles mapped to a real app context (<c>ContextAccessBootstrap</c>). <see cref="UserRole.Guest"/>,
+/// <see cref="UserRole.Staff"/> and <see cref="UserRole.PropertyManager"/> have none and are left out — assigning
+/// them made no sense in the old single-role dialog either.
+/// </summary>
+public static class AdminManageableRoles
+{
+    /// <summary>
+    /// In priority order: after an update, the primary <see cref="User.Role"/> is the first of these still present
+    /// in the new role set, or <see cref="UserRole.None"/> when none is (mirrors the onboarding's own
+    /// <c>roles[0]</c> convention, generalized to admin-managed roles).
+    /// </summary>
+    public static readonly IReadOnlyList<UserRole> All =
+    [
+        UserRole.Admin,
+        UserRole.PropertyOwner,
+        UserRole.LongTermLandlord,
+        UserRole.Supplier,
+    ];
+}
+
+/// <summary>
+/// Outcome of <see cref="IUserService.UpdateRolesAsync"/>. <see cref="Roles"/> is the resulting role set only when
+/// <see cref="RoleSync"/> succeeded; on failure it is empty and the caller keeps whatever it last knew, since
+/// nothing changed.
+/// </summary>
+public sealed record RoleSetUpdateResult(
+    User User,
+    IReadOnlyList<UserRole> Roles,
+    IReadOnlyList<UserRole> RolesGranted,
+    IReadOnlyList<UserRole> RolesRevoked,
+    Auth0SyncResult RoleSync);

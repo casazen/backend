@@ -338,6 +338,81 @@ public class UserService(
     }
 
     /// <inheritdoc />
+    public async Task<Auth0UserRolesResult> GetRolesAsync(string id, CancellationToken cancellationToken = default)
+    {
+        _ = await repository.GetByIdAsync(id) ?? throw new KeyNotFoundException($"User {id} not found");
+        return await auth0Management.GetUserRolesAsync(id, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<RoleSetUpdateResult> UpdateRolesAsync(
+        string id, IReadOnlyCollection<UserRole> roles, string adminSub, CancellationToken cancellationToken = default)
+    {
+        var user = await repository.GetByIdAsync(id)
+            ?? throw new KeyNotFoundException($"User {id} not found");
+
+        // Same guard as ChangeRoleAsync: the roles of a deactivated user are suspended (PL-03).
+        if (!user.IsActive)
+            throw new DomainRuleException(UserActivationErrors.UserInactive, "UserInactiveRoleChange");
+
+        var target = roles.Where(AdminManageableRoles.All.Contains).Distinct().ToHashSet();
+
+        // Auth0 is the source of truth for the roles actually held: comparing against it (not against the single
+        // User.Role field) is what lets a dual-role user (host + supplier, PL-16 "Both") keep every role it holds
+        // that the admin did not touch.
+        var currentRoles = await auth0Management.GetUserRolesAsync(id, cancellationToken);
+        if (!currentRoles.Sync.Succeeded)
+        {
+            logger.LogWarning(
+                "Roles update not applied, could not read current Auth0 roles ({ErrorCode}): userId={UserId} changedBy={AdminId}",
+                currentRoles.Sync.ErrorCode, id, adminSub);
+            return new RoleSetUpdateResult(user, [], [], [], currentRoles.Sync);
+        }
+
+        var current = currentRoles.Roles.Where(AdminManageableRoles.All.Contains).ToHashSet();
+        var toGrant = target.Except(current).ToArray();
+        var toRevoke = current.Except(target).ToArray();
+
+        if (toGrant.Length == 0 && toRevoke.Length == 0)
+            return new RoleSetUpdateResult(user, target.ToArray(), [], [], Auth0SyncResult.Synced);
+
+        // Would this leave the platform with zero active admins? Checked before touching Auth0, same spirit as the
+        // deactivation guard (UserRepository.SetActiveAsync).
+        if (toRevoke.Contains(UserRole.Admin) && !await repository.HasOtherActiveAdminAsync(id, cancellationToken))
+            throw new DomainRuleException(UserActivationErrors.LastActiveAdmin, "UserLastActiveAdminRoleChange");
+
+        // Auth0 first: if it fails nothing changes in the DB and the admin can simply retry.
+        var sync = await auth0Management.AssignRolesAsync(id, toGrant, cancellationToken);
+        if (sync.Succeeded && toRevoke.Length > 0)
+            sync = await auth0Management.RemoveRolesAsync(id, toRevoke, cancellationToken);
+
+        if (!sync.Succeeded)
+        {
+            logger.LogWarning(
+                "Roles update not applied, Auth0 sync failed ({ErrorCode}): userId={UserId} target=[{Target}] changedBy={AdminId}",
+                sync.ErrorCode, id, string.Join(", ", target), adminSub);
+            return new RoleSetUpdateResult(user, current.ToArray(), [], [], sync);
+        }
+
+        var oldRole = user.Role;
+        user.Role = AdminManageableRoles.All.FirstOrDefault(target.Contains, UserRole.None);
+        user.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(user);
+
+        if (toRevoke.Length > 0)
+            await membershipService.RevokeAsync(id, toRevoke, cancellationToken);
+        if (toGrant.Length > 0)
+            await membershipService.GrantAsync(id, toGrant, cancellationToken);
+        authorizationCache.Invalidate(id);
+
+        logger.LogInformation(
+            "Roles changed: userId={UserId} oldRole={OldRole} newRole={NewRole} granted=[{Granted}] revoked=[{Revoked}] changedBy={AdminId}",
+            id, oldRole, user.Role, string.Join(", ", toGrant), string.Join(", ", toRevoke), adminSub);
+
+        return new RoleSetUpdateResult(user, target.ToArray(), toGrant, toRevoke, sync);
+    }
+
+    /// <inheritdoc />
     public async Task<(User User, IReadOnlyList<string> RolesAssigned, Auth0SyncResult RoleSync)> CompleteOnboardingAsync(
         string sub,
         RentalType rentalType,
