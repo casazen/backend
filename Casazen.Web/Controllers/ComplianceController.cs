@@ -46,7 +46,9 @@ public class ComplianceController(
         {
             Id = i.Id,
             Label = i.Label,
-            RouteLink = i.RouteLink,
+            Action = i.Action,
+            PropertyId = i.PropertyId,
+            BookingId = i.BookingId,
         }),
     };
 }
