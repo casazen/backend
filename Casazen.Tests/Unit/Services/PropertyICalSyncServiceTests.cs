@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
@@ -9,6 +10,7 @@ using Casazen.Infrastructure.Services.ICal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -752,6 +754,8 @@ public class PropertyICalSyncServiceTests
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();
+        // CO-21: alerts about OTA stays created from blocks; none in these feeds.
+        services.AddSingleton(Mock.Of<INotificationService>());
         return services.BuildServiceProvider(validateScopes: true);
     }
 

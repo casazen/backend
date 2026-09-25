@@ -164,7 +164,7 @@ Both query `api.expo.dev` (and `expo-doctor` also `reactnative.directory`). With
 
 ## 9. Push notifications (FCM v1, APNs), task MO-03
 
-Audit defects A6-05 (registration never succeeded), A6-06 (device id shared by phones on the same OS build), A6-19 (tap on a notification lost at cold start or when signed out). Code: `mobile/src/notifications/` (`push-registration.ts`, `installation-id.ts`, `notification-routes.ts`, `notification-navigation.ts`, `PushHandler.tsx`, `PushSettingsCard.tsx`), `mobile/app.config.ts`; backend `Casazen.Web/Controllers/DevicesController.cs`, `Casazen.Infrastructure/Services/PushNotificationService.cs`, `Casazen.Core/Services/PushRoutes.cs`.
+Audit defects A6-05 (registration never succeeded), A6-06 (device id shared by phones on the same OS build), A6-19 (tap on a notification lost at cold start or when signed out). Code: `mobile/src/notifications/` (`push-registration.ts`, `installation-id.ts`, `notification-routes.ts`, `notification-navigation.ts`, `PushHandler.tsx`, `PushSettingsCard.tsx`), `mobile/app.config.ts`; backend `Casazen.Web/Controllers/DevicesController.cs`, `Casazen.Core/Services/PushRoutes.cs`, and for the sending side (MO-04, section 9.7) `Casazen.Core/Services/IPushNotificationService.cs` and `Casazen.Infrastructure/Push/`.
 
 ### 9.1 How it works
 
@@ -177,12 +177,16 @@ Audit defects A6-05 (registration never succeeded), A6-06 (device id shared by p
 3. On the emulator / simulator the app skips the registration: **Profilo → Notifiche** says that push notifications need a physical device, and development builds log `PUSH_UNSUPPORTED_DEVICE`. Development builds also show a diagnostics line (state, error code, device id) in the same card.
 4. Tap on a notification: handled in the root layout, also when the tap **started the app** (`getLastNotificationResponseAsync`) or arrived **while signed out**: the destination is kept (in memory) and opened right after the login, above the calendar. The backend builds every `route` with `PushRoutes`; the app opens only these screens (`notification-routes.ts`):
 
-| Push | `route` |
-|---|---|
-| Booking alerts (guest check-in incomplete, Alloggiati Web, ...) | `/bookings/{bookingId}` |
-| Supplier update of a request tied to a stay | `/bookings/{bookingId}` |
-| Supplier update of a request **without** a stay (long-rent, or short-rent created before SU-07) | `/properties` (the app has no service request screen; `/service-requests/{id}` used to open nothing) |
-| Check-out reminder | `/bookings/{bookingId}/checkout` |
+| Push (`data.type`) | To | `route` |
+|---|---|---|
+| Booking alerts: `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` (CO-10) | hosts of the property | `/bookings/{bookingId}` |
+| New booking confirmed without the host (payment, saved card): `new-booking` (MO-04) | hosts of the property | `/bookings/{bookingId}` |
+| Supplier decision on a request tied to a stay: `service-request-taken`, `service-request-completed`, `service-request-rejected` (the rejection since MO-04) | hosts of the property | `/bookings/{bookingId}` |
+| Same, request **without** a stay (long-rent, or short-rent created before SU-07) | hosts of the property | `/properties` (the app has no service request screen; `/service-requests/{id}` used to open nothing) |
+| New request: `service-request-created` (MO-04) | users of the supplier org | `/properties`, no `bookingId` (the stay is the host's; the app has no supplier screens yet) |
+| Check-out reminder: `checkout-reminder` | hosts of the property | `/bookings/{bookingId}/checkout` |
+
+"Hosts of the property": its owner and the Admin / PropertyManager users of its org, active, on phones registered in that org. "Users of the supplier org": active users linked to it (`User.SupplierOrgId`, or members of the supplier org), on every phone they registered. Pushes of a service request also carry `serviceRequestId` in `data`. Titles and texts are specific to each type, Italian and English in `EmailTexts.resx` / `EmailTexts.en.resx` (`Push_*`, `StayAlertPush_*`); they show the property, category and dates, never a guest name or the supplier's rejection reason (that one is in the host email).
 
 An unknown route falls back to `bookingId` when the push has one, otherwise the app just opens.
 
@@ -216,7 +220,7 @@ Expo delivers Android pushes through **FCM HTTP v1**; the legacy FCM server key 
 
 - One row per (user, installation): unique index `UIX_DeviceRegistrations_UserId_DeviceId`, upsert that updates the token. Concurrent registrations of the same installation (unique violation) re-read and update instead of answering 500.
 - An Expo push token belongs to one installation: registering it removes any other row carrying it (another user who used the phone, or the same user under an old device id).
-- **Old device ids** (builds before MO-03 sent the OS build id, `Device.osInternalBuildId`, shared by every phone on the same OS build): **no data migration**. Each phone replaces its old row the first time the new build registers it with the same push token. A row whose token is never registered again (phone still on an old build, or whose token was overwritten by another phone of the same build) keeps working for that phone; Expo answers `DeviceNotRegistered` for dead tokens and `PushNotificationService` then deletes the row. Deleting all old rows in a migration was rejected: it would silence phones not updated yet. Check what is left: `SELECT count(*) FROM "DeviceRegistrations" WHERE "DeviceId" !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';` (a cleanup of old rows not updated for months can be decided later).
+- **Old device ids** (builds before MO-03 sent the OS build id, `Device.osInternalBuildId`, shared by every phone on the same OS build): **no data migration**. Each phone replaces its old row the first time the new build registers it with the same push token. A row whose token is never registered again (phone still on an old build, or whose token was overwritten by another phone of the same build) keeps working for that phone; Expo answers `DeviceNotRegistered` for dead tokens (in the ticket or, more often, in the receipt) and the backend then deletes the row (section 9.7). Deleting all old rows in a migration was rejected: it would silence phones not updated yet. Check what is left: `SELECT count(*) FROM "DeviceRegistrations" WHERE "DeviceId" !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';` (a cleanup of old rows not updated for months can be decided later).
 
 ### 9.5 Check on devices (not possible in CI, to do after each credentials change)
 
@@ -224,7 +228,7 @@ Use a `preview` build of the test environment, two physical phones (one Android,
 
 1. First login: the app explains the notifications, then the system prompt. **Attiva** → **Profilo → Notifiche** says "Attive". On the test database: `SELECT "Platform", "DeviceId", "UpdatedAt" FROM "DeviceRegistrations" WHERE "UserId" = '<sub>';` shows one row per phone, `DeviceId` a UUID.
 2. Send a push to the token from https://expo.dev/notifications (token from the `PushToken` column) with data `{"route":"/bookings/<bookingId>","bookingId":"<bookingId>"}` and channel `default`: it arrives with the app in background and closed.
-3. Real pushes: a supplier update of a request of that booking (supplier account: take the request), a check-out reminder, an incomplete guest check-in alert. Tap each: the booking (or its check-out) opens, above the calendar.
+3. Real pushes: a supplier update of a request of that booking (supplier account: take the request, and on another request **reject** it), a check-out reminder, an incomplete guest check-in alert, a **new booking** paid on the public site (Stripe test card). Tap each: the booking (or its check-out) opens, above the calendar. Each push arrives within a minute (Hangfire job, section 9.7), once.
 4. Cold start: kill the app, tap a notification → the app opens on the booking, not on the calendar.
 5. Signed out: **Profilo → Esci**, send a push again to the same token (the device row is gone, so use the Expo tool), tap it → login → after the login the booking opens.
 6. Two phones of the same host on the same OS version: both receive every push (before MO-03 only the last registered one did).
@@ -242,4 +246,83 @@ Use a `preview` build of the test environment, two physical phones (one Android,
 | `PUSH_BACKEND_UNAVAILABLE` | `POST /api/devices` not answered (offline, 5xx) | Retried automatically |
 | `PUSH_BACKEND_REJECTED` | `POST /api/devices` answered 4xx | Backend logs of the request |
 | `PUSH_CHANNEL_FAILED`, `PUSH_PERMISSION_FAILED`, `PUSH_INSTALLATION_ID_UNAVAILABLE` | Native call failed (channel, permission, SecureStore) | Retried at the next start; report with the device model and OS |
-| Expo receipt `InvalidCredentials` / `MismatchSenderId` (backend logs, Expo dashboard) | FCM V1 key missing or of another Firebase project; APNs key revoked | Sections 9.2 step 3, 9.3 step 2 |
+| Expo receipt `InvalidCredentials` / `MismatchSenderId` (backend logs `Push … not delivered (delivery …): InvalidCredentials`, Expo dashboard) | FCM V1 key missing or of another Firebase project; APNs key revoked | Sections 9.2 step 3, 9.3 step 2 |
+| Expo ticket or receipt `DeviceNotRegistered` | App uninstalled, token rotated | Nothing: the device row is deleted automatically (log `Push device registration … removed`); the phone registers again at the next start |
+| Expo receipt `MessageRateExceeded` | Too many pushes to one device | Logged, not retried; check what sends so many |
+| Log `Expo push send refused with HTTP 401: check Expo__AccessToken` | Enhanced push security enabled on Expo without (or with a wrong) `Expo__AccessToken` | Section 9.7.3 |
+
+### 9.7 Backend delivery: queue, batches, receipts (MO-04)
+
+Audit defects A6-08 (no push for a rejection, a new booking or a new request) and A6-29 (pushes sent synchronously and
+one by one inside the supplier's request, no batching, no receipts, no access token, Alloggiati alerts titled "Check-in
+incompleto"). Code: `Casazen.Core/Services/IPushNotificationService.cs` (payload, audience, delivery keys, types),
+`Casazen.Infrastructure/Push/` (`HangfirePushQueue`, `PushDeliveryJob`, `ExpoPushClient`, `PushReceiptService`),
+`Casazen.Web/BackgroundJobs/PushReceiptsJob.cs`, table `PushDeliveries` (migration `AddPushDeliveries`). Jobs and SQL
+checks: [hangfire.md § 11](hangfire.md#11-push-notifications-mo-04).
+
+#### 9.7.1 How a push travels
+
+1. The code that made the change (after its save) calls `IPushNotificationService.Enqueue(key, audience, payload)`. That
+   only writes a Hangfire job (`PushDeliveryJob.SendAsync`): **no call to Expo inside an HTTP request**. The supplier's
+   take / complete / reject and the host's new request answer at once even when Expo is slow or down.
+2. The job resolves the devices of the audience (section 9.1), claims one `PushDeliveries` row per device for the key and
+   sends the pending ones to `https://exp.host/--/api/v2/push/send` in **batches of at most 100 messages** (Expo's limit),
+   recording each ticket.
+3. The recurring job `push-receipts` (every 15 minutes) reads the receipts of the tickets older than 15 minutes
+   (`/--/api/v2/push/getReceipts`, at most 1000 ids per request). FCM/APNs errors only show up there.
+
+| Event | Who queues it | Delivery key (once per device) |
+|---|---|---|
+| New request → supplier | `ServiceRequestService.CreateAsync` | `service-request:{id}:created` |
+| Supplier takes / completes / **rejects** → host | `ServiceRequestService` (only the winning transition, SU-10) | `service-request:{id}:{status}` |
+| New booking confirmed without the host → host | `BookingNotifier.AlertHostOfNewBooking` (BK-10 extension point, next to the host email) | `booking:{id}:new` |
+| Stay alerts and check-out reminder → host | `NotificationService.SendStayAlertAsync` (CO-10) | `stay-alert:{bookingId}:{kind}:{date}:{reminder}` |
+
+The emails are unchanged: the rejection email to the host already existed (FD-13), the new booking email is BK-10's; only
+the pushes were added.
+
+#### 9.7.2 Once, even with retries
+
+- A device that already has a row for the key is never sent that event again: a Hangfire retry, a second run of the job or
+  the same event queued twice send nothing new. Two runs of the same key never overlap
+  (`[DisableConcurrentExecution]` on the key).
+- A batch is marked `Sending` before the request. HTTP 429/5xx or no connection (Expo certainly did not take it): back to
+  `Pending`, the job fails and Hangfire retries only the pending messages (5 attempts, then the job is deleted). Timeout
+  or connection lost after the request (Expo may have taken it): left `Sending`, **never repeated** (at most once).
+  Other 4xx (e.g. 401): `Failed`, not retried.
+- Ticket `DeviceNotRegistered` (at send) or receipt `DeviceNotRegistered` (later): the `DeviceRegistrations` rows with
+  that token are deleted. Every other error is logged with its Expo code, the delivery id and the device registration id;
+  **never the push token nor Expo's error message** (it quotes the token).
+
+#### 9.7.3 Expo access token (optional, recommended)
+
+By default anyone who knows a push token can send to it through Expo. With **Enhanced Security for Push Notifications**
+enabled, Expo accepts sends and receipt reads only with an access token of the account. The backend sends
+`Authorization: Bearer <token>` when `Expo__AccessToken` is set, and nothing otherwise.
+
+1. expo.dev → the account (or organization) that owns the project → **Settings → Access tokens** → create a token
+   (preferably for a **robot** user with the minimum role), named e.g. `casazen-backend-push-production`. Copy it once:
+   Expo does not show it again. One token per environment.
+2. Railway → service `casazen/backend` → environment `test`, then `production` → **Variables** → `Expo__AccessToken` =
+   the token. It is a secret: never in the repository, in `appsettings*.json` or in tickets. Redeploy.
+3. Only after both environments have the variable: on the same **Access tokens** page, turn on **Enhanced Security for Push
+   Notifications**. In the other order every push fails with HTTP 401 until the variable is set (log `Expo push send
+   refused with HTTP 401: check Expo__AccessToken`; those messages are marked `Failed` and not repeated).
+4. Check: trigger a push (e.g. take a request on test), then `SELECT "Status", "Error" FROM casazen_test."PushDeliveries"
+   ORDER BY "CreatedAt" DESC LIMIT 5;` → `Status` 2 (`Accepted`) and, 15 minutes later, 3 (`Delivered`).
+5. Rotation: create the new token, update the variable, redeploy, then revoke the old token on expo.dev.
+
+Without the variable and without enhanced security, pushes work as before (no header).
+
+#### 9.7.4 Checks after the deploy of MO-04
+
+- [ ] The migration `AddPushDeliveries` is in `__EFMigrationsHistory`; the recurring job `push-receipts` is listed in the
+      Hangfire dashboard (or `hangfire_<schema>.set` with key `recurring-jobs`).
+- [ ] Supplier console: reject a request of a stay → the host's phone gets "Richiesta rifiutata dal fornitore" within a
+      minute; tap → the booking opens. The host still gets the rejection email.
+- [ ] Public site: pay a booking with a Stripe test card → the host gets "Nuova prenotazione confermata" (property, dates,
+      guests; no guest name). A host-accepted "pay at the property" request sends no such push (the host confirmed it).
+- [ ] Host: create a request → the supplier's registered phones (if any: the host app has no supplier screens yet) get
+      "Nuova richiesta di servizio".
+- [ ] Railway logs: `Push … queued`, then `Push …: N of N messages accepted by Expo`; 15–30 minutes later `Push receipts:
+      … checked, … delivered`.

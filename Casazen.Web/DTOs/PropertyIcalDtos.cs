@@ -100,4 +100,25 @@ public class CalendarItemDto
 
     /// <summary><c>ical-block</c> only: label the host gave to the feed (e.g. "Booking.com - camera 2"), or null.</summary>
     public string? FeedLabel { get; set; }
+
+    /// <summary><c>ical-block</c> only: <c>ICalImport</c> or <c>Manual</c> (CO-21).</summary>
+    public string? BlockSource { get; set; }
+
+    /// <summary><c>ical-block</c> only: its import feed (CO-21).</summary>
+    public Guid? FeedId { get; set; }
+
+    /// <summary><c>ical-block</c> only: the OTA stay created from it, while not cancelled (CO-21).</summary>
+    public Guid? BookingId { get; set; }
+
+    /// <summary><c>ical-block</c> only: the host may turn it into an OTA stay ("Crea soggiorno OTA", CO-21).</summary>
+    public bool? Convertible { get; set; }
+
+    /// <summary><c>booking</c> only: the import feed of an OTA stay created from iCal (CO-21).</summary>
+    public Guid? IcalFeedId { get; set; }
+
+    /// <summary><c>booking</c> only: label of that feed when the stay was created (CO-21).</summary>
+    public string? ChannelLabel { get; set; }
+
+    /// <summary><c>booking</c> only: why the OTA stay is "da verificare" (<c>BlockRemoved</c>, <c>BlockDatesChanged</c>).</summary>
+    public string? OtaReviewReason { get; set; }
 }

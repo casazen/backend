@@ -1165,6 +1165,48 @@
   <data name="FiscalPropertyNotEligible" xml:space="preserve">
     <value>Nel {0} questo immobile non è tra quelli con affitti brevi (è disattivato o in affitto lungo): non gli si può assegnare un regime.</value>
   </data>
+  <data name="OtaStayBlockNotFound" xml:space="preserve">
+    <value>Blocco del calendario non trovato.</value>
+  </data>
+  <data name="OtaStayBlockNotImported" xml:space="preserve">
+    <value>Solo un blocco importato da un calendario OTA collegato può diventare un soggiorno.</value>
+  </data>
+  <data name="OtaStayBlockAlreadyConverted" xml:space="preserve">
+    <value>Da questo blocco è già stato creato un soggiorno.</value>
+  </data>
+  <data name="OtaStayBlockOverlapsBooking" xml:space="preserve">
+    <value>Le date del blocco si sovrappongono a una prenotazione già presente: verifica il calendario.</value>
+  </data>
+  <data name="OtaStayBlockEnded" xml:space="preserve">
+    <value>Il soggiorno di questo blocco è già terminato.</value>
+  </data>
+  <data name="OtaStaySourceRequired" xml:space="preserve">
+    <value>Indica il canale della prenotazione (Airbnb, Booking.com, Expedia, Vrbo, Tripadvisor o Agoda).</value>
+  </data>
+  <data name="OtaStayChannelDatesUnavailable" xml:space="preserve">
+    <value>Il blocco di questo soggiorno non è più nel calendario del canale: non ci sono date da applicare.</value>
+  </data>
+  <data name="OtaStayFirstNameRequired" xml:space="preserve">
+    <value>Il nome dell'ospite è obbligatorio.</value>
+  </data>
+  <data name="OtaStayLastNameRequired" xml:space="preserve">
+    <value>Il cognome dell'ospite è obbligatorio.</value>
+  </data>
+  <data name="OtaStayNameTooLong" xml:space="preserve">
+    <value>Nome e cognome possono avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="OtaStayEmailRequired" xml:space="preserve">
+    <value>L'email dell'ospite è obbligatoria.</value>
+  </data>
+  <data name="OtaStayEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido.</value>
+  </data>
+  <data name="OtaStayNumberOfGuestsInvalid" xml:space="preserve">
+    <value>Il numero di ospiti deve essere tra 1 e 100.</value>
+  </data>
+  <data name="OtaStayTotalPriceInvalid" xml:space="preserve">
+    <value>L'importo non può essere negativo.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
   </data>

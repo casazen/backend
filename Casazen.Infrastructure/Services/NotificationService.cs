@@ -10,7 +10,7 @@ namespace Casazen.Infrastructure.Services;
 public class NotificationService(
     AppDbContext db,
     IEmailQueue emailQueue,
-    IPushNotificationService pushNotificationService,
+    IPushNotificationService pushNotifications,
     PublicSiteLinks links,
     ILogger<NotificationService> logger) : INotificationService
 {
@@ -70,16 +70,28 @@ public class NotificationService(
                 booking.OrgId);
         }
 
-        if (alert.Kind == StayAlertKind.CheckoutReminder)
+        // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
+        var isCheckoutReminder = alert.Kind == StayAlertKind.CheckoutReminder;
+        var push = isCheckoutReminder
+            ? EmailTemplates.CheckoutReminderPush(culture, propertyName)
+            : EmailTemplates.StayAlertPush(culture, alert.Kind, propertyName, booking.CheckInDate);
+        var deliveryKey = PushDeliveryKeys.StayAlert(
+            booking.Id,
+            alert.Kind,
+            isCheckoutReminder ? booking.CheckOutDate : booking.CheckInDate,
+            alert.ReminderNumber);
+        var route = isCheckoutReminder ? PushRoutes.BookingCheckout(booking.Id) : PushRoutes.Booking(booking.Id);
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.ForStayAlert(alert.Kind), booking.Id, route)))
         {
-            await pushNotificationService.SendCheckoutReminderAsync(booking.Id, cancellationToken);
-            return;
+            logger.LogWarning(
+                "Stay alert {Kind} push of booking {BookingId} not queued (org {OrgId})",
+                alert.Kind,
+                booking.Id,
+                booking.OrgId);
         }
-
-        var push = EmailTemplates.StayAlertPush(culture, alert.Kind, propertyName, booking.CheckInDate);
-        await pushNotificationService.SendToBookingHostsAsync(
-            new PushNotificationPayload(push.Title, push.Body, PushType(alert.Kind), booking.Id, PushRoutes.Booking(booking.Id)),
-            cancellationToken);
     }
 
     public async Task<bool> SendCinDeadlineAlertAsync(CinDeadlineAlert alert, CancellationToken cancellationToken = default)
@@ -121,13 +133,55 @@ public class NotificationService(
         return false;
     }
 
-    /// <summary>Push <c>type</c> of each Alloggiati alert (the app opens the booking from the route).</summary>
-    private static string PushType(StayAlertKind kind) => kind switch
+    public async Task SendOtaStayReviewAlertAsync(OtaStayReviewAlert alert, CancellationToken cancellationToken = default)
     {
-        StayAlertKind.GuestDataMissing => "guest-data-missing",
-        StayAlertKind.AlloggiatiDeadlineApproaching => "alloggiati-deadline",
-        StayAlertKind.AlloggiatiOverdue => "alloggiati-overdue",
-        StayAlertKind.AlloggiatiFailed => "alloggiati-failed",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No push type for this alert."),
-    };
+        ArgumentNullException.ThrowIfNull(alert);
+
+        // Called by the iCal sync job: no tenant filter; the booking id comes from the sync's own query.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Include(b => b.Org)
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == alert.BookingId, cancellationToken);
+        if (booking is null)
+        {
+            logger.LogWarning("OTA stay review alert skipped because booking {BookingId} was not found", alert.BookingId);
+            return;
+        }
+
+        var culture = EmailTemplates.DefaultCulture;
+        var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
+        var propertyName = booking.Property.Name;
+        var channelName = EmailTemplates.OtaChannelName(booking.Source, booking.ChannelLabel);
+        var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
+        var email = EmailTemplates.HostOtaStayReview(
+            culture,
+            alert.Reason,
+            guestName,
+            propertyName,
+            channelName,
+            booking.CheckInDate,
+            booking.CheckOutDate,
+            alert.ChannelCheckIn,
+            alert.ChannelCheckOut,
+            bookingUrl);
+
+        if (!emailQueue.Enqueue(booking.Org?.ContactEmail, email, EmailTemplates.Names.HostOtaStayReview))
+        {
+            logger.LogWarning(
+                "OTA stay review email of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
+        }
+
+        var push = EmailTemplates.OtaStayReviewPush(culture, alert.Reason, propertyName, channelName, booking.CheckInDate);
+        var deliveryKey = PushDeliveryKeys.OtaStayReview(booking.Id, alert.Reason, alert.ChannelCheckIn, alert.ChannelCheckOut);
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.OtaStayReview, booking.Id, PushRoutes.Booking(booking.Id))))
+        {
+            logger.LogWarning(
+                "OTA stay review push of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
+        }
+    }
 }

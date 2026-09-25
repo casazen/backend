@@ -1,11 +1,12 @@
 # Runbook: iCal import and export (property OTA calendars, supplier calendars)
 
-Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22) and SU-15 (A4-11, A9-14:
-supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)). The download of the
-feed (anti-SSRF client, size and time limits, error codes) is described in [external-fetch.md](external-fetch.md)
-(FD-16). This page covers the import feeds of a property (many per property, URL encrypted), what happens after the
-download (how a feed is read, when it is an error), how the sync job isolates feeds, and the export feed read by the
-OTAs ([Export feed](#export-feed-pc-12)).
+Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22), SU-15 (A4-11, A9-14:
+supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)) and CO-21 (GC-AC9, decision D7). The
+download of the feed (anti-SSRF client, size and time limits, error codes) is described in
+[external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
+encrypted), what happens after the download (how a feed is read, when it is an error), how the sync job isolates feeds,
+the export feed read by the OTAs ([Export feed](#export-feed-pc-12)) and the OTA stays the host creates from imported
+blocks ([OTA stays from iCal blocks](#ota-stays-from-ical-blocks-co-21)).
 
 Nothing has to be configured: the defaults below apply when the `ICalImport` section is missing. The encryption of the
 import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07), already required by the OTA secrets.
@@ -22,6 +23,7 @@ import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07
 | Masked URL of the API | `Web/Infrastructure/ICalFeedUrlMask.cs` |
 | Export link of a property, token and its regeneration (PC-12) | entity `PropertyICalExport` (table `PropertyICalExports`), `PropertyICalSyncService.RegenerateExportTokenAsync` |
 | Supplier sync (SU-15): state, "sync now", days of the feed vs manual days | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs` |
+| OTA stay from a block (CO-21): rules, conversion, "da verificare" | `Core/Services/OtaStays.cs`, `Services/OtaStayService.cs`, `PropertyICalSyncService.ReviewOtaStaysAsync`, `Web/Controllers/OtaStaysController.cs` |
 
 The former F0 spike (`Casazen.Infrastructure/ICalSpike`, `ICalImportSpike`) no longer exists.
 
@@ -219,6 +221,109 @@ is left to a product decision (PC-12 DUBBI).
 3. Regenerate the link (`POST …/ical/export-url/regenerate`): the old URL answers 404, the new one 200; paste the new
    one on the OTAs.
 
+## OTA stays from iCal blocks (CO-21)
+
+An iCal feed publishes dates only: a reservation received on Airbnb or Booking.com arrives in CasaZen as a block, with
+no guest, so no check-in link, no Alloggiati Web and no cockpit (audit GC-AC9). Decision D7: the host **turns the block
+into an "OTA stay"** by giving the guest's name and email. The stay is an ordinary confirmed booking; from it the guest
+check-in link (CO-09), Alloggiati Web (CO-11, CO-12, see [alloggiati.md](alloggiati.md)), the cockpit (CO-04, CO-10) and
+"registra arrivo" / check-out (CO-08) work as for any other stay. Nothing to configure.
+
+### Conversion
+
+`POST /api/ical-blocks/{blockId}/ota-stay` (`BookingWrite` plus the resource check on the property of the block: another
+org gets 404, a user without `booking.write` on the property 403). Body:
+
+| Field | |
+|---|---|
+| `firstName`, `lastName`, `email` | Required (max 100, 100, 255). The email receives the check-in link. A new guest of the property's org (TN-1), never a lookup by email |
+| `numberOfGuests` | Optional, 1-100 and at most the property's maximum (422 `booking_too_many_guests`); 1 when omitted |
+| `totalPrice` | Optional, >= 0: the amount the channel shows. **CasaZen never computes a price** for an OTA stay (no nightly rate, no tourist tax): without it the amounts are 0 |
+| `source` | Only for a feed of channel `Other`: the OTA of the reservation (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`); ignored for an Airbnb or Booking.com feed |
+
+201 with the booking: `status` `Confirmed`, `source` the channel of the feed (Airbnb feed → `Airbnb`, Booking.com feed →
+`BookingCom`), the dates of the block (check-out = end of the block), `icalFeedId` and `channelLabel` (label of the feed),
+`channelBlock` (the block). The stay stores the feed (`Bookings.ICalFeedId`) and the UID of the block
+(`Bookings.ExternalId`); the block stores its stay (`CalendarBlocks.BookingId`, unique). No email is sent at the
+conversion: the guest booked on the channel, which confirmed it. The check-in link is sent by the host from the booking
+(tab Ospite) or by the daily `guest-checkin-send` job for stays starting within `CheckIn__SendWindowDays`.
+
+| Error | When |
+|---|---|
+| 404 `ical_block_not_found` | No such block, or of another org |
+| 422 `ota_stay_block_not_imported` | A manual block (only a block imported from a feed is a reservation of a channel) |
+| 409 `ota_stay_block_already_converted` | The block is already linked to a stay that is not cancelled. After the host cancels that stay, the block can be converted again |
+| 409 `ota_stay_block_overlaps_booking` | Another booking not cancelled takes one of its nights (checked under the property's dates lock, as for any booking; expired checkout holds are released first) |
+| 422 `ota_stay_block_ended` | The check-out of the block is before today (Europe/Rome): a stay already over is not converted |
+| 422 `ota_stay_source_required` | Feed of channel `Other` without an OTA `source` |
+| 400 `validation_error` | Name or email missing or invalid (localized field messages) |
+
+The conversion holds the lock `PropertyICalSync` of the property (the one of the sync): a sync never removes the block
+while it becomes a stay.
+
+### Occupancy, calendar and export
+
+- **Counted once.** A block linked to a stay that is not cancelled and has the block's dates stands for that stay:
+  `PropertyOccupancy.BlockTakesNightIn` leaves it out and the stay counts the nights (public availability, overlap
+  checks, checkout). A block whose stay was cancelled, or whose dates changed on the channel, counts again on its own:
+  its nights stay taken whatever the host does with the stay.
+- **Host calendar** (`GET /api/bookings/calendar`): the stay is shown once, as a booking item with `icalFeedId`,
+  `channelLabel`, `otaReviewReason`; a block item carries, besides `channel` and `feedLabel` (MO-06), `blockSource`, `feedId`, `bookingId`
+  (its stay) and `convertible` ("Crea soggiorno OTA" offered: imported, not linked to an active stay, not over).
+- **Export (PC-12)**: the stay has an OTA source and the block is imported: neither is ever exported (no echo).
+- **Disconnecting the feed** deletes its blocks, converted ones included; the stays stay (confirmed, dates taken), keep
+  `icalFeedId` and are not marked: the host chose to disconnect.
+
+### Later syncs: "da verificare" (documented rule)
+
+A sync **never changes nor cancels** an OTA stay. For the blocks of the feed linked to a stay:
+
+| Found by the sync | Stay (only if confirmed or checked in, with check-out today or later, Europe/Rome) | Alert |
+|---|---|---|
+| The block is gone from a valid feed (reservation cancelled or moved on the channel) | `OtaReviewReason = BlockRemoved`; stays confirmed, its dates stay taken; the block is deleted as any orphan | Once (not again while the mark is on) |
+| The block has other dates than at the previous sync and than the stay | `OtaReviewReason = BlockDatesChanged`; the stay keeps its dates, the block takes its new nights on its own | Once per change of dates |
+| A block with the UID of a stay of this feed whose block had left it comes back | Linked to the stay again; other dates → `BlockDatesChanged` | As above |
+
+A stay already over is never marked: the OTAs drop past reservations from their feeds. A feed that fails (download,
+format) keeps its blocks and marks nothing. A feed whose events have no UID gets a key from dates and summary: a change of
+dates there reads as a block removed plus a new block (the stay is marked `BlockRemoved`).
+
+**Alert** (after the commit; a delivery failure never undoes the mark): email `host-ota-stay-review` to the org's
+contact address (queued on Hangfire, FD-13; texts `EmailTexts*.resx` `OtaStayReview_*`) with the stay, the channel, the
+dates in CasaZen and, for new dates, the channel's; push `ota-stay-review` to the property's hosts (route
+`/bookings/{id}`). The web app shows "Da verificare" in the booking list, in the calendar and as a notice on the booking.
+
+**Host actions** (`POST /api/bookings/{id}/ota-review/resolve`, `BookingWrite` + resource check, body optional):
+
+- `{}`: "Segna come verificato", the mark is cleared, nothing else changes. For a cancelled reservation the host cancels
+  the stay with the usual cancellation (BK-02; it emails the guest the cancellation like any booking).
+- `{ "applyChannelDates": true }`: "Applica le date del canale", the stay takes the current dates of its block, then the
+  mark is cleared. Only a confirmed stay (422 `booking_stay_locked` after the arrival), new check-in not in the past
+  (422 `booking_checkin_in_past`), other bookings checked (409 `booking_dates_unavailable`), the block must still be in the
+  feed (422 `ota_stay_channel_dates_unavailable`). The amount stays the host's.
+
+### Migration `AddOtaStayFromICalBlock`
+
+Adds `Bookings.ICalFeedId` (uuid, a plain reference, no foreign key), `ChannelLabel` (varchar 60), `OtaReviewReason`
+(int), `OtaReviewRaisedAt` (timestamptz), index `ICalFeedId + ExternalId`; `CalendarBlocks.BookingId` (uuid, FK to
+`Bookings` `ON DELETE SET NULL`, unique index). No data is rewritten; Down drops them.
+
+```sql
+-- OTA stays created from iCal and those to check
+SELECT "OtaReviewReason", count(*) FROM "Bookings" WHERE "ICalFeedId" IS NOT NULL GROUP BY 1;
+-- Blocks standing for a stay (expected: as many as the stays above whose block is still in the feed)
+SELECT count(*) FROM "CalendarBlocks" WHERE "BookingId" IS NOT NULL;
+```
+
+### Checks after a deploy
+
+1. Property with an Airbnb feed: in the calendar open a purple block → "Crea soggiorno OTA", name and email → the
+   booking opens on the tab Ospite; the calendar shows the stay once, the public availability the same nights, the
+   export link no event for it.
+2. From the stay: "Copia link" of the check-in works; on the arrival day the cockpit lists it.
+3. Remove the reservation from the test calendar and "Sincronizza ora": the stay stays confirmed with "Da verificare",
+   the org's contact address receives "Soggiorno … da verificare"; "Segna come verificato" clears it.
+
 ## When a feed is valid
 
 | Downloaded document | Result | Stored |
@@ -380,6 +485,11 @@ message can quote the document). Skipped events are logged as counts with the ty
 | `iCal feed … added to property …` / `iCal feed … removed from property … with N blocks` | Information | Host linked or disconnected a calendar |
 | `Encrypted N iCal import URLs stored in clear before PC-11` | Information | Startup re-encryption (first start after the PC-11 deploy) |
 | `iCal export link of property … regenerated` | Information | Host replaced the export token (PC-12): the old link answers 404 |
+| `iCal block … of property … converted into OTA stay …` | Information | Host created an OTA stay from a block (CO-21); ids only, never the guest |
+| `OTA stay … of feed … to check: …; the stay was not changed` | Warning | A sync marked the stay "da verificare" (block removed or dates changed) |
+| `iCal block of feed … linked again to OTA stay …` | Information | The reservation came back in the feed |
+| `Review alert of OTA stay … not delivered` | Error | The mark is saved, the email/push failed (see email and push logs) |
+| `OTA stay … verified by the host (channel dates applied: …)` | Information | Host cleared the mark (and maybe applied the channel's dates) |
 
 ## Configuration (Railway variables, optional)
 

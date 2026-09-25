@@ -270,6 +270,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingCancellationService, BookingCancellationService>();
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
+        services.AddScoped<IOtaStayService, OtaStayService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -288,8 +289,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.CinOptions>, Casazen.Core.Options.CinOptionsValidator>();
         services.AddSingleton<Casazen.Core.Regulatory.CinDeadlineCalendar>();
         services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
-        services.AddScoped<IPushNotificationService, PushNotificationService>();
-        services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
