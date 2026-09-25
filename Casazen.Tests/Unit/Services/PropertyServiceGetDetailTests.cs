@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -171,8 +172,9 @@ public class PropertyServiceGetDetailTests
         Assert.Equal($"/api/properties/{propertyId}/documents/{documentId}/download", doc.DownloadUrl);
     }
 
+    // A2-36: "not found" is a NotFoundException (404), so an InvalidOperationException (500) is never read as one.
     [Fact]
-    public async Task GetPropertyDetailAsync_WithNonExistentId_ThrowsInvalidOperationException()
+    public async Task GetPropertyDetailAsync_WithNonExistentId_ThrowsNotFoundException()
     {
         // Arrange
         var propertyId = Guid.NewGuid();
@@ -180,7 +182,7 @@ public class PropertyServiceGetDetailTests
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.GetPropertyDetailAsync(propertyId));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.GetPropertyDetailAsync(propertyId));
         _mockRepository.Verify(x => x.GetPropertyDetailAsync(propertyId), Times.Once);
     }
 

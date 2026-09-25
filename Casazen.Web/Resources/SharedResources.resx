@@ -1063,4 +1063,7 @@
   <data name="ServiceRequestStateChanged" xml:space="preserve">
     <value>La richiesta è stata appena modificata da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
   </data>
+  <data name="DashboardInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
+  </data>
 </root>
