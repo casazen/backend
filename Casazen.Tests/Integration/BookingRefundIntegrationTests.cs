@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
@@ -172,13 +173,13 @@ public class BookingRefundIntegrationTests : IClassFixture<CasazenWebApplication
             PropertyId = property.Id,
             OrgId = org.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(3),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(5),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(5),
             NumberOfGuests = 2,
             Status = bookingStatus,
             Source = BookingSource.Direct,
             TotalPrice = amount,
-            FreeRefundDeadline = DateTime.UtcNow.Date.AddDays(-4),
+            FreeRefundDeadline = TimeProvider.System.TodayInRome().AddDays(-4),
         };
         var paymentIntentId = $"pi_it_{Guid.NewGuid():N}";
         var payment = new Payment
