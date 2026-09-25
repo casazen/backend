@@ -3,6 +3,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Web.DTOs.Alloggiati;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -532,6 +533,72 @@ public class AlloggiatiWebServiceTests
 
         Assert.Equal(31, summary.StayDays);
         Assert.True(summary.StayExceedsMaxDays);
+    }
+
+    [Fact]
+    public async Task GuestProgressFrom_CompleteGuestAndCompanionsDeclared_CountsOneCompleteOfThreeDeclared()
+    {
+        // Arrange: MO-08, the counts of the app booking detail ("1 ospite completo su 3").
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db, numberOfGuests: 3);
+        var summary = await CreateService(db, CheckIn.AddDays(-1)).GetGuestSummaryAsync(booking.Id);
+
+        // Act
+        var progress = AlloggiatiGuestProgressDto.From(summary);
+
+        // Assert: the two companions are declared but not registered yet.
+        Assert.Equal(booking.Id, progress.BookingId);
+        Assert.Equal(3, progress.DeclaredGuests);
+        Assert.Equal(1, progress.RegisteredGuests);
+        Assert.Equal(1, progress.CompleteGuests);
+        Assert.Equal(summary.DataComplete, progress.DataComplete);
+        Assert.False(progress.StayExceedsMaxDays);
+    }
+
+    [Fact]
+    public async Task GuestProgressFrom_BookerOnlyWithMissingFields_CountsNoCompleteGuest()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db, numberOfGuests: 2, completeGuest: false);
+        var summary = await CreateService(db, CheckIn.AddDays(-1)).GetGuestSummaryAsync(booking.Id);
+
+        var progress = AlloggiatiGuestProgressDto.From(summary);
+
+        Assert.Equal(2, progress.DeclaredGuests);
+        Assert.Equal(1, progress.RegisteredGuests);
+        Assert.Equal(0, progress.CompleteGuests);
+        Assert.False(progress.DataComplete);
+    }
+
+    [Fact]
+    public async Task GuestProgressFrom_HeadOfFamilyWithoutMembers_IsNotCountedComplete()
+    {
+        // Arrange: every field of the line is there, but a head of family needs the lines of the family members.
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db, numberOfGuests: 2);
+        var line = await db.StayGuests.SingleAsync(g => g.BookingId == booking.Id);
+        line.Type = StayGuestType.HeadOfFamily;
+        await db.SaveChangesAsync();
+        var summary = await CreateService(db, CheckIn.AddDays(-1)).GetGuestSummaryAsync(booking.Id);
+
+        // Act
+        var progress = AlloggiatiGuestProgressDto.From(summary);
+
+        // Assert
+        Assert.Empty(Assert.Single(summary.Guests).MissingFields);
+        Assert.Equal(1, progress.RegisteredGuests);
+        Assert.Equal(0, progress.CompleteGuests);
+        Assert.False(progress.DataComplete);
+    }
+
+    [Fact]
+    public async Task GuestProgressFrom_StayLongerThan30Days_FlagsThePortalLimit()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db, checkOut: CheckIn.AddDays(31));
+        var summary = await CreateService(db, CheckIn.AddDays(-1)).GetGuestSummaryAsync(booking.Id);
+
+        Assert.True(AlloggiatiGuestProgressDto.From(summary).StayExceedsMaxDays);
     }
 
     [Fact]
