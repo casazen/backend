@@ -347,6 +347,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICedolareAdvisoryService, CedolareAdvisoryService>();
         services.AddScoped<IRliExportService, RliExportService>();
         services.AddScoped<IRliChecklistService, RliChecklistService>();
+        // Questura communication for an extra-EU tenant (LT-07): declared by the landlord, never inferred from a reminder.
+        services.AddScoped<IQuesturaCommunicationService, QuesturaCommunicationService>();
         // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
         // provider path stays unavailable even with Features:RliProvider on.
         services.AddScoped<IRliRegistrationService, RliRegistrationService>();

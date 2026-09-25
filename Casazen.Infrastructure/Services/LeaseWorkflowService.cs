@@ -27,12 +27,6 @@ public class LeaseWorkflowService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    private static readonly HashSet<string> EuCitizenships =
-    [
-        "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR","HR",
-        "HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO","SE","SI","SK"
-    ];
-
     public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, CreateLeaseRequest request)
     {
         // Who may create a lease on the property (owner or org-wide member with lease.create) is decided by the
@@ -75,9 +69,10 @@ public class LeaseWorkflowService(
                 FirstName = p.FirstName,
                 LastName = p.LastName,
                 FiscalCode = p.FiscalCode,
-                Citizenship = p.Citizenship,
+                Citizenship = EuMemberStates.NormalizeCode(p.Citizenship),
                 ContactEmail = p.ContactEmail,
-                IsExtraEU = !EuCitizenships.Contains(p.Citizenship.ToUpperInvariant())
+                // Not an EU citizen (27 member states, EuMemberStates): the Questura communication applies (LT-07).
+                IsExtraEU = !EuMemberStates.IsEuCitizenship(p.Citizenship)
             }).ToList()
         };
         lease.SetContractTerms(contractType, taxRegime);

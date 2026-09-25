@@ -91,6 +91,27 @@ public class LeaseContract : ITenantOwned
     [MaxLength(200)]
     public string? StipulaDeclaredByUserId { get; set; }
 
+    /// <summary>
+    /// Day the property was (or will be) delivered to the tenant, declared by the landlord (LT-07): midnight UTC of the
+    /// Europe/Rome date. Null when not declared: the start date is used (<see cref="QuesturaCommunicationDeadline"/>).
+    /// </summary>
+    public DateTime? PropertyDeliveryDate { get; set; }
+
+    /// <summary>
+    /// Date on which the landlord declares they sent the communication to the public-security authority for an extra-EU
+    /// tenant (art. 7 D.Lgs. 286/1998, LT-07): midnight UTC of the Rome date. Null until that explicit declaration; a
+    /// CasaZen reminder never sets it.
+    /// </summary>
+    public DateTime? QuesturaCommunicationDate { get; set; }
+
+    /// <summary>Key of the optional receipt of the Questura communication in the private bucket (FD-07, LT-07).</summary>
+    [MaxLength(1000)]
+    public string? QuesturaCommunicationReceiptPath { get; set; }
+
+    /// <summary>User who declared the Questura communication (LT-07).</summary>
+    [MaxLength(200)]
+    public string? QuesturaCommunicationDeclaredByUserId { get; set; }
+
     public bool ErasureRequested { get; set; } = false;
 
     public DateTime DataRetentionUntil { get; set; }

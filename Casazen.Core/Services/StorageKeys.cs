@@ -35,6 +35,10 @@ public static partial class StorageKeys
     public static string LeaseSignedContract(Guid orgId, Guid leaseId, string fileName) =>
         $"leases/{orgId}/{leaseId}/signed-contract/{fileName}";
 
+    /// <summary>Receipt of the Questura communication for an extra-EU tenant (private bucket, LT-07).</summary>
+    public static string LeaseQuesturaReceipt(Guid orgId, Guid leaseId, string fileName) =>
+        $"leases/{orgId}/{leaseId}/questura/{fileName}";
+
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>
         $"{Guid.NewGuid()}{Path.GetExtension(originalFileName ?? string.Empty).ToLowerInvariant()}";
