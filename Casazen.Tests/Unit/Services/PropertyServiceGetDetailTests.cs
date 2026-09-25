@@ -1,6 +1,7 @@
 using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
@@ -29,9 +30,10 @@ public class PropertyServiceGetDetailTests
     }
 
     /// <summary>
-    /// QA-CLOCK: check-in and check-out are date-only values, compared with today's date in Europe/Rome. At 23:30 UTC Rome
-    /// is already on the next day: the comparison with the UTC instant counted today's arrival as upcoming and today's
-    /// departure as still active, while at noon it did not.
+    /// QA-CLOCK: check-in and check-out are date-only values, compared with today's date in Europe/Rome, so the summary
+    /// is the same at noon and at 23:30 UTC (Rome is already on the next day). PC-16 (A2-36): today's confirmed arrival is
+    /// upcoming until the host registers it (it was neither upcoming nor active) and the next check-in; a checked-in stay
+    /// leaving today is in progress until its check-out, and today is its next check-out.
     /// </summary>
     [Theory]
     [InlineData("2026-09-25T12:00:00Z")]
@@ -64,10 +66,10 @@ public class PropertyServiceGetDetailTests
 
         var summary = (await service.GetPropertyDetailAsync(propertyId)).BookingsSummary;
 
-        Assert.Equal(1, summary.UpcomingBookings);
-        Assert.Equal(0, summary.ActiveBookings);
-        Assert.Equal(today.AddDays(5), summary.NextCheckIn);
-        Assert.Equal(today.AddDays(2), summary.NextCheckOut);
+        Assert.Equal(2, summary.UpcomingBookings);
+        Assert.Equal(1, summary.ActiveBookings);
+        Assert.Equal(today, summary.NextCheckIn);
+        Assert.Equal(today, summary.NextCheckOut);
     }
 
     [Fact]
@@ -220,8 +222,9 @@ public class PropertyServiceGetDetailTests
         Assert.Equal($"/api/properties/{propertyId}/documents/{documentId}/download", doc.DownloadUrl);
     }
 
+    // A2-36: "not found" is a NotFoundException (404), so an InvalidOperationException (500) is never read as one.
     [Fact]
-    public async Task GetPropertyDetailAsync_WithNonExistentId_ThrowsInvalidOperationException()
+    public async Task GetPropertyDetailAsync_WithNonExistentId_ThrowsNotFoundException()
     {
         // Arrange
         var propertyId = Guid.NewGuid();
@@ -229,7 +232,7 @@ public class PropertyServiceGetDetailTests
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.GetPropertyDetailAsync(propertyId));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.GetPropertyDetailAsync(propertyId));
         _mockRepository.Verify(x => x.GetPropertyDetailAsync(propertyId), Times.Once);
     }
 
