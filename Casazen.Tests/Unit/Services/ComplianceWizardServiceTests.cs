@@ -5,8 +5,10 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -56,13 +58,27 @@ public class ComplianceWizardServiceTests
 
         return new ComplianceWizardService(
             db,
-            configuration ?? CreateConfig(),
             alloggiati.Object,
             stayLifecycle,
             new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
+            CreateStatusService(db, configuration ?? CreateConfig(), timeProvider),
             Mock.Of<ILogger<ComplianceWizardService>>(),
             timeProvider);
     }
+
+    /// <summary>The real evaluation of the blockers (CO-06): the wizard has no copy of its own.</summary>
+    private static PropertyComplianceStatusService CreateStatusService(
+        AppDbContext db,
+        IConfiguration configuration,
+        TimeProvider? timeProvider) =>
+        new(
+            db,
+            configuration,
+            Mock.Of<IEmailQueue>(),
+            EmailTestHelpers.Links(),
+            Options.Create(new ComplianceOptions()),
+            NullLogger<PropertyComplianceStatusService>.Instance,
+            timeProvider);
 
     // 2026-09-24 00:30 in Rome is still 2026-09-23 in UTC: "today" must be the Rome date.
     private static readonly TimeProvider RomeJustAfterMidnight =
@@ -455,8 +471,91 @@ public class ComplianceWizardServiceTests
             summary.AlloggiatiManualRequired.Items.Select(i => i.Id).OrderBy(id => id));
         Assert.Equal(3, summary.AlloggiatiManualRequired.Count);
         Assert.Equal(rejected.Id, Assert.Single(summary.AlloggiatiFailures.Items).Id);
-        Assert.Equal($"/bookings/{manual.Id}/alloggiati", summary.AlloggiatiManualRequired.Items.Single(i => i.Id == manual.Id).RouteLink);
+        var manualItem = summary.AlloggiatiManualRequired.Items.Single(i => i.Id == manual.Id);
+        Assert.Equal(ComplianceCockpitAction.SendAlloggiati, manualItem.Action);
+        Assert.Equal(manual.Id, manualItem.BookingId);
+        Assert.Equal(ComplianceCockpitAction.ResolveAlloggiatiFailure, summary.AlloggiatiFailures.Items.Single().Action);
     }
+
+    [Fact]
+    public async Task Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath()
+    {
+        await using var db = CreateDb(nameof(Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath));
+        var org = new OrgEntity { Name = "Cockpit Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var pending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var suspended = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Suspended);
+        var active = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        // Rome 24/09: departure today, arrival two days ago, guest data incomplete, no Alloggiati communication.
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var departing = AddStay(active, "Partenza", todayInRome, BookingStatus.CheckedIn);
+        var rejected = AddStay(active, "Rifiutata", todayInRome.AddDays(1), BookingStatus.CheckedIn);
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = rejected.Id,
+            GuestId = rejected.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.Rifiutato,
+        });
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(org.Id);
+
+        Assert.Equal(new[] { pending.Id, suspended.Id }.Order(), summary.PropertiesPending.Items.Select(i => i.Id).Order());
+        Assert.All(summary.PropertiesPending.Items, i => AssertTarget(i, ComplianceCockpitAction.ActivateProperty, propertyId: i.Id));
+        Assert.Contains(summary.GuestCheckInsIncomplete.Items, i => i.Id == departing.Id);
+        Assert.All(summary.GuestCheckInsIncomplete.Items, i => AssertTarget(i, ComplianceCockpitAction.CompleteGuestCheckIn, bookingId: i.Id));
+        AssertTarget(Assert.Single(summary.CheckoutsDue.Items), ComplianceCockpitAction.CheckOut, bookingId: departing.Id);
+        AssertTarget(Assert.Single(summary.AlloggiatiManualRequired.Items), ComplianceCockpitAction.SendAlloggiati, bookingId: departing.Id);
+        AssertTarget(Assert.Single(summary.AlloggiatiFailures.Items), ComplianceCockpitAction.ResolveAlloggiatiFailure, bookingId: rejected.Id);
+        // Every action the clients must route is produced by one section.
+        Assert.Equal(
+            Enum.GetValues<ComplianceCockpitAction>().Order(),
+            new[]
+            {
+                summary.PropertiesPending,
+                summary.GuestCheckInsIncomplete,
+                summary.CheckoutsDue,
+                summary.AlloggiatiManualRequired,
+                summary.AlloggiatiFailures,
+            }.SelectMany(section => section.Items).Select(i => i.Action).Distinct().Order());
+
+        Booking AddStay(Property property, string name, DateTime checkout, BookingStatus status)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = org.Id };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+
+        static void AssertTarget(ComplianceSummaryItem item, ComplianceCockpitAction action, Guid? propertyId = null, Guid? bookingId = null)
+        {
+            Assert.Equal(action, item.Action);
+            Assert.Equal(propertyId, item.PropertyId);
+            Assert.Equal(bookingId, item.BookingId);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CockpitActions))]
+    public void ComplianceSummaryItem_EveryAction_HasExactlyOneTarget(ComplianceCockpitAction action)
+    {
+        var id = Guid.NewGuid();
+
+        var item = ComplianceSummaryItem.TargetsProperty(action)
+            ? ComplianceSummaryItem.ForProperty(action, id, "Villa")
+            : ComplianceSummaryItem.ForBooking(action, id, "Mario Rossi");
+
+        Assert.Equal(id, item.Id);
+        Assert.Equal(id, item.PropertyId ?? item.BookingId);
+        Assert.True(item.PropertyId is null ^ item.BookingId is null);
+        Assert.Throws<ArgumentException>(() => ComplianceSummaryItem.TargetsProperty(action)
+            ? ComplianceSummaryItem.ForBooking(action, id, "x")
+            : ComplianceSummaryItem.ForProperty(action, id, "x"));
+    }
+
+    public static TheoryData<ComplianceCockpitAction> CockpitActions() => new(Enum.GetValues<ComplianceCockpitAction>());
 
     [Fact]
     public async Task StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival()

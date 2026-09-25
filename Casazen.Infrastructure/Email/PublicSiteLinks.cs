@@ -120,6 +120,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
+    /// <summary>Host console: activation wizard of one property (route <c>/app/short-rent/properties/:id/activation</c>, CO-06).</summary>
+    public string HostPropertyActivation(Guid propertyId) => Build($"/app/short-rent/properties/{propertyId:D}/activation");
+
     /// <summary>
     /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the default page Stripe
     /// Checkout and the billing portal return to (PL-11, A1-31) when the client names no page.
