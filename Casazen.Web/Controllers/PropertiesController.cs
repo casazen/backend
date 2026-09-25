@@ -1144,9 +1144,12 @@ public class PropertiesController(
         try
         {
             var (loaded, steps) = await complianceWizardService.GetActivationWizardAsync(id, cancellationToken);
+            var suspended = loaded.ComplianceStatus == PropertyComplianceStatus.Suspended;
             return Ok(new PropertyActivationWizardDto
             {
                 ComplianceStatus = loaded.ComplianceStatus.ToString(),
+                SuspendedAt = suspended ? loaded.ComplianceSuspendedAt : null,
+                SuspensionReasons = suspended ? loaded.ComplianceSuspensionReasons ?? [] : [],
                 Steps = steps.Select(s => ToActivationStepDto(s, localizer)),
             });
         }
@@ -1215,7 +1218,9 @@ public class PropertiesController(
     /// Activates the property when every blocking step is complete. 409 <c>property_activation_blocked</c> otherwise, with
     /// <c>incompleteBlockers</c> (step ids) and <c>blockers</c> (<c>{ step, code, message }</c>, stable codes such as
     /// <c>safety_gas_detector_missing</c>); 409 <c>activation_tos_required</c> without the terms accepted. The safety
-    /// checklist is saved with <see cref="SaveSafetyChecklist"/> (CO-07).
+    /// checklist is saved with <see cref="SaveSafetyChecklist"/> (CO-07). Same evaluation as the re-evaluation after a
+    /// change (CO-06): with blockers left an active property is suspended and a pending or suspended one keeps its status
+    /// (<c>complianceStatus</c> of the 409).
     /// </summary>
     [HttpPost("{id:guid}/compliance/activation/complete")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]

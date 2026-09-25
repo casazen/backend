@@ -16,6 +16,7 @@ public class PropertyDocumentServiceTests
     private readonly Mock<IImageStorageService> _mockStorageService;
     private readonly Mock<IPropertyRepository> _mockPropertyRepository;
     private readonly Mock<IApeComplianceService> _mockApeCompliance;
+    private readonly Mock<IPropertyComplianceStatusService> _complianceStatus = new();
     private readonly PropertyDocumentService _service;
 
     public PropertyDocumentServiceTests()
@@ -29,6 +30,7 @@ public class PropertyDocumentServiceTests
             _mockStorageService.Object,
             _mockPropertyRepository.Object,
             _mockApeCompliance.Object,
+            _complianceStatus.Object,
             new Mock<ILogger<PropertyDocumentService>>().Object);
     }
 
@@ -168,6 +170,8 @@ public class PropertyDocumentServiceTests
         // Assert
         _mockStorageService.Verify(x => x.DeleteDocumentAsync(document.StorageUrl), Times.Once);
         _mockDocumentRepository.Verify(x => x.DeleteAsync(documentId), Times.Once);
+        // CO-06 (A5-20): an active property that loses a required document is suspended.
+        _complianceStatus.Verify(x => x.ReevaluateAsync(document.PropertyId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
