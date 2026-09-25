@@ -25,6 +25,7 @@ Risolvi **UN SOLO task** del piano di risanamento. Non toccare nulla fuori dal p
    - **Test:** aggiungi o aggiorna test che dimostrano la fix (nomi `MethodName_Scenario_ExpectedBehavior`). Un test esistente che codifica il bug va corretto. Niente test che verificano solo "è visibile".
    - **Dipendenze npm:** `node_modules` nel worktree è un symlink condiviso, non usare `npm install` lì. Se devi aggiungere un pacchetto: `rm node_modules && npm ci && npm install <pkg>` dentro il worktree.
 4. **Verifica obbligatoria nel worktree.** Tutto deve essere verde, senza nuovi warning del compilatore.
+   - **Carico macchina:** girano fino a 10 agenti su 4 CPU. Lancia **sempre** i comandi pesanti tramite il semaforo `/home/user/wt/bin/heavy.sh <comando>`, per esempio `/home/user/wt/bin/heavy.sh dotnet test Casazen.sln -c Release` o `/home/user/wt/bin/heavy.sh npx vitest run --maxWorkers=2`. Vale per build, test, vitest, vite build e tsc. Durante l'attesa del semaforo non lanciare comandi pesanti fuori dal semaforo. Un test che va in timeout solo sotto carico va rilanciato, ma riportalo.
    - backend: `dotnet build Casazen.sln -c Release`, `dotnet test Casazen.sln -c Release`, `dotnet format --verify-no-changes`.
    - frontend: `npx tsc -b --noEmit`, `npx eslint <file toccati>`, `npx vitest run`, `npx vite build`.
    - mobile: `npx tsc --noEmit`, più lint se configurato.
@@ -39,6 +40,7 @@ Risolvi **UN SOLO task** del piano di risanamento. Non toccare nulla fuori dal p
      - Se risponde `MERGED` o hai risolto un conflitto: ricompila e riesegui i test.
    - `/home/user/wt/bin/integrate.sh <TASK> <repo> publish`
      - Se risponde `MOVED`: ripeti sync, test e publish.
+     - **Regola anti-loop:** il branch di integrazione avanza in fretta. Dopo un `MOVED`, se il nuovo sync non dà conflitti: ricompila (build) e rilancia solo i test delle aree toccate da te e dai commit appena entrati (per esempio con `--filter` o sulle cartelle vitest interessate), poi ripubblica. La suite completa l'hai già eseguita prima e i commit entrati l'hanno già superata. Se ci sono conflitti, invece, rifai la verifica completa. L'orchestratore esegue periodicamente la suite completa sul branch di integrazione.
    - Pubblica **solo** con build e test verdi. Se dopo il merge i test falliscono per cause esterne al tuo task, non pubblicare e riportalo.
 7. Chiudi con `/home/user/wt/bin/finish-task.sh <TASK>`.
 
@@ -90,3 +92,10 @@ DUBBI: <domande per il product owner> | -
 - **Advisory lock Postgres:** prima di scegliere una chiave, cerca quelle esistenti (`grep -rn "AdvisoryLock\|pg_advisory" --include=*.cs`) e usa un valore nuovo e univoco. Se al merge trovi collisioni, tieni valori distinti.
 - **iCal (PC-10):** usa il parser in `Services/ICal` e la sincronizzazione per feed isolata. Il runbook è `docs/runbooks/ical.md`.
 - **Disponibilità (BK-05):** le notti occupate si calcolano solo con `PropertyOccupancy`, usato da disponibilità pubblica, creazione e controllo sovrapposizioni. Non scrivere un'altra logica di occupazione.
+- **PDF (LT-09):** ogni PDF si genera con `IPdfDocumentRenderer` (PDFsharp-MigraDoc, font DejaVu incorporato, A4). Non scrivere altri writer PDF.
+- **Cifratura colonne (PC-11/CO-14):** usa `EncryptedStringConverter` (una purpose per colonna) e `DataProtectionModelCacheKeyFactory`. È documentato in `docs/runbooks/storage.md` / `encryption.md`. Non creare altri meccanismi di cifratura.
+- **Test dipendenti dall'orologio:** non aspettare mai un orario (per esempio la mezzanotte UTC) per far passare un test. Se un test fallisce solo tra le 22:00 e le 24:00 UTC (data UTC diversa dalla data di Roma), il task QA-CLOCK lo sta correggendo. Se è un test che hai scritto o toccato tu, correggilo con un `TimeProvider` fisso. Altrimenti riportalo nel report e procedi. I test nuovi devono sempre usare un `TimeProvider` fisso.
+- **Riavvii del container:** i processi in background possono sparire. Prima di ripartire controlla sempre `git status` e `git log` nel worktree.
+- **Export iCal (PC-12):** un link per property; esclude i blocchi importati e le prenotazioni OTA; rigenerazione con `POST /api/properties/{id}/ical/export-url/regenerate`.
+- **Oggi nel backend (QA-CLOCK):** `CalendarTodayArchitectureTests` vieta `DateTime.Today`/`UtcNow.Date` fuori da `RomeCalendar`.
+- **Date nel frontend (QA-CLOCK-FE):** usa gli helper di `src/lib/stay-dates.ts` (`todayInRome`, `toStayDate`, `startOfMonth`/`endOfMonth`, `addDays`). ESLint vieta `toISOString().slice/split`. Nei test usa `src/test/clock.ts` (`freezeClock`, `withBrowserTimeZone`).
