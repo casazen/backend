@@ -139,7 +139,8 @@ fallback of step 1.
 
 | Step | Behaviour | Code |
 |---|---|---|
-| Signature | Mandatory on both endpoints: `/webhooks/stripe` with `Stripe__WebhookSecret`, `/webhooks/stripe/connect` with `Stripe__ConnectWebhookSecret`. A wrong signature (or API version) answers **400** `invalid_signature`. A missing secret, or the placeholder committed in `appsettings.json` (`whsec_YOUR_…`), answers **500** `stripe_webhook_not_configured`: the placeholder is public, so it is never used to verify. Stripe retries a non-2xx delivery | `Casazen.Web/Controllers/WebhooksController.cs` |
+| Signature | Mandatory on both endpoints: `/webhooks/stripe` with `Stripe__WebhookSecret`, `/webhooks/stripe/connect` with `Stripe__ConnectWebhookSecret`. A wrong signature answers **400** `invalid_signature`. A missing secret, or the placeholder committed in `appsettings.json` (`whsec_YOUR_…`), answers **500** `stripe_webhook_not_configured`: the placeholder is public, so it is never used to verify. Stripe retries a non-2xx delivery | `Casazen.Web/Controllers/WebhooksController.cs` |
+| API version | `EventUtility.ConstructEvent` is called with `throwOnApiVersionMismatch: false` (A3-39): the event's own `api_version` field is **not** required to match this SDK build's pinned version (currently `2025-12-15.clover`, `Stripe.StripeConfiguration.ApiVersion`). If the Stripe dashboard endpoint is ever configured on a different API version, its events are still accepted (and the mismatch is visible in the "Received Stripe … webhook" log line, which now includes the event's api version) instead of being answered 400 forever. Signature verification is unaffected. | same |
 | Queue | A verified event is queued on Hangfire (`StripeWebhookJob`) and acknowledged with 200 | same |
 | Claim | The job inserts the event id into `ProcessedStripeEvents` (primary key) **in the same transaction** as the business updates | `Casazen.Infrastructure/External/StripeWebhookHandler.cs` |
 | Duplicate delivered later | Finds the committed claim: skipped, log `Skipping duplicate Stripe event {EventId}` | same |
@@ -235,7 +236,7 @@ Task BK-02 (audit defects A3-05 P0, A9-15 payments part; issue #51). Before it, 
 ### Charge model (verified in the code)
 
 The checkout creates the guest's PaymentIntent **on the host's connected account** (`StripeService.CreateConnectedAccountPaymentIntentAsync`
-and, for the deferred option, `ChargePaymentMethodAsync` (off-session, BK-08, section "Deferred charge" below), both with the `Stripe-Account` header and `application_fee_amount = 0`):
+and, for the deferred option, `ChargePaymentMethodAsync` (off-session, BK-08, section "Deferred charge" below), both with the `Stripe-Account` header and no `application_fee_amount` (A3-40: left unset, not sent as an explicit `0` — there is no platform take-rate yet)):
 **direct charges**. Consequences for refunds:
 
 | Parameter | Value | Why |
@@ -445,7 +446,7 @@ deferred PaymentIntents.
 | `error_on_requires_action` | **not sent** | Stripe changelog 2023-08-16 "automatic payment methods" (our API version `2025-12-15.clover` is later): PaymentIntents use automatic payment methods by default and `error_on_requires_action` is accepted only with explicit `payment_method_types`. Restricting `payment_method_types` (e.g. `card`) would refuse the other methods the SetupIntent (automatic payment methods, `usage=off_session`) may have saved, such as SEPA Debit. With `off_session=true` an authentication request already fails the attempt, so the flag adds nothing. PR #447 was discarded for sending it without `payment_method_types` |
 | `return_url` | **not sent** | Same changelog: confirming requires a `return_url` **unless `off_session=true`**; nobody is redirected off-session. The on-session payment of the guest (outcome page) sends its own `return_url` from Stripe.js |
 | `payment_method_types` | not sent | automatic payment methods, like the checkout |
-| `application_fee_amount` | `0`, unchanged | left to task BK-19 (A3-40) |
+| `application_fee_amount` | not sent | A3-40 (BK-19): left unset rather than an explicit `0` — no platform take-rate yet, and Stripe treats the two differently. Set it to the real fee if/when a take-rate ships |
 | Idempotency key (creation) | `direct-booking-deadline:{bookingId}:{deadline yyyyMMdd}:{attempt}` | bound to the booking, its deadline and the attempt: a Hangfire retry or a crash before the commit sends the same key and gets the same PaymentIntent |
 | Idempotency key (retry) | `direct-booking-deadline-confirm:{PaymentIntentId}:{attempt}` | one confirmation per attempt |
 | Before a creation | `GET /v1/payment_intents?customer=…` on the connected account | Stripe keeps idempotency keys for 24 hours and the job runs daily: a PaymentIntent of an attempt whose answer was lost (timeout) is found by `metadata.bookingId` + `kind` and used instead of creating a second charge |

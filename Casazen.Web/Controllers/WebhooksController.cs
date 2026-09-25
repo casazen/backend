@@ -62,11 +62,15 @@ public class WebhooksController : ControllerBase
                 return StripeWebhookNotConfigured();
             }
 
-            // Verify webhook signature
+            // Verify webhook signature. throwOnApiVersionMismatch=false (A3-39): the Stripe dashboard endpoint can be
+            // pinned to an API version other than the one this SDK build defaults to (Stripe.ApiVersion.Current); with
+            // the default (true) that mismatch throws a StripeException indistinguishable, in the catch below, from a
+            // forged signature, so every event is answered 400 forever and no booking is ever confirmed. The HMAC
+            // signature is still verified in full either way — only the version check becomes non-fatal.
             Event stripeEvent;
             try
             {
-                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret);
+                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret, throwOnApiVersionMismatch: false);
             }
             catch (StripeException ex)
             {
@@ -74,7 +78,11 @@ public class WebhooksController : ControllerBase
                 return StripeWebhookSignatureInvalid();
             }
 
-            _logger.LogInformation("Received Stripe webhook: {EventType} ({EventId})", stripeEvent.Type, stripeEvent.Id);
+            _logger.LogInformation(
+                "Received Stripe webhook: {EventType} ({EventId}, api version {EventApiVersion})",
+                stripeEvent.Type,
+                stripeEvent.Id,
+                stripeEvent.ApiVersion);
 
             // Queue the event for background processing
             // This allows us to respond within 3 seconds while processing happens asynchronously
@@ -113,10 +121,12 @@ public class WebhooksController : ControllerBase
                 return StripeWebhookNotConfigured();
             }
 
+            // See the platform endpoint above (A3-39): tolerant of an API version pinned differently on the connect
+            // endpoint, still fully signature-verified.
             Event stripeEvent;
             try
             {
-                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret);
+                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret, throwOnApiVersionMismatch: false);
             }
             catch (StripeException ex)
             {
@@ -125,9 +135,10 @@ public class WebhooksController : ControllerBase
             }
 
             _logger.LogInformation(
-                "Received Stripe Connect webhook: {EventType} ({EventId})",
+                "Received Stripe Connect webhook: {EventType} ({EventId}, api version {EventApiVersion})",
                 stripeEvent.Type,
-                stripeEvent.Id);
+                stripeEvent.Id,
+                stripeEvent.ApiVersion);
 
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
                 job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Connected));
