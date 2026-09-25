@@ -243,6 +243,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
         services.AddScoped<ITerritorialRentAgreementRepository, TerritorialRentAgreementRepository>();
         services.AddScoped<IHighTensionAreaComuneRepository, HighTensionAreaComuneRepository>();
+        services.AddScoped<IComuneImuChannelRepository, ComuneImuChannelRepository>();
+        services.AddScoped<IRegulatoryDataAuditLogRepository, RegulatoryDataAuditLogRepository>();
         services.AddScoped<ISeoContentRepository, SeoContentRepository>();
         services.AddScoped<IOtaSyncLogRepository, OtaSyncLogRepository>();
         services.AddScoped<IAlloggiatiWebReportRepository, AlloggiatiWebReportRepository>();
@@ -339,6 +341,7 @@ public static class ServiceCollectionExtensions
         // Single PDF renderer (LT-09, A7-14): A4, wrapping, pagination, embedded Unicode fonts. Stateless.
         services.AddSingleton<IPdfDocumentRenderer, MigraDocPdfDocumentRenderer>();
         services.AddScoped<IComuneImuNotificationService, ComuneImuNotificationService>();
+        services.AddScoped<IRegulatoryReferenceDataAdminService, RegulatoryReferenceDataAdminService>();
         services.AddScoped<ILeaseRegistrationAuthorizationRepository, LeaseRegistrationAuthorizationRepository>();
         // LTR tax advisory (LT-08, docs/runbooks/rli.md): every rate and minimum from configuration, validated at startup.
         services.AddOptions<Casazen.Core.Options.CedolareAdvisoryOptions>()
