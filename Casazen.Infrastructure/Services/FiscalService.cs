@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
@@ -19,9 +17,10 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="ShortStayFiscalOptions"/>. The short-rental threshold and the one 21% cedolare unit are per taxpayer (titolare
 /// fiscale: <see cref="Property.TaxpayerFiscalCode"/>, else the org tax profile) and per tax year, counting only the
 /// apartments with short-term stays in that year. Over the threshold the activity is presumed a business: cedolare and
-/// IRPEF-ordinaria are refused, the host is warned, and no OTA withholding is computed by default.
+/// IRPEF-ordinaria are refused, the host is warned, and no OTA withholding is computed by default. The reports for the
+/// accountant (CO-19) are in <c>FiscalService.Reports.cs</c>.
 /// </summary>
-public class FiscalService(
+public partial class FiscalService(
     AppDbContext db,
     IPdfDocumentRenderer pdfRenderer,
     IOptions<ShortStayFiscalOptions> fiscalOptions,
@@ -33,6 +32,11 @@ public class FiscalService(
 
     private static readonly Regex TaxpayerFiscalCodePattern = new("^[A-Z0-9]{16}$", RegexOptions.Compiled);
 
+    /// <summary>Codice fiscale of the org: 16 characters for a person, 11 digits for an entity.</summary>
+    private static readonly Regex OrgFiscalCodePattern = new("^([A-Z0-9]{16}|[0-9]{11})$", RegexOptions.Compiled);
+
+    private static readonly Regex PartitaIvaPattern = new("^[0-9]{11}$", RegexOptions.Compiled);
+
     private readonly ShortStayFiscalOptions _rules = fiscalOptions.Value;
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -43,7 +47,7 @@ public class FiscalService(
             ?? throw new KeyNotFoundException("Org not found");
 
         var view = await LoadYearAsync(orgId, org.FiscalCode, taxYear, trackAssignments: false, cancellationToken);
-        var rows = view.Candidates.Select(view.BuildRow).ToList();
+        var rows = view.Candidates.Select(p => view.BuildRow(p, org.HasPartitaIva)).ToList();
 
         return new FiscalRegimeSnapshot(
             taxYear,
@@ -68,7 +72,7 @@ public class FiscalService(
         // isPrimaryForCedolare is kept for API compatibility: the designated 21% unit is the one with CedolareSecca21.
         ValidateTaxYear(taxYear);
         if (!Enum.IsDefined(regime))
-            throw new FiscalValidationException("Unknown fiscal regime.");
+            throw new FiscalValidationException("fiscal_regime_unknown", "FiscalRegimeUnknown");
 
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
             ?? throw new KeyNotFoundException("Org not found");
@@ -80,7 +84,7 @@ public class FiscalService(
 
         var view = await LoadYearAsync(orgId, org.FiscalCode, taxYear, trackAssignments: true, cancellationToken);
         var property = view.Candidates.FirstOrDefault(p => p.Id == propertyId)
-            ?? throw new FiscalValidationException("Property is not an active STR property for this tax year.");
+            ?? throw new DomainRuleException("fiscal_property_not_eligible", "FiscalPropertyNotEligible", taxYear);
         var taxpayer = view.TaxpayerOf(property);
 
         if (FiscalCopy.IsShortRentalRegime(regime) && view.WouldExceedThreshold(property))
@@ -94,8 +98,8 @@ public class FiscalService(
         }
 
         // The org tax profile says whether it has a partita IVA; for another taxpayer CasaZen has no such data.
-        if (FiscalCopy.IsImpresaRegime(regime) && taxpayer.IsOrgTaxProfile && !org.HasPartitaIva)
-            throw new FiscalValidationException("Partita IVA must be recorded before assigning an impresa regime.");
+        if (FiscalCopy.IsImpresaRegime(regime) && !FiscalYearView.ImpresaAvailable(taxpayer, org.HasPartitaIva))
+            throw new DomainRuleException("fiscal_partita_iva_required", "FiscalPartitaIvaRequired");
 
         if (regime == StrFiscalRegime.CedolareSecca21)
         {
@@ -128,7 +132,7 @@ public class FiscalService(
             await transaction.CommitAsync(cancellationToken);
 
         var updated = await LoadYearAsync(orgId, org.FiscalCode, taxYear, trackAssignments: false, cancellationToken);
-        return updated.BuildRow(updated.Candidates.Single(p => p.Id == propertyId));
+        return updated.BuildRow(updated.Candidates.Single(p => p.Id == propertyId), org.HasPartitaIva);
     }
 
     public async Task<FiscalPropertyTaxpayer> SetPropertyTaxpayerAsync(
@@ -173,31 +177,38 @@ public class FiscalService(
 
     public async Task<FiscalTaxProfile> UpdateTaxProfileAsync(
         Guid orgId,
-        bool hasPartitaIva,
-        string? partitaIvaNumber,
-        string? fiscalCode,
+        FiscalTaxProfileUpdate update,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(update);
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
             ?? throw new KeyNotFoundException("Org not found");
 
+        // Only the fields sent change (CO-19, A5-23): a form never overwrites the saved profile with its defaults.
+        var hasPartitaIva = update.HasPartitaIva ?? org.HasPartitaIva;
         if (hasPartitaIva)
         {
-            var digits = new string((partitaIvaNumber ?? string.Empty).Where(char.IsDigit).ToArray());
-            if (digits.Length is < 11 or > 11)
-                throw new FiscalValidationException("Invalid tax identifier.");
+            var number = update.PartitaIvaNumber ?? org.PartitaIvaNumber;
+            // Spaces and the "IT" country prefix are accepted and dropped.
+            var digits = new string((number ?? string.Empty).Where(c => !char.IsWhiteSpace(c)).ToArray()).ToUpperInvariant();
+            if (digits.StartsWith("IT", StringComparison.Ordinal))
+                digits = digits[2..];
+            if (!PartitaIvaPattern.IsMatch(digits))
+                throw new FiscalValidationException("fiscal_tax_identifier_invalid", "FiscalTaxIdentifierInvalid");
             org.PartitaIvaNumber = digits;
         }
         else
         {
+            if (!string.IsNullOrWhiteSpace(update.PartitaIvaNumber))
+                throw new FiscalValidationException("fiscal_tax_identifier_invalid", "FiscalTaxIdentifierInvalid");
             org.PartitaIvaNumber = null;
         }
 
-        if (!string.IsNullOrWhiteSpace(fiscalCode))
+        if (update.FiscalCode is not null)
         {
-            var cf = fiscalCode.Trim().ToUpperInvariant();
-            if (cf.Length > 16)
-                throw new FiscalValidationException("Invalid tax identifier.");
+            var cf = NormalizeFiscalCode(update.FiscalCode);
+            if (cf is not null && !OrgFiscalCodePattern.IsMatch(cf))
+                throw new FiscalValidationException("fiscal_tax_identifier_invalid", "FiscalTaxIdentifierInvalid");
             org.FiscalCode = cf;
         }
 
@@ -232,7 +243,7 @@ public class FiscalService(
         }
 
         if (count < 0)
-            throw new FiscalValidationException("Invalid property count.");
+            throw new FiscalValidationException("fiscal_simulation_count_invalid", "FiscalSimulationCountInvalid");
 
         var exceeded = ThresholdApplies(taxYear) && count > _rules.MaxApartmentsPerTaxpayer;
         var label = count switch
@@ -276,108 +287,6 @@ public class FiscalService(
             payment.WithholdingSource = WithholdingSource.None;
         }
     }
-
-    public async Task<AnnualIncomeReport> GetAnnualReportAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default)
-    {
-        ValidateTaxYear(taxYear);
-        var (yearStart, yearEnd) = YearBounds(taxYear);
-        var view = await LoadYearAsync(orgId, orgFiscalCode: null, taxYear, trackAssignments: false, cancellationToken);
-        var reportProperties = view.Candidates.ToDictionary(p => p.Id, p => p.Name);
-        var settledPayments = await SettledInTaxYear(
-                db.Payments.AsNoTracking()
-                    .Include(p => p.Booking)
-                    .ThenInclude(b => b.Property),
-                yearStart,
-                yearEnd)
-            .Where(p => p.OrgId == orgId)
-            .ToListAsync(cancellationToken);
-
-        foreach (var property in settledPayments.Select(p => p.Booking.Property))
-            reportProperties.TryAdd(property.Id, property.Name);
-
-        var lines = new List<AnnualIncomeLine>();
-        foreach (var (propertyId, name) in reportProperties.OrderBy(p => p.Value).ThenBy(p => p.Key))
-        {
-            var payments = settledPayments
-                .Where(p => p.Booking.PropertyId == propertyId)
-                .ToList();
-            view.Assignments.TryGetValue(propertyId, out var row);
-            var gross = payments.Sum(ReportableGross);
-            var withholding = payments.Sum(ReportableWithholding);
-            lines.Add(new AnnualIncomeLine(propertyId, name, row?.Regime, gross, withholding, gross - withholding));
-        }
-
-        return new AnnualIncomeReport(
-            taxYear,
-            FiscalCopy.PackLabel,
-            FiscalCopy.Disclaimer,
-            lines,
-            new AnnualIncomeTotals(
-                lines.Sum(l => l.GrossIncome),
-                lines.Sum(l => l.Withholding),
-                lines.Sum(l => l.Net)));
-    }
-
-    public async Task<WithholdingReport> GetWithholdingReportAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default)
-    {
-        ValidateTaxYear(taxYear);
-        var (yearStart, yearEnd) = YearBounds(taxYear);
-        var payments = await SettledInTaxYear(db.Payments.AsNoTracking().Include(p => p.Booking), yearStart, yearEnd)
-            .Where(p => p.OrgId == orgId && p.WithholdingTaxApplied)
-            .ToListAsync(cancellationToken);
-
-        var lines = payments.Select(p => new WithholdingLine(
-            p.Id,
-            p.Booking.PropertyId,
-            p.Booking.Source.ToString(),
-            p.ProcessedAt ?? p.CreatedAt,
-            ReportableGross(p),
-            ReportableWithholding(p),
-            ReportableNet(p))).ToList();
-
-        var byOta = lines
-            .GroupBy(l => l.Source)
-            .Select(g => new WithholdingOtaBucket(g.Key, g.Sum(x => x.Gross), g.Sum(x => x.Withholding), g.Sum(x => x.Net), g.Count()))
-            .OrderBy(b => b.Source)
-            .ToList();
-
-        return new WithholdingReport(taxYear, FiscalCopy.PackLabel, byOta, lines);
-    }
-
-    public byte[] ToCsv(AnnualIncomeReport report)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine(report.PackLabel);
-        sb.AppendLine(report.Disclaimer);
-        sb.AppendLine("propertyId,name,regime,gross,withholding,net");
-        foreach (var line in report.Properties)
-        {
-            sb.AppendLine(string.Join(',',
-                line.PropertyId,
-                Csv(line.Name),
-                line.Regime?.ToString() ?? "",
-                F(line.GrossIncome),
-                F(line.Withholding),
-                F(line.Net)));
-        }
-
-        return Encoding.UTF8.GetBytes(sb.ToString());
-    }
-
-    public byte[] ToCsv(WithholdingReport report)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine(report.PackLabel);
-        sb.AppendLine("source,gross,withholding,net,payoutCount");
-        foreach (var bucket in report.ByOta)
-            sb.AppendLine(string.Join(',', bucket.Source, F(bucket.Gross), F(bucket.Withholding), F(bucket.Net), bucket.PayoutCount));
-        sb.AppendLine("paymentId,propertyId,source,paidAt,gross,withholding,net");
-        foreach (var line in report.Lines)
-            sb.AppendLine(string.Join(',', line.PaymentId, line.PropertyId, line.Source, line.PaidAt.ToString("O"), F(line.Gross), F(line.Withholding), F(line.Net)));
-        return Encoding.UTF8.GetBytes(sb.ToString());
-    }
-
-    public byte[] ToPdf(string title, string body) => pdfRenderer.Render(PdfDocumentContent.FromPlainText(title, body));
 
     /// <summary>
     /// Whether an OTA stay is a short-term rental contract, the only one subject to the intermediary's withholding
@@ -483,7 +392,7 @@ public class FiscalService(
 
         var properties = await db.Properties.AsNoTracking()
             .Where(p => p.OrgId == orgId)
-            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode })
+            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode, p.OwnerId })
             .ToListAsync(cancellationToken);
 
         var assignmentsQuery = db.PropertyFiscalYears.Where(y => y.OrgId == orgId && y.TaxYear == taxYear);
@@ -498,7 +407,7 @@ public class FiscalService(
                 var shortStay = shortStayPropertyIds.Contains(p.Id);
                 var candidate = shortStay || (p.IsActive && !leasedPropertyIds.Contains(p.Id));
                 var taxpayerCode = NormalizeFiscalCode(p.TaxpayerFiscalCode);
-                return new YearProperty(p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay);
+                return new YearProperty(p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay, p.OwnerId);
             })
             .ToDictionary(p => p.Id);
 
@@ -523,36 +432,12 @@ public class FiscalService(
     private static void ValidateTaxYear(int taxYear)
     {
         if (taxYear is < 2026 or > 2100)
-            throw new FiscalValidationException("Invalid tax year.");
+            throw new FiscalValidationException("fiscal_tax_year_invalid", "FiscalTaxYearInvalid");
     }
 
     private static (DateTime Start, DateTime End) YearBounds(int taxYear) =>
         (new DateTime(taxYear, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             new DateTime(taxYear + 1, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-
-    private static IQueryable<Payment> SettledInTaxYear(IQueryable<Payment> payments, DateTime yearStart, DateTime yearEnd) =>
-        payments.Where(p =>
-            (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded)
-            && (p.ProcessedAt ?? p.CreatedAt) >= yearStart
-            && (p.ProcessedAt ?? p.CreatedAt) < yearEnd);
-
-    private static decimal ReportableGross(Payment payment) =>
-        Math.Max(0m, payment.Amount - payment.RefundedAmount);
-
-    private static decimal ReportableWithholding(Payment payment)
-    {
-        var gross = ReportableGross(payment);
-        if (gross <= 0 || payment.Amount <= 0 || payment.OtaWithholdingTax <= 0)
-            return 0m;
-
-        return decimal.Round(payment.OtaWithholdingTax * (gross / payment.Amount), 2, MidpointRounding.AwayFromZero);
-    }
-
-    private static decimal ReportableNet(Payment payment) =>
-        ReportableGross(payment) - ReportableWithholding(payment);
-
-    private static string Csv(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
-    private static string F(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
     private sealed record YearProperty(
         Guid Id,
@@ -560,7 +445,8 @@ public class FiscalService(
         string TaxpayerKey,
         string? TaxpayerFiscalCode,
         bool IsCandidate,
-        bool ShortStay);
+        bool ShortStay,
+        string OwnerId);
 
     private sealed record TaxpayerYear(
         int Index,
@@ -647,6 +533,15 @@ public class FiscalService(
         public TaxpayerYear TaxpayerOf(YearProperty property) => _taxpayers[property.TaxpayerKey];
 
         /// <summary>
+        /// The taxpayer of any property of the org, candidate or not (e.g. deactivated with payments this year), when that
+        /// taxpayer has candidates in the year; null otherwise.
+        /// </summary>
+        public TaxpayerYear? TaxpayerOfAny(Guid propertyId) =>
+            _properties.TryGetValue(propertyId, out var property) && _taxpayers.TryGetValue(property.TaxpayerKey, out var taxpayer)
+                ? taxpayer
+                : null;
+
+        /// <summary>
         /// Whether the taxpayer would be over the threshold with this apartment let short-term too. Besides the apartments
         /// with short-term stays, it counts those the host already declared short-term for the year (a cedolare or
         /// IRPEF-ordinaria regime assigned): otherwise a third apartment could get cedolare before its first booking.
@@ -672,7 +567,14 @@ public class FiscalService(
                 && _properties.TryGetValue(y.PropertyId, out var p)
                 && p.TaxpayerKey == taxpayer.Key);
 
-        public FiscalPropertyRow BuildRow(YearProperty property)
+        /// <summary>
+        /// Impresa regimes need the partita IVA of the org tax profile; for another taxpayer CasaZen has no such data and
+        /// does not block them.
+        /// </summary>
+        public static bool ImpresaAvailable(TaxpayerYear taxpayer, bool orgHasPartitaIva) =>
+            !taxpayer.IsOrgTaxProfile || orgHasPartitaIva;
+
+        public FiscalPropertyRow BuildRow(YearProperty property, bool orgHasPartitaIva)
         {
             var taxpayer = TaxpayerOf(property);
             Assignments.TryGetValue(property.Id, out var assignment);
@@ -687,6 +589,16 @@ public class FiscalService(
                 ? FiscalTaxNotes.ThresholdExceeded
                 : assigned == StrFiscalRegime.IrpefOrdinaria ? FiscalTaxNotes.IrpefOrdinariaNotComputed : null;
 
+            var available = new List<StrFiscalRegime>();
+            if (!WouldExceedThreshold(property))
+            {
+                available.AddRange(
+                    [StrFiscalRegime.CedolareSecca21, StrFiscalRegime.CedolareSecca26, StrFiscalRegime.IrpefOrdinaria]);
+            }
+
+            if (ImpresaAvailable(taxpayer, orgHasPartitaIva))
+                available.AddRange([StrFiscalRegime.RegimeOrdinario, StrFiscalRegime.RegimeForfettario]);
+
             return new FiscalPropertyRow(
                 property.Id,
                 property.Name,
@@ -696,7 +608,8 @@ public class FiscalService(
                 property.ShortStay,
                 taxpayer.Index,
                 cedolareRate,
-                taxNote);
+                taxNote,
+                available);
         }
 
         /// <summary>

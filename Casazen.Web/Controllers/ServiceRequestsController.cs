@@ -390,18 +390,6 @@ public class ServiceRequestsController(
         UpdatedAt = r.UpdatedAt,
     };
 
-    internal static ServiceRequestSummaryDto MapSummary(ServiceRequest r) => new()
-    {
-        Id = r.Id,
-        PropertyId = r.PropertyId,
-        PropertyName = r.Property?.Name ?? string.Empty,
-        Category = r.Category,
-        Urgency = r.Urgency.ToString(),
-        Status = r.Status.ToString(),
-        Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
-        CreatedAt = r.CreatedAt,
-    };
-
     private static SupplierMatchResponse MapMatchResult(SupplierMatchResult result) => new()
     {
         Recommended = result.Recommended is null ? null : MapCandidate(result.Recommended),

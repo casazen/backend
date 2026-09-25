@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -7,7 +8,6 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
-using Casazen.Tests.Unit.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -569,29 +569,6 @@ public class FiscalRegimeServiceTests
     }
 
     [Fact]
-    public void ToPdf_LongReport_A4PagesWithEveryLine()
-    {
-        // LT-09 (A7-14): no more single Letter page cut at 4000 characters.
-        using var db = CreateDb();
-        var sut = CreateService(db);
-        var body = string.Join('\n', Enumerable.Range(1, 400).Select(i => $"Riga {i:D3} lordo 1.000,00 ritenuta 210,00 netto 790,00"));
-
-        var pdf = sut.ToPdf("Redditi 2026 – riepilogo", body);
-
-        var pages = PdfTestReader.Pages(pdf);
-        Assert.True(pages.Count > 1, $"{pages.Count} pages");
-        Assert.All(pages, page =>
-        {
-            Assert.Equal(595, Math.Round(page.Width));
-            Assert.Equal(842, Math.Round(page.Height));
-        });
-        var words = PdfTestReader.BodyWords(pdf);
-        var lines = words.Select((w, i) => (w, i)).Where(x => x.w == "Riga").Select(x => words[x.i + 1]);
-        Assert.Equal(Enumerable.Range(1, 400).Select(i => $"{i:D3}"), lines);
-        Assert.Contains("Redditi 2026 – riepilogo", PdfTestReader.Text(pdf), StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Reports_ExcludeUnsettledPayments_AndUseProcessedAtTaxYear()
     {
         var orgId = Guid.NewGuid();
@@ -665,13 +642,13 @@ public class FiscalRegimeServiceTests
         await db.SaveChangesAsync();
         var sut = CreateService(db);
 
-        var annual = await sut.GetAnnualReportAsync(orgId, TaxYear);
+        var annual = await sut.GetAnnualReportAsync(new HostScope(orgId, null), TaxYear);
         var annualLine = Assert.Single(annual.Properties);
         Assert.Equal(260m, annualLine.GrossIncome);
         Assert.Equal(54.60m, annualLine.Withholding);
         Assert.Equal(205.40m, annualLine.Net);
 
-        var withholding = await sut.GetWithholdingReportAsync(orgId, TaxYear);
+        var withholding = await sut.GetWithholdingReportAsync(new HostScope(orgId, null), TaxYear);
         Assert.Equal(2, withholding.Lines.Count);
         var withholdingLine = Assert.Single(withholding.Lines, l => l.PaymentId == completedPayment.Id);
         Assert.Equal(completedPayment.Id, withholdingLine.PaymentId);

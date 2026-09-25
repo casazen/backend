@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -31,7 +32,7 @@ public class FiscalController(
         }
         catch (FiscalValidationException ex)
         {
-            return BadRequest(new ProblemDetails { Title = "Validation error", Detail = ex.Message, Status = 400 });
+            return FiscalProblem(ex);
         }
     }
 
@@ -54,7 +55,7 @@ public class FiscalController(
         }
         catch (FiscalValidationException ex)
         {
-            return BadRequest(new ProblemDetails { Title = "Validation error", Detail = ex.Message, Status = 400 });
+            return FiscalProblem(ex);
         }
         // Over the short-rental threshold the service throws DomainConflictException (409, code
         // fiscal_short_stay_threshold_exceeded), turned into a localized problem by the error middleware.
@@ -103,6 +104,10 @@ public class FiscalController(
         }
     }
 
+    /// <summary>
+    /// Updates only the fields sent (CO-19, A5-23): a missing or null field keeps its saved value; <c>fiscalCode: ""</c>
+    /// clears the codice fiscale.
+    /// </summary>
     [HttpPut("tax-profile")]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
     public async Task<IActionResult> PutTaxProfile([FromBody] UpdateTaxProfileRequest request, CancellationToken cancellationToken)
@@ -113,47 +118,93 @@ public class FiscalController(
         try
         {
             return Ok(await fiscalRegime.UpdateTaxProfileAsync(
-                orgId.Value, request.HasPartitaIva, request.PartitaIvaNumber, request.FiscalCode, cancellationToken));
+                orgId.Value,
+                new FiscalTaxProfileUpdate(request.HasPartitaIva, request.PartitaIvaNumber, request.FiscalCode),
+                cancellationToken));
         }
-        catch (FiscalValidationException)
+        catch (FiscalValidationException ex)
         {
-            return BadRequest(new ProblemDetails { Title = "Validation error", Detail = "Invalid tax identifier.", Status = 400 });
+            return FiscalProblem(ex);
         }
     }
 
+    /// <summary>
+    /// Fiscal summary per property and taxpayer (CO-19): collected gross, tourist tax, gross rent, withholding and the tax
+    /// estimated for the cedolare secca only. Period: <paramref name="from"/>-<paramref name="to"/> (calendar dates, both
+    /// included) inside <paramref name="taxYear"/>, the whole year by default. <c>format</c>: json, csv or pdf.
+    /// </summary>
     [HttpGet("reports/annual/{taxYear:int}")]
-    public async Task<IActionResult> AnnualReport(int taxYear, [FromQuery] string format = "json", CancellationToken cancellationToken = default)
+    public async Task<IActionResult> AnnualReport(
+        int taxYear,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
+        [FromQuery] string format = "json",
+        CancellationToken cancellationToken = default)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null)
+        var scope = await GetScopeAsync(cancellationToken);
+        if (scope is null)
             return Unauthorized();
         try
         {
-            var report = await fiscalReporting.GetAnnualReportAsync(orgId.Value, taxYear, cancellationToken);
-            return Export(format, $"casazen-redditi-{taxYear}", report, () => fiscalReporting.ToCsv(report),
-                () => fiscalReporting.ToPdf(report.PackLabel, $"{report.Disclaimer}\nGross {report.Totals.GrossIncome} withholding {report.Totals.Withholding} net {report.Totals.Net}"));
+            var report = await fiscalReporting.GetAnnualReportAsync(scope, taxYear, YearPeriod(taxYear, from, to), cancellationToken);
+            return Export(format, FileBase("casazen-redditi", report.Period), report,
+                () => fiscalReporting.ToCsv(report), () => fiscalReporting.ToPdf(report));
         }
         catch (FiscalValidationException ex)
         {
-            return BadRequest(new ProblemDetails { Title = "Validation error", Detail = ex.Message, Status = 400 });
+            return FiscalProblem(ex);
         }
     }
 
+    /// <summary>OTA withholding per intermediary and per payment (CO-19). Same period rules as the summary.</summary>
     [HttpGet("reports/withholding/{taxYear:int}")]
-    public async Task<IActionResult> WithholdingReport(int taxYear, [FromQuery] string format = "json", CancellationToken cancellationToken = default)
+    public async Task<IActionResult> WithholdingReport(
+        int taxYear,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
+        [FromQuery] string format = "json",
+        CancellationToken cancellationToken = default)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null)
+        var scope = await GetScopeAsync(cancellationToken);
+        if (scope is null)
             return Unauthorized();
         try
         {
-            var report = await fiscalReporting.GetWithholdingReportAsync(orgId.Value, taxYear, cancellationToken);
-            return Export(format, $"casazen-ritenute-{taxYear}", report, () => fiscalReporting.ToCsv(report),
-                () => fiscalReporting.ToPdf(report.PackLabel, string.Join('\n', report.ByOta.Select(b => $"{b.Source} {b.Withholding}"))));
+            var report = await fiscalReporting.GetWithholdingReportAsync(scope, taxYear, YearPeriod(taxYear, from, to), cancellationToken);
+            return Export(format, FileBase("casazen-ritenute", report.Period), report,
+                () => fiscalReporting.ToCsv(report), () => fiscalReporting.ToPdf(report));
         }
         catch (FiscalValidationException ex)
         {
-            return BadRequest(new ProblemDetails { Title = "Validation error", Detail = ex.Message, Status = 400 });
+            return FiscalProblem(ex);
+        }
+    }
+
+    /// <summary>
+    /// Tourist tax per comune and month (CO-19, A5-16): stays with check-in between <paramref name="from"/> and
+    /// <paramref name="to"/> (both required, at most one year) and the amounts recorded by the tourist tax engine (BK-03).
+    /// </summary>
+    [HttpGet("reports/tourist-tax")]
+    public async Task<IActionResult> TouristTaxReport(
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
+        [FromQuery] string format = "json",
+        CancellationToken cancellationToken = default)
+    {
+        var scope = await GetScopeAsync(cancellationToken);
+        if (scope is null)
+            return Unauthorized();
+        if (from is not DateOnly start || to is not DateOnly end)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "fiscal_report_period_invalid", "FiscalReportPeriodInvalid");
+        try
+        {
+            var report = await fiscalReporting.GetTouristTaxReportAsync(scope, new FiscalReportPeriod(start, end), cancellationToken);
+            return Export(format, FileBase("casazen-tassa-soggiorno", report.Period), report,
+                () => fiscalReporting.ToCsv(report), () => fiscalReporting.ToPdf(report));
+        }
+        catch (FiscalValidationException ex)
+        {
+            return FiscalProblem(ex);
         }
     }
 
@@ -169,9 +220,34 @@ public class FiscalController(
         }
         catch (FiscalValidationException ex)
         {
-            return BadRequest(new ProblemDetails { Title = "Validation error", Detail = ex.Message, Status = 400 });
+            return FiscalProblem(ex);
         }
     }
+
+    private IActionResult FiscalProblem(FiscalValidationException ex) =>
+        this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, ex.MessageArgs);
+
+    /// <summary>
+    /// The caller's reach for the reports (TN-3): the whole org for org-wide roles, only the properties the caller owns
+    /// otherwise; null when unauthenticated.
+    /// </summary>
+    private async Task<HostScope?> GetScopeAsync(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        return orgId is null ? null : User.GetHostScope(orgId.Value);
+    }
+
+    /// <summary>Period inside the tax year: null (the whole year) when neither bound is given, else the missing bound is the year's.</summary>
+    private static FiscalReportPeriod? YearPeriod(int taxYear, DateOnly? from, DateOnly? to)
+    {
+        if (from is null && to is null)
+            return null;
+        var year = FiscalReportPeriod.WholeYear(Math.Clamp(taxYear, DateOnly.MinValue.Year, DateOnly.MaxValue.Year - 1));
+        return new FiscalReportPeriod(from ?? year.From, to ?? year.To);
+    }
+
+    private static string FileBase(string prefix, FiscalReportPeriod period) =>
+        $"{prefix}-{period.From:yyyyMMdd}-{period.To:yyyyMMdd}";
 
     private IActionResult Export<T>(string format, string fileBase, T json, Func<byte[]> csv, Func<byte[]> pdf)
     {
@@ -184,7 +260,14 @@ public class FiscalController(
 }
 
 public record AssignRegimeRequest(int TaxYear, StrFiscalRegime Regime, bool? IsPrimaryForCedolare);
-public record UpdateTaxProfileRequest(bool HasPartitaIva, string? PartitaIvaNumber, string? FiscalCode);
+/// <summary>Partial update of the tax profile: a missing or null field keeps its saved value (CO-19).</summary>
+/// <param name="HasPartitaIva">false also clears the saved partita IVA number.</param>
+/// <param name="PartitaIvaNumber">11 digits; only with a partita IVA (sent now or already saved).</param>
+/// <param name="FiscalCode">Codice fiscale; an empty string clears it.</param>
+public record UpdateTaxProfileRequest(
+    bool? HasPartitaIva,
+    [StringLength(32)] string? PartitaIvaNumber,
+    [StringLength(32)] string? FiscalCode);
 public record FiscalSimulateRequest(int TaxYear, int? HypotheticalStrCount);
 
 /// <param name="FiscalCode">Codice fiscale of the taxpayer (16 characters; spaces ignored), or null to clear it.</param>

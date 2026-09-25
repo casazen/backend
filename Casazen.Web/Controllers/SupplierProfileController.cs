@@ -4,7 +4,6 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
-using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs.Supplier;
@@ -28,7 +27,6 @@ namespace Casazen.Web.Controllers;
 public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
-    IServiceRequestService serviceRequestService,
     CalendarSyncService calendarSyncService,
     IImageStorageService imageStorageService,
     ILogger<SupplierProfileController> logger) : ControllerBase
@@ -153,34 +151,74 @@ public class SupplierProfileController(
     // ─── Inbox ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns paginated open service requests assigned to this supplier.
-    /// Returns empty list until #293 (micro-marketplace) is implemented.
+    /// A page of the service requests sent to the caller's supplier org (SU-08, A4-14), server-side paginated.
+    /// <c>status</c>: <c>open</c> (default: waiting, taken, in progress), <c>history</c> (completed, paid, rejected),
+    /// <c>all</c>, or one status name; <c>from</c>/<c>to</c>: Europe/Rome days (<c>YYYY-MM-DD</c>, both included) on the
+    /// activity date of each request (<see cref="SupplierInboxStatusFilter"/>). 400 <c>validation_error</c> for another
+    /// status or <c>from</c> after <c>to</c>. Items carry comune, date and stay dates; street address and host contact
+    /// only for the requests the supplier took; never the guest.
     /// </summary>
     [HttpGet("inbox")]
     [ProducesResponseType(typeof(SupplierInboxResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SupplierInboxResponse>> GetInbox(
-        [FromQuery] string? status = "open",
+        [FromServices] ISupplierServiceRequestReader reader,
+        [FromQuery] string? status = SupplierInboxStatusFilter.OpenValue,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
+        if (!SupplierInboxStatusFilter.TryParse(status, out var statuses))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxStatusInvalid");
+
+        if (from is { } start && to is { } end && start > end)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxPeriodInvalid");
+
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        var openOnly = string.Equals(status, "open", StringComparison.OrdinalIgnoreCase);
 
-        var (items, total) = await serviceRequestService.ListForSupplierAsync(
-            orgId.Value, openOnly, page, pageSize, cancellationToken);
+        var (items, total) = await reader.ListAsync(
+            orgId.Value, new SupplierInboxQuery(statuses, from, to, page, pageSize), cancellationToken);
 
-        logger.LogDebug("Supplier inbox — status={Status}, page={Page}, total={Total}", status, page, total);
+        logger.LogDebug("Supplier inbox: status={Status}, page={Page}, total={Total}", status, page, total);
 
         return Ok(new SupplierInboxResponse
         {
-            Items = items.Select(ServiceRequestsController.MapSummary),
+            Items = items.Select(SupplierServiceRequestMapper.ToDto).ToList(),
             Total = total,
+            Page = page,
+            PageSize = pageSize,
         });
+    }
+
+    /// <summary>
+    /// One request of the caller's supplier org with its history (SU-08): 404 <c>service_request_not_found</c> when it
+    /// does not exist or was sent to another supplier. Street address and host contact only after the take.
+    /// </summary>
+    [HttpGet("inbox/{id:guid}")]
+    [ProducesResponseType(typeof(SupplierServiceRequestDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierServiceRequestDetailDto>> GetInboxItem(
+        Guid id,
+        [FromServices] ISupplierServiceRequestReader reader,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var request = await reader.GetAsync(id, orgId.Value, cancellationToken);
+        if (request is null)
+            return ServiceRequestsController.ServiceRequestNotFound(this);
+
+        return Ok(SupplierServiceRequestMapper.ToDetailDto(request));
     }
 
     // ─── Availability ─────────────────────────────────────────────────────────
