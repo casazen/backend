@@ -97,9 +97,16 @@ public class Guest : ITenantOwned
     public DateTime? ErasureRequestedDate { get; set; }
 
     /// <summary>
-    /// Date when data was anonymized/deleted
+    /// When the whole record was anonymized (erasure, host request or <c>Gdpr:Retention:FiscalData</c>, CO-15): nothing
+    /// personal is left and the retention job no longer looks at it.
     /// </summary>
     public DateTime? DataAnonymizedDate { get; set; }
+
+    /// <summary>
+    /// When the Alloggiati data of the guest (birth, citizenship, sex, document, scan) were erased by
+    /// <c>Gdpr:Retention:AlloggiatiData</c> or by an anonymization (CO-15); null while they are kept.
+    /// </summary>
+    public DateTime? AlloggiatiDataErasedAt { get; set; }
 
     [MaxLength(1000)]
     public string Notes { get; set; } = string.Empty;
@@ -115,8 +122,6 @@ public class Guest : ITenantOwned
     public bool MarketingConsent { get; set; } = false;
 
     public DateTime? MarketingConsentDate { get; set; }
-
-    public DateTime DataRetentionUntil { get; set; } = DateTime.UtcNow.AddYears(7);
 
     [MaxLength(200)]
     public string DataProcessingPurpose { get; set; } = "Booking Management";
@@ -161,13 +166,13 @@ public class Guest : ITenantOwned
         ErasureRequested = ErasureRequested,
         ErasureRequestedDate = ErasureRequestedDate,
         DataAnonymizedDate = DataAnonymizedDate,
+        AlloggiatiDataErasedAt = AlloggiatiDataErasedAt,
         Notes = Notes,
         Gender = Gender,
         ConsentDate = ConsentDate,
         ConsentVersion = ConsentVersion,
         MarketingConsent = MarketingConsent,
         MarketingConsentDate = MarketingConsentDate,
-        DataRetentionUntil = DataRetentionUntil,
         DataProcessingPurpose = DataProcessingPurpose,
         IsDeleted = IsDeleted,
         DeletedAt = DeletedAt,

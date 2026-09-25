@@ -48,7 +48,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
                 Guest("FamilyMember", "Marco", "Male", "2014-09-03"),
                 Guest("FamilyMember", "Sofia", "Female", TimeProvider.System.TodayInRome().AddYears(-3).ToString("yyyy-MM-dd")),
             },
-            gdprConsent = true,
             marketingConsent = false,
         }));
 
@@ -97,7 +96,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
                 Guest("HeadOfFamily", "Luigi", "Male", "1980-02-01"),
                 Guest("FamilyMember", "Anna", "Female", "1982-06-15"),
             },
-            gdprConsent = true,
         }));
 
         Assert.Equal(HttpStatusCode.BadRequest, headWithoutDocument.StatusCode);
@@ -116,7 +114,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
                 Guest("HeadOfFamily", "Luigi", "Male", "1980-02-01", withDocument: true),
                 Guest("FamilyMember", "Anna", "Female", "1982-06-15"),
             },
-            gdprConsent = true,
         }));
 
         Assert.Equal(HttpStatusCode.OK, membersWithoutDocument.StatusCode);

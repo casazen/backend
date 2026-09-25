@@ -219,21 +219,31 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
-    public async Task AC15_6_GdprConsentFalse_Returns400()
+    public async Task Submit_WithoutAnyConsent_CompletesTheCheckInBecauseAlloggiatiIsALegalObligation()
     {
         var (token, _, _) = await SeedSessionAsync();
         var client = _factory.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
-        var response = await client.PostAsync(
-            $"/api/public/checkin/{token}",
-            new StringContent(BuildSubmitPayload(gdprConsent: false), Encoding.UTF8, "application/json"));
+        var response = await client.PostAsync($"/api/public/checkin/{token}", BuildSubmitContent());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Submit_MarketingConsentNotOffered_Returns400OnMarketingConsent()
+    {
+        var (token, _, _) = await SeedSessionAsync();
+        var client = _factory.CreateClient();
+        _ = await client.GetAsync($"/api/public/checkin/{token}");
+
+        var response = await client.PostAsync($"/api/public/checkin/{token}", BuildSubmitContent(marketingConsent: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadFieldErrorsAsync(response);
         Assert.Equal(
-            "Per completare il check-in devi acconsentire al trattamento dei dati.",
-            Assert.Single(errors["GdprConsent"]));
+            "Il consenso alle comunicazioni promozionali non è disponibile per questo check-in.",
+            Assert.Single(errors["MarketingConsent"]));
     }
 
     [Fact]
@@ -384,13 +394,13 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     private static StringContent BuildSubmitContent(
-        bool gdprConsent = true,
+        bool marketingConsent = false,
         string? gender = "Male",
         string documentType = "Passport") =>
-        new(BuildSubmitPayload(gdprConsent, gender, documentType), Encoding.UTF8, "application/json");
+        new(BuildSubmitPayload(marketingConsent, gender, documentType), Encoding.UTF8, "application/json");
 
     private static string BuildSubmitPayload(
-        bool gdprConsent = true,
+        bool marketingConsent = false,
         string? gender = "Male",
         string documentType = "Passport")
     {
@@ -414,8 +424,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
               "documentIssuePlaceName": "Roma"
             }
           ],
-          "gdprConsent": {{(gdprConsent ? "true" : "false")}},
-          "marketingConsent": false
+          "marketingConsent": {{(marketingConsent ? "true" : "false")}}
         }
         """;
     }

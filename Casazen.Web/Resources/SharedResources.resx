@@ -393,8 +393,17 @@
   <data name="CheckInDocumentTypeInvalid" xml:space="preserve">
     <value>Tipo di documento non valido.</value>
   </data>
-  <data name="CheckInGdprConsentRequired" xml:space="preserve">
-    <value>Per completare il check-in devi acconsentire al trattamento dei dati.</value>
+  <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
+    <value>Il consenso alle comunicazioni promozionali non è disponibile per questo check-in.</value>
+  </data>
+  <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
+    <value>Il consenso marketing può darlo solo l'ospite, dal portale del check-in. L'host può solo revocarlo su richiesta documentata dell'ospite.</value>
+  </data>
+  <data name="GdprMarketingWithdrawalNoteRequired" xml:space="preserve">
+    <value>Indica la richiesta dell'ospite (data e canale) per revocare il consenso marketing.</value>
+  </data>
+  <data name="GdprGuestHasOpenBookings" xml:space="preserve">
+    <value>L'ospite ha prenotazioni in corso o future: i suoi dati non possono essere cancellati o anonimizzati finché non sono concluse o annullate.</value>
   </data>
   <data name="CheckInAlreadySubmitted" xml:space="preserve">
     <value>Il check-in è già stato completato.</value>

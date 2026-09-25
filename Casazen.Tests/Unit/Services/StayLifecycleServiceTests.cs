@@ -1,12 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -136,7 +134,7 @@ public class StayLifecycleServiceTests
     }
 
     [Fact]
-    public async Task CheckOutAsync_CheckedInStay_ClosesItAndExtendsTheGuestDataRetention()
+    public async Task CheckOutAsync_CheckedInStay_ClosesIt()
     {
         await using var db = CreateDb();
         var booking = await SeedAsync(db, BookingStatus.CheckedIn, October1, October3);
@@ -145,7 +143,6 @@ public class StayLifecycleServiceTests
             .CheckOutAsync(booking.Id, new StayCheckOut(RegisterArrival: false));
 
         Assert.Equal(BookingStatus.CheckedOut, closed.Status);
-        Assert.Equal(October3.AddYears(7), closed.Guest.DataRetentionUntil);
         Assert.Equal(BookingStatus.CheckedOut, (await ReloadAsync(db, booking.Id)).Status);
     }
 
@@ -204,7 +201,6 @@ public class StayLifecycleServiceTests
             _alloggiati.Object,
             _alloggiatiScheduler.Object,
             _serviceRequests.Object,
-            Options.Create(new ComplianceOptions { GdprRetentionYears = 7 }),
             NullLogger<StayLifecycleService>.Instance,
             new FixedTimeProvider(utcNow));
 
@@ -233,7 +229,6 @@ public class StayLifecycleServiceTests
             FirstName = "Anna",
             LastName = "Verdi",
             Email = $"anna-{Guid.NewGuid():N}@test.com",
-            DataRetentionUntil = checkOut,
         };
         var booking = new Booking
         {

@@ -118,7 +118,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Legal:Documents:Subprocessors:Items:3:Region"] = "EU",
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:CheckoutReminderHourLocal"] = "20",
-                ["Compliance:GdprRetentionYears"] = "7",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
                 ["CheckIn:RateLimitPermitLimit"] = "100",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "100",

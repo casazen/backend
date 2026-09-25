@@ -36,7 +36,6 @@ public class ComplianceWizardServiceTests
             {
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
-                ["Compliance:GdprRetentionYears"] = "7",
             })
             .Build();
 
@@ -64,7 +63,6 @@ public class ComplianceWizardServiceTests
             alloggiati.Object,
             Mock.Of<IAlloggiatiReportScheduler>(),
             Mock.Of<IServiceRequestService>(),
-            Options.Create(new ComplianceOptions { GdprRetentionYears = 7 }),
             NullLogger<StayLifecycleService>.Instance,
             timeProvider);
 
@@ -599,9 +597,6 @@ public class ComplianceWizardServiceTests
             FirstName = "Luigi",
             LastName = "Verdi",
             Email = $"luigi-{Guid.NewGuid():N}@test.com",
-            // Retention is only ever extended (#429): start below checkout + 7y so the check-out's
-            // checkout-anchored horizon is observable regardless of the entity's UtcNow default.
-            DataRetentionUntil = checkout.AddYears(1),
         };
         db.Guests.Add(guest);
         var booking = BuildBooking(property, guest, checkout, BookingStatus.Confirmed);
@@ -630,7 +625,6 @@ public class ComplianceWizardServiceTests
         // Nothing declared: the property is not assumed ready (A5-24), it stays a turnover of the cockpit.
         Assert.False(completed.PropertyReady);
         Assert.Equal(BookingStatus.CheckedOut, completed.Booking.Status);
-        Assert.Equal(checkout.AddYears(7), completed.Booking.Guest.DataRetentionUntil);
     }
 
     [Fact]
@@ -891,39 +885,6 @@ public class ComplianceWizardServiceTests
         Assert.Equal(
             new[] { confirmedToday.Id, checkedInToday.Id, checkedInOverdue.Id }.Order(),
             summary.CheckoutsDue.Items.Select(i => i.Id).Order());
-    }
-
-    [Fact]
-    public async Task CompleteCheckoutWizard_SharedGuest_KeepsRetentionForLatestBooking()
-    {
-        await using var db = CreateDb(nameof(CompleteCheckoutWizard_SharedGuest_KeepsRetentionForLatestBooking));
-        var org = new OrgEntity { Name = "Repeat Guest Org", Slug = $"org-{Guid.NewGuid():N}" };
-        db.Orgs.Add(org);
-        var property = await SeedPropertyAsync(db, org.Id);
-        var guest = new Guest
-        {
-            FirstName = "Repeat",
-            LastName = "Guest",
-            Email = $"repeat-{Guid.NewGuid():N}@test.com",
-            DataRetentionUntil = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc).AddYears(7),
-        };
-        db.Guests.Add(guest);
-
-        var earlyCheckout = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
-        var laterCheckout = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc);
-        var earlyBooking = BuildBooking(property, guest, earlyCheckout, BookingStatus.CheckedIn);
-        earlyBooking.CheckoutWizardStartedAt = earlyCheckout;
-        var laterBooking = BuildBooking(property, guest, laterCheckout, BookingStatus.Confirmed);
-        db.Bookings.AddRange(earlyBooking, laterBooking);
-        await db.SaveChangesAsync();
-
-        await CreateService(db).CompleteCheckoutWizardAsync(
-            earlyBooking.Id,
-            property.OwnerId,
-            new CompleteCheckoutWizardInput(true, null, null, null));
-
-        var reloadedGuest = await db.Guests.SingleAsync(g => g.Id == guest.Id);
-        Assert.Equal(laterCheckout.AddYears(7), reloadedGuest.DataRetentionUntil);
     }
 
     private static async Task<Property> SeedPropertyAsync(
