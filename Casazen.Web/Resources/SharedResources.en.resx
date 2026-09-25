@@ -1102,4 +1102,10 @@
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
   </data>
+  <data name="SupplierInboxStatusInvalid" xml:space="preserve">
+    <value>Invalid status: use open, history, all or a request status (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
+  </data>
+  <data name="SupplierInboxPeriodInvalid" xml:space="preserve">
+    <value>Invalid period: the start date (from) cannot be after the end date (to).</value>
+  </data>
 </root>

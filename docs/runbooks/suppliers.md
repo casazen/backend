@@ -5,7 +5,8 @@ unverified email: A4-02, A4-23, A1-13). Section 9: one profile per email and the
 A4-22). The code is in place; the product owner sets the pilot comuni (section 3),
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
-KPIs from the service requests (SU-11, decision D12).
+KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
+host contact), request detail page and inbox history (SU-08, A4-14).
 
 ## 1. How a supplier joins
 
@@ -478,6 +479,86 @@ A rollback of the migration (`dotnet ef database update <previous migration>`) r
       waiting to be taken and the upcoming ones; changing the period reloads the counts.
 - [ ] `GET /api/public/check-in/<any id>` answers 404.
 
+## 11. Supplier console: address, date, host contact, request detail and history — SU-08
+
+Audit A4-14: the supplier received only property name, category, urgency and notes, with no address, date, host
+contact or stay, and no detail page: it had to phone the host. The supplier console now reads its own endpoints
+(policy `RequireSupplier`, scoped by the caller's supplier org), built by `SupplierServiceRequestReader` from a
+column-by-column projection: the guest of the stay is never joined nor loaded.
+
+### 11.1 What the supplier sees, before and after the take
+
+The rule is `Casazen.Core/Suppliers/SupplierJobDisclosure.cs` (GDPR data minimization: before accepting, the supplier
+needs to know where roughly and when; the exact place and the host's contact only to do the job).
+
+| Field (JSON) | New (`Richiesto`) | Taken, in progress, completed, paid | Rejected (`Rifiutato`) |
+|---|---|---|---|
+| `propertyName`, `category`, `urgency`, `notes` (host's notes), dates of the request | yes | yes | yes |
+| `city` (comune, as the host wrote it), `postalCode` (the zone) | yes | yes | yes |
+| `scheduledFor`: day of the job, `YYYY-MM-DD` Europe/Rome | yes | yes | yes |
+| `stay`: `bookingId`, `checkIn`, `checkOut` (Europe/Rome days) | yes | yes | yes |
+| `address` (street address) | **no** (null) | yes | **no** |
+| `hostContact`: `name` (org display name), `email` (org contact email), `phone` (phone of the property owner's profile, when filled in) | **no** (null) | yes | **no** |
+| `contactDisclosed` | `false` | `true` | `false` |
+| Guest of the stay (name, email, phone, document, address, special requests) | **never** | **never** | **never** |
+
+- `scheduledFor` of a short-rent request is the **check-out day** of its stay (the turnover). A request has no date of
+  its own: long-rent requests (per property) and older short-rent requests not traced to a stay (section 7.3) have
+  `scheduledFor` and `stay` null: the page shows "da concordare con l'host".
+- The host's notes are free text written by the host: the supplier sees them as written.
+- A rejected request never shows address and contact: it can only be rejected before the take (section 8.1).
+- The old `GET /api/service-requests/{id}` and `?view=supplier` still answer the supplier with the host-shaped DTO
+  (no address, no contact, no guest data); the web console does not use them.
+
+### 11.2 Endpoints
+
+| Endpoint | Notes |
+|---|---|
+| `GET /api/supplier/inbox?status=&from=&to=&page=&pageSize=` | `status`: `open` (default: `Richiesto`, `PresoInCarico`, `InCorso`), `history` (`Completato`, `Pagato`, `Rifiutato`), `all`, or one status name (any case). `from`/`to`: Europe/Rome days `YYYY-MM-DD`, both included, each optional. `pageSize` 1–100 (default 20). Answer `{ items, total, page, pageSize }`, newest activity first. 400 `validation_error` for another status (`SupplierInboxStatusInvalid`) or `from` after `to` (`SupplierInboxPeriodInvalid`). |
+| `GET /api/supplier/inbox/{id}` | the request with `history`; 404 `service_request_not_found` when it does not exist **or was sent to another supplier** (same answer). |
+| `POST /api/service-requests/{id}/take` \| `complete` \| `reject` | unchanged (section 8): the page calls them and reloads the request; on 409/422 it reloads too. |
+
+**Activity date** (period filter and order of the inbox): completion date for `Completato`/`Pagato` (the date the
+dashboard KPIs count them on, section 10.2), rejection date for `Rifiutato`, date received for the open ones. The
+period is `[00:00 Rome of from, 00:00 Rome of the day after to)`: a job completed at 00:30 of 1 September in Rome
+(22:30 UTC of 31 August) is in September.
+
+### 11.3 History of a request
+
+`history` lists the transitions of the state machine (section 8.1), oldest first, each with `status`, `at` (UTC
+instant, shown in Europe/Rome) and `actor` (`Host` or `Supplier`). It is rebuilt from the dates the request keeps
+(`Casazen.Core/Suppliers/ServiceRequestHistory.cs`), no table is added:
+
+| Step | Date | Actor |
+|---|---|---|
+| `Richiesto` | `CreatedAt` | `Host` |
+| `PresoInCarico` | `TakenAt` | `Supplier`, with `actorName` = first and last name of the member who took it (only a user of the same supplier org is named) |
+| `Completato` | `CompletedAt` | `Supplier` |
+| `Pagato` | `PaidAt` | `Host` |
+| `Rifiutato` | `UpdatedAt` (final status, nothing updates it later) | `Supplier`, with `reason` |
+
+Host members are never named to the supplier; the host is identified by the host contact. Completion and rejection
+record no member (the request keeps no user for them): the page shows "Il tuo team".
+
+### 11.4 Web console
+
+- `/app/supplier/inbox`: tabs **Da fare** (open requests with *Presa in carico*, *Rifiuta* with reason, *Completa*) and
+  **Storico** (status filter, *Dal*/*Al* dates, pagination from the server). Every card shows comune and zone, day of
+  the job and opens the detail. Loading, error with *Riprova* and empty states per tab.
+- `/app/supplier/inbox/:id`: where (comune, zone, address after the take), when (job day, stay dates), host contact
+  after the take (`tel:` and `mailto:` links), host notes, history with date (Europe/Rome) and actor, actions of the
+  status in a bar kept at the bottom of the screen on a phone. A request of another supplier shows "Incarico non
+  trovato". Texts in `supplier.inbox.*` and `supplier.request.*` (IT/EN).
+
+### 11.5 After a deploy
+
+- [ ] As a supplier with a new request: the detail shows comune, CAP, the check-out day and the stay dates, and says
+      that address and host contact come after the take; no guest name anywhere.
+- [ ] *Presa in carico* → the page shows the street address, the host's name, email and (if the owner filled in the
+      phone in the profile) the phone; the history shows the take with the member's name.
+- [ ] *Storico*: filter *Rifiutato* and a month → only the requests rejected in that month; pages of 20.
+- [ ] Opening `/app/supplier/inbox/<id of another supplier's request>` shows "Incarico non trovato".
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
@@ -486,6 +567,6 @@ A rollback of the migration (`dotnet ef database update <previous migration>`) r
 - A supplier-only user who then completes the host onboarding keeps using the supplier org as `User.OrgId`
   (A1-40, task PL-05).
 - The activation requirements (only the ToS today) are task SU-05.
-- Service requests: the supplier still sees no address, dates or host contact (SU-08); host timeline, rejection
-  reason and "paid" confirmation are SU-09; the app's supplier choice (today the first result) is MO-10 and its
+- Service requests: host timeline, rejection reason and "paid" confirmation are SU-09 (the history of section 11.3
+  can be reused there); the app's supplier choice (today the first result) is MO-10 and its
   error states MO-07. `chargeToGuest` is still always refused, also for long-rent (open product point).
