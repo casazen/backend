@@ -52,6 +52,19 @@ deploy and what the admin still has to do.
   for invalid input (at most 366 nights).
 - `/sitemap-compliance.xml` leaves out the calculator pages of comuni without a rate in force today.
 
+### Report per comune e periodo (CO-19)
+
+- `GET /api/fiscal/reports/tourist-tax?from=YYYY-MM-DD&to=YYYY-MM-DD&format=json|csv|pdf` (fiscal area, same policy as
+  the other fiscal reports; a `PropertyOwner` without org-wide role sees only the stays of the properties they own).
+  `from`/`to` are required, both included, at most one year apart, otherwise `400 fiscal_report_period_invalid`.
+- Stays **confirmed, checked in or checked out** with **check-in** in the period, grouped by comune (the property's
+  city, same normalized-name rule as the lookup) and month of check-in; totals per comune and a list of the stays.
+- The amount is the one **recorded on the booking** by the engine (`TouristTaxAmount`): the report never recomputes it.
+  Stays with no recorded amount (no rate, exempt guests, OTA or older bookings) are counted in "Senza importo" so the
+  host checks them before paying the comune.
+- PDF in Italian (A4, tables with repeated headers, notes) and CSV for an Italian spreadsheet (`;`, decimal comma, UTF-8
+  with BOM). It is a basis for the payment and the comune's statement (e.g. Modello 21), not the statement itself.
+
 ## What changes
 
 | Area | Behaviour | Code |

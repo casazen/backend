@@ -1153,6 +1153,27 @@
   <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
     <value>Per il {0} questo contribuente ha già un altro immobile con la cedolare al 21%: l'aliquota ridotta vale per una sola unità. Assegna prima il 26% a uno dei due immobili.</value>
   </data>
+  <data name="FiscalTaxYearInvalid" xml:space="preserve">
+    <value>Anno d'imposta non valido: la gestione fiscale degli affitti brevi parte dal 2026.</value>
+  </data>
+  <data name="FiscalRegimeUnknown" xml:space="preserve">
+    <value>Regime fiscale sconosciuto.</value>
+  </data>
+  <data name="FiscalSimulationCountInvalid" xml:space="preserve">
+    <value>Il numero di immobili della simulazione non può essere negativo.</value>
+  </data>
+  <data name="FiscalTaxIdentifierInvalid" xml:space="preserve">
+    <value>Partita IVA o codice fiscale non validi: la partita IVA ha 11 cifre; il codice fiscale ha 16 caratteri (11 cifre per una società). Con la partita IVA indicata serve anche il numero.</value>
+  </data>
+  <data name="FiscalReportPeriodInvalid" xml:space="preserve">
+    <value>Periodo del report non valido: indica data di inizio e di fine, con l'inizio non successivo alla fine, per al massimo un anno (per il riepilogo fiscale e le ritenute, dentro l'anno d'imposta).</value>
+  </data>
+  <data name="FiscalPartitaIvaRequired" xml:space="preserve">
+    <value>Per assegnare un regime d'impresa (ordinario o forfettario) registra prima la partita IVA nel profilo fiscale.</value>
+  </data>
+  <data name="FiscalPropertyNotEligible" xml:space="preserve">
+    <value>Nel {0} questo immobile non è tra quelli con affitti brevi (è disattivato o in affitto lungo): non gli si può assegnare un regime.</value>
+  </data>
   <data name="OtaStayBlockNotFound" xml:space="preserve">
     <value>Blocco del calendario non trovato.</value>
   </data>
@@ -1212,6 +1233,12 @@
   </data>
   <data name="SeoPageNotPublished" xml:space="preserve">
     <value>La pagina non è pubblicata: non c'è niente da ritirare.</value>
+  </data>
+  <data name="SupplierInboxStatusInvalid" xml:space="preserve">
+    <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
+  </data>
+  <data name="SupplierInboxPeriodInvalid" xml:space="preserve">
+    <value>Periodo non valido: la data di inizio (from) non può essere successiva alla data di fine (to).</value>
   </data>
   <data name="LtrAgreementNotFound" xml:space="preserve">
     <value>Accordo territoriale non trovato.</value>

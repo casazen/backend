@@ -11,6 +11,10 @@ public static class FiscalCopy
     public const string PackLabel =
         "Pacchetto dati per il commercialista — non è una dichiarazione, F24 o Certificazione Unica ufficiale";
 
+    /// <summary>Tourist tax report (CO-19): a basis for the comune's statement and payments, not the statement.</summary>
+    public const string TouristTaxDisclaimer =
+        "Riepilogo per il versamento e la dichiarazione al comune (per esempio il Modello 21): non è la dichiarazione. Scadenze, modalità di versamento ed esenzioni dipendono dal regolamento di ciascun comune.";
+
     public static bool IsOtaBookingSource(BookingSource source) =>
         source is BookingSource.Airbnb
             or BookingSource.BookingCom
@@ -40,6 +44,15 @@ public static class FiscalTaxNotes
 
     /// <summary>The taxpayer is over the threshold: business activity presumed, check with the accountant (fiscale.md C3).</summary>
     public const string ThresholdExceeded = "short_stay_threshold_exceeded";
+
+    /// <summary>Report only: no regime assigned to the property for the tax year, so no tax is estimated (CO-19).</summary>
+    public const string RegimeNotAssigned = "regime_not_assigned";
+
+    /// <summary>
+    /// Report only: business (impresa) regime, ordinario or forfettario. The income depends on costs and on the forfettario
+    /// coefficient, which CasaZen does not have (fiscale.md "Punti che richiedono il commercialista" 5): not estimated (CO-19).
+    /// </summary>
+    public const string ImpresaNotComputed = "impresa_not_computed";
 }
 
 /// <param name="ShortStayInTaxYear">
@@ -49,6 +62,11 @@ public static class FiscalTaxNotes
 /// <param name="TaxpayerIndex">Index of the property's taxpayer in <see cref="FiscalRegimeSnapshot.Taxpayers"/>.</param>
 /// <param name="CedolareRate">Rate of the assigned cedolare regime (fraction), from configuration; null otherwise.</param>
 /// <param name="TaxNote">A <see cref="FiscalTaxNotes"/> code, or null.</param>
+/// <param name="AvailableRegimes">
+/// Regimes the host can assign now (CO-19): cedolare 21/26 and IRPEF ordinaria while the taxpayer stays within the threshold
+/// with this apartment; the impresa regimes when the partita IVA is recorded (always for a taxpayer other than the org tax
+/// profile, of whom CasaZen has no such data). The same rules <see cref="IFiscalRegimeService.AssignRegimeAsync"/> enforces.
+/// </param>
 public record FiscalPropertyRow(
     Guid PropertyId,
     string Name,
@@ -58,7 +76,8 @@ public record FiscalPropertyRow(
     bool ShortStayInTaxYear,
     int TaxpayerIndex,
     decimal? CedolareRate,
-    string? TaxNote);
+    string? TaxNote,
+    IReadOnlyList<StrFiscalRegime> AvailableRegimes);
 
 /// <summary>One taxpayer (titolare fiscale) of the org's properties and its short-rental threshold for the tax year.</summary>
 /// <param name="FiscalCodeMasked">Masked codice fiscale; null for the org tax profile without a codice fiscale.</param>
@@ -102,39 +121,11 @@ public record FiscalTaxProfile(
     string? FiscalCode,
     DateTime? FiscalDataRetentionUntil);
 
-public record AnnualIncomeLine(
-    Guid PropertyId,
-    string Name,
-    StrFiscalRegime? Regime,
-    decimal GrossIncome,
-    decimal Withholding,
-    decimal Net);
-
-public record AnnualIncomeTotals(decimal GrossIncome, decimal Withholding, decimal Net);
-
-public record AnnualIncomeReport(
-    int TaxYear,
-    string PackLabel,
-    string Disclaimer,
-    IReadOnlyList<AnnualIncomeLine> Properties,
-    AnnualIncomeTotals Totals);
-
-public record WithholdingOtaBucket(string Source, decimal Gross, decimal Withholding, decimal Net, int PayoutCount);
-
-public record WithholdingLine(
-    Guid PaymentId,
-    Guid PropertyId,
-    string Source,
-    DateTime PaidAt,
-    decimal Gross,
-    decimal Withholding,
-    decimal Net);
-
-public record WithholdingReport(
-    int TaxYear,
-    string PackLabel,
-    IReadOnlyList<WithholdingOtaBucket> ByOta,
-    IReadOnlyList<WithholdingLine> Lines);
+/// <summary>Partial update of the org tax profile: null = unchanged.</summary>
+/// <param name="HasPartitaIva">false also clears the stored partita IVA number.</param>
+/// <param name="PartitaIvaNumber">11 digits (spaces ignored); only with a partita IVA, set now or already saved.</param>
+/// <param name="FiscalCode">Codice fiscale (16 characters, or 11 digits for an entity); an empty string clears it.</param>
+public record FiscalTaxProfileUpdate(bool? HasPartitaIva, string? PartitaIvaNumber, string? FiscalCode);
 
 public record FiscalSimulateResult(string RecommendedForCount, bool RequiresPartitaIva, string Disclaimer);
 
@@ -149,11 +140,14 @@ public interface IFiscalRegimeService
         bool? isPrimaryForCedolare,
         CancellationToken cancellationToken = default);
     Task<FiscalTaxProfile> GetTaxProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes only the fields of <paramref name="update"/> that are set (CO-19): a null field keeps the saved value, so a
+    /// form sending only what the host changed never overwrites the rest with defaults.
+    /// </summary>
     Task<FiscalTaxProfile> UpdateTaxProfileAsync(
         Guid orgId,
-        bool hasPartitaIva,
-        string? partitaIvaNumber,
-        string? fiscalCode,
+        FiscalTaxProfileUpdate update,
         CancellationToken cancellationToken = default);
     /// <summary>
     /// Records who lets the property (titolare fiscale) by codice fiscale, or clears it (<paramref name="fiscalCode"/> null or
@@ -175,14 +169,48 @@ public interface IFiscalRegimeService
     Task ApplyWithholdingOnCreateAsync(Payment payment, Booking booking, bool? applyOtaWithholding, decimal? manualWithholdingTax);
 }
 
+/// <summary>
+/// Reports of the fiscal area for the accountant (CO-19, A5-23): summary per property and taxpayer, withholding detail,
+/// tourist tax per comune and month. Every list is limited to <see cref="Casazen.Core.Authorization.HostScope"/> (the org,
+/// and only the caller's own properties for a caller without org-wide access). PDF (via <c>IPdfDocumentRenderer</c>) and
+/// CSV in Italian.
+/// </summary>
 public interface IFiscalReportingService
 {
-    Task<AnnualIncomeReport> GetAnnualReportAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default);
-    Task<WithholdingReport> GetWithholdingReportAsync(Guid orgId, int taxYear, CancellationToken cancellationToken = default);
+    Task<AnnualIncomeReport> GetAnnualReportAsync(
+        Casazen.Core.Authorization.HostScope scope,
+        int taxYear,
+        FiscalReportPeriod? period = null,
+        CancellationToken cancellationToken = default);
+
+    Task<WithholdingReport> GetWithholdingReportAsync(
+        Casazen.Core.Authorization.HostScope scope,
+        int taxYear,
+        FiscalReportPeriod? period = null,
+        CancellationToken cancellationToken = default);
+
+    Task<TouristTaxReport> GetTouristTaxReportAsync(
+        Casazen.Core.Authorization.HostScope scope,
+        FiscalReportPeriod period,
+        CancellationToken cancellationToken = default);
+
     byte[] ToCsv(AnnualIncomeReport report);
     byte[] ToCsv(WithholdingReport report);
-    /// <summary>A4 PDF of <paramref name="title"/> and a plain text body (blank line = new paragraph), via <c>IPdfDocumentRenderer</c>.</summary>
-    byte[] ToPdf(string title, string body);
+    byte[] ToCsv(TouristTaxReport report);
+    byte[] ToPdf(AnnualIncomeReport report);
+    byte[] ToPdf(WithholdingReport report);
+    byte[] ToPdf(TouristTaxReport report);
 }
 
-public sealed class FiscalValidationException(string message) : Exception(message);
+/// <summary>
+/// Invalid input of the fiscal area, answered 400 with the stable <see cref="Code"/> and the localized
+/// <see cref="MessageKey"/> of <c>SharedResources</c> (IT/EN).
+/// </summary>
+public sealed class FiscalValidationException(string code, string messageKey, params object[] messageArgs) : Exception(code)
+{
+    public string Code { get; } = code;
+
+    public string MessageKey { get; } = messageKey;
+
+    public object[] MessageArgs { get; } = messageArgs;
+}
