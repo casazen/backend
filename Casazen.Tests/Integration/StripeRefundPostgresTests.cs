@@ -238,7 +238,7 @@ public class StripeRefundPostgresTests : IAsyncLifetime
             db,
             RefundService(db),
             _stripe.Object,
-            new BookingNotifier(db, _emails.Object, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance),
+            new BookingNotifier(db, _emails.Object, EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), NullLogger<BookingNotifier>.Instance),
             NullLogger<BookingCancellationService>.Instance);
 
     private AppDbContext NewContext() => _database!.CreateContext();

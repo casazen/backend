@@ -288,8 +288,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.CinOptions>, Casazen.Core.Options.CinOptionsValidator>();
         services.AddSingleton<Casazen.Core.Regulatory.CinDeadlineCalendar>();
         services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
-        services.AddScoped<IPushNotificationService, PushNotificationService>();
-        services.AddHttpClient("ExpoPush");
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();

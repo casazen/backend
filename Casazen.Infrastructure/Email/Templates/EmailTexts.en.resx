@@ -510,6 +510,42 @@
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Open the activation</value>
   </data>
+  <data name="Push_ServiceRequestCreated_Title" xml:space="preserve">
+    <value>New service request</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
+    <value>{0} at {1}: accept or decline the request from your supplier area.</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
+    <value>Request taken</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has taken the request.</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Title" xml:space="preserve">
+    <value>Service completed</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has completed the service.</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Title" xml:space="preserve">
+    <value>Request declined by the supplier</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier declined the request. Choose another supplier.</value>
+  </data>
+  <data name="Push_NewBooking_Title" xml:space="preserve">
+    <value>New confirmed booking</value>
+  </data>
+  <data name="Push_NewBooking_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}, guests: {3}.</value>
+  </data>
+  <data name="Push_CheckoutReminder_Title" xml:space="preserve">
+    <value>Check-out reminder</value>
+  </data>
+  <data name="Push_CheckoutReminder_Body" xml:space="preserve">
+    <value>{0}: today is check-out day, complete it in CasaZen.</value>
+  </data>
   <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
     <value>CIN to be entered by {0}</value>
   </data>
