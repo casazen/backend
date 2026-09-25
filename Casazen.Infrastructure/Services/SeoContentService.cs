@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
@@ -31,14 +32,12 @@ public class SeoContentService(
     public async Task<SeoPagePublicDto?> GetComplianceGuideAsync(
         string regionSlug,
         string comuneSlug,
-        bool allowDraft,
         CancellationToken cancellationToken = default)
     {
         var page = await repository.GetPublishedPageAsync(
             SeoPageType.ComplianceGuide,
             regionSlug,
             comuneSlug,
-            allowDraft,
             cancellationToken);
 
         return page is null ? null : await MapPublicPageAsync(page, cancellationToken);
@@ -46,10 +45,9 @@ public class SeoContentService(
 
     public async Task<SeoPagePublicDto?> GetTouristTaxPageAsync(
         string comuneSlug,
-        bool allowDraft,
         CancellationToken cancellationToken = default)
     {
-        var page = await repository.GetPublishedTouristTaxPageAsync(comuneSlug, allowDraft, cancellationToken);
+        var page = await repository.GetPublishedTouristTaxPageAsync(comuneSlug, cancellationToken);
         return page is null ? null : await MapPublicPageAsync(page, cancellationToken);
     }
 
@@ -105,36 +103,105 @@ public class SeoContentService(
             pageSize,
             cancellationToken);
 
-        var mapped = new List<SeoPageAdminDto>();
-        foreach (var item in items)
-        {
-            mapped.Add(await MapAdminPageAsync(item, cancellationToken));
-        }
-
-        return (mapped, total);
+        return (items.Select(i => MapAdminPage(i.Page, i.LatestRevision, i.LastReviewEvent)).ToList(), total);
     }
 
-    public async Task<SeoPageAdminDto?> UpdateReviewStatusAsync(
-        Guid pageId,
-        LegalReviewStatus status,
-        bool counselApproved,
-        CancellationToken cancellationToken = default)
+    public async Task<SeoPageAdminDetailDto?> GetAdminPageAsync(Guid pageId, CancellationToken cancellationToken = default)
     {
         var page = await repository.GetByIdAsync(pageId, cancellationToken);
         if (page is null)
             return null;
 
-        if (status == LegalReviewStatus.Reviewed && page.CounselRequired && !counselApproved)
+        var latest = await repository.GetLatestRevisionAsync(page.Id, cancellationToken);
+        var published = page.PublishedRevisionId is { } publishedId
+            ? latest?.Id == publishedId ? latest : await repository.GetRevisionAsync(publishedId, cancellationToken)
+            : null;
+        var history = await repository.GetReviewEventsAsync(page.Id, cancellationToken);
+
+        return new SeoPageAdminDetailDto(
+            MapAdminPage(page, latest is null ? null : Summary(latest), history.FirstOrDefault()),
+            published is null ? null : Preview(published),
+            latest is not null && latest.Id != page.PublishedRevisionId ? Preview(latest) : null,
+            history.Select(ToDto).ToList());
+    }
+
+    public async Task<SeoPageAdminDto> ApproveRevisionAsync(
+        SeoApproveRevisionCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var page = await repository.GetByIdAsync(command.PageId, cancellationToken)
+            ?? throw new NotFoundException($"SEO page {command.PageId} not found");
+
+        // A8-04: the first pages need an explicit confirmation of the legal review, never a default.
+        if (page.CounselRequired && !command.CounselApproved)
+            throw new DomainRuleException(SeoReviewErrorCodes.CounselRequired, "SeoCounselRequired", CounselRequiredBatchSize);
+
+        var outcome = await repository.ApproveRevisionAsync(
+            new SeoContentReviewEvent
+            {
+                PageId = page.Id,
+                RevisionId = command.RevisionId,
+                Action = SeoReviewAction.Approved,
+                ActorUserId = command.ActorUserId,
+                OccurredAt = _clock.GetUtcNow().UtcDateTime,
+                CounselApproved = command.CounselApproved,
+                Note = NormalizeNote(command.Note),
+            },
+            cancellationToken);
+
+        switch (outcome)
         {
-            throw new InvalidOperationException(
-                "[COUNSEL_REQUIRED] First 100 SEO pages require counsel approval before publish.");
+            case SeoApprovalOutcome.PageNotFound:
+                throw new NotFoundException($"SEO page {command.PageId} not found");
+            case SeoApprovalOutcome.RevisionNotFound:
+                throw new NotFoundException($"SEO revision {command.RevisionId} not found on page {command.PageId}");
+            case SeoApprovalOutcome.RevisionOutdated:
+                throw new DomainConflictException(SeoReviewErrorCodes.RevisionOutdated, "SeoRevisionOutdated");
+            case SeoApprovalOutcome.AlreadyPublished:
+                throw new DomainConflictException(SeoReviewErrorCodes.RevisionAlreadyPublished, "SeoRevisionAlreadyPublished");
+            case SeoApprovalOutcome.NotPublishable:
+                throw new DomainRuleException(SeoReviewErrorCodes.RevisionNotPublishable, "SeoRevisionNotPublishable");
         }
 
-        page.LegalReviewStatus = status;
-        page.PublishedAt = status == LegalReviewStatus.Reviewed ? DateTime.UtcNow : page.PublishedAt;
-        var updated = await repository.UpdatePageAsync(page, cancellationToken);
-        return updated is null ? null : await MapAdminPageAsync(updated, cancellationToken);
+        logger.LogInformation(
+            "SEO page {PageId} revision {RevisionId} approved by {ActorUserId}",
+            page.Id, command.RevisionId, command.ActorUserId);
+        return await GetAdminPageDtoAsync(page.Id, cancellationToken);
     }
+
+    public async Task<SeoPageAdminDto> WithdrawAsync(SeoWithdrawCommand command, CancellationToken cancellationToken = default)
+    {
+        var outcome = await repository.WithdrawAsync(
+            new SeoContentReviewEvent
+            {
+                PageId = command.PageId,
+                Action = SeoReviewAction.Withdrawn,
+                ActorUserId = command.ActorUserId,
+                OccurredAt = _clock.GetUtcNow().UtcDateTime,
+                Note = NormalizeNote(command.Note),
+            },
+            cancellationToken);
+
+        switch (outcome)
+        {
+            case SeoWithdrawOutcome.PageNotFound:
+                throw new NotFoundException($"SEO page {command.PageId} not found");
+            case SeoWithdrawOutcome.NotPublished:
+                throw new DomainConflictException(SeoReviewErrorCodes.PageNotPublished, "SeoPageNotPublished");
+        }
+
+        logger.LogInformation("SEO page {PageId} withdrawn by {ActorUserId}", command.PageId, command.ActorUserId);
+        return await GetAdminPageDtoAsync(command.PageId, cancellationToken);
+    }
+
+    private async Task<SeoPageAdminDto> GetAdminPageDtoAsync(Guid pageId, CancellationToken cancellationToken)
+    {
+        var detail = await GetAdminPageAsync(pageId, cancellationToken)
+            ?? throw new NotFoundException($"SEO page {pageId} not found");
+        return detail.Page;
+    }
+
+    private static string? NormalizeNote(string? note) => string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 
     public async Task<PlatformAiBudgetDto> GetPlatformAiBudgetAsync(CancellationToken cancellationToken = default)
     {
@@ -197,38 +264,6 @@ public class SeoContentService(
         }
 
         return generated;
-    }
-
-    public async Task<int> ApproveAllDraftPagesAsync(bool counselApproved, CancellationToken cancellationToken = default)
-    {
-        var (items, _) = await repository.ListPagesAsync(
-            LegalReviewStatus.Draft,
-            pageType: null,
-            comuneCode: null,
-            page: 1,
-            pageSize: 500,
-            cancellationToken);
-
-        var approved = 0;
-        foreach (var page in items)
-        {
-            try
-            {
-                var result = await UpdateReviewStatusAsync(
-                    page.Id,
-                    LegalReviewStatus.Reviewed,
-                    counselApproved,
-                    cancellationToken);
-                if (result is not null)
-                    approved++;
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Could not auto-approve SEO page {PageId}", page.Id);
-            }
-        }
-
-        return approved;
     }
 
     public async Task<int> RefreshStalePagesAsync(CancellationToken cancellationToken = default)
@@ -312,12 +347,13 @@ public class SeoContentService(
             new XElement(ns + "lastmod", lastModified.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
 
     /// <summary>
-    /// The pages worth indexing, shared by the sitemap and the hub: reviewed (published), with content, of a known
-    /// comune and, for a calculator, with a tourist tax rate in force. There is no feature flag on the SEO pages.
+    /// The pages worth indexing, shared by the sitemap and the hub: published (an approved revision, SE-01), with content,
+    /// of a known comune and, for a calculator, with a tourist tax rate in force. There is no feature flag on the SEO pages.
+    /// The last modification is the approval of the published text, not a later draft.
     /// </summary>
     private async Task<IReadOnlyList<IndexablePage>> GetIndexablePagesAsync(CancellationToken cancellationToken)
     {
-        var candidates = await repository.GetReviewedPagesForSitemapAsync(cancellationToken);
+        var candidates = await repository.GetPublishedPagesForSitemapAsync(cancellationToken);
         var today = _clock.TodayInRomeAsDateOnly();
         var pages = new List<IndexablePage>(candidates.Count);
         foreach (var page in candidates)
@@ -337,7 +373,7 @@ public class SeoContentService(
                 page,
                 comune,
                 SeoPagePaths.For(comune, page.PageType),
-                page.LastRefreshedAt ?? page.UpdatedAt));
+                page.PublishedAt ?? page.PublishedRevision?.GeneratedAt ?? page.UpdatedAt));
         }
 
         return pages;
@@ -345,6 +381,12 @@ public class SeoContentService(
 
     private sealed record IndexablePage(SeoContentPage Page, ComuneInfo Comune, string Path, DateTime LastModified);
 
+    /// <summary>
+    /// Stores a new <b>draft</b> revision of the page (SE-01): never approved here, and the published revision, if any,
+    /// stays the one the public sees until an admin approves the new text. An answer that is not publishable (no provider
+    /// configured, empty, invalid) is stored as an explicit "content not generated" revision. Returns false when the
+    /// page is already up to date (same data, same prompt, publishable text).
+    /// </summary>
     private async Task<bool> GenerateSinglePageAsync(
         ComuneInfo comune,
         SeoPageType pageType,
@@ -357,28 +399,31 @@ public class SeoContentService(
         var sourceVersion = BuildSourceDataVersion(comune, taxRates);
 
         var slug = BuildSlug(comune, pageType);
-        var existing = await repository.GetPublishedPageAsync(
-            pageType,
-            comune.RegionSlug,
-            comune.ComuneSlug,
-            allowDraft: true,
-            cancellationToken);
+        var existing = await repository.GetPageAsync(comune.Code, pageType, cancellationToken);
 
         if (existing is not null && !forceRegenerate)
         {
             var latest = await repository.GetLatestRevisionAsync(existing.Id, cancellationToken);
-            if (latest?.SourceDataVersion == sourceVersion)
+            if (latest is { ContentStatus: SeoContentStatus.Generated, PromptVersion: SeoContentPrompt.Version }
+                && latest.SourceDataVersion == sourceVersion)
             {
                 logger.LogInformation("SEO source unchanged for {Slug}; skipping LLM", slug);
                 return false;
             }
         }
 
-        var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}";
-        var prompt = BuildPrompt(comune, pageType, taxRates);
+        var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}:{SeoContentPrompt.Version}";
+        var prompt = SeoContentPrompt.Build(comune, pageType, taxRates);
         // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
         // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
         var aiResult = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+        var (contentStatus, bodyHtml) = SeoGeneratedContent.Evaluate(aiResult);
+        if (contentStatus != SeoContentStatus.Generated)
+        {
+            logger.LogWarning(
+                "SEO content not generated for {Slug}: {ContentStatus}; stored as a draft that cannot be approved",
+                slug, contentStatus);
+        }
 
         var page = existing ?? new SeoContentPage
         {
@@ -389,19 +434,22 @@ public class SeoContentService(
             CounselRequired = ordinalHint < CounselRequiredBatchSize,
         };
 
+        var now = _clock.GetUtcNow().UtcDateTime;
         page.Slug = slug;
         page.Title = BuildTitle(comune, pageType);
         page.MetaDescription = BuildMetaDescription(comune, pageType);
-        page.LastRefreshedAt = DateTime.UtcNow;
+        page.LastRefreshedAt = now;
         page = await repository.UpsertPageAsync(page, cancellationToken);
 
         await repository.AddRevisionAsync(new SeoContentRevision
         {
             PageId = page.Id,
-            BodyHtml = SeoHtmlSanitizer.Sanitize(aiResult.Content),
+            BodyHtml = bodyHtml,
+            ContentStatus = contentStatus,
+            PromptVersion = SeoContentPrompt.Version,
             AiModelTier = AiModelTier.Economy,
-            PromptTokens = aiResult.FromCache ? 0 : aiResult.PromptTokens,
-            GeneratedAt = DateTime.UtcNow,
+            PromptTokens = aiResult.FromCache || !aiResult.ProviderConfigured ? 0 : aiResult.PromptTokens,
+            GeneratedAt = now,
             SourceDataVersion = sourceVersion,
         }, cancellationToken);
 
@@ -413,9 +461,13 @@ public class SeoContentService(
         var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode)
             ?? throw new InvalidOperationException($"Unknown comune code {page.ComuneCode}");
 
-        var revision = await repository.GetLatestRevisionAsync(page.Id, cancellationToken);
+        // SE-01 (A8-05): the approved revision only, never a newer draft. Sanitized again on read (FD-15).
+        var revision = page.PublishedRevision
+            ?? (page.PublishedRevisionId is { } publishedId
+                ? await repository.GetRevisionAsync(publishedId, cancellationToken)
+                : null);
         var bodyHtml = SeoHtmlSanitizer.Sanitize(revision?.BodyHtml);
-        var refreshedAt = page.LastRefreshedAt ?? revision?.GeneratedAt;
+        var refreshedAt = revision?.GeneratedAt;
         var taxRates = await touristTaxQuoteService.GetRatesInForceAsync(
             ToTouristTaxComune(comune), _clock.TodayInRomeAsDateOnly(), cancellationToken);
 
@@ -458,10 +510,13 @@ public class SeoContentService(
             rate.EffectiveTo,
             rate.SourceUrl);
 
-    private async Task<SeoPageAdminDto> MapAdminPageAsync(SeoContentPage page, CancellationToken cancellationToken)
+    private SeoPageAdminDto MapAdminPage(
+        SeoContentPage page,
+        SeoRevisionSummary? latest,
+        SeoReviewEventSummary? lastReviewEvent)
     {
         var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
-        var revision = await repository.GetLatestRevisionAsync(page.Id, cancellationToken);
+        var publicPath = comune is null ? null : SeoPagePaths.For(comune, page.PageType);
 
         return new SeoPageAdminDto(
             page.Id,
@@ -475,27 +530,72 @@ public class SeoContentService(
             page.LegalReviewStatus,
             page.PublishedAt,
             page.LastRefreshedAt,
-            revision is null
+            latest is null
                 ? null
                 : new SeoRevisionAdminDto(
-                    revision.GeneratedAt,
-                    revision.AiModelTier.ToString(),
-                    revision.PromptTokens,
-                    revision.SourceDataVersion));
+                    latest.Id,
+                    latest.GeneratedAt,
+                    latest.AiModelTier.ToString(),
+                    latest.PromptTokens,
+                    latest.SourceDataVersion,
+                    latest.ContentStatus,
+                    latest.PromptVersion),
+            page.PublishedRevisionId,
+            page.PublishedRevisionId is not null,
+            latest is not null && latest.Id != page.PublishedRevisionId,
+            page.CounselRequired,
+            publicPath,
+            publicPath is null ? null : publicSiteLinks.TryPublicPage(publicPath),
+            lastReviewEvent is null ? null : ToDto(lastReviewEvent));
     }
+
+    private static SeoRevisionSummary Summary(SeoContentRevision revision) =>
+        new(
+            revision.Id,
+            revision.GeneratedAt,
+            revision.AiModelTier,
+            revision.PromptTokens,
+            revision.SourceDataVersion,
+            revision.ContentStatus,
+            revision.PromptVersion);
+
+    /// <summary>The text as the public page would show it: sanitized with the FD-15 allowlist.</summary>
+    private static SeoRevisionPreviewDto Preview(SeoContentRevision revision) =>
+        new(
+            revision.Id,
+            revision.GeneratedAt,
+            revision.ContentStatus,
+            revision.PromptVersion,
+            revision.SourceDataVersion,
+            SeoHtmlSanitizer.Sanitize(revision.BodyHtml));
+
+    private static SeoReviewEventDto ToDto(SeoReviewEventSummary reviewEvent) =>
+        new(
+            reviewEvent.Action,
+            reviewEvent.RevisionId,
+            reviewEvent.ActorUserId,
+            reviewEvent.OccurredAt,
+            reviewEvent.CounselApproved,
+            reviewEvent.Note);
 
     /// <summary>
     /// Changes when a rate of the comune changes. With zero or one rate it keeps the pre-BK-03 format, so existing pages
-    /// are not regenerated just because the format changed.
+    /// are not regenerated just because the format changed. With several rates (a comune with seasonal or per-category
+    /// tariffs) the raw format grows without bound, past the column's 100 characters (SE-01): hashed to a fixed length
+    /// instead, still a valid change-detection token even if not human-readable.
     /// </summary>
     private static string BuildSourceDataVersion(ComuneInfo comune, IReadOnlyList<TouristTaxRate> taxRates)
     {
         var first = taxRates.FirstOrDefault();
         var version = $"{comune.Code}:{first?.UpdatedAt:O}:{first?.RatePerPersonPerNight}:{first?.MaxNights}";
+        if (taxRates.Count <= 1)
+            return version;
+
         foreach (var rate in taxRates.Skip(1))
             version += $"|{rate.Id:N}:{rate.UpdatedAt:O}";
 
-        return version;
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(version));
+        return $"{comune.Code}:{taxRates.Count}:{Convert.ToHexStringLower(hash)}";
     }
 
     private static string BuildSlug(ComuneInfo comune, SeoPageType pageType) =>
@@ -523,27 +623,6 @@ public class SeoContentService(
                 $"Calcola la tassa di soggiorno a {comune.Name} con le tariffe ufficiali del comune.",
             _ => $"Microsite fornitori per affitti brevi a {comune.Name} (Phase 0 deferred).",
         };
-
-    private static string BuildPrompt(ComuneInfo comune, SeoPageType pageType, IReadOnlyList<TouristTaxRate> taxRates)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"Comune: {comune.Name}");
-        sb.AppendLine($"PageType: {pageType}");
-        sb.AppendLine("CIN: obbligatorio per affitti brevi in Italia.");
-        sb.AppendLine("Alloggiati Web: comunicazione ospiti entro 24h dal check-in.");
-        foreach (var taxRate in taxRates)
-        {
-            var amount = taxRate.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice
-                ? $"{taxRate.PercentOfNightlyPrice}% del prezzo per notte, max €{taxRate.CapPerPersonPerNight?.ToString() ?? "none"}"
-                : $"€{taxRate.RatePerPersonPerNight}/persona/notte";
-            var category = taxRate.AccommodationCategory is null ? string.Empty : $" [{taxRate.AccommodationCategory}]";
-            var season = taxRate.SeasonStart is null ? string.Empty : $" stagione {taxRate.SeasonStart}..{taxRate.SeasonEnd}";
-            sb.AppendLine(
-                $"TouristTaxRate{category}: {amount}, max nights {taxRate.MaxNights?.ToString() ?? "none"}, esenti sotto {taxRate.MinimumAge} anni{season}");
-        }
-
-        return sb.ToString();
-    }
 
     /// <summary>Canonical URL on App:PublicSiteBaseUrl (D3); null only when it is not configured (Development/Testing).</summary>
     private string? BuildCanonicalUrl(ComuneInfo comune, SeoPageType pageType) =>

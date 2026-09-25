@@ -39,6 +39,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(RegulatoryDataAuditEntry)] = "Platform-wide audit log of admin changes to regulatory reference data (LT-13), not tenant data: written and read only by AdminCanoneConcordatoController.",
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
+        [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
         [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",

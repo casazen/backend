@@ -153,9 +153,9 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
-    public async Task Activation_ReviewedTouristTaxPage_ReturnsPublicPageSlug()
+    public async Task Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug()
     {
-        await using var db = CreateDb(nameof(Activation_ReviewedTouristTaxPage_ReturnsPublicPageSlug));
+        await using var db = CreateDb(nameof(Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug));
         var property = await SeedPropertyAsync(db, city: "Como");
         db.SeoContentPages.Add(new SeoContentPage
         {
@@ -164,6 +164,7 @@ public class ComplianceWizardServiceTests
             RegionCode = "LOM",
             PageType = SeoPageType.TouristTaxCalc,
             LegalReviewStatus = LegalReviewStatus.Reviewed,
+            PublishedRevisionId = Guid.NewGuid(),
         });
         await db.SaveChangesAsync();
 

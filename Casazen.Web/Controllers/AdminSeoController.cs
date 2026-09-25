@@ -1,6 +1,8 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
@@ -10,25 +12,32 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
+/// <summary>
+/// Admin SEO dashboard (US-020, SE-01): pages, review (preview, approve, withdraw), generation, AI budget. Every text is
+/// published only by an explicit approval of the revision the admin read, recorded in the audit (A8-04, A8-05, A8-21).
+/// </summary>
 [ApiController]
 [Route("api/admin/seo")]
-[Authorize(Policy = "AdminOnly")]
+[Authorize(Policy = CasazenPolicies.AdminOnly)]
 public class AdminSeoController(
     ISeoContentService seoContentService,
     IBackgroundJobClient backgroundJobClient,
     ILogger<AdminSeoController> logger) : ControllerBase
 {
+    public const int MaxPageSize = 100;
+
+    /// <summary>Pages, newest first. <c>page</c> 1-based, <c>pageSize</c> 1-100 (400 otherwise).</summary>
     [HttpGet("pages")]
     [ProducesResponseType(typeof(PagedResultDto<SeoPageAdminDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PagedResultDto<SeoPageAdminDto>>> ListPages(
         [FromQuery] LegalReviewStatus? legalReviewStatus = null,
         [FromQuery] SeoPageType? pageType = null,
         [FromQuery] string? comuneCode = null,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
+        [FromQuery, Range(1, int.MaxValue)] int page = 1,
+        [FromQuery, Range(1, MaxPageSize)] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        pageSize = Math.Min(pageSize, 100);
         var (items, total) = await seoContentService.ListPagesAsync(
             legalReviewStatus,
             pageType,
@@ -46,6 +55,60 @@ public class AdminSeoController(
         });
     }
 
+    /// <summary>Review screen: the published text and the one waiting for a review (sanitized), and the review audit.</summary>
+    [HttpGet("pages/{id:guid}")]
+    [ProducesResponseType(typeof(SeoPageAdminDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SeoPageAdminDetailDto>> GetPage(Guid id, CancellationToken cancellationToken)
+    {
+        var page = await seoContentService.GetAdminPageAsync(id, cancellationToken);
+        return page is null
+            ? this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NotFoundDetail")
+            : Ok(page);
+    }
+
+    /// <summary>
+    /// Publishes the revision the admin read (<c>revisionId</c>): 409 when a newer revision arrived meanwhile, 422 when it
+    /// has no publishable text or when the page needs the legal review confirmation (<c>counselApproved</c>).
+    /// </summary>
+    [HttpPost("pages/{id:guid}/approve")]
+    [ProducesResponseType(typeof(SeoPageAdminDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SeoPageAdminDto>> Approve(
+        Guid id,
+        [FromBody] ApproveSeoRevisionRequest body,
+        CancellationToken cancellationToken)
+    {
+        var updated = await seoContentService.ApproveRevisionAsync(
+            new SeoApproveRevisionCommand(id, body.RevisionId!.Value, body.CounselApproved, body.Note, ActorUserId()),
+            cancellationToken);
+        return Ok(updated);
+    }
+
+    /// <summary>Withdraws the published text: the page goes back to draft and leaves the public site and the sitemap.</summary>
+    [HttpPost("pages/{id:guid}/withdraw")]
+    [ProducesResponseType(typeof(SeoPageAdminDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<SeoPageAdminDto>> Withdraw(
+        Guid id,
+        [FromBody] WithdrawSeoPageRequest body,
+        CancellationToken cancellationToken)
+    {
+        var updated = await seoContentService.WithdrawAsync(
+            new SeoWithdrawCommand(id, body.Note, ActorUserId()),
+            cancellationToken);
+        return Ok(updated);
+    }
+
+    /// <summary>Auth0 subject of the admin: AdminOnly guarantees an authenticated user, whose token always has one.</summary>
+    private string ActorUserId() =>
+        User.GetUserId() ?? throw new UnauthorizedAccessException("Admin without subject claim");
+
     [HttpGet("comuni")]
     [ProducesResponseType(typeof(IReadOnlyList<SeoComuneRegistryDto>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<SeoComuneRegistryDto>> ListComuni()
@@ -56,21 +119,10 @@ public class AdminSeoController(
         return Ok(items);
     }
 
-    [HttpPost("approve-all-drafts")]
-    [ProducesResponseType(typeof(SeoBulkApproveResultDto), StatusCodes.Status200OK)]
-    public async Task<ActionResult<SeoBulkApproveResultDto>> ApproveAllDrafts(
-        [FromBody] SeoBulkApproveRequestDto request,
-        CancellationToken cancellationToken)
-    {
-        var approved = await seoContentService.ApproveAllDraftPagesAsync(
-            request.CounselApproved,
-            cancellationToken);
-        return Ok(new SeoBulkApproveResultDto(approved));
-    }
-
     /// <summary>
     /// Queues AI generation of SEO pages. Rate limited per user (<see cref="AiRateLimitAttribute"/>); the job stops at
-    /// the first page the monthly AI budget cannot cover.
+    /// the first page the monthly AI budget cannot cover. Every generated text is a draft waiting for a review: nothing
+    /// is approved automatically (SE-01).
     /// </summary>
     [HttpPost("generate")]
     [AiRateLimit]
@@ -94,7 +146,7 @@ public class AdminSeoController(
 
         var filteredTypes = pageTypes.Where(t => t != SeoPageType.SupplierMicrosite).ToList();
         var jobId = backgroundJobClient.Enqueue<SeoPageGenerationJob>(job =>
-            job.ExecuteAsync(comuneCodes, filteredTypes, request.ForceRegenerate, request.AutoApproveCounsel));
+            job.ExecuteAsync(comuneCodes, filteredTypes, request.ForceRegenerate));
 
         logger.LogInformation("Enqueued SEO generation job {JobId} for {ComuneCount} comuni", jobId, comuneCodes.Count);
 
@@ -105,31 +157,6 @@ public class AdminSeoController(
             comuneCodes.Count * filteredTypes.Count));
     }
 
-    [HttpPatch("pages/{id:guid}/review-status")]
-    [ProducesResponseType(typeof(SeoPageAdminDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<SeoPageAdminDto>> UpdateReviewStatus(
-        Guid id,
-        [FromBody] UpdateSeoReviewStatusRequest body,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var updated = await seoContentService.UpdateReviewStatusAsync(
-                id,
-                body.LegalReviewStatus,
-                body.CounselApproved,
-                cancellationToken);
-
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("COUNSEL_REQUIRED"))
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
-        }
-    }
-
     [HttpGet("budget")]
     [ProducesResponseType(typeof(PlatformAiBudgetDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PlatformAiBudgetDto>> GetBudget(CancellationToken cancellationToken)
@@ -138,4 +165,14 @@ public class AdminSeoController(
     }
 }
 
-public record UpdateSeoReviewStatusRequest(LegalReviewStatus LegalReviewStatus, bool CounselApproved = false);
+/// <summary>
+/// Approval of a revision. <c>CounselApproved</c>: the admin confirms the legal review of the text (explicit, never a
+/// default; required for the first 100 pages). <c>Note</c>: optional, kept in the audit.
+/// </summary>
+public record ApproveSeoRevisionRequest(
+    [param: Required] Guid? RevisionId,
+    bool CounselApproved = false,
+    [param: MaxLength(1000)] string? Note = null);
+
+/// <summary>Withdrawal of the published text; <c>Note</c> (optional) is kept in the audit.</summary>
+public record WithdrawSeoPageRequest([param: MaxLength(1000)] string? Note = null);

@@ -6,7 +6,9 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Stub AI provider for SEO generation. Economy tier only; template cache for unchanged regulatory data.
+/// Stub AI provider (no <c>Ai:Provider</c>, or <c>Stub</c>): template text, no external call. Its answers are marked
+/// <see cref="AiGenerationResult.ProviderConfigured"/> <c>false</c>: the SEO generation never stores them as publishable
+/// text (SE-01, A8-06).
 /// </summary>
 public class StubAiProvider(ILogger<StubAiProvider> logger) : IAiProvider
 {
@@ -31,7 +33,8 @@ public class StubAiProvider(ILogger<StubAiProvider> logger) : IAiProvider
         }
 
         var content = $"<article><p>{ExtractComuneName(prompt)}: contenuto generato per affitti brevi, CIN e tassa di soggiorno.</p></article>";
-        var result = new AiGenerationResult(content, PromptTokens: 120, CompletionTokens: 280, tier, FromCache: false);
+        var result = new AiGenerationResult(
+            content, PromptTokens: 120, CompletionTokens: 280, tier, FromCache: false, ProviderConfigured: false);
         TemplateCache[cacheKey] = result;
         return Task.FromResult(result);
     }

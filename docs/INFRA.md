@@ -405,7 +405,8 @@ Hangfire__Schema=hangfire_casazen_test
 Cors__AllowedOrigins=[https://<web app host of this environment>]
 # Optional, test environment only: regex for the Vercel previews of our own project (empty = no preview allowed)
 Cors__VercelPreviewPattern=[e.g. casazen-app-git-[a-z0-9-]+-<team-slug>]
-# AI provider — OPTIONAL, default Stub (no external call). Before enabling DeepSeek read docs/runbooks/ai.md:
+# AI provider — OPTIONAL, default Stub (no external call; the SEO pages then stay "contenuto non generato" drafts,
+# docs/runbooks/seo-domain.md section 7). Before enabling DeepSeek read docs/runbooks/ai.md:
 # it becomes a subprocessor (legal details to fill in), every call is capped by the platform AI budget.
 # AI supplier discovery stays off (Features__AiSupplierDiscovery, decision D11).
 # Ai__Provider=DeepSeek

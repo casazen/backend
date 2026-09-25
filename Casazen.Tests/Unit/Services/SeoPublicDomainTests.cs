@@ -76,7 +76,7 @@ public class SeoPublicDomainTests
 
         await Assert.ThrowsAsync<EmailConfigurationException>(() =>
             CreateService(publicSite).BuildComplianceSitemapXmlAsync());
-        _seoRepo.Verify(r => r.GetReviewedPagesForSitemapAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _seoRepo.Verify(r => r.GetPublishedPagesForSitemapAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]
@@ -182,19 +182,25 @@ public class SeoPublicDomainTests
             Mock.Of<ILogger<SeoContentService>>(),
             new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero)));
 
-    private static SeoContentPage Page(string comuneCode, SeoPageType pageType, string title = "Titolo") =>
-        new()
+    private static SeoContentPage Page(string comuneCode, SeoPageType pageType, string title = "Titolo")
+    {
+        var revision = new SeoContentRevision { BodyHtml = "<p>Testo</p>" };
+        return new SeoContentPage
         {
-            Id = Guid.NewGuid(),
+            Id = revision.PageId = Guid.NewGuid(),
             ComuneCode = comuneCode,
             PageType = pageType,
             Title = title,
             LegalReviewStatus = LegalReviewStatus.Reviewed,
+            PublishedRevisionId = revision.Id,
+            PublishedRevision = revision,
+            PublishedAt = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc),
             LastRefreshedAt = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc),
         };
+    }
 
     private void SetupPages(params SeoContentPage[] pages) =>
-        _seoRepo.Setup(r => r.GetReviewedPagesForSitemapAsync(It.IsAny<CancellationToken>())).ReturnsAsync(pages);
+        _seoRepo.Setup(r => r.GetPublishedPagesForSitemapAsync(It.IsAny<CancellationToken>())).ReturnsAsync(pages);
 
     private void SetupRateInForce(string istatCode) =>
         _taxQuotes
@@ -208,17 +214,17 @@ public class SeoPublicDomainTests
     {
         var page = Page("013075", pageType);
         _seoRepo.Setup(r => r.GetPublishedPageAsync(
-                SeoPageType.ComplianceGuide, "lombardia", "como", false, It.IsAny<CancellationToken>()))
+                SeoPageType.ComplianceGuide, "lombardia", "como", It.IsAny<CancellationToken>()))
             .ReturnsAsync(page);
-        _seoRepo.Setup(r => r.GetPublishedTouristTaxPageAsync("como", false, It.IsAny<CancellationToken>()))
+        _seoRepo.Setup(r => r.GetPublishedTouristTaxPageAsync("como", It.IsAny<CancellationToken>()))
             .ReturnsAsync(page);
         return page;
     }
 
     private static Task<SeoPagePublicDto?> GetPublicPageAsync(SeoContentService service, SeoPageType pageType) =>
         pageType == SeoPageType.ComplianceGuide
-            ? service.GetComplianceGuideAsync("lombardia", "como", allowDraft: false)
-            : service.GetTouristTaxPageAsync("como", allowDraft: false);
+            ? service.GetComplianceGuideAsync("lombardia", "como")
+            : service.GetTouristTaxPageAsync("como");
 
     private static List<string> Locations(string xml) =>
         XDocument.Parse(xml).Descendants(SitemapNs + "loc").Select(loc => loc.Value).ToList();

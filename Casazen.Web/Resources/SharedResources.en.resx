@@ -1219,6 +1219,21 @@
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, or period=Last30Days.</value>
   </data>
+  <data name="SeoCounselRequired" xml:space="preserve">
+    <value>This page is among the first {0} and can be published only after the legal review: confirm that the text has been reviewed.</value>
+  </data>
+  <data name="SeoRevisionNotPublishable" xml:space="preserve">
+    <value>This revision holds no publishable text (content not generated, empty or invalid): regenerate the page.</value>
+  </data>
+  <data name="SeoRevisionOutdated" xml:space="preserve">
+    <value>A newer revision arrived meanwhile: reload the page and read the text again before approving it.</value>
+  </data>
+  <data name="SeoRevisionAlreadyPublished" xml:space="preserve">
+    <value>This revision is already the published one.</value>
+  </data>
+  <data name="SeoPageNotPublished" xml:space="preserve">
+    <value>The page is not published: there is nothing to withdraw.</value>
+  </data>
   <data name="CheckoutWizardNotStarted" xml:space="preserve">
     <value>Start the check-out before completing it: open the check-out of the stay again.</value>
   </data>
