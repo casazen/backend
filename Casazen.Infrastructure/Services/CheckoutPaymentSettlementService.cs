@@ -168,7 +168,6 @@ public sealed class CheckoutPaymentSettlementService(
             booking.Status = BookingStatus.Confirmed;
             booking.CancellationReason = null;
             booking.UpdatedAt = now;
-            BookingRepository.EnsureCheckInToken(booking);
             await db.SaveChangesAsync(cancellationToken);
 
             if (validHold)

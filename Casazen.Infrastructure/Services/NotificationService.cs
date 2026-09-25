@@ -78,7 +78,7 @@ public class NotificationService(
 
         var push = EmailTemplates.StayAlertPush(culture, alert.Kind, propertyName, booking.CheckInDate);
         await pushNotificationService.SendToBookingHostsAsync(
-            new PushNotificationPayload(push.Title, push.Body, PushType(alert.Kind), booking.Id, $"/bookings/{booking.Id}"),
+            new PushNotificationPayload(push.Title, push.Body, PushType(alert.Kind), booking.Id, PushRoutes.Booking(booking.Id)),
             cancellationToken);
     }
 

@@ -120,9 +120,6 @@ public sealed class OnSiteBookingRequestService(
             booking.Status = BookingStatus.Confirmed;
             booking.RequestExpiresAt = null;
             booking.UpdatedAt = now;
-            // Same as every confirmed booking (BookingRepository): the guest self check-in token.
-            booking.CheckInToken ??= Guid.NewGuid();
-            booking.CheckInTokenExpiresAt ??= booking.CheckOutDate.AddDays(7);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);

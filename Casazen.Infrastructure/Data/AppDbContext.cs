@@ -239,11 +239,6 @@ public class AppDbContext(
             .HasIndex(c => c.PropertyId)
             .IsUnique();
 
-        modelBuilder.Entity<Booking>()
-            .HasIndex(b => b.CheckInToken)
-            .IsUnique()
-            .HasFilter("\"CheckInToken\" IS NOT NULL");
-
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
             .HasIndex(b => new { b.OrgId, b.BookingCode })

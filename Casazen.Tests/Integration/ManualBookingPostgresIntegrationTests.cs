@@ -60,7 +60,6 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
         var stored = await LoadBookingAsync(hostBookingId);
         Assert.Equal(BookingStatus.Confirmed, stored.Status);
         Assert.Equal(BookingSource.Manual, stored.Source);
-        Assert.NotNull(stored.CheckInToken);
 
         var availability = await guest.GetFromJsonAsync<JsonElement>(
             $"/api/public/bookings/property/{property.Id}/availability" +
