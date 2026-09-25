@@ -1234,6 +1234,51 @@
   <data name="SeoPageNotPublished" xml:space="preserve">
     <value>La pagina non è pubblicata: non c'è niente da ritirare.</value>
   </data>
+  <data name="CheckoutWizardNotStarted" xml:space="preserve">
+    <value>Avvia il check-out prima di completarlo: apri di nuovo la procedura di check-out del soggiorno.</value>
+  </data>
+  <data name="CheckoutCleaningChoiceInvalid" xml:space="preserve">
+    <value>Scegli se richiedere le pulizie a un fornitore (indicando il fornitore) oppure saltarle.</value>
+  </data>
+  <data name="CheckoutStepInvalid" xml:space="preserve">
+    <value>Passaggio del check-out non valido.</value>
+  </data>
+  <data name="CheckoutNotCompleted" xml:space="preserve">
+    <value>La proprietà si dichiara pronta dopo il check-out del soggiorno.</value>
+  </data>
+  <data name="CheckoutWizardValueInvalid" xml:space="preserve">
+    <value>Valore non valido nel check-out.</value>
+  </data>
+  <data name="CheckoutNotesTooLong" xml:space="preserve">
+    <value>Le note possono avere al massimo 1000 caratteri.</value>
+  </data>
+  <data name="CheckoutStepStaySummary" xml:space="preserve">
+    <value>Riepilogo soggiorno</value>
+  </data>
+  <data name="CheckoutStepAlloggiati" xml:space="preserve">
+    <value>Alloggiati Web</value>
+  </data>
+  <data name="CheckoutStepCleaning" xml:space="preserve">
+    <value>Pulizie</value>
+  </data>
+  <data name="CheckoutStepTouristTax" xml:space="preserve">
+    <value>Imposta di soggiorno</value>
+  </data>
+  <data name="CheckoutStepPropertyReady" xml:space="preserve">
+    <value>Proprietà pronta</value>
+  </data>
+  <data name="CheckoutAlloggiatiNotSent" xml:space="preserve">
+    <value>La comunicazione Alloggiati Web di questo soggiorno non risulta inviata: inviala sul portale della Questura e registrala come inviata.</value>
+  </data>
+  <data name="CheckoutAlloggiatiFailed" xml:space="preserve">
+    <value>La comunicazione Alloggiati Web di questo soggiorno è in errore o respinta: correggila e inviala di nuovo.</value>
+  </data>
+  <data name="CheckoutTouristTaxNotDeclared" xml:space="preserve">
+    <value>Non è stato indicato come è stata riscossa l'imposta di soggiorno.</value>
+  </data>
+  <data name="CheckoutPropertyNotReady" xml:space="preserve">
+    <value>La proprietà non è ancora stata dichiarata pronta per il prossimo ospite.</value>
+  </data>
   <data name="SupplierInboxStatusInvalid" xml:space="preserve">
     <value>Stato non valido: usa open, history, all oppure uno stato della richiesta (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
   </data>

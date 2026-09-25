@@ -62,7 +62,7 @@ confirmation (which reactivates it). The checklist form of the wizard asks for t
 | Direct booking / checkout | Refused (`404`), like a pending property |
 | Confirmed bookings | **Kept**: nothing is cancelled or refunded; check-in, Alloggiati and check-out go on |
 | iCal export to the OTAs (`/api/public/ical/{token}`) | Still served, exactly as for a never-published property: it only lists busy nights (confirmed stays, blocks), never availability. Stopping it would free on Airbnb/Booking.com the nights of the stays that remain valid (double bookings) |
-| Host console | Wizard: `complianceStatus: "Suspended"`, `suspendedAt`, `suspensionReasons` (blocker codes at the suspension) and the current blockers in `steps`; cockpit: listed among the properties to activate; check-out wizard: "compliance" step as a warning |
+| Host console | Wizard: `complianceStatus: "Suspended"`, `suspendedAt`, `suspensionReasons` (blocker codes at the suspension) and the current blockers in `steps`; cockpit: listed among the properties to activate; the check-out wizard (CO-17) closes its stays as usual |
 
 Stored on `Properties`: `ComplianceSuspendedAt` and `ComplianceSuspensionReasons` (blocker codes at the suspension,
 `text[]`), cleared by the reactivation; `ComplianceCheckedAt` = last evaluation of an active or suspended property

@@ -26,4 +26,10 @@ public enum ComplianceCockpitAction
 
     /// <summary>Alloggiati communication in error or rejected. Target: the booking.</summary>
     ResolveAlloggiatiFailure,
+
+    /// <summary>
+    /// Stay checked out whose property was not declared ready for the next guest: the check-out wizard of the booking,
+    /// on its last step (CO-17). Target: the booking.
+    /// </summary>
+    ConfirmPropertyReady,
 }

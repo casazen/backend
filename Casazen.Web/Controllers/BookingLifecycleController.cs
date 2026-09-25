@@ -1,12 +1,15 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -32,6 +35,7 @@ public class BookingLifecycleController(
     IPropertyService propertyService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
+    IStringLocalizer<SharedResources> localizer,
     ILogger<BookingLifecycleController> logger) : ControllerBase
 {
     /// <summary>
@@ -157,7 +161,8 @@ public class BookingLifecycleController(
 
     /// <summary>
     /// Opens the check-out wizard: same rules as <c>POST /check-out</c>. With <c>registerArrival: true</c> a confirmed
-    /// booking whose arrival was never registered is checked in first ("registra arrivo e procedi").
+    /// booking whose arrival was never registered is checked in first ("registra arrivo e procedi"). Returns the 5
+    /// steps (CO-17) with the progress saved: opened again, on the web or in the app, the wizard resumes where it was.
     /// </summary>
     [HttpPost("{id:guid}/checkout-wizard/start")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -173,26 +178,77 @@ public class BookingLifecycleController(
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
 
-        var (_, steps) = await complianceWizard.StartCheckoutWizardAsync(
+        var state = await complianceWizard.StartCheckoutWizardAsync(
             id,
             request?.RegisterArrival ?? false,
             cancellationToken);
-        return Ok(new CheckoutWizardDto
-        {
-            Steps = steps.Select(s => new ComplianceActivationStepDto
-            {
-                Id = s.Id,
-                Label = s.Label,
-                Status = s.Status,
-                Blocker = s.Blocker,
-                Message = s.Message,
-            }),
-        });
+        return Ok(MapCheckoutWizard(state));
     }
 
     /// <summary>
-    /// Completes the check-out wizard: the guest left (<c>confirmDeparture</c>), optional turnover request to a supplier,
-    /// same rules and transition as <c>POST /check-out</c>.
+    /// The check-out wizard of a stay without any change (CO-17): after the check-out it shows what the host declared,
+    /// and whether the property is still to be declared ready.
+    /// </summary>
+    [HttpGet("{id:guid}/checkout-wizard")]
+    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CheckoutWizardDto>> GetCheckoutWizard(Guid id, CancellationToken cancellationToken)
+    {
+        if (!await CanAccessAsync(id, BookingOperations.Read, cancellationToken))
+            return BookingNotFound();
+
+        return Ok(MapCheckoutWizard(await complianceWizard.GetCheckoutWizardAsync(id, cancellationToken)));
+    }
+
+    /// <summary>
+    /// Saves the progress of the check-out wizard (CO-17): the step the host is on and the answers given so far. Nothing
+    /// is created or declared until <c>/complete</c>. 409 <c>checkout_wizard_not_started</c> before the start,
+    /// <c>booking_already_checked_out</c> after the completion; 422 <c>checkout_step_invalid</c> for an unknown step.
+    /// </summary>
+    [HttpPut("{id:guid}/checkout-wizard/progress")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CheckoutWizardDto>> SaveCheckoutProgress(
+        Guid id,
+        [FromBody] SaveCheckoutProgressRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        if (!await CanWriteAsync(id, cancellationToken))
+            return BookingNotFound();
+
+        if (!CheckoutWizardSteps.TryParse(request.CurrentStep, out var step))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status422UnprocessableEntity, BookingErrorCodes.CheckoutStepInvalid, "CheckoutStepInvalid");
+        }
+
+        var state = await complianceWizard.SaveCheckoutProgressAsync(
+            id,
+            new StayCheckoutProgress(
+                step,
+                request.DepartureConfirmed,
+                request.CleaningChoice,
+                request.SupplierOrgId,
+                request.ServiceCategory,
+                request.ServiceNotes,
+                request.TouristTaxCollection,
+                request.PropertyReady,
+                request.PropertyNotes),
+            cancellationToken);
+        return Ok(MapCheckoutWizard(state));
+    }
+
+    /// <summary>
+    /// Completes the check-out wizard, once started (409 <c>checkout_wizard_not_started</c>): the guest left
+    /// (<c>confirmDeparture</c>), the cleaning request to the chosen supplier is created for the stay or skipped, the
+    /// tourist tax collection and the property readiness are recorded as declared; same rules and transition as
+    /// <c>POST /check-out</c>. <c>propertyReady</c> is true only when the host declared it.
     /// </summary>
     [HttpPost("{id:guid}/checkout-wizard/complete")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -205,6 +261,9 @@ public class BookingLifecycleController(
         [FromBody] CompleteCheckoutWizardRequest request,
         CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
 
@@ -212,7 +271,7 @@ public class BookingLifecycleController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var (booking, propertyReady) = await complianceWizard.CompleteCheckoutWizardAsync(
+        var state = await complianceWizard.CompleteCheckoutWizardAsync(
             id,
             userId,
             new CompleteCheckoutWizardInput(
@@ -220,18 +279,126 @@ public class BookingLifecycleController(
                 request.SupplierOrgId,
                 request.ServiceNotes,
                 request.ServiceCategory,
-                request.RegisterArrival),
+                request.RegisterArrival)
+            {
+                CleaningChoice = request.CleaningChoice,
+                TouristTaxCollection = request.TouristTaxCollection,
+                PropertyReady = request.PropertyReady,
+                PropertyNotes = request.PropertyNotes,
+            },
             cancellationToken);
 
         return Ok(new CompleteCheckoutWizardResponse
         {
-            PropertyReady = propertyReady,
-            BookingStatus = booking.Status.ToString(),
+            PropertyReady = state.PropertyReady,
+            BookingStatus = state.Booking.Status.ToString(),
+            ServiceRequestId = state.Checkout?.CleaningRequestId,
+            Wizard = MapCheckoutWizard(state),
         });
     }
 
+    /// <summary>
+    /// The host declares ready the property of a stay already checked out (the turnover left open in the cockpit,
+    /// CO-17). Idempotent. 409 <c>checkout_not_completed</c> before the check-out.
+    /// </summary>
+    [HttpPost("{id:guid}/checkout-wizard/property-ready")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CheckoutWizardDto>> ConfirmPropertyReady(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ConfirmPropertyReadyRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        if (!await CanWriteAsync(id, cancellationToken))
+            return BookingNotFound();
+
+        var state = await complianceWizard.ConfirmPropertyReadyAsync(id, request?.Notes, cancellationToken);
+        return Ok(MapCheckoutWizard(state));
+    }
+
+    private CheckoutWizardDto MapCheckoutWizard(CheckoutWizardState state)
+    {
+        var booking = state.Booking;
+        var checkout = state.Checkout;
+        var checkedOut = booking.Status == BookingStatus.CheckedOut;
+        return new CheckoutWizardDto
+        {
+            BookingId = booking.Id,
+            BookingStatus = booking.Status.ToString(),
+            CurrentStep = CheckoutWizardSteps.IdOf(state.CurrentStep),
+            StartedAt = booking.CheckoutWizardStartedAt,
+            CompletedAt = checkout?.CompletedAt,
+            Steps = state.Steps.Select(s => new ComplianceActivationStepDto
+            {
+                Id = s.Id,
+                Label = s.LabelKey is null ? s.Label : localizer[s.LabelKey].Value,
+                Status = s.Status,
+                Blocker = s.Blocker,
+                Message = s.MessageKey is null
+                    ? s.Message
+                    : localizer[s.MessageKey, s.MessageArgs?.ToArray() ?? []].Value,
+            }).ToList(),
+            Stay = new CheckoutStayDto
+            {
+                GuestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
+                PropertyId = booking.PropertyId,
+                PropertyName = booking.Property.Name,
+                PropertyCity = booking.Property.City,
+                CheckInDate = booking.CheckInDate,
+                CheckOutDate = booking.CheckOutDate,
+                Nights = Math.Max(0, (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days),
+                NumberOfGuests = booking.NumberOfGuests,
+                NumberOfAdults = booking.NumberOfAdults,
+                NumberOfChildren = booking.NumberOfChildren,
+                ArrivedAt = booking.ArrivedAt,
+                Source = booking.Source.ToString(),
+                DepartureConfirmed = checkedOut || checkout?.DepartureConfirmed == true,
+            },
+            Alloggiati = new CheckoutAlloggiatiDto
+            {
+                Status = state.Alloggiati.Status,
+                Sent = state.Alloggiati.Sent,
+                DeadlineAt = state.Alloggiati.DeadlineAt,
+                IsOverdue = state.Alloggiati.IsOverdue,
+                DataComplete = state.Alloggiati.DataComplete,
+            },
+            Cleaning = new CheckoutCleaningDto
+            {
+                Choice = checkout?.CleaningChoice,
+                SupplierOrgId = checkout?.CleaningSupplierOrgId,
+                Category = checkout?.CleaningCategory,
+                Notes = checkout?.CleaningNotes,
+                RequestId = checkout?.CleaningRequestId,
+            },
+            TouristTax = new CheckoutTouristTaxDto
+            {
+                RecordedAmount = state.TouristTax.RecordedAmount,
+                CollectedWithOnlinePayment = state.TouristTax.CollectedWithOnlinePayment,
+                Collection = state.TouristTax.Collection,
+            },
+            PropertyReady = new CheckoutPropertyReadyDto
+            {
+                Ready = checkedOut ? state.PropertyReady : checkout?.PropertyReady,
+                ReadyAt = checkout?.PropertyReadyAt,
+                Notes = checkout?.PropertyNotes,
+            },
+        };
+    }
+
     /// <summary>TN-3: the booking is visible (tenant filter) and the caller has <c>booking.write</c> on its property.</summary>
-    private async Task<bool> CanWriteAsync(Guid bookingId, CancellationToken cancellationToken)
+    private Task<bool> CanWriteAsync(Guid bookingId, CancellationToken cancellationToken) =>
+        CanAccessAsync(bookingId, BookingOperations.Write, cancellationToken);
+
+    /// <summary>TN-3: the booking is visible (tenant filter) and the caller has <paramref name="operation"/> on its property.</summary>
+    private async Task<bool> CanAccessAsync(
+        Guid bookingId,
+        HostOperationRequirement operation,
+        CancellationToken cancellationToken)
     {
         var booking = await bookingService.GetBookingAsync(bookingId);
         if (booking is null)
@@ -241,10 +408,11 @@ public class BookingLifecycleController(
         if (property is null)
             return false;
 
-        if (await authorizationService.IsAuthorizedAsync(User, property with { OrgId = booking.OrgId }, BookingOperations.Write))
+        if (await authorizationService.IsAuthorizedAsync(User, property with { OrgId = booking.OrgId }, operation))
             return true;
 
-        logger.LogWarning("User {UserId} denied booking.write on booking {BookingId}", User.GetUserId(), bookingId);
+        logger.LogWarning(
+            "User {UserId} denied {Permission} on booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
         return false;
     }
 

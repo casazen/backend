@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -135,18 +136,163 @@ public class ComplianceSummaryDto
 
     /// <summary>Alloggiati communications the host must send on the Questura portal (CasaZen does not transmit).</summary>
     public ComplianceSummarySectionDto AlloggiatiManualRequired { get; set; } = new();
+
+    /// <summary>Stays checked out whose property was not declared ready for the next guest (CO-17).</summary>
+    public ComplianceSummarySectionDto TurnoversPending { get; set; } = new();
 }
 
+/// <summary>
+/// The check-out wizard of a stay (CO-17, A5-24): 5 steps (<c>stay-summary</c>, <c>alloggiati</c>, <c>cleaning</c>,
+/// <c>tourist-tax</c>, <c>property-ready</c>), the saved progress and what each step shows.
+/// </summary>
 public class CheckoutWizardDto
 {
+    public Guid BookingId { get; set; }
+
+    /// <summary><c>CheckedIn</c> while the wizard is open, <c>CheckedOut</c> once completed.</summary>
+    public string BookingStatus { get; set; } = string.Empty;
+
+    /// <summary>Id of the step the wizard opens on (saved progress; the last one after the check-out).</summary>
+    public string CurrentStep { get; set; } = string.Empty;
+
+    /// <summary>When the wizard was first opened (UTC).</summary>
+    public DateTime? StartedAt { get; set; }
+
+    /// <summary>When the stay was checked out (UTC); null while the wizard is open or for a stay closed before CO-17.</summary>
+    public DateTime? CompletedAt { get; set; }
+
     public IEnumerable<ComplianceActivationStepDto> Steps { get; set; } = [];
+
+    public CheckoutStayDto Stay { get; set; } = new();
+    public CheckoutAlloggiatiDto Alloggiati { get; set; } = new();
+    public CheckoutCleaningDto Cleaning { get; set; } = new();
+    public CheckoutTouristTaxDto TouristTax { get; set; } = new();
+    public CheckoutPropertyReadyDto PropertyReady { get; set; } = new();
 }
 
+/// <summary>Step 1: the stay being closed. Dates are stay dates (midnight UTC, no time zone).</summary>
+public class CheckoutStayDto
+{
+    public string GuestName { get; set; } = string.Empty;
+    public Guid PropertyId { get; set; }
+    public string PropertyName { get; set; } = string.Empty;
+    public string PropertyCity { get; set; } = string.Empty;
+    public DateTime CheckInDate { get; set; }
+    public DateTime CheckOutDate { get; set; }
+    public int Nights { get; set; }
+    public int NumberOfGuests { get; set; }
+    public int NumberOfAdults { get; set; }
+    public int NumberOfChildren { get; set; }
+
+    /// <summary>Arrival instant (UTC) when registered on the check-in day; null otherwise.</summary>
+    public DateTime? ArrivedAt { get; set; }
+
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>Step 1 answer saved: the host confirmed that the guest left.</summary>
+    public bool DepartureConfirmed { get; set; }
+}
+
+/// <summary>Step 2: the Alloggiati Web communication (CasaZen does not transmit: "to send" until declared sent, CO-11).</summary>
+public class CheckoutAlloggiatiDto
+{
+    public AlloggiatiWebStatus Status { get; set; }
+    public bool Sent { get; set; }
+    public DateTime DeadlineAt { get; set; }
+    public bool IsOverdue { get; set; }
+    public bool DataComplete { get; set; }
+}
+
+/// <summary>Step 3: the cleaning request of the stay (supplier of the property's comune) or skipped.</summary>
+public class CheckoutCleaningDto
+{
+    /// <summary><c>Request</c>, <c>Skip</c> or null (not chosen yet).</summary>
+    public CheckoutCleaningChoice? Choice { get; set; }
+
+    public Guid? SupplierOrgId { get; set; }
+    public string? Category { get; set; }
+    public string? Notes { get; set; }
+
+    /// <summary>The request created with the check-out, tied to the stay.</summary>
+    public Guid? RequestId { get; set; }
+}
+
+/// <summary>Step 4: the tourist tax of the stay (BK-03) and how it was collected.</summary>
+public class CheckoutTouristTaxDto
+{
+    /// <summary>
+    /// Tax recorded on the booking when CasaZen priced it; null when CasaZen has no amount for the stay (channel
+    /// booking, comune without a rate): never an invented one.
+    /// </summary>
+    public decimal? RecordedAmount { get; set; }
+
+    public string Currency { get; set; } = "EUR";
+
+    /// <summary>Paid online with the booking: the wizard proposes <c>CollectedOnline</c>.</summary>
+    public bool CollectedWithOnlinePayment { get; set; }
+
+    /// <summary><c>CollectedOnline</c>, <c>CollectedAtProperty</c>, <c>NotCollected</c>, <c>NotDue</c> or null.</summary>
+    public TouristTaxCollection? Collection { get; set; }
+}
+
+/// <summary>Step 5: the property is ready for the next guest.</summary>
+public class CheckoutPropertyReadyDto
+{
+    /// <summary>
+    /// While the wizard is open, the answer saved (null = not answered); after the check-out, true only once the host
+    /// declared it (<see cref="ReadyAt"/>).
+    /// </summary>
+    public bool? Ready { get; set; }
+
+    public DateTime? ReadyAt { get; set; }
+    public string? Notes { get; set; }
+}
+
+/// <summary>
+/// Progress of the check-out wizard, saved as the host moves between the steps (CO-17). Nothing is created or declared
+/// until the completion.
+/// </summary>
+public class SaveCheckoutProgressRequest
+{
+    /// <summary>Id of the step the host is on: <c>stay-summary</c>, <c>alloggiati</c>, <c>cleaning</c>, <c>tourist-tax</c>, <c>property-ready</c>.</summary>
+    public string? CurrentStep { get; set; }
+
+    public bool DepartureConfirmed { get; set; }
+
+    [EnumDataType(typeof(CheckoutCleaningChoice), ErrorMessage = "CheckoutWizardValueInvalid")]
+    public CheckoutCleaningChoice? CleaningChoice { get; set; }
+
+    public Guid? SupplierOrgId { get; set; }
+
+    [MaxLength(100, ErrorMessage = "CheckoutWizardValueInvalid")]
+    public string? ServiceCategory { get; set; }
+
+    [MaxLength(1000, ErrorMessage = "CheckoutNotesTooLong")]
+    public string? ServiceNotes { get; set; }
+
+    [EnumDataType(typeof(TouristTaxCollection), ErrorMessage = "CheckoutWizardValueInvalid")]
+    public TouristTaxCollection? TouristTaxCollection { get; set; }
+
+    public bool? PropertyReady { get; set; }
+
+    [MaxLength(1000, ErrorMessage = "CheckoutNotesTooLong")]
+    public string? PropertyNotes { get; set; }
+}
+
+/// <summary>
+/// Completion of the check-out wizard (CO-08, CO-17). Without <see cref="CleaningChoice"/>, a
+/// <see cref="SupplierOrgId"/> means "request" (contract of the app's quick check-out); without
+/// <see cref="PropertyReady"/> the property is not ready and stays in the cockpit.
+/// </summary>
 public class CompleteCheckoutWizardRequest
 {
     public bool ConfirmDeparture { get; set; }
     public Guid? SupplierOrgId { get; set; }
+
+    [MaxLength(1000, ErrorMessage = "CheckoutNotesTooLong")]
     public string? ServiceNotes { get; set; }
+
+    [MaxLength(100, ErrorMessage = "CheckoutWizardValueInvalid")]
     public string? ServiceCategory { get; set; }
 
     /// <summary>
@@ -154,12 +300,41 @@ public class CompleteCheckoutWizardRequest
     /// with the check-out ("registra arrivo e procedi", CO-08).
     /// </summary>
     public bool RegisterArrival { get; set; }
+
+    /// <summary>Step 3: <c>Request</c> (needs <see cref="SupplierOrgId"/>) or <c>Skip</c>.</summary>
+    [EnumDataType(typeof(CheckoutCleaningChoice), ErrorMessage = "CheckoutWizardValueInvalid")]
+    public CheckoutCleaningChoice? CleaningChoice { get; set; }
+
+    /// <summary>Step 4: how the tourist tax was collected.</summary>
+    [EnumDataType(typeof(TouristTaxCollection), ErrorMessage = "CheckoutWizardValueInvalid")]
+    public TouristTaxCollection? TouristTaxCollection { get; set; }
+
+    /// <summary>Step 5: the property is ready for the next guest.</summary>
+    public bool? PropertyReady { get; set; }
+
+    [MaxLength(1000, ErrorMessage = "CheckoutNotesTooLong")]
+    public string? PropertyNotes { get; set; }
 }
 
 public class CompleteCheckoutWizardResponse
 {
+    /// <summary>True only when the host declared the property ready (never assumed).</summary>
     public bool PropertyReady { get; set; }
+
     public string BookingStatus { get; set; } = string.Empty;
+
+    /// <summary>The cleaning request created for the stay, if any.</summary>
+    public Guid? ServiceRequestId { get; set; }
+
+    /// <summary>The whole wizard after the check-out.</summary>
+    public CheckoutWizardDto Wizard { get; set; } = new();
+}
+
+/// <summary>The host declares the property ready after the check-out (CO-17).</summary>
+public class ConfirmPropertyReadyRequest
+{
+    [MaxLength(1000, ErrorMessage = "CheckoutNotesTooLong")]
+    public string? Notes { get; set; }
 }
 
 /// <summary>Safety checklist of a short-stay property under D.L. 145/2023 art. 13-ter (CO-07).</summary>

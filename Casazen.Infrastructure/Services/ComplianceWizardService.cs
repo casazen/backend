@@ -101,6 +101,7 @@ public class ComplianceWizardService(
             .ToList();
 
         var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(orgId, today, cancellationToken);
+        var turnoversPending = await GetTurnoversPendingAsync(orgId, cancellationToken);
 
         return new ComplianceSummaryResult(
             new ComplianceSummarySection(
@@ -111,7 +112,48 @@ public class ComplianceWizardService(
             new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns),
             new ComplianceSummarySection(checkoutDue.Count, checkoutDue),
             alloggiatiFailures,
-            alloggiatiManualRequired);
+            alloggiatiManualRequired,
+            turnoversPending);
+    }
+
+    /// <summary>Most recent turnovers listed; the count covers all of them.</summary>
+    internal const int TurnoverSectionMaxItems = 10;
+
+    /// <summary>
+    /// Turnovers still open (CO-17): stays checked out whose property was not declared ready, from the check-out record
+    /// (a stay closed before CO-17 has none and is not listed). A later stay of the same property whose arrival is
+    /// registered closes it: the property was obviously ready for it.
+    /// </summary>
+    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var pending = db.StayCheckouts
+            .AsNoTracking()
+            .Where(c => c.OrgId == orgId && c.CompletedAt != null && c.PropertyReadyAt == null)
+            .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
+            .Where(c => !db.Bookings.Any(next =>
+                next.PropertyId == c.Booking.PropertyId
+                && next.Id != c.BookingId
+                && (next.Status == BookingStatus.CheckedIn || next.Status == BookingStatus.CheckedOut)
+                && next.CheckInDate >= c.Booking.CheckOutDate));
+
+        var count = await pending.CountAsync(cancellationToken);
+        var items = (await pending
+                .OrderByDescending(c => c.CompletedAt)
+                .Take(TurnoverSectionMaxItems)
+                .Select(c => new
+                {
+                    c.BookingId,
+                    PropertyName = c.Booking.Property.Name,
+                    GuestName = (c.Booking.Guest.FirstName + " " + c.Booking.Guest.LastName).Trim(),
+                })
+                .ToListAsync(cancellationToken))
+            .Select(c => ComplianceSummaryItem.ForBooking(
+                ComplianceCockpitAction.ConfirmPropertyReady,
+                c.BookingId,
+                string.IsNullOrWhiteSpace(c.GuestName) ? c.PropertyName : $"{c.PropertyName} · {c.GuestName}"))
+            .ToList();
+
+        return new ComplianceSummarySection(count, items);
     }
 
     /// <summary>Most recent items listed per Alloggiati section; the count covers all of them.</summary>
@@ -181,17 +223,29 @@ public class ComplianceWizardService(
                 .ToList());
     }
 
-    public async Task<(Booking Booking, IReadOnlyList<ComplianceActivationStep> Steps)> StartCheckoutWizardAsync(
+    public async Task<CheckoutWizardState> StartCheckoutWizardAsync(
         Guid bookingId,
         bool registerArrival = false,
         CancellationToken cancellationToken = default)
     {
         // Same rules and transition as the completion and POST /check-out (CO-08).
-        var booking = await stayLifecycle.StartCheckOutAsync(bookingId, registerArrival, cancellationToken);
-        return (booking, BuildCheckoutSteps(booking));
+        await stayLifecycle.StartCheckOutAsync(bookingId, registerArrival, cancellationToken);
+        return await BuildCheckoutStateAsync(bookingId, cancellationToken);
     }
 
-    public async Task<(Booking Booking, bool PropertyReady)> CompleteCheckoutWizardAsync(
+    public Task<CheckoutWizardState> GetCheckoutWizardAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
+        BuildCheckoutStateAsync(bookingId, cancellationToken);
+
+    public async Task<CheckoutWizardState> SaveCheckoutProgressAsync(
+        Guid bookingId,
+        StayCheckoutProgress progress,
+        CancellationToken cancellationToken = default)
+    {
+        await stayLifecycle.SaveCheckoutProgressAsync(bookingId, progress, cancellationToken);
+        return await BuildCheckoutStateAsync(bookingId, cancellationToken);
+    }
+
+    public async Task<CheckoutWizardState> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
         CompleteCheckoutWizardInput input,
@@ -201,16 +255,102 @@ public class ComplianceWizardService(
         if (!input.ConfirmDeparture)
             throw new DomainRuleException(BookingErrorCodes.DepartureNotConfirmed, "CheckoutDepartureNotConfirmed");
 
-        var turnover = input.SupplierOrgId is { } supplierOrgId
+        // Before CO-17 a supplier alone meant "request": the app still sends it that way.
+        var cleaning = input.CleaningChoice ?? (input.SupplierOrgId is null ? null : CheckoutCleaningChoice.Request);
+        if ((cleaning == CheckoutCleaningChoice.Request && input.SupplierOrgId is null)
+            || (cleaning == CheckoutCleaningChoice.Skip && input.SupplierOrgId is not null))
+            throw new DomainRuleException(BookingErrorCodes.CleaningChoiceInvalid, "CheckoutCleaningChoiceInvalid");
+
+        var turnover = cleaning == CheckoutCleaningChoice.Request && input.SupplierOrgId is { } supplierOrgId
             ? new StayTurnoverRequest(userId, supplierOrgId, input.ServiceCategory, input.ServiceNotes)
             : null;
-        var booking = await stayLifecycle.CheckOutAsync(
-            bookingId,
-            new StayCheckOut(input.RegisterArrival, turnover),
-            cancellationToken);
-        logger.LogInformation("Checkout wizard completed for booking {BookingId}", bookingId);
 
-        return (booking, true);
+        var checkOut = new StayCheckOut(input.RegisterArrival, turnover)
+        {
+            Wizard = new StayCheckoutDeclaration(
+                cleaning == CheckoutCleaningChoice.Skip,
+                input.TouristTaxCollection,
+                input.PropertyReady == true,
+                input.PropertyNotes),
+        };
+        await stayLifecycle.CheckOutAsync(bookingId, checkOut, cancellationToken);
+
+        var state = await BuildCheckoutStateAsync(bookingId, cancellationToken);
+        logger.LogInformation(
+            "Checkout wizard completed for booking {BookingId} (cleaning: {Cleaning}, tourist tax: {TouristTax}, property ready: {PropertyReady})",
+            bookingId,
+            cleaning,
+            input.TouristTaxCollection,
+            state.PropertyReady);
+        return state;
+    }
+
+    public async Task<CheckoutWizardState> ConfirmPropertyReadyAsync(
+        Guid bookingId,
+        string? notes,
+        CancellationToken cancellationToken = default)
+    {
+        await stayLifecycle.ConfirmPropertyReadyAsync(bookingId, notes, cancellationToken);
+        return await BuildCheckoutStateAsync(bookingId, cancellationToken);
+    }
+
+    /// <summary>The wizard as committed now: the booking, its check-out record and what each step shows.</summary>
+    private async Task<CheckoutWizardState> BuildCheckoutStateAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
+            ?? throw new NotFoundException($"Booking {bookingId} not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
+        var checkout = await db.StayCheckouts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.BookingId == bookingId, cancellationToken);
+
+        var alloggiatiStatus = await alloggiatiWebService.GetStatusAsync(bookingId);
+        var alloggiati = new CheckoutAlloggiatiSummary(
+            alloggiatiStatus.Status,
+            AlloggiatiStatusRules.IsSent(alloggiatiStatus.Status),
+            alloggiatiStatus.DeadlineAt,
+            alloggiatiStatus.IsOverdue,
+            alloggiatiStatus.DataComplete);
+        var touristTax = new CheckoutTouristTaxSummary(
+            RecordedTouristTax(booking),
+            await IsTouristTaxCollectedOnlineAsync(booking, cancellationToken),
+            checkout?.TouristTaxCollection);
+
+        return new CheckoutWizardState(
+            booking,
+            checkout,
+            BuildCheckoutSteps(booking, checkout, alloggiati),
+            alloggiati,
+            touristTax);
+    }
+
+    /// <summary>
+    /// The tax CasaZen recorded on the booking (BK-03): only bookings it priced (booking site, host booking) and only an
+    /// amount above 0. A channel booking or a comune without a rate records 0, which is not the tax of the stay.
+    /// </summary>
+    private static decimal? RecordedTouristTax(Booking booking) =>
+        booking.Source is BookingSource.Direct or BookingSource.Manual && booking.TouristTax > 0
+            ? booking.TouristTax
+            : null;
+
+    /// <summary>
+    /// The tax was in the total paid online on the booking site (BK-03: the direct booking charges it with the stay):
+    /// a booking-site booking not paid at the property, with a Stripe payment collected.
+    /// </summary>
+    private async Task<bool> IsTouristTaxCollectedOnlineAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        if (booking.Source != BookingSource.Direct || booking.PaymentOption == PaymentOption.OnSite || booking.TouristTax <= 0)
+            return false;
+
+        return await db.Payments
+            .AsNoTracking()
+            .AnyAsync(p => p.BookingId == booking.Id
+                           && p.StripePaymentIntentId != null
+                           && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded),
+                cancellationToken);
     }
 
     // The documents and the checklist are read by the evaluation itself (IPropertyComplianceStatusService).
@@ -306,40 +446,70 @@ public class ComplianceWizardService(
         return new TouristTaxActivationInfo(city, rate, publicPageSlug) { CategoryRequired = categoryRequired };
     }
 
-    private static IReadOnlyList<ComplianceActivationStep> BuildCheckoutSteps(Booking booking)
+    /// <summary>
+    /// The 5 steps of the check-out wizard (CO-17): stay summary and departure, Alloggiati, cleaning, tourist tax,
+    /// property ready. None blocks the check-out except the confirmation of the departure: what is left open is shown
+    /// (warning) and, for the property, stays in the cockpit as a turnover to close.
+    /// </summary>
+    private static IReadOnlyList<ComplianceActivationStep> BuildCheckoutSteps(
+        Booking booking,
+        StayCheckout? checkout,
+        CheckoutAlloggiatiSummary alloggiati)
     {
-        var departureConfirmed = booking.CheckoutWizardStartedAt.HasValue;
-        var complianceOk = booking.Property.ComplianceStatus == PropertyComplianceStatus.Active;
+        var checkedOut = booking.Status == BookingStatus.CheckedOut;
 
-        return
-        [
-            new ComplianceActivationStep(
-                "confirm-departure",
-                "Conferma partenza ospite",
-                departureConfirmed ? "complete" : "pending",
-                true),
-            new ComplianceActivationStep(
-                "compliance-summary",
-                "Riepilogo compliance",
-                complianceOk ? "complete" : "warning",
-                false,
-                complianceOk ? null : "La proprietà non è ancora pienamente conforme"),
-            new ComplianceActivationStep(
-                "supplier-selection",
-                "Selezione fornitore turnover",
-                "pending",
-                false),
-            new ComplianceActivationStep(
-                "payment",
-                "Pagamento servizi",
-                "pending",
-                false),
-            new ComplianceActivationStep(
-                "property-ready",
-                "Proprietà pronta",
-                booking.Status == BookingStatus.CheckedOut ? "complete" : "pending",
-                true),
-        ];
+        var departure = new ComplianceActivationStep(
+            CheckoutWizardSteps.StaySummary,
+            "Riepilogo soggiorno",
+            checkedOut || checkout?.DepartureConfirmed == true ? "complete" : "pending",
+            true)
+        { LabelKey = "CheckoutStepStaySummary" };
+
+        var alloggiatiStep = new ComplianceActivationStep(
+            CheckoutWizardSteps.Alloggiati,
+            "Alloggiati Web",
+            alloggiati.Sent ? "complete" : "warning",
+            false)
+        {
+            LabelKey = "CheckoutStepAlloggiati",
+            MessageKey = alloggiati.Sent
+                ? null
+                : AlloggiatiStatusRules.IsFailure(alloggiati.Status)
+                    ? "CheckoutAlloggiatiFailed"
+                    : "CheckoutAlloggiatiNotSent",
+        };
+
+        var cleaningChosen = checkout?.CleaningChoice is not null || checkout?.CleaningRequestId is not null;
+        var cleaning = new ComplianceActivationStep(
+            CheckoutWizardSteps.Cleaning,
+            "Pulizie",
+            cleaningChosen ? "complete" : checkedOut ? "warning" : "pending",
+            false)
+        { LabelKey = "CheckoutStepCleaning" };
+
+        var taxDeclared = checkout?.TouristTaxCollection is not null;
+        var touristTax = new ComplianceActivationStep(
+            CheckoutWizardSteps.TouristTax,
+            "Imposta di soggiorno",
+            taxDeclared ? "complete" : checkedOut ? "warning" : "pending",
+            false)
+        {
+            LabelKey = "CheckoutStepTouristTax",
+            MessageKey = !taxDeclared && checkedOut ? "CheckoutTouristTaxNotDeclared" : null,
+        };
+
+        var ready = checkout?.PropertyReadyAt is not null;
+        var propertyReady = new ComplianceActivationStep(
+            CheckoutWizardSteps.PropertyReady,
+            "Proprietà pronta",
+            ready ? "complete" : checkedOut ? "warning" : "pending",
+            false)
+        {
+            LabelKey = "CheckoutStepPropertyReady",
+            MessageKey = !ready && checkedOut ? "CheckoutPropertyNotReady" : null,
+        };
+
+        return [departure, alloggiatiStep, cleaning, touristTax, propertyReady];
     }
 
     private async Task<string> ResolveRegionCodeAsync(string city, CancellationToken cancellationToken)

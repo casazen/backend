@@ -1234,6 +1234,51 @@
   <data name="SeoPageNotPublished" xml:space="preserve">
     <value>The page is not published: there is nothing to withdraw.</value>
   </data>
+  <data name="CheckoutWizardNotStarted" xml:space="preserve">
+    <value>Start the check-out before completing it: open the check-out of the stay again.</value>
+  </data>
+  <data name="CheckoutCleaningChoiceInvalid" xml:space="preserve">
+    <value>Choose whether to request a cleaning from a supplier (with the supplier) or to skip it.</value>
+  </data>
+  <data name="CheckoutStepInvalid" xml:space="preserve">
+    <value>Invalid check-out step.</value>
+  </data>
+  <data name="CheckoutNotCompleted" xml:space="preserve">
+    <value>The property is declared ready after the check-out of the stay.</value>
+  </data>
+  <data name="CheckoutWizardValueInvalid" xml:space="preserve">
+    <value>Invalid value in the check-out.</value>
+  </data>
+  <data name="CheckoutNotesTooLong" xml:space="preserve">
+    <value>Notes can be at most 1000 characters long.</value>
+  </data>
+  <data name="CheckoutStepStaySummary" xml:space="preserve">
+    <value>Stay summary</value>
+  </data>
+  <data name="CheckoutStepAlloggiati" xml:space="preserve">
+    <value>Alloggiati Web (police report)</value>
+  </data>
+  <data name="CheckoutStepCleaning" xml:space="preserve">
+    <value>Cleaning</value>
+  </data>
+  <data name="CheckoutStepTouristTax" xml:space="preserve">
+    <value>Tourist tax</value>
+  </data>
+  <data name="CheckoutStepPropertyReady" xml:space="preserve">
+    <value>Property ready</value>
+  </data>
+  <data name="CheckoutAlloggiatiNotSent" xml:space="preserve">
+    <value>The Alloggiati Web report of this stay is not sent: send it on the police portal and record it as sent.</value>
+  </data>
+  <data name="CheckoutAlloggiatiFailed" xml:space="preserve">
+    <value>The Alloggiati Web report of this stay failed or was rejected: fix it and send it again.</value>
+  </data>
+  <data name="CheckoutTouristTaxNotDeclared" xml:space="preserve">
+    <value>How the tourist tax was collected has not been stated.</value>
+  </data>
+  <data name="CheckoutPropertyNotReady" xml:space="preserve">
+    <value>The property has not been declared ready for the next guest yet.</value>
+  </data>
   <data name="SupplierInboxStatusInvalid" xml:space="preserve">
     <value>Invalid status: use open, history, all or a request status (Richiesto, PresoInCarico, InCorso, Completato, Pagato, Rifiutato).</value>
   </data>

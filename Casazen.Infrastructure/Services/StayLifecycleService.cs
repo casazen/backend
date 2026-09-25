@@ -74,6 +74,8 @@ public sealed class StayLifecycleService(
 
             booking.CheckoutWizardStartedAt ??= UtcNow();
             booking.UpdatedAt = UtcNow();
+            // The progress of the wizard (CO-17): created once, kept when the wizard is opened again.
+            await LoadOrCreateCheckoutAsync(booking, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
@@ -102,17 +104,25 @@ public sealed class StayLifecycleService(
             if (StayLifecycleRules.CheckOutError(booking, today, checkOut.RegisterArrival) is { } error)
                 throw error;
 
+            // The wizard closes only what it opened (CO-17): its answers were given after the start.
+            if (checkOut.Wizard is not null && booking.CheckoutWizardStartedAt is null)
+                throw new DomainConflictException(BookingErrorCodes.CheckoutWizardNotStarted, "CheckoutWizardNotStarted");
+
             arrivalRegistered = booking.Status == BookingStatus.Confirmed;
             if (arrivalRegistered)
                 MarkArrived(booking, today);
 
             // Joins this transaction (same context): the request and the check-out are saved together or not at all.
-            if (checkOut.Turnover is not null)
-                await CreateTurnoverRequestAsync(booking, checkOut.Turnover, cancellationToken);
+            var turnoverRequest = checkOut.Turnover is null
+                ? null
+                : await CreateTurnoverRequestAsync(booking, checkOut.Turnover, cancellationToken);
 
             // Checked out: the stay-alerts job no longer reminds it (CO-10).
             booking.Status = BookingStatus.CheckedOut;
             booking.UpdatedAt = UtcNow();
+            // CO-15: retention is now computed nightly from the stay's check-out date, no eager extension here.
+            var record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
+            CloseCheckout(record, checkOut, turnoverRequest);
             await SaveAsync(transaction, cancellationToken);
         }
 
@@ -122,6 +132,137 @@ public sealed class StayLifecycleService(
             arrivalRegistered);
         return booking;
     }
+
+    public async Task<StayCheckout> SaveCheckoutProgressAsync(
+        Guid bookingId,
+        StayCheckoutProgress progress,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        // Only category codes are kept (SU-03): an unknown one is a 422 now, not at the check-out.
+        var skipped = progress.CleaningChoice == CheckoutCleaningChoice.Skip;
+        var category = skipped || string.IsNullOrWhiteSpace(progress.CleaningCategory)
+            ? null
+            : ServiceCategories.Require(progress.CleaningCategory);
+
+        StayCheckout record;
+        await using (var transaction = await LockBookingAsync(bookingId, cancellationToken))
+        {
+            var booking = await LoadAsync(bookingId, cancellationToken);
+            if (booking.Status == BookingStatus.CheckedOut)
+                throw new DomainConflictException(BookingErrorCodes.AlreadyCheckedOut, "BookingAlreadyCheckedOut");
+            if (booking.CheckoutWizardStartedAt is null || booking.Status != BookingStatus.CheckedIn)
+                throw new DomainConflictException(BookingErrorCodes.CheckoutWizardNotStarted, "CheckoutWizardNotStarted");
+
+            record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
+            record.CurrentStep = progress.CurrentStep;
+            record.DepartureConfirmed = progress.DepartureConfirmed;
+            record.CleaningChoice = progress.CleaningChoice;
+            record.CleaningSupplierOrgId = skipped ? null : progress.CleaningSupplierOrgId;
+            record.CleaningCategory = category;
+            record.CleaningNotes = skipped ? null : Trimmed(progress.CleaningNotes);
+            record.TouristTaxCollection = progress.TouristTaxCollection;
+            record.PropertyReady = progress.PropertyReady;
+            record.PropertyNotes = Trimmed(progress.PropertyNotes);
+            record.UpdatedAt = UtcNow();
+            await SaveAsync(transaction, cancellationToken);
+        }
+
+        return record;
+    }
+
+    public async Task<StayCheckout> ConfirmPropertyReadyAsync(
+        Guid bookingId,
+        string? notes,
+        CancellationToken cancellationToken = default)
+    {
+        StayCheckout record;
+        await using (var transaction = await LockBookingAsync(bookingId, cancellationToken))
+        {
+            var booking = await LoadAsync(bookingId, cancellationToken);
+            if (booking.Status != BookingStatus.CheckedOut)
+                throw new DomainConflictException(BookingErrorCodes.CheckoutNotCompleted, "CheckoutNotCompleted");
+
+            // A stay closed before CO-17 has no row yet: the declaration creates it (its check-out time is unknown).
+            record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
+            if (record.PropertyReadyAt is not null)
+                return record;
+
+            record.PropertyReady = true;
+            record.PropertyReadyAt = UtcNow();
+            if (Trimmed(notes) is { } trimmed)
+                record.PropertyNotes = trimmed;
+            record.CurrentStep = CheckoutWizardStep.PropertyReady;
+            record.UpdatedAt = UtcNow();
+            await SaveAsync(transaction, cancellationToken);
+        }
+
+        logger.LogInformation("Property of booking {BookingId} declared ready after the check-out", bookingId);
+        return record;
+    }
+
+    /// <summary>
+    /// Closes the check-out record with the check-out. From the wizard it records what the host declared; from
+    /// <c>POST /check-out</c> nothing is declared, so the property is not ready until the host says so (cockpit).
+    /// </summary>
+    private void CloseCheckout(StayCheckout record, StayCheckOut checkOut, ServiceRequest? turnoverRequest)
+    {
+        var now = UtcNow();
+        record.CompletedAt = now;
+        record.UpdatedAt = now;
+
+        if (turnoverRequest is not null && checkOut.Turnover is { } turnover)
+        {
+            record.CleaningChoice = CheckoutCleaningChoice.Request;
+            record.CleaningSupplierOrgId = turnover.SupplierOrgId;
+            record.CleaningCategory = turnoverRequest.Category;
+            record.CleaningNotes = Trimmed(turnover.Notes);
+            record.CleaningRequestId = turnoverRequest.Id;
+        }
+
+        if (checkOut.Wizard is not { } wizard)
+            return;
+
+        record.DepartureConfirmed = true;
+        record.CurrentStep = CheckoutWizardStep.PropertyReady;
+        if (turnoverRequest is null)
+        {
+            record.CleaningChoice = wizard.CleaningSkipped ? CheckoutCleaningChoice.Skip : null;
+            record.CleaningSupplierOrgId = null;
+            record.CleaningCategory = null;
+            record.CleaningNotes = null;
+        }
+
+        record.TouristTaxCollection = wizard.TouristTaxCollection;
+        record.PropertyReady = wizard.PropertyReady;
+        record.PropertyNotes = Trimmed(wizard.PropertyNotes);
+        record.PropertyReadyAt = wizard.PropertyReady ? now : null;
+    }
+
+    /// <summary>The check-out record of the booking, created (not saved) when missing. Called under the booking lock.</summary>
+    private async Task<StayCheckout> LoadOrCreateCheckoutAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        var record = await db.StayCheckouts.FirstOrDefaultAsync(c => c.BookingId == booking.Id, cancellationToken);
+        if (record is not null)
+        {
+            // Tracked since an earlier read of this context: the committed row may have changed before the lock.
+            await db.Entry(record).ReloadAsync(cancellationToken);
+            return record;
+        }
+
+        var now = UtcNow();
+        record = new StayCheckout
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.StayCheckouts.Add(record);
+        return record;
+    }
+
+    private static string? Trimmed(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// Checked in now. The arrival instant is recorded only on the check-in day: registered later, the real arrival time
@@ -160,14 +301,14 @@ public sealed class StayLifecycleService(
         }
     }
 
-    private async Task CreateTurnoverRequestAsync(
+    private async Task<ServiceRequest> CreateTurnoverRequestAsync(
         Booking booking,
         StayTurnoverRequest turnover,
         CancellationToken cancellationToken)
     {
         try
         {
-            await serviceRequestService.CreateAsync(new CreateServiceRequestCommand(
+            return await serviceRequestService.CreateAsync(new CreateServiceRequestCommand(
                 booking.OrgId,
                 turnover.UserId,
                 booking.PropertyId,

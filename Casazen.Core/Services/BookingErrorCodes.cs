@@ -86,4 +86,22 @@ public static class BookingErrorCodes
 
     /// <summary>422: the turnover request of the check-out wizard could not be created (supplier, category).</summary>
     public const string TurnoverRequestInvalid = "checkout_service_request_invalid";
+
+    /// <summary>
+    /// 409: the check-out wizard is completed, or its progress saved, before it was started
+    /// (<c>checkout-wizard/start</c>, CO-17).
+    /// </summary>
+    public const string CheckoutWizardNotStarted = "checkout_wizard_not_started";
+
+    /// <summary>
+    /// 422: the cleaning step of the check-out wizard is contradictory: a supplier with "skip", or "request" without a
+    /// supplier (CO-17).
+    /// </summary>
+    public const string CleaningChoiceInvalid = "checkout_cleaning_choice_invalid";
+
+    /// <summary>422: the step of the check-out wizard is not one of its 5 steps (CO-17).</summary>
+    public const string CheckoutStepInvalid = "checkout_step_invalid";
+
+    /// <summary>409: the property is declared ready before the check-out of the stay (CO-17).</summary>
+    public const string CheckoutNotCompleted = "checkout_not_completed";
 }
