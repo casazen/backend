@@ -280,7 +280,28 @@
     <value>Contract registered: Agenzia delle Entrate registration details and receipt on file</value>
   </data>
   <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
-    <value>Questura notice (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Draft wording pending counsel.</value>
+    <value>Communication to the public-security authority (Questura) for the non-EU tenant, within 48 hours of the delivery of the property (art. 7 D.Lgs. 286/1998): sent and declared by the landlord</value>
+  </data>
+  <data name="QuesturaNotRequired" xml:space="preserve">
+    <value>No tenant of this lease is a non-EU citizen: the Questura communication of art. 7 D.Lgs. 286/1998 does not apply.</value>
+  </data>
+  <data name="QuesturaAlreadyMarkedDone" xml:space="preserve">
+    <value>The Questura communication of this lease has already been declared.</value>
+  </data>
+  <data name="QuesturaCommunicationDateInFuture" xml:space="preserve">
+    <value>The date of the communication cannot be later than today.</value>
+  </data>
+  <data name="QuesturaReceiptInvalid" xml:space="preserve">
+    <value>The receipt must be a PDF file of at most {0} MB.</value>
+  </data>
+  <data name="QuesturaReceiptNotAvailable" xml:space="preserve">
+    <value>No receipt of the Questura communication was uploaded for this lease.</value>
+  </data>
+  <data name="QuesturaDeliveryDateAfterEnd" xml:space="preserve">
+    <value>The delivery date of the property cannot be later than the end of the lease.</value>
+  </data>
+  <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
+    <value>Citizenship must be the 2-letter ISO country code (for example IT, DE, US).</value>
   </data>
   <data name="RliProviderUnavailable" xml:space="preserve">
     <value>RLI filing through a provider is not available. Register the contract on the official channel of the Agenzia delle Entrate and enter the registration number, date and receipt here.</value>

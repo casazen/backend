@@ -14,7 +14,8 @@ namespace Casazen.Infrastructure.Services;
 /// RLI checklist of a lease (LT-01, A7-01): a step is ticked only when it really happened. The registration item is
 /// done only with the registration recorded and its receipt stored (manual declaration or provider receipt), never
 /// for a submission in progress; a failed attempt is reported as failed. The delega item exists only while the provider
-/// path is available (flag on and configured provider), or once a delega was given.
+/// path is available (flag on and configured provider), or once a delega was given. The Questura item (LT-07) exists
+/// only with an extra-EU tenant and is done only after the landlord's declaration (<c>rli/questura/mark-done</c>).
 /// </summary>
 public class RliChecklistService(
     ILeaseRegistrationAuthorizationRepository authorizations,
@@ -58,12 +59,13 @@ public class RliChecklistService(
                 && !string.IsNullOrWhiteSpace(registration.ReceiptStoragePath),
             Failed: registration is { Status: RegistrationStatus.Failed }));
 
-        if (lease.HasExtraEUTenant)
+        // LT-07 (A7-08): only with an extra-EU tenant, ticked only by the landlord's explicit declaration, never by a
+        // reminder that CasaZen sent.
+        QuesturaCommunicationStatus? questura = null;
+        if (QuesturaCommunicationDeadline.IsRequired(lease))
         {
-            items.Add(new(
-                RliChecklistKeys.QuesturaExtraEu,
-                leaseEvents.Any(e =>
-                    e.EventType == LeaseEventType.DeadlineReminderSent && e.Payload == "extra-eu")));
+            questura = QuesturaStatus(lease, today);
+            items.Add(new(RliChecklistKeys.QuesturaExtraEu, Done: questura.CommunicationDate is not null));
         }
 
         return new RliChecklistResult(
@@ -72,6 +74,20 @@ public class RliChecklistService(
             rliOptions.Value.TosVersion,
             rliOptions.Value.AttestationText,
             providerFilingAvailable,
-            items);
+            items,
+            questura);
+    }
+
+    private static QuesturaCommunicationStatus QuesturaStatus(LeaseContract lease, DateTime today)
+    {
+        var delivery = QuesturaCommunicationDeadline.DeliveryDate(lease);
+        var deadline = QuesturaCommunicationDeadline.Deadline(delivery);
+        return new QuesturaCommunicationStatus(
+            delivery,
+            DeliveryDateDeclared: lease.PropertyDeliveryDate is not null,
+            deadline,
+            QuesturaCommunicationDeadline.DaysUntil(deadline, today),
+            lease.QuesturaCommunicationDate,
+            HasReceipt: lease.QuesturaCommunicationDate is not null && StorageKeys.IsValid(lease.QuesturaCommunicationReceiptPath));
     }
 }
