@@ -246,6 +246,20 @@ decidere con il commercialista, per esempio addebitare IVA come B2C finché la v
   calcolata: nota `irpef_ordinaria_not_computed` (calcolo a carico del contribuente o del commercialista).
 - Non implementati: comproprietà, stanze/porzioni, CasaZen sostituto d'imposta sul direct booking (punti 2-5 sotto).
 
+**Report per il commercialista (CO-19, 2026-09-25)** — `FiscalService.Reports.cs`, documenti in
+`FiscalReportDocuments.cs` (PDF A4 con `IPdfDocumentRenderer`, CSV `;` con virgola decimale), endpoint
+`GET /api/fiscal/reports/{annual|withholding}/{anno}?from&to&format=json|csv|pdf` e
+`GET /api/fiscal/reports/tourist-tax?from&to&format=`:
+- **Incassato lordo**: pagamenti completati nel periodo (data di incasso in Europe/Rome), al netto dei rimborsi.
+- **Tassa di soggiorno**: importo registrato sul soggiorno dal motore BK-03, ripartito tra i pagamenti in proporzione;
+  esclusa dal canone lordo (imposta del comune a carico dell'ospite, `imposta_soggiorno.md`).
+- **Commissioni**: non registrate in CasaZen, sempre "n.d."; in cedolare non riducono l'imponibile (spese deducibili solo
+  in regime d'impresa o per il sublocatore, sopra).
+- **Imposta stimata**: solo cedolare (C2), canone lordo × aliquota di configurazione. Non calcolata per IRPEF ordinaria
+  (C11: dipende da rendita e altri redditi), regimi d'impresa (coefficiente e costi: punto 5 sotto), regime non
+  assegnato, titolare oltre soglia (C3).
+- Riferimenti normativi nel PDF solo da configurazione (`ShortStayFiscal:*Source`), per il riordino 2027.
+
 ### LT-04 — Affitti lunghi: registrazione del contratto
 
 | # | Regola | Stato | Fonte |

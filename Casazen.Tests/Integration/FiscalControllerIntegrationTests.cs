@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
+using Casazen.Tests.Unit.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -160,5 +161,123 @@ public class FiscalControllerIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
         Assert.DoesNotContain("FiscalCode", response.Content.Headers.ContentDisposition?.FileName ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TouristTaxReport_Pdf_ReturnsItalianTablesPerComuneAndMonth()
+    {
+        var owner = $"auth0|fiscal-tt-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(owner);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Bookings.Add(new Booking
+            {
+                PropertyId = property.Id,
+                OrgId = property.OrgId,
+                Guest = new Guest
+                {
+                    OrgId = property.OrgId,
+                    FirstName = "Tassa",
+                    LastName = "Soggiorno",
+                    Email = $"tt-{Guid.NewGuid():N}@example.com",
+                    Country = "IT",
+                },
+                CheckInDate = new DateTime(2026, 3, 2, 0, 0, 0, DateTimeKind.Utc),
+                CheckOutDate = new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc),
+                NumberOfGuests = 2,
+                NumberOfAdults = 2,
+                Status = BookingStatus.Confirmed,
+                Source = BookingSource.Direct,
+                BasePrice = 300m,
+                TouristTax = 57m,
+                TouristTaxAmount = 57m,
+                TotalPrice = 357m,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+        var json = await client.GetFromJsonAsync<JsonElement>("/api/fiscal/reports/tourist-tax?from=2026-01-01&to=2026-03-31");
+        Assert.Equal(57m, json.GetProperty("totals").GetProperty("amount").GetDecimal());
+        Assert.Equal(3, json.GetProperty("rows")[0].GetProperty("month").GetInt32());
+
+        var response = await client.GetAsync("/api/fiscal/reports/tourist-tax?from=2026-01-01&to=2026-03-31&format=pdf");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        var text = PdfTestReader.Text(await response.Content.ReadAsByteArrayAsync());
+        Assert.Contains("Tassa di soggiorno per comune e periodo", text, StringComparison.Ordinal);
+        Assert.Contains("marzo 2026", text, StringComparison.Ordinal);
+        Assert.Contains("57,00", text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/api/fiscal/reports/tourist-tax?from=2026-01-01")]
+    [InlineData("/api/fiscal/reports/tourist-tax?from=2026-03-01&to=2026-01-01")]
+    [InlineData("/api/fiscal/reports/annual/2026?from=2025-12-01&to=2026-01-31")]
+    [InlineData("/api/fiscal/reports/withholding/2026?from=2026-06-01&to=2026-05-01&format=pdf")]
+    public async Task Reports_InvalidPeriod_Return400WithStableCode(string url)
+    {
+        var owner = $"auth0|fiscal-period-{Guid.NewGuid():N}";
+        await _factory.SeedPropertyAsync(owner);
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+
+        var response = await client.GetAsync(url);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("fiscal_report_period_invalid", body.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("detail").GetString()));
+    }
+
+    [Fact]
+    public async Task AnnualReportPdf_ItalianSummaryWithoutEnglishLine()
+    {
+        var owner = $"auth0|fiscal-pdf-{Guid.NewGuid():N}";
+        await _factory.SeedPropertyAsync(owner);
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+
+        var response = await client.GetAsync("/api/fiscal/reports/annual/2026?format=pdf");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("casazen-redditi-20260101-20261231.pdf", response.Content.Headers.ContentDisposition?.ToString() ?? "", StringComparison.Ordinal);
+        var text = PdfTestReader.Text(await response.Content.ReadAsByteArrayAsync());
+        Assert.Contains("Incassi per immobile", text, StringComparison.Ordinal);
+        Assert.Contains("Note e fonti", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gross", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PutTaxProfile_OnlyFiscalCode_KeepsTheSavedPartitaIva()
+    {
+        var owner = $"auth0|fiscal-profile-{Guid.NewGuid():N}";
+        await _factory.SeedPropertyAsync(owner);
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+        var first = await client.PutAsJsonAsync("/api/fiscal/tax-profile", new { hasPartitaIva = true, partitaIvaNumber = "12345678901" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        var second = await client.PutAsJsonAsync("/api/fiscal/tax-profile", new { fiscalCode = "RSSMRA80A01H501U" });
+
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var profile = await client.GetFromJsonAsync<JsonElement>("/api/fiscal/tax-profile");
+        Assert.True(profile.GetProperty("hasPartitaIva").GetBoolean());
+        Assert.Equal("12345678901", profile.GetProperty("partitaIvaNumber").GetString());
+        Assert.Equal("RSSMRA80A01H501U", profile.GetProperty("fiscalCode").GetString());
+    }
+
+    [Fact]
+    public async Task PutTaxProfile_InvalidPartitaIva_Returns400WithLocalizedProblem()
+    {
+        var owner = $"auth0|fiscal-profile-bad-{Guid.NewGuid():N}";
+        await _factory.SeedPropertyAsync(owner);
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+
+        var response = await client.PutAsJsonAsync("/api/fiscal/tax-profile", new { hasPartitaIva = true, partitaIvaNumber = "123" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("fiscal_tax_identifier_invalid", body.GetProperty("code").GetString());
     }
 }

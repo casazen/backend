@@ -1087,4 +1087,25 @@
   <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
     <value>For {0} this taxpayer already has another property at the 21% cedolare rate: the reduced rate applies to one unit only. First assign 26% to one of the two properties.</value>
   </data>
+  <data name="FiscalTaxYearInvalid" xml:space="preserve">
+    <value>Invalid tax year: short-term rental taxation is managed from 2026.</value>
+  </data>
+  <data name="FiscalRegimeUnknown" xml:space="preserve">
+    <value>Unknown fiscal regime.</value>
+  </data>
+  <data name="FiscalSimulationCountInvalid" xml:space="preserve">
+    <value>The number of properties of the simulation cannot be negative.</value>
+  </data>
+  <data name="FiscalTaxIdentifierInvalid" xml:space="preserve">
+    <value>Invalid VAT number or tax code: the VAT number (partita IVA) has 11 digits; the tax code (codice fiscale) has 16 characters (11 digits for a company). With a VAT number the number is required too.</value>
+  </data>
+  <data name="FiscalReportPeriodInvalid" xml:space="preserve">
+    <value>Invalid report period: give a start and an end date, the start not after the end, for at most one year (within the tax year for the fiscal summary and the withholding).</value>
+  </data>
+  <data name="FiscalPartitaIvaRequired" xml:space="preserve">
+    <value>To assign a business regime (ordinary or flat-rate) first record the VAT number in the tax profile.</value>
+  </data>
+  <data name="FiscalPropertyNotEligible" xml:space="preserve">
+    <value>In {0} this property is not one of the short-term rentals (it is deactivated or let long-term): no regime can be assigned to it.</value>
+  </data>
 </root>
