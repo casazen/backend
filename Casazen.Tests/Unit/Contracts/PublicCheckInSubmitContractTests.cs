@@ -17,7 +17,7 @@ namespace Casazen.Tests.Unit.Contracts;
 public class PublicCheckInSubmitContractTests
 {
     /// <summary>Same list as <c>BACKEND_REQUIRED_FIELDS</c> in the frontend contract test: change both together.</summary>
-    private static readonly string[] FrontendRequiredFields = ["gdprConsent", "guests"];
+    private static readonly string[] FrontendRequiredFields = ["guests"];
 
     /// <summary>Same list as <c>BACKEND_REQUIRED_GUEST_FIELDS</c> in the frontend contract test.</summary>
     private static readonly string[] FrontendRequiredGuestFields =
@@ -49,7 +49,7 @@ public class PublicCheckInSubmitContractTests
 
         Assert.NotNull(request);
         AssertValid(request);
-        Assert.True(request.GdprConsent);
+        Assert.False(request.MarketingConsent);
         Assert.Equal(2, request.Guests.Count);
         foreach (var guest in request.Guests)
             AssertValid(guest);

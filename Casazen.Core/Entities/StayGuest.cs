@@ -116,6 +116,12 @@ public class StayGuest : ITenantOwned
     [MaxLength(200)]
     public string? EnteredByUserId { get; set; }
 
+    /// <summary>
+    /// When the personal data of the row were erased (CO-15): anonymization or erasure of the booker, or
+    /// <c>Gdpr:Retention:AlloggiatiData</c> after the check-out. Kind and position stay, so the stay keeps its shape.
+    /// </summary>
+    public DateTime? AnonymizedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

@@ -193,7 +193,10 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
 
     [Theory]
     [InlineData("export", HttpStatusCode.OK)]
-    [InlineData("anonymize", HttpStatusCode.NoContent)]
+    // CO-15 (A5-12, art. 17.3.b GDPR): guestB has an open booking (seeded below), so its Alloggiati communication is
+    // still owed and the anonymization is refused, not skipped by the tenant check. The 409 (not 404) is the proof the
+    // request reached the caller's own guest.
+    [InlineData("anonymize", HttpStatusCode.Conflict)]
     [InlineData("consent", HttpStatusCode.NoContent)]
     public async Task GdprEndpoint_OwnGuest_SucceedsOnlyOnCallerGuest(string operation, HttpStatusCode expected)
     {
@@ -452,7 +455,8 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         "export" => client.GetAsync($"/api/gdpr/guests/{guestId}/export"),
         "delete" => client.DeleteAsync($"/api/gdpr/guests/{guestId}?reason=test"),
         "anonymize" => client.PostAsync($"/api/gdpr/guests/{guestId}/anonymize", null),
-        _ => client.PutAsJsonAsync($"/api/gdpr/guests/{guestId}/consent", new { marketingConsent = true }),
+        // A5-14: the host can only withdraw the marketing consent, never grant it; a withdrawal note is required.
+        _ => client.PutAsJsonAsync($"/api/gdpr/guests/{guestId}/consent", new { marketingConsent = false, note = "test" }),
     };
 
     private static async Task AssertGuestNotFoundAsync(HttpResponseMessage response)

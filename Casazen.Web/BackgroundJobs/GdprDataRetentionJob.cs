@@ -1,37 +1,24 @@
-using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Hangfire;
-using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.BackgroundJobs;
 
-public class GdprDataRetentionJob(
-    AppDbContext context,
-    IGdprService gdprService,
-    ILogger<GdprDataRetentionJob> logger)
+/// <summary>
+/// Nightly retention of guest data per category (CO-15, docs/runbooks/gdpr.md): <see cref="IGuestDataRetentionService"/>
+/// applies each configured <c>Gdpr:Retention:*</c> period to every org and skips, with a warning, the categories without
+/// a period and a cited source. Idempotent: a second run the same night changes nothing.
+/// </summary>
+public class GdprDataRetentionJob(IGuestDataRetentionService retentionService, ILogger<GdprDataRetentionJob> logger)
 {
+    public const string RecurringJobId = "gdpr-data-retention";
+
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
-        // System job: no tenant filter, every org's guests. Each guest is anonymized within its own org (TN-1).
-        var expiredGuests = await context.Guests
-            .Where(g => !g.IsDeleted && g.DataRetentionUntil < DateTime.UtcNow)
-            .Select(g => new { g.Id, g.OrgId })
-            .ToListAsync();
-
-        logger.LogInformation("GDPR retention job: {Count} guest(s) past retention period", expiredGuests.Count);
-
-        foreach (var guest in expiredGuests)
-        {
-            try
-            {
-                await gdprService.AnonymizeGuestDataAsync(guest.OrgId, guest.Id);
-            }
-            catch (NotFoundException)
-            {
-                logger.LogInformation("GDPR retention job: guest {GuestId} no longer exists", guest.Id);
-            }
-        }
+        var result = await retentionService.ApplyAsync();
+        logger.LogInformation(
+            "GDPR retention job done: {Configured} of {Total} categories configured",
+            result.Categories.Count(c => c.Configured),
+            result.Categories.Count);
     }
 }

@@ -13,8 +13,6 @@ public class ComplianceOptions
 
     public int CheckoutReminderHourLocal { get; set; } = 20;
 
-    public int GdprRetentionYears { get; set; } = 7;
-
     /// <summary>
     /// Documents required for the activation, per region. No safety certificate: D.L. 145/2023 art. 13-ter asks for none
     /// (proofs are optional on the safety checklist, CO-07).

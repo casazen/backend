@@ -35,7 +35,12 @@ public interface IGuestService
     /// the guest is not in the org and <c>DomainConflictException</c> (<c>guest_has_open_bookings</c>)
     /// while one of its bookings is still open.
     /// </summary>
-    Task<GuestDeletionResult> DeleteGuestAsync(Guid orgId, Guid id, CancellationToken cancellationToken = default);
+    /// <remarks><paramref name="actorUserId"/> is the host who asked, recorded in the GDPR audit (CO-15).</remarks>
+    Task<GuestDeletionResult> DeleteGuestAsync(
+        Guid orgId,
+        Guid id,
+        string? actorUserId = null,
+        CancellationToken cancellationToken = default);
 }
 
 public enum GuestDeletionResult

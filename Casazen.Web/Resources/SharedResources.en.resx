@@ -372,8 +372,17 @@
   <data name="CheckInDocumentTypeInvalid" xml:space="preserve">
     <value>Invalid document type.</value>
   </data>
-  <data name="CheckInGdprConsentRequired" xml:space="preserve">
-    <value>You must consent to data processing to complete the check-in.</value>
+  <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
+    <value>Consent to promotional communications is not available for this check-in.</value>
+  </data>
+  <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
+    <value>Only the guest can give the marketing consent, on the check-in portal. The host can only withdraw it on the guest's documented request.</value>
+  </data>
+  <data name="GdprMarketingWithdrawalNoteRequired" xml:space="preserve">
+    <value>Describe the guest's request (date and channel) to withdraw the marketing consent.</value>
+  </data>
+  <data name="GdprGuestHasOpenBookings" xml:space="preserve">
+    <value>The guest has ongoing or future bookings: their data cannot be erased or anonymized until those are over or cancelled.</value>
   </data>
   <data name="CheckInAlreadySubmitted" xml:space="preserve">
     <value>The check-in has already been completed.</value>

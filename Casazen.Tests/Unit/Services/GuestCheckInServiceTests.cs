@@ -1,11 +1,13 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -182,7 +184,6 @@ public class GuestCheckInServiceTests
         var guest = await seed.Db.Guests.FindAsync(seed.GuestId);
         Assert.Equal("YA1234567", guest!.DocumentNumber);
         Assert.Equal(Gender.Male, guest.Gender);
-        Assert.Equal(DateTime.UtcNow.Year + 7, guest.DataRetentionUntil.Year);
 
         // CO-12: the stay's guest line, linked to the booker.
         var stayGuest = await seed.Db.StayGuests.SingleAsync();
@@ -305,7 +306,7 @@ public class GuestCheckInServiceTests
 
         var snapshot = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == snapshotGuestId);
         Assert.Equal("YA1234567", snapshot.DocumentNumber);
-        Assert.NotNull(snapshot.ConsentDate);
+        Assert.Equal(Gender.Male, snapshot.Gender);
 
         var submittedBooking = await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
         Assert.Equal(snapshotGuestId, submittedBooking.GuestId);
@@ -371,19 +372,106 @@ public class GuestCheckInServiceTests
     }
 
     [Fact]
-    public async Task Submit_GdprConsentFalse_ReturnsGdprConsentValidationError()
+    public async Task Submit_NoConsentTicked_CompletesTheCheckInBecauseAlloggiatiIsALegalObligation()
     {
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
-        _ = await svc.GetSessionByTokenAsync(token);
 
-        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest { GdprConsent = false });
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.False(guest.MarketingConsent);
+        Assert.Null(guest.DataProcessingConsentDate);
+        Assert.Empty(await seed.Db.GuestConsentRecords.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Submit_MarketingConsentWithoutConfiguredVersion_ReturnsMarketingUnavailableAndSavesNothing()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsent = true;
+
+        var result = await svc.SubmitAsync(token, request);
 
         Assert.False(result.Success);
-        Assert.False(result.Duplicate);
-        AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.GdprConsent), CheckInValidationKeys.GdprConsentRequired);
+        AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.MarketingConsent), CheckInValidationKeys.MarketingConsentUnavailable);
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.False(guest.MarketingConsent);
+        Assert.Equal(string.Empty, guest.DocumentNumber);
     }
+
+    [Fact]
+    public async Task Submit_VersionsConfiguredAndMarketingTicked_RecordsNoticeAndConsentWithVersionTimeAndIp()
+    {
+        await using var seed = await SeedAsync();
+        var now = new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero);
+        var svc = NewServiceWithVersions(seed.Db, now);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsent = true;
+        request.ConsentIpAddress = "203.0.113.7";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success);
+        var records = await seed.Db.GuestConsentRecords.AsNoTracking().OrderBy(r => r.Purpose).ToListAsync();
+        Assert.Collection(
+            records,
+            notice => Assert.Equal(
+                (GuestConsentPurpose.PrivacyNotice, GuestConsentAction.NoticePresented, "notice-v3", GuestConsentSource.GuestPortal, "203.0.113.7", now.UtcDateTime, seed.GuestId),
+                (notice.Purpose, notice.Action, notice.Version, notice.Source, notice.IpAddress, notice.RecordedAt, notice.GuestId)),
+            marketing => Assert.Equal(
+                (GuestConsentPurpose.Marketing, GuestConsentAction.Granted, "marketing-v2", "203.0.113.7", now.UtcDateTime),
+                (marketing.Purpose, marketing.Action, marketing.Version, marketing.IpAddress, marketing.RecordedAt)));
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.True(guest.MarketingConsent);
+        Assert.Equal(now.UtcDateTime, guest.MarketingConsentDate);
+    }
+
+    [Fact]
+    public async Task Submit_MarketingUnticked_KeepsAConsentGivenBefore()
+    {
+        await using var seed = await SeedAsync();
+        var grantedAt = new DateTime(2026, 5, 1, 8, 0, 0, DateTimeKind.Utc);
+        var booker = await seed.Db.Guests.SingleAsync(g => g.Id == seed.GuestId);
+        booker.MarketingConsent = true;
+        booker.MarketingConsentDate = grantedAt;
+        await seed.Db.SaveChangesAsync();
+        var svc = NewServiceWithVersions(seed.Db, new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero));
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.True(guest.MarketingConsent);
+        Assert.Equal(grantedAt, guest.MarketingConsentDate);
+        Assert.DoesNotContain(await seed.Db.GuestConsentRecords.ToListAsync(), r => r.Purpose == GuestConsentPurpose.Marketing);
+    }
+
+    [Fact]
+    public async Task GetPublicView_VersionsConfigured_ExposesThemToThePortal()
+    {
+        await using var seed = await SeedAsync();
+        var svc = NewServiceWithVersions(seed.Db, DateTimeOffset.UtcNow);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.Equal(("notice-v3", "marketing-v2"), (view!.PrivacyNoticeVersion, view.MarketingConsentVersion));
+    }
+
+    private static GuestCheckInService NewServiceWithVersions(AppDbContext db, DateTimeOffset now) =>
+        new(
+            db,
+            NullLogger<GuestCheckInService>.Instance,
+            timeProvider: new FixedTimeProvider(now),
+            gdprOptions: Options.Create(new GdprOptions { PrivacyNoticeVersion = " notice-v3 ", MarketingConsentVersion = "marketing-v2" }));
 
     [Fact]
     public async Task Submit_MissingGender_ReturnsFieldRequiredForGender()
@@ -624,7 +712,6 @@ public class GuestCheckInServiceTests
                 DocumentIssuePlaceName = "Roma",
             },
         ],
-            GdprConsent = true,
         };
 
     private static StayGuestInput Member(string firstName, string? documentNumber = null, DateTime? dateOfBirth = null) => new()

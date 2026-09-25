@@ -293,6 +293,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
         services.AddScoped<IGdprService, GdprService>();
+        // CO-15: guest data rights and retention per category (docs/runbooks/gdpr.md); no period has a default.
+        services.AddScoped<GuestDataEraser>();
+        services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
+        services.AddOptions<Casazen.Core.Options.GdprOptions>()
+            .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
