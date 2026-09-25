@@ -413,6 +413,14 @@ user ids, counts; warning level when applied, information in a dry run), and a s
 - [ ] Self-serve registration with the email of an existing supplier (another case): 409 with *Esiste già un profilo
       fornitore con questa email…*; no second profile.
 
+## 10. Calendar sync (iCal) — SU-15
+
+The supplier's iCal feed (activation wizard and *Sincronizza calendario*) is synced in Hangfire, never inside the
+request: saving the URL answers 202 `Syncing` and queues the first sync, "Sincronizza ora" queues another one, the
+15-minute job `ical-supplier-sync` also covers suppliers still in activation (`Pending`). The sync frees only the days
+of the feed (`SupplierAvailability.Source`), never those the supplier set by hand. API, rules, migration of the
+existing days and checks: [ical.md](ical.md#supplier-calendars-su-15).
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the

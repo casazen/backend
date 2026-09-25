@@ -19,7 +19,11 @@ public static class ICalFeedErrorCodes
     /// <summary>The label has control characters. HTTP 400.</summary>
     public const string InvalidLabel = "ical_feed_invalid_label";
 
+    /// <summary>"Sync now" of a supplier without an iCal feed (SU-15). HTTP 422.</summary>
+    public const string SupplierNoFeed = "ical_supplier_no_feed";
+
     public const string NotFoundMessageKey = "ICalFeedNotFound";
+    public const string SupplierNoFeedMessageKey = "ICalSupplierNoFeed";
     public const string LimitReachedMessageKey = "ICalFeedLimitReached";
     public const string DuplicateMessageKey = "ICalFeedDuplicate";
     public const string InvalidLabelMessageKey = "ICalFeedInvalidLabel";

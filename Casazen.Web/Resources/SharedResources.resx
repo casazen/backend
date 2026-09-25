@@ -408,6 +408,9 @@
   <data name="ICalFeedInvalidLabel" xml:space="preserve">
     <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
   </data>
+  <data name="ICalSupplierNoFeed" xml:space="preserve">
+    <value>Non hai ancora collegato un calendario iCal: incolla prima l'URL del tuo calendario.</value>
+  </data>
   <data name="ICalExportBusySummary" xml:space="preserve">
     <value>Occupato</value>
     <comment>SUMMARY of every event of the public iCal export read by the OTAs (PC-12): neutral, never a name.</comment>

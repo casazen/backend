@@ -102,7 +102,8 @@ public interface ISupplierService
 
     /// <summary>
     /// Updates availability entries for the supplier (AC8).
-    /// Returns the number of rows written.
+    /// Returns the number of rows written. A day whose value changes becomes
+    /// <see cref="SupplierAvailabilitySource.Manual"/>; a day sent with its current value keeps its source (SU-15).
     /// </summary>
     Task<int> UpdateAvailabilityAsync(
         Guid orgId,
@@ -184,7 +185,8 @@ public interface ISupplierService
 
     /// <summary>
     /// Updates calendar sync settings for a supplier profile. Self-contained save — does not
-    /// depend on <see cref="UpdateProfileAsync"/> side-effects.
+    /// depend on <see cref="UpdateProfileAsync"/> side-effects. An iCal URL leaves the sync state
+    /// <see cref="SupplierCalendarSyncStatus.Syncing"/>: the caller queues its first sync in a Hangfire job (SU-15).
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>ical_invalid_url</c>: <paramref name="icalFeedUrl"/> is not an external https URL the server may download.
@@ -268,6 +270,7 @@ public record SupplierDashboard(
     string? IcalFeedUrl,
     DateTime? CalendarLastSyncAt,
     string? CalendarSyncError,
+    string CalendarSyncStatus,
     DateTime LastUpdated);
 
 /// <summary>Outcome of <see cref="ISupplierService.FixOrphanedSupplierOrgsAsync"/>. Ids and counts only, no personal data.</summary>
