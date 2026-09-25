@@ -1063,4 +1063,13 @@
   <data name="ServiceRequestStateChanged" xml:space="preserve">
     <value>La richiesta è stata appena modificata da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
   </data>
+  <data name="FiscalShortStayThresholdExceeded" xml:space="preserve">
+    <value>Nel {1} questo contribuente destinerebbe alla locazione breve più di {0} appartamenti: oltre questa soglia l'attività si presume d'impresa e non si possono scegliere la cedolare secca né l'IRPEF ordinaria senza partita IVA. Verifica il regime con il tuo commercialista.</value>
+  </data>
+  <data name="FiscalTaxpayerCodeInvalid" xml:space="preserve">
+    <value>Il codice fiscale del titolare non è valido: servono 16 lettere e cifre (persona fisica).</value>
+  </data>
+  <data name="FiscalReducedRateUnitTaken" xml:space="preserve">
+    <value>Per il {0} questo contribuente ha già un altro immobile con la cedolare al 21%: l'aliquota ridotta vale per una sola unità. Assegna prima il 26% a uno dei due immobili.</value>
+  </data>
 </root>

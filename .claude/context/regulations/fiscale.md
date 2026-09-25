@@ -225,6 +225,27 @@ decidere con il commercialista, per esempio addebitare IVA come B2C finché la v
 - Aggiungere il regime `IrpefOrdinaria` accanto a `CedolareSecca21` / `CedolareSecca26` / `Impresa`.
 - Un solo immobile al 21% per contribuente e per anno.
 
+**Stato implementazione CO-18 (2026-09-24)** — `Casazen.Infrastructure/Services/FiscalService.cs`, valori e fonti in
+`ShortStayFiscal` (`appsettings.json`, `ShortStayFiscalOptions`):
+- **Titolare fiscale**: `Property.TaxpayerFiscalCode` (codice fiscale, 16 caratteri; mai serializzato con l'immobile, solo
+  mascherato), impostato con `PUT /api/fiscal/properties/{id}/taxpayer`. Senza codice vale il profilo fiscale dell'org.
+- **Soglia (C3, C4)**: per titolare e per anno, contando solo gli appartamenti con almeno un soggiorno confermato di al
+  massimo `MaxStayNights` notti con check-in nell'anno (anche se l'immobile è poi disattivato). Oltre `MaxApartmentsPerTaxpayer`
+  (dal `ThresholdFromTaxYear`): avviso nello snapshot (`taxpayers[].thresholdExceeded`, `requiresPartitaIva`) e 409
+  `fiscal_short_stay_threshold_exceeded` su cedolare 21/26 e IRPEF ordinaria; resta assegnabile solo un regime d'impresa.
+  Per il 409 contano anche gli appartamenti del titolare già dichiarati brevi per l'anno (cedolare o IRPEF ordinaria
+  assegnata) e quello in assegnazione, anche senza prenotazioni.
+  Il conteggio resta **dentro l'org**: sommare gli immobili di altre org con lo stesso codice fiscale richiede un'identità
+  del titolare verificata (oggi il codice è dichiarato dall'host), altrimenti un'org leggerebbe dati di un'altra.
+- **Cedolare (C2)**: 26% generale, 21% su una sola unità per titolare e anno; designare una nuova unità al 21% riporta la
+  precedente al 26%. Aliquote in configurazione, esposte per immobile (`cedolareRate`).
+- **Ritenuta (C1, C7, C10)**: calcolata di default solo per soggiorni OTA di al massimo `MaxStayNights` notti e titolare non
+  in regime d'impresa (regime assegnato Ordinario/Forfettario o soglia superata). La sola P.IVA non la esclude. Resta
+  possibile registrare la ritenuta effettivamente subita (importo manuale o `applyOtaWithholding=true`).
+- **IRPEF ordinaria (C11)**: regime `IrpefOrdinaria` (valore 4), selezionabile senza P.IVA entro la soglia. Imposta non
+  calcolata: nota `irpef_ordinaria_not_computed` (calcolo a carico del contribuente o del commercialista).
+- Non implementati: comproprietà, stanze/porzioni, CasaZen sostituto d'imposta sul direct booking (punti 2-5 sotto).
+
 ### LT-04 — Affitti lunghi: registrazione del contratto
 
 | # | Regola | Stato | Fonte |

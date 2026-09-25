@@ -19,8 +19,34 @@ public class FiscalControllerIntegrationTests : IClassFixture<CasazenWebApplicat
     public async Task GetRegime_OneProperty_RecommendsCedolare21()
     {
         var owner = $"auth0|fiscal-{Guid.NewGuid():N}";
-        var org = await _factory.SeedOrgForOwnerAsync(owner);
-        await _factory.SeedPropertyAsync(owner);
+        var property = await _factory.SeedPropertyAsync(owner);
+        // Only apartments with short-term stays in the tax year count toward the threshold (CO-18, A5-22).
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Bookings.Add(new Booking
+            {
+                PropertyId = property.Id,
+                OrgId = property.OrgId,
+                Guest = new Guest
+                {
+                    OrgId = property.OrgId,
+                    FirstName = "Regime",
+                    LastName = "Guest",
+                    Email = $"regime-{Guid.NewGuid():N}@example.com",
+                    Country = "IT",
+                },
+                CheckInDate = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+                CheckOutDate = new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc),
+                NumberOfGuests = 1,
+                NumberOfAdults = 1,
+                Status = BookingStatus.Confirmed,
+                Source = BookingSource.Direct,
+                BasePrice = 300m,
+                TotalPrice = 300m,
+            });
+            await db.SaveChangesAsync();
+        }
 
         using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
         var response = await client.GetAsync("/api/fiscal/regime?taxYear=2026");
