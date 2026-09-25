@@ -186,7 +186,7 @@ public class GuestServiceTests
     }
 
     [Fact]
-    public async Task DeleteGuestAsync_GuestWithoutReferences_DeletesRow()
+    public async Task DeleteGuestAsync_GuestWithoutReferences_DeletesStoredFilesThenRow()
     {
         // Arrange
         var guestId = SetupGuestInOrg();
@@ -199,7 +199,12 @@ public class GuestServiceTests
         // Assert
         Assert.Equal(GuestDeletionResult.Deleted, result);
         _mockRepository.Verify(x => x.DeleteAsync(guestId), Times.Once);
-        _mockGdprService.Verify(x => x.DeleteGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        _mockGdprService.Verify(
+            x => x.EraseStoredFilesBeforeRemovalAsync(OrgId, guestId, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _mockGdprService.Verify(
+            x => x.EraseGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -216,7 +221,9 @@ public class GuestServiceTests
         // Assert
         Assert.Equal(GuestDeletionResult.Anonymized, result);
         _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
-        _mockGdprService.Verify(x => x.DeleteGuestDataAsync(OrgId, guestId, GuestService.HostDeletionReason), Times.Once);
+        _mockGdprService.Verify(
+            x => x.EraseGuestDataAsync(OrgId, guestId, GuestService.HostDeletionReason, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -232,7 +239,9 @@ public class GuestServiceTests
 
         Assert.Equal("guest_has_open_bookings", exception.Code);
         _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
-        _mockGdprService.Verify(x => x.DeleteGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        _mockGdprService.Verify(
+            x => x.EraseGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

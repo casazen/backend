@@ -155,8 +155,8 @@ guest check-in goes through the portal of CO-02 only (`/api/public/checkin/{toke
   answers `404 guest_document_scan_missing`. If an environment still has those files (a volume or a backup), the
   migration command above moves them to the private bucket.
 - **Scans uploaded after FD-07** are in the private bucket (`guest-documents/{orgId}/{guestId}/…`) and stay downloadable
-  by the host through `GET /api/guests/{id}/document-scan`. Deleting the object at the end of retention or on erasure
-  is part of the GDPR retention work (CO-15, A5-12), not of CO-16.
+  by the host through `GET /api/guests/{id}/document-scan`. The object is deleted by the erasure or anonymization of
+  the guest and by the retention categories `DocumentScans` / `AlloggiatiData` (CO-15, runbook `gdpr.md`).
 
 ## 6. Verification after deploy
 

@@ -310,9 +310,32 @@ public class FieldEncryptionPostgresTests
             DocumentNumber = StayDocumentNumber,
             DocumentIssuePlaceName = StayIssuePlace,
         };
-        db.AddRange(org, property, guest, empty, booking, stay);
-        if (!credentialsBySql)
+        if (credentialsBySql)
         {
+            // CO-15: the model's "Guests" and "StayGuests" no longer match the table at this point ("AlloggiatiDataErasedAt"
+            // and "AnonymizedAt" do not exist yet, "DataRetentionUntil" still required on Guests): write them by SQL with
+            // the columns before CO-15, like the credentials below are written with the columns before CO-14. The guests
+            // must exist before the booking and the stay guest, which have a foreign key to them.
+            db.AddRange(org, property);
+            await db.SaveChangesAsync();
+            await InsertGuestBeforeCo15Async(db, guest);
+            await InsertGuestBeforeCo15Async(db, empty);
+            // CO-21 (unrelated to CO-15) added 4 nullable Bookings columns after this migration point too. They have no
+            // constraint of their own, so it is simplest to create them here just for the insert below and drop them
+            // again right after: the real migration (already ahead in the migrations list) recreates them properly.
+            await AddBookingsColumnsBeforeCo21Async(db);
+            db.Add(booking);
+            await db.SaveChangesAsync();
+            await DropBookingsColumnsBeforeCo21Async(db);
+            await InsertStayGuestBeforeCo15Async(db, stay);
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO "PropertyQuesturaCredentials" ("Id", "PropertyId", "Username", "PasswordEncrypted", "WsKey", "CreatedAt")
+                VALUES ({Guid.NewGuid()}, {property.Id}, {Username}, {Password}, {WsKey}, {DateTime.UtcNow})
+                """);
+        }
+        else
+        {
+            db.AddRange(org, property, guest, empty, booking, stay);
             db.PropertyQuesturaCredentials.Add(new PropertyQuesturaCredentials
             {
                 PropertyId = property.Id,
@@ -321,20 +344,73 @@ public class FieldEncryptionPostgresTests
                 Password = Password,
                 WsKey = WsKey,
             });
-        }
-
-        await db.SaveChangesAsync();
-
-        if (credentialsBySql)
-        {
-            await db.Database.ExecuteSqlAsync($"""
-                INSERT INTO "PropertyQuesturaCredentials" ("Id", "PropertyId", "Username", "PasswordEncrypted", "WsKey", "CreatedAt")
-                VALUES ({Guid.NewGuid()}, {property.Id}, {Username}, {Password}, {WsKey}, {DateTime.UtcNow})
-                """);
+            await db.SaveChangesAsync();
         }
 
         return new Seed(org.Id, property.Id, guest.Id, empty.Id, stay.Id);
     }
+
+    /// <summary>
+    /// A guest row as the table accepted it before CO-15 (no "AlloggiatiDataErasedAt" column yet, "DataRetentionUntil"
+    /// still required, matching the entity's own former default of created-at + 7 years): used only for the "before"
+    /// seed above, so the entity's other columns keep going through the model.
+    /// </summary>
+    private static Task InsertGuestBeforeCo15Async(AppDbContext db, Guest guest) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Guests" (
+                "Id", "OrgId", "FirstName", "LastName", "Email", "PhoneNumber", "Address", "City", "PostalCode", "Country",
+                "DateOfBirth", "PlaceOfBirth", "Nationality", "DocumentType", "DocumentNumber", "DocumentIssueDate",
+                "DocumentExpiryDate", "DocumentIssuingCountry", "DocumentScanUrl", "DataProcessingConsentDate",
+                "ConsentIpAddress", "DataRetentionExpiryDate", "ErasureRequested", "ErasureRequestedDate",
+                "DataAnonymizedDate", "Notes", "Gender", "ConsentDate", "ConsentVersion", "MarketingConsent",
+                "MarketingConsentDate", "DataRetentionUntil", "DataProcessingPurpose", "IsDeleted", "DeletedAt",
+                "DeletionReason", "CreatedAt", "UpdatedAt")
+            VALUES ({guest.Id}, {guest.OrgId}, {guest.FirstName}, {guest.LastName}, {guest.Email}, {guest.PhoneNumber},
+                {guest.Address}, {guest.City}, {guest.PostalCode}, {guest.Country}, {guest.DateOfBirth}, {guest.PlaceOfBirth},
+                {guest.Nationality}, {(int?)guest.DocumentType}, {guest.DocumentNumber}, {guest.DocumentIssueDate},
+                {guest.DocumentExpiryDate}, {guest.DocumentIssuingCountry}, {guest.DocumentScanUrl},
+                {guest.DataProcessingConsentDate}, {guest.ConsentIpAddress}, {guest.DataRetentionExpiryDate},
+                {guest.ErasureRequested}, {guest.ErasureRequestedDate}, {guest.DataAnonymizedDate}, {guest.Notes},
+                {(int?)guest.Gender}, {guest.ConsentDate}, {guest.ConsentVersion}, {guest.MarketingConsent},
+                {guest.MarketingConsentDate}, {guest.CreatedAt.AddYears(7)}, {guest.DataProcessingPurpose}, {guest.IsDeleted},
+                {guest.DeletedAt}, {guest.DeletionReason}, {guest.CreatedAt}, {guest.UpdatedAt})
+            """);
+
+    /// <summary>
+    /// Adds the 4 nullable "Bookings" columns of the CO-21 migration (<c>AddOtaStayFromICalBlock</c>), so the
+    /// model-based insert of a booking works at this "before CO-15" migration point too. Paired with
+    /// <see cref="DropBookingsColumnsBeforeCo21Async"/>.
+    /// </summary>
+    private static Task AddBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Bookings" ADD COLUMN "ChannelLabel" character varying(60);
+        ALTER TABLE "Bookings" ADD COLUMN "ICalFeedId" uuid;
+        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewRaisedAt" timestamp with time zone;
+        ALTER TABLE "Bookings" ADD COLUMN "OtaReviewReason" integer;
+        """);
+
+    private static Task DropBookingsColumnsBeforeCo21Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Bookings" DROP COLUMN "ChannelLabel";
+        ALTER TABLE "Bookings" DROP COLUMN "ICalFeedId";
+        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewRaisedAt";
+        ALTER TABLE "Bookings" DROP COLUMN "OtaReviewReason";
+        """);
+
+    /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>
+    private static Task InsertStayGuestBeforeCo15Async(AppDbContext db, StayGuest stay) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "StayGuests" (
+                "Id", "BookingId", "OrgId", "GuestId", "Position", "Type", "FirstName", "LastName", "Gender",
+                "DateOfBirth", "BornInItaly", "BirthComuneCode", "BirthComuneName", "BirthProvince", "BirthCountryCode",
+                "BirthCountryName", "CitizenshipCode", "CitizenshipName", "DocumentType", "DocumentTypeCode",
+                "DocumentNumber", "DocumentIssuePlaceCode", "DocumentIssuePlaceName", "DataSource", "EnteredByUserId",
+                "CreatedAt", "UpdatedAt")
+            VALUES ({stay.Id}, {stay.BookingId}, {stay.OrgId}, {stay.GuestId}, {stay.Position}, {(int)stay.Type},
+                {stay.FirstName}, {stay.LastName}, {(int?)stay.Gender}, {stay.DateOfBirth}, {stay.BornInItaly},
+                {stay.BirthComuneCode}, {stay.BirthComuneName}, {stay.BirthProvince}, {stay.BirthCountryCode},
+                {stay.BirthCountryName}, {stay.CitizenshipCode}, {stay.CitizenshipName}, {(int?)stay.DocumentType},
+                {stay.DocumentTypeCode}, {stay.DocumentNumber}, {stay.DocumentIssuePlaceCode}, {stay.DocumentIssuePlaceName},
+                {(int)stay.DataSource}, {stay.EnteredByUserId}, {stay.CreatedAt}, {stay.UpdatedAt})
+            """);
 
     private static Guest NewGuest(Guid orgId, string documentNumber) => new()
     {

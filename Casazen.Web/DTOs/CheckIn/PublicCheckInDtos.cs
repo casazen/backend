@@ -38,6 +38,14 @@ public class PublicCheckInContextResponse
     /// <summary>Official Alloggiati tables imported: the form offers their codes (e.g. <c>Comuni</c>, <c>Stati</c>, <c>Documenti</c>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<AlloggiatiCodeTable>? AvailableCodeTables { get; set; }
+
+    /// <summary>Version of the privacy notice (art. 13 GDPR) the portal shows; absent when not configured (CO-15).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PrivacyNoticeVersion { get; set; }
+
+    /// <summary>Version of the optional marketing consent text; absent when the consent is not offered (CO-15).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MarketingConsentVersion { get; set; }
 }
 
 /// <summary>A guest on file. The document number is never returned in full.</summary>
@@ -101,10 +109,10 @@ public class PublicCheckInSubmitRequest
     [Required(ErrorMessage = CheckInValidationKeys.FieldRequired)]
     public List<StayGuestSubmitDto> Guests { get; set; } = [];
 
-    /// <summary>Must be true (checked by the controller: <c>[Required]</c> cannot reject <c>false</c>).</summary>
-    [Required]
-    public bool GdprConsent { get; set; }
-
+    /// <summary>
+    /// Optional marketing consent (CO-15): accepted only when the context offered it (<c>marketingConsentVersion</c>). There
+    /// is no consent for the Alloggiati registration: it is a legal obligation and the privacy notice is only shown (A5-15).
+    /// </summary>
     public bool MarketingConsent { get; set; }
 }
 
