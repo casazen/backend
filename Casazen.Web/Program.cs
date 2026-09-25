@@ -172,8 +172,6 @@ builder.Services.Configure<Casazen.Core.Options.GuestCheckInOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.GuestCheckInOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
-builder.Services.Configure<Casazen.Core.Options.CedolareAdvisoryOptions>(
-    builder.Configuration.GetSection(Casazen.Core.Options.CedolareAdvisoryOptions.SectionName));
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 
 // API
