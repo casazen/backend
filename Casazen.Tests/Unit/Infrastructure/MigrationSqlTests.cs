@@ -131,6 +131,24 @@ public class MigrationSqlTests
     }
 
     [Fact]
+    public void RemoveLegacyBookingCheckInToken_DropsOnlyTheBookingTokenColumnsAndIndex()
+    {
+        // CO-16 (A5-29): the token of the removed /api/checkin portal was stored in clear on the booking.
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var index = keys.FindIndex(k => k.EndsWith("RemoveLegacyBookingCheckInToken", StringComparison.Ordinal));
+        Assert.True(index > 0);
+
+        var script = db.GetService<IMigrator>().GenerateScript(fromMigration: keys[index - 1], toMigration: keys[index]);
+
+        Assert.Contains("DROP INDEX \"IX_Bookings_CheckInToken\"", script);
+        Assert.Contains("ALTER TABLE \"Bookings\" DROP COLUMN \"CheckInToken\"", script);
+        Assert.Contains("ALTER TABLE \"Bookings\" DROP COLUMN \"CheckInTokenExpiresAt\"", script);
+        // The supplier job QR token is another feature (D12), not touched here.
+        Assert.DoesNotContain("SupplierJobs", script);
+    }
+
+    [Fact]
     public void AddAlloggiatiCheckInMvp_ExistsAfterConnectFields()
     {
         using var db = NewNpgsqlContext();

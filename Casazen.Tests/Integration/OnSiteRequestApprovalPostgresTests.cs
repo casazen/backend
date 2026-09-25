@@ -57,7 +57,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(BookingStatus.Pending, stored.Status);
         Assert.NotEqual(BookingStatus.Confirmed, stored.Status);
         Assert.Null(stored.GuestEmailVerifiedAt);
-        Assert.Null(stored.CheckInToken);
         Assert.Equal(PaymentMethod.CashOnArrival, Assert.Single(stored.Payments).Method);
 
         // The dates are held on the booking site (no second request for them)...
@@ -101,7 +100,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(JsonValueKind.Null, body.GetProperty("onSiteRequestState").ValueKind);
         var stored = await LoadBookingAsync(bookingId);
         Assert.Equal(BookingStatus.Confirmed, stored.Status);
-        Assert.NotNull(stored.CheckInToken);
         Assert.Null(stored.RequestExpiresAt);
         Assert.Contains($"UID:booking-{bookingId}", await IcsAsync(exportToken));
         // BK-10: the standard confirmation, "pay at the property"; the host who accepted gets no "new booking" email.
