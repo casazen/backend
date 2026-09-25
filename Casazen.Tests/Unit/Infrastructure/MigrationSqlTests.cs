@@ -149,6 +149,23 @@ public class MigrationSqlTests
     }
 
     [Fact]
+    public void RemoveSupplierJobs_DropsOnlyTheSupplierJobsTable()
+    {
+        // SU-11 (A4-15, decision D12): the supplier jobs with QR check-in are removed; the service requests stay.
+        using var db = NewNpgsqlContext();
+        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+        var index = keys.FindIndex(k => k.EndsWith("RemoveSupplierJobs", StringComparison.Ordinal));
+        Assert.True(index > 0);
+
+        var script = db.GetService<IMigrator>().GenerateScript(fromMigration: keys[index - 1], toMigration: keys[index]);
+
+        Assert.Contains("DROP TABLE \"SupplierJobs\"", script);
+        Assert.DoesNotContain("ServiceRequests", script);
+        Assert.DoesNotContain("ALTER TABLE", script);
+        Assert.Equal(1, script.Split("DROP ", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
     public void AddAlloggiatiCheckInMvp_ExistsAfterConnectFields()
     {
         using var db = NewNpgsqlContext();

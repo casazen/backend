@@ -422,7 +422,7 @@ Storage__S3__AccessKeyId=[S3 access key id]
 Storage__S3__SecretAccessKey=[S3 secret access key]
 Storage__S3__PublicBucket=casazen-<env>-public
 Storage__S3__PrivateBucket=casazen-<env>-private
-# Data Protection key-ring encryption (recommended, docs/runbooks/storage.md §4)
+# Data Protection key-ring encryption, REQUIRED outside Development/Testing (docs/runbooks/storage.md §4, docs/runbooks/encryption.md)
 DataProtection__CertificatePfxBase64=[base64 .pfx]
 DataProtection__CertificatePassword=[pfx password]
 ```
@@ -450,7 +450,7 @@ The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the te
 | `Email__Provider`, `Email__ApiKey`, `Email__FromAddress` (`Email__FromName` optional) | yes | startup fails | [`email.md`](runbooks/email.md) |
 | `App__PublicSiteBaseUrl` | yes (https, no default in code) | startup fails; also when `Seo__PublicBaseUrl` is set to a different value | [`seo-domain.md`](runbooks/seo-domain.md), [`email.md`](runbooks/email.md) |
 | `Storage__Provider=S3`, `Storage__PublicBaseUrl`, `Storage__S3__ServiceUrl`, `Storage__S3__Region`, `Storage__S3__AccessKeyId`, `Storage__S3__SecretAccessKey`, `Storage__S3__PublicBucket`, `Storage__S3__PrivateBucket` | yes | startup fails | [`storage.md`](runbooks/storage.md) |
-| `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | recommended | warning at startup: Data Protection keys stored unencrypted | [`storage.md`](runbooks/storage.md) §4 |
+| `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | **yes** | startup fails (CO-14): the key ring protects guest documents and Questura credentials | [`storage.md`](runbooks/storage.md) §4, [`encryption.md`](runbooks/encryption.md) |
 | `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe. **Wrong mode stops the startup**: a test key in Production, a live key anywhere else (PL-11) | this file § Stripe, [`stripe.md`](runbooks/stripe.md) § Environments |
 | `Billing__Prices__Starter`, `Billing__Prices__Pro`, `Billing__Prices__Scale` | Production: yes when `Stripe__SecretKey` is set; test: to sell the plans | Production: startup fails (missing, placeholder, not `price_…`, or the same id on two plans). Test: that plan answers 422 `billing_plan_unavailable`, ready `stripe: degraded` | [`stripe.md`](runbooks/stripe.md) § Environments |
 | `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |

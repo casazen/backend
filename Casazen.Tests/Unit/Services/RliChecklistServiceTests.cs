@@ -36,6 +36,82 @@ public class RliChecklistServiceTests
         var result = await sut.GetAsync(lease);
 
         Assert.DoesNotContain(result.Items, i => i.Key == RliChecklistKeys.QuesturaExtraEu);
+        Assert.Null(result.Questura);
+    }
+
+    [Fact]
+    public async Task GetAsync_ExtraEuTenantAfterReminderEmails_QuesturaItemNotDone()
+    {
+        // LT-07 (A7-08): the old notice ("extra-eu") and the new reminders are emails CasaZen sent, not the communication.
+        var lease = BuildLease(extraEu: true);
+        var sut = CreateSut(lease, events:
+        [
+            new LeaseEvent { LeaseContractId = lease.Id, EventType = LeaseEventType.DeadlineReminderSent, Payload = "extra-eu" },
+            new LeaseEvent { LeaseContractId = lease.Id, EventType = LeaseEventType.DeadlineReminderSent, Payload = "questura-delivery:2026-09-03" },
+        ]);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.False(result.Items.Single(i => i.Key == RliChecklistKeys.QuesturaExtraEu).Done);
+        Assert.Null(result.Questura!.CommunicationDate);
+    }
+
+    [Fact]
+    public async Task GetAsync_QuesturaCommunicationDeclared_ItemDoneWithDateAndReceipt()
+    {
+        var lease = BuildLease(extraEu: true);
+        lease.QuesturaCommunicationDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
+        lease.QuesturaCommunicationReceiptPath = $"leases/{Guid.NewGuid()}/{lease.Id}/questura/r.pdf";
+        var sut = CreateSut(lease);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.True(result.Items.Single(i => i.Key == RliChecklistKeys.QuesturaExtraEu).Done);
+        Assert.Equal(lease.QuesturaCommunicationDate, result.Questura!.CommunicationDate);
+        Assert.True(result.Questura.HasReceipt);
+    }
+
+    [Fact]
+    public async Task GetAsync_ExtraEuWithoutDeclaredDelivery_DeadlineIsStartDatePlus48Hours()
+    {
+        // Start 1/9 = delivery by default: the 48 hours end at the latest on 3/9. Today 2/9 in Rome (22:30 UTC of 1/9).
+        var lease = BuildLease(extraEu: true);
+        var sut = CreateSut(lease, clock: new FixedTimeProvider(new DateTimeOffset(2026, 9, 1, 22, 30, 0, TimeSpan.Zero)));
+
+        var result = await sut.GetAsync(lease);
+
+        var questura = result.Questura!;
+        Assert.Equal(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc), questura.DeliveryDate);
+        Assert.False(questura.DeliveryDateDeclared);
+        Assert.Equal(new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc), questura.Deadline);
+        Assert.Equal(1, questura.DaysRemaining);
+        Assert.False(questura.HasReceipt);
+    }
+
+    [Fact]
+    public async Task GetAsync_DeclaredDeliveryDate_DeadlineCountsFromIt()
+    {
+        var lease = BuildLease(extraEu: true);
+        lease.PropertyDeliveryDate = new DateTime(2026, 8, 28, 0, 0, 0, DateTimeKind.Utc);
+        var sut = CreateSut(lease, clock: new FixedTimeProvider(new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero)));
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.True(result.Questura!.DeliveryDateDeclared);
+        Assert.Equal(new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc), result.Questura.Deadline);
+        Assert.Equal(-2, result.Questura.DaysRemaining);
+    }
+
+    [Fact]
+    public async Task GetAsync_RejectedLeaseWithExtraEuTenant_NoQuesturaItem()
+    {
+        var lease = BuildLease(extraEu: true, LeaseStatus.Rejected);
+        var sut = CreateSut(lease);
+
+        var result = await sut.GetAsync(lease);
+
+        Assert.DoesNotContain(result.Items, i => i.Key == RliChecklistKeys.QuesturaExtraEu);
+        Assert.Null(result.Questura);
     }
 
     [Fact]
@@ -189,19 +265,23 @@ public class RliChecklistServiceTests
     }
 
     private static RliChecklistService CreateSut(
-        LeaseContract lease, bool providerAvailable = false, bool? flagOn = null, TimeProvider? clock = null)
+        LeaseContract lease,
+        bool providerAvailable = false,
+        bool? flagOn = null,
+        TimeProvider? clock = null,
+        IReadOnlyList<LeaseEvent>? events = null)
     {
         var auths = new Mock<ILeaseRegistrationAuthorizationRepository>();
         auths.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync((LeaseRegistrationAuthorization?)null);
-        var events = new Mock<ILeaseEventRepository>();
-        events.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync([]);
+        var eventRepository = new Mock<ILeaseEventRepository>();
+        eventRepository.Setup(r => r.GetByLeaseIdAsync(lease.Id)).ReturnsAsync(events?.ToList() ?? []);
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.RliProvider)).Returns(flagOn ?? providerAvailable);
         var provider = new Mock<ILeaseRegistrationProvider>();
         provider.SetupGet(p => p.IsConfigured).Returns(providerAvailable);
         return new RliChecklistService(
             auths.Object,
-            events.Object,
+            eventRepository.Object,
             Options.Create(new RliOptions { TosVersion = "2026-08-rli-delega-bozza", AttestationText = "bozza" }),
             flags.Object,
             provider.Object,

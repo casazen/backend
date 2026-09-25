@@ -275,6 +275,12 @@ public class CalendarSyncStatusDto
     public string? IcalFeedUrl { get; set; }
     public DateTime? CalendarLastSyncAt { get; set; }
 
+    /// <summary>
+    /// <c>None</c>, <c>Syncing</c> (a sync is queued or running: poll until it changes), <c>Success</c> or
+    /// <c>Failure</c> (SU-15). The calendar is synced only once it leaves <c>Syncing</c>.
+    /// </summary>
+    public string LastSyncStatus { get; set; } = "None";
+
     /// <summary>Stable code of the last sync error (<c>ical_unreachable</c>, <c>ical_too_large</c>, ...).</summary>
     public string? CalendarSyncErrorCode { get; set; }
 
@@ -321,7 +327,6 @@ public class SupplierDuplicateMergeDto
     public Guid KeeperOrgId { get; set; }
     public Guid DuplicateOrgId { get; set; }
     public int ServiceRequestsMoved { get; set; }
-    public int SupplierJobsMoved { get; set; }
     public int AvailabilityDaysMoved { get; set; }
 
     /// <summary>Days the keeper already had: the keeper's value is kept.</summary>
@@ -391,12 +396,43 @@ public class SupplierDashboardDto
 {
     public int ProfileCompletionPercent { get; set; }
     public string Status { get; set; } = string.Empty;
-    public int TotalJobs { get; set; }
-    public int CompletedJobs { get; set; }
-    public int UpcomingJobs { get; set; }
     public double AvailabilityRate { get; set; }
     public CalendarSyncStatusDto CalendarSyncStatus { get; set; } = new();
     public DateTime LastUpdated { get; set; }
+}
+
+/// <summary>
+/// Work KPIs of the caller's supplier org, from its service requests (SU-11, A4-15). <see cref="Completed"/> and
+/// <see cref="Rejected"/> count the period; <see cref="AwaitingAcceptance"/> and <see cref="Upcoming"/> are the open work
+/// now, whatever the period.
+/// </summary>
+public class SupplierKpisDto
+{
+    /// <summary><c>CurrentMonth</c>, <c>PreviousMonth</c>, <c>Last30Days</c> or <c>CurrentYear</c>.</summary>
+    public string Period { get; set; } = string.Empty;
+
+    /// <summary>First calendar date of the period in <see cref="TimeZone"/> (included).</summary>
+    public DateOnly From { get; set; }
+
+    /// <summary>Last calendar date of the period in <see cref="TimeZone"/> (included).</summary>
+    public DateOnly To { get; set; }
+
+    public string TimeZone { get; set; } = string.Empty;
+
+    /// <summary>Requests completed in the period (paid ones included, by completion date).</summary>
+    public int Completed { get; set; }
+
+    /// <summary>Requests rejected by the supplier in the period.</summary>
+    public int Rejected { get; set; }
+
+    /// <summary>Requests waiting to be taken (<c>Richiesto</c>).</summary>
+    public int AwaitingAcceptance { get; set; }
+
+    /// <summary>Requests taken and not completed yet (<c>PresoInCarico</c>, <c>InCorso</c>).</summary>
+    public int Upcoming { get; set; }
+
+    /// <summary>Every request ever assigned to the supplier org.</summary>
+    public int TotalRequests { get; set; }
 }
 
 // ─── Photo Upload ────────────────────────────────────────────────────────────

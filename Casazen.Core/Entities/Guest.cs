@@ -53,14 +53,17 @@ public class Guest : ITenantOwned
 
     public GuestDocumentType? DocumentType { get; set; }
 
-    [MaxLength(50)]
+    /// <summary>
+    /// Identity document number. Encrypted at rest (CO-14, <c>EncryptedColumns</c>): the column is <c>text</c> because
+    /// the payload is longer than the value; the length is checked on input (check-in portal, Alloggiati form).
+    /// </summary>
     public string DocumentNumber { get; set; } = string.Empty;
 
     public DateTime? DocumentIssueDate { get; set; }
 
     public DateTime? DocumentExpiryDate { get; set; }
 
-    [MaxLength(100)]
+    /// <summary>Place (comune or state) that issued the document. Encrypted at rest like <see cref="DocumentNumber"/>.</summary>
     public string DocumentIssuingCountry { get; set; } = string.Empty;
 
     [MaxLength(500)]

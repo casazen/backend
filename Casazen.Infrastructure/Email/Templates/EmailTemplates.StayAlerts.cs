@@ -85,8 +85,8 @@ public static partial class EmailTemplates
             : builder.Button("HostBookingConfirmed_Cta", bookingUrl).LinkFallback("Booking_LinkFallback", bookingUrl);
 
     /// <summary>
-    /// Push text of an Alloggiati stay alert: property name and check-in date. The check-out reminder keeps the push of
-    /// <see cref="IPushNotificationService.SendCheckoutReminderAsync"/>.
+    /// Push text of an Alloggiati stay alert: property name and check-in date. The check-out reminder has its own text
+    /// (<see cref="CheckoutReminderPush"/>).
     /// </summary>
     public static PushText StayAlertPush(CultureInfo culture, StayAlertKind kind, string propertyName, DateTime checkInDate)
     {

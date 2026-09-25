@@ -4,6 +4,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
+using Casazen.Tests.Unit.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -27,13 +28,9 @@ public class NotificationServiceTests
         await using var context = CreateContext();
         var bookingId = await SeedBookingAsync(context, contactEmail: "host@example.com");
         var emails = new RecordingEmailQueue();
-        var push = new Mock<IPushNotificationService>();
-        PushNotificationPayload? sent = null;
-        push.Setup(p => p.SendToBookingHostsAsync(It.IsAny<PushNotificationPayload>(), It.IsAny<CancellationToken>()))
-            .Callback<PushNotificationPayload, CancellationToken>((payload, _) => sent = payload)
-            .Returns(Task.CompletedTask);
+        var push = new RecordingPushQueue();
 
-        await CreateService(context, emails, push.Object).SendStayAlertAsync(new StayAlert(bookingId, kind));
+        await CreateService(context, emails, push).SendStayAlertAsync(new StayAlert(bookingId, kind));
 
         var email = Assert.Single(emails.Queued);
         Assert.Equal("host@example.com", email.To);
@@ -45,13 +42,17 @@ public class NotificationServiceTests
             $"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/app/short-rent/bookings/{bookingId:D}\"",
             email.Content.HtmlBody,
             StringComparison.Ordinal);
-        Assert.NotNull(sent);
+        var queued = Assert.Single(push.Queued);
+        var sent = queued.Payload;
         Assert.Equal(pushType, sent.Type);
         Assert.Equal(bookingId, sent.BookingId);
         Assert.Equal($"/bookings/{bookingId}", sent.Route);
         Assert.Contains("Test Property", sent.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("Check-in incompleto", sent.Title, StringComparison.Ordinal);
-        push.Verify(p => p.SendCheckoutReminderAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(PushAudience.BookingHosts(bookingId), queued.Audience);
+        Assert.Equal(
+            PushDeliveryKeys.StayAlert(bookingId, kind, (await context.Bookings.SingleAsync()).CheckInDate, 0),
+            queued.DeliveryKey);
     }
 
     [Fact]
@@ -60,16 +61,22 @@ public class NotificationServiceTests
         await using var context = CreateContext();
         var bookingId = await SeedBookingAsync(context, contactEmail: "host@example.com");
         var emails = new RecordingEmailQueue();
-        var push = new Mock<IPushNotificationService>();
+        var push = new RecordingPushQueue();
 
-        await CreateService(context, emails, push.Object)
+        await CreateService(context, emails, push)
             .SendStayAlertAsync(new StayAlert(bookingId, StayAlertKind.CheckoutReminder));
 
         var email = Assert.Single(emails.Queued);
         Assert.Equal("checkout-reminder", email.Template);
         Assert.StartsWith("Check-out di oggi - Test Property", email.Content.Subject, StringComparison.Ordinal);
-        push.Verify(p => p.SendCheckoutReminderAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
-        push.Verify(p => p.SendToBookingHostsAsync(It.IsAny<PushNotificationPayload>(), It.IsAny<CancellationToken>()), Times.Never);
+        var queued = Assert.Single(push.Queued);
+        Assert.Equal(PushTypes.CheckoutReminder, queued.Payload.Type);
+        Assert.Equal("Promemoria check-out", queued.Payload.Title);
+        Assert.Equal("Test Property: oggi è il giorno del check-out, completalo in CasaZen.", queued.Payload.Body);
+        Assert.Equal($"/bookings/{bookingId}/checkout", queued.Payload.Route);
+        Assert.Equal(
+            PushDeliveryKeys.StayAlert(bookingId, StayAlertKind.CheckoutReminder, (await context.Bookings.SingleAsync()).CheckOutDate, 0),
+            queued.DeliveryKey);
     }
 
     [Fact]
@@ -96,16 +103,12 @@ public class NotificationServiceTests
         var queue = new Mock<IEmailQueue>();
         queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()))
             .Returns((string? to, EmailContent _, string _) => !string.IsNullOrWhiteSpace(to));
-        var push = new Mock<IPushNotificationService>();
+        var push = new RecordingPushQueue();
 
-        await CreateService(context, queue.Object, push.Object)
+        await CreateService(context, queue.Object, push)
             .SendStayAlertAsync(new StayAlert(bookingId, StayAlertKind.AlloggiatiDeadlineApproaching));
 
-        push.Verify(
-            p => p.SendToBookingHostsAsync(
-                It.Is<PushNotificationPayload>(payload => payload.BookingId == bookingId),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+        Assert.Equal(bookingId, Assert.Single(push.Queued).Payload.BookingId);
     }
 
     [Fact]

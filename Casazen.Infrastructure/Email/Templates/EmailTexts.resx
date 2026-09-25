@@ -240,14 +240,26 @@
   <data name="RliDeadline_Responsibility" xml:space="preserve">
     <value>CasaZen non deposita in automatico. La responsabilità del filing resta al locatore / intermediario abilitato. Bozza da confermare con legale.</value>
   </data>
-  <data name="RliExtraEuNotice_Subject" xml:space="preserve">
-    <value>Questura / cessione di fabbricato — {0}</value>
+  <data name="QuesturaReminder_Subject" xml:space="preserve">
+    <value>Comunicazione alla Questura entro il {1} — {0}</value>
   </data>
-  <data name="RliExtraEuNotice_Body" xml:space="preserve">
-    <value>Il contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; include un conduttore extra-UE. Verificare la comunicazione in Questura (Art. 7 D.Lgs 286/1998).</value>
+  <data name="QuesturaReminder_Body" xml:space="preserve">
+    <value>Il contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; ha un conduttore extra-UE. Entro 48 ore dalla consegna dell'immobile (&lt;strong&gt;{1}&lt;/strong&gt;) il locatore deve comunicarlo per iscritto all'autorità locale di pubblica sicurezza (art. 7 D.Lgs. 286/1998). Le 48 ore scadono al più tardi il &lt;strong&gt;{2}&lt;/strong&gt;. La registrazione del contratto non sostituisce questa comunicazione.</value>
   </data>
-  <data name="RliExtraEuNotice_Disclaimer" xml:space="preserve">
-    <value>Testo bozza da confermare con legale. CasaZen non invia la comunicazione.</value>
+  <data name="QuesturaOverdue_Subject" xml:space="preserve">
+    <value>Comunicazione alla Questura non dichiarata — {0}</value>
+  </data>
+  <data name="QuesturaOverdue_Body" xml:space="preserve">
+    <value>Per il contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; (conduttore extra-UE, consegna dell'immobile il &lt;strong&gt;{1}&lt;/strong&gt;) il termine di 48 ore per la comunicazione scritta all'autorità locale di pubblica sicurezza (art. 7 D.Lgs. 286/1998) è scaduto il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen la comunicazione non risulta dichiarata.</value>
+  </data>
+  <data name="Questura_DeliveryDateDefault" xml:space="preserve">
+    <value>Come data di consegna CasaZen usa la data di inizio del contratto: se l'immobile è consegnato in un altro giorno, indicalo nella pagina del contratto.</value>
+  </data>
+  <data name="Questura_Channel" xml:space="preserve">
+    <value>L'ufficio competente e il modo di invio (sportello, PEC, raccomandata) cambiano da provincia a provincia: verifica sulla pagina della tua Questura. CasaZen non invia la comunicazione.</value>
+  </data>
+  <data name="Questura_MarkDone" xml:space="preserve">
+    <value>Dopo l'invio, segna la comunicazione come fatta nella pagina del contratto, con la data (e, se vuoi, la ricevuta): solo così la voce della checklist risulta completata.</value>
   </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Pulizie</value>
@@ -497,6 +509,42 @@
   </data>
   <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
     <value>Apri l'attivazione</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Title" xml:space="preserve">
+    <value>Nuova richiesta di servizio</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
+    <value>{0} presso {1}: accetta o rifiuta la richiesta dalla tua area fornitore.</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
+    <value>Richiesta presa in carico</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha preso in carico la richiesta.</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Title" xml:space="preserve">
+    <value>Servizio completato</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha completato il servizio.</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Title" xml:space="preserve">
+    <value>Richiesta rifiutata dal fornitore</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha rifiutato la richiesta. Scegli un altro fornitore.</value>
+  </data>
+  <data name="Push_NewBooking_Title" xml:space="preserve">
+    <value>Nuova prenotazione confermata</value>
+  </data>
+  <data name="Push_NewBooking_Body" xml:space="preserve">
+    <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
+  </data>
+  <data name="Push_CheckoutReminder_Title" xml:space="preserve">
+    <value>Promemoria check-out</value>
+  </data>
+  <data name="Push_CheckoutReminder_Body" xml:space="preserve">
+    <value>{0}: oggi è il giorno del check-out, completalo in CasaZen.</value>
   </data>
   <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
     <value>CIN da inserire entro il {0}</value>

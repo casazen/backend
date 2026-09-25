@@ -44,7 +44,7 @@ internal static class TestCheckoutPaymentSettlement
             paymentRepository ?? new PaymentRepository(db),
             refunds,
             scheduler,
-            new BookingNotifier(db, emailQueue, EmailTestHelpers.Links(), NullLogger<BookingNotifier>.Instance),
+            new BookingNotifier(db, emailQueue, EmailTestHelpers.Links(), Mock.Of<IPushNotificationService>(), NullLogger<BookingNotifier>.Instance),
             configuration ?? EmptyConfiguration,
             NullLogger<CheckoutPaymentSettlementService>.Instance,
             timeProvider);
@@ -74,6 +74,7 @@ internal static class TestDeferredCharges
                 db,
                 emails ?? Mock.Of<IEmailQueue>(),
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSiteBaseUrl })),
+                Mock.Of<IPushNotificationService>(),
                 NullLogger<BookingNotifier>.Instance),
             configuration ?? EmptyConfiguration,
             NullLogger<DeferredChargeService>.Instance,

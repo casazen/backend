@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
 
@@ -79,7 +78,6 @@ public class AppDbContext(
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
-    public DbSet<SupplierJob> SupplierJobs { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
@@ -92,6 +90,9 @@ public class AppDbContext(
 
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
+
+    // Push messages per event and device, with their Expo ticket (MO-04)
+    public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
 
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
@@ -240,15 +241,18 @@ public class AppDbContext(
             .HasForeignKey(e => e.ImportId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<PropertyQuesturaCredentials>()
-            .HasOne(c => c.Property)
-            .WithMany()
-            .HasForeignKey(c => c.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<PropertyQuesturaCredentials>()
-            .HasIndex(c => c.PropertyId)
-            .IsUnique();
+        // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
+        modelBuilder.Entity<PropertyQuesturaCredentials>(entity =>
+        {
+            entity.HasOne(c => c.Property)
+                .WithMany()
+                .HasForeignKey(c => c.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(c => c.PropertyId).IsUnique();
+            entity.HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.OrgId);
+        });
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
@@ -302,30 +306,11 @@ public class AppDbContext(
         });
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
 
+        // Every encrypted column (OTA secrets, iCal import URLs, guest identity documents, Questura credentials) is
+        // declared and configured in one place, EncryptedColumns, with the Data Protection value converter
+        // (PC-11, CO-14, docs/runbooks/encryption.md).
         if (EncryptionProvider is not null)
-        {
-            var encryptedConverter = new EncryptedStringConverter(
-                EncryptionProvider,
-                "Casazen.OtaIntegration.Secrets");
-
-            modelBuilder.Entity<OtaIntegration>()
-                .Property(o => o.ApiKey)
-                .HasConversion(encryptedConverter);
-
-            modelBuilder.Entity<OtaIntegration>()
-                .Property(o => o.ApiSecret)
-                .HasConversion(encryptedConverter);
-
-            // iCal import URLs carry the OTA's secret token (A2-20, PC-11). URLs saved in clear before PC-11 are read
-            // as they are until PropertyICalFeedUrlEncryption rewrites them at startup (a protected payload never
-            // starts with a URL scheme).
-            modelBuilder.Entity<PropertyICalFeed>()
-                .Property(f => f.ImportUrl)
-                .HasConversion((ValueConverter)new EncryptedStringConverter(
-                    EncryptionProvider,
-                    PropertyICalFeedUrlEncryption.Purpose,
-                    PropertyICalFeedUrlEncryption.IsLegacyPlaintext));
-        }
+            EncryptedColumns.Configure(modelBuilder, EncryptionProvider);
 
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });

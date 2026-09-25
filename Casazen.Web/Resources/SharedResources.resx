@@ -144,6 +144,9 @@
   <data name="GuestHasOpenBookings" xml:space="preserve">
     <value>L'ospite ha prenotazioni in corso o future: non può essere eliminato finché non sono concluse o annullate.</value>
   </data>
+  <data name="SupplierKpiPeriodInvalid" xml:space="preserve">
+    <value>Periodo non valido: usa CurrentMonth, PreviousMonth, Last30Days o CurrentYear.</value>
+  </data>
   <data name="SupplierProfileNotFound" xml:space="preserve">
     <value>Profilo fornitore non trovato</value>
   </data>
@@ -277,7 +280,28 @@
     <value>Contratto registrato: estremi e ricevuta dell'Agenzia delle Entrate inseriti</value>
   </data>
   <data name="RliChecklist_questura_extra_eu" xml:space="preserve">
-    <value>Comunicazione Questura (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Bozza da confermare con legale.</value>
+    <value>Comunicazione all'autorità di pubblica sicurezza (Questura) per il conduttore extra-UE, entro 48 ore dalla consegna dell'immobile (art. 7 D.Lgs. 286/1998): inviata e dichiarata dal locatore</value>
+  </data>
+  <data name="QuesturaNotRequired" xml:space="preserve">
+    <value>Nessun conduttore di questo contratto risulta cittadino extra-UE: la comunicazione alla Questura dell'art. 7 D.Lgs. 286/1998 non è prevista.</value>
+  </data>
+  <data name="QuesturaAlreadyMarkedDone" xml:space="preserve">
+    <value>La comunicazione alla Questura di questo contratto risulta già dichiarata.</value>
+  </data>
+  <data name="QuesturaCommunicationDateInFuture" xml:space="preserve">
+    <value>La data della comunicazione non può essere successiva a oggi.</value>
+  </data>
+  <data name="QuesturaReceiptInvalid" xml:space="preserve">
+    <value>La ricevuta deve essere un file PDF di al massimo {0} MB.</value>
+  </data>
+  <data name="QuesturaReceiptNotAvailable" xml:space="preserve">
+    <value>Non è stata caricata una ricevuta della comunicazione alla Questura per questo contratto.</value>
+  </data>
+  <data name="QuesturaDeliveryDateAfterEnd" xml:space="preserve">
+    <value>La data di consegna dell'immobile non può essere successiva alla fine del contratto.</value>
+  </data>
+  <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
+    <value>La cittadinanza deve essere il codice ISO del paese di 2 lettere (per esempio IT, DE, US).</value>
   </data>
   <data name="RliProviderUnavailable" xml:space="preserve">
     <value>L'invio della RLI tramite provider non è disponibile. Registra il contratto sul canale ufficiale dell'Agenzia delle Entrate e inserisci qui numero, data e ricevuta della registrazione.</value>
@@ -407,6 +431,9 @@
   </data>
   <data name="ICalFeedInvalidLabel" xml:space="preserve">
     <value>L'etichetta del calendario può contenere al massimo 60 caratteri, senza a capo.</value>
+  </data>
+  <data name="ICalSupplierNoFeed" xml:space="preserve">
+    <value>Non hai ancora collegato un calendario iCal: incolla prima l'URL del tuo calendario.</value>
   </data>
   <data name="ICalExportBusySummary" xml:space="preserve">
     <value>Occupato</value>
@@ -1044,6 +1071,27 @@
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
+  </data>
+  <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
+    <value>Inserisci il nome utente di Alloggiati Web.</value>
+  </data>
+  <data name="QuesturaCredentialsUsernameTooLong" xml:space="preserve">
+    <value>Il nome utente può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordRequired" xml:space="preserve">
+    <value>Inserisci la password di Alloggiati Web.</value>
+  </data>
+  <data name="QuesturaCredentialsPasswordTooLong" xml:space="preserve">
+    <value>La password può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyRequired" xml:space="preserve">
+    <value>Inserisci la chiave del web service (WSKey) di Alloggiati Web.</value>
+  </data>
+  <data name="QuesturaCredentialsWsKeyTooLong" xml:space="preserve">
+    <value>La chiave del web service può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="GuestDocumentNumberMissing" xml:space="preserve">
+    <value>Nessun numero di documento registrato per questo ospite.</value>
   </data>
   <data name="ServiceRequestPropertyRequired" xml:space="preserve">
     <value>Indica l'immobile della richiesta.</value>

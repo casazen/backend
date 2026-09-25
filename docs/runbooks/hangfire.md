@@ -44,13 +44,17 @@ and production never block each other.
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
-| `ical-supplier-sync` | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` | 60 s |
+| `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
+| `push-receipts` (MO-04, see [§11](#11-push-notifications-mo-04)) | `*/15` | `PushReceiptsJob.ExecuteAsync` | 60 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
-submissions of the same booking to Alloggiati Web never run at once.
+submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
+delivery key (`PushDeliveryJob.SendAsync:<key>`, 60 s), so two runs of the same push event never overlap.
+`IcalSupplierSyncJob.SyncSupplierAsync` (first sync of a supplier's iCal URL and "sync now", SU-15) locks per
+supplier (`…SyncSupplierAsync:<orgId>`, 60 s).
 
 The test `RecurringJobsConcurrencyTests` fails if a recurring job is added without `[DisableConcurrentExecution]`.
 
@@ -239,8 +243,8 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 15 recurring jobs in each schema with every flag on (13 with Features:OtaPartnerApi off,
-  -- 12 with Features:RliProvider off too)
+  -- 17 recurring jobs in each schema with every flag on; 13 with the defaults
+  -- (Features:OtaPartnerApi, Features:RliProvider and Features:ESignProvider off)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
@@ -465,3 +469,58 @@ changes: pending properties are not touched, bookings are never cancelled.
   follows `Compliance__StatusCheck__NotifyOnFirstCheck` (default `false`), see [compliance.md §5](compliance.md#5-recalculation-of-the-historic-properties-a5-36).
 - **Log**: `Property compliance check completed: N active or suspended properties checked, S suspended, R reactivated,
   E hosts notified, F failed, blockers …`.
+
+## 11. Push notifications (MO-04)
+
+Audit defects A6-08 and A6-29. Until MO-04 every push was sent inside the request that caused it, one HTTP call to Expo
+per device (a supplier's *take* waited for every host phone), without receipts: dead tokens were never removed. What the
+pushes are and when they are sent: [mobile-release.md § 9.1 and § 9.7](mobile-release.md#97-backend-delivery-queue-batches-receipts-mo-04).
+
+**Jobs**
+
+| Job | When | What |
+|---|---|---|
+| `PushDeliveryJob.SendAsync(key, push)` | Queued (`Enqueue`) by the service that made the change, after its save | Resolves the devices of the audience, claims one `PushDeliveries` row per device for the key, sends the pending ones to Expo in batches of at most 100, stores the tickets. `[AutomaticRetry(Attempts = 5)]`, deleted after the last attempt (the arguments hold the push text: property, category, dates; no guest name, no token) |
+| `push-receipts` (`PushReceiptsJob` → `PushReceiptService`) | Recurring, every 15 minutes (`*/15 * * * *` UTC) | Reads the receipts of the tickets accepted at least 15 minutes earlier (1000 ids per request, at most 10 000 per run), deletes the device registrations with `DeviceNotRegistered`, logs every other error code, marks tickets without a receipt after 24 hours, purges rows older than 7 days (5000 per run) |
+
+**Once per event and device.** `PushDeliveries` has a unique index on (`DeliveryKey`, `PushToken`). A retry of the job
+(Hangfire retries a job that throws), a manual *Requeue* from the dashboard or the same event queued twice skip every
+device that already has a row for the key: only rows still `Pending` are sent. Statuses: 0 `Pending`, 1 `Sending`
+(handed to Expo without an outcome: never repeated), 2 `Accepted` (ticket ok, receipt not read), 3 `Delivered`,
+4 `Failed` (`Error` = Expo code or `Http<status>`), 5 `ReceiptUnavailable`.
+
+**Configuration**: optional `Expo__AccessToken` (Railway, both environments; see
+[mobile-release.md § 9.7.3](mobile-release.md#973-expo-access-token-optional-recommended)). Nothing else.
+
+**At the first deploy**: the migration `AddPushDeliveries` creates the empty table; `push-receipts` is registered at
+startup (§5 counts it). Nothing to migrate: pushes sent before the deploy have no ticket stored, so their receipts are not
+read.
+
+**Checks** (SQL editor, replace the schema):
+
+```sql
+-- Pushes of the last 24 hours per type and status
+SELECT "Type", "Status", count(*) FROM casazen_prod."PushDeliveries"
+WHERE "CreatedAt" > now() - interval '24 hours' GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- Errors of the last 7 days (Expo codes): DeviceNotRegistered removes the device, the others need a look
+SELECT "Error", count(*) FROM casazen_prod."PushDeliveries"
+WHERE "Status" = 4 GROUP BY 1 ORDER BY 2 DESC;
+
+-- Messages stuck: pending after their job was deleted, or accepted without a receipt read (push-receipts not running?)
+SELECT "Status", count(*), min("CreatedAt") FROM casazen_prod."PushDeliveries"
+WHERE ("Status" = 0 AND "CreatedAt" < now() - interval '1 day')
+   OR ("Status" = 2 AND "SentAt" < now() - interval '1 hour')
+GROUP BY 1;
+
+-- Push jobs that failed (Expo down for hours): they are deleted after 5 attempts; failed ones still retrying
+SELECT id, statename, createdat FROM hangfire_casazen_prod.job
+WHERE invocationdata ->> 'Type' LIKE 'Casazen.Infrastructure.Push.PushDeliveryJob%'
+  AND statename IN ('Failed', 'Scheduled', 'Enqueued')
+ORDER BY createdat DESC LIMIT 20;
+```
+
+**Logs**: `Push <type> queued for <audience> <id> (key …)`, then `Push <type> (key …): N of M messages accepted by Expo`
+or `nothing to send`; `Expo did not take … retried by Hangfire` (429/5xx: the job retries); `outcome of … unknown …, not
+repeated` (timeout); `refused … not retried` (4xx: for 401 see the access token); every 15 minutes `Push receipts: …
+checked, … delivered, … failed, … devices removed`. No push token appears in the logs.

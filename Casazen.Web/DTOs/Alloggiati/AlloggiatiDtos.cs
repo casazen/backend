@@ -107,6 +107,46 @@ public class AlloggiatiGuestSummaryDto
 }
 
 /// <summary>
+/// How far the guest data of a stay are (MO-08, A6-17): counts only, no personal data, for the host app booking detail
+/// ("2 ospiti completi su 3"). Same rules as <see cref="AlloggiatiGuestSummaryDto"/>, which carries the data themselves.
+/// </summary>
+public class AlloggiatiGuestProgressDto
+{
+    public Guid BookingId { get; set; }
+
+    /// <summary>Guests declared on the booking.</summary>
+    public int DeclaredGuests { get; set; }
+
+    /// <summary>
+    /// Guests with a record line: the registered guests of the stay, or the booker alone while none is registered
+    /// (the rows of the guest summary).
+    /// </summary>
+    public int RegisteredGuests { get; set; }
+
+    /// <summary>Guests whose line has every record field and fits in the order of the stay.</summary>
+    public int CompleteGuests { get; set; }
+
+    /// <summary>
+    /// Every registered guest is complete and the order of the guests is valid (<see cref="AlloggiatiGuestSummaryDto.DataComplete"/>).
+    /// Declared guests not registered yet are <see cref="DeclaredGuests"/> minus <see cref="RegisteredGuests"/>.
+    /// </summary>
+    public bool DataComplete { get; set; }
+
+    /// <summary>The stay is longer than the 30 days the portal accepts on one schedina.</summary>
+    public bool StayExceedsMaxDays { get; set; }
+
+    public static AlloggiatiGuestProgressDto From(AlloggiatiGuestSummaryInfo info) => new()
+    {
+        BookingId = info.BookingId,
+        DeclaredGuests = info.DeclaredGuests,
+        RegisteredGuests = info.Guests.Count,
+        CompleteGuests = info.Guests.Count(g => g.MissingFields.Count == 0 && g.CompositionIssue is null),
+        DataComplete = info.DataComplete,
+        StayExceedsMaxDays = info.StayExceedsMaxDays,
+    };
+}
+
+/// <summary>
 /// One guest, fields in the order of the Alloggiati Web record. Text as stored; <see cref="Codes"/> are the official
 /// codes found in the imported tables (null = to complete or not part of the line).
 /// </summary>

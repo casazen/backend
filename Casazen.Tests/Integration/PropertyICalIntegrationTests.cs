@@ -237,6 +237,7 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
                      {
                          ICalFeedErrorCodes.NotFoundMessageKey, ICalFeedErrorCodes.LimitReachedMessageKey,
                          ICalFeedErrorCodes.DuplicateMessageKey, ICalFeedErrorCodes.InvalidLabelMessageKey,
+                         ICalFeedErrorCodes.SupplierNoFeedMessageKey,
                      })
             {
                 Assert.False(localizer[key].ResourceNotFound, $"No {culture} message for {key}");
