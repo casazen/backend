@@ -50,6 +50,9 @@ public class AppDbContext(
     // Stages of the host alerts already sent per stay (CO-10)
     public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
 
+    // Stage of the CIN alert already sent per property (CO-20)
+    public DbSet<CinAlertState> CinAlertStates { get; set; } = null!;
+
     // D.L. 145/2023 safety checklist of a short-stay property (CO-07)
     public DbSet<PropertySafetyChecklist> PropertySafetyChecklists { get; set; } = null!;
     public DbSet<PropertySafetyChecklistItem> PropertySafetyChecklistItems { get; set; } = null!;
@@ -172,6 +175,13 @@ public class AppDbContext(
             .HasOne(s => s.Booking)
             .WithMany()
             .HasForeignKey(s => s.BookingId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // CO-20: the CIN alert stage of a property goes with it.
+        modelBuilder.Entity<CinAlertState>()
+            .HasOne(s => s.Property)
+            .WithMany()
+            .HasForeignKey(s => s.PropertyId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.

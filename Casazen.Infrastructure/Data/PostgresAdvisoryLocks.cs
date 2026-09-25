@@ -81,6 +81,12 @@ internal static class PostgresAdvisoryLocks
         /// the nightly job and the one-shot command never run together (CO-06, A5-36).
         /// </summary>
         PropertyComplianceCheckRun = 1_031,
+
+        /// <summary>
+        /// One run of the daily CIN alert (single key, session lock held for the whole run): two runs never alert the same
+        /// hosts at once, even outside Hangfire's own lock (CO-20, A5-31).
+        /// </summary>
+        CinDeadlineAlertsRun = 1_042,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
