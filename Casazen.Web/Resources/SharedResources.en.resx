@@ -177,6 +177,9 @@
   <data name="BillingReturnUrlNotAllowed" xml:space="preserve">
     <value>The payment return address must be a page of this site.</value>
   </data>
+  <data name="BillingReturnPathNotAllowed" xml:space="preserve">
+    <value>The payment return page must be the plan or billing page of this site.</value>
+  </data>
   <data name="BillingReturnUrlNotConfigured" xml:space="preserve">
     <value>Plan payments are not configured in this environment yet.</value>
   </data>

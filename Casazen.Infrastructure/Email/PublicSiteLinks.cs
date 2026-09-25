@@ -124,19 +124,58 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string HostPropertyActivation(Guid propertyId) => Build($"/app/short-rent/properties/{propertyId:D}/activation");
 
     /// <summary>
-    /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the page Stripe
-    /// Checkout and the billing portal return to (PL-11, A1-31).
+    /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the default page Stripe
+    /// Checkout and the billing portal return to (PL-11, A1-31) when the client names no page.
     /// </summary>
     public const string BillingPagePath = "/app/short-rent/settings/plan";
 
-    /// <summary>Default return page of a paid Stripe Checkout: the plan page with <c>?checkout=success</c>.</summary>
-    public string BillingCheckoutSuccess() => Build(BillingPagePath + "?checkout=success");
+    /// <summary>
+    /// Allow-list of the pages Stripe may send the browser back to (PL-16, A1-36): the plan and billing pages of the web
+    /// app in each rental context, so a long-term landlord comes back to its own shell. Exact paths, no query string.
+    /// </summary>
+    public static readonly IReadOnlySet<string> BillingReturnPagePaths = new HashSet<string>(StringComparer.Ordinal)
+    {
+        BillingPagePath,
+        "/app/short-rent/settings/billing",
+        "/app/long-rent/settings/plan",
+        "/app/long-rent/settings/billing",
+    };
 
-    /// <summary>Default return page of an abandoned Stripe Checkout: the plan page with <c>?checkout=cancel</c>.</summary>
-    public string BillingCheckoutCancel() => Build(BillingPagePath + "?checkout=cancel");
+    /// <summary>True when <paramref name="path"/> is exactly one of <see cref="BillingReturnPagePaths"/>.</summary>
+    public static bool IsBillingReturnPagePath(string? path) =>
+        path is not null && BillingReturnPagePaths.Contains(path);
 
-    /// <summary>Return page of the Stripe billing portal: the plan page.</summary>
-    public string BillingPortalReturn() => Build(BillingPagePath);
+    /// <summary>
+    /// Return page of a paid Stripe Checkout: <paramref name="returnPath"/> (one of <see cref="BillingReturnPagePaths"/>)
+    /// or the default plan page, with <c>?checkout=success</c>.
+    /// </summary>
+    public string BillingCheckoutSuccess(string? returnPath = null) => Build(BillingPage(returnPath) + "?checkout=success");
+
+    /// <summary>Return page of an abandoned Stripe Checkout, like <see cref="BillingCheckoutSuccess"/> with <c>?checkout=cancel</c>.</summary>
+    public string BillingCheckoutCancel(string? returnPath = null) => Build(BillingPage(returnPath) + "?checkout=cancel");
+
+    /// <summary>Return page of the Stripe billing portal: <paramref name="returnPath"/> or the default plan page.</summary>
+    public string BillingPortalReturn(string? returnPath = null) => Build(BillingPage(returnPath));
+
+    /// <summary>
+    /// True when <paramref name="url"/> is a page Stripe may return to: an absolute URL of the public web app
+    /// (<see cref="IsOnPublicSite"/>) whose path is one of <see cref="BillingReturnPagePaths"/>; any query string is kept
+    /// (e.g. <c>?checkout=success&amp;session_id={CHECKOUT_SESSION_ID}</c>).
+    /// </summary>
+    public bool IsBillingReturnUrl(string? url) =>
+        IsOnPublicSite(url)
+        && Uri.TryCreate(url!.Trim(), UriKind.Absolute, out var candidate)
+        && IsBillingReturnPagePath(candidate.AbsolutePath);
+
+    private static string BillingPage(string? returnPath)
+    {
+        if (string.IsNullOrWhiteSpace(returnPath))
+            return BillingPagePath;
+
+        return IsBillingReturnPagePath(returnPath)
+            ? returnPath
+            : throw new ArgumentException("The billing return page is not in the allow-list.", nameof(returnPath));
+    }
 
     /// <summary>
     /// True when <paramref name="url"/> is an absolute URL of the public web app: same scheme, host and port as
