@@ -1,5 +1,8 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -14,28 +17,47 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
     public async Task<LeaseContract?> GetByIdWithDetailsAsync(Guid id)
         => await context.LeaseContracts
             .Include(l => l.Property)
+                // The APE of the property: its code and energy class go into the contract (LT-10, LT-03).
+                .ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape))
             .Include(l => l.Parties)
             .Include(l => l.Registration)
             .Include(l => l.Events.OrderBy(e => e.OccurredAt))
             .FirstOrDefaultAsync(l => l.Id == id);
 
-    public async Task<LeaseContract?> GetByExternalSigningSessionIdAsync(string externalSessionId)
-        => await context.LeaseContracts
-            .Include(l => l.Property)
-            .Include(l => l.Parties)
-            .FirstOrDefaultAsync(l => l.ExternalSigningSessionId == externalSessionId);
-
-    public async Task<IEnumerable<LeaseContract>> GetByOwnerAsync(string ownerId, Guid? propertyId = null)
+    public async Task<IReadOnlyList<LeaseSummaryDto>> GetSummariesAsync(HostScope scope, Guid? propertyId = null)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         var query = context.LeaseContracts
-            .Include(l => l.Property)
-            .Include(l => l.Parties)
-            .Where(l => l.Property.OwnerId == ownerId);
+            .AsNoTracking()
+            .Where(l => l.OrgId == scope.OrgId);
+
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(l => l.Property.OwnerId == ownerId);
 
         if (propertyId.HasValue)
             query = query.Where(l => l.PropertyId == propertyId.Value);
 
-        return await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+        return await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Select(l => new LeaseSummaryDto(
+                l.Id,
+                l.PropertyId,
+                new LeasePropertyDto(l.Property.Id, l.Property.Name, l.Property.City),
+                l.Status,
+                l.FiscalRegime,
+                l.ContractType,
+                l.TaxRegime,
+                l.StartDate,
+                l.EndDate,
+                l.MonthlyRent,
+                l.StipulaDate,
+                l.RegistrationDeadline,
+                l.Parties.Count,
+                l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
+                l.CreatedAt,
+                l.UpdatedAt))
+            .ToListAsync();
     }
 
     public async Task<IEnumerable<LeaseContract>> GetByPropertyAsync(Guid propertyId)

@@ -1,0 +1,615 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Layout_Footer" xml:space="preserve">
+    <value>CasaZen — short-term rental management</value>
+  </data>
+  <data name="Format_Date" xml:space="preserve">
+    <value>d MMMM yyyy</value>
+  </data>
+  <data name="Format_DateTime" xml:space="preserve">
+    <value>d MMMM yyyy, HH:mm</value>
+  </data>
+  <data name="ServiceRequestCreated_Subject" xml:space="preserve">
+    <value>New service request — {0}</value>
+  </data>
+  <data name="ServiceRequestCreated_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="ServiceRequestCreated_Body" xml:space="preserve">
+    <value>You have received a new &lt;strong&gt;{0}&lt;/strong&gt; request for the property &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestCreated_NotesLabel" xml:space="preserve">
+    <value>Notes:</value>
+  </data>
+  <data name="ServiceRequestCreated_Cta" xml:space="preserve">
+    <value>Open the supplier console</value>
+  </data>
+  <data name="ServiceRequestTaken_Subject" xml:space="preserve">
+    <value>Supplier request accepted — {0}</value>
+  </data>
+  <data name="ServiceRequestTaken_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request for &lt;strong&gt;{1}&lt;/strong&gt; has been &lt;strong&gt;accepted&lt;/strong&gt; by the supplier.</value>
+  </data>
+  <data name="ServiceRequestCompleted_Subject" xml:space="preserve">
+    <value>Supplier request completed — {0}</value>
+  </data>
+  <data name="ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request for &lt;strong&gt;{1}&lt;/strong&gt; has been &lt;strong&gt;completed&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestRejected_Subject" xml:space="preserve">
+    <value>Supplier request declined — {0}</value>
+  </data>
+  <data name="ServiceRequestRejected_Body" xml:space="preserve">
+    <value>The &lt;strong&gt;{0}&lt;/strong&gt; request for &lt;strong&gt;{1}&lt;/strong&gt; has been &lt;strong&gt;declined&lt;/strong&gt; by the supplier.</value>
+  </data>
+  <data name="ServiceRequestRejected_ReasonLabel" xml:space="preserve">
+    <value>Reason:</value>
+  </data>
+  <data name="SupplierInvite_Subject" xml:space="preserve">
+    <value>CasaZen invitation — Supplier console</value>
+  </data>
+  <data name="SupplierInvite_Title" xml:space="preserve">
+    <value>You have been invited to CasaZen</value>
+  </data>
+  <data name="SupplierInvite_Body" xml:space="preserve">
+    <value>CasaZen invites you to register as a &lt;strong&gt;supplier&lt;/strong&gt; for the municipality &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInvite_EmailHint" xml:space="preserve">
+    <value>Sign up or sign in with the email &lt;strong&gt;{0}&lt;/strong&gt;: the invitation is valid only for this address and can be used once.</value>
+  </data>
+  <data name="SupplierInvite_NextSteps" xml:space="preserve">
+    <value>After registering, complete your supplier profile in the activation steps: until then your profile stays pending and hosts cannot see it.</value>
+  </data>
+  <data name="SupplierInvite_MessageLabel" xml:space="preserve">
+    <value>Message from the CasaZen team:</value>
+  </data>
+  <data name="SupplierInvite_Cta" xml:space="preserve">
+    <value>Accept the invitation and register</value>
+  </data>
+  <data name="SupplierInvite_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="SupplierInvite_Expires" xml:space="preserve">
+    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time).</value>
+  </data>
+  <data name="GuestCheckInLink_Subject" xml:space="preserve">
+    <value>Complete the check-in for your stay — {0}</value>
+  </data>
+  <data name="GuestCheckInLink_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestCheckInLink_Body" xml:space="preserve">
+    <value>Your stay at &lt;strong&gt;{0}&lt;/strong&gt; starts on &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestCheckInLink_Instructions" xml:space="preserve">
+    <value>Complete the check-in in advance using the link below:</value>
+  </data>
+  <data name="GuestCheckInLink_Cta" xml:space="preserve">
+    <value>Complete the check-in</value>
+  </data>
+  <data name="GuestCheckInLink_Validity" xml:space="preserve">
+    <value>The link is valid until {0}.</value>
+  </data>
+  <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
+    <value>Guest data missing — {0} ({1})</value>
+  </data>
+  <data name="GuestCheckInIncomplete_Body" xml:space="preserve">
+    <value>For the stay of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt;, arriving on &lt;strong&gt;{2}&lt;/strong&gt;, guest data required for the Alloggiati Web report are still missing.</value>
+  </data>
+  <data name="GuestCheckInIncomplete_Action" xml:space="preserve">
+    <value>Ask the guest to complete the online check-in (you can send the link again from the booking) or enter the data in the Alloggiati tab of the booking.</value>
+  </data>
+  <data name="AlloggiatiDeadline_Subject" xml:space="preserve">
+    <value>Alloggiati Web report due - {0} ({1})</value>
+  </data>
+  <data name="AlloggiatiDeadline_Body" xml:space="preserve">
+    <value>The Alloggiati Web report for guest &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt;, arriving on &lt;strong&gt;{2}&lt;/strong&gt;, is not recorded as sent yet.</value>
+  </data>
+  <data name="AlloggiatiDeadline_Action" xml:space="preserve">
+    <value>Send it on the Alloggiati Web portal, then record it in the Alloggiati tab of the booking («Mark as sent manually»).</value>
+  </data>
+  <data name="AlloggiatiDeadline_Term24" xml:space="preserve">
+    <value>It is due within 24 hours of the guest's arrival.</value>
+  </data>
+  <data name="AlloggiatiDeadline_Term6" xml:space="preserve">
+    <value>Short stay (up to 24 hours): it is due within 6 hours of the guest's arrival.</value>
+  </data>
+  <data name="AlloggiatiDeadline_DeadlineAt" xml:space="preserve">
+    <value>Deadline: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="AlloggiatiDeadline_ArrivalNotRegistered" xml:space="preserve">
+    <value>The arrival time is not registered in CasaZen: register the arrival in the booking to see the exact deadline.</value>
+  </data>
+  <data name="AlloggiatiOverdue_Subject" xml:space="preserve">
+    <value>Alloggiati Web report overdue - {0} ({1})</value>
+  </data>
+  <data name="AlloggiatiOverdue_Body" xml:space="preserve">
+    <value>The deadline of the Alloggiati Web report for guest &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt;, arriving on &lt;strong&gt;{2}&lt;/strong&gt;, has passed and the report is not recorded as sent.</value>
+  </data>
+  <data name="AlloggiatiOverdue_ArrivalNotRegistered" xml:space="preserve">
+    <value>The arrival time is not registered in CasaZen: the deadline is considered passed at the end of the arrival day.</value>
+  </data>
+  <data name="AlloggiatiOverdue_Action" xml:space="preserve">
+    <value>Send it as soon as possible on the Alloggiati Web portal. If you already sent it, record it in the Alloggiati tab of the booking («Mark as sent manually»): you will receive no further reminders.</value>
+  </data>
+  <data name="AlloggiatiOverdue_Reminder" xml:space="preserve">
+    <value>Reminder {0} of {1}.</value>
+  </data>
+  <data name="AlloggiatiFailed_Subject" xml:space="preserve">
+    <value>Alloggiati Web report failed - {0} ({1})</value>
+  </data>
+  <data name="AlloggiatiFailed_Body" xml:space="preserve">
+    <value>The Alloggiati Web report for guest &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt;, arriving on &lt;strong&gt;{2}&lt;/strong&gt;, did not go through: the portal rejected it or sending it failed.</value>
+  </data>
+  <data name="AlloggiatiFailed_Action" xml:space="preserve">
+    <value>Check the guest data in the Alloggiati tab of the booking, then send the report on the Alloggiati Web portal and record it as sent.</value>
+  </data>
+  <data name="CheckoutReminder_Subject" xml:space="preserve">
+    <value>Today's check-out - {0} ({1})</value>
+  </data>
+  <data name="CheckoutReminder_Body" xml:space="preserve">
+    <value>Today, &lt;strong&gt;{2}&lt;/strong&gt;, &lt;strong&gt;{0}&lt;/strong&gt; leaves &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="CheckoutReminder_Action" xml:space="preserve">
+    <value>Complete the check-out in CasaZen: record the departure and, if needed, request the cleaning.</value>
+  </data>
+  <data name="StayAlertPush_GuestDataMissing_Title" xml:space="preserve">
+    <value>Guest data missing</value>
+  </data>
+  <data name="StayAlertPush_GuestDataMissing_Body" xml:space="preserve">
+    <value>{0}: complete the data of the guests arriving on {1}.</value>
+  </data>
+  <data name="StayAlertPush_DeadlineApproaching_Title" xml:space="preserve">
+    <value>Alloggiati Web report due</value>
+  </data>
+  <data name="StayAlertPush_DeadlineApproaching_Body" xml:space="preserve">
+    <value>{0}: send the report for the arrival on {1}.</value>
+  </data>
+  <data name="StayAlertPush_Overdue_Title" xml:space="preserve">
+    <value>Alloggiati Web report overdue</value>
+  </data>
+  <data name="StayAlertPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: the report for the arrival on {1} is not recorded as sent.</value>
+  </data>
+  <data name="StayAlertPush_Failed_Title" xml:space="preserve">
+    <value>Alloggiati Web report failed</value>
+  </data>
+  <data name="StayAlertPush_Failed_Body" xml:space="preserve">
+    <value>{0}: check the report for the arrival on {1}.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
+    <value>Refund confirmed - {0}</value>
+  </data>
+  <data name="GuestRefundConfirmed_Body" xml:space="preserve">
+    <value>we have refunded &lt;strong&gt;€{0}&lt;/strong&gt; for your booking at &lt;strong&gt;{1}&lt;/strong&gt; with arrival on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Method" xml:space="preserve">
+    <value>The amount goes back to the payment method used for the booking.</value>
+  </data>
+  <data name="GuestRefundConfirmed_Timing" xml:space="preserve">
+    <value>When the credit shows on your statement depends on your bank or card issuer.</value>
+  </data>
+  <data name="GuestBookingCancelled_Subject" xml:space="preserve">
+    <value>Booking cancelled - {0}</value>
+  </data>
+  <data name="GuestBookingCancelled_Body" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; has been cancelled by the host.</value>
+  </data>
+  <data name="GuestBookingCancelled_Refund" xml:space="preserve">
+    <value>A refund of &lt;strong&gt;€{0}&lt;/strong&gt; has been started to the payment method used for the booking: you will get another email once it is confirmed.</value>
+  </data>
+  <data name="Booking_ContactHostDirectly" xml:space="preserve">
+    <value>For any question, please contact the host of the property directly.</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Subject" xml:space="preserve">
+    <value>Dates no longer available, payment refunded - {0}</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Body" xml:space="preserve">
+    <value>your payment for &lt;strong&gt;{0}&lt;/strong&gt;, from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;, arrived after the time allowed to complete the booking, and meanwhile the dates were no longer available. The booking could not be confirmed.</value>
+  </data>
+  <data name="GuestPaymentRefundedDatesUnavailable_Refund" xml:space="preserve">
+    <value>We have refunded the full amount you paid, &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="RliDeadlineReminder_Subject" xml:space="preserve">
+    <value>RLI registration reminder — {0} (due {1})</value>
+  </data>
+  <data name="RliDeadlineReminder_Body" xml:space="preserve">
+    <value>Reminder: the RLI registration of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is due on &lt;strong&gt;{1}&lt;/strong&gt;. Days remaining: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="RliDeadlineOverdue_Subject" xml:space="preserve">
+    <value>RLI registration overdue — {0}</value>
+  </data>
+  <data name="RliDeadlineOverdue_Body" xml:space="preserve">
+    <value>The RLI registration deadline of the lease for &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{1}&lt;/strong&gt; and the registration is not complete.</value>
+  </data>
+  <data name="RliDeadline_NotSignedYet" xml:space="preserve">
+    <value>The contract has not been signed by every party in CasaZen yet. Its start date has already passed: the registration period counts from that date.</value>
+  </data>
+  <data name="RliDeadline_Responsibility" xml:space="preserve">
+    <value>CasaZen does not file unattended. Filing remains the responsibility of the landlord or an authorized intermediary. Draft wording pending counsel.</value>
+  </data>
+  <data name="QuesturaReminder_Subject" xml:space="preserve">
+    <value>Questura communication due by {1} — {0}</value>
+  </data>
+  <data name="QuesturaReminder_Body" xml:space="preserve">
+    <value>The lease for &lt;strong&gt;{0}&lt;/strong&gt; has a non-EU tenant. Within 48 hours of the delivery of the property (&lt;strong&gt;{1}&lt;/strong&gt;) the landlord must notify the local public-security authority in writing (art. 7 D.Lgs. 286/1998). The 48 hours end at the latest on &lt;strong&gt;{2}&lt;/strong&gt;. Registering the contract does not replace this communication.</value>
+  </data>
+  <data name="QuesturaOverdue_Subject" xml:space="preserve">
+    <value>Questura communication not declared — {0}</value>
+  </data>
+  <data name="QuesturaOverdue_Body" xml:space="preserve">
+    <value>For the lease for &lt;strong&gt;{0}&lt;/strong&gt; (non-EU tenant, property delivered on &lt;strong&gt;{1}&lt;/strong&gt;) the 48-hour term for the written communication to the local public-security authority (art. 7 D.Lgs. 286/1998) ended on &lt;strong&gt;{2}&lt;/strong&gt; and the communication is not declared in CasaZen.</value>
+  </data>
+  <data name="Questura_DeliveryDateDefault" xml:space="preserve">
+    <value>CasaZen uses the start date of the lease as the delivery date: if the property is delivered on another day, enter it on the lease page.</value>
+  </data>
+  <data name="Questura_Channel" xml:space="preserve">
+    <value>The competent office and how to send it (in person, PEC, registered mail) change from province to province: check the page of your Questura. CasaZen does not send the communication.</value>
+  </data>
+  <data name="Questura_MarkDone" xml:space="preserve">
+    <value>Once sent, mark the communication as done on the lease page, with its date (and, if you wish, the receipt): only then the checklist item is completed.</value>
+  </data>
+  <data name="ServiceCategory_cleaning" xml:space="preserve">
+    <value>Cleaning</value>
+  </data>
+  <data name="ServiceCategory_maintenance" xml:space="preserve">
+    <value>Maintenance</value>
+  </data>
+  <data name="ServiceCategory_plumbing" xml:space="preserve">
+    <value>Plumbing</value>
+  </data>
+  <data name="ServiceCategory_laundry" xml:space="preserve">
+    <value>Laundry</value>
+  </data>
+  <data name="ServiceCategory_linen" xml:space="preserve">
+    <value>Linen</value>
+  </data>
+  <data name="ServiceCategory_check-in" xml:space="preserve">
+    <value>Guest check-in</value>
+  </data>
+  <data name="ServiceCategory_gardening" xml:space="preserve">
+    <value>Gardening</value>
+  </data>
+  <data name="ServiceCategory_events" xml:space="preserve">
+    <value>Events</value>
+  </data>
+  <data name="ServiceCategory_rental" xml:space="preserve">
+    <value>Rental</value>
+  </data>
+  <data name="ServiceCategory_excursions" xml:space="preserve">
+    <value>Excursions</value>
+  </data>
+  <data name="Booking_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="OnSiteRequest_NoCharge" xml:space="preserve">
+    <value>You have not been charged anything. If you wish, you can send a new request from the property's website.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Subject" xml:space="preserve">
+    <value>Confirm your booking request - {0}</value>
+  </data>
+  <data name="OnSiteRequestReceived_Body" xml:space="preserve">
+    <value>we have received your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;, paying &lt;strong&gt;€{3}&lt;/strong&gt; at the property.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Action" xml:space="preserve">
+    <value>Confirm your email address to send the request to the host. Without confirmation by &lt;strong&gt;{0}&lt;/strong&gt; (Italian time) the request is cancelled and the dates become available again.</value>
+  </data>
+  <data name="OnSiteRequestReceived_Cta" xml:space="preserve">
+    <value>Confirm and send the request</value>
+  </data>
+  <data name="OnSiteRequestReceived_NotConfirmedYet" xml:space="preserve">
+    <value>The booking is not confirmed yet: it will be only when the host accepts the request. You will receive an email with the host's answer.</value>
+  </data>
+  <data name="OnSiteRequestReceived_NotYou" xml:space="preserve">
+    <value>If you did not send this request, ignore this email: without confirmation it will be cancelled.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Subject" xml:space="preserve">
+    <value>New booking request to approve - {0}</value>
+  </data>
+  <data name="OnSiteRequestToHost_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; asks to book &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt; for {4} guests, paying &lt;strong&gt;€{5}&lt;/strong&gt; at the property. The guest has confirmed their email address.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Action" xml:space="preserve">
+    <value>Accept or decline the request by &lt;strong&gt;{0}&lt;/strong&gt; (Italian time): after that the request expires and the dates become available again.</value>
+  </data>
+  <data name="OnSiteRequestToHost_NotConfirmedYet" xml:space="preserve">
+    <value>Until you accept it, it is not a confirmed booking and it is not sent to the portals (Airbnb, Booking.com) through the iCal calendar.</value>
+  </data>
+  <data name="OnSiteRequestToHost_Cta" xml:space="preserve">
+    <value>Open the requests</value>
+  </data>
+  <data name="OnSiteRequestDeclined_Subject" xml:space="preserve">
+    <value>Booking request not accepted - {0}</value>
+  </data>
+  <data name="OnSiteRequestDeclined_Body" xml:space="preserve">
+    <value>the host has not accepted your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OnSiteRequestDeclined_MessageLabel" xml:space="preserve">
+    <value>Message from the host:</value>
+  </data>
+  <data name="OnSiteRequestExpired_Subject" xml:space="preserve">
+    <value>Booking request expired - {0}</value>
+  </data>
+  <data name="OnSiteRequestExpired_Body" xml:space="preserve">
+    <value>the host did not answer your booking request for &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; in time: the request has expired and the dates are available again.</value>
+  </data>
+  <data name="Booking_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="Booking_Code" xml:space="preserve">
+    <value>Booking code: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_FindIt" xml:space="preserve">
+    <value>To find the booking in “My bookings” you need the booking code and the email address this message was sent to.</value>
+  </data>
+  <data name="Booking_MyBookingsCta" xml:space="preserve">
+    <value>My bookings</value>
+  </data>
+  <data name="Booking_Summary_Nights" xml:space="preserve">
+    <value>Nights: {0}</value>
+  </data>
+  <data name="Booking_Summary_Guests" xml:space="preserve">
+    <value>Guests: {0}</value>
+  </data>
+  <data name="Booking_Summary_Lodging" xml:space="preserve">
+    <value>Stay: €{0}</value>
+  </data>
+  <data name="Booking_Summary_Cleaning" xml:space="preserve">
+    <value>Cleaning: €{0}</value>
+  </data>
+  <data name="Booking_Summary_TouristTax" xml:space="preserve">
+    <value>Tourist tax: €{0} (included in the total)</value>
+  </data>
+  <data name="Booking_Summary_Total" xml:space="preserve">
+    <value>Total: &lt;strong&gt;€{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_ContactHost" xml:space="preserve">
+    <value>For any question, contact &lt;strong&gt;{0}&lt;/strong&gt; at {1}.</value>
+  </data>
+  <data name="Booking_ContactHostEmail" xml:space="preserve">
+    <value>For any question, contact the host at {0}.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Subject" xml:space="preserve">
+    <value>Booking confirmed - {0}</value>
+  </data>
+  <data name="GuestBookingConfirmed_Body" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; is confirmed.</value>
+  </data>
+  <data name="GuestBookingConfirmed_BodyOnSite" xml:space="preserve">
+    <value>the host has accepted your request: your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; is confirmed.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Late" xml:space="preserve">
+    <value>The payment arrived after the time allowed to complete the booking, but the dates were still free.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Paid" xml:space="preserve">
+    <value>Payment received: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestBookingConfirmed_DeferredOn" xml:space="preserve">
+    <value>You have not been charged yet: the total of &lt;strong&gt;€{0}&lt;/strong&gt; will be charged on &lt;strong&gt;{1}&lt;/strong&gt; to the payment method saved when booking.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Deferred" xml:space="preserve">
+    <value>You have not been charged yet: the total of &lt;strong&gt;€{0}&lt;/strong&gt; will be charged on the deadline shown when booking, to the saved payment method.</value>
+  </data>
+  <data name="GuestBookingConfirmed_OnSite" xml:space="preserve">
+    <value>You will pay &lt;strong&gt;€{0}&lt;/strong&gt; directly at the property.</value>
+  </data>
+  <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
+    <value>This email confirms the booking and the payment received; it is not a tax document.</value>
+  </data>
+  <data name="HostBookingConfirmed_Subject" xml:space="preserve">
+    <value>New confirmed booking - {0} ({1})</value>
+  </data>
+  <data name="HostBookingConfirmed_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has booked &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;: the booking is confirmed.</value>
+  </data>
+  <data name="HostBookingConfirmed_Late" xml:space="preserve">
+    <value>The guest's payment arrived after the checkout time had run out, but the dates were still free: the booking was confirmed automatically.</value>
+  </data>
+  <data name="HostBookingConfirmed_Paid" xml:space="preserve">
+    <value>Online payment received: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingConfirmed_DeferredOn" xml:space="preserve">
+    <value>The guest saved a payment method: the total of &lt;strong&gt;€{0}&lt;/strong&gt; will be charged on &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingConfirmed_Deferred" xml:space="preserve">
+    <value>The guest saved a payment method: the total of &lt;strong&gt;€{0}&lt;/strong&gt; will be charged on the deadline chosen at checkout.</value>
+  </data>
+  <data name="HostBookingConfirmed_Cta" xml:space="preserve">
+    <value>Open the booking</value>
+  </data>
+  <data name="GuestBookingCancelled_Refunded" xml:space="preserve">
+    <value>We have refunded &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Subject" xml:space="preserve">
+    <value>Payment failed, please complete your payment - {0}</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Body" xml:space="preserve">
+    <value>the payment of &lt;strong&gt;€{0}&lt;/strong&gt; for your booking at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;, due with the payment method you saved, did not go through: your bank asks for a confirmation or the payment was declined.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Action" xml:space="preserve">
+    <value>You have not been charged. Complete the payment from the link below: you can confirm it with your bank or use another payment method.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Deadline" xml:space="preserve">
+    <value>If the payment is not completed by &lt;strong&gt;{0}&lt;/strong&gt;, the booking will be cancelled and the dates will become available again.</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Cta" xml:space="preserve">
+    <value>Complete the payment</value>
+  </data>
+  <data name="GuestDeferredChargeFailed_Personal" xml:space="preserve">
+    <value>This link is personal: do not forward it. If you have already completed the payment, please ignore this email.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_Subject" xml:space="preserve">
+    <value>Charge failed - {0} (arrival {1})</value>
+  </data>
+  <data name="HostDeferredChargeFailed_Body" xml:space="preserve">
+    <value>The automatic charge of &lt;strong&gt;€{0}&lt;/strong&gt; for the booking of &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{2}&lt;/strong&gt; from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt; ("Pay later" option) failed: the payment was not collected.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_GuestAsked" xml:space="preserve">
+    <value>We sent the guest an email with the link to complete the payment.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_ContactGuest" xml:space="preserve">
+    <value>The charge could not be attempted on the payment method saved by the guest: please contact the guest about the payment.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_Cancellation" xml:space="preserve">
+    <value>If the guest does not pay, the booking will be cancelled automatically on &lt;strong&gt;{0}&lt;/strong&gt; and the dates will become available again.</value>
+  </data>
+  <data name="HostDeferredChargeFailed_NoCancellation" xml:space="preserve">
+    <value>The booking stays confirmed and will not be cancelled automatically: if the guest does not pay, you can cancel it from the booking page.</value>
+  </data>
+  <data name="HostDeferredChargeCancelled_Subject" xml:space="preserve">
+    <value>Booking cancelled, not paid - {0} (arrival {1})</value>
+  </data>
+  <data name="HostDeferredChargeCancelled_Body" xml:space="preserve">
+    <value>The booking of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt; has been cancelled automatically: the guest did not complete the payment after the failed charge.</value>
+  </data>
+  <data name="HostDeferredChargeCancelled_Dates" xml:space="preserve">
+    <value>Nothing was collected. The dates are available again on the booking site and in the calendar exported to the OTAs.</value>
+  </data>
+  <data name="GuestBookingCancelled_BodyUnpaid" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; has been cancelled because the payment was not completed by the deadline. The dates are available again.</value>
+  </data>
+  <data name="GuestBookingCancelled_NoCharge" xml:space="preserve">
+    <value>You have not been charged.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Subject" xml:space="preserve">
+    <value>Listing suspended - {0}</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Body" xml:space="preserve">
+    <value>The listing of &lt;strong&gt;{0}&lt;/strong&gt; has been suspended: it can no longer be seen or booked on the direct booking site, because a requirement for publishing it is missing:</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepBaseData" xml:space="preserve">
+    <value>incomplete basic data (name, address, city, number of guests or nightly price);</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepCin" xml:space="preserve">
+    <value>national identification code (CIN) missing or not valid;</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepDocuments" xml:space="preserve">
+    <value>required documents missing;</value>
+  </data>
+  <data name="PropertyComplianceSuspended_StepSafety" xml:space="preserve">
+    <value>safety checklist (D.L. 145/2023) incomplete or not confirmed.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_BookingsKept" xml:space="preserve">
+    <value>Bookings already confirmed remain valid: no booking has been cancelled.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Action" xml:space="preserve">
+    <value>Complete the missing requirements from the activation of the property: the listing is published again as soon as they are all complete.</value>
+  </data>
+  <data name="PropertyComplianceSuspended_Cta" xml:space="preserve">
+    <value>Open the activation</value>
+  </data>
+  <data name="OtaStayReview_Subject" xml:space="preserve">
+    <value>{0} stay to check - {1} ({2})</value>
+  </data>
+  <data name="OtaStayReview_Removed_Body" xml:space="preserve">
+    <value>The reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;, created from a block of the {2} calendar, is no longer in the linked calendar: it may have been cancelled or moved on the channel.</value>
+  </data>
+  <data name="OtaStayReview_DatesChanged_Body" xml:space="preserve">
+    <value>In the linked {2} calendar the reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; now runs from &lt;strong&gt;{5}&lt;/strong&gt; to &lt;strong&gt;{6}&lt;/strong&gt;; the stay in CasaZen runs from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_DatesChangedUnknown_Body" xml:space="preserve">
+    <value>In the linked {2} calendar the dates of the reservation of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; changed; the stay in CasaZen runs from &lt;strong&gt;{3}&lt;/strong&gt; to &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="OtaStayReview_NothingChanged" xml:space="preserve">
+    <value>CasaZen did not change or cancel the stay, and its dates stay taken on the booking site.</value>
+  </data>
+  <data name="OtaStayReview_Action" xml:space="preserve">
+    <value>Check the reservation on the channel: if it was cancelled, cancel the stay in CasaZen; if its dates changed, update the stay. Then mark it as verified from the booking.</value>
+  </data>
+  <data name="OtaStayReviewPush_Title" xml:space="preserve">
+    <value>Stay to check</value>
+  </data>
+  <data name="OtaStayReviewPush_Removed_Body" xml:space="preserve">
+    <value>{0}: the {1} reservation starting {2} is no longer in the channel's calendar.</value>
+  </data>
+  <data name="OtaStayReviewPush_DatesChanged_Body" xml:space="preserve">
+    <value>{0}: the {1} reservation starting {2} changed dates on the channel.</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Title" xml:space="preserve">
+    <value>New service request</value>
+  </data>
+  <data name="Push_ServiceRequestCreated_Body" xml:space="preserve">
+    <value>{0} at {1}: accept or decline the request from your supplier area.</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Title" xml:space="preserve">
+    <value>Request taken</value>
+  </data>
+  <data name="Push_ServiceRequestTaken_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has taken the request.</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Title" xml:space="preserve">
+    <value>Service completed</value>
+  </data>
+  <data name="Push_ServiceRequestCompleted_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier has completed the service.</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Title" xml:space="preserve">
+    <value>Request declined by the supplier</value>
+  </data>
+  <data name="Push_ServiceRequestRejected_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier declined the request. Choose another supplier.</value>
+  </data>
+  <data name="Push_NewBooking_Title" xml:space="preserve">
+    <value>New confirmed booking</value>
+  </data>
+  <data name="Push_NewBooking_Body" xml:space="preserve">
+    <value>{0}: from {1} to {2}, guests: {3}.</value>
+  </data>
+  <data name="Push_CheckoutReminder_Title" xml:space="preserve">
+    <value>Check-out reminder</value>
+  </data>
+  <data name="Push_CheckoutReminder_Body" xml:space="preserve">
+    <value>{0}: today is check-out day, complete it in CasaZen.</value>
+  </data>
+  <data name="CinDeadlineAlert_Upcoming_Subject" xml:space="preserve">
+    <value>CIN to be entered by {0}</value>
+  </data>
+  <data name="CinDeadlineAlert_DueToday_Subject" xml:space="preserve">
+    <value>CIN to be entered: the {0} deadline is today</value>
+  </data>
+  <data name="CinDeadlineAlert_Passed_Subject" xml:space="preserve">
+    <value>CIN missing: the {0} deadline has passed</value>
+  </data>
+  <data name="CinDeadlineAlert_NoDeadline_Subject" xml:space="preserve">
+    <value>CIN required: properties without a valid code</value>
+  </data>
+  <data name="CinDeadlineAlert_Upcoming_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0} days&lt;/strong&gt; are left until the {1} deadline for the national identification code (CIN), and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_UpcomingOneDay_Body" xml:space="preserve">
+    <value>&lt;strong&gt;1 day&lt;/strong&gt; is left until the {0} deadline for the national identification code (CIN), and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_DueToday_Body" xml:space="preserve">
+    <value>The {0} deadline for the national identification code (CIN) is &lt;strong&gt;today&lt;/strong&gt;, and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_Passed_Body" xml:space="preserve">
+    <value>The {0} deadline for the national identification code (CIN) &lt;strong&gt;has passed&lt;/strong&gt;, and these properties do not have a valid CIN yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_NoDeadline_Body" xml:space="preserve">
+    <value>These properties do not have a valid national identification code (CIN) yet:</value>
+  </data>
+  <data name="CinDeadlineAlert_Obligation" xml:space="preserve">
+    <value>The CIN is mandatory for properties let as short-term or tourist rentals: it must be displayed outside the property and stated in every listing (art. 13-ter, paragraph 8, Decree-Law 145/2023, converted by Law 191/2023). It is requested on the Accommodation Database (BDSR) of the Italian Ministry of Tourism.</value>
+  </data>
+  <data name="CinDeadlineAlert_Penalties" xml:space="preserve">
+    <value>Paragraph 9 of the same article sets a fine of 800 to 8,000 euros for a missing CIN, depending on the size of the accommodation or property, and of 500 to 5,000 euros per accommodation or unit for not displaying it or not stating it in the listings.</value>
+  </data>
+  <data name="CinDeadlineAlert_Action" xml:space="preserve">
+    <value>Enter the CIN of each property on the CIN compliance page of the console: while it is missing or not valid, the property cannot be published on the booking site.</value>
+  </data>
+  <data name="CinDeadlineAlert_Cta" xml:space="preserve">
+    <value>Open CIN compliance</value>
+  </data>
+</root>

@@ -15,7 +15,7 @@ CasaZen gives Italian vacation rental owners a single platform to manage their p
 - **Guests** — travellers who book directly or via OTA platforms (Airbnb, Booking.com, etc.)
 
 ### Core value proposition
-CasaZen automates the most burdensome parts of Italian vacation rental management: real-time multi-channel synchronisation, compliant tourist tax calculation, mandatory police reporting (Alloggiati Web), and AI-driven dynamic pricing — all in one API-first platform.
+CasaZen automates the most burdensome parts of Italian vacation rental management: real-time multi-channel synchronisation, compliant tourist tax calculation, mandatory police reporting (Alloggiati Web), and seasonal price suggestions — all in one API-first platform.
 
 ---
 
@@ -27,7 +27,7 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 - **Purpose**: A vacation rental property listed by an owner.
 - **Key attributes**: Name, address, city, bedrooms, bathrooms, max guests, nightly rate, cleaning fee, damage deposit, amenities, house rules, CIN code, timezone.
 - **Relationships**: Owned by a user (`OwnerId`); has many `Booking`s, `OtaIntegration`s, an optional `CancellationPolicy`, and one `PricingAdapterConfig`.
-- **Business significance**: The central asset. Every booking, payment, OTA sync, and pricing decision is attached to a property. Italian law (D.L. 145/2023) requires each property to carry a CIN code in the format `IT-XXXXX-XXXXXXXXXX`.
+- **Business significance**: The central asset. Every booking, payment, OTA sync, and pricing decision is attached to a property. Italian law (D.L. 145/2023) requires each property to carry a CIN code such as `IT058091C27G5FFZDZ` (`IT` + ISTAT comune code + category + random string).
 
 ### Booking
 - **Purpose**: A confirmed or pending stay at a property.
@@ -64,10 +64,10 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 - **Relationships**: Linked to a `Booking` and a `Guest`.
 - **Business significance**: Italian law (D.L. 286/1998, Art. 7) requires accommodation providers to report guest identities to the police within 24 hours of check-in. This entity tracks submission status.
 
-### PricingAdapterConfig / PricingHistory
-- **Purpose**: Configuration and audit trail for AI-driven dynamic pricing.
-- **Key attributes**: Enabled flag, adaptation frequency, seasonality and public holiday flags, next scheduled run, last adapted timestamp, AI confidence score.
-- **Business significance**: Allows owners to opt into automated price adjustments. Each price change is logged in `PricingHistory` with an AI confidence score for transparency.
+### PricingAdapterConfig / SeasonalPriceSuggestion
+- **Purpose**: "Suggerimenti stagionali" (seasonal price suggestions, PC-15): the host's rules and the suggested nightly price per date.
+- **Key attributes**: Enabled flag, update frequency (daily/weekly), high/low season months and multipliers, national holiday multiplier, last computation; per date: real base price, suggested price, rule applied.
+- **Business significance**: Proposals only: quotes and bookings keep using the property's nightly rate. No AI and no confidence score. `PricingHistory` only logs the (frozen) OTA price push.
 
 ---
 
@@ -145,7 +145,7 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 
 | Rule | Description | Where enforced |
 |---|---|---|
-| CIN format | Property CIN code must match `IT-XXXXX-XXXXXXXXXX` | `CinCodeAttribute` validator on `Property` |
+| CIN format | Property CIN code must match the official BDSR format (e.g. `IT058091C27G5FFZDZ`), spaces and hyphens ignored | `CinFormat` (via `CinCodeAttribute` and the property services) |
 | Tourist tax source | Rates must come from the `TouristTaxRate` entity — never hardcoded | `TaxCalculationService` |
 | Booking status machine | Only valid transitions: Pending→Confirmed→CheckedIn→CheckedOut; any state→Cancelled | `BookingsController` check-in/check-out actions |
 | Check-in date validation | Cannot check in before the booking's check-in date | `BookingsController.CheckIn` |
@@ -163,7 +163,7 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 
 | Term | Definition |
 |---|---|
-| CIN | Codice Identificativo Nazionale — a unique national identification code assigned to each short-term rental property in Italy under D.L. 145/2023. Format: `IT-XXXXX-XXXXXXXXXX`. |
+| CIN | Codice Identificativo Nazionale — a unique national identification code assigned to each short-term rental property in Italy under D.L. 145/2023. Format: `IT` + 6-digit ISTAT comune code + 2-character category + up to 8 random characters, e.g. `IT058091C27G5FFZDZ`. |
 | Alloggiati Web | The Italian Police (Polizia di Stato) online portal for accommodation providers to register guest identities within 24 hours of check-in, as required by D.L. 286/1998, Art. 7. |
 | Tourist tax (tassa di soggiorno) | A per-night fee collected by accommodation providers on behalf of Italian municipalities. Rates vary by city and are capped at a maximum number of nights. |
 | OTA | Online Travel Agency — third-party booking platforms such as Airbnb, Booking.com, Expedia, VRBO, TripAdvisor, and Agoda. |
@@ -172,7 +172,7 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 | BookingStatus | The lifecycle state of a booking: Pending, Confirmed, CheckedIn, CheckedOut, Cancelled. |
 | Circuit breaker | A resilience pattern that halts calls to an external service after repeated failures, preventing cascading errors. Used for all OTA integrations. |
 | GDPR | General Data Protection Regulation — EU regulation governing the collection, storage, and erasure of personal data. Applies to all guest personal data. |
-| Dynamic pricing | AI-driven automatic adjustment of nightly rates based on seasonality, demand signals, and public holidays. Managed via `PricingAdapterConfig`. |
+| Seasonal suggestions | "Suggerimenti stagionali": suggested nightly prices from the property's rate and the host's season and national holiday rules; read-only proposals, no AI. Managed via `PricingAdapterConfig`. |
 
 ---
 
@@ -188,5 +188,5 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 | Agoda | Sync bookings and availability; push pricing | Same as Airbnb |
 | Stripe | Payment processing and refunds | Charge amounts, refund amounts, webhook payment events |
 | Alloggiati Web | Mandatory police guest registration | Guest identity data (name, DOB, document details, nationality) |
-| MailKit SMTP | Transactional email notifications (supplier invites, booking confirmations, receipts) | Email via any SMTP server (Gmail free tier recommended) or SendGrid SMTP relay |
+| Resend | Transactional email notifications (service requests, supplier invites, guest check-in links, reminders) | Email API (Resend), sender on a verified domain; see `docs/runbooks/email.md` |
 | Auth0 | User identity and authentication | JWT tokens validated on every API request |

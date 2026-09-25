@@ -1,0 +1,61 @@
+namespace Casazen.Core.Utilities;
+
+/// <summary>
+/// Calendar "today" for hosts, guests and properties (Italian market, Europe/Rome) (FD-06).
+/// Use it wherever a date is compared with the user's or the property's calendar day
+/// (check-in/check-out reached, "not in the past", days to a deadline, default date ranges).
+/// Technical timestamps (CreatedAt, token expiries, job windows) keep using the UTC instant.
+/// </summary>
+public static class RomeCalendar
+{
+    public const string TimeZoneId = "Europe/Rome";
+
+    private static readonly Lazy<TimeZoneInfo> Zone = new(() => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId));
+
+    public static TimeZoneInfo TimeZone => Zone.Value;
+
+    /// <summary>
+    /// Today's calendar date in Europe/Rome, as midnight UTC of that date
+    /// (the storage convention for date-only values such as check-in or contract dates).
+    /// </summary>
+    public static DateTime TodayInRome(this TimeProvider timeProvider) => TodayAt(timeProvider.GetUtcNow());
+
+    /// <summary>Today's calendar date in Europe/Rome as a <see cref="DateOnly"/>.</summary>
+    public static DateOnly TodayInRomeAsDateOnly(this TimeProvider timeProvider) =>
+        DateOnly.FromDateTime(TodayInRome(timeProvider));
+
+    /// <summary>
+    /// The Europe/Rome calendar date of <paramref name="instant"/>, as midnight UTC of that date.
+    /// </summary>
+    public static DateTime TodayAt(DateTimeOffset instant)
+    {
+        var local = TimeZoneInfo.ConvertTime(instant, TimeZone);
+        return new DateTime(local.Year, local.Month, local.Day, 0, 0, 0, DateTimeKind.Utc);
+    }
+
+    /// <summary>
+    /// Europe/Rome calendar date of a stored or received date value. A date-only value is midnight UTC of its date
+    /// (storage convention), which is the same date in Rome; an instant with a time (e.g. <c>2026-01-31T23:30Z</c>) is
+    /// converted, so it gives the Rome date (<c>2026-02-01</c>). <see cref="DateTimeKind.Unspecified"/> counts as UTC.
+    /// </summary>
+    public static DateOnly DateInRome(DateTime value)
+    {
+        var utc = value.Kind switch
+        {
+            DateTimeKind.Local => value.ToUniversalTime(),
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+            _ => value,
+        };
+        return DateOnly.FromDateTime(TodayAt(new DateTimeOffset(utc)));
+    }
+
+    /// <summary>
+    /// The UTC instant at which the calendar date of <paramref name="calendarDate"/> (a date-only value, e.g. a
+    /// check-in date) starts in Europe/Rome: 22:00 or 23:00 UTC of the day before, depending on daylight saving.
+    /// </summary>
+    public static DateTime StartOfDayUtc(DateTime calendarDate)
+    {
+        var localMidnight = new DateTime(calendarDate.Year, calendarDate.Month, calendarDate.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(localMidnight, TimeZone);
+    }
+}

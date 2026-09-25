@@ -16,6 +16,7 @@ public class PropertyDocumentServiceTests
     private readonly Mock<IImageStorageService> _mockStorageService;
     private readonly Mock<IPropertyRepository> _mockPropertyRepository;
     private readonly Mock<IApeComplianceService> _mockApeCompliance;
+    private readonly Mock<IPropertyComplianceStatusService> _complianceStatus = new();
     private readonly PropertyDocumentService _service;
 
     public PropertyDocumentServiceTests()
@@ -29,6 +30,7 @@ public class PropertyDocumentServiceTests
             _mockStorageService.Object,
             _mockPropertyRepository.Object,
             _mockApeCompliance.Object,
+            _complianceStatus.Object,
             new Mock<ILogger<PropertyDocumentService>>().Object);
     }
 
@@ -50,7 +52,8 @@ public class PropertyDocumentServiceTests
             UploadedAt = DateTime.UtcNow
         };
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        var orgId = Guid.NewGuid();
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(orgId);
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(expectedDocument);
@@ -62,7 +65,8 @@ public class PropertyDocumentServiceTests
         Assert.NotNull(result);
         Assert.Equal(expectedDocument.Id, result.Id);
         Assert.Equal(propertyId, result.PropertyId);
-        _mockDocumentRepository.Verify(x => x.AddAsync(It.IsAny<PropertyDocument>()), Times.Once);
+        // TN-2: the stored row carries the property's org (tenant filter + FK).
+        _mockDocumentRepository.Verify(x => x.AddAsync(It.Is<PropertyDocument>(d => d.OrgId == orgId && d.PropertyId == propertyId)), Times.Once);
     }
 
     [Fact]
@@ -72,7 +76,7 @@ public class PropertyDocumentServiceTests
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("test-doc.pdf");
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(false);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync((Guid?)null);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -92,7 +96,7 @@ public class PropertyDocumentServiceTests
         var storageUrl = "/uploads/properties/floor-plan.png";
         var savedDocument = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId };
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(savedDocument);
@@ -153,19 +157,21 @@ public class PropertyDocumentServiceTests
             Id = documentId,
             PropertyId = Guid.NewGuid(),
             FileName = "doc.pdf",
-            StorageUrl = "/uploads/properties/doc.pdf"
+            StorageUrl = "properties/p/documents/doc.pdf"
         };
 
         _mockDocumentRepository.Setup(x => x.GetByIdAsync(documentId)).ReturnsAsync(document);
-        _mockStorageService.Setup(x => x.DeleteImageAsync(document.StorageUrl)).Returns(Task.CompletedTask);
+        _mockStorageService.Setup(x => x.DeleteDocumentAsync(document.StorageUrl)).Returns(Task.CompletedTask);
         _mockDocumentRepository.Setup(x => x.DeleteAsync(documentId)).Returns(Task.CompletedTask);
 
         // Act
         await _service.DeleteDocumentAsync(documentId);
 
         // Assert
-        _mockStorageService.Verify(x => x.DeleteImageAsync(document.StorageUrl), Times.Once);
+        _mockStorageService.Verify(x => x.DeleteDocumentAsync(document.StorageUrl), Times.Once);
         _mockDocumentRepository.Verify(x => x.DeleteAsync(documentId), Times.Once);
+        // CO-06 (A5-20): an active property that loses a required document is suspended.
+        _complianceStatus.Verify(x => x.ReevaluateAsync(document.PropertyId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -179,7 +185,7 @@ public class PropertyDocumentServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.DeleteDocumentAsync(documentId));
 
-        _mockStorageService.Verify(x => x.DeleteImageAsync(It.IsAny<string>()), Times.Never);
+        _mockStorageService.Verify(x => x.DeleteDocumentAsync(It.IsAny<string>()), Times.Never);
         _mockDocumentRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
     }
 
@@ -190,7 +196,7 @@ public class PropertyDocumentServiceTests
         var mockFile = CreateMockFile("ape.pdf");
         var saved = new PropertyDocument { Id = Guid.NewGuid(), PropertyId = propertyId, DocumentType = DocumentType.Ape };
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync("/ape.pdf");
         _mockApeCompliance.Setup(x => x.EnsureUploadedFileIsOfficialApeAsync(mockFile.Object)).Returns(Task.CompletedTask);
@@ -207,7 +213,7 @@ public class PropertyDocumentServiceTests
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("not-an-ape.pdf");
 
-        _mockPropertyRepository.Setup(x => x.ExistsAsync(propertyId)).ReturnsAsync(true);
+        _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
         _mockStorageService.Setup(x => x.ValidateDocument(mockFile.Object)).Returns(true);
         _mockApeCompliance.Setup(x => x.EnsureUploadedFileIsOfficialApeAsync(mockFile.Object))
             .ThrowsAsync(ApeComplianceException.InvalidContent());

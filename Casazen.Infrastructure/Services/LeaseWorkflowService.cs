@@ -1,45 +1,50 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
+using Casazen.Core.Leases;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Lease drafting and reads. The signature (offline or provider, LT-02) is <see cref="LeaseSigningService"/>, the RLI
+/// registration (provider or manual, LT-01) is <see cref="RliRegistrationService"/>.
+/// </summary>
 public class LeaseWorkflowService(
     ILeaseContractRepository leaseRepository,
-    ILeaseRegistrationRepository registrationRepository,
     ILeaseEventRepository eventRepository,
-    ILeaseTemplateService templateService,
-    ILeaseESignService eSignService,
-    ILeaseRegistrationService registrationService,
     IPropertyRepository propertyRepository,
-    ILeaseRegistrationAuthorizationRepository authorizationRepository,
     IApeComplianceService apeCompliance,
-    IOptions<RliOptions> rliOptions,
-    ILogger<LeaseWorkflowService> logger) : ILeaseWorkflowService
+    ICanoneConcordatoEligibilityService canoneConcordatoEligibility,
+    ILogger<LeaseWorkflowService> logger,
+    TimeProvider? timeProvider = null) : ILeaseWorkflowService
 {
-    private static readonly HashSet<string> EuCitizenships =
-    [
-        "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR","HR",
-        "HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO","SE","SI","SK"
-    ];
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, string ownerId, CreateLeaseRequest request)
+    public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, CreateLeaseRequest request)
     {
+        // Who may create a lease on the property (owner or org-wide member with lease.create) is decided by the
+        // caller with the TN-3 resource check; the tenant filter keeps other orgs' properties invisible here.
         var property = await propertyRepository.GetByIdAsync(propertyId)
             ?? throw new InvalidOperationException($"Property {propertyId} not found.");
 
-        if (property.OwnerId != ownerId)
-            throw new UnauthorizedAccessException("Property does not belong to this owner.");
-
         await apeCompliance.EnsurePropertyHasValidApeAsync(propertyId);
 
-        if (request.EndDate <= request.StartDate)
-            throw new InvalidOperationException("Lease end date must be after start date.");
+        var (contractType, taxRegime) = ResolveContractTerms(request);
+
+        // Term from the dates, checked for the contract type (LT-10, A7-13): 4+4, 3+2, transitorio 1-18 months.
+        LeaseContractTerms.EnsureTerm(contractType, request.StartDate, request.EndDate);
+        var term = LeaseTerm.Between(request.StartDate, request.EndDate)!.Value;
+
+        var concordato = contractType == LeaseContractType.Concordato
+            ? await AssessConcordatoRentAsync(propertyId, request, term)
+            : null;
 
         var parties = request.Parties.ToList();
         if (!parties.Any(p => p.Role == PartyRole.Landlord))
@@ -51,11 +56,12 @@ public class LeaseWorkflowService(
         {
             PropertyId = propertyId,
             OrgId = property.OrgId,
-            FiscalRegime = request.FiscalRegime,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             MonthlyRent = request.MonthlyRent,
-            RegistrationDeadline = request.StartDate.AddDays(30),
+            SecurityDeposit = request.SecurityDeposit,
+            ConcordatoAssessment = concordato,
+            // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04).
             DataRetentionUntil = request.StartDate.AddYears(10),
             Parties = parties.Select(p => new Party
             {
@@ -63,11 +69,13 @@ public class LeaseWorkflowService(
                 FirstName = p.FirstName,
                 LastName = p.LastName,
                 FiscalCode = p.FiscalCode,
-                Citizenship = p.Citizenship,
+                Citizenship = EuMemberStates.NormalizeCode(p.Citizenship),
                 ContactEmail = p.ContactEmail,
-                IsExtraEU = !EuCitizenships.Contains(p.Citizenship.ToUpperInvariant())
+                // Not an EU citizen (27 member states, EuMemberStates): the Questura communication applies (LT-07).
+                IsExtraEU = !EuMemberStates.IsEuCitizenship(p.Citizenship)
             }).ToList()
         };
+        lease.SetContractTerms(contractType, taxRegime);
 
         await leaseRepository.AddAsync(lease);
         await eventRepository.AddAsync(new LeaseEvent
@@ -76,164 +84,123 @@ public class LeaseWorkflowService(
             EventType = LeaseEventType.Created
         });
 
-        logger.LogInformation("Lease draft created. LeaseId={LeaseId} PropertyId={PropertyId}", lease.Id, propertyId);
+        if (concordato is { RentWithinRange: false })
+        {
+            // Only an indicative range (Partial data) lets a rent outside it through (A7-23): logged, shown to the host.
+            logger.LogWarning(
+                "Lease draft created with a rent outside the indicative canone concordato range ({Completeness} data). LeaseId={LeaseId} PropertyId={PropertyId}",
+                concordato.DataCompleteness, lease.Id, propertyId);
+        }
+
+        logger.LogInformation("Lease draft created. LeaseId={LeaseId} PropertyId={PropertyId} ContractType={ContractType}",
+            lease.Id, propertyId, contractType);
         return lease;
     }
 
-    public async Task<SigningInitiatedResult> InitiateSigningAsync(Guid leaseId, string ownerId)
+    public async Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
     {
-        var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
-
-        if (lease.Status != LeaseStatus.Draft)
-            throw new InvalidOperationException($"Lease must be in Draft status to initiate signing. Current: {lease.Status}");
-
-        var pdfBytes = await templateService.GeneratePdfAsync(lease);
-        var sessionResult = await eSignService.InitiateSigningAsync(lease, pdfBytes);
-
-        lease.Status = LeaseStatus.AwaitingSignature;
-        lease.ExternalSigningSessionId = sessionResult.ExternalSessionId;
-        await leaseRepository.UpdateAsync(lease);
-        await eventRepository.AddAsync(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.SigningInitiated
-        });
-
-        logger.LogInformation("Signing initiated. LeaseId={LeaseId} SessionId={SessionId}", leaseId, sessionResult.ExternalSessionId);
-        return new SigningInitiatedResult(lease.Id, lease.Status, sessionResult.Signers);
+        // The deadline of a lease not signed yet depends on today (LT-04): resolved here, not stored.
+        var today = _clock.TodayInRome();
+        var summaries = await leaseRepository.GetSummariesAsync(scope, propertyId);
+        return summaries
+            .Select(s => s with
+            {
+                RegistrationDeadline = RliRegistrationDeadline.Resolve(s.Status, s.StipulaDate, s.StartDate, today),
+            })
+            .ToList();
     }
 
-    public async Task HandleESignEventAsync(string providerPayload)
+    public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
+        => leaseRepository.GetByIdWithDetailsAsync(leaseId);
+
+    /// <summary>
+    /// Contract type and tax regime of the request (LT-10): the new fields, or the legacy combined value when a client
+    /// sends only that. 422 when neither is given, or the contract type comes without a tax regime.
+    /// </summary>
+    private static (LeaseContractType Type, LeaseTaxRegime? TaxRegime) ResolveContractTerms(CreateLeaseRequest request)
     {
-        var esignEvent = await eSignService.ParseWebhookEventAsync(providerPayload);
-
-        var lease = await leaseRepository.GetByExternalSigningSessionIdAsync(esignEvent.ExternalSessionId);
-        if (lease is null)
+        if (request.ContractType is { } contractType)
         {
-            logger.LogWarning("ESign webhook received but no lease found for SessionId={SessionId}", esignEvent.ExternalSessionId);
-            return;
+            var taxRegime = request.TaxRegime
+                ?? throw new DomainRuleException(LeaseTermErrorCodes.TaxRegimeRequired, "LeaseTaxRegimeRequired");
+            return (contractType, taxRegime);
         }
 
-        if (esignEvent.AllSigned)
+        if (request.FiscalRegime is { } legacy)
         {
-            lease.Status = LeaseStatus.Signed;
-            lease.SignedPdfStoragePath = esignEvent.SignedDocumentPath;
-            await leaseRepository.UpdateAsync(lease);
-            await eventRepository.AddAsync(new LeaseEvent
-            {
-                LeaseContractId = lease.Id,
-                EventType = LeaseEventType.AllPartiesSigned
-            });
-            logger.LogInformation("All parties signed. LeaseId={LeaseId}", lease.Id);
+            var (type, legacyTaxRegime) = LeaseContractTerms.FromLegacy(legacy);
+            return (type, request.TaxRegime ?? legacyTaxRegime);
         }
-        else
-        {
-            await eventRepository.AddAsync(new LeaseEvent
-            {
-                LeaseContractId = lease.Id,
-                EventType = LeaseEventType.PartySignedDocument,
-                Payload = esignEvent.SignerEmail
-            });
-        }
+
+        throw new DomainRuleException(LeaseTermErrorCodes.ContractTypeRequired, "LeaseContractTypeRequired");
     }
 
-    public async Task<LeaseRegistration> TriggerRegistrationAsync(
-        Guid leaseId, string ownerId, RegistrationAuthorizationRequest authorization)
+    /// <summary>
+    /// Canone concordato range recomputed on the server from the declared characteristics and the real term (A7-12).
+    /// Verified agreement data (Complete): a rent outside the range is refused (422). Unconfirmed data (Partial): the
+    /// range is indicative, the lease is created and the assessment records that the rent is outside it (A7-23).
+    /// </summary>
+    private async Task<LeaseConcordatoAssessment> AssessConcordatoRentAsync(
+        Guid propertyId, CreateLeaseRequest request, LeaseTerm term)
     {
-        var lease = await GetVerifiedLeaseAsync(leaseId, ownerId);
+        if (request.CanoneConcordatoCharacteristics is not { } characteristics)
+            throw new DomainRuleException(ConcordatoErrorCodes.CharacteristicsRequired, "ConcordatoCharacteristicsRequired");
 
-        var existing = await registrationRepository.GetByLeaseIdAsync(lease.Id);
-        if (existing is not null)
-            throw new InvalidOperationException("Registration has already been submitted for this lease.");
+        var range = await canoneConcordatoEligibility.CalculateAsync(propertyId, characteristics, term)
+            ?? throw new NotFoundException($"Property {propertyId} not found.") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
 
-        if (lease.Status != LeaseStatus.Signed)
-            throw new InvalidOperationException($"Lease must be Signed before registration. Current: {lease.Status}");
-
-        var expectedTos = rliOptions.Value.TosVersion;
-        if (!authorization.AttestationAccepted
-            || string.IsNullOrWhiteSpace(authorization.TosVersion)
-            || !string.Equals(authorization.TosVersion, expectedTos, StringComparison.Ordinal))
+        if (range is not
+            {
+                Available: true,
+                SubFascia: int subFascia,
+                CanoneMinAnnuo: decimal minAnnual,
+                CanoneMaxAnnuo: decimal maxAnnual,
+                CanoneMinMensile: decimal minMonthly,
+                CanoneMaxMensile: decimal maxMonthly,
+            })
         {
-            throw new InvalidOperationException(
-                "Landlord authorization (delega) is required before RLI submission.");
+            var (code, key) = ConcordatoErrorCodes.ForReason(range.ReasonCode);
+            throw new DomainRuleException(code, key);
         }
 
-        await authorizationRepository.AddAsync(new LeaseRegistrationAuthorization
+        var annualRent = request.MonthlyRent * 12m;
+        var withinRange = annualRent >= minAnnual && annualRent <= maxAnnual;
+        if (!withinRange && !range.Indicative)
         {
-            OrgId = lease.OrgId,
-            LeaseContractId = lease.Id,
-            AuthorizerUserId = ownerId,
-            TosVersion = authorization.TosVersion,
-            AttestationAccepted = true,
-            Scope = "rli-filing",
-        });
-        await eventRepository.AddAsync(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.RegistrationAuthorized,
-            Payload = authorization.TosVersion,
-        });
+            throw new DomainRuleException(
+                ConcordatoErrorCodes.RentOutOfRange, "ConcordatoRentOutOfRange", minMonthly, maxMonthly);
+        }
 
-        var externalId = await registrationService.SubmitRegistrationAsync(lease);
-
-        var registration = new LeaseRegistration
+        return new LeaseConcordatoAssessment
         {
-            LeaseContractId = lease.Id,
-            Status = RegistrationStatus.SentToProvider,
-            ExternalRegistrationId = externalId,
-            SubmittedAt = DateTime.UtcNow
+            Sqm = characteristics.Sqm,
+            GarageSqm = characteristics.GarageSqm,
+            BalconySqm = characteristics.BalconySqm,
+            OtherAppurtenanceSqm = characteristics.OtherAppurtenanceSqm,
+            PrivateGreenSqm = characteristics.PrivateGreenSqm,
+            TypeAElementCount = characteristics.TypeAElementCount,
+            TypeBElementCount = characteristics.TypeBElementCount,
+            TypeCElementCount = characteristics.TypeCElementCount,
+            TypeDElementCount = characteristics.TypeDElementCount,
+            QualifyingTypeDElementCount = characteristics.QualifyingTypeDElementCount,
+            StoveHeating = characteristics.StoveHeating,
+            IsFurnished = characteristics.IsFurnished,
+            AirConditioning = characteristics.AirConditioning,
+            ZoneName = NullIfBlank(characteristics.ZoneName),
+            CadastralSheet = NullIfBlank(characteristics.CadastralSheet),
+            ContractYears = range.ContractYears ?? term.Months / 12,
+            UsableSqm = range.UsableSqm ?? characteristics.Sqm,
+            Zone = range.Zone ?? string.Empty,
+            SubFascia = subFascia,
+            CanoneMinAnnuo = minAnnual,
+            CanoneMaxAnnuo = maxAnnual,
+            CanoneMinMensile = minMonthly,
+            CanoneMaxMensile = maxMonthly,
+            DataCompleteness = range.DataCompleteness ?? DataCompleteness.Missing,
+            RentWithinRange = withinRange,
+            CalculatedAt = _clock.GetUtcNow().UtcDateTime,
         };
-
-        await registrationRepository.AddAsync(registration);
-
-        lease.Status = LeaseStatus.SentToProvider;
-        await leaseRepository.UpdateAsync(lease);
-        await eventRepository.AddAsync(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.RegistrationSubmitted
-        });
-
-        logger.LogInformation("Registration submitted. LeaseId={LeaseId} ExternalId={ExternalId}", leaseId, externalId);
-        return registration;
     }
 
-    public async Task<LeaseRegistration?> GetRegistrationAsync(Guid leaseId, string ownerId)
-    {
-        await GetVerifiedLeaseAsync(leaseId, ownerId);
-        return await registrationRepository.GetByLeaseIdAsync(leaseId);
-    }
-
-    public async Task<Stream> GetRegistrationReceiptAsync(Guid leaseId, string ownerId)
-    {
-        await GetVerifiedLeaseAsync(leaseId, ownerId);
-        var registration = await registrationRepository.GetByLeaseIdAsync(leaseId)
-            ?? throw new InvalidOperationException("No registration found for this lease.");
-
-        if (registration.Status != RegistrationStatus.Registered || registration.ExternalRegistrationId is null)
-            throw new InvalidOperationException("Receipt is not available yet.");
-
-        return await registrationService.DownloadReceiptAsync(registration.ExternalRegistrationId);
-    }
-
-    public async Task<IEnumerable<LeaseContract>> GetOwnerLeasesAsync(string ownerId, Guid? propertyId = null)
-        => await leaseRepository.GetByOwnerAsync(ownerId, propertyId);
-
-    public async Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId, string ownerId)
-    {
-        var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId) return null;
-        return lease;
-    }
-
-    private async Task<LeaseContract> GetVerifiedLeaseAsync(Guid leaseId, string ownerId)
-    {
-        var lease = await leaseRepository.GetByIdWithDetailsAsync(leaseId)
-            ?? throw new NotFoundException($"Lease {leaseId} not found.");
-
-        if (lease.Property is null || lease.Property.OwnerId != ownerId)
-            throw new UnauthorizedAccessException("Lease does not belong to this owner.");
-
-        return lease;
-    }
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -1,8 +1,13 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -16,7 +21,11 @@ public class PropertyServiceTests
     public PropertyServiceTests()
     {
         _mockRepository = new Mock<IPropertyRepository>();
-        _service = new PropertyService(_mockRepository.Object, new Mock<ILogger<PropertyService>>().Object);
+        _service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object);
     }
 
     [Fact]
@@ -174,6 +183,71 @@ public class PropertyServiceTests
         Assert.Equal(property.Id, result.Id);
         Assert.Equal(property.Name, result.Name);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_SlugUsedByAnotherPropertyOfOrg_ThrowsDomainConflictException()
+    {
+        var property = new Property { Id = Guid.NewGuid(), OrgId = Guid.NewGuid(), Name = "Villa", Slug = "villa-rossa" };
+        _mockRepository
+            .Setup(x => x.SlugExistsInOrgAsync(property.OrgId, "villa-rossa", property.Id))
+            .ReturnsAsync(true);
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.UpdatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_slug", ex.Code);
+        Assert.Equal("PropertySlugTaken", ex.MessageKey);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_UnknownCancellationPolicy_ThrowsDomainRuleExceptionWithoutSaving()
+    {
+        var policyId = Guid.NewGuid();
+        var property = new Property { Id = Guid.NewGuid(), OrgId = Guid.NewGuid(), Name = "Villa", CancellationPolicyId = policyId };
+        _mockRepository.Setup(x => x.CancellationPolicyExistsAsync(policyId)).ReturnsAsync(false);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.UpdatePropertyAsync(property));
+
+        Assert.Equal("cancellation_policy_not_found", ex.Code);
+        Assert.Equal("PropertyCancellationPolicyNotFound", ex.MessageKey);
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_ExistingCancellationPolicy_Saves()
+    {
+        var policyId = Guid.NewGuid();
+        var property = new Property { Id = Guid.NewGuid(), OrgId = Guid.NewGuid(), Name = "Villa", CancellationPolicyId = policyId };
+        _mockRepository.Setup(x => x.CancellationPolicyExistsAsync(policyId)).ReturnsAsync(true);
+        _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
+
+        await _service.UpdatePropertyAsync(property);
+
+        _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_UnknownCancellationPolicy_ThrowsDomainRuleExceptionWithoutSaving()
+    {
+        var property = new Property { OrgId = Guid.NewGuid(), Name = "Villa", Slug = "villa", CancellationPolicyId = Guid.NewGuid() };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("cancellation_policy_not_found", ex.Code);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetPropertyRecordAsync_ReadsTheRowWithoutRelations()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa" };
+        _mockRepository.Setup(x => x.GetRecordAsync(property.Id)).ReturnsAsync(property);
+
+        var result = await _service.GetPropertyRecordAsync(property.Id);
+
+        Assert.Same(property, result);
+        _mockRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     // Image Management Tests

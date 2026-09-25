@@ -8,22 +8,27 @@
 
   <ItemGroup>
     <PackageReference Include="Auth0.ManagementApi" Version="7.30.0" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="Hangfire.Core" Version="1.8.17" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="HtmlSanitizer" Version="9.2.1039" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.12" />
     <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
     <PackageReference Include="Ical.Net" Version="4.3.1" />
+    <!-- PDF rendering (LT-09): MIT, fully managed. Licence and font notes in docs/runbooks/lease-contract-templates.md. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="Resend" Version="0.5.1" />
     <PackageReference Include="Stripe.net" Version="50.1.0" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.7" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,6 +37,12 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Casazen.Tests" />
+  </ItemGroup>
+
+  <!-- Fonts of the generated PDFs (LT-09): compiled into the assembly, never read from the host. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Documents\Fonts\DejaVuSans.ttf" LogicalName="Casazen.Infrastructure.Documents.Fonts.DejaVuSans.ttf" />
+    <EmbeddedResource Include="Documents\Fonts\DejaVuSans-Bold.ttf" LogicalName="Casazen.Infrastructure.Documents.Fonts.DejaVuSans-Bold.ttf" />
   </ItemGroup>
 
 </Project>

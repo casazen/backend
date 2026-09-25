@@ -1,0 +1,328 @@
+# Runbook: mobile app release (EAS Build)
+
+Task MO-02. Audit defects: A6-02, A9-37, A6-30 (assets and version part). Product decision D9: code plus runbook, the app reports missing configuration at startup.
+
+Repository: `casazen/mobile` (Expo SDK 52, `expo-router`, EAS Build). The values below are applied by the product owner; nothing in this runbook is a secret stored in git.
+
+## What changed
+
+| Topic | Before | Now |
+|---|---|---|
+| API / web / Auth0 values in a release build | Fallback to `http://localhost:5000` and the **dev** Auth0 tenant when `.env` was missing (EAS never receives `.env`: it is gitignored) | Fallbacks only in `__DEV__`. Any other build needs the five `EXPO_PUBLIC_*` variables (https, no local address). Otherwise the app shows **only** the screen "Configurazione dell'app incompleta" with code `CONFIG_ENV_INVALID` and the names of the bad variables (never their values) |
+| EAS Build | No `env` per profile, no link to EAS environment variables | Each profile reads the EAS environment of the same name (`"environment"` in `eas.json`) and sets `APP_VARIANT`. On the EAS worker a `preview` / `production` build **fails** in `app.config.ts` if a variable is missing or invalid |
+| EAS project id | `extra.eas.projectId` = `00000000-0000-0000-0000-000000000000` in `app.json` | Read by `app.config.ts` from `EAS_PROJECT_ID` (on the EAS worker from `EAS_BUILD_PROJECT_ID`). All-zero or malformed values are refused. Without an id the app skips push registration and logs `PUSH_PROJECT_ID_MISSING` instead of crashing (push setup: section 9, task MO-03) |
+| Icon, splash, notification icon | None | Neutral **placeholder** files in `assets/` (section 6), to be replaced before the store release |
+| Native dependencies | `react-native` 0.76.3, `react-native-screens` 4.1.0, `expo-font` / `expo-file-system` / `expo-keep-awake` nested under `expo/` (not autolinked) | Aligned with SDK 52: `react-native` 0.76.9, `react-native-screens` ~4.4.0, the three modules are direct dependencies |
+| App version | `0.1.0` in `app.json`, `0.2.0` in `package.json` | `app.config.ts` takes `version` from `package.json` |
+
+Code: `mobile/app.config.ts`, `mobile/eas.json`, `mobile/src/config/config-rules.js` (rules shared by the app and `app.config.ts`), `mobile/src/config/env.ts`, `mobile/src/config/eas.ts`, `mobile/src/components/ConfigErrorScreen.tsx`. Tests: `mobile/src/config/__tests__/`.
+
+## 0. Prerequisites
+
+- An Expo account that owns (or is a member of the organization that owns) the project. Use a recent CLI: `npx eas-cli@latest ...` (`eas.json` requires `>= 12.0.0`; that version already reads `"environment"` from a build profile).
+- Auth0: one **Native** application per tenant, see [auth0.md](auth0.md) sections 1, 2 and 7 (the mobile app does not use the SPA client).
+- The public https URLs of the backend (Railway `test` / `production`) and of the web app (Vercel `develop` / Production), see `.claude/rules/infra.md`.
+
+## 1. Create or link the EAS project (`eas init`), once
+
+```bash
+cd mobile
+npx eas-cli@latest login
+npx eas-cli@latest init
+```
+
+`eas init` creates (or finds) the project `@<owner>/casazen-host` on expo.dev. The app config is dynamic (`app.config.ts`), so the CLI **cannot write** the id into it: it prints a warning with a JSON block containing `"projectId": "<uuid>"` and stops with `Cannot automatically write to dynamic config at: app.config.ts`. That is expected. Copy the UUID (it is also shown by `npx eas-cli@latest project:info` and on expo.dev → project → Overview).
+
+The project id is **not a secret**. Provide it as `EAS_PROJECT_ID`:
+
+| Where | How | Why |
+|---|---|---|
+| Shell or CI job that runs `eas-cli` (`build`, `env:*`, `submit`, `credentials`) | `export EAS_PROJECT_ID=<uuid>` (or prefix each command) | EAS CLI evaluates `app.config.ts` locally to find the project. It does **not** read `.env` (it runs `expo config` with `EXPO_NO_DOTENV=1`) |
+| `mobile/.env` of each developer | `EAS_PROJECT_ID=<uuid>` | `npx expo start` (development builds) reads `.env`; push tokens need the id |
+| EAS Build worker | nothing to do | `app.config.ts` falls back to `EAS_BUILD_PROJECT_ID`, set by EAS for the project being built |
+
+Check: `EAS_PROJECT_ID=<uuid> npx expo config --type public | grep projectId` prints the id. A wrong value (not a UUID, or the old all-zero placeholder) makes every Expo command fail with a message that points here.
+
+## 2. Variables per EAS environment
+
+EAS has three environments: `development`, `preview`, `production` (expo.dev → project → **Environment variables**). Set these variables in each environment you build:
+
+| Variable | `preview` (test) | `production` | `development` (optional) |
+|---|---|---|---|
+| `EXPO_PUBLIC_API_URL` | Railway `test` public URL, `https://<railway-test-host>` (same as GitHub variable `RAILWAY_TEST_URL`) | Railway `production` public URL (`RAILWAY_PROD_URL`) | Usually unset: developers use `.env` (`http://<LAN IP>:5000`) |
+| `EXPO_PUBLIC_WEB_URL` | Vercel staging deployment of `develop`, `https://<staging-host>` | `https://casazen-app.vercel.app` | unset |
+| `EXPO_PUBLIC_AUTH0_DOMAIN` | test tenant, e.g. `casazen-test.eu.auth0.com` (host name only, no `https://`) | production tenant, e.g. `casazen.eu.auth0.com` | unset |
+| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app `CasaZen Host (mobile)` in the test tenant ([auth0.md](auth0.md) section 7), never the SPA client id | client id of the **Native** app in the production tenant | unset: developers set it in `.env` (Native app of the dev/test tenant). It has **no** local default |
+| `EXPO_PUBLIC_AUTH0_AUDIENCE` | API identifier of the test tenant (auth0.md section 2, e.g. `https://casazen-api`) | API identifier of the production tenant | unset |
+| `EXPO_PUBLIC_E2E_DEMO` | **do not set** | **do not set** | optional, `1` only for the Maestro demo button in Metro bundles |
+
+Rules enforced by the app and by the EAS build:
+
+- every variable is required outside `__DEV__`; `EXPO_PUBLIC_AUTH0_CLIENT_ID` is required in `__DEV__` too
+  (the login configuration error `AUTH_CONFIG_INVALID` is shown without it);
+- `EXPO_PUBLIC_E2E_DEMO` is ignored outside `__DEV__`: a preview / production build never shows the demo
+  button, and the demo code is not in the release bundle (mobile CI checks it);
+- URLs must be absolute `https://` URLs without query string, and must not point to `localhost`, `127.x`, `10.0.2.2` (Android emulator) or `0.0.0.0`. Android release builds block cleartext http anyway;
+- trailing slashes are removed; `EXPO_PUBLIC_API_URL` has **no** `/api` suffix (the app adds it);
+- `EXPO_PUBLIC_AUTH0_DOMAIN` is a bare host name.
+
+Visibility: **Plain text** (`plaintext`). `EXPO_PUBLIC_*` values are compiled into the JavaScript bundle and readable by anyone who has the app, so they must never contain a real secret (the Native Auth0 app has no client secret: PKCE). `eas-cli` reads only Plain text and Sensitive variables when it evaluates the config locally.
+
+From the CLI (repeat per variable and environment, or use the dashboard):
+
+```bash
+export EAS_PROJECT_ID=<uuid>
+npx eas-cli@latest env:set --environment preview --name EXPO_PUBLIC_API_URL \
+  --value https://<railway-test-host> --visibility plaintext
+npx eas-cli@latest env:list --environment preview
+```
+
+Do **not** put these variables:
+
+- in `eas.json` → `build.<profile>.env`: a key there **overrides** the EAS environment variable with the same name (EAS CLI warns "The values from the build profile configuration will be used"), even with a `null` value. The profiles only set `APP_VARIANT`;
+- in git, in `.env` committed files, or in GitHub (GitHub keeps only `RAILWAY_TEST_URL` / `RAILWAY_PROD_URL` for CI health checks).
+
+## 3. Build profiles (`mobile/eas.json`)
+
+| Profile | EAS environment | `APP_VARIANT` | Distribution | Release checks |
+|---|---|---|---|---|
+| `development` | `development` | `development` | internal, development client | none: JS comes from Metro on the developer machine (`.env`, local fallbacks) |
+| `preview` | `preview` | `preview` | internal (testers) | build fails without valid variables; app shows `CONFIG_ENV_INVALID` if a bundle is built without them |
+| `production` | `production` | `production` | store, `autoIncrement` | same as preview |
+
+A new profile without `APP_VARIANT` is treated as a release build (checks on). Versions: `version` comes from `mobile/package.json` (bump it there); build numbers are managed remotely by EAS (`appVersionSource: remote`).
+
+## 4. Build
+
+```bash
+cd mobile
+export EAS_PROJECT_ID=<uuid>
+npx eas-cli@latest build --platform android --profile preview
+npx eas-cli@latest build --platform all --profile production
+```
+
+In the build output check the line `Environment variables with visibility "Plain text" and "Sensitive" loaded from the "preview" environment on EAS: EXPO_PUBLIC_API_URL, ...` with all five names. If one is missing or invalid, the build stops while reading the app config with:
+
+```text
+Build profile "preview" (APP_VARIANT=preview) has an incomplete configuration:
+- EXPO_PUBLIC_AUTH0_CLIENT_ID: missing
+Set the variables in the EAS environment of this profile (expo.dev → project → Environment variables); ...
+```
+
+Fix the variable in the EAS environment and start the build again. The check runs where EAS sets `EAS_BUILD=true` (cloud workers and `eas build --local`); builds started from the expo.dev GitHub integration were not tried: run one `preview` build that way before relying on it. iOS internal builds also need the testers' devices registered (`npx eas-cli@latest device:create`).
+
+Smoke test of each build: install it, the app must open the login screen (not "Configurazione dell'app incompleta"), log in against the tenant of that environment, and the calendar must load from the matching backend. The full login check (callback URLs per platform, Auth0 logs, token claims) is in [auth0.md](auth0.md) section 7.7. Before the first build of a profile, the Native application of its tenant must list the two callback URLs built with that profile's `EXPO_PUBLIC_AUTH0_DOMAIN` (auth0.md section 7.2).
+
+Local release bundles (`npx expo run:android --variant release`, `npx expo export`) are not checked at build time: without the variables they build, and the app shows the `CONFIG_ENV_INVALID` screen at startup. The mobile CI (`expo export`) relies on this and needs no variables.
+
+## 5. Where credentials live
+
+| Credential | Where |
+|---|---|
+| Android upload keystore, iOS distribution certificate and provisioning profiles | EAS managed credentials (`npx eas-cli@latest credentials`, created on the first build). Never in the repository: `.gitignore` excludes `*.jks`, `*.p8`, `*.p12`, `*.key`, `*.mobileprovision` |
+| Push: FCM v1 service account key (Android), APNs key `.p8` (iOS) | EAS credentials (`npx eas-cli@latest credentials`), section 9 |
+| Push: `google-services.json` of the Firebase Android app | EAS **file** environment variable `GOOGLE_SERVICES_JSON` (section 9.2). Gitignored, never in the repository |
+| Store submission: Google Play service account JSON, App Store Connect API key | EAS submit credentials (expo.dev → project → Credentials), never in the repository |
+| `EXPO_TOKEN` (only if builds are started from GitHub Actions in the future) | GitHub Actions secret of `casazen/mobile` |
+
+## 6. Placeholder assets to replace before the store release
+
+The files in `mobile/assets/` are **neutral placeholders** (grey circle), only there so that prebuild and EAS builds do not fail. Replace them with the final artwork at the same paths and within the same constraints before submitting to the stores:
+
+| File | Used for | Requirements |
+|---|---|---|
+| `assets/icon.png` | App icon (iOS, Android fallback) | 1024×1024 PNG, **no transparency** (App Store rejects alpha) |
+| `assets/adaptive-icon.png` | Android adaptive icon foreground | 1024×1024 PNG, transparent background, subject inside the central 66%; background colour `android.adaptiveIcon.backgroundColor` in `app.json` |
+| `assets/splash.png` | Splash screen image | PNG with transparency, drawn centred (`resizeMode: contain`) on `splash.backgroundColor` |
+| `assets/notification-icon.png` | Android notification small icon (`expo-notifications` plugin) | 96×96 PNG, white shape on transparent background (Android uses only the alpha channel) |
+
+The colour `#1A2B3C` (splash background, adaptive icon background, notification accent) is the existing app colour; change it in `app.json` together with the artwork if needed. `npm test` checks that the four paths exist.
+
+## 7. Dependencies (SDK 52)
+
+After any dependency change run, in `mobile/`:
+
+```bash
+npx expo install --check     # versions expected by the installed SDK
+npx expo-doctor
+```
+
+Both query `api.expo.dev` (and `expo-doctor` also `reactnative.directory`). Without network access use `EXPO_OFFLINE=1 npx expo install --check`, which checks against the versions bundled with `expo`. Keep `expo-asset`, `expo-font`, `expo-file-system` and `expo-keep-awake` as direct dependencies: when npm nests them under `expo/`, autolinking does not link them and the native build can crash at runtime.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Action |
+|---|---|---|
+| App shows "Configurazione dell'app incompleta" (`CONFIG_ENV_INVALID`) | Release bundle built without the listed `EXPO_PUBLIC_*` variables, or with http / local URLs | Set them in the EAS environment of the profile (section 2) and rebuild |
+| App shows "Configurazione dell'app incompleta" (`AUTH_CONFIG_INVALID`) | Login cannot be configured: `EXPO_PUBLIC_AUTH0_CLIENT_ID` missing (development builds), or `app.json` lacks `scheme` / `ios.bundleIdentifier` / `android.package` | Set the client id of the Native app (auth0.md section 7) or restore `app.json` |
+| Auth0 page "Callback URL mismatch" after "Continua con Auth0" | Callback URLs of the Native app do not match the build (domain of the profile, platform) or the build has the SPA client id | [auth0.md](auth0.md) sections 7.2 and 7.7 |
+| `eas build` asks to create a project or says the project is not configured | `EAS_PROJECT_ID` not exported in the shell | Section 1 |
+| Every Expo command fails with `EAS_PROJECT_ID="..." is not a valid EAS project id` | Placeholder or typo in `EAS_PROJECT_ID` | Use the UUID from `eas init` / `project:info` |
+| Log `[push] PUSH_PROJECT_ID_MISSING` | Local build without `EAS_PROJECT_ID` | Set it in `.env` (development) or the shell; EAS builds get it automatically |
+| EAS log warns that a variable is defined in both the build profile `env` and the EAS environment | Someone added it to `eas.json` | Remove it from `eas.json`: the value there wins |
+| Push codes (`PUSH_FCM_NOT_CONFIGURED`, `PUSH_APNS_NOT_CONFIGURED`, `PUSH_BACKEND_*`, ...) in **Profilo → Notifiche** or in the logs | Push setup of the build | Section 9.6 |
+
+## 9. Push notifications (FCM v1, APNs), task MO-03
+
+Audit defects A6-05 (registration never succeeded), A6-06 (device id shared by phones on the same OS build), A6-19 (tap on a notification lost at cold start or when signed out). Code: `mobile/src/notifications/` (`push-registration.ts`, `installation-id.ts`, `notification-routes.ts`, `notification-navigation.ts`, `PushHandler.tsx`, `PushSettingsCard.tsx`), `mobile/app.config.ts`; backend `Casazen.Web/Controllers/DevicesController.cs`, `Casazen.Core/Services/PushRoutes.cs`, and for the sending side (MO-04, section 9.7) `Casazen.Core/Services/IPushNotificationService.cs` and `Casazen.Infrastructure/Push/`.
+
+### 9.1 How it works
+
+1. After the login, once `GET /users/me` grants the host access (PL-02), the app registers the phone **at every start**:
+   - Android: creates the notification channel `default` ("Notifiche CasaZen", high importance) **before** asking for the permission (Android 13+ shows the prompt only when a channel exists). The backend sends every push with `channelId: "default"` and the `expo-notifications` plugin sets it as FCM default channel;
+   - permission: the first time the app explains what the notifications are for ("Vuoi attivare le notifiche?" → **Attiva** / **Non ora**, once per installation), then the system prompt. Later, **Profilo → Notifiche** shows the state with **Attiva notifiche**, **Apri impostazioni** (permission blocked in the system settings) or **Riprova**;
+   - Expo push token with the EAS project id of the build (`getExpoPushTokenAsync({ projectId })`, section 1). No project id → no token, error `PUSH_PROJECT_ID_MISSING` logged and shown;
+   - `POST /api/devices` with `{ platform, pushToken, deviceId }`. The `deviceId` is the **installation id**: a random UUID generated at the first launch and kept in SecureStore (`casazen_installation_id`). It is not a session value: it survives the logout. The id actually registered is also kept for the logout (`DELETE /api/devices/{id}`, MO-05).
+2. Every failure ends in a state with a stable code (section 9.6), logged without the push token, never as an unhandled error. The registration runs again at the next start, and when the app returns to the foreground after a transient failure or a refused permission.
+3. On the emulator / simulator the app skips the registration: **Profilo → Notifiche** says that push notifications need a physical device, and development builds log `PUSH_UNSUPPORTED_DEVICE`. Development builds also show a diagnostics line (state, error code, device id) in the same card.
+4. Tap on a notification: handled in the root layout, also when the tap **started the app** (`getLastNotificationResponseAsync`) or arrived **while signed out**: the destination is kept (in memory) and opened right after the login, above the calendar. The backend builds every `route` with `PushRoutes`; the app opens only these screens (`notification-routes.ts`):
+
+| Push (`data.type`) | To | `route` |
+|---|---|---|
+| Booking alerts: `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` (CO-10) | hosts of the property | `/bookings/{bookingId}` |
+| New booking confirmed without the host (payment, saved card): `new-booking` (MO-04) | hosts of the property | `/bookings/{bookingId}` |
+| Supplier decision on a request tied to a stay: `service-request-taken`, `service-request-completed`, `service-request-rejected` (the rejection since MO-04) | hosts of the property | `/bookings/{bookingId}` |
+| Same, request **without** a stay (long-rent, or short-rent created before SU-07) | hosts of the property | `/properties` (the app has no service request screen; `/service-requests/{id}` used to open nothing) |
+| New request: `service-request-created` (MO-04) | users of the supplier org | `/properties`, no `bookingId` (the stay is the host's; the app has no supplier screens yet) |
+| Check-out reminder: `checkout-reminder` | hosts of the property | `/bookings/{bookingId}/checkout` |
+
+"Hosts of the property": its owner and the Admin / PropertyManager users of its org, active, on phones registered in that org. "Users of the supplier org": active users linked to it (`User.SupplierOrgId`, or members of the supplier org), on every phone they registered. Pushes of a service request also carry `serviceRequestId` in `data`. Titles and texts are specific to each type, Italian and English in `EmailTexts.resx` / `EmailTexts.en.resx` (`Push_*`, `StayAlertPush_*`); they show the property, category and dates, never a guest name or the supplier's rejection reason (that one is in the host email).
+
+An unknown route falls back to `bookingId` when the push has one, otherwise the app just opens.
+
+### 9.2 Android: Firebase and FCM v1 (once per Firebase project)
+
+Expo delivers Android pushes through **FCM HTTP v1**; the legacy FCM server key is no longer accepted by Google.
+
+1. [Firebase console](https://console.firebase.google.com) → create (or open) the project `casazen` → **Add app → Android**, package **`it.casazen.host`** (`android.package` in `app.json`). Download `google-services.json`. It holds the Firebase app identifiers and an API key restricted to this app: not a server secret, but it stays **out of git** (`.gitignore`).
+2. Upload it as an EAS **file** variable, in every environment you build Android in:
+   ```bash
+   export EAS_PROJECT_ID=<uuid>
+   npx eas-cli@latest env:create --environment production --name GOOGLE_SERVICES_JSON --type file \
+     --value ./google-services.json --visibility secret
+   # repeat with --environment preview (and development if you build a development client on EAS)
+   ```
+   On the build worker `GOOGLE_SERVICES_JSON` is the path of the file; `app.config.ts` sets `android.googleServicesFile` to it. Locally, put the file at `mobile/google-services.json` (gitignored) or set `GOOGLE_SERVICES_JSON=<path>` in `mobile/.env`.
+3. FCM v1 service account key: Firebase console → Project settings → **Service accounts** → **Generate new private key** (JSON). Upload it to Expo, **not** to git:
+   ```bash
+   npx eas-cli@latest credentials   # Android → production → Google Service Account → Manage your Google Service Account Key for Push Notifications (FCM V1) → Upload
+   ```
+   (or expo.dev → project → Credentials → Android → FCM V1 service account key). Delete the downloaded JSON from the disk afterwards.
+4. Build checks: an Android **production** build fails without `GOOGLE_SERVICES_JSON` (`- GOOGLE_SERVICES_JSON: missing ...`); a **preview** build only warns in the build log, so internal testing of the other features is possible before Firebase is set up, and the app shows `PUSH_FCM_NOT_CONFIGURED` in **Profilo → Notifiche**.
+
+### 9.3 iOS: APNs
+
+1. The `expo-notifications` plugin adds the Push Notifications capability; `app.config.ts` sets `aps-environment` to `production` for EAS preview/production builds (ad hoc and App Store profiles) and `development` otherwise.
+2. APNs key: at the first iOS build EAS asks "Would you like to set up Push Notifications for your project?" → **Yes**, it creates and stores the key. To manage it later: `npx eas-cli@latest credentials` → iOS → production → **Push Notifications: Manage your Apple Push Notifications Key** (create, or upload an existing `.p8` from Apple Developer → Keys with "Apple Push Notifications service" enabled). One key serves every app of the Apple team; the `.p8` never goes to git (`.gitignore`).
+3. If the provisioning profile was created before the capability, regenerate it (`eas credentials` → iOS → Provisioning Profile → remove, the next build recreates it). Symptom: `PUSH_APNS_NOT_CONFIGURED` ("no valid aps-environment entitlement").
+
+### 9.4 Backend: device registrations (A6-06)
+
+- One row per (user, installation): unique index `UIX_DeviceRegistrations_UserId_DeviceId`, upsert that updates the token. Concurrent registrations of the same installation (unique violation) re-read and update instead of answering 500.
+- An Expo push token belongs to one installation: registering it removes any other row carrying it (another user who used the phone, or the same user under an old device id).
+- **Old device ids** (builds before MO-03 sent the OS build id, `Device.osInternalBuildId`, shared by every phone on the same OS build): **no data migration**. Each phone replaces its old row the first time the new build registers it with the same push token. A row whose token is never registered again (phone still on an old build, or whose token was overwritten by another phone of the same build) keeps working for that phone; Expo answers `DeviceNotRegistered` for dead tokens (in the ticket or, more often, in the receipt) and the backend then deletes the row (section 9.7). Deleting all old rows in a migration was rejected: it would silence phones not updated yet. Check what is left: `SELECT count(*) FROM "DeviceRegistrations" WHERE "DeviceId" !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';` (a cleanup of old rows not updated for months can be decided later).
+
+### 9.5 Check on devices (not possible in CI, to do after each credentials change)
+
+Use a `preview` build of the test environment, two physical phones (one Android, one iPhone) and a test host with a property and a booking.
+
+1. First login: the app explains the notifications, then the system prompt. **Attiva** → **Profilo → Notifiche** says "Attive". On the test database: `SELECT "Platform", "DeviceId", "UpdatedAt" FROM "DeviceRegistrations" WHERE "UserId" = '<sub>';` shows one row per phone, `DeviceId` a UUID.
+2. Send a push to the token from https://expo.dev/notifications (token from the `PushToken` column) with data `{"route":"/bookings/<bookingId>","bookingId":"<bookingId>"}` and channel `default`: it arrives with the app in background and closed.
+3. Real pushes: a supplier update of a request of that booking (supplier account: take the request, and on another request **reject** it), a check-out reminder, an incomplete guest check-in alert, a **new booking** paid on the public site (Stripe test card). Tap each: the booking (or its check-out) opens, above the calendar. Each push arrives within a minute (Hangfire job, section 9.7), once.
+4. Cold start: kill the app, tap a notification → the app opens on the booking, not on the calendar.
+5. Signed out: **Profilo → Esci**, send a push again to the same token (the device row is gone, so use the Expo tool), tap it → login → after the login the booking opens.
+6. Two phones of the same host on the same OS version: both receive every push (before MO-03 only the last registered one did).
+7. Permission refused: deny the prompt → **Profilo → Notifiche** offers **Attiva notifiche** / **Apri impostazioni**; enable in the system settings, go back to the app → "Attive" without restarting.
+8. Emulator / simulator: **Profilo → Notifiche** says a physical device is needed; no crash.
+
+### 9.6 Codes
+
+| Code | Meaning | Action |
+|---|---|---|
+| `PUSH_PROJECT_ID_MISSING` | Build without EAS project id | Section 1 (`EAS_PROJECT_ID`), rebuild |
+| `PUSH_FCM_NOT_CONFIGURED` | Android build without `google-services.json` (Firebase not initialised) | Section 9.2, rebuild |
+| `PUSH_APNS_NOT_CONFIGURED` | iOS build without the push entitlement / APNs key | Section 9.3, rebuild |
+| `PUSH_TOKEN_UNAVAILABLE` | Expo token not obtained (Expo servers unreachable, FCM/APNs refusal) | Retried automatically; if it persists check the FCM V1 key / APNs key in EAS credentials |
+| `PUSH_BACKEND_UNAVAILABLE` | `POST /api/devices` not answered (offline, 5xx) | Retried automatically |
+| `PUSH_BACKEND_REJECTED` | `POST /api/devices` answered 4xx | Backend logs of the request |
+| `PUSH_CHANNEL_FAILED`, `PUSH_PERMISSION_FAILED`, `PUSH_INSTALLATION_ID_UNAVAILABLE` | Native call failed (channel, permission, SecureStore) | Retried at the next start; report with the device model and OS |
+| Expo receipt `InvalidCredentials` / `MismatchSenderId` (backend logs `Push … not delivered (delivery …): InvalidCredentials`, Expo dashboard) | FCM V1 key missing or of another Firebase project; APNs key revoked | Sections 9.2 step 3, 9.3 step 2 |
+| Expo ticket or receipt `DeviceNotRegistered` | App uninstalled, token rotated | Nothing: the device row is deleted automatically (log `Push device registration … removed`); the phone registers again at the next start |
+| Expo receipt `MessageRateExceeded` | Too many pushes to one device | Logged, not retried; check what sends so many |
+| Log `Expo push send refused with HTTP 401: check Expo__AccessToken` | Enhanced push security enabled on Expo without (or with a wrong) `Expo__AccessToken` | Section 9.7.3 |
+
+### 9.7 Backend delivery: queue, batches, receipts (MO-04)
+
+Audit defects A6-08 (no push for a rejection, a new booking or a new request) and A6-29 (pushes sent synchronously and
+one by one inside the supplier's request, no batching, no receipts, no access token, Alloggiati alerts titled "Check-in
+incompleto"). Code: `Casazen.Core/Services/IPushNotificationService.cs` (payload, audience, delivery keys, types),
+`Casazen.Infrastructure/Push/` (`HangfirePushQueue`, `PushDeliveryJob`, `ExpoPushClient`, `PushReceiptService`),
+`Casazen.Web/BackgroundJobs/PushReceiptsJob.cs`, table `PushDeliveries` (migration `AddPushDeliveries`). Jobs and SQL
+checks: [hangfire.md § 11](hangfire.md#11-push-notifications-mo-04).
+
+#### 9.7.1 How a push travels
+
+1. The code that made the change (after its save) calls `IPushNotificationService.Enqueue(key, audience, payload)`. That
+   only writes a Hangfire job (`PushDeliveryJob.SendAsync`): **no call to Expo inside an HTTP request**. The supplier's
+   take / complete / reject and the host's new request answer at once even when Expo is slow or down.
+2. The job resolves the devices of the audience (section 9.1), claims one `PushDeliveries` row per device for the key and
+   sends the pending ones to `https://exp.host/--/api/v2/push/send` in **batches of at most 100 messages** (Expo's limit),
+   recording each ticket.
+3. The recurring job `push-receipts` (every 15 minutes) reads the receipts of the tickets older than 15 minutes
+   (`/--/api/v2/push/getReceipts`, at most 1000 ids per request). FCM/APNs errors only show up there.
+
+| Event | Who queues it | Delivery key (once per device) |
+|---|---|---|
+| New request → supplier | `ServiceRequestService.CreateAsync` | `service-request:{id}:created` |
+| Supplier takes / completes / **rejects** → host | `ServiceRequestService` (only the winning transition, SU-10) | `service-request:{id}:{status}` |
+| New booking confirmed without the host → host | `BookingNotifier.AlertHostOfNewBooking` (BK-10 extension point, next to the host email) | `booking:{id}:new` |
+| Stay alerts and check-out reminder → host | `NotificationService.SendStayAlertAsync` (CO-10) | `stay-alert:{bookingId}:{kind}:{date}:{reminder}` |
+
+The emails are unchanged: the rejection email to the host already existed (FD-13), the new booking email is BK-10's; only
+the pushes were added.
+
+#### 9.7.2 Once, even with retries
+
+- A device that already has a row for the key is never sent that event again: a Hangfire retry, a second run of the job or
+  the same event queued twice send nothing new. Two runs of the same key never overlap
+  (`[DisableConcurrentExecution]` on the key).
+- A batch is marked `Sending` before the request. HTTP 429/5xx or no connection (Expo certainly did not take it): back to
+  `Pending`, the job fails and Hangfire retries only the pending messages (5 attempts, then the job is deleted). Timeout
+  or connection lost after the request (Expo may have taken it): left `Sending`, **never repeated** (at most once).
+  Other 4xx (e.g. 401): `Failed`, not retried.
+- Ticket `DeviceNotRegistered` (at send) or receipt `DeviceNotRegistered` (later): the `DeviceRegistrations` rows with
+  that token are deleted. Every other error is logged with its Expo code, the delivery id and the device registration id;
+  **never the push token nor Expo's error message** (it quotes the token).
+
+#### 9.7.3 Expo access token (optional, recommended)
+
+By default anyone who knows a push token can send to it through Expo. With **Enhanced Security for Push Notifications**
+enabled, Expo accepts sends and receipt reads only with an access token of the account. The backend sends
+`Authorization: Bearer <token>` when `Expo__AccessToken` is set, and nothing otherwise.
+
+1. expo.dev → the account (or organization) that owns the project → **Settings → Access tokens** → create a token
+   (preferably for a **robot** user with the minimum role), named e.g. `casazen-backend-push-production`. Copy it once:
+   Expo does not show it again. One token per environment.
+2. Railway → service `casazen/backend` → environment `test`, then `production` → **Variables** → `Expo__AccessToken` =
+   the token. It is a secret: never in the repository, in `appsettings*.json` or in tickets. Redeploy.
+3. Only after both environments have the variable: on the same **Access tokens** page, turn on **Enhanced Security for Push
+   Notifications**. In the other order every push fails with HTTP 401 until the variable is set (log `Expo push send
+   refused with HTTP 401: check Expo__AccessToken`; those messages are marked `Failed` and not repeated).
+4. Check: trigger a push (e.g. take a request on test), then `SELECT "Status", "Error" FROM casazen_test."PushDeliveries"
+   ORDER BY "CreatedAt" DESC LIMIT 5;` → `Status` 2 (`Accepted`) and, 15 minutes later, 3 (`Delivered`).
+5. Rotation: create the new token, update the variable, redeploy, then revoke the old token on expo.dev.
+
+Without the variable and without enhanced security, pushes work as before (no header).
+
+#### 9.7.4 Checks after the deploy of MO-04
+
+- [ ] The migration `AddPushDeliveries` is in `__EFMigrationsHistory`; the recurring job `push-receipts` is listed in the
+      Hangfire dashboard (or `hangfire_<schema>.set` with key `recurring-jobs`).
+- [ ] Supplier console: reject a request of a stay → the host's phone gets "Richiesta rifiutata dal fornitore" within a
+      minute; tap → the booking opens. The host still gets the rejection email.
+- [ ] Public site: pay a booking with a Stripe test card → the host gets "Nuova prenotazione confermata" (property, dates,
+      guests; no guest name). A host-accepted "pay at the property" request sends no such push (the host confirmed it).
+- [ ] Host: create a request → the supplier's registered phones (if any: the host app has no supplier screens yet) get
+      "Nuova richiesta di servizio".
+- [ ] Railway logs: `Push … queued`, then `Push …: N of N messages accepted by Expo`; 15–30 minutes later `Push receipts:
+      … checked, … delivered`.

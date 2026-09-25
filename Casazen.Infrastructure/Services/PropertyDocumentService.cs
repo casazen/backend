@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.Http;
@@ -7,17 +8,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <remarks>
+/// Uploading or deleting a document re-evaluates the compliance status of the property (CO-06): an active property whose
+/// required document is deleted is suspended from the booking site, a suspended one is reactivated by the upload that
+/// completes its requirements.
+/// </remarks>
 public class PropertyDocumentService(
     IPropertyDocumentRepository documentRepository,
     IImageStorageService storageService,
     IPropertyRepository propertyRepository,
     IApeComplianceService apeCompliance,
+    IPropertyComplianceStatusService complianceStatus,
     ILogger<PropertyDocumentService> logger) : IPropertyDocumentService
 {
     public async Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
     {
-        var exists = await propertyRepository.ExistsAsync(propertyId);
-        if (!exists)
+        var orgId = await propertyRepository.GetOrgIdAsync(propertyId);
+        if (orgId is null)
         {
             throw new InvalidOperationException($"Property {propertyId} not found");
         }
@@ -32,11 +39,13 @@ public class PropertyDocumentService(
 
         var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
 
+        PropertyDocument saved;
         try
         {
             var document = new PropertyDocument
             {
                 PropertyId = propertyId,
+                OrgId = orgId.Value,
                 FileName = file.FileName,
                 StorageUrl = storageUrl,
                 DocumentType = documentType,
@@ -47,15 +56,18 @@ public class PropertyDocumentService(
             logger.LogInformation("Uploading document {FileName} of type {DocumentType} for property {PropertyId} by {UploadedBy}",
                 file.FileName, documentType, propertyId, uploadedBy);
 
-            return await documentRepository.AddAsync(document);
+            saved = await documentRepository.AddAsync(document);
         }
         catch
         {
             logger.LogWarning("DB save failed after storage upload for property {PropertyId}; rolling back storage file {StorageUrl}",
                 propertyId, storageUrl);
-            await storageService.DeleteImageAsync(storageUrl);
+            await storageService.DeleteDocumentAsync(storageUrl);
             throw;
         }
+
+        await complianceStatus.ReevaluateAsync(propertyId);
+        return saved;
     }
 
     public async Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId)
@@ -79,6 +91,37 @@ public class PropertyDocumentService(
         logger.LogInformation("Deleting document {DocumentId} with storage URL {StorageUrl}", documentId, document.StorageUrl);
 
         await documentRepository.DeleteAsync(documentId);
-        await storageService.DeleteImageAsync(document.StorageUrl);
+        await storageService.DeleteDocumentAsync(document.StorageUrl);
+        await complianceStatus.ReevaluateAsync(document.PropertyId);
+    }
+
+    public Task<Stream?> OpenContentAsync(PropertyDocument document) =>
+        storageService.OpenReadAsync(document.StorageUrl);
+
+    public Task<SignedFileUrl?> GetSignedDownloadUrlAsync(PropertyDocument document) =>
+        storageService.GetDocumentSignedUrlAsync(document.StorageUrl, document.FileName);
+
+    public async Task<PropertyDocument> UpdateApeIdentificationAsync(PropertyDocument document, string? code, string? energyClass)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (document.DocumentType != DocumentType.Ape)
+            throw new DomainRuleException("document_not_ape", "DocumentNotApe");
+
+        // Shape only (no invented pattern on the code, whose format is not documented): a non-empty code within the
+        // column, a short class of letters, digits or "+" (A4...G, older A+).
+        var normalizedCode = code?.Trim();
+        var normalizedClass = energyClass?.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(normalizedCode) || normalizedCode.Length > ApeDocumentLimits.CodeMaxLength
+            || string.IsNullOrEmpty(normalizedClass) || normalizedClass.Length > ApeDocumentLimits.EnergyClassMaxLength
+            || !normalizedClass.All(c => c is (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '+'))
+        {
+            throw new DomainRuleException("ape_identification_invalid", "ApeIdentificationInvalid");
+        }
+
+        document.ApeCode = normalizedCode;
+        document.ApeEnergyClass = normalizedClass;
+        logger.LogInformation("APE identification updated. DocumentId={DocumentId} PropertyId={PropertyId}",
+            document.Id, document.PropertyId);
+        return await documentRepository.UpdateAsync(document);
     }
 }

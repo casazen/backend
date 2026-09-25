@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,15 +19,16 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     public ServiceRequestIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task Create_AsHost_Returns201()
+    public async Task Create_AsHostForStayOfTheProperty_Returns201WithBooking()
     {
-        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
-        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var s = await SeedScenarioAsync();
+        using var client = _factory.CreateAuthenticatedClient(s.HostId, "PropertyOwner");
 
         var response = await client.PostAsJsonAsync("/api/service-requests", new
         {
-            propertyId,
-            supplierOrgId,
+            propertyId = s.PropertyId,
+            bookingId = s.BookingId,
+            supplierOrgId = s.SupplierOrgId,
             category = "cleaning",
             notes = "Turnover dopo checkout",
         });
@@ -34,80 +36,53 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Richiesto", body.GetProperty("status").GetString());
+        Assert.Equal(s.BookingId, body.GetProperty("bookingId").GetGuid());
+        Assert.Equal("ShortRent", body.GetProperty("rentalContext").GetString());
     }
 
     [Fact]
-    public async Task Create_WithBookingId_Returns400()
+    public async Task Create_WithChargeToGuest_Returns422WithoutCreating()
     {
-        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
-        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        var s = await SeedScenarioAsync();
+        using var client = _factory.CreateAuthenticatedClient(s.HostId, "PropertyOwner");
 
         var response = await client.PostAsJsonAsync("/api/service-requests", new
         {
-            propertyId,
-            bookingId = Guid.NewGuid(),
-            supplierOrgId,
-            category = "cleaning",
-        });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Create_WithChargeToGuest_Returns400()
-    {
-        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
-        using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
-
-        var response = await client.PostAsJsonAsync("/api/service-requests", new
-        {
-            propertyId,
-            supplierOrgId,
+            propertyId = s.PropertyId,
+            bookingId = s.BookingId,
+            supplierOrgId = s.SupplierOrgId,
             category = "cleaning",
             chargeToGuest = true,
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("service_request_charge_to_guest_not_allowed", problem.GetProperty("code").GetString());
+        Assert.Equal(0, await CountRequestsAsync(s.PropertyId));
     }
 
     [Fact]
     public async Task GetInbox_AsSupplier_ReturnsCreatedRequest()
     {
-        var (hostId, _, propertyId, supplierOrgId, supplierUserId) = await SeedScenarioAsync();
+        var s = await SeedScenarioAsync();
+        var id = await CreateServiceRequestAsync(s);
 
-        using var hostClient = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
-        await hostClient.PostAsJsonAsync("/api/service-requests", new
-        {
-            propertyId,
-            supplierOrgId,
-            category = "cleaning",
-        });
-
-        using var supplierClient = _factory.CreateAuthenticatedClient(supplierUserId, "Supplier");
+        using var supplierClient = _factory.CreateAuthenticatedClient(s.SupplierUserId, "Supplier");
         var inbox = await supplierClient.GetAsync("/api/supplier/inbox");
 
         Assert.Equal(HttpStatusCode.OK, inbox.StatusCode);
         var body = await inbox.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(body.GetProperty("total").GetInt32() >= 1);
+        Assert.Contains(id, body.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()));
     }
 
     [Fact]
     public async Task CompleteFlow_TakeCompleteMarkPaid_Succeeds()
     {
-        var (hostId, _, propertyId, supplierOrgId, supplierUserId) = await SeedScenarioAsync();
+        var s = await SeedScenarioAsync();
+        var id = await CreateServiceRequestAsync(s);
 
-        using var hostClient = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
-        var create = await hostClient.PostAsJsonAsync("/api/service-requests", new
-        {
-            propertyId,
-            supplierOrgId,
-            category = "cleaning",
-        });
-        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
-        var created = await create.Content.ReadFromJsonAsync<JsonElement>();
-        var id = created.GetProperty("id").GetGuid();
-
-        using var supplierClient = _factory.CreateAuthenticatedClient(supplierUserId, "Supplier");
+        using var hostClient = _factory.CreateAuthenticatedClient(s.HostId, "PropertyOwner");
+        using var supplierClient = _factory.CreateAuthenticatedClient(s.SupplierUserId, "Supplier");
         var take = await supplierClient.PostAsJsonAsync($"/api/service-requests/{id}/take", new { });
         Assert.Equal(HttpStatusCode.OK, take.StatusCode);
 
@@ -121,31 +96,36 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     }
 
     [Fact]
-    public async Task Create_AsOtherOrgHost_Returns403Or404()
+    public async Task Create_AsOtherOrgHost_Returns404()
     {
-        var (_, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        var s = await SeedScenarioAsync();
         var otherHost = $"auth0|other-{Guid.NewGuid():N}";
         await _factory.SeedOrgForOwnerAsync(otherHost);
 
         using var client = _factory.CreateAuthenticatedClient(otherHost, "PropertyOwner");
         var response = await client.PostAsJsonAsync("/api/service-requests", new
         {
-            propertyId,
-            supplierOrgId,
+            propertyId = s.PropertyId,
+            bookingId = s.BookingId,
+            supplierOrgId = s.SupplierOrgId,
             category = "cleaning",
         });
 
-        Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.BadRequest);
+        // TN-3: another org's property is not visible to the caller (tenant filter), so it answers 404.
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(0, await CountRequestsAsync(s.PropertyId));
     }
 
     [Fact]
     public async Task GetById_AsUnlinkedUserWithMatchingSupplierEmail_DoesNotBindSupplierOrg()
     {
-        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
-        var serviceRequestId = await CreateServiceRequestAsync(hostId, propertyId, supplierOrgId);
-        var supplierEmail = await GetSupplierEmailAsync(supplierOrgId);
+        var s = await SeedScenarioAsync();
+        var serviceRequestId = await CreateServiceRequestAsync(s);
+        var supplierEmail = await GetSupplierEmailAsync(s.SupplierOrgId);
         var attackerId = $"auth0|email-shadow-{Guid.NewGuid():N}";
         await SeedUnlinkedUserAsync(attackerId, supplierEmail);
+        // A real host of another org (onboarding completed, PL-02), not a user stopped by the onboarding gate.
+        await _factory.SeedOrgForOwnerAsync(attackerId);
 
         using var attackerClient = _factory.CreateAuthenticatedClient(
             attackerId,
@@ -161,9 +141,9 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task Take_AsUnlinkedSupplierWithMatchingEmail_DoesNotBindSupplierOrg()
     {
-        var (hostId, _, propertyId, supplierOrgId, _) = await SeedScenarioAsync();
-        var serviceRequestId = await CreateServiceRequestAsync(hostId, propertyId, supplierOrgId);
-        var supplierEmail = await GetSupplierEmailAsync(supplierOrgId);
+        var s = await SeedScenarioAsync();
+        var serviceRequestId = await CreateServiceRequestAsync(s);
+        var supplierEmail = await GetSupplierEmailAsync(s.SupplierOrgId);
         var attackerId = $"auth0|supplier-shadow-{Guid.NewGuid():N}";
         await SeedUnlinkedUserAsync(attackerId, supplierEmail);
 
@@ -219,19 +199,10 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task Reject_FromRichiesto_SetsRifiutato()
     {
-        var (hostId, _, propertyId, supplierOrgId, supplierUserId) = await SeedScenarioAsync();
+        var s = await SeedScenarioAsync();
+        var id = await CreateServiceRequestAsync(s);
 
-        using var hostClient = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
-        var create = await hostClient.PostAsJsonAsync("/api/service-requests", new
-        {
-            propertyId,
-            supplierOrgId,
-            category = "cleaning",
-        });
-        var created = await create.Content.ReadFromJsonAsync<JsonElement>();
-        var id = created.GetProperty("id").GetGuid();
-
-        using var supplierClient = _factory.CreateAuthenticatedClient(supplierUserId, "Supplier");
+        using var supplierClient = _factory.CreateAuthenticatedClient(s.SupplierUserId, "Supplier");
         var reject = await supplierClient.PostAsJsonAsync($"/api/service-requests/{id}/reject", new { reason = "Non disponibile" });
 
         Assert.Equal(HttpStatusCode.OK, reject.StatusCode);
@@ -239,18 +210,26 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal("Rifiutato", body.GetProperty("status").GetString());
     }
 
-    private async Task<Guid> CreateServiceRequestAsync(string hostId, Guid propertyId, Guid supplierOrgId)
+    private async Task<Guid> CreateServiceRequestAsync(Scenario s)
     {
-        using var hostClient = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
+        using var hostClient = _factory.CreateAuthenticatedClient(s.HostId, "PropertyOwner");
         var create = await hostClient.PostAsJsonAsync("/api/service-requests", new
         {
-            propertyId,
-            supplierOrgId,
+            propertyId = s.PropertyId,
+            bookingId = s.BookingId,
+            supplierOrgId = s.SupplierOrgId,
             category = "cleaning",
         });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var body = await create.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("id").GetGuid();
+    }
+
+    private async Task<int> CountRequestsAsync(Guid propertyId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.ServiceRequests.IgnoreQueryFilters().CountAsync(r => r.PropertyId == propertyId);
     }
 
     private async Task<string> GetSupplierEmailAsync(Guid supplierOrgId)
@@ -290,7 +269,11 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(expectedSupplierOrgId, supplierOrgId);
     }
 
-    private async Task<(string HostId, Guid HostOrgId, Guid PropertyId, Guid SupplierOrgId, string SupplierUserId)> SeedScenarioAsync()
+    /// <summary>
+    /// Host org with one property (comune H501) and one confirmed stay on it, plus an active supplier (its own org)
+    /// operating in H501. Short-rent requests are created for that stay (D2).
+    /// </summary>
+    private async Task<Scenario> SeedScenarioAsync()
     {
         const string comune = "H501";
         var hostId = $"auth0|host-{Guid.NewGuid():N}";
@@ -316,12 +299,35 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         };
         db.Properties.Add(property);
 
+        var guest = new Guest
+        {
+            OrgId = hostOrg.Id,
+            FirstName = "Giulia",
+            LastName = "Ospite",
+            Email = $"sr-{Guid.NewGuid():N}@example.com",
+        };
+        var booking = new Booking
+        {
+            OrgId = hostOrg.Id,
+            PropertyId = property.Id,
+            GuestId = guest.Id,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(7),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(10),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+            BasePrice = 300m,
+            TotalPrice = 300m,
+        };
+        db.AddRange(guest, booking);
+
         var supplierOrg = new OrgEntity
         {
             Name = "SR Supplier",
             Slug = $"sr-sup-{Guid.NewGuid():N}"[..25],
             DisplayName = "SR Supplier",
-            ContactEmail = "sr-supplier@test.com",
+            // One supplier profile per email (SU-14): every scenario gets its own.
+            ContactEmail = $"sr-supplier-{Guid.NewGuid():N}@test.com",
             OrgType = OrgType.Supplier,
             PlanTier = PlanTier.Starter,
         };
@@ -352,12 +358,22 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         });
 
         await db.SaveChangesAsync();
-        return (hostId, hostOrg.Id, property.Id, supplierOrg.Id, supplierUserId);
+        return new Scenario(hostId, hostOrg.Id, property.Id, booking.Id, supplierOrg.Id, supplierUserId);
     }
+
+    private sealed record Scenario(
+        string HostId,
+        Guid HostOrgId,
+        Guid PropertyId,
+        Guid BookingId,
+        Guid SupplierOrgId,
+        string SupplierUserId);
 
     private async Task<(string HostId, Guid VisibleRequestId, Guid HiddenRequestId)> SeedSameOrgRestrictedRequestsAsync()
     {
-        var (hostId, hostOrgId, visiblePropertyId, supplierOrgId, _) = await SeedScenarioAsync();
+        var scenario = await SeedScenarioAsync();
+        var (hostId, hostOrgId, visiblePropertyId, supplierOrgId) =
+            (scenario.HostId, scenario.HostOrgId, scenario.PropertyId, scenario.SupplierOrgId);
         var otherOwnerId = $"auth0|same-org-owner-{Guid.NewGuid():N}";
 
         using var scope = _factory.Services.CreateScope();

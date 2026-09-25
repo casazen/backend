@@ -1,15 +1,21 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.DTOs;
 using Casazen.Core.Services;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("api/public/orgs")]
 [AllowAnonymous]
-public class PublicOrgController(IOrgService orgService, IPropertyService propertyService) : ControllerBase
+[EnableRateLimiting(RateLimitPolicies.PublicRead)]
+public class PublicOrgController(
+    IOrgService orgService,
+    IPropertyService propertyService,
+    IEntitlementService entitlementService) : ControllerBase
 {
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
@@ -22,7 +28,7 @@ public class PublicOrgController(IOrgService orgService, IPropertyService proper
         if (org is null)
             return NotFound();
 
-        return Ok(PublicOrgDto.FromOrg(org));
+        return Ok(PublicOrgDto.FromOrg(org, entitlementService.ResolveEffectiveTier(org)));
     }
 
     [HttpGet("{slug}/properties")]

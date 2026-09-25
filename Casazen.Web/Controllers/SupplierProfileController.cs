@@ -1,13 +1,19 @@
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
-using Casazen.Web.DTOs.ServiceRequests;
+using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -21,7 +27,6 @@ namespace Casazen.Web.Controllers;
 public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
-    IServiceRequestService serviceRequestService,
     CalendarSyncService calendarSyncService,
     IImageStorageService imageStorageService,
     ILogger<SupplierProfileController> logger) : ControllerBase
@@ -103,10 +108,14 @@ public class SupplierProfileController(
         return Ok(MapProfile(profile));
     }
 
-    /// <summary>Updates the caller's supplier profile fields.</summary>
+    /// <summary>
+    /// Updates the caller's supplier profile fields. <c>categories</c> holds codes of <c>GET /api/service-categories</c>;
+    /// any other value is a 422 <c>invalid_service_category</c> and nothing is saved (SU-03).
+    /// </summary>
     [HttpPut("profile")]
     [ProducesResponseType(typeof(SupplierProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<SupplierProfileDto>> UpdateProfile(
         [FromBody] UpdateSupplierProfileRequest request,
         CancellationToken cancellationToken)
@@ -142,34 +151,74 @@ public class SupplierProfileController(
     // ─── Inbox ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns paginated open service requests assigned to this supplier.
-    /// Returns empty list until #293 (micro-marketplace) is implemented.
+    /// A page of the service requests sent to the caller's supplier org (SU-08, A4-14), server-side paginated.
+    /// <c>status</c>: <c>open</c> (default: waiting, taken, in progress), <c>history</c> (completed, paid, rejected),
+    /// <c>all</c>, or one status name; <c>from</c>/<c>to</c>: Europe/Rome days (<c>YYYY-MM-DD</c>, both included) on the
+    /// activity date of each request (<see cref="SupplierInboxStatusFilter"/>). 400 <c>validation_error</c> for another
+    /// status or <c>from</c> after <c>to</c>. Items carry comune, date and stay dates; street address and host contact
+    /// only for the requests the supplier took; never the guest.
     /// </summary>
     [HttpGet("inbox")]
     [ProducesResponseType(typeof(SupplierInboxResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SupplierInboxResponse>> GetInbox(
-        [FromQuery] string? status = "open",
+        [FromServices] ISupplierServiceRequestReader reader,
+        [FromQuery] string? status = SupplierInboxStatusFilter.OpenValue,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
+        if (!SupplierInboxStatusFilter.TryParse(status, out var statuses))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxStatusInvalid");
+
+        if (from is { } start && to is { } end && start > end)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxPeriodInvalid");
+
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
-        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        var openOnly = string.Equals(status, "open", StringComparison.OrdinalIgnoreCase);
 
-        var (items, total) = await serviceRequestService.ListForSupplierAsync(
-            orgId.Value, openOnly, page, pageSize, cancellationToken);
+        var (items, total) = await reader.ListAsync(
+            orgId.Value, new SupplierInboxQuery(statuses, from, to, page, pageSize), cancellationToken);
 
-        logger.LogDebug("Supplier inbox — status={Status}, page={Page}, total={Total}", status, page, total);
+        logger.LogDebug("Supplier inbox: status={Status}, page={Page}, total={Total}", status, page, total);
 
         return Ok(new SupplierInboxResponse
         {
-            Items = items.Select(ServiceRequestsController.MapSummary),
+            Items = items.Select(SupplierServiceRequestMapper.ToDto).ToList(),
             Total = total,
+            Page = page,
+            PageSize = pageSize,
         });
+    }
+
+    /// <summary>
+    /// One request of the caller's supplier org with its history (SU-08): 404 <c>service_request_not_found</c> when it
+    /// does not exist or was sent to another supplier. Street address and host contact only after the take.
+    /// </summary>
+    [HttpGet("inbox/{id:guid}")]
+    [ProducesResponseType(typeof(SupplierServiceRequestDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierServiceRequestDetailDto>> GetInboxItem(
+        Guid id,
+        [FromServices] ISupplierServiceRequestReader reader,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var request = await reader.GetAsync(id, orgId.Value, cancellationToken);
+        if (request is null)
+            return ServiceRequestsController.ServiceRequestNotFound(this);
+
+        return Ok(SupplierServiceRequestMapper.ToDetailDto(request));
     }
 
     // ─── Availability ─────────────────────────────────────────────────────────
@@ -187,7 +236,7 @@ public class SupplierProfileController(
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
-        var rangeFrom = from ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var rangeFrom = from ?? TimeProvider.System.TodayInRomeAsDateOnly();
         var rangeTo = to ?? rangeFrom.AddDays(13);
 
         if (rangeTo < rangeFrom)
@@ -232,30 +281,69 @@ public class SupplierProfileController(
     [HttpGet("dashboard")]
     [ProducesResponseType(typeof(SupplierDashboardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<SupplierDashboardDto>> GetDashboard(CancellationToken cancellationToken)
+    public async Task<ActionResult<SupplierDashboardDto>> GetDashboard(
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
         var stats = await supplierService.GetDashboardStatsAsync(orgId.Value, cancellationToken);
         if (stats is null) return NotFound(new { error = "Supplier profile not found" });
+        var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(stats.CalendarSyncError, localizer);
 
         return Ok(new SupplierDashboardDto
         {
             ProfileCompletionPercent = stats.ProfileCompletionPercent,
             Status = stats.Status,
-            TotalJobs = stats.TotalJobs,
-            CompletedJobs = stats.CompletedJobs,
-            UpcomingJobs = stats.UpcomingJobs,
             AvailabilityRate = stats.AvailabilityRate,
             CalendarSyncStatus = new CalendarSyncStatusDto
             {
                 CalendarSyncType = stats.CalendarSyncType,
                 IcalFeedUrl = stats.IcalFeedUrl,
                 CalendarLastSyncAt = stats.CalendarLastSyncAt,
-                CalendarSyncError = stats.CalendarSyncError,
+                LastSyncStatus = stats.CalendarSyncStatus,
+                CalendarSyncErrorCode = syncErrorCode,
+                CalendarSyncError = syncErrorMessage,
             },
             LastUpdated = stats.LastUpdated,
+        });
+    }
+
+    /// <summary>
+    /// Work KPIs of the caller's supplier org from its service requests (SU-11, A4-15): completed and rejected in the
+    /// Europe/Rome <paramref name="period"/>, waiting to be taken and taken (upcoming) now.
+    /// </summary>
+    [HttpGet("dashboard/kpis")]
+    [ProducesResponseType(typeof(SupplierKpisDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierKpisDto>> GetKpis(
+        [FromServices] ISupplierKpiService kpiService,
+        [FromQuery] SupplierKpiPeriod period = SupplierKpiPeriod.CurrentMonth,
+        CancellationToken cancellationToken = default)
+    {
+        // A number that is not a period ("?period=9") binds as an undefined enum value.
+        if (!Enum.IsDefined(period))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierKpiPeriodInvalid");
+
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var kpis = await kpiService.GetKpisAsync(orgId.Value, period, cancellationToken);
+
+        return Ok(new SupplierKpisDto
+        {
+            Period = kpis.Period.ToString(),
+            From = kpis.From,
+            To = kpis.To,
+            TimeZone = RomeCalendar.TimeZoneId,
+            Completed = kpis.Completed,
+            Rejected = kpis.Rejected,
+            AwaitingAcceptance = kpis.AwaitingAcceptance,
+            Upcoming = kpis.Upcoming,
+            TotalRequests = kpis.TotalRequests,
         });
     }
 
@@ -292,7 +380,7 @@ public class SupplierProfileController(
 
             try
             {
-                var url = await imageStorageService.UploadImageAsync(photo, orgId.Value);
+                var url = await imageStorageService.UploadSupplierPhotoAsync(photo, orgId.Value);
                 uploadedUrls.Add(url);
             }
             catch (Exception ex)
@@ -315,11 +403,13 @@ public class SupplierProfileController(
 
     // ─── Calendar Sync ───────────────────────────────────────────────────────
 
-    /// <summary>Returns the supplier's calendar sync status.</summary>
+    /// <summary>Returns the supplier's calendar sync status (<c>lastSyncStatus</c> <c>Syncing</c> while a sync is queued).</summary>
     [HttpGet("calendar/status")]
     [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<CalendarSyncStatusDto>> GetCalendarStatus(CancellationToken cancellationToken)
+    public async Task<ActionResult<CalendarSyncStatusDto>> GetCalendarStatus(
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
@@ -327,48 +417,104 @@ public class SupplierProfileController(
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
-        return Ok(new CalendarSyncStatusDto
-        {
-            CalendarSyncType = profile.CalendarSyncType.ToString(),
-            IcalFeedUrl = profile.IcalFeedUrl,
-            CalendarLastSyncAt = profile.CalendarLastSyncAt,
-            CalendarSyncError = profile.CalendarSyncError,
-        });
+        return Ok(MapCalendarStatus(profile, localizer));
     }
 
-    /// <summary>Sets or updates the supplier's iCal feed URL and triggers an initial sync.</summary>
+    /// <summary>
+    /// Sets or updates the supplier's iCal feed URL and queues its first sync in a Hangfire job (SU-15, A4-11, A9-14):
+    /// the download never runs inside the request. 202 with <c>lastSyncStatus</c> <c>Syncing</c>; the calendar is
+    /// synced when <c>GET calendar/status</c> leaves <c>Syncing</c>. 400 <c>ical_invalid_url</c>.
+    /// </summary>
     [HttpPut("calendar/ical")]
-    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CalendarSyncStatusDto>> SetIcalFeed(
         [FromBody] SetIcalFeedRequest request,
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
         CancellationToken cancellationToken)
     {
         var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
         if (orgId is null) return NotFound(new { error = "No supplier org found" });
 
-        var profile = await supplierService.UpdateCalendarSyncAsync(
-            orgId.Value,
-            CalendarSyncType.ICalFeed,
-            request.IcalFeedUrl,
-            calendarSyncError: null,
-            cancellationToken);
+        Casazen.Core.Entities.SupplierProfile? profile;
+        try
+        {
+            profile = await supplierService.UpdateCalendarSyncAsync(
+                orgId.Value,
+                CalendarSyncType.ICalFeed,
+                request.IcalFeedUrl,
+                calendarSyncError: null,
+                cancellationToken);
+        }
+        catch (DomainRuleException ex) when (ex.Code == ICalErrorCodes.InvalidUrl)
+        {
+            // Only an external https URL: the server downloads it (FD-16, A4-10).
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey);
+        }
 
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
-        // Trigger initial sync
-        _ = Task.Run(() => calendarSyncService.SyncIcalFeedAsync(orgId.Value, CancellationToken.None));
+        QueueSupplierSync(orgId.Value, backgroundJobClient);
+        return Accepted(MapCalendarStatus(profile, localizer));
+    }
 
-        return Ok(new CalendarSyncStatusDto
+    /// <summary>
+    /// "Sync now": 202 with <c>lastSyncStatus</c> <c>Syncing</c> and a queued job, or the current state when a sync is
+    /// already queued (nothing more is queued). 422 <c>ical_supplier_no_feed</c> when no iCal URL is saved.
+    /// </summary>
+    [HttpPost("calendar/sync")]
+    [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CalendarSyncStatusDto>> SyncCalendarNow(
+        [FromServices] IBackgroundJobClient backgroundJobClient,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null) return NotFound(new { error = "No supplier org found" });
+
+        var (profile, queue) = await calendarSyncService.RequestSyncAsync(orgId.Value, cancellationToken);
+        if (profile is null) return NotFound(new { error = "Supplier profile not found" });
+
+        if (queue)
+            QueueSupplierSync(orgId.Value, backgroundJobClient);
+
+        return Accepted(MapCalendarStatus(profile, localizer));
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private void QueueSupplierSync(Guid orgId, IBackgroundJobClient backgroundJobClient)
+    {
+        try
+        {
+            backgroundJobClient.Enqueue<IcalSupplierSyncJob>(job => job.SyncSupplierAsync(orgId, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            // The URL is saved and the state says Syncing: the recurring ical-supplier-sync job (every 15 minutes) syncs it.
+            logger.LogError(ex, "Could not queue the iCal sync of supplier {OrgId}", orgId);
+        }
+    }
+
+    private static CalendarSyncStatusDto MapCalendarStatus(
+        Casazen.Core.Entities.SupplierProfile profile,
+        IStringLocalizer<SharedResources> localizer)
+    {
+        var (syncErrorCode, syncErrorMessage) = ICalErrorMessages.Describe(profile.CalendarSyncError, localizer);
+        return new CalendarSyncStatusDto
         {
             CalendarSyncType = profile.CalendarSyncType.ToString(),
             IcalFeedUrl = profile.IcalFeedUrl,
             CalendarLastSyncAt = profile.CalendarLastSyncAt,
-        });
+            LastSyncStatus = profile.CalendarSyncStatus.ToString(),
+            CalendarSyncErrorCode = syncErrorCode,
+            CalendarSyncError = syncErrorMessage,
+        };
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private static SupplierProfileDto MapProfile(Casazen.Core.Entities.SupplierProfile profile) => new()
     {

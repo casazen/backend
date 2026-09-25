@@ -1,12 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
 [Table("Payments")]
-public class Payment
+public class Payment : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -44,6 +45,22 @@ public class Payment
     [MaxLength(255)]
     public string? StripePaymentIntentId { get; set; }
 
+    /// <summary>
+    /// Connected account (<c>acct_…</c>) the PaymentIntent was created on (direct charge, BK-02). Refunds and
+    /// cancellations of the intent are sent with this <c>Stripe-Account</c>; null for rows recorded before it was
+    /// stored (the org's current account is used) and for payments that never went through Stripe.
+    /// </summary>
+    [MaxLength(255)]
+    public string? StripeAccountId { get; set; }
+
+    /// <summary>
+    /// True when the PaymentIntent lives on the platform account: its <c>payment_intent.succeeded</c> came through the
+    /// platform webhook endpoint without a connected account (BK-04). Refunds are then created without the
+    /// <c>Stripe-Account</c> header, never on the org's connected account. False for direct charges
+    /// (<see cref="StripeAccountId"/>) and for payments that never went through Stripe.
+    /// </summary>
+    public bool StripeIntentOnPlatform { get; set; }
+
     public DateTime? ProcessedAt { get; set; }
 
     /// <summary>OTA 21% acconto (issue #3). <see cref="Amount"/> remains gross.</summary>
@@ -68,7 +85,10 @@ public enum PaymentStatus
     Completed,
     Failed,
     Refunded,
-    PartiallyRefunded
+    PartiallyRefunded,
+
+    /// <summary>Never collected: the PaymentIntent or SetupIntent was canceled with the booking (BK-02).</summary>
+    Canceled
 }
 
 public enum PaymentMethod

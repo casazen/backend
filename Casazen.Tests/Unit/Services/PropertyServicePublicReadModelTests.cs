@@ -2,11 +2,15 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -18,7 +22,11 @@ namespace Casazen.Tests.Unit.Services;
 public class PropertyServicePublicReadModelTests
 {
     private static PropertyService CreateService(AppDbContext context) =>
-        new(new PropertyRepository(context), new Mock<ILogger<PropertyService>>().Object);
+        new(
+            new PropertyRepository(context),
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object);
 
     private static AppDbContext CreateContext()
     {
@@ -47,7 +55,7 @@ public class PropertyServicePublicReadModelTests
             MaxGuests = 4,
             NightlyRate = 90m,
             CleaningFee = 30m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,
         });
@@ -171,7 +179,8 @@ public class PropertyServicePublicReadModelTests
 
     [Theory]
     [InlineData(null, CinStatus.Missing)]
-    [InlineData("IT-12345-0123456789", CinStatus.Valid)]
+    [InlineData("IT058091C27G5FFZDZ", CinStatus.Valid)]
+    [InlineData("IT123450123456789", CinStatus.Invalid)] // old invented format after the CO-01 migration
     [InlineData("BAD", CinStatus.Invalid)]
     public async Task SearchAsync_DerivesCinStatus_FromCinCode(string? cinCode, CinStatus expected)
     {

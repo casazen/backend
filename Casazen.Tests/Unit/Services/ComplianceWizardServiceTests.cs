@@ -1,12 +1,20 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -28,22 +36,223 @@ public class ComplianceWizardServiceTests
             {
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
-                ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
-                ["Compliance:GdprRetentionYears"] = "7",
             })
             .Build();
 
-    private static ComplianceWizardService CreateService(AppDbContext db)
+    private static ComplianceWizardService CreateService(
+        AppDbContext db,
+        TimeProvider? timeProvider = null,
+        IConfiguration? configuration = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
-        alloggiati.Setup(a => a.ValidateGuestDataAsync(It.IsAny<Guid>())).ReturnsAsync(false);
+        alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
+        alloggiati.Setup(a => a.GetStatusAsync(It.IsAny<Guid>())).ReturnsAsync((Guid id) => new AlloggiatiStatusInfo(
+            id,
+            AlloggiatiWebStatus.DaInviareManualmente,
+            null,
+            null,
+            null,
+            new DateTime(2026, 9, 22, 22, 0, 0, DateTimeKind.Utc),
+            false,
+            0,
+            true,
+            false));
+
+        var stayLifecycle = new StayLifecycleService(
+            db,
+            alloggiati.Object,
+            Mock.Of<IAlloggiatiReportScheduler>(),
+            Mock.Of<IServiceRequestService>(),
+            NullLogger<StayLifecycleService>.Instance,
+            timeProvider);
 
         return new ComplianceWizardService(
             db,
-            CreateConfig(),
             alloggiati.Object,
-            Mock.Of<IServiceRequestService>(),
-            Mock.Of<ILogger<ComplianceWizardService>>());
+            stayLifecycle,
+            new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
+            CreateStatusService(db, configuration ?? CreateConfig(), timeProvider),
+            Mock.Of<ILogger<ComplianceWizardService>>(),
+            timeProvider);
+    }
+
+    /// <summary>The real evaluation of the blockers (CO-06): the wizard has no copy of its own.</summary>
+    private static PropertyComplianceStatusService CreateStatusService(
+        AppDbContext db,
+        IConfiguration configuration,
+        TimeProvider? timeProvider) =>
+        new(
+            db,
+            configuration,
+            Mock.Of<IEmailQueue>(),
+            EmailTestHelpers.Links(),
+            Options.Create(new ComplianceOptions()),
+            NullLogger<PropertyComplianceStatusService>.Instance,
+            timeProvider);
+
+    // 2026-09-24 00:30 in Rome is still 2026-09-23 in UTC: "today" must be the Rome date.
+    private static readonly TimeProvider RomeJustAfterMidnight =
+        new FixedTimeProvider(new DateTimeOffset(2026, 9, 23, 22, 30, 0, TimeSpan.Zero));
+
+    [Fact]
+    public async Task Activation_NoRateForCity_ReturnsNonBlockingWarningWithLocalizableMessage()
+    {
+        await using var db = CreateDb(nameof(Activation_NoRateForCity_ReturnsNonBlockingWarningWithLocalizableMessage));
+        var property = await SeedPropertyAsync(db, city: "Seveso");
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("warning", tax.Status);
+        Assert.False(tax.Blocker);
+        Assert.Equal("ActivationTouristTaxNoRate", tax.MessageKey);
+        Assert.Equal(new object[] { "Seveso" }, tax.MessageArgs!);
+        Assert.NotNull(tax.TouristTax);
+        Assert.Null(tax.TouristTax!.Rate);
+        Assert.Null(tax.TouristTax.PublicPageSlug);
+    }
+
+    [Fact]
+    public async Task Activation_RateInForceTodayInRome_ReturnsCompleteStepWithRate()
+    {
+        await using var db = CreateDb(nameof(Activation_RateInForceTodayInRome_ReturnsCompleteStepWithRate));
+        var property = await SeedPropertyAsync(db, city: "Milano");
+        var rate = AddRate(db, "milano", 9.50m, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc));
+        AddRate(db, "Milano", 1m, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), isActive: false);
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db, RomeJustAfterMidnight).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("complete", tax.Status);
+        Assert.False(tax.Blocker);
+        Assert.Null(tax.MessageKey);
+        Assert.Equal(rate.Id, tax.TouristTax!.Rate!.Id);
+        Assert.Equal(9.50m, tax.TouristTax.Rate.RatePerPersonPerNight);
+    }
+
+    [Fact]
+    public async Task Activation_RateNotYetInForceOrExpired_ReturnsWarning()
+    {
+        await using var db = CreateDb(nameof(Activation_RateNotYetInForceOrExpired_ReturnsWarning));
+        var property = await SeedPropertyAsync(db, city: "Milano");
+        AddRate(db, "Milano", 9.50m, new DateTime(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc));
+        AddRate(
+            db,
+            "Milano",
+            6.30m,
+            new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            effectiveTo: new DateTime(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc));
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db, RomeJustAfterMidnight).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("warning", tax.Status);
+        Assert.Null(tax.TouristTax!.Rate);
+    }
+
+    [Fact]
+    public async Task Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug()
+    {
+        await using var db = CreateDb(nameof(Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug));
+        var property = await SeedPropertyAsync(db, city: "Como");
+        db.SeoContentPages.Add(new SeoContentPage
+        {
+            Slug = "tassa-soggiorno/como",
+            ComuneCode = "013075",
+            RegionCode = "LOM",
+            PageType = SeoPageType.TouristTaxCalc,
+            LegalReviewStatus = LegalReviewStatus.Reviewed,
+            PublishedRevisionId = Guid.NewGuid(),
+        });
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        Assert.Equal("como", steps.Single(s => s.Id == "tourist-tax").TouristTax!.PublicPageSlug);
+    }
+
+    [Fact]
+    public async Task Activation_DraftTouristTaxPage_ReturnsNoPublicPageSlug()
+    {
+        await using var db = CreateDb(nameof(Activation_DraftTouristTaxPage_ReturnsNoPublicPageSlug));
+        var property = await SeedPropertyAsync(db, city: "Como");
+        db.SeoContentPages.Add(new SeoContentPage
+        {
+            Slug = "tassa-soggiorno/como",
+            ComuneCode = "013075",
+            RegionCode = "LOM",
+            PageType = SeoPageType.TouristTaxCalc,
+            LegalReviewStatus = LegalReviewStatus.Draft,
+        });
+        await db.SaveChangesAsync();
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        Assert.Null(steps.Single(s => s.Id == "tourist-tax").TouristTax!.PublicPageSlug);
+    }
+
+    [Fact]
+    public async Task Activation_CityMissing_ReturnsCityMissingWarning()
+    {
+        await using var db = CreateDb(nameof(Activation_CityMissing_ReturnsCityMissingWarning));
+        var property = await SeedPropertyAsync(db, city: " ");
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var tax = steps.Single(s => s.Id == "tourist-tax");
+        Assert.Equal("warning", tax.Status);
+        Assert.False(tax.Blocker);
+        Assert.Equal("ActivationTouristTaxCityMissing", tax.MessageKey);
+    }
+
+    [Fact]
+    public async Task Activation_CinStep_ExposesConfiguredGuidanceUrl()
+    {
+        await using var db = CreateDb(nameof(Activation_CinStep_ExposesConfiguredGuidanceUrl));
+        var property = await SeedPropertyAsync(db, cinCode: null);
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        Assert.Equal("https://www.bdsr.it/cin", steps.Single(s => s.Id == "cin").LinkUrl);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_NoTouristTaxRate_SetsActive()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_NoTouristTaxRate_SetsActive));
+        var property = await SeedFullyCompliantPropertyAsync(db, withTouristTaxRate: false);
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
+            property.Id,
+            property.OwnerId,
+            tosAccepted: true);
+
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+    }
+
+    private static TouristTaxRate AddRate(
+        AppDbContext db,
+        string city,
+        decimal amount,
+        DateTime effectiveFrom,
+        DateTime? effectiveTo = null,
+        bool isActive = true)
+    {
+        var rate = new TouristTaxRate
+        {
+            City = city,
+            RegionCode = "LOM",
+            RatePerPersonPerNight = amount,
+            MinimumAge = 18,
+            IsActive = isActive,
+            EffectiveFrom = effectiveFrom,
+            EffectiveTo = effectiveTo,
+        };
+        db.TouristTaxRates.Add(rate);
+        return rate;
     }
 
     [Fact]
@@ -63,7 +272,7 @@ public class ComplianceWizardServiceTests
     public async Task Activation_CinValid_MarksCinComplete()
     {
         await using var db = CreateDb(nameof(Activation_CinValid_MarksCinComplete));
-        var property = await SeedPropertyAsync(db, cinCode: "IT-12345-0123456789");
+        var property = await SeedPropertyAsync(db, cinCode: "IT058091C27G5FFZDZ");
 
         var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
 
@@ -80,12 +289,28 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
         Assert.Empty(blockers);
         Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
         Assert.NotNull(updated.ComplianceCompletedAt);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_TosOmitted_DoesNotActivateProperty()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_TosOmitted_DoesNotActivateProperty));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db).CompleteActivationAsync(
+            property.Id,
+            property.OwnerId,
+            tosAccepted: null));
+        Assert.Equal("activation_tos_required", error.Code);
+
+        var reloaded = await db.Properties.FindAsync(property.Id);
+        Assert.Equal(PropertyComplianceStatus.Pending, reloaded!.ComplianceStatus);
+        Assert.Null(reloaded.ComplianceCompletedAt);
     }
 
     [Fact]
@@ -97,11 +322,75 @@ public class ComplianceWizardServiceTests
         var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
             property.Id,
             property.OwnerId,
-            new PropertySafetyChecklistInput(true, true, true, property.OwnerId),
             tosAccepted: true);
 
-        Assert.Contains("cin", blockers);
+        var cin = Assert.Single(blockers, b => b.Id == "cin");
+        Assert.Equal("activation_cin_missing", Assert.Single(cin.Blockers).Code);
         Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes()
+    {
+        await using var db = CreateDb(nameof(Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes));
+        var property = await SeedPropertyAsync(db);
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
+
+        var safety = steps.Single(s => s.Id == "safety");
+        Assert.Equal("pending", safety.Status);
+        Assert.True(safety.Blocker);
+        Assert.Equal("ActivationSafetyIncomplete", safety.MessageKey);
+        Assert.Contains(safety.Blockers, b => b.Code == "safety_extinguishers_missing");
+        Assert.DoesNotContain(safety.Blockers, b => b.Code.Contains("smoke", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CompleteActivation_AllElectricHomeWithoutSmokeDetector_SetsActive()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_AllElectricHomeWithoutSmokeDetector_SetsActive));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var smoke = await db.PropertySafetyChecklistItems.SingleAsync(i => i.Code == SafetyItemCode.SmokeDetector);
+        smoke.Answer = SafetyItemAnswer.Missing;
+        await db.SaveChangesAsync();
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var checklist = await db.PropertySafetyChecklists.SingleAsync(c => c.PropertyId == property.Id);
+        checklist.HasGasSupply = true;
+        checklist.CombustionAppliances = [CombustionAppliance.GasHob];
+        await db.SaveChangesAsync();
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        var safety = Assert.Single(blockers);
+        Assert.Equal("safety", safety.Id);
+        Assert.Equal(
+            ["safety_gas_detector_missing", "safety_co_detector_missing"],
+            safety.Blockers.Select(b => b.Code));
+        Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task Activation_NoRequiredDocumentsConfigured_DoesNotAskForASafetyCertificate()
+    {
+        await using var db = CreateDb(nameof(Activation_NoRequiredDocumentsConfigured_DoesNotAskForASafetyCertificate));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        var noDocumentsConfig = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
+
+        var (_, steps) = await CreateService(db, configuration: noDocumentsConfig).GetActivationWizardAsync(property.Id);
+
+        Assert.DoesNotContain(property.PropertyDocuments, d => d.DocumentType == DocumentType.SafetyCompliance);
+        Assert.Equal("complete", steps.Single(s => s.Id == "documents").Status);
     }
 
     [Fact]
@@ -129,8 +418,8 @@ public class ComplianceWizardServiceTests
             PropertyId = pending.Id,
             OrgId = org.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(-2),
-            CheckOutDate = DateTime.UtcNow.Date,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(-2),
+            CheckOutDate = TimeProvider.System.TodayInRome(),
             Status = BookingStatus.CheckedIn,
             NumberOfGuests = 2,
             BasePrice = 100,
@@ -146,11 +435,465 @@ public class ComplianceWizardServiceTests
         Assert.True(summary.CheckoutsDue.Count >= 1);
     }
 
+    [Fact]
+    public async Task Summary_AlloggiatiNotTransmitted_CountsAsToSendManuallyNeverAsDone()
+    {
+        await using var db = CreateDb(nameof(Summary_AlloggiatiNotTransmitted_CountsAsToSendManuallyNeverAsDone));
+        var property = await SeedPropertyAsync(db);
+        var today = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 10, 10, 9, 0, 0, TimeSpan.Zero));
+
+        Booking Stay(string name, DateTime checkIn, BookingStatus status = BookingStatus.Confirmed)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkIn.AddDays(2), status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+
+        void Report(Booking booking, AlloggiatiWebStatus status) => db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = booking.Id,
+            GuestId = booking.GuestId,
+            OrgId = booking.OrgId,
+            Status = status,
+            ReportedAt = status == AlloggiatiWebStatus.InviatoManualmente ? today : null,
+        });
+
+        var noReport = Stay("NoReport", today);
+        var jobNotRunYet = Stay("JobPending", today);
+        Report(jobNotRunYet, AlloggiatiWebStatus.DaInviare);
+        var manual = Stay("Manual", today.AddDays(-1), BookingStatus.CheckedIn);
+        Report(manual, AlloggiatiWebStatus.DaInviareManualmente);
+        var declared = Stay("Declared", today.AddDays(-1), BookingStatus.CheckedIn);
+        Report(declared, AlloggiatiWebStatus.InviatoManualmente);
+        var rejected = Stay("Rejected", today.AddDays(-1));
+        Report(rejected, AlloggiatiWebStatus.Rifiutato);
+        var future = Stay("Future", today.AddDays(1));
+        Report(future, AlloggiatiWebStatus.DaInviare);
+        Stay("Cancelled", today, BookingStatus.Cancelled);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, clock).GetSummaryAsync(property.OrgId);
+
+        Assert.Equal(
+            new[] { noReport.Id, jobNotRunYet.Id, manual.Id }.OrderBy(id => id),
+            summary.AlloggiatiManualRequired.Items.Select(i => i.Id).OrderBy(id => id));
+        Assert.Equal(3, summary.AlloggiatiManualRequired.Count);
+        Assert.Equal(rejected.Id, Assert.Single(summary.AlloggiatiFailures.Items).Id);
+        var manualItem = summary.AlloggiatiManualRequired.Items.Single(i => i.Id == manual.Id);
+        Assert.Equal(ComplianceCockpitAction.SendAlloggiati, manualItem.Action);
+        Assert.Equal(manual.Id, manualItem.BookingId);
+        Assert.Equal(ComplianceCockpitAction.ResolveAlloggiatiFailure, summary.AlloggiatiFailures.Items.Single().Action);
+    }
+
+    [Fact]
+    public async Task Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath()
+    {
+        await using var db = CreateDb(nameof(Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath));
+        var org = new OrgEntity { Name = "Cockpit Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var pending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var suspended = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Suspended);
+        var active = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        // Rome 24/09: departure today, arrival two days ago, guest data incomplete, no Alloggiati communication.
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var departing = AddStay(active, "Partenza", todayInRome, BookingStatus.CheckedIn);
+        var rejected = AddStay(active, "Rifiutata", todayInRome.AddDays(1), BookingStatus.CheckedIn);
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = rejected.Id,
+            GuestId = rejected.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.Rifiutato,
+        });
+        // Checked out yesterday, property not declared ready (CO-17); its Alloggiati communication was declared sent.
+        var turnover = AddStay(pending, "Turnover", todayInRome.AddDays(-1), BookingStatus.CheckedOut);
+        db.StayCheckouts.Add(new StayCheckout
+        {
+            BookingId = turnover.Id,
+            OrgId = org.Id,
+            CompletedAt = todayInRome.AddDays(-1).AddHours(9),
+        });
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = turnover.Id,
+            GuestId = turnover.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.InviatoManualmente,
+        });
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(org.Id);
+
+        Assert.Equal(new[] { pending.Id, suspended.Id }.Order(), summary.PropertiesPending.Items.Select(i => i.Id).Order());
+        Assert.All(summary.PropertiesPending.Items, i => AssertTarget(i, ComplianceCockpitAction.ActivateProperty, propertyId: i.Id));
+        Assert.Contains(summary.GuestCheckInsIncomplete.Items, i => i.Id == departing.Id);
+        Assert.All(summary.GuestCheckInsIncomplete.Items, i => AssertTarget(i, ComplianceCockpitAction.CompleteGuestCheckIn, bookingId: i.Id));
+        AssertTarget(Assert.Single(summary.CheckoutsDue.Items), ComplianceCockpitAction.CheckOut, bookingId: departing.Id);
+        AssertTarget(Assert.Single(summary.AlloggiatiManualRequired.Items), ComplianceCockpitAction.SendAlloggiati, bookingId: departing.Id);
+        AssertTarget(Assert.Single(summary.AlloggiatiFailures.Items), ComplianceCockpitAction.ResolveAlloggiatiFailure, bookingId: rejected.Id);
+        AssertTarget(Assert.Single(summary.TurnoversPending.Items), ComplianceCockpitAction.ConfirmPropertyReady, bookingId: turnover.Id);
+        // Every action the clients must route is produced by one section.
+        Assert.Equal(
+            Enum.GetValues<ComplianceCockpitAction>().Order(),
+            new[]
+            {
+                summary.PropertiesPending,
+                summary.GuestCheckInsIncomplete,
+                summary.CheckoutsDue,
+                summary.AlloggiatiManualRequired,
+                summary.AlloggiatiFailures,
+                summary.TurnoversPending,
+            }.SelectMany(section => section.Items).Select(i => i.Action).Distinct().Order());
+
+        Booking AddStay(Property property, string name, DateTime checkout, BookingStatus status)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = org.Id };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+
+        static void AssertTarget(ComplianceSummaryItem item, ComplianceCockpitAction action, Guid? propertyId = null, Guid? bookingId = null)
+        {
+            Assert.Equal(action, item.Action);
+            Assert.Equal(propertyId, item.PropertyId);
+            Assert.Equal(bookingId, item.BookingId);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CockpitActions))]
+    public void ComplianceSummaryItem_EveryAction_HasExactlyOneTarget(ComplianceCockpitAction action)
+    {
+        var id = Guid.NewGuid();
+
+        var item = ComplianceSummaryItem.TargetsProperty(action)
+            ? ComplianceSummaryItem.ForProperty(action, id, "Villa")
+            : ComplianceSummaryItem.ForBooking(action, id, "Mario Rossi");
+
+        Assert.Equal(id, item.Id);
+        Assert.Equal(id, item.PropertyId ?? item.BookingId);
+        Assert.True(item.PropertyId is null ^ item.BookingId is null);
+        Assert.Throws<ArgumentException>(() => ComplianceSummaryItem.TargetsProperty(action)
+            ? ComplianceSummaryItem.ForBooking(action, id, "x")
+            : ComplianceSummaryItem.ForProperty(action, id, "x"));
+    }
+
+    public static TheoryData<ComplianceCockpitAction> CockpitActions() => new(Enum.GetValues<ComplianceCockpitAction>());
+
+    [Fact]
+    public async Task StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival()
+    {
+        await using var db = CreateDb(nameof(StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+        property.ComplianceStatus = PropertyComplianceStatus.Active;
+        // Rome 24/09 00:30: the departure day of the stay has started.
+        var checkout = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var guest = new Guest
+        {
+            FirstName = "Luigi",
+            LastName = "Verdi",
+            Email = $"luigi-{Guid.NewGuid():N}@test.com",
+        };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, checkout, BookingStatus.Confirmed);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeJustAfterMidnight);
+
+        var deadEnd = await Assert.ThrowsAsync<DomainConflictException>(() => service.StartCheckoutWizardAsync(booking.Id));
+        var started = await service.StartCheckoutWizardAsync(booking.Id, registerArrival: true);
+        var completed = await service.CompleteCheckoutWizardAsync(
+            booking.Id,
+            property.OwnerId,
+            new CompleteCheckoutWizardInput(
+                ConfirmDeparture: true,
+                SupplierOrgId: null,
+                ServiceNotes: null,
+                ServiceCategory: null));
+
+        Assert.Equal(BookingErrorCodes.ArrivalNotRegistered, deadEnd.Code);
+        Assert.Equal(BookingStatus.CheckedIn, started.Booking.Status);
+        Assert.NotNull(started.Booking.CheckoutWizardStartedAt);
+        Assert.Equal(
+            new[] { "stay-summary", "alloggiati", "cleaning", "tourist-tax", "property-ready" },
+            started.Steps.Select(s => s.Id));
+        Assert.Equal(CheckoutWizardStep.StaySummary, started.CurrentStep);
+        // Nothing declared: the property is not assumed ready (A5-24), it stays a turnover of the cockpit.
+        Assert.False(completed.PropertyReady);
+        Assert.Equal(BookingStatus.CheckedOut, completed.Booking.Status);
+    }
+
+    [Fact]
+    public async Task CompleteCheckoutWizard_WithoutStart_Throws409AndKeepsTheStayOpen()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_WithoutStart_Throws409AndKeepsTheStayOpen));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db, RomeJustAfterMidnight)
+            .CompleteCheckoutWizardAsync(booking.Id, property.OwnerId, new CompleteCheckoutWizardInput(true, null, null, null)));
+
+        Assert.Equal(BookingErrorCodes.CheckoutWizardNotStarted, error.Code);
+        Assert.Equal(BookingStatus.CheckedIn, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).Status);
+        Assert.False(await db.StayCheckouts.AnyAsync());
+    }
+
+    [Theory]
+    [InlineData(CheckoutCleaningChoice.Skip, true)]
+    [InlineData(CheckoutCleaningChoice.Request, false)]
+    public async Task CompleteCheckoutWizard_ContradictoryCleaningChoice_Throws422(CheckoutCleaningChoice choice, bool withSupplier)
+    {
+        await using var db = CreateDb($"{nameof(CompleteCheckoutWizard_ContradictoryCleaningChoice_Throws422)}-{choice}");
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        booking.CheckoutWizardStartedAt = new DateTime(2026, 9, 23, 20, 0, 0, DateTimeKind.Utc);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => CreateService(db, RomeJustAfterMidnight)
+            .CompleteCheckoutWizardAsync(
+                booking.Id,
+                property.OwnerId,
+                new CompleteCheckoutWizardInput(true, withSupplier ? Guid.NewGuid() : null, null, null) { CleaningChoice = choice }));
+
+        Assert.Equal(BookingErrorCodes.CleaningChoiceInvalid, error.Code);
+        Assert.Equal(BookingStatus.CheckedIn, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).Status);
+    }
+
+    [Fact]
+    public async Task SaveCheckoutProgress_ThenStartAgain_ResumesOnTheSavedStepWithTheAnswers()
+    {
+        await using var db = CreateDb(nameof(SaveCheckoutProgress_ThenStartAgain_ResumesOnTheSavedStepWithTheAnswers));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeJustAfterMidnight);
+
+        await service.StartCheckoutWizardAsync(booking.Id);
+        await service.SaveCheckoutProgressAsync(booking.Id, new StayCheckoutProgress(
+            CheckoutWizardStep.TouristTax,
+            DepartureConfirmed: true,
+            CheckoutCleaningChoice.Skip,
+            CleaningSupplierOrgId: Guid.NewGuid(),
+            CleaningCategory: "cleaning",
+            CleaningNotes: "ignored when skipped",
+            TouristTaxCollection.CollectedAtProperty,
+            PropertyReady: null,
+            PropertyNotes: "  "));
+        var reopened = await service.StartCheckoutWizardAsync(booking.Id);
+
+        Assert.Equal(CheckoutWizardStep.TouristTax, reopened.CurrentStep);
+        Assert.NotNull(reopened.Checkout);
+        Assert.True(reopened.Checkout!.DepartureConfirmed);
+        Assert.Equal(CheckoutCleaningChoice.Skip, reopened.Checkout.CleaningChoice);
+        Assert.Null(reopened.Checkout.CleaningSupplierOrgId);
+        Assert.Null(reopened.Checkout.CleaningNotes);
+        Assert.Null(reopened.Checkout.PropertyNotes);
+        Assert.Equal(TouristTaxCollection.CollectedAtProperty, reopened.TouristTax.Collection);
+        Assert.Equal(1, await db.StayCheckouts.CountAsync());
+        Assert.Contains(reopened.Steps, s => s.Id == "cleaning" && s.Status == "complete");
+        Assert.Contains(reopened.Steps, s => s.Id == "property-ready" && s.Status == "pending");
+        // Progress only: nothing was closed.
+        Assert.Equal(BookingStatus.CheckedIn, reopened.Booking.Status);
+        Assert.Null(reopened.Checkout.CompletedAt);
+    }
+
+    [Fact]
+    public async Task SaveCheckoutProgress_BeforeTheStart_Throws409()
+    {
+        await using var db = CreateDb(nameof(SaveCheckoutProgress_BeforeTheStart_Throws409));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateService(db, RomeJustAfterMidnight)
+            .SaveCheckoutProgressAsync(booking.Id, new StayCheckoutProgress(
+                CheckoutWizardStep.Alloggiati, true, null, null, null, null, null, null, null)));
+
+        Assert.Equal(BookingErrorCodes.CheckoutWizardNotStarted, error.Code);
+    }
+
+    [Theory]
+    [InlineData(BookingSource.Direct, 12.5, 12.5)]
+    [InlineData(BookingSource.Manual, 12.5, 12.5)]
+    [InlineData(BookingSource.Airbnb, 12.5, null)]
+    [InlineData(BookingSource.Manual, 0, null)]
+    public async Task StartCheckoutWizard_TouristTax_ShowsOnlyTheAmountCasaZenRecorded(
+        BookingSource source,
+        double stored,
+        double? expected)
+    {
+        await using var db = CreateDb($"{nameof(StartCheckoutWizard_TouristTax_ShowsOnlyTheAmountCasaZenRecorded)}-{source}-{stored}");
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        booking.Source = source;
+        booking.TouristTax = (decimal)stored;
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var state = await CreateService(db, RomeJustAfterMidnight).StartCheckoutWizardAsync(booking.Id);
+
+        Assert.Equal((decimal?)expected, state.TouristTax.RecordedAmount);
+        Assert.False(state.TouristTax.CollectedWithOnlinePayment);
+        Assert.Null(state.TouristTax.Collection);
+    }
+
+    [Fact]
+    public async Task StartCheckoutWizard_DirectBookingPaidOnline_SaysTheTaxWasCollectedWithThePayment()
+    {
+        await using var db = CreateDb(nameof(StartCheckoutWizard_DirectBookingPaidOnline_SaysTheTaxWasCollectedWithThePayment));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        booking.Source = BookingSource.Direct;
+        booking.PaymentOption = PaymentOption.Immediate;
+        booking.TouristTax = 8m;
+        db.Bookings.Add(booking);
+        db.Payments.Add(new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = property.OrgId,
+            Amount = 108m,
+            Status = PaymentStatus.Completed,
+            StripePaymentIntentId = "pi_test",
+        });
+        await db.SaveChangesAsync();
+
+        var state = await CreateService(db, RomeJustAfterMidnight).StartCheckoutWizardAsync(booking.Id);
+
+        Assert.Equal(8m, state.TouristTax.RecordedAmount);
+        Assert.True(state.TouristTax.CollectedWithOnlinePayment);
+    }
+
+    [Fact]
+    public async Task Summary_TurnoversPending_CountsCheckedOutStaysWhosePropertyIsNotReadyUntilDeclaredOrNextArrival()
+    {
+        await using var db = CreateDb(nameof(Summary_TurnoversPending_CountsCheckedOutStaysWhosePropertyIsNotReadyUntilDeclaredOrNextArrival));
+        var property = await SeedPropertyAsync(db);
+        var otherProperty = await SeedPropertyAsync(db, property.OrgId);
+        var today = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
+        Booking Stay(Property of, DateTime checkout, BookingStatus status, bool? declaredReady, bool completed = true)
+        {
+            var guest = new Guest { FirstName = "Ospite", LastName = Guid.NewGuid().ToString("N")[..6], Email = $"{Guid.NewGuid():N}@test.com", OrgId = of.OrgId };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(of, guest, checkout, status);
+            db.Bookings.Add(booking);
+            if (declaredReady is { } ready)
+            {
+                db.StayCheckouts.Add(new StayCheckout
+                {
+                    BookingId = booking.Id,
+                    OrgId = of.OrgId,
+                    CompletedAt = completed ? checkout.AddHours(9) : null,
+                    PropertyReady = ready,
+                    PropertyReadyAt = ready ? checkout.AddHours(10) : null,
+                });
+            }
+
+            return booking;
+        }
+
+        var notReady = Stay(property, today, BookingStatus.CheckedOut, declaredReady: false);
+        Stay(property, today.AddDays(-3), BookingStatus.CheckedOut, declaredReady: true);
+        // Not ready, but a later stay of the same property has arrived: it was ready for it.
+        Stay(otherProperty, today.AddDays(-5), BookingStatus.CheckedOut, declaredReady: false);
+        var laterStay = Stay(otherProperty, today.AddDays(1), BookingStatus.CheckedIn, declaredReady: null);
+        laterStay.CheckInDate = today.AddDays(-2);
+        // Checked out before CO-17: no record, not listed.
+        Stay(property, today.AddDays(-10), BookingStatus.CheckedOut, declaredReady: null);
+        // Wizard still open: not a turnover yet.
+        Stay(property, today, BookingStatus.CheckedIn, declaredReady: false, completed: false);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+
+        var item = Assert.Single(summary.TurnoversPending.Items);
+        Assert.Equal(1, summary.TurnoversPending.Count);
+        Assert.Equal(notReady.Id, item.BookingId);
+        Assert.Equal(ComplianceCockpitAction.ConfirmPropertyReady, item.Action);
+        Assert.StartsWith("Villa Test · Ospite", item.Label);
+    }
+
+    [Fact]
+    public async Task CompleteCheckoutWizard_DepartureNotConfirmed_Returns422AndKeepsTheStayOpen()
+    {
+        await using var db = CreateDb(nameof(CompleteCheckoutWizard_DepartureNotConfirmed_Returns422AndKeepsTheStayOpen));
+        var property = await SeedPropertyAsync(db);
+        var guest = new Guest { FirstName = "Anna", LastName = "Neri", Email = $"anna-{Guid.NewGuid():N}@test.com" };
+        db.Guests.Add(guest);
+        var booking = BuildBooking(property, guest, new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc), BookingStatus.CheckedIn);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => CreateService(db, RomeJustAfterMidnight)
+            .CompleteCheckoutWizardAsync(booking.Id, property.OwnerId, new CompleteCheckoutWizardInput(false, null, null, null)));
+
+        Assert.Equal(BookingErrorCodes.DepartureNotConfirmed, error.Code);
+        Assert.Equal(BookingStatus.CheckedIn, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Summary_CheckoutsDue_TodaysDeparturesInRomeConfirmedOrCheckedInAndOpenStays()
+    {
+        await using var db = CreateDb(nameof(Summary_CheckoutsDue_TodaysDeparturesInRomeConfirmedOrCheckedInAndOpenStays));
+        var property = await SeedPropertyAsync(db);
+        // 2026-09-23 22:30 UTC is already 24/09 in Rome.
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
+        Booking Stay(DateTime checkout, BookingStatus status)
+        {
+            var guest = new Guest { FirstName = "Ospite", LastName = status.ToString(), Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+
+        var confirmedToday = Stay(todayInRome, BookingStatus.Confirmed);
+        var checkedInToday = Stay(todayInRome, BookingStatus.CheckedIn);
+        var checkedInOverdue = Stay(todayInRome.AddDays(-1), BookingStatus.CheckedIn);
+        Stay(todayInRome.AddDays(-1), BookingStatus.Confirmed);
+        Stay(todayInRome.AddDays(1), BookingStatus.CheckedIn);
+        Stay(todayInRome.AddDays(1), BookingStatus.Confirmed);
+        Stay(todayInRome, BookingStatus.CheckedOut);
+        Stay(todayInRome, BookingStatus.Cancelled);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(property.OrgId);
+
+        Assert.Equal(3, summary.CheckoutsDue.Count);
+        Assert.Equal(
+            new[] { confirmedToday.Id, checkedInToday.Id, checkedInOverdue.Id }.Order(),
+            summary.CheckoutsDue.Items.Select(i => i.Id).Order());
+    }
+
     private static async Task<Property> SeedPropertyAsync(
         AppDbContext db,
         Guid? orgId = null,
-        string? cinCode = "IT-12345-0123456789",
-        PropertyComplianceStatus complianceStatus = PropertyComplianceStatus.Pending)
+        string? cinCode = "IT058091C27G5FFZDZ",
+        PropertyComplianceStatus complianceStatus = PropertyComplianceStatus.Pending,
+        string city = "Rome")
     {
         var org = orgId.HasValue
             ? await db.Orgs.FindAsync(orgId.Value)
@@ -168,7 +911,7 @@ public class ComplianceWizardServiceTests
             OwnerId = "auth0|owner",
             Name = "Villa Test",
             Address = "Via Roma 1",
-            City = "Rome",
+            City = city,
             PostalCode = "00100",
             Bedrooms = 2,
             Bathrooms = 1,
@@ -184,19 +927,43 @@ public class ComplianceWizardServiceTests
         return property;
     }
 
-    private static async Task<Property> SeedFullyCompliantPropertyAsync(AppDbContext db, Guid? orgId = null)
+    private static Booking BuildBooking(Property property, Guest guest, DateTime checkout, BookingStatus status) => new()
     {
-        var property = await SeedPropertyAsync(db, orgId, cinCode: "IT-12345-0123456789");
+        Id = Guid.NewGuid(),
+        PropertyId = property.Id,
+        Property = property,
+        OrgId = property.OrgId,
+        GuestId = guest.Id,
+        Guest = guest,
+        CheckInDate = checkout.AddDays(-2),
+        CheckOutDate = checkout,
+        Status = status,
+        NumberOfGuests = 2,
+        BasePrice = 100,
+        TouristTax = 0,
+        TotalPrice = 100,
+    };
 
-        db.TouristTaxRates.Add(new TouristTaxRate
+    private static async Task<Property> SeedFullyCompliantPropertyAsync(
+        AppDbContext db,
+        Guid? orgId = null,
+        bool withTouristTaxRate = true)
+    {
+        var property = await SeedPropertyAsync(db, orgId, cinCode: "IT058091C27G5FFZDZ");
+
+        if (withTouristTaxRate)
         {
-            City = property.City,
-            RegionCode = "LAZ",
-            RatePerPersonPerNight = 2m,
-            IsActive = true,
-        });
+            db.TouristTaxRates.Add(new TouristTaxRate
+            {
+                City = property.City,
+                RegionCode = "LAZ",
+                RatePerPersonPerNight = 2m,
+                IsActive = true,
+                EffectiveFrom = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            });
+        }
 
-        db.PropertyDocuments.AddRange(
+        db.PropertyDocuments.Add(
             new PropertyDocument
             {
                 PropertyId = property.Id,
@@ -204,18 +971,9 @@ public class ComplianceWizardServiceTests
                 StorageUrl = "/docs/cin.pdf",
                 DocumentType = DocumentType.CinCertificate,
                 UploadedBy = property.OwnerId,
-            },
-            new PropertyDocument
-            {
-                PropertyId = property.Id,
-                FileName = "safety.pdf",
-                StorageUrl = "/docs/safety.pdf",
-                DocumentType = DocumentType.SafetyCompliance,
-                UploadedBy = property.OwnerId,
             });
 
-        property.SafetyChecklistJson =
-            """{"smokeDetector":true,"fireExtinguisher":true,"gasCompliance":true,"acknowledgedAt":"2026-01-01T00:00:00Z"}""";
+        db.PropertySafetyChecklists.Add(SafetyChecklistTestData.CompleteAllElectric(property.Id, property.OrgId));
 
         await db.SaveChangesAsync();
         return property;

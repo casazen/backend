@@ -1,17 +1,27 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using System.Text.Json;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Resolves the contexts (short-rent, long-rent, admin, supplier) and permissions of a user by merging
+/// DB memberships with JWT roles. DB data comes from <see cref="IUserAuthorizationSnapshotStore"/>, so
+/// a request evaluating several context policies reads the DB at most once (and not at all while the
+/// short-lived cache is warm).
+/// </summary>
+/// <remarks>
+/// The host contexts (short-rent, long-rent) are withheld until the host onboarding is complete, whatever the JWT
+/// roles, the memberships or the DB role say (PL-02, A1-05, <see cref="HostOnboarding"/>): a user registered on Auth0
+/// who never went through the onboarding and its consents gets no host permission, from the web, the app or the API.
+/// </remarks>
 public class ContextAuthorizationService(
-    AppDbContext dbContext,
+    IUserAuthorizationSnapshotStore snapshotStore,
+    ILegalDocumentService legalDocuments,
     IHttpContextAccessor httpContextAccessor,
     ILogger<ContextAuthorizationService> logger) : IContextAuthorizationService
 {
@@ -19,55 +29,40 @@ public class ContextAuthorizationService(
     {
         try
         {
-            return await GetUserContextsInternalAsync(userId, cancellationToken);
+            var snapshot = await snapshotStore.GetAsync(userId, cancellationToken);
+            return BuildContexts(snapshot);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Unexpected error in GetUserContextsAsync for user {UserId}", userId);
             // Fallback to JWT-only contexts on any DB error
-            var jwtRoles = ResolveJwtRoles();
-            if (jwtRoles.Count == 0)
-            {
-                jwtRoles = await FallbackToDbUserRolesAsync(userId, cancellationToken);
-            }
-            return ContextAccessBootstrap.BuildFallbackAccess(jwtRoles);
+            return ContextAccessBootstrap.BuildFallbackAccess(ResolveJwtRoles());
         }
     }
 
-    private async Task<IReadOnlyList<ContextAccess>> GetUserContextsInternalAsync(string userId, CancellationToken cancellationToken)
+    private IReadOnlyList<ContextAccess> BuildContexts(UserAuthorizationSnapshot snapshot)
     {
-        var memberships = await dbContext.UserContextMemberships
-            .AsNoTracking()
-            .Include(m => m.Context)
-            .Include(m => m.Role)
-            .ThenInclude(r => r.Permissions)
-            .Where(m => m.UserId == userId)
-            .OrderBy(m => m.ContextKey)
-            .ToListAsync(cancellationToken);
+        var contexts = MergeContexts(snapshot);
+        if (HostOnboardingGate.Evaluate(snapshot, legalDocuments).IsComplete)
+            return contexts;
 
+        // PL-02: no host context before the onboarding and the current consents. Admin and supplier stay.
+        return contexts.Where(c => !HostOnboarding.IsHostContext(c.ContextKey)).ToList();
+    }
+
+    private IReadOnlyList<ContextAccess> MergeContexts(UserAuthorizationSnapshot snapshot)
+    {
+        var memberships = snapshot.Memberships;
         var jwtRoles = ResolveJwtRoles();
 
-        if (jwtRoles.Count == 0 && memberships.Count == 0)
+        if (jwtRoles.Count == 0 && memberships.Count == 0 && snapshot.Exists)
         {
-            var dbUser = await dbContext.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-
-            if (dbUser is not null)
-            {
-                jwtRoles = MapDbUserRoleToJwtRoles(dbUser.Role);
-            }
+            jwtRoles = MapDbUserRoleToJwtRoles(snapshot.Role);
         }
 
         if (memberships.Count > 0)
         {
-            var fromDb = memberships.Select(m => new ContextAccess(
-                    m.ContextKey,
-                    m.Context.DisplayName,
-                    m.Role.RoleKey,
-                    m.Role.Permissions.Select(p => p.PermissionKey).OrderBy(p => p).ToList(),
-                    GetDefaultRoute(m.ContextKey)))
-                .ToList();
+            var fromDb = memberships.ToList();
 
             var existingKeys = fromDb.Select(c => c.ContextKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var jwtContext in ContextAccessBootstrap.BuildFallbackAccess(jwtRoles))
@@ -92,21 +87,18 @@ public class ContextAuthorizationService(
     {
         try
         {
-            var user = await dbContext.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-
-            if (user is { IsActive: false })
+            var snapshot = await snapshotStore.GetAsync(userId, cancellationToken);
+            if (snapshot is { Exists: true, IsActive: false })
             {
                 return false;
             }
 
-            var contexts = await GetUserContextsAsync(userId, cancellationToken);
+            var contexts = BuildContexts(snapshot);
             var context = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase));
             if (context is null)
             {
                 logger.LogDebug(
-                    "Permission denied: user {UserId} has no context {ContextKey}",
+                    "Permission denied: user {UserId} has no context {ContextKey} (host contexts wait for the onboarding)",
                     userId, contextKey);
                 return false;
             }
@@ -116,6 +108,8 @@ public class ContextAuthorizationService(
                 return true;
             }
 
+            // A permission counts only in the context that grants it: long-rent property.* never satisfies a
+            // short-rent policy. Endpoints shared by both rental contexts say so in their policy (A7-06).
             var hasPermission = context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
             if (!hasPermission)
             {
@@ -133,27 +127,6 @@ public class ContextAuthorizationService(
                 userId, contextKey, permissionKey);
             return false;
         }
-    }
-
-    private async Task<IReadOnlyList<string>> FallbackToDbUserRolesAsync(string userId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var dbUser = await dbContext.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-
-            if (dbUser is not null)
-            {
-                return MapDbUserRoleToJwtRoles(dbUser.Role);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to fallback to DB user roles for {UserId}", userId);
-        }
-
-        return [];
     }
 
     private IReadOnlyList<string> ResolveJwtRoles()
@@ -181,7 +154,7 @@ public class ContextAuthorizationService(
             _ => [],
         };
 
-    private static string GetDefaultRoute(string contextKey) =>
+    internal static string GetDefaultRoute(string contextKey) =>
         contextKey switch
         {
             "short-rent" => "/app/short-rent",

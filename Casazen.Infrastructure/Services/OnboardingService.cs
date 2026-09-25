@@ -3,15 +3,16 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Services;
 
 public class OnboardingService(
     AppDbContext db,
     ILegalDocumentService legalDocumentService,
-    IConfiguration configuration) : IOnboardingService
+    IUserAuthorizationCache authorizationCache,
+    PublicSiteLinks publicSiteLinks) : IOnboardingService
 {
     public (bool Success, ConsentValidationError? Error) ValidateConsents(
         OnboardingConsentsInput? consents,
@@ -74,6 +75,8 @@ public class OnboardingService(
 
         db.ConsentRecords.AddRange(records);
         await db.SaveChangesAsync(cancellationToken);
+        // The host onboarding gate reads the consents from the cached authorization snapshot (PL-02).
+        authorizationCache.Invalidate(userId);
         return (true, null, true);
     }
 
@@ -87,6 +90,9 @@ public class OnboardingService(
         var orgProvisioned = user.OrgId.HasValue;
         var orgId = user.OrgId;
 
+        // IgnoreQueryFilters below: every query is scoped explicitly to the caller's own org, read from
+        // Users just now. The tenant filter may still hold the null org cached before OrgContextResolver
+        // provisioned the org earlier in this same request, and would then hide the caller's own rows.
         var consentsAccepted = false;
         if (orgId.HasValue)
         {
@@ -112,7 +118,7 @@ public class OnboardingService(
         Org? org = null;
         if (orgId.HasValue)
         {
-            org = await db.Orgs.AsNoTracking().IgnoreQueryFilters()
+            org = await db.Orgs.AsNoTracking()
                 .FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         }
 
@@ -131,8 +137,8 @@ public class OnboardingService(
         string? publicBookingUrl = null;
         if (sitePublished && org is not null && !string.IsNullOrWhiteSpace(org.Slug))
         {
-            var baseUrl = (configuration["App:PublicSiteBaseUrl"] ?? "https://casazen.app").TrimEnd('/');
-            publicBookingUrl = $"{baseUrl}/book/{org.Slug}";
+            // On App:PublicSiteBaseUrl (D3, no fallback domain): null only when it is not configured (Development/Testing).
+            publicBookingUrl = publicSiteLinks.TryPublicPage($"/book/{Uri.EscapeDataString(org.Slug)}");
         }
 
         var activated = roleChosen

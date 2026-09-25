@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -9,7 +8,8 @@ namespace Casazen.Web.Infrastructure;
 
 /// <summary>
 /// Resolves the supplier org for <c>/api/supplier/*</c> routes.
-/// Unlike <see cref="IOrgContextResolver"/>, never provisions a host org.
+/// Unlike <see cref="IOrgContextResolver"/>, never provisions a host org. The org comes only from the caller's own
+/// supplier link, never from its email (A4-23, A1-13): an existing profile is joined by invite or claim (SU-02).
 /// </summary>
 public interface ISupplierOrgContextResolver
 {
@@ -28,7 +28,8 @@ public sealed class SupplierOrgContextResolver(
     IUserService userService,
     ISupplierService supplierService,
     AppDbContext db,
-    IAuth0ManagementService auth0Management) : ISupplierOrgContextResolver
+    IAuth0ManagementService auth0Management,
+    IUserAuthorizationCache authorizationCache) : ISupplierOrgContextResolver
 {
     public async Task<Guid?> GetOrProvisionSupplierOrgIdAsync(CancellationToken cancellationToken = default)
     {
@@ -39,7 +40,8 @@ public sealed class SupplierOrgContextResolver(
         var (jwtEmail, firstName, lastName) = ResolveProfileClaims();
         var user = await userService.GetCurrentUserAsync(sub, jwtEmail, firstName, lastName);
 
-        // Resolve email: JWT claim → DB record → Auth0 Management API
+        // Resolve email: JWT claim → DB record → Auth0 Management API. It only fills the contact of a profile
+        // provisioned for a Supplier role without any link; it never selects an existing profile (A4-23).
         var email = ResolveEmail(jwtEmail, user);
         if (string.IsNullOrWhiteSpace(email) && user is not null)
         {
@@ -56,16 +58,16 @@ public sealed class SupplierOrgContextResolver(
             }
         }
 
+        var previousSupplierOrgId = user?.SupplierOrgId;
         var orgId = await supplierService.GetOrProvisionSupplierOrgIdAsync(
             sub, email, firstName, lastName, cancellationToken);
 
-        // Fire-and-forget: ensure the user has the Supplier role in Auth0.
-        // The user may have signed up via Auth0 before the Supplier role was
-        // assigned during registration (or registration was done anonymously).
-        // Silently skips if the Management API token is not configured.
-        if (orgId is not null)
+        // No Auth0 call here: this runs on every /api/supplier/* request. The Supplier role is
+        // assigned when the account is linked (SuppliersController.Register / Claim); callers that
+        // reach this resolver already hold it (RequireSupplier) or get it from the DB link.
+        if (orgId is Guid linkedOrgId && previousSupplierOrgId != linkedOrgId)
         {
-            _ = auth0Management.AssignRoleAsync(sub, UserRole.Supplier);
+            authorizationCache.Invalidate(sub);
         }
 
         return orgId;

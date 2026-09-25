@@ -1,4 +1,4 @@
-using System.Data;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -26,7 +26,7 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         var storedTier = org?.PlanTier ?? PlanTier.Starter;
         var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
         var maxProperties = ResolveMaxProperties(effectiveTier);
-        var propertyCount = await dbContext.Properties.CountAsync(p => p.OrgId == orgId, cancellationToken);
+        var propertyCount = await CountPropertiesAsync(orgId, cancellationToken);
 
         return new EntitlementResult(orgId, effectiveTier.ToString(), maxProperties, propertyCount, propertyCount < maxProperties);
     }
@@ -34,36 +34,35 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
     public async Task<bool> CanAddPropertyAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         (await GetEntitlementAsync(orgId, cancellationToken)).CanAddProperty;
 
-    public async Task<bool> ReservePropertySlotAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<Property?> CreatePropertyWithinLimitAsync(
+        Guid orgId,
+        Func<Task<Property>> createProperty,
+        CancellationToken cancellationToken = default)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-        try
-        {
-            var org = await dbContext.Orgs.AsNoTracking()
-                .Where(o => o.Id == orgId)
-                .Select(o => new { o.PlanTier, o.SubscriptionStatus, o.PastDueSince })
-                .FirstOrDefaultAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(createProperty);
 
-            var storedTier = org?.PlanTier ?? PlanTier.Starter;
-            var effectiveTier = ResolveEffectiveTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
-            var maxProperties = ResolveMaxProperties(effectiveTier);
-            var propertyCount = await dbContext.Properties.CountAsync(p => p.OrgId == orgId, cancellationToken);
+        // A1-21: the count and the insert share one transaction and a per-org advisory lock, so two parallel
+        // creates cannot both take the last slot. Disposing without commit rolls back (limit reached or error).
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            dbContext,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.OrgPropertySlot, orgId.ToString("N")));
 
-            if (propertyCount >= maxProperties)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+        if (!(await GetEntitlementAsync(orgId, cancellationToken)).CanAddProperty)
+            return null;
 
+        var created = await createProperty();
+        if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
-            return true;
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
+        return created;
     }
+
+    // IgnoreQueryFilters (tenant only): usage belongs to the org passed in, whoever the caller is. The admin plan
+    // change reads another org (it showed usage=0), and the limit check must count every row of the org (A1-21).
+    private Task<int> CountPropertiesAsync(Guid orgId, CancellationToken cancellationToken) =>
+        dbContext.Properties
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .CountAsync(p => p.OrgId == orgId, cancellationToken);
 
     public async Task SyncFromSubscriptionAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
@@ -94,20 +93,29 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         return effectiveTier is PlanTier.Pro or PlanTier.Scale;
     }
 
+    public PlanTier ResolveEffectiveTier(Org org) =>
+        ResolveEffectiveTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
+
+    /// <summary>
+    /// A paid tier needs a subscription paying for it (#274, A1-11). Only active, trialing and past due within the
+    /// grace period keep the stored tier. Everything else fails closed to Starter: no subscription
+    /// (<see cref="SubscriptionStatus.None"/>, also Stripe <c>paused</c>), a first payment not yet succeeded
+    /// (<see cref="SubscriptionStatus.Incomplete"/>), retries exhausted (<see cref="SubscriptionStatus.Unpaid"/>),
+    /// canceled or <c>incomplete_expired</c>, past due beyond grace or without a start date, and unknown values.
+    /// </summary>
     internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
         status switch
         {
-            SubscriptionStatus.None => storedTier,
             SubscriptionStatus.Active or SubscriptionStatus.Trialing => storedTier,
             SubscriptionStatus.PastDue when !IsPastDueGraceExpired(pastDueSince) => storedTier,
-            SubscriptionStatus.PastDue or SubscriptionStatus.Canceled => PlanTier.Starter,
-            _ => storedTier,
+            _ => PlanTier.Starter,
         };
 
     private bool IsPastDueGraceExpired(DateTime? pastDueSince)
     {
+        // The webhook always records when an org became past due; without it the grace cannot be bounded.
         if (pastDueSince is null)
-            return false;
+            return true;
 
         var graceDays = configuration.GetValue("Billing:PastDueGraceDays", 7);
         return DateTime.UtcNow > pastDueSince.Value.AddDays(graceDays);

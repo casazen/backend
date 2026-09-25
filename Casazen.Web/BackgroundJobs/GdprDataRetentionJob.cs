@@ -1,26 +1,24 @@
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-public class GdprDataRetentionJob(
-    AppDbContext context,
-    IGdprService gdprService,
-    ILogger<GdprDataRetentionJob> logger)
+/// <summary>
+/// Nightly retention of guest data per category (CO-15, docs/runbooks/gdpr.md): <see cref="IGuestDataRetentionService"/>
+/// applies each configured <c>Gdpr:Retention:*</c> period to every org and skips, with a warning, the categories without
+/// a period and a cited source. Idempotent: a second run the same night changes nothing.
+/// </summary>
+public class GdprDataRetentionJob(IGuestDataRetentionService retentionService, ILogger<GdprDataRetentionJob> logger)
 {
+    public const string RecurringJobId = "gdpr-data-retention";
+
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
-        var expiredGuests = await context.Guests
-            .Where(g => !g.IsDeleted && g.DataRetentionUntil < DateTime.UtcNow)
-            .Select(g => g.Id)
-            .ToListAsync();
-
-        logger.LogInformation("GDPR retention job: {Count} guest(s) past retention period", expiredGuests.Count);
-
-        foreach (var guestId in expiredGuests)
-        {
-            await gdprService.AnonymizeGuestDataAsync(guestId);
-        }
+        var result = await retentionService.ApplyAsync();
+        logger.LogInformation(
+            "GDPR retention job done: {Configured} of {Total} categories configured",
+            result.Categories.Count(c => c.Configured),
+            result.Categories.Count);
     }
 }

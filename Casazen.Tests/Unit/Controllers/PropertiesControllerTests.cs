@@ -1,18 +1,25 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -24,11 +31,13 @@ public class PropertiesControllerTests
     private readonly Mock<IPropertyService> _mockService;
     private readonly Mock<IImageStorageService> _mockImageStorage;
     private readonly Mock<IPropertyAuthorizationService> _mockAuthz;
+    private readonly Mock<ILeaseContractRepository> _mockLeaseContractRepository;
     private readonly Mock<IPropertyDocumentService> _mockDocumentService;
     private readonly Mock<IAdminAccessAuditService> _mockAuditService;
     private readonly Mock<IOrgContextResolver> _mockOrgContextResolver;
     private readonly Mock<IEntitlementService> _mockEntitlementService;
     private readonly Mock<IComplianceWizardService> _mockComplianceWizardService;
+    private readonly Mock<IAuthorizationService> _mockHostAuthz;
     private readonly Mock<ILogger<PropertiesController>> _mockLogger;
     private readonly PropertiesController _controller;
 
@@ -37,22 +46,31 @@ public class PropertiesControllerTests
         _mockService = new Mock<IPropertyService>();
         _mockImageStorage = new Mock<IImageStorageService>();
         _mockAuthz = new Mock<IPropertyAuthorizationService>();
+        _mockLeaseContractRepository = new Mock<ILeaseContractRepository>();
         _mockDocumentService = new Mock<IPropertyDocumentService>();
         _mockAuditService = new Mock<IAdminAccessAuditService>();
         _mockOrgContextResolver = new Mock<IOrgContextResolver>();
         _mockEntitlementService = new Mock<IEntitlementService>();
         _mockComplianceWizardService = new Mock<IComplianceWizardService>();
+        // TN-3 resource check of the shared property actions: denied unless a test allows it (as the legacy mock).
+        _mockHostAuthz = new Mock<IAuthorizationService>();
+        _mockHostAuthz
+            .Setup(x => x.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(AuthorizationResult.Failed());
         _mockLogger = new Mock<ILogger<PropertiesController>>();
         _controller = new PropertiesController(
             _mockService.Object,
             _mockImageStorage.Object,
             _mockAuthz.Object,
+            _mockLeaseContractRepository.Object,
             _mockDocumentService.Object,
             _mockAuditService.Object,
             _mockOrgContextResolver.Object,
             _mockEntitlementService.Object,
             CreatePropertyICalSyncService(),
             _mockComplianceWizardService.Object,
+            _mockHostAuthz.Object,
             _mockLogger.Object);
 
         // Defaults: caller has an org and is under the plan limit. Create-path tests that need
@@ -61,8 +79,12 @@ public class PropertiesControllerTests
             .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(DefaultOrgId);
         _mockEntitlementService
-            .Setup(x => x.ReservePropertySlotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(x => x.CreatePropertyWithinLimitAsync(
+                It.IsAny<Guid>(), It.IsAny<Func<Task<Property>>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Guid _, Func<Task<Property>> create, CancellationToken _) => (Property?)await create());
+        _mockLeaseContractRepository
+            .Setup(x => x.GetByPropertyAsync(It.IsAny<Guid>()))
+            .ReturnsAsync(Array.Empty<LeaseContract>());
     }
 
     private static PropertyICalSyncService CreatePropertyICalSyncService()
@@ -73,19 +95,26 @@ public class PropertiesControllerTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["App:ApiBaseUrl"] = "https://api.test" })
             .Build();
-        return new PropertyICalSyncService(
-            db,
-            Mock.Of<IHttpClientFactory>(),
-            new ICalImportService(),
-            new ICalExportService(),
-            configuration,
-            Mock.Of<ILogger<PropertyICalSyncService>>());
+        return ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration);
     }
 
     private static readonly Guid DefaultOrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
 
-    private void AllowAuthorization() =>
+    private void AllowAuthorization()
+    {
         _mockAuthz.Setup(x => x.CanAccess(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).Returns(true);
+        _mockHostAuthz
+            .Setup(x => x.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(AuthorizationResult.Success());
+    }
+
+    /// <summary>Verifies the TN-3 resource check of a shared action: this property's resource, this operation.</summary>
+    private void VerifyHostAuthorization(Property property, HostOperationRequirement operation) =>
+        _mockHostAuthz.Verify(x => x.AuthorizeAsync(
+            It.IsAny<ClaimsPrincipal>(),
+            It.Is<object?>(r => Equals(r, HostResource.ForProperty(property))),
+            It.Is<IEnumerable<IAuthorizationRequirement>>(reqs => ReferenceEquals(reqs.Single(), operation))), Times.Once);
 
     [Fact]
     public async Task GetAll_WithAuthenticatedUser_ReturnsUserProperties()
@@ -99,7 +128,7 @@ public class PropertiesControllerTests
             new() { Id = Guid.NewGuid(), Name = "Property 1", OwnerId = userId },
             new() { Id = Guid.NewGuid(), Name = "Property 2", OwnerId = userId }
         };
-        _mockService.Setup(x => x.GetOwnerPropertiesAsync(userId)).ReturnsAsync(properties);
+        _mockService.Setup(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId))).ReturnsAsync(properties);
 
         // Act
         var result = await _controller.GetAll();
@@ -108,7 +137,7 @@ public class PropertiesControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returnedProperties = Assert.IsAssignableFrom<IEnumerable<Property>>(okResult.Value);
         Assert.Equal(2, returnedProperties.Count());
-        _mockService.Verify(x => x.GetOwnerPropertiesAsync(userId), Times.Once);
+        _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
     }
 
     [Fact]
@@ -128,7 +157,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result.Result);
-        _mockService.Verify(x => x.GetOwnerPropertiesAsync(It.IsAny<string>()), Times.Never);
+        _mockService.Verify(x => x.GetPropertiesAsync(It.IsAny<HostScope>()), Times.Never);
     }
 
     [Fact]
@@ -141,17 +170,18 @@ public class PropertiesControllerTests
 
         var propertyId = Guid.NewGuid();
         var property = new Property { Id = propertyId, Name = "Test Property", OwnerId = userId };
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(property);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(property);
 
         // Act
         var result = await _controller.GetById(propertyId);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var returnedProperty = Assert.IsType<Property>(okResult.Value);
+        var returnedProperty = Assert.IsType<PropertyResponse>(okResult.Value);
         Assert.Equal(propertyId, returnedProperty.Id);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
-        _mockAuthz.Verify(x => x.CanAccess(userId, userId, It.IsAny<IEnumerable<string>>()), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+        VerifyHostAuthorization(property, SharedPropertyOperations.Read);
     }
 
     [Fact]
@@ -161,14 +191,14 @@ public class PropertiesControllerTests
         SetupUserClaims("auth0|owner_user_123");
 
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act
         var result = await _controller.GetById(propertyId);
 
         // Assert
         Assert.IsType<NotFoundResult>(result.Result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
     }
 
     [Fact]
@@ -179,7 +209,7 @@ public class PropertiesControllerTests
         SetupUserClaims(attackerId);
 
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId))
             .ReturnsAsync(new Property { Id = propertyId, OwnerId = ownerId, Name = "Owner Property" });
         _mockAuthz
             .Setup(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()))
@@ -188,7 +218,7 @@ public class PropertiesControllerTests
         var result = await _controller.GetById(propertyId);
 
         Assert.IsType<ForbidResult>(result.Result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
     }
 
     [Fact]
@@ -202,7 +232,7 @@ public class PropertiesControllerTests
         var result = await _controller.GetById(Guid.NewGuid());
 
         Assert.IsType<UnauthorizedResult>(result.Result);
-        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
@@ -265,6 +295,36 @@ public class PropertiesControllerTests
 
         _mockService.Verify(x => x.CreatePropertyAsync(It.Is<Property>(
             p => p.OwnerId == userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Create_WhenPlanLimitReached_Returns403PlanLimitReachedWithoutCreating()
+    {
+        SetupUserClaims("auth0|test_user_123");
+        _mockEntitlementService
+            .Setup(x => x.CreatePropertyWithinLimitAsync(
+                It.IsAny<Guid>(), It.IsAny<Func<Task<Property>>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Property?)null);
+        _mockEntitlementService
+            .Setup(x => x.GetEntitlementAsync(DefaultOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EntitlementResult(DefaultOrgId, "Starter", 3, 3, false));
+
+        var result = await _controller.Create(new CreatePropertyRequest
+        {
+            Name = "Over limit",
+            City = "Roma",
+            Address = "Via Roma 3",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        });
+
+        var forbidden = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, forbidden.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(forbidden.Value);
+        Assert.Equal("plan_limit_reached", problem.Extensions["code"]);
+        _mockService.Verify(x => x.CreatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
     [Fact]
@@ -415,7 +475,7 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
 
@@ -424,7 +484,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<NoContentResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId)), Times.Once);
     }
@@ -439,14 +499,14 @@ public class PropertiesControllerTests
         var propertyId = Guid.NewGuid();
         var request = new UpdatePropertyRequest { Name = "Updated", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         // Act
         var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<NotFoundResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
@@ -476,7 +536,7 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
 
@@ -485,10 +545,110 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<NoContentResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         // ApplyTo mutates existingProperty in place; OwnerId and Id are preserved
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId && p.OwnerId == userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Update_ChangingCityAfterCanoneConcordatoRegistrationSubmission_ReturnsConflict()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = userId,
+            City = "Cesano Maderno"
+        };
+        var request = new UpdatePropertyRequest
+        {
+            Name = "Original",
+            City = "Seveso",
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        };
+
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockLeaseContractRepository
+            .Setup(x => x.GetByPropertyAsync(propertyId))
+            .ReturnsAsync(new[]
+            {
+                new LeaseContract
+                {
+                    PropertyId = propertyId,
+                    FiscalRegime = FiscalRegime.CanoneConcordato,
+                    Status = LeaseStatus.Registered
+                }
+            });
+
+        // Act
+        var result = await _controller.Update(propertyId, request);
+
+        // Assert
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal("Cesano Maderno", existingProperty.City);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_KeepingCityAfterCanoneConcordatoRegistrationSubmission_UpdatesProperty()
+    {
+        // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property
+        {
+            Id = propertyId,
+            Name = "Original",
+            OwnerId = userId,
+            City = "Cesano Maderno"
+        };
+        var request = new UpdatePropertyRequest
+        {
+            Name = "Updated",
+            City = " cesano maderno ",
+            Address = "Via Roma 1",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 50m
+        };
+
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
+            .ReturnsAsync(existingProperty);
+        _mockLeaseContractRepository
+            .Setup(x => x.GetByPropertyAsync(propertyId))
+            .ReturnsAsync(new[]
+            {
+                new LeaseContract
+                {
+                    PropertyId = propertyId,
+                    FiscalRegime = FiscalRegime.CanoneConcordato,
+                    Status = LeaseStatus.Registered
+                }
+            });
+
+        // Act
+        var result = await _controller.Update(propertyId, request);
+
+        // Assert
+        Assert.IsType<NoContentResult>(result);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
+            p => p.Id == propertyId && p.City == request.City)), Times.Once);
     }
 
     [Fact]
@@ -517,14 +677,14 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
 
         // Act
         var result = await _controller.Update(propertyId, request);
 
         // Assert
         Assert.IsType<ForbidResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
@@ -548,7 +708,7 @@ public class PropertiesControllerTests
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result);
-        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
@@ -706,14 +866,42 @@ public class PropertiesControllerTests
         var userId = "auth0|specific_user_id_12345";
         SetupUserClaims(userId);
 
-        _mockService.Setup(x => x.GetOwnerPropertiesAsync(userId))
+        _mockService.Setup(x => x.GetPropertiesAsync(It.IsAny<HostScope>()))
             .ReturnsAsync(new List<Property>());
 
         // Act
         await _controller.GetAll();
 
         // Assert
-        _mockService.Verify(x => x.GetOwnerPropertiesAsync(userId), Times.Once);
+        _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAll_AsPropertyManager_ListsTheWholeOrg()
+    {
+        SetupUserClaims("auth0|manager", ["LongTermLandlord", "PropertyManager"]);
+        _mockService.Setup(x => x.GetPropertiesAsync(It.IsAny<HostScope>()))
+            .ReturnsAsync(new List<Property>());
+
+        await _controller.GetAll();
+
+        // Org-wide role: the scope has no owner filter (TN-3), so the manager can pick any property of the org.
+        _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, null)), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAll_WithoutOrg_Returns403WithoutListing()
+    {
+        SetupUserClaims("auth0|no-org");
+        _mockOrgContextResolver
+            .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var result = await _controller.GetAll();
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, problem.StatusCode);
+        _mockService.Verify(x => x.GetPropertiesAsync(It.IsAny<HostScope>()), Times.Never);
     }
 
     [Fact]
@@ -1097,11 +1285,16 @@ public class PropertiesControllerTests
     public async Task GetImages_WithValidProperty_ReturnsImages()
     {
         // Arrange
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
         var propertyId = Guid.NewGuid();
         var property = new Property
         {
             Id = propertyId,
             Name = "Test Property",
+            OwnerId = userId,
             PhotoUrls = new List<string> { "/uploads/1.jpg", "/uploads/2.jpg" }
         };
 
@@ -1116,7 +1309,55 @@ public class PropertiesControllerTests
         Assert.Equal(2, urls.Count);
     }
 
+    [Fact]
+    public async Task GetImages_AsNonOwner_ReturnsForbidden()
+    {
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property
+            {
+                Id = propertyId,
+                Name = "Private Property",
+                OwnerId = ownerId,
+                PhotoUrls = new List<string> { "/uploads/private.jpg" }
+            });
+        _mockAuthz
+            .Setup(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()))
+            .Returns(false);
+
+        var result = await _controller.GetImages(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockAuthz.Verify(x => x.CanAccess(attackerId, ownerId, It.IsAny<IEnumerable<string>>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetImages_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) }
+        };
+
+        var result = await _controller.GetImages(Guid.NewGuid());
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
     // ─── GetDetail ───────────────────────────────────────────────────────────────
+
+    /// <summary>The record of a property of the caller's org, as the tenant-filtered lookup returns it.</summary>
+    private Property SetupDetailRecord(Guid propertyId, string ownerId)
+    {
+        var property = new Property { Id = propertyId, OwnerId = ownerId, OrgId = DefaultOrgId };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(property);
+        return property;
+    }
 
     [Fact]
     public async Task GetDetail_AsOwner_ReturnsOk()
@@ -1126,6 +1367,7 @@ public class PropertiesControllerTests
         AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
+        var property = SetupDetailRecord(propertyId, userId);
         var detail = new PropertyDetailResponse { Id = propertyId, OwnerId = userId };
         _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(detail);
 
@@ -1134,19 +1376,20 @@ public class PropertiesControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<PropertyDetailResponse>(ok.Value);
         Assert.Equal(propertyId, response.Id);
+        VerifyHostAuthorization(property, PropertyOperations.Read);
     }
 
     [Fact]
-    public async Task GetDetail_AsNonOwner_ReturnsForbidden()
+    public async Task GetDetail_AsNonOwner_ReturnsForbiddenWithoutReadingTheDetail()
     {
         SetupUserClaims("auth0|attacker");
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
-            .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = "auth0|owner" });
+        SetupDetailRecord(propertyId, "auth0|owner");
 
         var result = await _controller.GetDetail(propertyId);
 
         Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyDetailAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
@@ -1154,12 +1397,28 @@ public class PropertiesControllerTests
     {
         SetupUserClaims("auth0|user");
         var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
-            .ThrowsAsync(new InvalidOperationException("not found"));
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         var result = await _controller.GetDetail(propertyId);
 
         Assert.IsType<NotFoundResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyDetailAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    // A2-36: a failure of the detail (e.g. a database error) is never answered as "not found": it reaches the error
+    // middleware (500), while a property gone in between is a NotFoundException (404).
+    [Fact]
+    public async Task GetDetail_DetailFails_DoesNotAnswerNotFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var propertyId = Guid.NewGuid();
+        SetupDetailRecord(propertyId, userId);
+        _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
+            .ThrowsAsync(new InvalidOperationException("database failure"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.GetDetail(propertyId));
     }
 
     // ─── GetDocuments ────────────────────────────────────────────────────────────
@@ -1358,6 +1617,167 @@ public class PropertiesControllerTests
         Assert.IsType<NotFoundResult>(result);
     }
 
+    // ─── DownloadDocument / GetDocumentSignedUrl (FD-07) ─────────────────────────
+
+    [Fact]
+    public async Task DownloadDocument_AsOwner_ReturnsFileAsAttachmentWithoutCaching()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "Certificato CIN.pdf");
+        var bytes = new byte[] { 1, 2, 3, 4 };
+        _mockDocumentService.Setup(x => x.OpenContentAsync(document)).ReturnsAsync(new MemoryStream(bytes));
+
+        var result = await _controller.DownloadDocument(propertyId, document.Id);
+
+        var file = Assert.IsType<FileStreamResult>(result);
+        Assert.Equal("application/pdf", file.ContentType);
+        Assert.Equal("Certificato CIN.pdf", file.FileDownloadName);
+        Assert.Equal("private, no-store", _controller.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task DownloadDocument_AsNonOwner_ReturnsForbiddenWithoutReadingFile()
+    {
+        SetupUserClaims("auth0|attacker");
+        var (propertyId, document) = SetupDocument("auth0|owner", "doc.pdf");
+
+        var result = await _controller.DownloadDocument(propertyId, document.Id);
+
+        Assert.IsType<ForbidResult>(result);
+        _mockDocumentService.Verify(x => x.OpenContentAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DownloadDocument_PropertyNotVisible_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|other_org_user");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var result = await _controller.DownloadDocument(propertyId, Guid.NewGuid());
+
+        Assert.IsType<NotFoundResult>(result);
+        _mockDocumentService.Verify(x => x.OpenContentAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DownloadDocument_DocumentOfAnotherProperty_ReturnsNotFound()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var propertyId = Guid.NewGuid();
+        var docId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(docId))
+            .ReturnsAsync(new PropertyDocument { Id = docId, PropertyId = Guid.NewGuid(), FileName = "x.pdf" });
+
+        var result = await _controller.DownloadDocument(propertyId, docId);
+
+        Assert.IsType<NotFoundResult>(result);
+        _mockDocumentService.Verify(x => x.OpenContentAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DownloadDocument_FileMissingFromStorage_ReturnsNotFoundWithCode()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "doc.pdf");
+        _mockDocumentService.Setup(x => x.OpenContentAsync(document)).ReturnsAsync((Stream?)null);
+
+        var result = await _controller.DownloadDocument(propertyId, document.Id);
+
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        var details = Assert.IsType<ProblemDetails>(problem.Value);
+        Assert.Equal("document_file_missing", details.Extensions["code"]);
+        Assert.False(string.IsNullOrWhiteSpace(details.Detail));
+    }
+
+    [Fact]
+    public async Task DownloadDocument_AsAdminCrossOwner_LogsPrivilegedAccess()
+    {
+        var adminId = "auth0|admin_user";
+        SetupUserClaims(adminId, ["Admin"]);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument("auth0|owner", "doc.pdf");
+        _mockDocumentService.Setup(x => x.OpenContentAsync(document)).ReturnsAsync(new MemoryStream([1]));
+
+        await _controller.DownloadDocument(propertyId, document.Id);
+
+        _mockAuditService.Verify(
+            x => x.LogPrivilegedPropertyAccessAsync(adminId, propertyId, "auth0|owner", "PropertyDocument.Download", default),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDocumentSignedUrl_AsOwner_ReturnsUrlAndExpiry()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "doc.pdf");
+        var expiresAt = DateTime.UtcNow.AddMinutes(5);
+        _mockDocumentService.Setup(x => x.GetSignedDownloadUrlAsync(document))
+            .ReturnsAsync(new SignedFileUrl(new Uri("https://storage.test/private/doc.pdf?X-Amz-Signature=s"), expiresAt));
+
+        var result = await _controller.GetDocumentSignedUrl(propertyId, document.Id);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<SignedDocumentUrlResponse>(ok.Value);
+        Assert.Equal("https://storage.test/private/doc.pdf?X-Amz-Signature=s", body.Url);
+        Assert.Equal(expiresAt, body.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task GetDocumentSignedUrl_ProviderCannotSign_Returns501()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+        var (propertyId, document) = SetupDocument(userId, "doc.pdf");
+        _mockDocumentService.Setup(x => x.GetSignedDownloadUrlAsync(document)).ReturnsAsync((SignedFileUrl?)null);
+
+        var result = await _controller.GetDocumentSignedUrl(propertyId, document.Id);
+
+        var status = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status501NotImplemented, status.StatusCode);
+        Assert.Equal("signed_url_unavailable", Assert.IsType<ProblemDetails>(status.Value).Extensions["code"]);
+    }
+
+    [Fact]
+    public async Task GetDocumentSignedUrl_AsNonOwner_ReturnsForbidden()
+    {
+        SetupUserClaims("auth0|attacker");
+        var (propertyId, document) = SetupDocument("auth0|owner", "doc.pdf");
+
+        var result = await _controller.GetDocumentSignedUrl(propertyId, document.Id);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockDocumentService.Verify(x => x.GetSignedDownloadUrlAsync(It.IsAny<PropertyDocument>()), Times.Never);
+    }
+
+    private (Guid PropertyId, PropertyDocument Document) SetupDocument(string ownerId, string fileName)
+    {
+        var propertyId = Guid.NewGuid();
+        var document = new PropertyDocument
+        {
+            Id = Guid.NewGuid(),
+            PropertyId = propertyId,
+            FileName = fileName,
+            StorageUrl = $"properties/{propertyId}/documents/{Guid.NewGuid()}.pdf",
+        };
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = ownerId });
+        _mockDocumentService.Setup(x => x.GetDocumentAsync(document.Id)).ReturnsAsync(document);
+        return (propertyId, document);
+    }
+
     [Fact]
     public async Task GetDetail_AsAdminCrossOwner_LogsPrivilegedAccess()
     {
@@ -1367,6 +1787,7 @@ public class PropertiesControllerTests
 
         var propertyId = Guid.NewGuid();
         var ownerId = "auth0|owner";
+        SetupDetailRecord(propertyId, ownerId);
         _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
             .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = ownerId });
 
@@ -1386,6 +1807,7 @@ public class PropertiesControllerTests
         AllowAuthorization();
 
         var propertyId = Guid.NewGuid();
+        SetupDetailRecord(propertyId, userId);
         _mockService.Setup(x => x.GetPropertyDetailAsync(propertyId))
             .ReturnsAsync(new PropertyDetailResponse { Id = propertyId, OwnerId = userId });
 
@@ -1436,7 +1858,12 @@ public class PropertiesControllerTests
 
         _controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+            HttpContext = new DefaultHttpContext
+            {
+                User = claimsPrincipal,
+                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+            }
         };
     }
 

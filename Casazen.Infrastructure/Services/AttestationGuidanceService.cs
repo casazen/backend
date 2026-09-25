@@ -9,11 +9,10 @@ public class AttestationGuidanceService(
 {
     public async Task<AttestationGuidanceDto?> GetSignatoryOrganizationsAsync(
         Guid propertyId,
-        string ownerId,
         CancellationToken cancellationToken = default)
     {
         var property = await properties.GetByIdAsync(propertyId);
-        if (property is null || property.OwnerId != ownerId)
+        if (property is null)
             return null;
 
         var agreement = await agreements.GetByComuneAsync(property.City, cancellationToken);

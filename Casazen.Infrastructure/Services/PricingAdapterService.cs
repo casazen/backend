@@ -1,44 +1,24 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Pricing;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// Seasonal price suggestions (D4, PC-15, A2-14 / A2-34): the property's real nightly rate times the host's rule of the
+/// day (<see cref="SeasonalPriceCalculator"/>), stored as one row per stay date and regenerated in place.
+/// </summary>
 public class PricingAdapterService(
+    AppDbContext db,
     IPricingAdapterConfigRepository configRepository,
-    IPricingHistoryRepository historyRepository,
-    IPublicHolidayService publicHolidayService,
-    ILogger<PricingAdapterService> logger) : IPricingAdapterService
+    ILogger<PricingAdapterService> logger,
+    TimeProvider timeProvider) : IPricingAdapterService
 {
-    public async Task<decimal> CalculatePricingMultiplierAsync(
-        DateTime date,
-        bool includeSeasonality,
-        bool includePublicHolidays)
-    {
-        var multiplier = 1.0m;
-
-        // Check for public holiday surcharge
-        if (includePublicHolidays)
-        {
-            var isHoliday = await publicHolidayService.IsPublicHolidayAsync(date);
-            if (isHoliday)
-            {
-                multiplier *= 1.5m; // 50% surcharge for public holidays
-                logger.LogInformation("Applied public holiday multiplier for date {Date}", date);
-            }
-        }
-
-        // Apply seasonality multiplier
-        if (includeSeasonality)
-        {
-            var seasonalMultiplier = GetSeasonalMultiplier(date);
-            multiplier *= seasonalMultiplier;
-        }
-
-        return multiplier;
-    }
-
     public async Task<PricingAdapterConfig?> GetConfigAsync(Guid propertyId)
     {
         return await configRepository.GetByPropertyIdAsync(propertyId);
@@ -46,109 +26,133 @@ public class PricingAdapterService(
 
     public async Task<PricingAdapterConfig> SaveConfigAsync(PricingAdapterConfig config)
     {
+        config.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
         if (config.Id == Guid.Empty)
         {
+            config.Id = Guid.NewGuid();
             return await configRepository.AddAsync(config);
         }
-        else
-        {
-            await configRepository.UpdateAsync(config);
-            return config;
-        }
-    }
 
-    public async Task<PricingHistory> RecordPricingChangeAsync(
-        Guid propertyId,
-        decimal previousPrice,
-        decimal newPrice,
-        string changeReason,
-        decimal aiConfidence,
-        string? otasSynced = null,
-        string? syncStatus = null)
-    {
-        var history = new PricingHistory
-        {
-            PropertyId = propertyId,
-            AdaptationDate = DateTime.UtcNow,
-            PreviousPrice = previousPrice,
-            NewPrice = newPrice,
-            ChangeReason = changeReason,
-            AiConfidence = aiConfidence,
-            OtasSynced = otasSynced ?? string.Empty,
-            SyncStatus = syncStatus ?? "Pending"
-        };
-
-        var result = await historyRepository.AddAsync(history);
-        logger.LogInformation(
-            "Recorded pricing change for property {PropertyId}: €{PreviousPrice} → €{NewPrice} " +
-            "(reason: {Reason}, confidence: {Confidence:P})",
-            propertyId, previousPrice, newPrice, changeReason, aiConfidence);
-
-        return result;
-    }
-
-    public async Task DisableConfigAsync(Guid propertyId)
-    {
-        var config = await configRepository.GetByPropertyIdAsync(propertyId);
-        if (config == null) return;
-        config.IsEnabled = false;
         await configRepository.UpdateAsync(config);
-        logger.LogInformation("Disabled AI pricing for property {PropertyId}", propertyId);
+        return config;
     }
 
-    public async Task<(IEnumerable<PricingHistory> Items, int Total)> GetHistoryPagedAsync(
-        Guid propertyId, DateTime from, DateTime to, int page, int pageSize)
+    public async Task DisableConfigAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
-        var all = (await historyRepository.GetByPropertyIdAndDateRangeAsync(propertyId, from, to)).ToList();
-        var total = all.Count;
-        var items = all.Skip((page - 1) * pageSize).Take(pageSize);
-        return (items, total);
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.SeasonalPriceSuggestions, propertyId.ToString("N")));
+
+        var config = await db.PricingAdapterConfigs.FirstOrDefaultAsync(c => c.PropertyId == propertyId, cancellationToken);
+        if (config is null)
+            return;
+
+        config.IsEnabled = false;
+        config.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+        db.SeasonalPriceSuggestions.RemoveRange(
+            await db.SeasonalPriceSuggestions.Where(s => s.PropertyId == propertyId).ToListAsync(cancellationToken));
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation("Disabled seasonal price suggestions for property {PropertyId}", propertyId);
     }
 
-    public async Task<IEnumerable<(DateTime Date, decimal SuggestedPrice, decimal BasePrice, string Reason)>> PreviewPricesAsync(
-        Guid propertyId, decimal basePrice, PricingAdapterConfig config)
+    public async Task<SeasonalSuggestionRunResult> RegenerateSuggestionsAsync(
+        Guid propertyId,
+        bool onlyIfDue,
+        CancellationToken cancellationToken = default)
     {
-        var results = new List<(DateTime, decimal, decimal, string)>();
-        var today = DateTime.UtcNow.Date;
-
-        for (var i = 0; i < 90; i++)
+        try
         {
-            var date = today.AddDays(i);
-            var multiplier = await CalculatePricingMultiplierAsync(date, config.IncludeSeasonality, config.IncludePublicHolidays);
-            var suggested = Math.Round(basePrice * multiplier, 2);
-            var reason = GetPriceReason(multiplier);
-            results.Add((date, suggested, basePrice, reason));
+            return await RegenerateLockedAsync(propertyId, onlyIfDue, cancellationToken);
+        }
+        catch
+        {
+            // The job reuses the context for the next property: nothing of a failed run may be saved with it.
+            db.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    private async Task<SeasonalSuggestionRunResult> RegenerateLockedAsync(
+        Guid propertyId,
+        bool onlyIfDue,
+        CancellationToken cancellationToken)
+    {
+        // One computation per property at a time (job, manual recalculation, save): the upsert by date never races.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.SeasonalPriceSuggestions, propertyId.ToString("N")));
+
+        var config = await db.PricingAdapterConfigs.FirstOrDefaultAsync(c => c.PropertyId == propertyId, cancellationToken);
+        if (config is not { IsEnabled: true })
+            return new SeasonalSuggestionRunResult(SeasonalSuggestionRunStatus.NotEnabled, 0, null);
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var today = timeProvider.TodayInRomeAsDateOnly();
+        if (onlyIfDue && !SeasonalSuggestionSchedule.IsDue(config.AdaptationFrequency, config.LastAdaptedAt, today))
+            return new SeasonalSuggestionRunResult(SeasonalSuggestionRunStatus.NotDue, 0, null);
+
+        var property = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.Id == propertyId)
+            .Select(p => new { p.NightlyRate, p.OrgId })
+            .SingleAsync(cancellationToken);
+        var existing = await db.SeasonalPriceSuggestions
+            .Where(s => s.PropertyId == propertyId)
+            .ToListAsync(cancellationToken);
+
+        if (property.NightlyRate <= 0)
+        {
+            // Without a real base there is nothing to suggest: no invented base price. The run stays due.
+            db.SeasonalPriceSuggestions.RemoveRange(existing);
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            logger.LogWarning(
+                "Seasonal price suggestions not computed for property {PropertyId}: no nightly rate", propertyId);
+            return new SeasonalSuggestionRunResult(SeasonalSuggestionRunStatus.BasePriceMissing, 0, null);
         }
 
-        return results;
+        var window = SeasonalPriceCalculator.Window(today, property.NightlyRate, SeasonalPricingRules.From(config));
+        var byDate = existing.ToDictionary(s => s.StayDate);
+        foreach (var day in window)
+        {
+            if (!byDate.Remove(day.Date, out var row))
+            {
+                row = new SeasonalPriceSuggestion { PropertyId = propertyId, OrgId = property.OrgId, StayDate = day.Date };
+                db.SeasonalPriceSuggestions.Add(row);
+            }
+
+            row.BasePrice = day.BasePrice;
+            row.SuggestedPrice = day.SuggestedPrice;
+            row.Multiplier = day.Multiplier;
+            row.Rule = day.Rule;
+            row.Holiday = day.Holiday;
+            row.ComputedAt = now;
+        }
+
+        // Dates left over are past or beyond the window: no history of old suggestions is kept.
+        db.SeasonalPriceSuggestions.RemoveRange(byDate.Values);
+
+        config.LastAdaptedAt = now;
+        config.UpdatedAt = now;
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Computed {Days} seasonal price suggestions for property {PropertyId}", window.Count, propertyId);
+        return new SeasonalSuggestionRunResult(SeasonalSuggestionRunStatus.Computed, window.Count, now);
     }
 
-    private static string GetPriceReason(decimal multiplier) => multiplier switch
+    public async Task<IReadOnlyList<SeasonalPriceSuggestion>> GetSuggestionsAsync(
+        Guid propertyId,
+        CancellationToken cancellationToken = default)
     {
-        >= 1.5m => "holiday",
-        > 1.0m => "high_season",
-        < 1.0m => "low_season",
-        _ => "standard"
-    };
-
-    /// <summary>
-    /// Calculate seasonal multiplier based on month.
-    /// High season (June-August): 1.3x
-    /// Low season (November-February): 0.8x
-    /// Shoulder season (other months): 1.0x
-    /// </summary>
-    private static decimal GetSeasonalMultiplier(DateTime date)
-    {
-        var month = date.Month;
-
-        return month switch
-        {
-            // High season (summer holidays) - June through August
-            6 or 7 or 8 => 1.3m,
-            // Low season (winter) - November through February
-            11 or 12 or 1 or 2 => 0.8m,
-            // Shoulder season - March, April, May, September, October
-            _ => 1.0m
-        };
+        return await db.SeasonalPriceSuggestions
+            .AsNoTracking()
+            .Where(s => s.PropertyId == propertyId)
+            .OrderBy(s => s.StayDate)
+            .ToListAsync(cancellationToken);
     }
 }

@@ -1,57 +1,93 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
+/// <summary>
+/// RLI checklist of a lease (LT-01, A7-01): a step is ticked only when it really happened. The registration item is
+/// done only with the registration recorded and its receipt stored (manual declaration or provider receipt), never
+/// for a submission in progress; a failed attempt is reported as failed. The delega item exists only while the provider
+/// path is available (flag on and configured provider), or once a delega was given. The Questura item (LT-07) exists
+/// only with an extra-EU tenant and is done only after the landlord's declaration (<c>rli/questura/mark-done</c>).
+/// </summary>
 public class RliChecklistService(
-    ILeaseContractRepository leases,
     ILeaseRegistrationAuthorizationRepository authorizations,
     ILeaseEventRepository events,
-    IOptions<RliOptions> rliOptions) : IRliChecklistService
+    IOptions<RliOptions> rliOptions,
+    IFeatureFlags featureFlags,
+    ILeaseRegistrationProvider registrationProvider,
+    TimeProvider? timeProvider = null) : IRliChecklistService
 {
-    public async Task<RliChecklistResult?> GetAsync(
-        Guid leaseId, string ownerId, CancellationToken cancellationToken = default)
-    {
-        var lease = await leases.GetByIdWithDetailsAsync(leaseId);
-        if (lease is null || lease.Property is null || lease.Property.OwnerId != ownerId)
-            return null;
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
+    public async Task<RliChecklistResult> GetAsync(LeaseContract lease, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+
+        var providerFilingAvailable = RliProviderFiling.IsAvailable(featureFlags, registrationProvider);
         var auth = await authorizations.GetByLeaseIdAsync(lease.Id);
         var leaseEvents = (await events.GetByLeaseIdAsync(lease.Id)).ToList();
-        var daysRemaining = (int)(lease.RegistrationDeadline.Date - DateTime.UtcNow.Date).TotalDays;
+        // min(stipula, start) + 30 on the Rome calendar, or null while it is to be determined (LT-04, A7-04).
+        var today = _clock.TodayInRome();
+        var deadline = RliRegistrationDeadline.Resolve(lease, today);
+        int? daysRemaining = deadline is { } due ? RliRegistrationDeadline.DaysRemaining(due, today) : null;
+        var registration = lease.Registration;
 
         var items = new List<RliChecklistItem>
         {
-            new("contract_signed", "Contratto firmato da tutte le parti",
+            new(RliChecklistKeys.ContractSigned,
                 lease.Status is LeaseStatus.Signed or LeaseStatus.SentToProvider
                     or LeaseStatus.RegistrationPending or LeaseStatus.Registered),
-            new("delega_captured", "Delega / attestazione RLI registrata", auth is { AttestationAccepted: true }),
-            new("rli_exported", "Dataset RLI esportato per revisione",
-                leaseEvents.Any(e => e.EventType == LeaseEventType.RliExported)),
-            new("rli_submitted", "RLI inviato al canale di filing",
-                lease.Registration is not null || leaseEvents.Any(e => e.EventType == LeaseEventType.RegistrationSubmitted)),
-            new("rli_registered", "Ricevuta di registrazione disponibile",
-                lease.Status == LeaseStatus.Registered || lease.Registration?.Status == RegistrationStatus.Registered),
         };
 
-        if (lease.HasExtraEUTenant)
+        var delegaCaptured = auth is { AttestationAccepted: true };
+        if (providerFilingAvailable || delegaCaptured)
+            items.Add(new(RliChecklistKeys.DelegaCaptured, delegaCaptured));
+
+        items.Add(new(RliChecklistKeys.RliExported, leaseEvents.Any(e => e.EventType == LeaseEventType.RliExported)));
+        items.Add(new(
+            RliChecklistKeys.RliRegistered,
+            Done: lease.Status == LeaseStatus.Registered
+                && registration is { Status: RegistrationStatus.Registered }
+                && !string.IsNullOrWhiteSpace(registration.ReceiptStoragePath),
+            Failed: registration is { Status: RegistrationStatus.Failed }));
+
+        // LT-07 (A7-08): only with an extra-EU tenant, ticked only by the landlord's explicit declaration, never by a
+        // reminder that CasaZen sent.
+        QuesturaCommunicationStatus? questura = null;
+        if (QuesturaCommunicationDeadline.IsRequired(lease))
         {
-            items.Add(new(
-                "questura_extra_eu",
-                "Comunicazione Questura (Art. 7 D.Lgs 286/1998) — cessione di fabbricato. Bozza da confermare con legale.",
-                leaseEvents.Any(e =>
-                    e.EventType == LeaseEventType.DeadlineReminderSent && e.Payload == "extra-eu")));
+            questura = QuesturaStatus(lease, today);
+            items.Add(new(RliChecklistKeys.QuesturaExtraEu, Done: questura.CommunicationDate is not null));
         }
 
         return new RliChecklistResult(
-            lease.RegistrationDeadline,
+            deadline,
             daysRemaining,
             rliOptions.Value.TosVersion,
             rliOptions.Value.AttestationText,
-            items);
+            providerFilingAvailable,
+            items,
+            questura);
+    }
+
+    private static QuesturaCommunicationStatus QuesturaStatus(LeaseContract lease, DateTime today)
+    {
+        var delivery = QuesturaCommunicationDeadline.DeliveryDate(lease);
+        var deadline = QuesturaCommunicationDeadline.Deadline(delivery);
+        return new QuesturaCommunicationStatus(
+            delivery,
+            DeliveryDateDeclared: lease.PropertyDeliveryDate is not null,
+            deadline,
+            QuesturaCommunicationDeadline.DaysUntil(deadline, today),
+            lease.QuesturaCommunicationDate,
+            HasReceipt: lease.QuesturaCommunicationDate is not null && StorageKeys.IsValid(lease.QuesturaCommunicationReceiptPath));
     }
 }

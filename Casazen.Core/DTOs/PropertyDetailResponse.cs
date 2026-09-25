@@ -38,7 +38,21 @@ public class PropertyDocumentDto
     public Guid Id { get; set; }
     public string FileName { get; set; } = string.Empty;
     public string FileType { get; set; } = string.Empty;
+
+    /// <summary>Kind of document (e.g. <c>Ape</c>): the lease form needs it to know whether the APE is on file (A7-06).</summary>
+    public DocumentType DocumentType { get; set; }
     public DateTime UploadedAt { get; set; }
+
+    /// <summary>Code printed on the APE (only for <c>Ape</c> documents, LT-10); null until the landlord enters it.</summary>
+    public string? ApeCode { get; set; }
+
+    /// <summary>Energy class printed on the APE (only for <c>Ape</c> documents, LT-10).</summary>
+    public string? ApeEnergyClass { get; set; }
+
+    /// <summary>
+    /// API path of the authenticated download (<c>GET /api/properties/{id}/documents/{docId}/download</c>):
+    /// call it with the bearer token; it is not a public link.
+    /// </summary>
     public string DownloadUrl { get; set; } = string.Empty;
 }
 
@@ -52,18 +66,34 @@ public class OtaIntegrationSummaryDto
     public OtaSyncStatus? SyncStatus { get; set; }
 }
 
+/// <summary>
+/// Bookings KPIs of the property detail (A2-36), on the rules of the host dashboard (<c>StayKpiRules</c>): Europe/Rome
+/// calendar dates, never a cancelled booking nor a pending request.
+/// </summary>
 public class BookingsSummaryDto
 {
+    /// <summary>Confirmed stays: confirmed, checked in or checked out.</summary>
     public int TotalBookings { get; set; }
+
+    /// <summary>Confirmed check-ins from today on (today's arrivals until the host registers them).</summary>
     public int UpcomingBookings { get; set; }
+
+    /// <summary>Stays in progress today, up to their departure day included.</summary>
     public int ActiveBookings { get; set; }
+
+    /// <summary>Europe/Rome date (midnight UTC) of the next confirmed check-in, today included.</summary>
     public DateTime? NextCheckIn { get; set; }
+
+    /// <summary>Europe/Rome date (midnight UTC) of the next check-out of a confirmed or checked-in stay, today included.</summary>
     public DateTime? NextCheckOut { get; set; }
 }
 
+/// <summary>Seasonal price suggestions of the property (PC-15): on/off, last computation, next due Rome date.</summary>
 public class PricingAdapterSummaryDto
 {
     public bool IsEnabled { get; set; }
     public DateTime? LastAdaptedAt { get; set; }
-    public DateTime? NextScheduledRunAt { get; set; }
+
+    /// <summary>Europe/Rome date from which the next automatic computation is due; <c>null</c> when disabled or never computed.</summary>
+    public DateOnly? NextRunOn { get; set; }
 }

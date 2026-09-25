@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 // OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
@@ -24,129 +26,34 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     }
 
     // ─── AC3: POST /api/suppliers/register (public) ───────────────────────────
+    // Invite, pilot comuni, email binding and rate limit: SupplierRegistrationIntegrationTests (SU-01).
 
     [Fact]
-    public async Task Register_ValidRequest_Returns201WithOrgId()
+    public async Task Register_SelfServeWithoutPilotComuniConfigured_Returns422SelfServeUnavailable()
     {
+        // This factory configures no Suppliers:PilotComuni: self-serve is off until the product owner sets them.
         using var client = _factory.CreateClient();
-
-        var payload = new
-        {
-            email = $"supplier-{Guid.NewGuid():N}@test.com",
-            legalName = "Pulizie Roma Srl",
-            phone = "+39 06 123456",
-            comuneCode = "H501",
-        };
-
-        var response = await client.PostAsJsonAsync("/api/suppliers/register", payload);
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.NotEqual(Guid.Empty, body.GetProperty("orgId").GetGuid());
-        Assert.Equal("/supplier/activation", body.GetProperty("authRedirectUrl").GetString());
-    }
-
-    [Fact]
-    public async Task Register_InvalidInviteToken_Returns400()
-    {
-        using var client = _factory.CreateClient();
-
-        var payload = new
-        {
-            email = $"invite-{Guid.NewGuid():N}@test.com",
-            legalName = "Bad Token Srl",
-            phone = "+39 06 000000",
-            comuneCode = "H501",
-            inviteToken = Guid.NewGuid().ToString(),
-        };
-
-        var response = await client.PostAsJsonAsync("/api/suppliers/register", payload);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Register_AuthenticatedEmailMismatch_Returns400WithoutCreatingSupplierOrg()
-    {
-        var attackerId = $"auth0|attacker-{Guid.NewGuid():N}";
-        var attackerEmail = $"attacker-{Guid.NewGuid():N}@test.com";
-        var victimEmail = $"victim-{Guid.NewGuid():N}@test.com";
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Users.Add(new User
-            {
-                Id = attackerId,
-                Email = attackerEmail,
-                FirstName = "Bad",
-                LastName = "Actor",
-                IsActive = true,
-            });
-            await db.SaveChangesAsync();
-        }
-
-        using var client = _factory.CreateAuthenticatedClient(
-            attackerId,
-            roles: "Supplier",
-            email: attackerEmail);
-
-        var response = await client.PostAsJsonAsync("/api/suppliers/register", new
-        {
-            email = victimEmail,
-            legalName = "Victim Supplier Srl",
-            phone = "+39 06 123456",
-            comuneCode = "H501",
-        });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-
-        using var verifyScope = _factory.Services.CreateScope();
-        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.False(verifyDb.SupplierProfiles.Any(sp => sp.Email == victimEmail));
-        Assert.Null(verifyDb.Users.Single(u => u.Id == attackerId).SupplierOrgId);
-    }
-
-    [Fact]
-    public async Task Register_AuthenticatedEmailMatch_LinksUserToCreatedSupplierOrg()
-    {
-        var userId = $"auth0|supplier-register-{Guid.NewGuid():N}";
-        var email = $"supplier-register-{Guid.NewGuid():N}@test.com";
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Users.Add(new User
-            {
-                Id = userId,
-                Email = email,
-                FirstName = "Good",
-                LastName = "Supplier",
-                IsActive = true,
-            });
-            await db.SaveChangesAsync();
-        }
-
-        using var client = _factory.CreateAuthenticatedClient(
-            userId,
-            roles: "Supplier",
-            email: email);
+        var email = $"supplier-{Guid.NewGuid():N}@test.com";
 
         var response = await client.PostAsJsonAsync("/api/suppliers/register", new
         {
             email,
-            legalName = "Good Supplier Srl",
+            legalName = "Pulizie Roma Srl",
             phone = "+39 06 123456",
             comuneCode = "H501",
         });
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var orgId = body.GetProperty("orgId").GetGuid();
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("supplier_self_serve_unavailable", problem.GetProperty("code").GetString());
 
-        using var verifyScope = _factory.Services.CreateScope();
-        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal(orgId, verifyDb.Users.Single(u => u.Id == userId).SupplierOrgId);
-        Assert.True(verifyDb.SupplierProfiles.Any(sp => sp.OrgId == orgId && sp.Email == email));
+        var options = await (await client.GetAsync("/api/suppliers/registration-options")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(options.GetProperty("selfServeEnabled").GetBoolean());
+        Assert.Empty(options.GetProperty("pilotComuni").EnumerateArray());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(db.SupplierProfiles.Any(sp => sp.Email == email));
     }
 
     // ─── AC5: GET/POST activation ─────────────────────────────────────────────
@@ -180,8 +87,10 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(5, body.GetProperty("steps").GetArrayLength());
     }
 
+    // SU-02 (A4-23): the dual-role host reaches the supplier profile through its explicit link (User.SupplierOrgId),
+    // not through the email; linking by email alone is covered in SupplierClaimIntegrationTests.
     [Fact]
-    public async Task GetActivation_AsDualRoleHost_FindsSupplierProfileByEmail()
+    public async Task GetActivation_AsDualRoleHostLinkedBySupplierOrgId_FindsItsSupplierProfile()
     {
         var userId = $"auth0|dual-{Guid.NewGuid():N}";
         var email = $"dual-{Guid.NewGuid():N}@test.com";
@@ -219,6 +128,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
                 FirstName = "Dual",
                 LastName = "Role",
                 OrgId = hostOrg.Id,
+                SupplierOrgId = supplierOrg.Id,
                 IsActive = true,
             });
 
@@ -238,6 +148,12 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var response = await client.GetAsync("/api/supplier/profile/activation");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var verify = _factory.Services.CreateScope();
+        var verifyDb = verify.ServiceProvider.GetRequiredService<AppDbContext>();
+        // No second supplier org was provisioned and the host org is kept.
+        Assert.Equal(1, await verifyDb.SupplierProfiles.CountAsync(sp => sp.Email == email));
+        var user = await verifyDb.Users.SingleAsync(u => u.Id == userId);
+        Assert.NotEqual(user.OrgId, user.SupplierOrgId);
     }
 
     [Fact]
@@ -337,7 +253,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var (supplierId, _) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
         var putResponse = await client.PutAsJsonAsync("/api/supplier/availability", new
         {
             dates = new[]
@@ -365,7 +281,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var (supplierId, _) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
         var response = await client.PutAsJsonAsync("/api/supplier/availability", new
         {
             dates = new[]
@@ -421,6 +337,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     public async Task GetSuppliers_ReturnsOnlyActiveForComune()
     {
         await SeedFullSupplierAsync(comuneCode: "F205", autoActivate: true);
+        await _factory.SeedOrgForOwnerAsync();
 
         using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
         var response = await client.GetAsync("/api/suppliers?comune=F205");
@@ -434,6 +351,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     [Fact]
     public async Task GetSuppliers_WithoutComuneOrPropertyId_Returns400WithItalianMessage()
     {
+        await _factory.SeedOrgForOwnerAsync();
         using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
 
         var response = await client.GetAsync("/api/suppliers");

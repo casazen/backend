@@ -37,6 +37,9 @@ Alternative for truly $0: **Render** free tier (same DX, but the service sleeps 
 ```
 
 Two Supabase schemas (`casazen_test`, `casazen_prod`) in one free project — saves the free-tier limit.
+Hangfire (background jobs) gets its own schema per environment too (`hangfire_casazen_test`, `hangfire_casazen_prod`),
+so test and production never share queue, recurring jobs or servers: see [`docs/runbooks/hangfire.md`](runbooks/hangfire.md)
+(variables, one-time switch from the old shared `hangfire` schema, check on `hangfire.server`, separate DB users).
 
 ---
 
@@ -83,18 +86,18 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `ci-cd.yml` | PR, push `develop` / `main` | `dotnet test`, format, build |
-| `ci-cd.yml` → `verify-test` | Push `develop` | Wait for Railway native deploy, then `GET /api/health` |
-| `ci-cd.yml` → `verify-prod` | Push `main` | Wait for Railway prod deploy, health + smoke |
+| `ci-cd.yml` | PR, push `develop` / `main` | NuGet vulnerability gate (High/Critical fail, transitive included), build, tests on PostgreSQL, format — `docs/runbooks/ci-backend.md` |
+| `ci-cd.yml` → `verify-test` | Push `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
+| `ci-cd.yml` → `verify-prod` | Push `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
-| `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping |
+| `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping: fails when a configured ping fails, skips with a warning when not configured |
 
 ### What is **not** synced automatically
 
 Integrations link repos and trigger deploys. They **do not** copy env vars across platforms:
 
 - Supabase connection string → must be set on **Railway** (`ConnectionStrings__DefaultConnection`)
-- Auth0 / Stripe / Email (SMTP) → **Railway** only
+- Auth0 / Stripe / Email (Resend) → **Railway** only
 - `VITE_*` → **Vercel** only
 - Public API URLs → **GitHub Variables** (`RAILWAY_TEST_URL`, `RAILWAY_PROD_URL`) for CI health checks and PR comments only
 
@@ -129,7 +132,9 @@ Do these once per project. Tick in order.
 - [ ] **test**: trigger deploy on push to branch **`develop`**
 - [ ] **production**: trigger deploy on push to branch **`main`** (disable autodeploy from `develop`)
 - [ ] (Recommended) Enable **PR deployments** if you want a backend URL per PR; otherwise use shared test URL after merge
-- [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath`
+- [ ] Per environment, set **all** variables (see Railway section) — especially `ConnectionStrings__DefaultConnection` with correct `SearchPath` and `Hangfire__Schema` (different per environment, see [`runbooks/hangfire.md`](runbooks/hangfire.md))
+- [ ] `ASPNETCORE_ENVIRONMENT`: `Staging` on **test**, `Production` on **production**; Stripe test keys and test prices on test, live keys and live prices on production ([`runbooks/stripe.md`](runbooks/stripe.md#environments-stripe-mode-plan-prices-and-return-pages-pl-11))
+- [ ] Auth0: a separate tenant per environment ([`runbooks/auth0.md`](runbooks/auth0.md) §1)
 - [ ] Enable **Public networking**; copy each environment’s HTTPS URL
 - [ ] First deploy green in Railway dashboard
 
@@ -146,12 +151,12 @@ You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_P
 - [ ] Import repo; preset Vite; build `npm run build`; output `dist`
 - [ ] **Production Branch** = `main` (Settings → Git)
 - [ ] Enable deployments for branch **`develop`** (Preview env vars → Railway test API)
-- [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section)
+- [ ] Set `VITE_API_BASE_URL`, `VITE_AUTH0_*` for **Preview** and **Production** (see Vercel section): `VITE_AUTH0_*` of the test tenant on Preview, of the production tenant on Production
 - [ ] Confirm: push `develop` → staging FE; push `main` → production FE (see issue #187 for canonical URL confirmation)
 
 ### 6. Smoke test
 
-- [ ] `GET {RAILWAY_TEST_URL}/api/health` → 200
+- [ ] `GET {RAILWAY_TEST_URL}/api/health/ready` → 200, `commit` = the SHA of the last push to `develop` (see [`runbooks/health-checks.md`](runbooks/health-checks.md))
 - [ ] `GET {RAILWAY_TEST_URL}/api/properties` without token → 401
 - [ ] Open a PR → Vercel bot comment + backend link comment from `deploy-preview.yml`
 
@@ -195,14 +200,7 @@ dotnet ef database update --project Casazen.Infrastructure \
 
 ### 4 — Update integration tests
 
-Replace `UseInMemoryDatabase` or SQL Server test setup with SQLite in-memory or a test Supabase connection:
-
-```csharp
-// Casazen.Tests/Integration/ApiTestBase.cs
-options.UseNpgsql(
-    Environment.GetEnvironmentVariable("TEST_CONNECTION_STRING")
-    ?? "Host=localhost;Database=casazen_test;Username=postgres;Password=dev");
-```
+Done (FD-04): integration tests run on real PostgreSQL. Set `TEST_POSTGRES_CONNECTION` (CI uses a `postgres:16` service in `ci-cd.yml`) or let Testcontainers start a container; each web factory creates, migrates and drops its own `it_<guid>` database. Details: `docs/TECHNICAL.md` § Testing.
 
 ### 5 — Update Dockerfile
 
@@ -339,7 +337,7 @@ Migrations applied successfully to casazen_test.
 
 ### Supabase keep-alive (free tier pauses after 7 days)
 
-Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure the keep-alive option.
+Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure the keep-alive option. The workflow `supabase-keepalive.yml` and its variables are described in `docs/runbooks/ci-backend.md` (section "Supabase keep-alive").
 
 ---
 
@@ -358,44 +356,165 @@ Railway → Project → **Environments** → Create:
 
 **PR previews (optional):** Railway → Service → Settings → enable PR deployments if you want a distinct backend URL per PR. Otherwise validate backend on shared test URL after merge to `develop`.
 
-**Wait for CI (test env):** enable on the `develop` service if you want Railway to wait for `ci-cd.yml` on push to `develop`.
+**Wait for CI: keep it off** on both environments. `verify-test` / `verify-prod` are part of `ci-cd.yml` and wait for the deployment of the pushed commit: with "Wait for CI" on, Railway would wait for them and they would wait for Railway, so the job times out and the deploy is skipped. Pull requests stay gated by the `build` job (branch protection).
+
+**Healthcheck path (recommended):** Railway → service → Settings → Deploy → Healthcheck Path = `/api/health/ready`: a new deployment receives traffic only when its database and Hangfire are ready. Details: [`runbooks/health-checks.md`](runbooks/health-checks.md).
 
 ### Environment variables per Railway environment
 
 Set in Railway dashboard (Variables tab), per environment:
 
 ```
+# production: Production — test: Staging (PL-11: test-mode Stripe keys, billing testable; every startup check still applies)
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://+:8080
 PORT=8080
 ConnectionStrings__DefaultConnection=Host=db.YOUR_REF.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=YOUR_PASSWORD;SearchPath=casazen_test;SSL Mode=Require;Trust Server Certificate=true
-Auth0__Domain=[your-tenant.auth0.com]
+# Auth0 — Domain/Audience REQUIRED (the app does not start without them); M2M client for the role sync (docs/runbooks/auth0.md)
+# One tenant per environment (A1-32): test tenant on test, production tenant on production (docs/runbooks/auth0.md §1)
+Auth0__Domain=[login domain of the Auth0 tenant of THIS environment]
 Auth0__Audience=https://casazen-api
-Stripe__SecretKey=[sk_live_... or sk_test_...]
-Stripe__WebhookSecret=[whsec_...]
-# Email — SMTP (MailKit). Use Gmail free tier or any SMTP provider.
-# Option A: Direct SMTP (recommended)
-Email__SmtpHost=smtp.gmail.com
-Email__SmtpPort=587
-Email__SmtpUsername=casazen@gmail.com
-Email__SmtpPassword=[16-char-app-password]
-# Option B: SendGrid SMTP relay (legacy, 100 emails/day free)
-# Email__SendGridApiKey=SG....
-Email__FromAddress=noreply@casazen.app
-App__PublicSiteBaseUrl=https://casazen-app.vercel.app
+Auth0__ManagementClientId=[M2M client id]
+Auth0__ManagementClientSecret=[M2M client secret]
+# Stripe — live keys only with Production, test keys on test (Staging): the other mode stops the startup (PL-11);
+# two webhook endpoints, see "Stripe keys and webhooks"
+Stripe__SecretKey=[sk_live_... on production, sk_test_... on test]
+Stripe__PublishableKey=[pk_live_... on production, pk_test_... on test]
+Stripe__WebhookSecret=[whsec_... of the platform endpoint /webhooks/stripe]
+Stripe__ConnectWebhookSecret=[whsec_... of the Connect endpoint /webhooks/stripe/connect]
+# Plan prices — Stripe Price ids of the mode of THIS environment, no default (docs/runbooks/stripe.md § Environments).
+# Production with Stripe__SecretKey: all three required, the startup stops without them.
+Billing__Prices__Starter=[price_... of Starter]
+Billing__Prices__Pro=[price_... of Pro]
+Billing__Prices__Scale=[price_... of Scale]
+# Email — Resend (docs/runbooks/email.md). Required in Production: the app does not start without them.
+Email__Provider=Resend
+Email__ApiKey=[re_...]
+Email__FromAddress=[sender on the domain verified on Resend]
+Email__FromName=CasaZen
+# Public domain of the web app — REQUIRED, no default in code (D3): email links, SEO canonical URLs, sitemap, CORS
+# (docs/runbooks/seo-domain.md). Seo__PublicBaseUrl is only an alias: leave it unset.
+App__PublicSiteBaseUrl=[public URL of the web app for this environment]
+# Optional: base domain of the org booking subdomains ({label}.<domain>), no default in code (D3, SE-03).
+# Unset = the "subdomain" publication mode is off (docs/runbooks/seo-domain.md).
+# PublicHost__BaseDomain=[domain with a wildcard DNS record to the web app]
 Hangfire__DashboardEnabled=false
-Cors__AllowedOrigins=https://casazen-app.vercel.app,https://casazen.app
-# AI supplier discovery (DeepSeek) — replaces Google Places
-Ai__Provider=DeepSeek
-Ai__ApiKey=sk-...
-Ai__Model=deepseek-v4-flash
-Ai__AnthropicBaseUrl=https://api.deepseek.com/anthropic
-Ai__OpenAiBaseUrl=https://api.deepseek.com
+# Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
+Hangfire__Schema=hangfire_casazen_test
+# CORS — REQUIRED: the web app origin(s) of THIS environment, no default in code (docs/runbooks/cors-security-headers.md)
+Cors__AllowedOrigins=[https://<web app host of this environment>]
+# Optional, test environment only: regex for the Vercel previews of our own project (empty = no preview allowed)
+Cors__VercelPreviewPattern=[e.g. casazen-app-git-[a-z0-9-]+-<team-slug>]
+# AI provider — OPTIONAL, default Stub (no external call; the SEO pages then stay "contenuto non generato" drafts,
+# docs/runbooks/seo-domain.md section 7). Before enabling DeepSeek read docs/runbooks/ai.md:
+# it becomes a subprocessor (legal details to fill in), every call is capped by the platform AI budget.
+# AI supplier discovery stays off (Features__AiSupplierDiscovery, decision D11).
+# Ai__Provider=DeepSeek
+# Ai__ApiKey=sk-...
+# Ai__Subprocessor__Region=[verified processing location]
+# Ai__Subprocessor__TransferMechanism=[legal basis of the transfer outside the EEA]
+# Object storage — Supabase Storage (S3 API), REQUIRED: the API does not start without it (docs/runbooks/storage.md)
+Storage__Provider=S3
+Storage__PublicBaseUrl=https://YOUR_REF.supabase.co/storage/v1/object/public/casazen-<env>-public
+Storage__S3__ServiceUrl=https://YOUR_REF.storage.supabase.co/storage/v1/s3
+Storage__S3__Region=[region shown in Supabase]
+Storage__S3__AccessKeyId=[S3 access key id]
+Storage__S3__SecretAccessKey=[S3 secret access key]
+Storage__S3__PublicBucket=casazen-<env>-public
+Storage__S3__PrivateBucket=casazen-<env>-private
+# Data Protection key-ring encryption, REQUIRED outside Development/Testing (docs/runbooks/storage.md §4, docs/runbooks/encryption.md)
+DataProtection__CertificatePfxBase64=[base64 .pfx]
+DataProtection__CertificatePassword=[pfx password]
 ```
 
-`App__PublicSiteBaseUrl` is required for **supplier invite emails** (`POST /api/admin/suppliers/invite`): the signup link is built as `{PublicSiteBaseUrl}/login?inviteToken=…&email=…&comune=…`. Use the Vercel URL for the matching environment (test → preview/staging FE, production → `https://casazen.app` or production Vercel URL).
+`App__PublicSiteBaseUrl` is the **single source of the public domain** (SE-02, decision D3): the base of **every link in emails** (supplier invite `/register?inviteToken=…` on the web app, see [`runbooks/suppliers.md`](runbooks/suppliers.md); supplier inbox; guest check-in `/checkin/{token}`), of the `canonicalUrl` of the SEO pages, of every URL of the sitemap (`GET /api/public/sitemap.xml`, served on the web app domain as `/sitemap.xml`) and the origin CORS always allows. There is no fallback domain in code and no value in `appsettings.json`. Use the web app URL of the matching environment; `Seo__PublicBaseUrl` is accepted only as an alias of the same value (different values stop the startup). Public domain, robots.txt, sitemap and Google Search Console: [`runbooks/seo-domain.md`](runbooks/seo-domain.md). Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
-Also add preview origins or use host suffix `*.vercel.app` if configured in app (see `AddCasazenCors`).
+CORS accepts the origin of `App__PublicSiteBaseUrl`, the exact origins of `Cors__AllowedOrigins` and, when `Cors__VercelPreviewPattern` is set, the Vercel previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
+
+Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
+
+`RAILWAY_GIT_COMMIT_SHA` is set by Railway itself on every deployment from GitHub: the health endpoints expose it as `commit` and CI compares it with the pushed commit. Do not set it by hand.
+
+### Variables required in Production
+
+The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the test environment with `ASPNETCORE_ENVIRONMENT=Staging` (see `secrets/railway.test.variables.example.json`; switch described in [`runbooks/stripe.md`](runbooks/stripe.md#switching-the-railway-test-environment-to-staging-one-time-product-owner)). Every check below runs outside Development and Testing, so everything applies to **test and production**, except the rows that name Production. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment; "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
+
+| Variable | Required | If missing | Runbook |
+|---|---|---|---|
+| `ASPNETCORE_ENVIRONMENT` | `Production` on production, `Staging` on test | Development/Testing skip every startup validation below; a test environment left on `Production` with test Stripe keys does not start (PL-11) | [`stripe.md`](runbooks/stripe.md) § Environments |
+| `ConnectionStrings__DefaultConnection` | yes | startup fails (empty value); unreachable → ready `database: unhealthy` (503) | this file § Supabase |
+| `Hangfire__Schema` | yes (different per environment) | startup fails when the connection string has no SearchPath; never share it | [`hangfire.md`](runbooks/hangfire.md) |
+| `Auth0__Domain`, `Auth0__Audience` | yes | startup fails | [`auth0.md`](runbooks/auth0.md) |
+| `Auth0__ManagementClientId`, `Auth0__ManagementClientSecret` | yes for the role sync | ready `auth0: degraded`; onboarding answers `rolesSynced: false` | [`auth0.md`](runbooks/auth0.md) §4-5 |
+| `Auth0__ManagementApiDomain` | only with an Auth0 custom domain | Management API calls fail | [`auth0.md`](runbooks/auth0.md) §5 |
+| `Email__Provider`, `Email__ApiKey`, `Email__FromAddress` (`Email__FromName` optional) | yes | startup fails | [`email.md`](runbooks/email.md) |
+| `App__PublicSiteBaseUrl` | yes (https, no default in code) | startup fails; also when `Seo__PublicBaseUrl` is set to a different value | [`seo-domain.md`](runbooks/seo-domain.md), [`email.md`](runbooks/email.md) |
+| `Storage__Provider=S3`, `Storage__PublicBaseUrl`, `Storage__S3__ServiceUrl`, `Storage__S3__Region`, `Storage__S3__AccessKeyId`, `Storage__S3__SecretAccessKey`, `Storage__S3__PublicBucket`, `Storage__S3__PrivateBucket` | yes | startup fails | [`storage.md`](runbooks/storage.md) |
+| `DataProtection__CertificatePfxBase64`, `DataProtection__CertificatePassword` | **yes** | startup fails (CO-14): the key ring protects guest documents and Questura credentials | [`storage.md`](runbooks/storage.md) §4, [`encryption.md`](runbooks/encryption.md) |
+| `Stripe__SecretKey`, `Stripe__PublishableKey`, `Stripe__WebhookSecret`, `Stripe__ConnectWebhookSecret` | yes once payments are active | ready `stripe: degraded` (the deploy is not blocked); without the Connect secret no direct booking is ever confirmed, without the publishable key the checkout cannot load Stripe. **Wrong mode stops the startup**: a test key in Production, a live key anywhere else (PL-11) | this file § Stripe, [`stripe.md`](runbooks/stripe.md) § Environments |
+| `Billing__Prices__Starter`, `Billing__Prices__Pro`, `Billing__Prices__Scale` | Production: yes when `Stripe__SecretKey` is set; test: to sell the plans | Production: startup fails (missing, placeholder, not `price_…`, or the same id on two plans). Test: that plan answers 422 `billing_plan_unavailable`, ready `stripe: degraded` | [`stripe.md`](runbooks/stripe.md) § Environments |
+| `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
+| `PublicHost__BaseDomain` | no (no default in code) | the "subdomain" publication mode answers 422 `subdomains_not_configured`; no host is resolved as an org subdomain | [`seo-domain.md`](runbooks/seo-domain.md) |
+| `Legal__Documents__Privacy__DocumentUrl`, `Legal__Documents__Tos__DocumentUrl` | no | the public footer shows no Privacy / Terms link | [`seo-domain.md`](runbooks/seo-domain.md) |
+| `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
+| `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
+| `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
+| `Ai__Provider`, `Ai__ApiKey`, `Ai__Subprocessor__*` | no (default `Stub`, no external call) | — | [`ai.md`](runbooks/ai.md) |
+| `Features__OtaPartnerApi`, `Features__AiSupplierDiscovery` | no: leave unset (off, decisions D10/D11) | — | [`feature-flags.md`](runbooks/feature-flags.md) |
+| `LeaseTemplates__Variants__<Regime>__VersionId`, `__Approved`, `__ApprovalReference`, `__ApprovedAt` | no: leave unset (no approved contract template, signing answers 422) | `Approved=true` with an empty or `dev-stub` version, without reference/date or with a missing/incomplete template file: startup fails | [`lease-contract-templates.md`](runbooks/lease-contract-templates.md) |
+| `Suppliers__PilotComuni__{n}__Code`, `Suppliers__PilotComuni__{n}__Name` | no (no default) | supplier self-serve registration off (invites only); an incomplete or repeated entry stops the startup | [`suppliers.md`](runbooks/suppliers.md) |
+| `RAILWAY_GIT_COMMIT_SHA` | set by Railway | `commit: null`: CI cannot verify the deployment and fails | [`health-checks.md`](runbooks/health-checks.md) |
+
+GitHub (backend repo, Actions **variables**): `RAILWAY_TEST_URL`, `RAILWAY_PROD_URL` — required, `verify-test` / `verify-prod` fail without them.
+
+### Stripe keys and webhooks
+
+Stripe has a **test** and a **live** mode with separate keys, webhook endpoints, signing secrets and prices. Railway `test` (`ASPNETCORE_ENVIRONMENT=Staging`) uses test mode, `production` uses live mode; never mix them. The API refuses to start with a test-mode key in Production or a live-mode key in any other environment, and `stripe: degraded` reports a secret key and a publishable key of different modes. Plan prices (`Billing__Prices__*`), return pages of Checkout and portal (built from `App__PublicSiteBaseUrl`) and the allow-list of client return URLs: [`runbooks/stripe.md`](runbooks/stripe.md#environments-stripe-mode-plan-prices-and-return-pages-pl-11).
+
+**Keys** — Stripe Dashboard → Developers → API keys (in the right mode):
+
+- `Stripe__SecretKey`: secret key `sk_…` (or a restricted key `rk_…` with the permissions the API uses);
+- `Stripe__PublishableKey`: publishable key `pk_…` of the same mode. The API returns it to the checkout page with the host's connected account: without it the checkout calls `loadStripe('')` and cannot take payments.
+
+**Two webhook endpoints.** Payments of direct bookings and rent are created on the host's connected account (Stripe Connect, direct charges), so their events reach only a **Connect** endpoint; plan subscriptions and invoices are events of the platform account. The API verifies each endpoint with its own signing secret. Create both, in each mode, with the **same API version**: `2025-12-15.clover`, the version pinned by Stripe.net 50.1.0 (`Casazen.Infrastructure/Casazen.Infrastructure.csproj`). Stripe.net rejects events of an incompatible API version: the endpoint answers 400 and the log shows `Invalid Stripe … webhook signature` with `Received event with API version …`.
+
+Stripe Dashboard → Developers → Webhooks (Workbench → Event destinations) → **Add endpoint / Add destination** (labels may differ slightly):
+
+| | Platform endpoint | Connect endpoint |
+|---|---|---|
+| Events from | **Your account** | **Connected accounts** |
+| URL | `https://<Railway URL of the environment>/webhooks/stripe` | `https://<Railway URL of the environment>/webhooks/stripe/connect` |
+| API version | `2025-12-15.clover` | `2025-12-15.clover` |
+| Events | `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` | `account.updated`, `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `setup_intent.succeeded`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed` |
+| Signing secret (`whsec_…`, "Reveal") | `Stripe__WebhookSecret` | `Stripe__ConnectWebhookSecret` |
+
+The event lists are the ones handled by `Casazen.Infrastructure/External/StripeWebhookHandler.cs`; other events are acknowledged and ignored. Same result with the API (the `secret` is returned only in the creation response), once per endpoint and mode:
+
+```bash
+curl https://api.stripe.com/v1/webhook_endpoints -u "<secret key of the mode>:" \
+  -d url="https://<Railway URL>/webhooks/stripe/connect" \
+  -d api_version="2025-12-15.clover" \
+  -d connect=true \
+  -d "enabled_events[]=account.updated" \
+  -d "enabled_events[]=payment_intent.succeeded" \
+  -d "enabled_events[]=payment_intent.processing" \
+  -d "enabled_events[]=payment_intent.payment_failed" \
+  -d "enabled_events[]=payment_intent.canceled" \
+  -d "enabled_events[]=setup_intent.succeeded" \
+  -d "enabled_events[]=charge.refunded" \
+  -d "enabled_events[]=refund.created" \
+  -d "enabled_events[]=refund.updated" \
+  -d "enabled_events[]=refund.failed"
+# platform endpoint: url …/webhooks/stripe, no connect=true, platform event list
+```
+
+Check after setting the variables and redeploying:
+
+1. `GET /api/health/ready` with an admin token: `stripe` is `healthy` (anonymous callers see only the status).
+2. Stripe Dashboard → each endpoint → send a test event (or `stripe trigger payment_intent.succeeded`): the delivery answers **200**. 400 = wrong signing secret or API version; 500 = secret not set on Railway.
+3. Upgrading Stripe.net changes the pinned API version: create both endpoints again with the new version (new secrets), update the two Railway variables, then delete the old endpoints.
+
+Webhook idempotency, subscription states, checkout guard, restricted-key permissions, the Customer portal settings, booking refunds on Connect (BK-02) and the deferred charge of "Paga più tardi" (BK-08, `payment_intent.processing`): `docs/runbooks/stripe.md`.
 
 ### Get service URLs → GitHub Variables
 
@@ -428,9 +547,14 @@ In Vercel dashboard → Settings → Environment Variables:
 | Variable | Preview (develop / PR) | Production (main) |
 |---|---|---|
 | `VITE_API_BASE_URL` | `https://casazen-api-test.up.railway.app/api` | `https://casazen-api.up.railway.app/api` |
-| `VITE_AUTH0_DOMAIN` | `dev-mp6wadq7j6bophl5.us.auth0.com` | same until prod Auth0 tenant is ready |
-| `VITE_AUTH0_CLIENT_ID` | `[dev client id]` | same SPA client until prod tenant is ready |
+| `VITE_AUTH0_DOMAIN` | domain of the **test** Auth0 tenant | domain of the **production** Auth0 tenant (never the test one, A1-32) |
+| `VITE_AUTH0_CLIENT_ID` | SPA client id of the test tenant | SPA client id of the production tenant |
 | `VITE_AUTH0_AUDIENCE` | `https://casazen-api` | **`https://casazen-api`** (must match Railway `Auth0__Audience` on **both** environments) |
+| `VITE_PUBLIC_SITE_URL` | not needed | **required**: `https://<public domain>`, same value as Railway production `App__PublicSiteBaseUrl`; the build fails without it |
+
+`robots.txt` is generated by the build from `VERCEL_ENV`: only the Production environment allows indexing and declares `Sitemap: {VITE_PUBLIC_SITE_URL}/sitemap.xml`; Preview (PRs and the `develop` test deployment) is always `Disallow: /`. `/sitemap.xml` is served by the Vercel Function `api/sitemap.ts`, which proxies `{VITE_API_BASE_URL}/public/sitemap.xml` at runtime. Keep "Automatically expose System Environment Variables" on. Details and checks: [`runbooks/seo-domain.md`](runbooks/seo-domain.md).
+
+Auth0 (A1-32): Preview and Production use **two different tenants**. A shared tenant lets a role given to a test user work in production and mixes test users with real ones; steps to separate them, with the Railway, Vercel, EAS and GitHub variables to change: [`runbooks/auth0.md`](runbooks/auth0.md) §1.1.
 
 > **Critical:** Preview and Production must point to **different** `VITE_API_BASE_URL` hosts (test vs prod Railway). If Production accidentally uses the test API URL, staging will look fine while production users hit the wrong backend/schema. After every `main` deploy, CI runs `prod-deploy-smoke` to catch this.
 
@@ -472,7 +596,7 @@ PR opened → develop (BE or FE)
 Merge feature PR → develop
     │
     ├─ Railway (native): deploy test environment
-    ├─ ci-cd.yml verify-test: GET $RAILWAY_TEST_URL/api/health → 200
+    ├─ ci-cd.yml verify-test: $RAILWAY_TEST_URL/api/health/ready → 200 with commit = pushed SHA
     ├─ Vercel (native): staging FE from develop branch
     └─ Human: bundle check + acceptance on test
     │
@@ -480,7 +604,7 @@ Merge feature PR → develop
 Stage 05 — Release (release PR: develop → main)
     ├─ release-manager squash-merges develop → main
     ├─ Railway (native): deploy production environment
-    ├─ ci-cd.yml verify-prod: health on $RAILWAY_PROD_URL
+    ├─ ci-cd.yml verify-prod: $RAILWAY_PROD_URL/api/health/ready → 200 with commit = pushed SHA
     ├─ Vercel (native): production FE from main
     └─ git tag vX.Y.Z on main (changelog only — no deploy trigger)
 ```
@@ -548,8 +672,8 @@ Before allowing production promotion, the coordinator checks:
 
 | Type | Name | Purpose |
 |---|---|---|
-| Variable | `RAILWAY_TEST_URL` | Health check after push to `develop`; PR comment link |
-| Variable | `RAILWAY_PROD_URL` | Health check after push to `main` |
+| Variable | `RAILWAY_TEST_URL` | Deploy verification after push to `develop` (`verify-test` fails without it); PR comment link |
+| Variable | `RAILWAY_PROD_URL` | Deploy verification after push to `main` (`verify-prod` fails without it) |
 | Variable | `STAGING_FE_URL` | Vercel develop deployment URL for staging FE smoke (frontend repo) |
 
 ### Optional
@@ -575,7 +699,7 @@ Often auto-created by **Supabase ↔ GitHub** integration. Not used by Railway r
 | Secret / config | Set on |
 |---|---|
 | Database password / connection string | **Railway** per environment |
-| Auth0, Stripe, Email (SMTP) | **Railway** per environment |
+| Auth0, Stripe, Email (Resend) | **Railway** per environment |
 | `VITE_*` | **Vercel** Preview + Production |
 | Supabase service role (if needed for admin scripts) | **Supabase** dashboard or GitHub (optional) |
 
@@ -588,8 +712,8 @@ Often auto-created by **Supabase ↔ GitHub** integration. Not used by Railway r
 | Railway | https://railway.app/project/[id] | API logs, CPU/memory, deploy status |
 | Supabase | https://app.supabase.com/project/[ref] | DB connections, storage, query logs |
 | Vercel | https://vercel.com/[team]/casazen | FE deploys, preview URLs, error tracking |
-| Health endpoint | `GET /api/health` | Liveness check — target < 200 ms |
+| Health endpoints | `GET /api/health/live` (process), `GET /api/health/ready` (database, Hangfire, configuration) | 200 healthy/degraded, 503 unhealthy; `commit` = deployed SHA ([`runbooks/health-checks.md`](runbooks/health-checks.md)) |
 
 ---
 
-**Last Updated**: 2026-06-03 (branch model: `develop` → test, `main` → prod)
+**Last Updated**: 2026-09-23 (FD-12: health checks, deploy verification, Stripe variables and webhooks, required variables)

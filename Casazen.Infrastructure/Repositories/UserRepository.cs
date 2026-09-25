@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Repositories;
 
@@ -33,10 +34,32 @@ public class UserRepository(AppDbContext context) : IUserRepository
         return user;
     }
 
+    public async Task<(User User, bool Created)> AddIfAbsentAsync(User user)
+    {
+        context.Users.Add(user);
+        try
+        {
+            await context.SaveChangesAsync();
+            return (user, true);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // A parallel first request of the same user inserted the row first (A1-14): keep that row.
+            context.Entry(user).State = EntityState.Detached;
+            var stored = await context.Users.FirstOrDefaultAsync(u => u.Id == user.Id);
+            if (stored is null)
+                throw;
+            return (stored, false);
+        }
+    }
+
     public async Task UpdateAsync(User user)
     {
         user.UpdatedAt = DateTime.UtcNow;
-        context.Users.Update(user);
+        // A tracked user saves only the columns that changed. Update() would rewrite every column, and a copy
+        // loaded before a parallel request linked the org would put OrgId back to null (A1-14).
+        if (context.Entry(user).State == EntityState.Detached)
+            context.Users.Update(user);
         await context.SaveChangesAsync();
     }
 
@@ -80,15 +103,55 @@ public class UserRepository(AppDbContext context) : IUserRepository
         return (users, totalCount);
     }
 
-    public async Task DeleteAsync(string id)
+    public async Task<(UserActivationOutcome Outcome, User? User)> SetActiveAsync(
+        string id,
+        bool isActive,
+        string actorId,
+        CancellationToken cancellationToken = default)
     {
-        var user = await GetByIdAsync(id);
-        if (user != null)
+        // Deactivations are serialized (one key): the count of the other active admins below always sees the
+        // deactivation committed by the previous holder (READ COMMITTED), so two admins deactivating each other at the
+        // same time cannot leave the platform without an active admin.
+        await using var transaction = isActive
+            ? null
+            : await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                context,
+                cancellationToken,
+                (PostgresAdvisoryLocks.Scope.UserDeactivation, "users"));
+
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        if (user is null)
+            return (UserActivationOutcome.NotFound, null);
+
+        if (user.IsActive == isActive)
+            return (UserActivationOutcome.Unchanged, user);
+
+        if (!isActive)
         {
-            // Soft delete — preserve audit trail
-            user.IsActive = false;
-            user.UpdatedAt = DateTime.UtcNow;
-            await context.SaveChangesAsync();
+            // Read under the lock: an admin deactivated by a parallel request no longer acts as one.
+            var actorActive = await context.Users
+                .AsNoTracking()
+                .Where(u => u.Id == actorId)
+                .Select(u => (bool?)u.IsActive)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (actorActive == false)
+                return (UserActivationOutcome.ActorInactive, user);
+
+            if (user.Role == UserRole.Admin &&
+                !await context.Users.AnyAsync(
+                    u => u.Id != id && u.IsActive && u.Role == UserRole.Admin,
+                    cancellationToken))
+            {
+                return (UserActivationOutcome.LastActiveAdmin, user);
+            }
         }
+
+        user.IsActive = isActive;
+        user.UpdatedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        return (UserActivationOutcome.Updated, user);
     }
 }

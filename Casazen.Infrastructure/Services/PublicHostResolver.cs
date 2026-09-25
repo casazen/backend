@@ -79,14 +79,18 @@ public class PublicHostResolver(
         return BuildResponse(subdomainOrg, PublicHostMode.CasazenSubdomain);
     }
 
-    private static ResolveHostResponseDto BuildResponse(Org org, PublicHostMode publicHostMode) => new()
+    private ResolveHostResponseDto BuildResponse(Org org, PublicHostMode publicHostMode)
     {
-        OrgId = org.Id,
-        Slug = org.Slug,
-        PublicHostMode = publicHostMode,
-        PlanTier = org.PlanTier.ToString(),
-        Branding = ResolveHostBrandingDto.FromOrg(org),
-    };
+        var effectiveTier = entitlementService.ResolveEffectiveTier(org);
+        return new ResolveHostResponseDto
+        {
+            OrgId = org.Id,
+            Slug = org.Slug,
+            PublicHostMode = publicHostMode,
+            PlanTier = effectiveTier.ToString(),
+            Branding = ResolveHostBrandingDto.FromOrg(org, effectiveTier),
+        };
+    }
 
     private static string Normalize(string host)
     {
@@ -98,7 +102,10 @@ public class PublicHostResolver(
 
     private string? TryExtractSubdomainLabel(string host)
     {
-        var baseDomain = options.Value.BaseDomain.Trim().ToLowerInvariant();
+        // D3: no default base domain; without PublicHost:BaseDomain no host is an org subdomain.
+        if (options.Value.NormalizedBaseDomain is not { } baseDomain)
+            return null;
+
         var suffix = $".{baseDomain}";
         if (!host.EndsWith(suffix, StringComparison.Ordinal))
             return null;

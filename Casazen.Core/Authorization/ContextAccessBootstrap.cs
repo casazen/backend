@@ -33,6 +33,8 @@ public static class ContextAccessBootstrap
             DefaultRoute: "/app/long-rent/leases",
             Permissions:
             [
+                "property.read",
+                "property.write",
                 "lease.read",
                 "lease.create",
                 "lease.sign",
@@ -53,6 +55,7 @@ public static class ContextAccessBootstrap
                 "admin.jobs.read",
                 "admin.seo.read",
                 "admin.tax.manage",
+                "admin.ltr.manage",
             ]),
         new(
             JwtRole: "Supplier",

@@ -38,12 +38,12 @@ graph TD
 |---|---|---|---|
 | Language | C# | 13 | Nullable reference types enabled |
 | Framework | ASP.NET Core | 10.0 | Minimal hosting model in `Program.cs` |
-| Database | PostgreSQL (Supabase) | — | Npgsql EF Core; in-memory DB used in CI / tests |
+| Database | PostgreSQL (Supabase) | — | Npgsql EF Core; integration tests run on real PostgreSQL (see Testing) |
 | ORM | Entity Framework Core | 10.x | Code-first, migrations in `Casazen.Infrastructure/Migrations/` |
 | Authentication | Auth0 + JWT Bearer | — | `sub` claim used as user ID |
 | Background jobs | Hangfire | 1.8.x | PostgreSQL storage; dashboard at `/hangfire` |
 | Payment processing | Stripe .NET SDK | — | Webhook signature verification required |
-| Email | MailKit (SMTP) | — | Any SMTP server; Gmail free tier recommended for dev |
+| Email | Resend SDK (`ResendEmailService`) | — | Only provider; emails queued on Hangfire, templates IT/EN (`docs/runbooks/email.md`) |
 | OTA resilience | Polly | — | Retry, circuit breaker, timeout, rate limiting per platform |
 | Test framework | xUnit | — | `Casazen.Tests/` |
 | API docs | Swashbuckle / Swagger | — | Swagger UI at `/swagger` (dev only) |
@@ -59,12 +59,42 @@ graph TD
 All endpoints require a `Bearer` JWT token in the `Authorization` header (issued by Auth0), except anonymous routes noted below (public booking, legal, health, webhooks, guest check-in tokens, supplier register, plan catalogue, SEO sitemap).
 
 Anonymous / public (non-exhaustive highlights):
-- `GET /api/health`, `GET /api/properties/health`, `GET /api/properties/search`
+- `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
 - `POST /api/auth/register`, `GET /api/orgs/plans`
-- All `/api/public/*`, `/api/checkin/*`, `/api/legal/*`, `/sitemap-compliance.xml`
+- All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml` and the guest check-in portal `/api/public/checkin/*`), `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
-There are **41** controller source files under `Casazen.Web/Controllers/` (plus nested `PublicCheckInController` in `SupplierJobController.cs`).
+### Authorization (TN-3)
+
+Every action is either `[AllowAnonymous]` or protected by a policy from `Casazen.Web/Authorization/CasazenPolicies.cs`
+(the complete set registered at startup; `EndpointAuthorizationArchitectureTests` fails for a policy used but not
+registered, registered but unused, or an action with neither).
+
+| Policy (constant) | Who passes |
+|---|---|
+| `Authenticated` | any signed-in user, suppliers included: only user-scoped endpoints, each listed with its reason in the test allow-list |
+| `AdminOnly` | JWT role `Admin` |
+| `Supplier` (`RequireSupplier`) | JWT role `Supplier` (backfilled from the DB supplier link) |
+| `OrgBillingAdmin` (`RequireOrgBillingAdmin`) | org administrator in either rental context (PL-16): owner `PropertyOwner` or `LongTermLandlord` (JWT role or short-rent/long-rent membership), `PropertyManager`, platform `Admin`; never `Staff`/`Guest`. Plan, entitlement, billing, domain, Stripe Connect account |
+| `SharedPropertyRead` / `SharedPropertyWrite` | `property.*` in short-rent **or** long-rent: only the property core a long-term landlord needs (list, record, create/update, documents/APE) — A7-06 |
+| `PropertyRead` / `PropertyWrite` | short-rent `property.*`: the short-stay side of a property (photos, CIN, iCal, activation, detail with bookings/OTA, pricing, fiscal, service requests) |
+| `BookingRead/Write`, `PaymentRead/Write`, `GuestRead/Write`, `OtaRead/Write` | short-rent context permission |
+| `LeaseRead/Create/Sign/Register` | long-rent context permission |
+
+Context permissions come from the DB memberships (`UserContextMemberships` → `Roles` → `RolePermissions`) with the JWT
+roles as fallback (`ContextAuthorizationService`). A permission counts only in the context that grants it: the long-rent
+`property.*` never satisfies a short-rent policy (`RequireContext:short-rent|long-rent:…` lists both contexts where an
+endpoint serves both). The class carries the read permission, writing actions add the write one.
+
+The policy says what kind of operation a user may do; the row itself is checked with
+`IAuthorizationService.AuthorizeAsync(User, HostResource, operation)` (`PropertyOperations`, `SharedPropertyOperations`,
+`BookingOperations`, `GuestOperations`, `PaymentOperations`, `OtaOperations`, `LeaseOperations`): `HostResourceAuthorizationHandler` grants it only when the row
+is in the caller's org, the caller holds the permission and, for property-bound rows, owns the property or has an
+org-wide role (`HostRoles.OrgWide`: `PropertyManager`, `Admin`). Lists use `User.GetHostScope(orgId)` → `HostScope`,
+filtered in SQL. Services never check roles: they receive the org / scope decided by the web layer. A row that is not in
+the caller's org answers 404; a visible row the caller may not use answers 403.
+
+There are **48** controller source files under `Casazen.Web/Controllers/`. The supplier jobs with QR check-in (`SupplierJobController`, `PublicCheckInController`) were removed by SU-11 (decision D12): supplier work is a `ServiceRequest` only.
 
 ### Endpoints
 
@@ -92,8 +122,8 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 |---|---|---|---|
 | `GET` | `/api/me/contexts` | JWT | Workspace contexts (host / supplier / …); merges JWT roles with `UserContextMemberships` |
 | `GET` | `/api/orgs/plans` | Anonymous | Plan catalogue and property limits |
-| `GET` | `/api/orgs/me/entitlement` | short-rent property.read | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
-| `PUT` | `/api/orgs/me/plan` | JWT | Self-serve plan change (409 if Stripe-managed) |
+| `GET` | `/api/orgs/me/entitlement` | OrgBillingAdmin (org policy, any rental context, PL-16) | Org plan tier, limits, usage, `canAddProperty`, `canUseCustomDomain` |
+| `PUT` | `/api/orgs/me/plan` | Org billing admin | Downgrade / back to Starter only; upgrade without an active subscription → 403 `subscription_required`, Stripe-managed plan → 409 `managed_by_stripe` (#274) |
 | `GET` | `/api/orgs/{orgId}/domain` | JWT | Custom domain config for org |
 | `POST` | `/api/orgs/{orgId}/domain` | JWT | Set custom domain |
 | `POST` | `/api/orgs/{orgId}/domain/verify` | JWT | Verify DNS / domain ownership |
@@ -108,17 +138,29 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/properties` | List properties owned by the authenticated user |
-| `GET` | `/api/properties/{id}` | Get a single property |
-| `POST` | `/api/properties` | Create a new property |
-| `PUT` | `/api/properties/{id}` | Update a property (owner only) |
-| `DELETE` | `/api/properties/{id}` | Delete a property (owner only) |
+| `GET` | `/api/properties` | Properties of the caller's org the caller may handle (own ones; whole org for org-wide roles). Short-rent or long-rent |
+| `GET` | `/api/properties/{id}` | The property record (`PropertyResponse`): no bookings, check-in tokens, OTA integrations or documents (PC-02, A2-32; bookings come from the booking endpoints). Short-rent or long-rent |
+| `GET` | `/api/properties/cancellation-policies` | Cancellation policies a property can reference (global catalog). Short-rent only |
+| `POST` | `/api/properties` | Create a new property. Short-rent or long-rent; `nightlyRate`/`maxGuests` may be `0` (long-term only property, blocks short-stay activation); `bedrooms` may be `0` (studio) |
+| `PUT` | `/api/properties/{id}` | Update a property (owner or org-wide role) with **PATCH semantics** (PC-02, A2-04): a field left out of the body (or `null`) keeps its stored value; `cinCode`, `slug` and `cancellationPolicyId` sent as `null` are cleared. 400 `validation_error` for an invalid field, 422 `cancellation_policy_not_found`. Short-rent or long-rent |
+| `GET`/`POST` | `/api/properties/{id}/documents` | List (with `documentType`) / upload documents such as the APE. Short-rent or long-rent |
+| `DELETE` | `/api/properties/{id}/documents/{docId}` | Delete a document. Short-rent or long-rent |
+| `GET` | `/api/properties/{id}/documents/{docId}/download` | Authenticated download from the private bucket (FD-07). Short-rent or long-rent |
+| `DELETE` | `/api/properties/{id}` | Delete a property (owner only). Short-rent only |
 | `GET` | `/api/properties/search` | Search properties by city, bedrooms, max price (anonymous) |
 | `POST` | `/api/properties/{id}/images` | Upload photos (max 20, JPEG/PNG/WebP, 10 MB each) |
 | `GET` | `/api/properties/{id}/images` | List photo URLs |
 | `DELETE` | `/api/properties/{id}/images/{imageIndex}` | Delete a photo by index |
 | `PUT` | `/api/properties/{id}/images/order` | Reorder photos |
-| `GET` | `/api/properties/health` | Anonymous health check |
+
+Property record choices (PC-02):
+- **Update = PUT with PATCH semantics**, not a full PUT: a client that does not know or show a field (the long-term
+  form, the pause toggle of the list, an older app build) can never reset the cleaning fee, deposit, house rules,
+  timezone or cancellation policy. The web forms still send every field they show (`toPropertyPayload`), never the
+  photos (managed by the image endpoints).
+- **Bathrooms stay a whole number** (`int` in the model and the database, 1-50): the form accepts whole numbers only,
+  no migration. **Bedrooms 0-100**, `0` = studio (monolocale); the activation wizard no longer requires a bedroom.
+- **No country nor currency** on the property: amounts are in euros and the form has no such fields.
 
 #### Bookings
 
@@ -130,9 +172,41 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `PUT` | `/api/bookings/{id}` | Update a booking |
 | `DELETE` | `/api/bookings/{id}` | Cancel a booking |
 | `GET` | `/api/bookings/calendar` | Calendar view (`?propertyId&startDate&endDate&timezone`) |
-| `POST` | `/api/bookings/{id}/check-in` | Perform check-in (enqueues Alloggiati Web report) |
+| `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
-| `GET` | `/api/bookings/{id}/alloggiati-status` | Get Alloggiati Web submission status |
+| `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
+
+#### Host dashboard (PC-16)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/dashboard/kpis?period=Month&month=yyyy-MM` \| `?period=Last30Days` | short-rent booking.read | KPIs of the period computed on the server (default: current Europe/Rome month); 400 `dashboard_invalid_period` |
+| `GET` | `/api/dashboard/ical-feeds` | short-rent booking.read + property.read | iCal import feeds of the caller's properties: last sync, status, error code and localized message, feeds with an error first; never the URL |
+
+Both are limited to the caller's `HostScope` (org, and the owned properties unless the role is org-wide), in SQL.
+Definitions (`IHostDashboardService`, `StayKpiRules`; days are Europe/Rome calendar dates, `RomeCalendar`):
+- **Period**: a calendar month, or the 30 nights ending with tonight (`Last30Days`). A night belongs to the date it
+  starts on.
+- **Occupancy** = occupied property-nights / available property-nights, over the active properties of the scope. A
+  night is occupied as in `PropertyOccupancy` (the nights the booking site shows as taken): a booking that occupies
+  its dates (`CheckoutHolds.OccupiesDates`: not cancelled, not an expired checkout hold; a valid hold or a pending "pay
+  at the property" request counts) or a block imported by an iCal feed. A night closed only by a manual block (owner
+  stay, maintenance) is neither occupied nor available. Available = nights of the period × properties − closed nights.
+  `rate` is `null` when nothing is available.
+- **Revenue** of the period: confirmed stays (Confirmed, CheckedIn, CheckedOut) **pro rata per night**: `BasePrice`
+  (lodging + cleaning, tourist tax excluded) × nights of the stay in the period / nights of the stay, rounded to the
+  cent on the total. A stay across two months counts in each for its nights there. Pending requests, cancelled
+  bookings and what a cancellation retains are not counted. Amounts are in euros.
+- **Arrivals / departures today**: confirmed stays whose check-in / check-out date is today in Europe/Rome (between
+  22:00/23:00 UTC and midnight UTC this is already the next day). A stay date stored with a time (e.g. `23:30Z`) counts
+  on its Rome date.
+- **Upcoming check-ins**: `Confirmed` bookings from today on (today's arrivals until the host registers them), soonest
+  first; never a cancelled booking. **Recent bookings**: the last five created, any status.
+
+The bookings summary of `GET /api/properties/{id}/detail` (A2-36) uses the same rules: `totalBookings` = confirmed
+stays, `upcomingBookings` = upcoming check-ins, `activeBookings` = stays in progress today (checked in, or confirmed
+with the check-in day passed), `nextCheckIn` / `nextCheckOut` as Rome dates. The detail answers 404 only when the
+property is not found; any other failure is a 500.
 
 #### Guests & digital check-in
 
@@ -143,21 +217,27 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/api/guests` | JWT | Create a guest record |
 | `PUT` | `/api/guests/{id}` | JWT | Update guest details |
 | `DELETE` | `/api/guests/{id}` | JWT | Delete a guest |
-| `GET` | `/api/checkin/{token}` | Anonymous | Guest check-in session by magic token |
-| `POST` | `/api/checkin/{token}/guest-data` | Anonymous | Submit guest identity data |
-| `POST` | `/api/checkin/{token}/document` | Anonymous | Upload ID document for check-in |
 
 #### Leases (long-term)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/leases` | LongTermLandlord + lease.read | List leases |
-| `GET` | `/api/leases/{id}` | LongTermLandlord + lease.read | Get lease |
-| `POST` | `/api/leases` | lease.create | Create lease |
-| `POST` | `/api/leases/{id}/signing` | lease.sign | Start / advance e-sign flow |
+| `GET` | `/api/leases` | lease.read | List leases (own properties; whole org for org-wide roles) |
+| `GET` | `/api/leases/{id}` | lease.read | Get lease (property owner or org-wide role of its org) |
+| `POST` | `/api/leases` | lease.create | Create lease (property owner or org-wide role of its org, e.g. PropertyManager) |
+| `GET` | `/api/leases/{id}/contract.pdf` | lease.sign | Final contract to sign offline (approved template only, LT-02/LT-03) |
+| `GET` | `/api/leases/{id}/contract/preview` | lease.sign | Contract preview marked BOZZA / ANTEPRIMA (never valid for signature) |
+| `POST` | `/api/leases/{id}/signed-document` | lease.sign | Offline signature: signed PDF + stipula date; lease Signed (LT-02) |
+| `GET` | `/api/leases/{id}/signed-document` | lease.read | Signed contract (private bucket) |
+| `POST` | `/api/leases/{id}/stipula` | lease.sign | Declare the stipula date of a lease signed before LT-02 (once) |
+| `GET` | `/api/leases/{id}/signers` | lease.read | Signature panel: persisted signers, provider availability, contract availability |
+| `POST` | `/api/leases/{id}/signing` | lease.sign | E-sign provider path, behind `Features:ESignProvider` (off, 404) and a configured provider |
 | `POST` | `/api/leases/{id}/registration` | lease.register | Submit lease registration |
 | `GET` | `/api/leases/{id}/registration` | lease.read | Registration status |
 | `GET` | `/api/leases/{id}/registration/receipt` | lease.read | Registration receipt |
+| `PUT` | `/api/leases/{id}/rli/questura/delivery-date` | lease.register | Delivery date of the property (48 hours of the Questura communication count from it; null = start date, LT-07) |
+| `POST` | `/api/leases/{id}/rli/questura/mark-done` | lease.register | Landlord declares the Questura communication for an extra-EU tenant: date + optional receipt PDF (LT-07) |
+| `GET` | `/api/leases/{id}/rli/questura/receipt` | lease.read | Receipt of the Questura communication (private bucket) |
 
 #### Payments & Stripe Connect
 
@@ -178,21 +258,20 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/billing/plans` | JWT | Stripe plan catalogue |
-| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session |
-| `POST` | `/api/billing/portal-session` | OrgBillingAdmin | Create Stripe Customer Portal session |
-| `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription |
+| `POST` | `/api/billing/checkout-session` | OrgBillingAdmin | Create Stripe Checkout session; one per org at a time, same open session reused, 409 `already_subscribed` when a subscription exists (A1-10). Optional `returnPath`: plan/billing page of the caller's shell (allow-list, PL-16), otherwise 400 (`docs/runbooks/stripe.md`) |
+| `POST` | `/api/billing/portal-session` | OrgBillingAdmin | Create Stripe Customer Portal session; optional body `{ returnPath }`, same allow-list (PL-16) |
+| `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription; `status`: `none`, `trialing`, `active`, `past_due`, `unpaid`, `incomplete`, `canceled` |
 | `PUT` | `/api/billing/profile` | OrgBillingAdmin | Update billing profile |
 
-#### Pricing Adapter (AI Dynamic Pricing)
+#### Seasonal suggestions ("Suggerimenti stagionali", PC-15; `docs/runbooks/seasonal-suggestions.md`)
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/pricing-adapter/config/{propertyId}` | Enable / update AI pricing config |
-| `GET` | `/api/pricing-adapter/config/{propertyId}` | Get current AI pricing config |
-| `DELETE` | `/api/pricing-adapter/config/{propertyId}` | Disable AI pricing |
-| `GET` | `/api/pricing-adapter/history/{propertyId}` | Paginated price change history |
-| `POST` | `/api/pricing-adapter/sync/{propertyId}` | Trigger a manual pricing sync (returns `jobId`) |
-| `GET` | `/api/pricing-adapter/preview/{propertyId}` | Preview suggested prices for next 90 days |
+| `POST` | `/api/pricing-adapter/config/{propertyId}` | Enable / update frequency and rules (computes the suggestions when enabled) |
+| `GET` | `/api/pricing-adapter/config/{propertyId}` | Current config (example rule when never saved) |
+| `DELETE` | `/api/pricing-adapter/config/{propertyId}` | Disable and delete the suggestions |
+| `GET` | `/api/pricing-adapter/suggestions/{propertyId}` | Suggestions by date (real nightly rate x rule), read-only |
+| `POST` | `/api/pricing-adapter/recalculate/{propertyId}` | Recompute now (same logic as the nightly job) |
 
 #### OTA Channel Management
 
@@ -214,10 +293,12 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/compliance/summary` | PropertyOwner | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati failures) |
+| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below) |
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
-| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Manually send / retry Alloggiati report |
+| `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
+| `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
+| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable` until the web service client (CO-13) |
 | `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors list |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
@@ -233,14 +314,36 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/api/tourist-tax-rates` | Admin | Create rate |
 | `PUT` | `/api/tourist-tax-rates/{id}` | Admin | Update rate |
 | `DELETE` | `/api/tourist-tax-rates/{id}` | Admin | Delete rate |
-| `GET` | `/sitemap-compliance.xml` | Anonymous | Compliance SEO sitemap |
+| `GET` | `/api/public/sitemap.xml` | Anonymous | Compliance SEO sitemap, URLs on `App:PublicSiteBaseUrl`; served on the web app domain as `/sitemap.xml` (runbook `seo-domain.md`) |
+
+**Cockpit links (CO-04, A5-09).** Each item of `GET /api/compliance/summary` is
+`{ id, label, action, propertyId, bookingId }`: `action` is the enum `ComplianceCockpitAction` by name and `id` its
+target, repeated in `propertyId` (`ActivateProperty`) or `bookingId` (every other action; the other field is `null`).
+The API sends no front-end path: the paths it used to invent (`/bookings/{id}/check-in`, ...) were no page of the web
+app, whose router sent every row to the dashboard. Each client builds the route from its own routing table; the web app
+from the `ROUTE_MANIFEST` in `src/lib/compliance-routes.ts`, whose vitest checks that every action opens a route of the
+manifest, short-rent context.
+
+| `action` | Section | Web screen |
+|---|---|---|
+| `ActivateProperty` | `propertiesPending` (pending or suspended) | `/app/short-rent/properties/{id}/activation`, first blocking step still open (CO-05); property detail without `property.write` |
+| `CompleteGuestCheckIn` | `guestCheckInsIncomplete` | `/app/short-rent/bookings/{id}?tab=alloggiati`: missing data guest by guest and the host form (CO-09, CO-12), same tab as the other "complete the guest data" links; the check-in link to send or copy is on the "Ospite" tab |
+| `CheckOut` | `checkoutsDue` | `/app/short-rent/bookings/{id}/checkout`; booking detail without `booking.write` |
+| `SendAlloggiati` | `alloggiatiManualRequired` | `/app/short-rent/bookings/{id}?tab=alloggiati` (CO-11) |
+| `ResolveAlloggiatiFailure` | `alloggiatiFailures` | `/app/short-rent/bookings/{id}?tab=alloggiati` |
+
+A new action is added to the enum and to the clients together: until then the web app shows the item without a link,
+never a link to the dashboard.
 
 #### Supplier marketplace
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email via SMTP); 409 pending invite; 502 email failure rolls back |
-| `POST` | `/api/suppliers/register` | Anonymous | Self-serve or invite-token registration |
+| `POST` | `/api/admin/suppliers/invite` | Admin | Invite supplier (email queued on Hangfire, Resend); 409 pending invite |
+| `POST` | `/api/suppliers/register` | Anonymous (rate limited) | Self-serve registration for a pilot comune, or invite acceptance by the signed-in invited account (SU-01) |
+| `POST` | `/api/suppliers/claim` | JWT (own account) | Links the caller to a profile registered anonymously: claim token of that registration, or verified email without token; assigns the `Supplier` role (SU-02) |
+| `POST` | `/api/suppliers/invites/lookup` | Anonymous (rate limited) | Invite of a link token (email, comune, expiry) for the web registration page |
+| `GET` | `/api/suppliers/registration-options` | Anonymous (rate limited) | Self-serve on/off and pilot comuni (`Suppliers:PilotComuni`) |
 | `GET` | `/api/suppliers?comune=&category=` | JWT | List **Active** suppliers for host picker |
 | `GET` | `/api/supplier/profile` | Supplier | Supplier profile for current org |
 | `PUT` | `/api/supplier/profile` | Supplier | Update profile fields |
@@ -250,14 +353,10 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/supplier/inbox` | Supplier | Service-request inbox |
 | `GET` | `/api/supplier/availability` | Supplier | Availability for date range |
 | `PUT` | `/api/supplier/availability` | Supplier | Upsert availability by date |
-| `GET` | `/api/supplier/dashboard` | Supplier | Aggregated KPIs |
+| `GET` | `/api/supplier/dashboard` | Supplier | Profile completion, activation, availability and calendar sync |
+| `GET` | `/api/supplier/dashboard/kpis?period=` | Supplier | Service-request KPIs of the caller's supplier org (Europe/Rome period, SU-11) |
 | `GET` | `/api/supplier/calendar/status` | Supplier | Calendar sync status |
 | `PUT` | `/api/supplier/calendar/ical` | Supplier | Set iCal feed URL and sync |
-| `GET` | `/api/supplier/jobs` | Supplier | List supplier jobs |
-| `POST` | `/api/supplier/jobs` | Supplier | Create job (host/admin assignment path) |
-| `POST` | `/api/supplier/jobs/{jobId}/accept` | Supplier | Accept job; generates QR check-in token |
-| `POST` | `/api/supplier/jobs/{jobId}/check-in` | Supplier | Job check-in |
-| `POST` | `/api/supplier/jobs/{jobId}/check-out` | Supplier | Job check-out |
 | `POST` | `/api/service-requests/match-supplier` | JWT | Match suppliers for a request |
 | `POST` | `/api/service-requests` | JWT | Create service request |
 | `GET` | `/api/service-requests` | JWT | List service requests |
@@ -266,17 +365,19 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `POST` | `/api/service-requests/{id}/complete` | Supplier | Complete request |
 | `POST` | `/api/service-requests/{id}/reject` | Supplier | Reject request |
 | `POST` | `/api/service-requests/{id}/mark-paid` | JWT | Mark request paid |
-| `GET` | `/register` | Anonymous | Supplier register page (MVC) |
 
-**Invite email:** `SupplierService.CreateInviteAsync` persists `SupplierInviteRecords`, then sends via `IEmailService` (MailKit SMTP) with HTML from `SupplierInviteEmailBuilder`. Signup URL: `{App:PublicSiteBaseUrl}/login?inviteToken={id}&email={email}&comune={comuneCode}`. Skipped in Testing/Development when no email config is present.
+**Invite email:** `SupplierService.CreateInviteAsync` stores the invite with the SHA-256 of a random token, then queues the email (`EmailTemplates.SupplierInvite`, Hangfire). Signup URL: `{App:PublicSiteBaseUrl}/register?inviteToken={token}` (web app page; the backend no longer serves a `/register` page). Runbook: `docs/runbooks/suppliers.md`.
 
-**Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier`. Default route: `/supplier/inbox`.
+**Supplier link (SU-02):** an account reaches a supplier org only through its own link (`User.SupplierOrgId`), set by an accepted invite, a signed-in registration or `POST /api/suppliers/claim`; never by matching the email. `GET /api/users/me` returns `supplierOrgId`. Runbook: `docs/runbooks/suppliers.md` §2.
+
+**Workspace context:** `GET /api/me/contexts` includes a `supplier` context when the JWT has role `Supplier` (added from the DB supplier link at token validation). Default route: `/supplier/inbox`.
 
 #### Public-facing
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/public/resolve-host` | Anonymous | Resolve host / org from Host header or query |
+| `GET` | `/api/public/content` | Anonymous | SEO hub: the published pages (same as the sitemap) and the hub canonical URL |
 | `GET` | `/api/public/content/affitti-brevi/{regionSlug}/{comuneSlug}` | Anonymous | SEO content page (short-term rentals) |
 | `GET` | `/api/public/content/tassa-soggiorno/{comuneSlug}` | Anonymous | SEO content page (tourist tax) |
 | `POST` | `/api/public/tourist-tax/calculate` | Anonymous | Public tourist-tax calculator |
@@ -291,9 +392,6 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
 | `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session |
 | `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in |
-| `GET` | `/api/public/check-in/{jobId}` | Anonymous | Supplier job check-in status (`?token=`) |
-| `POST` | `/api/public/check-in/{jobId}/check-in` | Anonymous | Supplier job public check-in |
-| `POST` | `/api/public/check-in/{jobId}/check-out` | Anonymous | Supplier job public check-out |
 
 #### Admin
 
@@ -302,12 +400,13 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 | `GET` | `/api/admin/stats` | Admin | Platform KPI dashboard stats |
 | `GET` | `/api/admin/cin-compliance` | Admin | Paginated CIN compliance report |
 | `GET` | `/api/admin/jobs` | Admin | Hangfire recurring job statuses |
-| `PATCH` | `/api/admin/orgs/{orgId}/plan` | Admin | Override org plan tier |
-| `GET` | `/api/admin/seo/pages` | Admin | SEO pages list / filter |
+| `PATCH` | `/api/admin/orgs/{orgId}/plan` | Admin | Change org plan tier: 409 `managed_by_stripe` with an active subscription, 409 `subscription_required` for an upgrade without one |
+| `GET` | `/api/admin/seo/pages` | Admin | SEO pages list / filter, server-side paging (`page` ≥ 1, `pageSize` 1-100, else 400) |
+| `GET` | `/api/admin/seo/pages/{id}` | Admin | Review screen: published and pending revision (sanitized), review audit |
+| `POST` | `/api/admin/seo/pages/{id}/approve` | Admin | Publish the revision read (`revisionId`, `counselApproved`, `note`): 409 newer revision / already published, 422 not publishable / legal review not confirmed (SE-01) |
+| `POST` | `/api/admin/seo/pages/{id}/withdraw` | Admin | Withdraw the published text (back to draft, off the public site and the sitemap), audited |
 | `GET` | `/api/admin/seo/comuni` | Admin | Comuni catalogue for SEO |
-| `POST` | `/api/admin/seo/approve-all-drafts` | Admin | Approve all draft SEO pages |
-| `POST` | `/api/admin/seo/generate` | Admin | Generate SEO content |
-| `PATCH` | `/api/admin/seo/pages/{id}/review-status` | Admin | Update page review status |
+| `POST` | `/api/admin/seo/generate` | Admin | Generate SEO content as drafts (never approved automatically) |
 | `GET` | `/api/admin/seo/budget` | Admin | SEO generation budget |
 | `POST` | `/api/admin/suppliers/invite` | Admin | See Supplier marketplace |
 
@@ -315,11 +414,13 @@ There are **41** controller source files under `Casazen.Web/Controllers/` (plus 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/webhooks/stripe` | Anonymous (signature) | Stripe platform webhook |
-| `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook |
+| `POST` | `/webhooks/stripe` | Anonymous (signature) | Stripe platform webhook; processed once per event id (`docs/runbooks/stripe.md`) |
+| `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook; processed once per event id |
 | `POST` | `/webhooks/ota/{platform}` | Anonymous | OTA inbound webhook |
 | `POST` | `/webhooks/esign` | Anonymous | E-sign provider webhook |
-| `GET` | `/api/health` | Anonymous | Service health check |
+| `GET` | `/api/health/live` | Anonymous | Liveness: the process answers (always 200) |
+| `GET` | `/api/health/ready` | Anonymous | Readiness: database, Hangfire, email, storage, Stripe, Auth0; 200 healthy/degraded, 503 unhealthy; `commit` of the build (`docs/runbooks/health-checks.md`) |
+| `GET` | `/api/health` | Anonymous | Same as `/api/health/ready` |
 
 ---
 
@@ -414,7 +515,7 @@ erDiagram
 | `Id` | `Guid` | PK | Auto-generated primary key |
 | `OwnerId` | `string` | Required, max 255 | Auth0 `sub` claim of the owner |
 | `Name` | `string` | Required, max 100 | Display name |
-| `CinCode` | `string?` | Max 25, `[CinCode]` validated | Italian national ID code `IT-XXXXX-XXXXXXXXXX` |
+| `CinCode` | `string?` | Max 25, `[CinCode]` validated, stored normalized | Italian national ID code, e.g. `IT058091C27G5FFZDZ` (`CinFormat`) |
 | `NightlyRate` | `decimal` | Range €0.01–€100,000 | Base nightly rate |
 | `Timezone` | `string` | Default `Europe/Rome` | IANA timezone for date handling |
 
@@ -470,14 +571,14 @@ erDiagram
 ## Infrastructure
 
 ### Database
-- **Type**: PostgreSQL via Supabase / Npgsql (in-memory fallback for tests / CI when no connection string)
+- **Type**: PostgreSQL via Supabase / Npgsql (the app falls back to EF InMemory only when no connection string is set)
 - **Connection**: Connection string key `DefaultConnection` in `appsettings.json`
 - **Migrations**: EF Core code-first migrations in `Casazen.Infrastructure/Migrations/`; apply with `dotnet ef database update`
 
 ### Configuration
 
 - **Config files**: `Casazen.Web/appsettings.json` (committed defaults), `appsettings.Development.json` (local secrets — **never commit**)
-- **Key sections**: `Auth0`, `Stripe`, `Email` (SMTP), `OTA` (per-platform credentials and resilience settings)
+- **Key sections**: `Auth0`, `Stripe`, `Email` (Resend), `OTA` (per-platform credentials and resilience settings)
 
 ### Background jobs
 
@@ -485,10 +586,10 @@ erDiagram
 |---|---|---|
 | `OtaSyncJob` | Hourly | Full OTA availability and booking sync |
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
-| `DynamicPricingJob` | Daily at 02:00 UTC | AI-driven nightly rate adaptation |
-| `AlloggiatiWebReportJob` | On check-in (enqueued) | Submit guest identity to Italian police system |
+| `DynamicPricingJob` | Daily at 02:00 UTC | Recomputes the seasonal suggestions due by Rome date (daily/weekly), upsert per date |
+| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
-| `EmailQueueProcessor` | Continuous | Process queued email notifications via SMTP |
+| `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment
@@ -502,10 +603,9 @@ erDiagram
 |---|---|---|---|
 | Auth0 | Microsoft JWT Bearer middleware | `appsettings.json → Auth0` | JWT validation on all `/api` endpoints |
 | Stripe | Stripe .NET SDK | `appsettings.json → Stripe` | Payment processing and refunds |
-| MailKit (SMTP) | MailKit + SMTP client | `appsettings.json → Email:SmtpHost` (or `Email:SendGridApiKey` for relay) | Transactional emails |
-| Alloggiati Web | Custom HTTP client | `AlloggiatiWebService.cs` | Italian police guest registration |
+| Resend | `Resend` SDK (`ResendEmailService`, the only `IEmailService`) | `Email` section (`Email__Provider`, `Email__ApiKey`, `Email__FromAddress`, `Email__FromName`); see `docs/runbooks/email.md` | Transactional emails (queued on Hangfire) |
+| Alloggiati Web | None yet (manual submission, CO-13 adds the SOAP client) | `AlloggiatiWebService.cs`, `docs/runbooks/alloggiati.md` | Italian police guest registration |
 | OTA platforms (6) | `IChannelAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
-| Public holidays API | `PublicHolidayService` | Configured in service | Feeds AI pricing seasonality |
 
 ---
 
@@ -516,10 +616,31 @@ erDiagram
 | Unit tests | xUnit | `Casazen.Tests/Unit/` | 80% for services, 100% for critical paths |
 | Integration tests | xUnit | `Casazen.Tests/Integration/` | Critical API paths |
 
+### Integration test database
+
+Integration tests run on **real PostgreSQL**, so FKs, unique indexes, `timestamptz` and transactions behave as in production.
+
+- `CasazenWebApplicationFactory` (and derived factories such as `LeaseFlowWebApplicationFactory`) creates a dedicated database `it_<guid>` per factory instance, applies **all** EF migrations with `Database.Migrate()` and drops it on dispose. Test classes sharing a class fixture share that database: seed data idempotently or with unique keys.
+- Server resolution (`Casazen.Tests/Integration/Postgres/PostgresTestServer.cs`):
+  1. `TEST_POSTGRES_CONNECTION` (e.g. `Host=localhost;Port=5432;Username=postgres;Password=<local password>`), used by CI with a `postgres:16` service;
+  2. otherwise a Testcontainers `postgres:16-alpine` container, when Docker is reachable;
+  3. otherwise, on a local run only, EF InMemory with a warning on stderr, and tests marked `[PostgresFact]` (migrations, backfill, RLI reservation) are skipped with the reason. On CI (`CI`/`GITHUB_ACTIONS` set) a missing PostgreSQL fails the run.
+- `PostgresMigrationTests` applies every migration to an empty database and asserts `HasPendingModelChanges() == false`: add a migration whenever the model changes.
+- A test that fails because of a known product bug owned by another task is marked `Skip = "<task id>: <reason>"`.
+
+### Dates, "today" and the clock (FD-06, QA-CLOCK)
+
+The calendar "today" of hosts, guests and properties is the date in **Europe/Rome**. Every night between 22:00 and 24:00 UTC (23:00 and 24:00 in winter) the UTC date is still yesterday in Rome, so code or tests that take "today" from the UTC clock are wrong in that window only.
+
+- **Application code:** "today" comes only from `RomeCalendar` on the injected `TimeProvider`: `timeProvider.TodayInRome()` / `TodayInRomeAsDateOnly()`, `RomeCalendar.DateInRome(instant)` for the Rome date of a stored instant, `RomeCalendar.StartOfDayUtc(date)` for the instant a Rome day starts. Date-only values (check-in, check-out, contract and deadline dates) are compared with that date, never with `DateTime.UtcNow` or `GetUtcNow()`. Instants (`CreatedAt`, token expiries, job windows) keep using the UTC clock.
+- **Tests:** a unit test that depends on "today" injects a `FixedTimeProvider` or `FakeTimeProvider` (`Casazen.Tests/Unit`). When the result depends on the hour, it covers both noon UTC and 23:30 UTC (for example with an `[InlineData]` for each). An integration test against the host's real clock takes "today" from `TimeProvider.System.TodayInRome()`, the same clock the app uses. Never `Skip` or wait for midnight: a test that fails between 22:00 and 24:00 UTC is a bug in the test or in the code.
+- **Guard:** `CalendarTodayArchitectureTests` fails on `DateTime.Today`, `DateTime.Now`/`DateTimeOffset.Now`, `GetLocalNow()` (application code only), `UtcNow.Date`, `GetUtcNow().Date`, `UtcDateTime.Date`, `now.Date` and `DateOnly.FromDateTime(DateTime.UtcNow)`. It checks the application projects, where `RomeCalendar.cs` is the only exception, and the test project. It cannot see a UTC date built in any other way (for example `new DateTime(utcNow.Year, utcNow.Month, utcNow.Day)`): the rule above still applies.
+
 ### Running tests
 
 ```bash
-# Run all tests
+# Run all tests (integration tests on a local PostgreSQL)
+export TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=<local password>"
 dotnet test
 
 # Run specific test class

@@ -1,14 +1,22 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
 [Table("Guests")]
-public class Guest
+public class Guest : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Tenant key (TN-1). A guest record belongs to exactly one org: the org of the booking it was
+    /// created for, or the org that created it from the guest list. Never client-supplied.
+    /// </summary>
+    public Guid OrgId { get; set; }
+    public virtual Org Org { get; set; } = null!;
 
     [Required, MaxLength(100)]
     public string FirstName { get; set; } = string.Empty;
@@ -45,14 +53,17 @@ public class Guest
 
     public GuestDocumentType? DocumentType { get; set; }
 
-    [MaxLength(50)]
+    /// <summary>
+    /// Identity document number. Encrypted at rest (CO-14, <c>EncryptedColumns</c>): the column is <c>text</c> because
+    /// the payload is longer than the value; the length is checked on input (check-in portal, Alloggiati form).
+    /// </summary>
     public string DocumentNumber { get; set; } = string.Empty;
 
     public DateTime? DocumentIssueDate { get; set; }
 
     public DateTime? DocumentExpiryDate { get; set; }
 
-    [MaxLength(100)]
+    /// <summary>Place (comune or state) that issued the document. Encrypted at rest like <see cref="DocumentNumber"/>.</summary>
     public string DocumentIssuingCountry { get; set; } = string.Empty;
 
     [MaxLength(500)]
@@ -86,9 +97,16 @@ public class Guest
     public DateTime? ErasureRequestedDate { get; set; }
 
     /// <summary>
-    /// Date when data was anonymized/deleted
+    /// When the whole record was anonymized (erasure, host request or <c>Gdpr:Retention:FiscalData</c>, CO-15): nothing
+    /// personal is left and the retention job no longer looks at it.
     /// </summary>
     public DateTime? DataAnonymizedDate { get; set; }
+
+    /// <summary>
+    /// When the Alloggiati data of the guest (birth, citizenship, sex, document, scan) were erased by
+    /// <c>Gdpr:Retention:AlloggiatiData</c> or by an anonymization (CO-15); null while they are kept.
+    /// </summary>
+    public DateTime? AlloggiatiDataErasedAt { get; set; }
 
     [MaxLength(1000)]
     public string Notes { get; set; } = string.Empty;
@@ -104,8 +122,6 @@ public class Guest
     public bool MarketingConsent { get; set; } = false;
 
     public DateTime? MarketingConsentDate { get; set; }
-
-    public DateTime DataRetentionUntil { get; set; } = DateTime.UtcNow.AddYears(7);
 
     [MaxLength(200)]
     public string DataProcessingPurpose { get; set; } = "Booking Management";
@@ -123,8 +139,10 @@ public class Guest
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
 
+    /// <summary>Copy of this guest for another booking of the same org (the copy keeps <see cref="OrgId"/>).</summary>
     public Guest CreateSnapshot(DateTime now) => new()
     {
+        OrgId = OrgId,
         FirstName = FirstName,
         LastName = LastName,
         Email = Email,
@@ -148,13 +166,13 @@ public class Guest
         ErasureRequested = ErasureRequested,
         ErasureRequestedDate = ErasureRequestedDate,
         DataAnonymizedDate = DataAnonymizedDate,
+        AlloggiatiDataErasedAt = AlloggiatiDataErasedAt,
         Notes = Notes,
         Gender = Gender,
         ConsentDate = ConsentDate,
         ConsentVersion = ConsentVersion,
         MarketingConsent = MarketingConsent,
         MarketingConsentDate = MarketingConsentDate,
-        DataRetentionUntil = DataRetentionUntil,
         DataProcessingPurpose = DataProcessingPurpose,
         IsDeleted = IsDeleted,
         DeletedAt = DeletedAt,

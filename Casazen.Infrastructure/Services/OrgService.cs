@@ -49,30 +49,48 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
             .FirstOrDefaultAsync(o => o.Subdomain == null && o.Slug == label && o.IsActive, cancellationToken);
     }
 
+    /// <remarks>
+    /// Race-safe on the first access (A1-14): web, mobile and dashboard widgets provision in parallel. On
+    /// PostgreSQL the check and the insert run in one transaction holding an advisory lock on the user (one
+    /// org per user) and one on the base slug (users whose ids sanitize to the same slug). The loser of the
+    /// race waits, then finds the org linked by the winner and returns it.
+    /// </remarks>
     public async Task<Org> EnsureOrgForUserAsync(
         string userId,
         string email,
         string displayName,
-        PlanTier planTier,
         CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
-            ?? throw new InvalidOperationException($"User {userId} must exist before org provisioning");
+        // Fast path without locks: the user is already linked (every call after the first access).
+        var linked = await GetLinkedOrgAsync(userId, cancellationToken);
+        if (linked is not null)
+            return linked;
 
-        if (user.OrgId.HasValue)
+        var baseSlug = BaseSlugFor(userId);
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            dbContext,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId),
+            (PostgresAdvisoryLocks.Scope.OrgSlug, baseSlug));
+
+        // Re-read under the lock: a parallel request may have linked an org while this one waited.
+        linked = await GetLinkedOrgAsync(userId, cancellationToken);
+        if (linked is not null)
         {
-            var existing = await dbContext.Orgs.FirstAsync(o => o.Id == user.OrgId.Value, cancellationToken);
-            return existing;
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return linked;
         }
 
-        var slug = await AllocateUniqueSlugAsync(userId, cancellationToken);
+        var user = await dbContext.Users.FirstAsync(u => u.Id == userId, cancellationToken);
+        var slug = await AllocateUniqueSlugAsync(baseSlug, cancellationToken);
         var orgName = string.IsNullOrWhiteSpace(displayName) ? "La mia organizzazione" : displayName.Trim();
         var org = new Org
         {
             Name = orgName,
             DisplayName = orgName,
             Slug = slug,
-            PlanTier = planTier,
+            PlanTier = PlanTier.Starter,
             ContactEmail = email,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
@@ -83,7 +101,35 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         user.OrgId = org.Id;
         user.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
         return org;
+    }
+
+    /// <summary>
+    /// The org linked to the user in the database, or <c>null</c> when none. Reads the committed row, not a copy
+    /// this context may already track, and aligns that tracked copy so the caller sees the same <c>OrgId</c>.
+    /// </summary>
+    private async Task<Org?> GetLinkedOrgAsync(string userId, CancellationToken cancellationToken)
+    {
+        var row = await dbContext.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.OrgId })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException($"User {userId} must exist before org provisioning");
+
+        if (row.OrgId is not Guid orgId)
+            return null;
+
+        var tracked = dbContext.Users.Local.FirstOrDefault(u => u.Id == userId);
+        if (tracked is not null && tracked.OrgId != orgId)
+        {
+            var orgIdProperty = dbContext.Entry(tracked).Property(u => u.OrgId);
+            orgIdProperty.CurrentValue = orgId;
+            orgIdProperty.OriginalValue = orgId;
+        }
+
+        return await dbContext.Orgs.FirstAsync(o => o.Id == orgId, cancellationToken);
     }
 
     public async Task<Org?> UpdatePlanTierAsync(
@@ -139,12 +185,14 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         return orgs.ToDictionary(o => o.Id);
     }
 
-    private async Task<string> AllocateUniqueSlugAsync(string userId, CancellationToken cancellationToken)
+    private static string BaseSlugFor(string userId)
     {
         var baseSlug = $"org-{SanitizeSlugPart(userId)}";
-        if (baseSlug.Length > 90)
-            baseSlug = baseSlug[..90];
+        return baseSlug.Length > 90 ? baseSlug[..90] : baseSlug;
+    }
 
+    private async Task<string> AllocateUniqueSlugAsync(string baseSlug, CancellationToken cancellationToken)
+    {
         var candidate = baseSlug;
         var suffix = 0;
         while (await dbContext.Orgs.AnyAsync(o => o.Slug == candidate, cancellationToken))

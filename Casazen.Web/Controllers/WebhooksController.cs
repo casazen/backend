@@ -1,10 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Configuration;
+using Casazen.Web.Infrastructure;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -52,10 +55,11 @@ public class WebhooksController : ControllerBase
             var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
             var webhookSecret = _configuration["Stripe:WebhookSecret"];
 
-            if (string.IsNullOrEmpty(webhookSecret))
+            // A placeholder committed in appsettings.json is public: signing with it would accept forged events.
+            if (RequiredConfiguration.IsMissing(webhookSecret))
             {
                 _logger.LogError("Stripe webhook secret not configured");
-                return StatusCode(500, "Webhook secret not configured");
+                return StripeWebhookNotConfigured();
             }
 
             // Verify webhook signature
@@ -67,7 +71,7 @@ public class WebhooksController : ControllerBase
             catch (StripeException ex)
             {
                 _logger.LogError(ex, "Invalid Stripe webhook signature");
-                return BadRequest("Invalid signature");
+                return StripeWebhookSignatureInvalid();
             }
 
             _logger.LogInformation("Received Stripe webhook: {EventType} ({EventId})", stripeEvent.Type, stripeEvent.Id);
@@ -85,7 +89,7 @@ public class WebhooksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Stripe webhook");
-            return StatusCode(500, "Internal server error");
+            return StripeWebhookFailed();
         }
     }
 
@@ -102,10 +106,11 @@ public class WebhooksController : ControllerBase
             var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
             var webhookSecret = _configuration["Stripe:ConnectWebhookSecret"];
 
-            if (string.IsNullOrEmpty(webhookSecret))
+            // A placeholder committed in appsettings.json is public: signing with it would accept forged events.
+            if (RequiredConfiguration.IsMissing(webhookSecret))
             {
                 _logger.LogError("Stripe Connect webhook secret not configured");
-                return StatusCode(500, "Webhook secret not configured");
+                return StripeWebhookNotConfigured();
             }
 
             Event stripeEvent;
@@ -116,7 +121,7 @@ public class WebhooksController : ControllerBase
             catch (StripeException ex)
             {
                 _logger.LogError(ex, "Invalid Stripe Connect webhook signature");
-                return BadRequest("Invalid signature");
+                return StripeWebhookSignatureInvalid();
             }
 
             _logger.LogInformation(
@@ -127,22 +132,35 @@ public class WebhooksController : ControllerBase
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
                 job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Connected));
 
+            _logger.LogInformation("Queued Stripe Connect webhook event {EventId} for background processing", stripeEvent.Id);
             return Ok();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Stripe Connect webhook");
-            return StatusCode(500, "Internal server error");
+            return StripeWebhookFailed();
         }
     }
 
+    // Stripe retries a delivery answered with a non-2xx status: an event is acknowledged (200) only once queued.
+    private ObjectResult StripeWebhookNotConfigured() =>
+        this.ApiProblem(StatusCodes.Status500InternalServerError, "stripe_webhook_not_configured", "StripeWebhookNotConfigured");
+
+    private ObjectResult StripeWebhookSignatureInvalid() =>
+        this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_signature", "StripeWebhookSignatureInvalid");
+
+    private ObjectResult StripeWebhookFailed() =>
+        this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
+
     /// <summary>
     /// Handles incoming OTA platform webhooks (Airbnb, Booking.com, etc.)
-    /// Queues sync jobs for background processing
+    /// Queues sync jobs for background processing.
+    /// OTA partner API in freeze (D10): 404 while <see cref="FeatureFlags.OtaPartnerApi"/> is off.
     /// </summary>
     /// <param name="platform">OTA platform name (airbnb, booking, expedia, etc.)</param>
     /// <returns>200 OK to acknowledge receipt</returns>
     [HttpPost("ota/{platform}")]
+    [FeatureGate(FeatureFlags.OtaPartnerApi)]
     public async Task<IActionResult> OtaWebhook(string platform)
     {
         try
@@ -210,28 +228,33 @@ public class WebhooksController : ControllerBase
     }
 
     /// <summary>
-    /// Handles e-signature provider callbacks (signing completed/partially signed).
-    /// Validates provider signature header and queues background processing.
+    /// E-signature provider callbacks (LT-02, A7-20). Only with <c>Features:ESignProvider</c> on (404 otherwise, before
+    /// anything is read). The body must be signed with <c>ESign:WebhookSecret</c> (HMAC-SHA256, hex in
+    /// <c>X-ESign-Signature</c>): 401 otherwise. The event is applied by <see cref="ESignWebhookJob"/>, which moves only a
+    /// lease whose signature is in progress.
     /// </summary>
     [HttpPost("esign")]
+    [FeatureGate(FeatureFlags.ESignProvider)]
     public async Task<IActionResult> ESignWebhook()
     {
         try
         {
             var payload = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
 
+            // Validated at startup with the flag on (ESignOptionsValidator); a public placeholder never signs anything.
             var webhookSecret = _configuration["ESign:WebhookSecret"];
-            if (string.IsNullOrEmpty(webhookSecret))
+            if (ESignOptionsValidator.IsWebhookSecretMissing(webhookSecret))
             {
                 _logger.LogError("ESign webhook secret not configured");
-                return StatusCode(500, "Webhook secret not configured");
+                return this.ApiProblem(
+                    StatusCodes.Status500InternalServerError, LeaseSigningErrorCodes.WebhookNotConfigured, "ESignWebhookNotConfigured");
             }
 
             var signatureHeader = Request.Headers["X-ESign-Signature"].ToString();
             if (string.IsNullOrEmpty(signatureHeader))
             {
                 _logger.LogWarning("ESign webhook received without signature header");
-                return Unauthorized("Missing signature");
+                return ESignSignatureInvalid();
             }
 
             byte[] providedBytes;
@@ -239,17 +262,17 @@ public class WebhooksController : ControllerBase
             catch (FormatException)
             {
                 _logger.LogWarning("ESign webhook signature header is not valid hex");
-                return Unauthorized("Invalid signature");
+                return ESignSignatureInvalid();
             }
 
             var expectedBytes = HMACSHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(webhookSecret),
-                System.Text.Encoding.UTF8.GetBytes(payload));
+                Encoding.UTF8.GetBytes(webhookSecret!),
+                Encoding.UTF8.GetBytes(payload));
 
             if (!CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes))
             {
                 _logger.LogWarning("Invalid e-sign webhook signature");
-                return Unauthorized("Invalid signature");
+                return ESignSignatureInvalid();
             }
 
             _backgroundJobClient.Enqueue<ESignWebhookJob>(job =>
@@ -264,4 +287,7 @@ public class WebhooksController : ControllerBase
             return StatusCode(500, "Internal server error");
         }
     }
+
+    private ObjectResult ESignSignatureInvalid() =>
+        this.ApiProblem(StatusCodes.Status401Unauthorized, "invalid_signature", "ESignWebhookSignatureInvalid");
 }

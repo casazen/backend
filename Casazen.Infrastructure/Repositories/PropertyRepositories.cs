@@ -1,6 +1,7 @@
-﻿using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,7 +14,14 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties
             .Include(p => p.Bookings)
             .Include(p => p.OtaIntegrations)
+            // The checkout derives the free refund deadline and the deferred payment from it (BK-07, A3-16).
+            .Include(p => p.CancellationPolicy)
             .FirstOrDefaultAsync(p => p.Id == id);
+    }
+
+    public async Task<Property?> GetRecordAsync(Guid id)
+    {
+        return await context.Properties.FirstOrDefaultAsync(p => p.Id == id);
     }
 
     public async Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId)
@@ -21,6 +29,17 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties
             .Where(p => p.OwnerId == ownerId && p.IsActive)
             .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(p => p.OwnerId == ownerId);
+
+        return await query.OrderBy(p => p.Name).ToListAsync();
     }
 
     public async Task<IEnumerable<Property>> GetAllAsync()
@@ -38,7 +57,7 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null)
     {
         var query = context.Properties.AsQueryable()
-            .Where(p => p.IsActive && p.ComplianceStatus == PropertyComplianceStatus.Active);
+            .Where(PublicListing.IsPublished);
 
         if (orgId.HasValue)
             query = query.Where(p => p.OrgId == orgId.Value);
@@ -84,6 +103,14 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties.AnyAsync(p => p.Id == id);
     }
 
+    public async Task<Guid?> GetOrgIdAsync(Guid id)
+    {
+        return await context.Properties
+            .Where(p => p.Id == id)
+            .Select(p => (Guid?)p.OrgId)
+            .FirstOrDefaultAsync();
+    }
+
     public async Task<Property?> GetPropertyDetailAsync(Guid id)
     {
         return await context.Properties
@@ -114,5 +141,18 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         if (excludePropertyId.HasValue)
             query = query.Where(p => p.Id != excludePropertyId.Value);
         return await query.AnyAsync();
+    }
+
+    public async Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync()
+    {
+        return await context.CancellationPolicies
+            .AsNoTracking()
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    public async Task<bool> CancellationPolicyExistsAsync(Guid id)
+    {
+        return await context.CancellationPolicies.AnyAsync(p => p.Id == id);
     }
 }

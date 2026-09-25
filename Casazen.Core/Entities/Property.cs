@@ -1,14 +1,16 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
 [Table("Properties")]
-public class Property
+public class Property : ITenantOwned
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -43,17 +45,19 @@ public class Property
     public decimal Latitude { get; set; }
     public decimal Longitude { get; set; }
 
-    [Range(1, 100, ErrorMessage = "Bedrooms must be between 1 and 100")]
+    [Range(0, 100, ErrorMessage = "Bedrooms must be between 0 (studio) and 100")]
     public int Bedrooms { get; set; }
 
     [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
     public int Bathrooms { get; set; }
 
-    [Range(1, 100, ErrorMessage = "Max guests must be between 1 and 100")]
+    /// <summary>Short-stay guests; <c>0</c> = not set (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
+    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
     public int MaxGuests { get; set; }
 
+    /// <summary>Short-stay nightly rate; <c>0</c> = none (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
     [Precision(18, 2)]
-    [Range(0.01, 100000, ErrorMessage = "Nightly rate must be between €0.01 and €100,000")]
+    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
     public decimal NightlyRate { get; set; }
 
     [Precision(18, 2)]
@@ -73,7 +77,39 @@ public class Property
     // Italian regulatory compliance - D.L. 145/2023
     [MaxLength(25)]
     [CinCode]
-    public string? CinCode { get; set; } // Format: IT-XXXXX-XXXXXXXXXX
+    public string? CinCode { get; set; } // Normalized CIN, e.g. IT058091C27G5FFZDZ (see CinFormat)
+
+    // Cadastral identification of the unit (catasto fabbricati), used by the lease contract (LT-03, LT-10). Free text
+    // within a length: the formats are not validated beyond that (no invented patterns).
+
+    /// <summary>Foglio: also finds the canone concordato zone of comuni zoned by sheet (LT-10).</summary>
+    [MaxLength(PropertyCadastralLimits.SheetMaxLength)]
+    public string? CadastralSheet { get; set; }
+
+    /// <summary>Particella (mappale).</summary>
+    [MaxLength(PropertyCadastralLimits.ParcelMaxLength)]
+    public string? CadastralParcel { get; set; }
+
+    /// <summary>Subalterno; some units have none.</summary>
+    [MaxLength(PropertyCadastralLimits.SubalternMaxLength)]
+    public string? CadastralSubaltern { get; set; }
+
+    /// <summary>Categoria catastale as written in the visura (e.g. "A/2").</summary>
+    [MaxLength(PropertyCadastralLimits.CategoryMaxLength)]
+    public string? CadastralCategory { get; set; }
+
+    /// <summary>Rendita catastale in euros.</summary>
+    [Precision(12, 2)]
+    public decimal? CadastralIncome { get; set; }
+
+    /// <summary>
+    /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
+    /// </summary>
+    public bool HasCadastralData =>
+        !string.IsNullOrWhiteSpace(CadastralSheet)
+        && !string.IsNullOrWhiteSpace(CadastralParcel)
+        && !string.IsNullOrWhiteSpace(CadastralCategory)
+        && CadastralIncome is not null;
 
     // Timezone for booking date handling (IANA timezone ID)
     [MaxLength(50)]
@@ -90,8 +126,37 @@ public class Property
 
     public DateTime? ComplianceCompletedAt { get; set; }
 
-    /// <summary>JSON safety checklist: smokeDetector, fireExtinguisher, gasCompliance, acknowledgedAt, acknowledgedBy.</summary>
-    public string? SafetyChecklistJson { get; set; }
+    /// <summary>
+    /// UTC instant the property went from <see cref="PropertyComplianceStatus.Active"/> to
+    /// <see cref="PropertyComplianceStatus.Suspended"/> because an activation blocker appeared (CO-06, A5-20); null when
+    /// it is not suspended. Cleared by the reactivation.
+    /// </summary>
+    public DateTime? ComplianceSuspendedAt { get; set; }
+
+    /// <summary>
+    /// Stable codes of the activation blockers that suspended the property (e.g. <c>activation_cin_missing</c>,
+    /// <c>safety_confirmation_missing</c>), as they were at the suspension; null when it is not suspended.
+    /// </summary>
+    public List<string>? ComplianceSuspensionReasons { get; set; }
+
+    /// <summary>
+    /// UTC instant of the last evaluation of the status of an active or suspended property by the compliance status
+    /// service (CO-06).
+    /// Null = never evaluated: the property was published before CO-06 (backfill of A5-36 or old checklist), and its first
+    /// evaluation follows <c>Compliance:StatusCheck:NotifyOnFirstCheck</c> for the email to the host.
+    /// </summary>
+    public DateTime? ComplianceCheckedAt { get; set; }
+
+    /// <summary>
+    /// Codice fiscale of the taxpayer who lets this apartment (titolare fiscale, CO-18): the short-rental threshold and the
+    /// one 21% cedolare unit are per taxpayer, not per org (fiscale.md C4). Null: the org's own tax profile. Normalized
+    /// (16 characters, upper case). Personal data: never serialized with the property, only masked by the fiscal API.
+    /// </summary>
+    [MaxLength(16)]
+    [JsonIgnore]
+    public string? TaxpayerFiscalCode { get; set; }
+
+    // The D.L. 145/2023 safety checklist lives in PropertySafetyChecklists (CO-07): the old JSON column was migrated there.
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -101,4 +166,14 @@ public class Property
     public virtual ICollection<OtaIntegration> OtaIntegrations { get; set; } = new List<OtaIntegration>();
     public virtual ICollection<PropertyDocument> PropertyDocuments { get; set; } = new List<PropertyDocument>();
     public virtual PricingAdapterConfig? PricingAdapterConfig { get; set; }
+}
+
+/// <summary>Lengths of the cadastral fields of <see cref="Property"/> (LT-10).</summary>
+public static class PropertyCadastralLimits
+{
+    public const int SheetMaxLength = 10;
+    public const int ParcelMaxLength = 20;
+    public const int SubalternMaxLength = 10;
+    public const int CategoryMaxLength = 10;
+    public const double IncomeMax = 10_000_000;
 }

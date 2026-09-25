@@ -1,7 +1,10 @@
-﻿using System.Text.RegularExpressions;
+﻿using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Pricing;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -10,16 +13,51 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-public class PropertyService(IPropertyRepository repository, ILogger<PropertyService> logger) : IPropertyService
+/// <remarks>
+/// Every change of the CIN or of the property row (base data, city, CIN sent with the PATCH) re-evaluates the compliance
+/// status (<see cref="IPropertyComplianceStatusService.ReevaluateAsync"/>, CO-06): an active property that loses a
+/// requirement is suspended from the booking site, a suspended one whose requirements are complete again is reactivated.
+/// </remarks>
+public class PropertyService(
+    IPropertyRepository repository,
+    IPropertyComplianceStatusService complianceStatus,
+    CinDeadlineCalendar cinDeadline,
+    ILogger<PropertyService> logger,
+    TimeProvider? timeProvider = null) : IPropertyService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
+    public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
+
     public async Task<Property?> GetPropertyAsync(Guid id)
     {
         return await repository.GetByIdAsync(id);
     }
 
+    public async Task<Property?> GetPropertyRecordAsync(Guid id)
+    {
+        return await repository.GetRecordAsync(id);
+    }
+
+    public async Task<IReadOnlyList<CancellationPolicyOptionDto>> GetCancellationPoliciesAsync()
+    {
+        var policies = await repository.GetCancellationPoliciesAsync();
+        return policies
+            .Select(p => new CancellationPolicyOptionDto(
+                p.Id, p.Name, p.Description, p.FullRefundHours, p.PartialRefundPercent, p.PartialRefundHours))
+            .ToList();
+    }
+
     public async Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId)
     {
         return await repository.GetByOwnerAsync(ownerId);
+    }
+
+    public async Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        return await repository.GetByScopeAsync(scope);
     }
 
     public async Task<IEnumerable<Property>> GetAllPropertiesAsync()
@@ -30,21 +68,34 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
     public async Task<Property> CreatePropertyAsync(Property property)
     {
         logger.LogInformation("Creating property: {Name}", property.Name);
+        property.CinCode = CinFormat.Normalize(property.CinCode);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
+        await EnsureCancellationPolicyExistsAsync(property);
         return await repository.AddAsync(property);
     }
 
     public async Task<Property> UpdatePropertyAsync(Property property)
     {
         logger.LogInformation("Updating property: {Id}", property.Id);
+        property.CinCode = CinFormat.Normalize(property.CinCode);
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
             if (await repository.SlugExistsInOrgAsync(property.OrgId, property.Slug, property.Id))
-                throw new InvalidOperationException("Slug already in use within this organization.");
+                throw new DomainConflictException("duplicate_property_slug", "PropertySlugTaken");
         }
 
-        return await repository.UpdateAsync(property);
+        await EnsureCancellationPolicyExistsAsync(property);
+        var updated = await repository.UpdateAsync(property);
+        await complianceStatus.ReevaluateAsync(updated.Id);
+        return updated;
+    }
+
+    /// <summary>An unknown policy id would otherwise fail on the foreign key as a 500 (A2-04).</summary>
+    private async Task EnsureCancellationPolicyExistsAsync(Property property)
+    {
+        if (property.CancellationPolicyId is { } policyId && !await repository.CancellationPolicyExistsAsync(policyId))
+            throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
     public async Task<bool> DeletePropertyAsync(Guid id)
@@ -250,10 +301,10 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
     {
+        // 404 through the error middleware (FD-05); any other failure stays a 500, never a "not found" (A2-36).
         var property = await repository.GetPropertyDetailAsync(propertyId)
-            ?? throw new InvalidOperationException($"Property {propertyId} not found");
+            ?? throw new NotFoundException($"Property {propertyId} not found");
 
-        var now = DateTime.UtcNow;
         return new PropertyDetailResponse
         {
             Id = property.Id,
@@ -288,28 +339,42 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
                 LastSyncAt = o.LastSyncAt,
                 SyncStatus = o.SyncStatus != null && Enum.TryParse<OtaSyncStatus>(o.SyncStatus, out var status) ? status : null
             }).ToList(),
-            BookingsSummary = new BookingsSummaryDto
-            {
-                TotalBookings = property.Bookings.Count,
-                UpcomingBookings = property.Bookings.Count(b =>
-                    b.CheckInDate > now && b.Status == BookingStatus.Confirmed),
-                ActiveBookings = property.Bookings.Count(b =>
-                    b.CheckInDate <= now && b.CheckOutDate > now && b.Status == BookingStatus.CheckedIn),
-                NextCheckIn = property.Bookings
-                    .Where(b => b.CheckInDate > now)
-                    .MinBy(b => b.CheckInDate)?.CheckInDate,
-                NextCheckOut = property.Bookings
-                    .Where(b => b.CheckOutDate > now)
-                    .MinBy(b => b.CheckOutDate)?.CheckOutDate
-            },
+            BookingsSummary = BuildBookingsSummary(property.Bookings, _clock.TodayInRome()),
             PricingAdapterSummary = property.PricingAdapterConfig == null
                 ? new PricingAdapterSummaryDto()
                 : new PricingAdapterSummaryDto
                 {
                     IsEnabled = property.PricingAdapterConfig.IsEnabled,
                     LastAdaptedAt = property.PricingAdapterConfig.LastAdaptedAt,
-                    NextScheduledRunAt = property.PricingAdapterConfig.NextScheduledRunAt
+                    NextRunOn = property.PricingAdapterConfig.IsEnabled
+                        ? SeasonalSuggestionSchedule.NextRunOn(
+                            property.PricingAdapterConfig.AdaptationFrequency,
+                            property.PricingAdapterConfig.LastAdaptedAt)
+                        : null
                 }
+        };
+    }
+
+    /// <summary>
+    /// Bookings KPIs of the property detail (A2-36) on the rules of the host dashboard (<see cref="StayKpiRules"/>), so
+    /// a cancelled booking is never the next check-in and an arrival of today (Europe/Rome) is upcoming until the host
+    /// registers it, then in progress.
+    /// </summary>
+    public static BookingsSummaryDto BuildBookingsSummary(IEnumerable<Booking> bookings, DateTime todayInRome)
+    {
+        var all = bookings as IReadOnlyCollection<Booking> ?? bookings.ToList();
+        var confirmed = StayKpiRules.IsConfirmedStay().Compile();
+        var upcoming = StayKpiRules.UpcomingCheckIn(todayInRome).Compile();
+        var inProgress = StayKpiRules.InProgress(todayInRome).Compile();
+        var upcomingCheckOut = StayKpiRules.UpcomingCheckOut(todayInRome).Compile();
+
+        return new BookingsSummaryDto
+        {
+            TotalBookings = all.Count(confirmed),
+            UpcomingBookings = all.Count(upcoming),
+            ActiveBookings = all.Count(inProgress),
+            NextCheckIn = all.Where(upcoming).Select(b => (DateTime?)StayKpiRules.RomeDateOf(b.CheckInDate)).Min(),
+            NextCheckOut = all.Where(upcomingCheckOut).Select(b => (DateTime?)StayKpiRules.RomeDateOf(b.CheckOutDate)).Min(),
         };
     }
 
@@ -318,9 +383,18 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         Id = d.Id,
         FileName = d.FileName,
         FileType = ResolveFileType(d),
+        DocumentType = d.DocumentType,
         UploadedAt = d.UploadedAt,
-        DownloadUrl = d.StorageUrl
+        ApeCode = d.DocumentType == DocumentType.Ape ? d.ApeCode : null,
+        ApeEnergyClass = d.DocumentType == DocumentType.Ape ? d.ApeEnergyClass : null,
+        // Documents live in the private bucket: the only way to read one is the authenticated
+        // download endpoint (bearer token + tenant/ownership check), never the storage reference.
+        DownloadUrl = DocumentDownloadPath(d.PropertyId, d.Id)
     };
+
+    /// <summary>API path (relative to the API base URL) of the authenticated document download.</summary>
+    public static string DocumentDownloadPath(Guid propertyId, Guid documentId) =>
+        $"/api/properties/{propertyId}/documents/{documentId}/download";
 
     private static string ResolveFileType(PropertyDocument document)
     {
@@ -333,13 +407,7 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         return document.DocumentType.ToString();
     }
 
-    private static readonly Regex CinRegex = new(@"^IT-\d{5}-\d{10}$", RegexOptions.Compiled);
-
-    internal static CinStatus ResolveCinStatus(string? cinCode)
-    {
-        if (string.IsNullOrWhiteSpace(cinCode)) return CinStatus.Missing;
-        return CinRegex.IsMatch(cinCode) ? CinStatus.Valid : CinStatus.Invalid;
-    }
+    internal static CinStatus ResolveCinStatus(string? cinCode) => CinFormat.GetStatus(cinCode);
 
     public async Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(
         string ownerId, string? cinStatus, int page, int pageSize)
@@ -361,14 +429,12 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         var valid = items.Count(i => i.CinStatus == "valid");
         var missing = items.Count(i => i.CinStatus == "missing");
         var invalid = items.Count(i => i.CinStatus == "invalid");
-        var daysUntilDeadline = CinComplianceRules.DaysUntilDeadline();
 
         var summary = new CinComplianceSummary(
             Valid: valid,
             Missing: missing,
             Invalid: invalid,
-            DaysUntilDeadline: daysUntilDeadline,
-            Deadline: CinComplianceRules.RegulatoryDeadline,
+            Deadline: cinDeadline.Today(),
             HasNonCompliant: missing + invalid > 0);
 
         IEnumerable<OwnerCinComplianceItem> filtered = items;
@@ -389,24 +455,39 @@ public class PropertyService(IPropertyRepository repository, ILogger<PropertySer
         var property = await repository.GetByIdAsync(propertyId)
             ?? throw new KeyNotFoundException($"Property {propertyId} not found");
 
-        var normalized = string.IsNullOrWhiteSpace(cinCode) ? null : cinCode.Trim();
+        var normalized = CinFormat.Normalize(cinCode);
 
         if (normalized != null)
         {
-            if (!CinRegex.IsMatch(normalized))
-            {
-                throw new ArgumentException(
-                    "CIN code must match format IT-XXXXX-XXXXXXXXXX (e.g., IT-12345-0123456789).");
-            }
+            if (!CinFormat.IsValid(normalized))
+                throw new DomainRuleException(CinFormat.InvalidFormatCode, CinFormat.InvalidFormatMessageKey);
 
             if (await repository.CinCodeExistsOnOtherPropertyAsync(normalized, propertyId))
-            {
-                throw new InvalidOperationException("CIN code is already assigned to another property.");
-            }
+                throw new DomainConflictException("duplicate_cin", "CinAlreadyAssigned");
         }
 
         property.CinCode = normalized;
         await repository.UpdateAsync(property);
+        // A removed CIN suspends an active property (CO-06, A5-20); a valid CIN entered again reactivates a suspended one
+        // whose other requirements are complete.
+        await complianceStatus.ReevaluateAsync(propertyId);
+    }
+
+    public async Task UpdateCadastralDataAsync(Guid propertyId, PropertyCadastralData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        var property = await repository.GetByIdAsync(propertyId)
+            ?? throw new KeyNotFoundException($"Property {propertyId} not found");
+
+        property.CadastralSheet = Clean(data.Sheet);
+        property.CadastralParcel = Clean(data.Parcel);
+        property.CadastralSubaltern = Clean(data.Subaltern);
+        property.CadastralCategory = Clean(data.Category)?.ToUpperInvariant();
+        property.CadastralIncome = data.Income;
+        property.UpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(property);
+
+        static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private async Task<string> ResolveSlugForCreateAsync(Guid orgId, string name, string? requestedSlug)

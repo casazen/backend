@@ -4,27 +4,61 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Tests.Integration.Postgres;
+using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Npgsql;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// WebApplicationFactory for integration tests — in-memory EF, test auth, mocked Hangfire.
+/// WebApplicationFactory for integration tests — real PostgreSQL, test auth, mocked Hangfire.
+/// Each factory instance gets its own database (<c>it_&lt;guid&gt;</c>) on the server resolved by
+/// <see cref="PostgresTestServer"/>, with every EF migration applied through <c>Database.Migrate()</c>;
+/// the database is dropped when the factory is disposed. Only when no PostgreSQL is available on a
+/// local run does it fall back to EF InMemory, with a warning (never on CI). See FD-04 / A9-11.
 /// </summary>
 public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
+    private static int _inMemoryWarningWritten;
+
+    /// <summary>In-memory key ring shared by all the test hosts of the process (see <see cref="ConfigureWebHost"/>).</summary>
+    public static IDataProtectionProvider SharedDataProtectionProvider { get; } = new EphemeralDataProtectionProvider();
+
+    private readonly object _databaseLock = new();
+    private PostgresTestDatabase? _database;
+
+    public CasazenWebApplicationFactory()
+    {
+        UsesPostgreSql = ResolveUsesPostgreSql();
+    }
+
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
+
+    /// <summary>True when the app runs on a dedicated PostgreSQL database; false only for the local InMemory fallback.</summary>
+    public bool UsesPostgreSql { get; }
+
+    /// <summary>Name of the dedicated PostgreSQL database, once the host has been created.</summary>
+    public string? DatabaseName => _database?.DatabaseName;
+
+    /// <summary>
+    /// Root of the filesystem storage provider used by the Testing host (FD-07): a throw-away temp
+    /// folder per factory, deleted on dispose, instead of the Web project's App_Data.
+    /// </summary>
+    public string StorageRoot { get; } = Path.Combine(Path.GetTempPath(), "casazen-it-storage", Guid.NewGuid().ToString("N"));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -45,6 +79,13 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["DirectBooking:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "1000",
+                // Requests without a test peer share one partition: keep the per-IP limits out of the way (FD-10).
+                ["RateLimiting:PublicRead:PermitLimit"] = "1000",
+                ["RateLimiting:PublicBookingLookup:PermitLimit"] = "1000",
+                ["RateLimiting:PublicGuestBookingLookup:PermitLimit"] = "1000",
+                ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "1000",
+                ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
+                ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
@@ -54,7 +95,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
                 ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
+                // Base domain of the org subdomains: no default in code (D3, SE-03), the tests configure one.
+                ["PublicHost:BaseDomain"] = "casazen.it",
                 ["App:ApiBaseUrl"] = "https://casazen-api-test.up.railway.app",
+                ["Storage:Provider"] = "FileSystem",
+                ["Storage:FileSystem:RootPath"] = StorageRoot,
                 ["Legal:Documents:Tos:Version"] = "2026-06-v1",
                 ["Legal:Documents:Privacy:Version"] = "2026-06-v1",
                 ["Legal:Documents:Dpa:Version"] = "2026-06-v1",
@@ -73,29 +118,26 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Legal:Documents:Subprocessors:Items:3:Region"] = "EU",
                 ["Compliance:CinGuidanceUrl"] = "https://www.bdsr.it/cin",
                 ["Compliance:CheckoutReminderHourLocal"] = "20",
-                ["Compliance:GdprRetentionYears"] = "7",
                 ["Compliance:RequiredDocuments:default:0"] = "CinCertificate",
-                ["Compliance:RequiredDocuments:default:1"] = "SafetyCompliance",
                 ["CheckIn:RateLimitPermitLimit"] = "100",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "100",
                 ["ESign:WebhookSecret"] = "esign-test-secret",
                 ["Stripe:WebhookSecret"] = "whsec_test_casazen_integration",
                 ["Rli:TosVersion"] = "2026-08-rli-delega-bozza",
-                ["LeaseTemplates:Variants:CedolareSecca:VersionId"] = "dev-stub",
-                ["LeaseTemplates:Variants:CedolareSecca:Approved"] = "true",
-                ["LeaseTemplates:Variants:RegimeOrdinario:VersionId"] = "dev-stub",
-                ["LeaseTemplates:Variants:RegimeOrdinario:Approved"] = "true",
-                ["LeaseTemplates:Variants:CanoneConcordato:VersionId"] = "dev-stub",
-                ["LeaseTemplates:Variants:CanoneConcordato:Approved"] = "true",
             });
         });
 
         builder.ConfigureTestServices(services =>
         {
-            RemoveService<IPublicHolidayService>(services);
-            var holidayMock = new Mock<IPublicHolidayService>();
-            holidayMock.Setup(h => h.IsPublicHolidayAsync(It.IsAny<DateTime>())).ReturnsAsync(false);
-            services.AddScoped(_ => holidayMock.Object);
+            if (UsesPostgreSql)
+                UseDedicatedPostgresDatabase(services);
+
+            // One Data Protection provider for every test host of the process (PC-11): the EF model is cached per
+            // provider (DataProtectionModelCacheKeyFactory), so the hosts share one model instead of building one each,
+            // and a value encrypted by one host can be read by another. Production has a single host, so a single
+            // provider (docs/runbooks/ical.md).
+            RemoveAllOf<IDataProtectionProvider>(services);
+            services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
 
             RemoveService<IBackgroundJobClient>(services);
             BackgroundJobClientMock
@@ -144,7 +186,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     public HttpClient CreateAuthenticatedClient(
         string userId = TestAuthHandler.DefaultUserId,
         string? roles = null,
-        string? email = null)
+        string? email = null,
+        bool? emailVerified = null)
     {
         var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthHandler.SchemeName, "test");
@@ -153,6 +196,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             client.DefaultRequestHeaders.Add("X-Test-Roles", roles);
         if (!string.IsNullOrWhiteSpace(email))
             client.DefaultRequestHeaders.Add("X-Test-Email", email);
+        if (emailVerified is bool verified)
+            client.DefaultRequestHeaders.Add("X-Test-Email-Verified", verified ? "true" : "false");
         return client;
     }
 
@@ -194,19 +239,20 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     /// <summary>
     /// Finds or creates the default <see cref="Org"/> for an owner and ensures the owner's
     /// <see cref="User"/> row carries its <c>OrgId</c>, so the tenant query filter makes seeded
-    /// rows visible to the authenticated owner (US-004). Returns the owner's org.
+    /// rows visible to the authenticated owner (US-004). The owner is a host who completed the onboarding with the
+    /// current consents (PL-02, <see cref="HostOnboardingSeed"/>). Returns the owner's org.
     /// </summary>
     public async Task<OrgEntity> SeedOrgForOwnerAsync(string ownerId = TestAuthHandler.DefaultUserId)
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var org = await EnsureOrgAsync(db, ownerId);
+        var org = await EnsureOrgAsync(db, ownerId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
 
         try
         {
             await db.SaveChangesAsync();
         }
-        catch (ArgumentException ex) when (ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (IsDuplicateKey(ex))
         {
             // Parallel test already seeded the same user/org — re-query for committed values
             db.ChangeTracker.Clear();
@@ -219,7 +265,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         return org;
     }
 
-    private static async Task<OrgEntity> EnsureOrgAsync(AppDbContext db, string ownerId)
+    // InMemory reports a duplicate key as ArgumentException; PostgreSQL as a unique violation (23505).
+    private static bool IsDuplicateKey(Exception ex) =>
+        (ex is ArgumentException && ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
+        || ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } };
+
+    private static async Task<OrgEntity> EnsureOrgAsync(AppDbContext db, string ownerId, ILegalDocumentService legal)
     {
         var slug = $"test-org-{ownerId}";
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Slug == slug);
@@ -240,46 +291,97 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == ownerId);
         if (user is null)
         {
-            db.Users.Add(new User
+            user = new User
             {
                 Id = ownerId,
                 Email = $"{Guid.NewGuid():N}@example.com",
                 FirstName = "Test",
                 LastName = "Owner",
                 OrgId = org.Id,
+                Role = UserRole.PropertyOwner,
                 IsActive = true,
-            });
+            };
+            db.Users.Add(user);
         }
         else if (user.OrgId is null)
         {
             user.OrgId = org.Id;
         }
 
+        if (user.Role == UserRole.None)
+            user.Role = UserRole.PropertyOwner;
+
+        await HostOnboardingSeed.MarkOnboardedAsync(db, user, user.OrgId ?? org.Id, legal);
         return org;
     }
 
-    public async Task SeedPricingHistoryAsync(Guid propertyId, int count = 3)
+    public override async ValueTask DisposeAsync()
     {
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await base.DisposeAsync();
 
-        for (var i = 0; i < count; i++)
+        try
         {
-            db.PricingHistories.Add(new PricingHistory
-            {
-                PropertyId = propertyId,
-                AdaptationDate = DateTime.UtcNow.AddDays(-i),
-                PreviousPrice = 100m,
-                NewPrice = 110m + i,
-                ChangeReason = $"Adaptation {i + 1}",
-                AiConfidence = 0.85m,
-                OtasSynced = "airbnb",
-                SyncStatus = "Synced",
-                CreatedAt = DateTime.UtcNow.AddDays(-i),
-            });
+            if (Directory.Exists(StorageRoot))
+                Directory.Delete(StorageRoot, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best effort: a leftover temp folder must not fail the test run.
         }
 
-        await db.SaveChangesAsync();
+        PostgresTestDatabase? database;
+        lock (_databaseLock)
+            database = _database;
+
+        if (database is not null)
+            await database.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Replaces the app's DbContext registration (InMemory, because the test host runs without a
+    /// connection string so Hangfire and startup migration stay off) with the same Npgsql setup the
+    /// app uses in production, pointed at this factory's migrated database.
+    /// </summary>
+    private void UseDedicatedPostgresDatabase(IServiceCollection services)
+    {
+        var database = EnsureDatabase();
+
+        RemoveAllOf<DbContextOptions<AppDbContext>>(services);
+        RemoveAllOf<IDbContextOptionsConfiguration<AppDbContext>>(services);
+        services.AddCasazenDatabase(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = database.ConnectionString,
+            })
+            .Build());
+    }
+
+    private PostgresTestDatabase EnsureDatabase()
+    {
+        lock (_databaseLock)
+            return _database ??= PostgresTestDatabase.CreateMigrated();
+    }
+
+    private static bool ResolveUsesPostgreSql()
+    {
+        if (PostgresTestServer.UnavailableReason is not { } reason)
+            return true;
+
+        if (PostgresTestServer.IsContinuousIntegration)
+        {
+            throw new InvalidOperationException(
+                $"Integration tests must run on PostgreSQL in CI: {reason}. Set {PostgresTestServer.ConnectionVariable}.");
+        }
+
+        if (Interlocked.Exchange(ref _inMemoryWarningWritten, 1) == 0)
+        {
+            Console.Error.WriteLine(
+                $"WARNING: integration tests are falling back to EF InMemory ({reason}). " +
+                "InMemory does not enforce FKs, unique indexes, timestamptz or transactions: " +
+                $"set {PostgresTestServer.ConnectionVariable} or start Docker to run them on PostgreSQL.");
+        }
+
+        return false;
     }
 
     protected static void RemoveService<T>(IServiceCollection services)

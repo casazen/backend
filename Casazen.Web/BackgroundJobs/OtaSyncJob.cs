@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
@@ -21,6 +22,7 @@ public class OtaSyncJob
     /// Synchronizes all platforms for a specific property
     /// </summary>
     /// <param name="propertyId">Property ID to sync</param>
+    [DisableConcurrentExecution("OtaSyncJob.ExecuteAsync:{0}", JobLockTimeouts.DefaultSeconds)] // one sync per property at a time
     public async Task ExecuteAsync(Guid propertyId)
     {
         try
@@ -42,35 +44,6 @@ public class OtaSyncJob
         {
             _logger.LogError(ex, "OTA sync failed for property {PropertyId}", propertyId);
             throw; // Re-throw to let Hangfire handle retry logic
-        }
-    }
-
-    /// <summary>
-    /// Synchronizes a specific platform for a property
-    /// </summary>
-    /// <param name="platform">Platform name (e.g., "airbnb", "booking")</param>
-    /// <param name="externalId">External property ID on the platform</param>
-    public async Task ExecutePlatformSyncAsync(string platform, string externalId)
-    {
-        try
-        {
-            _logger.LogInformation("Starting {Platform} sync for external ID {ExternalId}", platform, externalId);
-
-            var success = await _otaManager.SyncPlatformAsync(platform, externalId);
-
-            if (success)
-            {
-                _logger.LogInformation("{Platform} sync completed successfully for {ExternalId}", platform, externalId);
-            }
-            else
-            {
-                _logger.LogWarning("{Platform} sync completed with errors for {ExternalId}", platform, externalId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "{Platform} sync failed for {ExternalId}", platform, externalId);
-            throw;
         }
     }
 }

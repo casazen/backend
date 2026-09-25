@@ -1,7 +1,9 @@
-using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
+using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Hangfire;
 using Hangfire.Storage;
@@ -12,9 +14,11 @@ namespace Casazen.Infrastructure.Services;
 
 public class AdminService(
     AppDbContext dbContext,
-    ILogger<AdminService> logger) : IAdminService
+    ILogger<AdminService> logger,
+    TimeProvider? timeProvider = null) : IAdminService
 {
-    private const string CinPattern = @"^IT-\d{5}-\d{10}$";
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private static readonly TimeSpan OtaSyncThreshold = TimeSpan.FromHours(6);
 
     /// <summary>
@@ -35,8 +39,8 @@ public class AdminService(
         var now = DateTime.UtcNow;
         var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Platform-wide admin read (AdminOnly). The EF global tenant filter scopes the four tenant
-        // tables to the caller's org; admins typically have no org, so the dashboard would silently
+        // Platform-wide admin read (AdminOnly). The EF global tenant filter scopes every tenant
+        // table to the caller's org; admins typically have no org, so the dashboard would silently
         // go empty. Per design §Security Notes this AdminOnly path BYPASSES the filter with
         // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
@@ -47,16 +51,18 @@ public class AdminService(
         var activeProperties = allProperties.Count(p => p.IsActive);
 
         // CIN compliance
-        var cinValid = allProperties.Count(p => !string.IsNullOrWhiteSpace(p.CinCode) && Regex.IsMatch(p.CinCode, CinPattern));
-        var cinMissing = allProperties.Count(p => string.IsNullOrWhiteSpace(p.CinCode));
-        var cinInvalid = allProperties.Count(p => !string.IsNullOrWhiteSpace(p.CinCode) && !Regex.IsMatch(p.CinCode, CinPattern));
+        var cinValid = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Valid);
+        var cinMissing = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Missing);
+        var cinInvalid = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Invalid);
         var cinTotal = totalProperties;
 
         // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
         var totalBookings = await dbContext.Bookings.IgnoreQueryFilters().CountAsync();
         var bookingsThisMonth = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b => b.CreatedAt >= startOfMonth);
+        // Check-in is date-only: compared with today's date in Europe/Rome, not with the UTC instant (QA-CLOCK).
+        var today = _clock.TodayInRome();
         var upcomingCheckIns = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b =>
-            b.Status == BookingStatus.Confirmed && b.CheckInDate >= now);
+            b.Status == BookingStatus.Confirmed && b.CheckInDate > today);
 
         // Revenue — sum of completed payments (filter bypassed — platform-wide)
         var totalRevenue = await dbContext.Payments
@@ -65,11 +71,12 @@ public class AdminService(
             .SumAsync(p => (decimal?)p.Amount) ?? 0m;
 
         // OTA sync health — server-side aggregates; DateTime.MinValue means never synced
+        // (filter bypassed — platform-wide; OtaIntegrations is tenant-scoped since TN-2)
         var otaSyncCutoff = now - OtaSyncThreshold;
-        var otaNever = await dbContext.OtaIntegrations.CountAsync(o => o.LastSyncAt == default);
-        var otaSynced = await dbContext.OtaIntegrations.CountAsync(o =>
+        var otaNever = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o => o.LastSyncAt == default);
+        var otaSynced = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o =>
             o.LastSyncAt != default && o.LastSyncAt >= otaSyncCutoff);
-        var otaFailed = await dbContext.OtaIntegrations.CountAsync(o =>
+        var otaFailed = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o =>
             o.LastSyncAt != default && o.LastSyncAt < otaSyncCutoff);
 
         return new AdminStats(
@@ -113,9 +120,7 @@ public class AdminService(
 
         IEnumerable<CinComplianceItem> items = properties.Select(p =>
         {
-            var status = string.IsNullOrWhiteSpace(p.CinCode) ? "missing"
-                : Regex.IsMatch(p.CinCode, CinPattern) ? "valid"
-                : "invalid";
+            var status = CinComplianceRules.ResolveStatus(p.CinCode);
 
             return new CinComplianceItem(
                 PropertyId: p.Id,

@@ -1,9 +1,12 @@
+using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Property = Casazen.Core.Entities.Property;
 using AppContextEntity = Casazen.Core.Entities.AppContext;
 
@@ -12,11 +15,23 @@ namespace Casazen.Infrastructure.Data;
 public class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ITenantContext? tenantContext = null,
-    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options)
+    IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options), IDataProtectionKeyContext
 {
     // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
     // no-op (filter disabled) for design-time, background jobs, and unit tests.
     private readonly ITenantContext _tenant = tenantContext ?? NullTenantContext.Instance;
+
+    /// <summary>
+    /// Provider of the encrypted columns' converters; part of the model cache key
+    /// (<see cref="DataProtectionModelCacheKeyFactory"/>), so a context never encrypts with another context's provider.
+    /// </summary>
+    internal IDataProtectionProvider? EncryptionProvider { get; } = dataProtectionProvider;
+
+    /// <summary>
+    /// ASP.NET Core Data Protection key ring (FD-07, A9-04): persisted here instead of the container
+    /// filesystem so encrypted secrets stay readable after a redeploy. Not tenant data.
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
@@ -24,19 +39,39 @@ public class AppDbContext(
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
+    public DbSet<PaymentRefund> PaymentRefunds { get; set; } = null!;
     public DbSet<PropertyFiscalYear> PropertyFiscalYears { get; set; } = null!;
     public DbSet<OtaIntegration> OtaIntegrations { get; set; } = null!;
     public DbSet<TouristTaxRate> TouristTaxRates { get; set; } = null!;
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
+
+    // Stages of the host alerts already sent per stay (CO-10)
+    public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
+
+    // Check-out of a stay: wizard progress and what the host declared (CO-17)
+    public DbSet<StayCheckout> StayCheckouts { get; set; } = null!;
+
+    // Stage of the CIN alert already sent per property (CO-20)
+    public DbSet<CinAlertState> CinAlertStates { get; set; } = null!;
+
+    // D.L. 145/2023 safety checklist of a short-stay property (CO-07)
+    public DbSet<PropertySafetyChecklist> PropertySafetyChecklists { get; set; } = null!;
+    public DbSet<PropertySafetyChecklistItem> PropertySafetyChecklistItems { get; set; } = null!;
+
+    // Guests of a stay and official Alloggiati code tables (CO-12)
+    public DbSet<StayGuest> StayGuests { get; set; } = null!;
+    public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
+    public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
-    public DbSet<TaxRate> TaxRates { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
+    public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
+    public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
@@ -46,12 +81,12 @@ public class AppDbContext(
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
-    public DbSet<SupplierJob> SupplierJobs { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
+    public DbSet<PropertyICalExport> PropertyICalExports { get; set; } = null!;
 
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
@@ -59,10 +94,15 @@ public class AppDbContext(
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
+    // Push messages per event and device, with their Expo ticket (MO-04)
+    public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
     public DbSet<HighTensionAreaComune> HighTensionAreaComuni { get; set; } = null!;
+    public DbSet<ComuneImuChannel> ComuneImuChannels { get; set; } = null!;
+    public DbSet<RegulatoryDataAuditEntry> RegulatoryDataAuditEntries { get; set; } = null!;
 
     // Long-term lease
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
@@ -70,13 +110,29 @@ public class AppDbContext(
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
     public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
+    public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
+    public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
+    public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
+    public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+
+        // FD-06: every DateTime is UTC in and out of PostgreSQL timestamptz columns.
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeValueConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<UtcDateTimeValueConverter>();
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.ReplaceService<IModelCacheKeyFactory, DataProtectionModelCacheKeyFactory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -118,20 +174,132 @@ public class AppDbContext(
             .HasForeignKey(r => r.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<PropertyQuesturaCredentials>()
-            .HasOne(c => c.Property)
+        // CO-11: "Inviato" only with a real receipt, never as a simulation.
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_AlloggiatiWebReports_SentRequiresReceipt",
+                $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
+
+        // CO-10: the alert stages of a stay go with it.
+        modelBuilder.Entity<StayAlertState>()
+            .HasOne(s => s.Booking)
             .WithMany()
-            .HasForeignKey(c => c.PropertyId)
+            .HasForeignKey(s => s.BookingId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<PropertyQuesturaCredentials>()
-            .HasIndex(c => c.PropertyId)
-            .IsUnique();
+        // CO-17: the check-out of a stay goes with it; its cleaning request survives it as a plain request.
+        modelBuilder.Entity<StayCheckout>(entity =>
+        {
+            entity.HasOne(c => c.Booking)
+                .WithMany()
+                .HasForeignKey(c => c.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.CleaningRequest)
+                .WithMany()
+                .HasForeignKey(c => c.CleaningRequestId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
 
+        // CO-20: the CIN alert stage of a property goes with it.
+        modelBuilder.Entity<CinAlertState>()
+            .HasOne(s => s.Property)
+            .WithMany()
+            .HasForeignKey(s => s.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
+        modelBuilder.Entity<StayGuest>(entity =>
+        {
+            entity.HasOne(s => s.Booking)
+                .WithMany(b => b.StayGuests)
+                .HasForeignKey(s => s.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(s => s.Guest)
+                .WithMany()
+                .HasForeignKey(s => s.GuestId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(s => s.OrgId);
+            entity.HasIndex(s => s.GuestId);
+        });
+
+        // CO-15: privacy history of a guest (notice presented, marketing consent), removed with the guest record.
+        modelBuilder.Entity<GuestConsentRecord>(entity =>
+        {
+            entity.HasOne(r => r.Guest)
+                .WithMany()
+                .HasForeignKey(r => r.GuestId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(r => r.OrgId);
+            entity.HasIndex(r => new { r.GuestId, r.Purpose, r.RecordedAt });
+        });
+
+        // CO-15: audit of the operations on guest data; no foreign key to the guest, so it outlives a removed guest.
+        modelBuilder.Entity<GuestPrivacyAuditEntry>(entity =>
+        {
+            entity.HasOne<Org>().WithMany().HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(a => a.OrgId);
+            entity.HasIndex(a => new { a.GuestId, a.OccurredAt });
+        });
+
+        // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
+        // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
+        modelBuilder.Entity<PropertySafetyChecklist>(entity =>
+        {
+            entity.HasOne(c => c.Property)
+                .WithOne()
+                .HasForeignKey<PropertySafetyChecklist>(c => c.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(c => c.PropertyId).IsUnique();
+            entity.HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.OrgId);
+            entity.HasMany(c => c.Items)
+                .WithOne(i => i.Checklist)
+                .HasForeignKey(i => i.ChecklistId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PropertySafetyChecklistItem>(entity =>
+        {
+            entity.HasIndex(i => new { i.ChecklistId, i.Code }).IsUnique();
+            entity.HasOne(i => i.EvidenceDocument)
+                .WithMany()
+                .HasForeignKey(i => i.EvidenceDocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(i => i.EvidenceDocumentId);
+            entity.HasOne<Org>().WithMany().HasForeignKey(i => i.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(i => i.OrgId);
+        });
+
+        modelBuilder.Entity<AlloggiatiCodeEntry>()
+            .HasOne(e => e.Import)
+            .WithMany()
+            .HasForeignKey(e => e.ImportId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
+        modelBuilder.Entity<PropertyQuesturaCredentials>(entity =>
+        {
+            entity.HasOne(c => c.Property)
+                .WithMany()
+                .HasForeignKey(c => c.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(c => c.PropertyId).IsUnique();
+            entity.HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.OrgId);
+        });
+
+        // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
-            .HasIndex(b => b.CheckInToken)
-            .IsUnique()
-            .HasFilter("\"CheckInToken\" IS NOT NULL");
+            .HasIndex(b => new { b.OrgId, b.BookingCode })
+            .IsUnique();
 
         // Precision for GPS coordinates
         modelBuilder.Entity<Property>()
@@ -163,25 +331,42 @@ public class AppDbContext(
         modelBuilder.Entity<Booking>().HasIndex(b => b.CheckInDate);
         modelBuilder.Entity<Booking>().HasIndex(b => b.Status);
         modelBuilder.Entity<Payment>().HasIndex(p => p.BookingId);
+
+        // Refunds on Stripe (BK-02): one row per Stripe refund, one Stripe request per row (idempotency key).
+        modelBuilder.Entity<PaymentRefund>(refund =>
+        {
+            refund.HasIndex(r => r.PaymentId);
+            refund.HasIndex(r => r.OrgId);
+            refund.HasIndex(r => r.StripeRefundId)
+                .IsUnique()
+                .HasFilter("\"StripeRefundId\" IS NOT NULL");
+            refund.HasIndex(r => r.IdempotencyKey).IsUnique();
+            refund.HasOne(r => r.Payment)
+                .WithMany()
+                .HasForeignKey(r => r.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
 
-        if (dataProtectionProvider is not null)
-        {
-            var encryptedConverter = new EncryptedStringConverter(
-                dataProtectionProvider,
-                "Casazen.OtaIntegration.Secrets");
-
-            modelBuilder.Entity<OtaIntegration>()
-                .Property(o => o.ApiKey)
-                .HasConversion(encryptedConverter);
-
-            modelBuilder.Entity<OtaIntegration>()
-                .Property(o => o.ApiSecret)
-                .HasConversion(encryptedConverter);
-        }
+        // Every encrypted column (OTA secrets, iCal import URLs, guest identity documents, Questura credentials) is
+        // declared and configured in one place, EncryptedColumns, with the Data Protection value converter
+        // (PC-11, CO-14, docs/runbooks/encryption.md).
+        if (EncryptionProvider is not null)
+            EncryptedColumns.Configure(modelBuilder, EncryptionProvider);
 
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
         modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
+        modelBuilder.Entity<TouristTaxRate>()
+            .Property(t => t.VerificationLevel)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.IstatCode);
+        modelBuilder.Entity<TouristTaxRate>()
+            .Property(t => t.CalculationMethod)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .HasDefaultValue(TouristTaxCalculationMethod.PerPersonPerNight)
+            .HasSentinel((TouristTaxCalculationMethod)(-1));
 
         modelBuilder.Entity<SeoContentPage>()
             .HasIndex(p => new { p.ComuneCode, p.PageType })
@@ -195,6 +380,43 @@ public class AppDbContext(
             .WithMany(p => p.Revisions)
             .HasForeignKey(r => r.PageId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // SE-01: the public sees only the approved revision; deleting it makes the page non-public.
+        modelBuilder.Entity<SeoContentPage>()
+            .HasOne(p => p.PublishedRevision)
+            .WithMany()
+            .HasForeignKey(p => p.PublishedRevisionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<SeoContentRevision>()
+            .Property(r => r.ContentStatus)
+            .HasConversion<string>()
+            .HasMaxLength(40)
+            .HasDefaultValue(SeoContentStatus.Generated)
+            .HasSentinel((SeoContentStatus)(-1));
+
+        modelBuilder.Entity<SeoContentRevision>()
+            .HasIndex(r => new { r.PageId, r.GeneratedAt });
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .Property(e => e.Action)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .HasOne<SeoContentPage>()
+            .WithMany()
+            .HasForeignKey(e => e.PageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .HasOne<SeoContentRevision>()
+            .WithMany()
+            .HasForeignKey(e => e.RevisionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .HasIndex(e => new { e.PageId, e.OccurredAt });
 
         modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
 
@@ -217,6 +439,21 @@ public class AppDbContext(
 
         modelBuilder.Entity<PricingHistory>()
             .HasIndex(h => new { h.PropertyId, h.AdaptationDate });
+
+        // PC-15: one seasonal suggestion per property and stay date, regenerated in place (upsert by date).
+        modelBuilder.Entity<SeasonalPriceSuggestion>(entity =>
+        {
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(s => s.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(s => new { s.PropertyId, s.StayDate }).IsUnique();
+            entity.HasIndex(s => s.OrgId);
+            entity.Property(s => s.Rule).HasConversion<string>();
+            entity.Property(s => s.Holiday).HasConversion<string>();
+        });
 
         // PropertyDocument → Property
         modelBuilder.Entity<PropertyDocument>()
@@ -245,6 +482,10 @@ public class AppDbContext(
             .Property(l => l.MonthlyRent)
             .HasPrecision(18, 2);
 
+        // Canone concordato characteristics and range of the lease (LT-10): same table, optional.
+        modelBuilder.Entity<LeaseContract>().OwnsOne(l => l.ConcordatoAssessment);
+        modelBuilder.Entity<LeaseContract>().Navigation(l => l.ConcordatoAssessment).IsRequired(false);
+
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
 
@@ -269,6 +510,12 @@ public class AppDbContext(
             .HasIndex(r => r.LeaseContractId)
             .IsUnique();
 
+        // LT-01 (A7-01): "Registered" only with the official receipt stored, never as a simulation.
+        modelBuilder.Entity<LeaseRegistration>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_LeaseRegistrations_RegisteredRequiresReceipt",
+                $"\"Status\" <> {(int)RegistrationStatus.Registered} OR btrim(coalesce(\"ReceiptStoragePath\", '')) <> ''"));
+
         // LeaseEvent → LeaseContract (cascade)
         modelBuilder.Entity<LeaseEvent>()
             .HasOne(e => e.LeaseContract)
@@ -278,6 +525,26 @@ public class AppDbContext(
 
         modelBuilder.Entity<LeaseEvent>()
             .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
+
+        // LeaseSigner (LT-02, A7-16): one row per party and lease, removed with the lease or the party.
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.LeaseContract)
+            .WithMany(l => l.Signers)
+            .HasForeignKey(s => s.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.Party)
+            .WithMany()
+            .HasForeignKey(s => s.PartyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasOne(s => s.Org)
+            .WithMany()
+            .HasForeignKey(s => s.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<LeaseSigner>()
+            .HasIndex(s => new { s.LeaseContractId, s.PartyId })
+            .IsUnique();
 
         modelBuilder.Entity<LeaseRegistrationAuthorization>()
             .HasOne(a => a.LeaseContract)
@@ -292,8 +559,6 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseRegistrationAuthorization>()
             .HasIndex(a => a.LeaseContractId);
         modelBuilder.Entity<LeaseRegistrationAuthorization>().HasIndex(a => a.OrgId);
-        modelBuilder.Entity<LeaseRegistrationAuthorization>()
-            .HasQueryFilter(a => !_tenant.FilterEnabled || a.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<RentSchedule>()
             .HasOne(s => s.LeaseContract)
@@ -418,6 +683,13 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.OrgId);
         modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
         modelBuilder.Entity<User>().HasIndex(u => u.OrgId);
+        modelBuilder.Entity<Guest>().HasIndex(g => g.OrgId);
+        // TN-2: child rows that controllers expose carry their parent's OrgId.
+        modelBuilder.Entity<PropertyDocument>().HasIndex(d => d.OrgId);
+        modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.OrgId);
+        modelBuilder.Entity<PricingAdapterConfig>().HasIndex(c => c.OrgId);
+        modelBuilder.Entity<PricingHistory>().HasIndex(h => h.OrgId);
+        modelBuilder.Entity<AlloggiatiWebReport>().HasIndex(r => r.OrgId);
 
         // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
         // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
@@ -442,10 +714,10 @@ public class AppDbContext(
         modelBuilder.Entity<PropertyFiscalYear>()
             .HasIndex(y => new { y.PropertyId, y.TaxYear })
             .IsUnique();
+        // No unique "one primary per org and year" index any more: the 21% unit is one per taxpayer (CO-18), and one org
+        // can manage several taxpayers. FiscalService checks it under the OrgFiscalRegime advisory lock.
         modelBuilder.Entity<PropertyFiscalYear>()
-            .HasIndex(y => new { y.OrgId, y.TaxYear })
-            .IsUnique()
-            .HasFilter("\"IsPrimaryForCedolare\" = TRUE");
+            .HasIndex(y => new { y.OrgId, y.TaxYear });
         modelBuilder.Entity<PropertyFiscalYear>().HasIndex(y => y.OrgId);
         modelBuilder.Entity<Payment>()
             .Property(p => p.OtaWithholdingTax)
@@ -456,17 +728,33 @@ public class AppDbContext(
         modelBuilder.Entity<User>()
             .HasOne(u => u.Org).WithMany().HasForeignKey(u => u.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        // Global tenant query filter (AC7): every read of a tenant-scoped table is scoped
-        // to the caller's OrgId. Fail-closed when the caller has no org; disabled for
-        // anonymous/system contexts (background jobs, design-time, unit tests).
-        modelBuilder.Entity<Property>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<Booking>().HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<LeaseContract>().HasQueryFilter(l => !_tenant.FilterEnabled || l.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<Payment>().HasQueryFilter(p => !_tenant.FilterEnabled || p.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<PropertyFiscalYear>().HasQueryFilter(y => !_tenant.FilterEnabled || y.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<RentSchedule>().HasQueryFilter(s => !_tenant.FilterEnabled || s.OrgId == _tenant.OrgId);
-        modelBuilder.Entity<RentLedgerEntry>().HasQueryFilter(e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
+        // TN-1: a guest belongs to exactly one org. No unique (OrgId, lower(Email)) index: host and
+        // direct bookings store one guest snapshot per booking (#431), so one org legitimately holds
+        // several rows with the same e-mail.
+        modelBuilder.Entity<Guest>()
+            .HasOne(g => g.Org).WithMany().HasForeignKey(g => g.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        // TN-2: child rows copy the OrgId of their parent (property or booking) when they are created.
+        // Restrict like every other OrgId FK; no navigation, the org is never loaded through a child.
+        modelBuilder.Entity<PropertyDocument>()
+            .HasOne<Org>().WithMany().HasForeignKey(d => d.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OtaIntegration>()
+            .HasOne<Org>().WithMany().HasForeignKey(o => o.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PricingAdapterConfig>()
+            .HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PricingHistory>()
+            .HasOne<Org>().WithMany().HasForeignKey(h => h.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<GuestCheckInSession>()
+            .HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<GuestCheckInSession>().HasIndex(s => s.OrgId);
 
         modelBuilder.Entity<AppContextEntity>()
             .HasKey(c => c.Key);
@@ -515,6 +803,23 @@ public class AppDbContext(
         modelBuilder.Entity<ConsentRecord>()
             .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
 
+        // ─── Signup attribution (SE-03 / A8-03) ─────────────────────────────────
+        modelBuilder.Entity<SignupAttribution>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(a => a.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One attribution per org: the first one wins, a parallel insert fails with 23505 and is ignored.
+            entity.HasIndex(a => a.OrgId)
+                .IsUnique()
+                .HasDatabaseName("UIX_SignupAttributions_OrgId");
+
+            entity.HasIndex(a => a.RecordedAt)
+                .HasDatabaseName("IX_SignupAttributions_RecordedAt");
+        });
+
         // ─── Supplier console (US-022 / #292) ────────────────────────────────────
         modelBuilder.Entity<SupplierProfile>()
             .HasOne(sp => sp.Org)
@@ -524,6 +829,14 @@ public class AppDbContext(
 
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.Status);
+
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.ClaimTokenHash)
+            .IsUnique()
+            .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
+
+        // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
+        // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
 
         modelBuilder.Entity<SupplierAvailability>()
             .HasOne(sa => sa.SupplierProfile)
@@ -540,6 +853,11 @@ public class AppDbContext(
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => new { i.Email, i.IsUsed });
+
+        modelBuilder.Entity<SupplierInviteRecord>()
+            .HasIndex(i => i.TokenHash)
+            .IsUnique()
+            .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()
@@ -572,6 +890,12 @@ public class AppDbContext(
         modelBuilder.Entity<ServiceRequest>()
             .HasIndex(sr => new { sr.SupplierOrgId, sr.Status });
 
+        // A4-19 (SU-10): Npgsql maps a uint row version to the xmin system column, so every state transition is saved
+        // only if the row was not changed since it was read.
+        modelBuilder.Entity<ServiceRequest>()
+            .Property(sr => sr.Version)
+            .IsRowVersion();
+
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()
             .HasOne(b => b.Property)
@@ -585,12 +909,33 @@ public class AppDbContext(
             .HasForeignKey(b => b.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Blocks belong to their import feed (PC-11, A2-11): a UID is unique within its feed, and removing the feed
+        // removes its blocks. Airbnb and Booking.com feeds of the same property never touch each other's blocks.
         modelBuilder.Entity<CalendarBlock>()
-            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
-            .IsUnique();
+            .HasOne(b => b.Feed)
+            .WithMany()
+            .HasForeignKey(b => b.FeedId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<CalendarBlock>()
-            .HasQueryFilter(b => !_tenant.FilterEnabled || b.OrgId == _tenant.OrgId);
+            .HasIndex(b => new { b.FeedId, b.ExternalUid })
+            .IsUnique();
+
+        // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
+        // which takes its nights again on its own.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasOne(b => b.Booking)
+            .WithMany()
+            .HasForeignKey(b => b.BookingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.BookingId)
+            .IsUnique();
+
+        // The stays of a feed, found again by the sync (feed + block UID) when a block comes back.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.ICalFeedId, b.ExternalId });
 
         modelBuilder.Entity<PropertyICalFeed>()
             .HasOne(f => f.Property)
@@ -605,15 +950,27 @@ public class AppDbContext(
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PropertyICalFeed>()
-            .HasIndex(f => f.PropertyId)
+            .HasIndex(f => f.PropertyId);
+
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasOne(e => e.Property)
+            .WithMany()
+            .HasForeignKey(e => e.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasOne(e => e.Org)
+            .WithMany()
+            .HasForeignKey(e => e.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasIndex(e => e.PropertyId)
             .IsUnique();
 
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasIndex(f => f.ExportToken)
+        modelBuilder.Entity<PropertyICalExport>()
+            .HasIndex(e => e.ExportToken)
             .IsUnique();
-
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasQueryFilter(f => !_tenant.FilterEnabled || f.OrgId == _tenant.OrgId);
 
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
@@ -636,6 +993,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
+            new RolePermission { RoleId = 2, PermissionKey = "property.read" },
+            new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.create" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.sign" },
@@ -685,6 +1044,12 @@ public class AppDbContext(
         modelBuilder.Entity<HighTensionAreaComune>()
             .HasIndex(c => c.Comune);
 
+        modelBuilder.Entity<ComuneImuChannel>()
+            .HasIndex(c => c.Comune);
+
+        modelBuilder.Entity<RegulatoryDataAuditEntry>()
+            .HasIndex(e => new { e.EntityId, e.OccurredAt });
+
         // Native host app push tokens (US-025 / #299)
         modelBuilder.Entity<DeviceRegistration>(entity =>
         {
@@ -700,5 +1065,39 @@ public class AppDbContext(
             entity.HasIndex(d => d.UserId)
                 .HasDatabaseName("IX_DeviceRegistrations_UserId");
         });
+
+        ApplyTenantQueryFilters(modelBuilder);
     }
+
+    /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
+    public const string TenantQueryFilter = "Tenant";
+
+    private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
+        .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    /// <summary>
+    /// Global tenant query filter (AC7, TN-2): every read of an <see cref="ITenantOwned"/> entity is scoped
+    /// to the caller's OrgId. Fail-closed when an authenticated caller has no org; disabled for
+    /// anonymous/system contexts (public endpoints, background jobs, design-time, unit tests), where
+    /// every query filters explicitly. Registered for every ITenantOwned entity of the model, so a new
+    /// tenant entity cannot be left unfiltered by forgetting a line here.
+    /// </summary>
+    private void ApplyTenantQueryFilters(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (entityType.BaseType is null
+                && !entityType.IsOwned()
+                && typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType))
+            {
+                ApplyTenantQueryFilterMethod.MakeGenericMethod(entityType.ClrType).Invoke(this, [modelBuilder]);
+            }
+        }
+    }
+
+    // The lambda reads _tenant through this context instance, so EF re-evaluates it for every query.
+    private void ApplyTenantQueryFilter<TEntity>(ModelBuilder modelBuilder)
+        where TEntity : class, ITenantOwned =>
+        modelBuilder.Entity<TEntity>()
+            .HasQueryFilter(TenantQueryFilter, e => !_tenant.FilterEnabled || e.OrgId == _tenant.OrgId);
 }

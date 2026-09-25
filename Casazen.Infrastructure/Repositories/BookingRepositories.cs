@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -17,14 +18,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .Include(b => b.Guest)
             .Include(b => b.Payments)
             .FirstOrDefaultAsync(b => b.Id == id);
-    }
-
-    public async Task<Booking?> GetByCheckInTokenAsync(Guid checkInToken)
-    {
-        return await context.Bookings
-            .Include(b => b.Property)
-            .Include(b => b.Guest)
-            .FirstOrDefaultAsync(b => b.CheckInToken == checkInToken);
     }
 
     public async Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId)
@@ -54,13 +47,15 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Booking>> GetByDateRangeAsync(Guid propertyId, DateTime startDate, DateTime endDate)
+    public async Task<IEnumerable<Booking>> GetByDateRangeAsync(
+        Guid propertyId,
+        DateTime startDate,
+        DateTime endDate,
+        int? directPendingTtlMinutes = null)
     {
         return await context.Bookings
-            .Where(b => b.PropertyId == propertyId &&
-                   b.CheckInDate <= endDate &&
-                   b.CheckOutDate >= startDate &&
-                   b.Status != BookingStatus.Cancelled)
+            .Where(HostCalendarRange.BookingShownIn(propertyId, startDate, endDate))
+            .Where(CheckoutHolds.OccupiesDates(ExpiredHoldCutoff(directPendingTtlMinutes)))
             .Include(b => b.Guest)
             .ToListAsync();
     }
@@ -75,44 +70,18 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         // A checkout on Apr 5 at 10:00 and a checkin on Apr 5 at 15:00 is a valid same-day turnover.
         var checkInDate = checkIn.Date;
         var checkOutDate = checkOut.Date;
-        var pendingCutoff = directPendingTtlMinutes.HasValue
-            ? DateTime.UtcNow.AddMinutes(-directPendingTtlMinutes.Value)
-            : (DateTime?)null;
 
         var conflicting = await HasActiveOverlapAsync(
             propertyId,
             checkInDate,
             checkOutDate,
-            pendingCutoff);
+            ExpiredHoldCutoff(directPendingTtlMinutes));
 
         return !conflicting;
     }
 
-    public async Task<int> CancelExpiredPendingDirectBookingsAsync(Guid propertyId, int ttlMinutes)
-    {
-        var cutoff = DateTime.UtcNow.AddMinutes(-ttlMinutes);
-        var expired = await context.Bookings
-            .Where(b => b.PropertyId == propertyId &&
-                        b.Status == BookingStatus.Pending &&
-                        b.Source == BookingSource.Direct &&
-                        b.CreatedAt < cutoff)
-            .ToListAsync();
-
-        foreach (var booking in expired)
-        {
-            booking.Status = BookingStatus.Cancelled;
-            booking.UpdatedAt = DateTime.UtcNow;
-        }
-
-        if (expired.Count > 0)
-            await context.SaveChangesAsync();
-
-        return expired.Count;
-    }
-
     public async Task<Booking> AddAsync(Booking booking)
     {
-        EnsureCheckInToken(booking);
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
         if (booking.Status != BookingStatus.Cancelled &&
@@ -132,7 +101,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
     public async Task<Booking> UpdateAsync(Booking booking)
     {
-        EnsureCheckInToken(booking);
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
         if (booking.Status != BookingStatus.Cancelled &&
@@ -146,7 +114,10 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
-        context.Bookings.Update(booking);
+        // A booking loaded by this context is saved with its changed columns only: Update() would mark the whole graph
+        // (property, guest, payments) modified and write back values another request may have changed meanwhile.
+        if (context.Entry(booking).State == EntityState.Detached)
+            context.Bookings.Update(booking);
         await context.SaveChangesAsync();
 
         if (transaction is not null)
@@ -185,46 +156,29 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             existing.GuestId = booking.GuestId;
             existing.NumberOfGuests = booking.NumberOfGuests;
             existing.UpdatedAt = DateTime.UtcNow;
-            EnsureCheckInToken(existing);
             context.Bookings.Update(existing);
             await context.SaveChangesAsync();
             return existing;
         }
 
-        EnsureCheckInToken(booking);
         context.Bookings.Add(booking);
         await context.SaveChangesAsync();
         return booking;
-    }
-
-    private static void EnsureCheckInToken(Booking booking)
-    {
-        if (booking.Status != BookingStatus.Confirmed)
-            return;
-
-        if (!booking.CheckInToken.HasValue)
-            booking.CheckInToken = Guid.NewGuid();
-
-        if (!booking.CheckInTokenExpiresAt.HasValue)
-            booking.CheckInTokenExpiresAt = booking.CheckOutDate.AddDays(7);
     }
 
     private async Task<bool> HasActiveOverlapAsync(
         Guid propertyId,
         DateTime checkInDate,
         DateTime checkOutDate,
-        DateTime? pendingCutoff = null,
+        HoldExpiryCutoff? pendingCutoff = null,
         Guid? excludeBookingId = null)
     {
-        var query = context.Bookings.Where(b =>
-            b.PropertyId == propertyId &&
-            b.CheckInDate.Date < checkOutDate &&
-            b.CheckOutDate.Date > checkInDate &&
-            b.Status != BookingStatus.Cancelled &&
-            !(pendingCutoff.HasValue &&
-              b.Status == BookingStatus.Pending &&
-              b.Source == BookingSource.Direct &&
-              b.CreatedAt < pendingCutoff.Value));
+        // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
+        // property lock before an insert or update) every booking that is not cancelled does. The nights are those of the
+        // public availability (PropertyOccupancy, BK-05).
+        var query = context.Bookings
+            .Where(PropertyOccupancy.BookingTakesNightIn(propertyId, checkInDate, checkOutDate))
+            .Where(CheckoutHolds.OccupiesDates(pendingCutoff));
 
         if (excludeBookingId.HasValue)
             query = query.Where(b => b.Id != excludeBookingId.Value);
@@ -232,15 +186,45 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return await query.AnyAsync();
     }
 
+    private static HoldExpiryCutoff? ExpiredHoldCutoff(int? directPendingTtlMinutes) =>
+        directPendingTtlMinutes.HasValue
+            ? CheckoutHolds.CutoffAt(DateTime.UtcNow, directPendingTtlMinutes.Value)
+            : null;
+
     private async Task<IDbContextTransaction?> BeginPropertyGuardTransactionAsync(Guid propertyId)
     {
         if (!string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
             return null;
 
-        var transaction = await context.Database.BeginTransactionAsync();
         var lockKey = ToAdvisoryLockKey(propertyId);
+        if (context.Database.CurrentTransaction is not null)
+        {
+            await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", lockKey);
+            return null;
+        }
+
+        var transaction = await context.Database.BeginTransactionAsync();
         await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", lockKey);
         return transaction;
+    }
+
+    /// <summary>
+    /// Takes, inside the caller's transaction, the property lock of <see cref="AddAsync"/> and <see cref="UpdateAsync"/>:
+    /// the dates of the property cannot be taken by another booking until the caller commits (BK-04, late payment
+    /// reconfirmed against a concurrent checkout). Nothing is locked outside PostgreSQL.
+    /// </summary>
+    internal static async Task LockPropertyDatesAsync(AppDbContext context, Guid propertyId, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
+            return;
+
+        if (context.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("The property lock is transaction-scoped: begin a transaction first.");
+
+        await context.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock({0})",
+            [ToAdvisoryLockKey(propertyId)],
+            cancellationToken);
     }
 
     private static long ToAdvisoryLockKey(Guid value) =>

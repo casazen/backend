@@ -1,5 +1,9 @@
 name: CI/CD Pipeline
 
+# Backend gates: NuGet vulnerability gate, build, tests on PostgreSQL, format; deploy verification on push.
+# There is no backend Golden Journey E2E gate yet: the former e2e-golden-journey.yml only ran `echo` and was
+# removed (FD-02, A9-24). The real end-to-end gate arrives with task FN-03. Runbook: docs/runbooks/ci-backend.md.
+
 on:
   push:
     branches: [develop, main]
@@ -11,6 +15,26 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
 
+    # Integration tests run on real PostgreSQL (FD-04): each WebApplicationFactory creates its own
+    # it_<guid> database on this service, applies every EF migration and drops it afterwards.
+    # Throw-away service container: the password below is not a secret.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Username=postgres;Password=postgres;Include Error Detail=true
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +43,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # NuGet audit (FD-02, A9-26): Directory.Build.props turns NU1903 (High) and NU1904 (Critical) into errors,
+      # so restore fails on a vulnerable package, direct or transitive.
       - name: Restore dependencies
         run: dotnet restore
+
+      # Explicit gate + full report. Runs even when restore failed on NU1903/NU1904: NuGet still writes
+      # project.assets.json, so the report lists every vulnerable package. Runbook: docs/runbooks/ci-backend.md.
+      - name: Vulnerable packages (fails on High/Critical, including transitive)
+        if: ${{ !cancelled() }}
+        run: bash scripts/check-vulnerable-packages.sh Casazen.sln
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
@@ -33,40 +65,33 @@ jobs:
         run: dotnet format --verify-no-changes
 
   # Railway deploys via GitHub integration (push to develop → test environment).
-  # This job only verifies health after the native deploy finishes.
+  # This job waits until the test API runs THIS commit and is ready (FD-12): /api/health/ready exposes the
+  # commit Railway deployed (RAILWAY_GIT_COMMIT_SHA). It fails when RAILWAY_TEST_URL is not configured.
+  # Railway's "Wait for CI" must stay off: it would wait for this job, which waits for the deploy.
   verify-test:
     name: Verify Railway Test (native deploy)
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     environment:
       name: test
       url: ${{ vars.RAILWAY_TEST_URL }}
 
     steps:
-      - name: Wait for Railway native deployment
-        run: |
-          echo "Waiting 90s for Railway GitHub integration to deploy develop → test..."
-          sleep 90
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Health check
+      - name: Wait for this commit to be deployed and ready
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-        run: |
-          if [ -z "$RAILWAY_TEST_URL" ]; then
-            echo "::warning::RAILWAY_TEST_URL not set — skipping health check."
-            echo "Set GitHub variable RAILWAY_TEST_URL to your Railway test public URL (see docs/INFRA.md)."
-            exit 0
-          fi
-          curl -f "${RAILWAY_TEST_URL}/api/health" \
-            --retry 8 --retry-delay 15 --retry-connrefused --max-time 30
-          echo "✅ Test environment healthy"
+        run: bash scripts/verify-deploy.sh "$RAILWAY_TEST_URL" "${{ github.sha }}" 1200
 
       - name: Smoke test (auth gate — expect 401, never 500)
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
-          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
             "${RAILWAY_TEST_URL}/api/properties")
           if [ "$STATUS" = "500" ]; then
@@ -83,7 +108,6 @@ jobs:
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
-          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
             "${RAILWAY_TEST_URL}/api/bookings")
           if [ "$STATUS" = "500" ]; then
@@ -100,7 +124,6 @@ jobs:
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
         run: |
-          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
           for PATH_SUFFIX in users/me me/contexts users; do
             STATUS=$(curl -o /dev/null -sw "%{http_code}" \
               "${RAILWAY_TEST_URL}/api/${PATH_SUFFIX}")
@@ -120,7 +143,6 @@ jobs:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
           TEST_PROPERTY_ID: ${{ vars.TEST_PROPERTY_ID }}
         run: |
-          if [ -z "$RAILWAY_TEST_URL" ]; then exit 0; fi
           PROPERTY_ID="${TEST_PROPERTY_ID:-00000000-0000-0000-0000-000000000001}"
           STATUS=$(curl -o /dev/null -sw "%{http_code}" \
             "${RAILWAY_TEST_URL}/api/pricing-adapter/config/${PROPERTY_ID}")
@@ -135,38 +157,31 @@ jobs:
           echo "✅ Pricing adapter auth gate OK (status $STATUS)"
 
   # Railway deploys production via GitHub integration (push to main → production environment).
+  # Same verification as verify-test (FD-12): this commit deployed and /api/health/ready answering 200.
   verify-prod:
     name: Verify Railway Production (native deploy)
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
       url: ${{ vars.RAILWAY_PROD_URL }}
 
     steps:
-      - name: Wait for Railway native deployment
-        run: |
-          echo "Waiting 120s for Railway GitHub integration to deploy main → production..."
-          sleep 120
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Production health check
+      - name: Wait for this commit to be deployed and ready
         env:
           RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
-        run: |
-          if [ -z "$RAILWAY_PROD_URL" ]; then
-            echo "::warning::RAILWAY_PROD_URL not set — skipping health check."
-            exit 0
-          fi
-          curl -f "${RAILWAY_PROD_URL}/api/health" \
-            --retry 8 --retry-delay 15 --retry-connrefused
-          echo "✅ Production healthy"
+        run: bash scripts/verify-deploy.sh "$RAILWAY_PROD_URL" "${{ github.sha }}" 1200
 
       - name: Smoke test production (auth gate)
         env:
           RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
         run: |
-          if [ -z "$RAILWAY_PROD_URL" ]; then exit 0; fi
           for PATH_SUFFIX in properties bookings users/me me/contexts orgs/me/entitlement; do
             STATUS=$(curl -o /dev/null -sw "%{http_code}" \
               "${RAILWAY_PROD_URL}/api/${PATH_SUFFIX}")

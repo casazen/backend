@@ -1,167 +1,186 @@
+using System.Text.RegularExpressions;
+using Casazen.Core.Entities;
+using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Http;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
+/// <summary>FD-13: the supplier invite email is rendered from the template engine and queued, never sent inline.</summary>
 public class SupplierServiceInviteEmailTests
 {
     [Fact]
-    public async Task CreateInviteAsync_WhenSendGridFails_RollsBackInviteAndThrows()
+    public async Task CreateInviteAsync_ValidInvite_QueuesEmailWithSignupLinkFromPublicSiteBaseUrl()
     {
         await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailService>();
-        emailService
-            .Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new EmailSendResult(false, "SendGrid 403 Forbidden"));
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
 
-        var service = CreateService(db, emailService.Object, isProduction: true);
+        var invite = await service.CreateInviteAsync("supplier@test.com", "H501", ["cleaning"], "Ciao");
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.CreateInviteAsync("supplier@test.com", "H501", ["cleaning"], null));
+        var stored = Assert.Single(db.SupplierInviteRecords);
+        Assert.Equal(invite.InviteId, stored.Id);
+        var (to, content, template) = Assert.Single(queue.Queued);
+        Assert.Equal("supplier@test.com", to);
+        Assert.Equal(EmailTemplates.Names.SupplierInvite, template);
+        Assert.Equal("Invito CasaZen — Console fornitore", content.Subject);
 
-        Assert.Contains("email", ex.Message, StringComparison.OrdinalIgnoreCase);
+        // SU-01: the link is the web app page with a random token only (no id, email or comune in the URL).
+        var token = InviteToken(content.HtmlBody);
+        Assert.Contains($"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/register?inviteToken={token}\"", content.HtmlBody);
+        Assert.DoesNotContain("railway.app", content.HtmlBody);
+        Assert.DoesNotContain(invite.InviteId.ToString(), content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task CreateInviteAsync_ValidInvite_StoresOnlyTheHashOfTheLinkToken()
+    {
+        await using var db = CreateDbContext();
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
+
+        var token = InviteToken(Assert.Single(queue.Queued).Content.HtmlBody);
+        var stored = Assert.Single(db.SupplierInviteRecords);
+        Assert.Equal(SupplierInviteTokens.Hash(token), stored.TokenHash);
+        Assert.NotEqual(token, stored.TokenHash);
+        Assert.True(SupplierInviteTokens.TryNormalize(token, out _));
+    }
+
+    [Fact]
+    public async Task CreateInviteAsync_PilotComune_ShowsNameAndTruthfulNextStepsAndRomeExpiry()
+    {
+        await using var db = CreateDbContext();
+        var queue = new RecordingEmailQueue();
+        var options = new SupplierRegistrationOptions
+        {
+            PilotComuni = [new SupplierPilotComune { Code = "H501", Name = "Roma" }],
+        };
+        var service = CreateService(db, queue, options: options);
+
+        await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
+
+        var html = Assert.Single(queue.Queued).Content.HtmlBody;
+        Assert.Contains("per il comune <strong>Roma (H501)</strong>", html);
+        Assert.Contains("procedura di attivazione", html);
+        Assert.DoesNotContain("automaticamente", html);
+        var expiresAt = Assert.Single(db.SupplierInviteRecords).ExpiresAt;
+        var rome = TimeZoneInfo.ConvertTimeFromUtc(expiresAt, RomeCalendar.TimeZone);
+        Assert.Contains($"L'invito scade il <strong>{rome:dd/MM/yyyy HH:mm}</strong> (ora italiana).", html);
+    }
+
+    [Fact]
+    public async Task CreateInviteAsync_ComuneNotConfigured_ShowsCodeWithoutGuessingAName()
+    {
+        await using var db = CreateDbContext();
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        // F205 is Milano; the old registry says Firenze (A4-12): no name is derived from it.
+        await service.CreateInviteAsync("supplier@test.com", "F205", null, null);
+
+        var html = Assert.Single(queue.Queued).Content.HtmlBody;
+        Assert.Contains("per il comune <strong>F205</strong>", html);
+        Assert.DoesNotContain("Firenze", html);
+    }
+
+    [Fact]
+    public async Task CreateInviteAsync_LegacyPendingInviteWithoutTokenHash_DoesNotBlockNewInvite()
+    {
+        await using var db = CreateDbContext();
+        db.SupplierInviteRecords.Add(new SupplierInviteRecord
+        {
+            Email = "supplier@test.com",
+            ComuneCode = "H501",
+            ExpiresAt = DateTime.UtcNow.AddDays(3),
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db, new RecordingEmailQueue());
+
+        var invite = await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
+
+        Assert.NotNull((await db.SupplierInviteRecords.FindAsync(invite.InviteId))!.TokenHash);
+    }
+
+    private static string InviteToken(string html)
+    {
+        var match = Regex.Match(html, "inviteToken=([0-9a-f]+)");
+        Assert.True(match.Success, "The email has no invite link.");
+        return match.Groups[1].Value;
+    }
+
+    [Fact]
+    public async Task CreateInviteAsync_MessageWithMarkup_IsHtmlEncodedInEmail()
+    {
+        await using var db = CreateDbContext();
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue);
+
+        await service.CreateInviteAsync(
+            "supplier@test.com", "H501", null, "<a href=\"https://phish.example\">Conferma IBAN</a>");
+
+        var html = Assert.Single(queue.Queued).Content.HtmlBody;
+        Assert.DoesNotContain("<a href=\"https://phish.example\"", html);
+        Assert.Contains("&lt;a href=&quot;https://phish.example&quot;&gt;Conferma IBAN&lt;/a&gt;", html);
+    }
+
+    [Fact]
+    public async Task CreateInviteAsync_PublicSiteBaseUrlMissing_ThrowsConfigurationErrorWithoutSavingInvite()
+    {
+        await using var db = CreateDbContext();
+        var queue = new RecordingEmailQueue();
+        var service = CreateService(db, queue, publicSiteBaseUrl: null);
+
+        await Assert.ThrowsAsync<EmailConfigurationException>(() =>
+            service.CreateInviteAsync("supplier@test.com", "H501", null, null));
+
         Assert.Empty(db.SupplierInviteRecords);
-        emailService.Verify(
-            s => s.SendEmailAsync("supplier@test.com", It.IsAny<string>(), It.IsAny<string>()),
-            Times.Once);
+        Assert.Empty(queue.Queued);
     }
 
     [Fact]
-    public async Task CreateInviteAsync_WhenSendGridSucceeds_PersistsInvite()
+    public async Task CreateInviteAsync_EmailNotQueued_KeepsInviteAndDoesNotThrow()
     {
         await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailService>();
-        emailService
-            .Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new EmailSendResult(true));
-
-        var service = CreateService(db, emailService.Object, isProduction: true);
-
-        var invite = await service.CreateInviteAsync("supplier@test.com", "H501", null, "Ciao");
-
-        Assert.NotEqual(Guid.Empty, invite.InviteId);
-        Assert.Single(db.SupplierInviteRecords);
-        emailService.Verify(
-            s => s.SendEmailAsync(
-                "supplier@test.com",
-                "Invito CasaZen — Console fornitore",
-                It.Is<string>(html => html.Contains("/register?inviteToken="))),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task CreateInviteAsync_InTesting_SkipsEmailWhenApiKeyMissing()
-    {
-        await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailService>();
-        var service = CreateService(db, emailService.Object, isProduction: false, environmentName: "Testing");
+        var queue = new Mock<IEmailQueue>();
+        queue.Setup(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>())).Returns(false);
+        var service = new SupplierService(
+            db,
+            queue.Object,
+            EmailTestHelpers.Links(),
+            Mock.Of<ISafeExternalHttpClient>(),
+            Options.Create(new SupplierRegistrationOptions()),
+            NullLogger<SupplierService>.Instance);
 
         var invite = await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
 
         Assert.NotEqual(Guid.Empty, invite.InviteId);
         Assert.Single(db.SupplierInviteRecords);
-        emailService.Verify(
-            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task CreateInviteAsync_OnProductionWithoutSendGridKey_ThrowsBeforeCallingSendGrid()
-    {
-        await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailService>();
-        var service = CreateService(
-            db,
-            emailService.Object,
-            isProduction: false,
-            environmentName: "Production",
-            emailServiceApiKey: "SG.YOUR_KEY");
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.CreateInviteAsync("supplier@test.com", "H501", null, null));
-
-        Assert.Contains("Email", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(db.SupplierInviteRecords);
-        emailService.Verify(
-            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task CreateInviteAsync_OnProductionWithNullEmailConfig_ThrowsBeforeCallingSendGrid()
-    {
-        await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailService>();
-        var service = CreateService(
-            db,
-            emailService.Object,
-            isProduction: false,
-            environmentName: "Production",
-            emailServiceApiKey: null);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.CreateInviteAsync("supplier@test.com", "H501", null, null));
-
-        Assert.Contains("Email", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(db.SupplierInviteRecords);
-        emailService.Verify(
-            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task CreateInviteAsync_OnProductionWithEmptyEmailConfig_ThrowsBeforeCallingSendGrid()
-    {
-        await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailService>();
-        var service = CreateService(
-            db,
-            emailService.Object,
-            isProduction: false,
-            environmentName: "Production",
-            emailServiceApiKey: string.Empty);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.CreateInviteAsync("supplier@test.com", "H501", null, null));
-
-        Assert.Contains("Email", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(db.SupplierInviteRecords);
-        emailService.Verify(
-            s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
     }
 
     private static SupplierService CreateService(
         AppDbContext db,
-        IEmailService emailService,
-        bool isProduction,
-        string environmentName = "Production",
-        string? emailServiceApiKey = null)
-    {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
-                ["Email:SendGridApiKey"] = emailServiceApiKey ?? (isProduction ? "SG.live_test_key" : string.Empty),
-            })
-            .Build();
-
-        var env = new Mock<IHostEnvironment>();
-        env.SetupGet(e => e.EnvironmentName).Returns(environmentName);
-        if (environmentName == "Development")
-        {
-            env.SetupGet(e => e.IsDevelopment()).Returns(true);
-        }
-
-        return new SupplierService(db, emailService, config, env.Object, NullLogger<SupplierService>.Instance);
-    }
+        IEmailQueue queue,
+        string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl,
+        SupplierRegistrationOptions? options = null) =>
+        new(
+            db,
+            queue,
+            EmailTestHelpers.Links(publicSiteBaseUrl),
+            Mock.Of<ISafeExternalHttpClient>(),
+            Options.Create(options ?? new SupplierRegistrationOptions()),
+            NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()
     {

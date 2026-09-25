@@ -12,5 +12,7 @@ public class UserSummaryDto
     public DateTime CreatedAt { get; set; }
     public Guid? OrgId { get; set; }
     public string? OrgName { get; set; }
+
+    /// <summary>Effective plan tier of the user's org (Starter unless a subscription pays for it).</summary>
     public string? PlanTier { get; set; }
 }

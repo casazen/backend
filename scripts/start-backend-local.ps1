@@ -16,10 +16,10 @@ $ErrorActionPreference = 'Stop'
 $env:ConnectionStrings__DefaultConnection = ""
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 
-# JWT validation must match the SPA Auth0 tenant (public Domain/Audience).
-# Override via env if needed; placeholders in appsettings.Development.json reject real tokens.
+# JWT validation must match the Auth0 tenant of the SPA you log in with (development/test tenant, never production:
+# docs/runbooks/auth0.md section 1). No default tenant: set Auth0__Domain before running this script.
 if (-not $env:Auth0__Domain) {
-  $env:Auth0__Domain = 'dev-mp6wadq7j6bophl5.us.auth0.com'
+  throw 'Set Auth0__Domain to the login domain of your development/test Auth0 tenant (same as VITE_AUTH0_DOMAIN of the web app).'
 }
 if (-not $env:Auth0__Audience) {
   $env:Auth0__Audience = 'https://casazen-api'

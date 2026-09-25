@@ -1,5 +1,7 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -9,210 +11,147 @@ namespace Casazen.Tests.Unit.Services;
 
 public class GuestServiceTests
 {
+    private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
+
+    // 2026-09-23 22:30 UTC is already 2026-09-24 in Rome (CEST).
+    private static readonly DateTimeOffset Now = new(2026, 9, 23, 22, 30, 0, TimeSpan.Zero);
+    private static readonly DateTime RomeToday = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
     private readonly Mock<IGuestRepository> _mockRepository;
-    private readonly Mock<ILogger<GuestService>> _mockLogger;
+    private readonly Mock<IGdprService> _mockGdprService;
     private readonly GuestService _service;
 
     public GuestServiceTests()
     {
         _mockRepository = new Mock<IGuestRepository>();
-        _mockLogger = new Mock<ILogger<GuestService>>();
-        _service = new GuestService(_mockRepository.Object, _mockLogger.Object);
+        _mockGdprService = new Mock<IGdprService>();
+        _service = new GuestService(
+            _mockRepository.Object,
+            _mockGdprService.Object,
+            new FixedTimeProvider(Now),
+            new Mock<ILogger<GuestService>>().Object);
     }
 
     [Fact]
-    public async Task GetGuestAsync_WithValidId_ReturnsGuest()
+    public async Task GetGuestAsync_WithGuestOfOrg_ReturnsGuest()
     {
         // Arrange
         var guestId = Guid.NewGuid();
-        var guest = new Guest
-        {
-            Id = guestId,
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        };
-        _mockRepository.Setup(x => x.GetByIdAsync(guestId)).ReturnsAsync(guest);
+        var guest = new Guest { Id = guestId, OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
+        _mockRepository.Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>())).ReturnsAsync(guest);
 
         // Act
-        var result = await _service.GetGuestAsync(guestId);
+        var result = await _service.GetGuestAsync(OrgId, guestId);
 
         // Assert
         Assert.NotNull(result);
         Assert.Equal(guestId, result.Id);
-        Assert.Equal("John", result.FirstName);
-        _mockRepository.Verify(x => x.GetByIdAsync(guestId), Times.Once);
+        _mockRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
-    public async Task GetGuestAsync_WithNonExistentId_ReturnsNull()
+    public async Task GetGuestAsync_WithGuestNotInOrg_ReturnsNull()
     {
         // Arrange
         var guestId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.GetByIdAsync(guestId)).ReturnsAsync((Guest?)null);
+        _mockRepository.Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>())).ReturnsAsync((Guest?)null);
 
         // Act
-        var result = await _service.GetGuestAsync(guestId);
+        var result = await _service.GetGuestAsync(OrgId, guestId);
 
         // Assert
         Assert.Null(result);
-        _mockRepository.Verify(x => x.GetByIdAsync(guestId), Times.Once);
     }
 
     [Fact]
-    public async Task GetGuestByEmailAsync_WithValidEmail_ReturnsGuest()
+    public async Task GetGuestByEmailAsync_LooksUpOnlyInCallerOrg()
     {
         // Arrange
         var email = "john.doe@example.com";
-        var guest = new Guest
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "John",
-            LastName = "Doe",
-            Email = email
-        };
-        _mockRepository.Setup(x => x.GetByEmailAsync(email)).ReturnsAsync(guest);
+        var guest = new Guest { Id = Guid.NewGuid(), OrgId = OrgId, Email = email };
+        _mockRepository.Setup(x => x.GetByEmailAsync(OrgId, email, It.IsAny<CancellationToken>())).ReturnsAsync(guest);
 
         // Act
-        var result = await _service.GetGuestByEmailAsync(email);
+        var result = await _service.GetGuestByEmailAsync(OrgId, email);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(email, result.Email);
-        _mockRepository.Verify(x => x.GetByEmailAsync(email), Times.Once);
+        Assert.Same(guest, result);
+        _mockRepository.Verify(x => x.GetByEmailAsync(OrgId, email, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task GetGuestByEmailAsync_WithNonExistentEmail_ReturnsNull()
+    public async Task GetGuestsPageAsync_ForwardsOrgSearchAndPage()
     {
         // Arrange
-        var email = "nonexistent@example.com";
-        _mockRepository.Setup(x => x.GetByEmailAsync(email)).ReturnsAsync((Guest?)null);
+        IReadOnlyList<Guest> guests = [new Guest { Id = Guid.NewGuid(), OrgId = OrgId, FirstName = "John" }];
+        _mockRepository
+            .Setup(x => x.GetPageAsync(OrgId, "John", 2, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((guests, 11));
 
         // Act
-        var result = await _service.GetGuestByEmailAsync(email);
+        var (items, total) = await _service.GetGuestsPageAsync(OrgId, "John", 2, 10);
 
         // Assert
-        Assert.Null(result);
-        _mockRepository.Verify(x => x.GetByEmailAsync(email), Times.Once);
+        Assert.Single(items);
+        Assert.Equal(11, total);
     }
 
     [Fact]
-    public async Task GetAllGuestsAsync_ReturnsAllGuests()
+    public async Task CreateGuestAsync_WithNewEmail_CreatesGuestInCallerOrg()
     {
         // Arrange
-        var guests = new List<Guest>
-        {
-            new() { Id = Guid.NewGuid(), FirstName = "John", LastName = "Doe", Email = "john@example.com" },
-            new() { Id = Guid.NewGuid(), FirstName = "Jane", LastName = "Smith", Email = "jane@example.com" }
-        };
-        _mockRepository.Setup(x => x.GetAllAsync()).ReturnsAsync(guests);
+        var guest = new Guest { FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
+        _mockRepository.Setup(x => x.ExistsByEmailAsync(OrgId, guest.Email, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Guest>())).ReturnsAsync((Guest g) => g);
 
         // Act
-        var result = await _service.GetAllGuestsAsync();
+        var result = await _service.CreateGuestAsync(OrgId, guest);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count());
-        _mockRepository.Verify(x => x.GetAllAsync(), Times.Once);
+        Assert.Equal(OrgId, result.OrgId);
+        _mockRepository.Verify(x => x.AddAsync(It.Is<Guest>(g => g.OrgId == OrgId)), Times.Once);
     }
 
     [Fact]
-    public async Task GetAllGuestsAsync_WithNoGuests_ReturnsEmpty()
+    public async Task CreateGuestAsync_WithEmailOfSameOrg_ThrowsDomainConflict()
     {
         // Arrange
-        _mockRepository.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<Guest>());
+        var guest = new Guest { FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
+        _mockRepository.Setup(x => x.ExistsByEmailAsync(OrgId, guest.Email, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
-        // Act
-        var result = await _service.GetAllGuestsAsync();
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<DomainConflictException>(() => _service.CreateGuestAsync(OrgId, guest));
 
-        // Assert
-        Assert.NotNull(result);
-        Assert.Empty(result);
-        _mockRepository.Verify(x => x.GetAllAsync(), Times.Once);
+        Assert.Equal("guest_email_exists", exception.Code);
+        Assert.Equal("GuestEmailAlreadyExists", exception.MessageKey);
+        Assert.DoesNotContain(guest.Email, exception.Message);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
     }
 
     [Fact]
-    public async Task SearchGuestsAsync_WithSearchTerm_ReturnsMatchingGuests()
+    public async Task CreateGuestSnapshotAsync_WithOrg_DoesNotCheckEmailUniqueness()
     {
         // Arrange
-        var searchTerm = "John";
-        var guests = new List<Guest>
-        {
-            new() { Id = Guid.NewGuid(), FirstName = "John", LastName = "Doe", Email = "john@example.com" }
-        };
-        _mockRepository.Setup(x => x.SearchAsync(searchTerm)).ReturnsAsync(guests);
-
-        // Act
-        var result = await _service.SearchGuestsAsync(searchTerm);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Single(result);
-        _mockRepository.Verify(x => x.SearchAsync(searchTerm), Times.Once);
-    }
-
-    [Fact]
-    public async Task SearchGuestsAsync_WithNullSearchTerm_ReturnsAllGuests()
-    {
-        // Arrange
-        var guests = new List<Guest>
-        {
-            new() { Id = Guid.NewGuid(), FirstName = "John", LastName = "Doe", Email = "john@example.com" },
-            new() { Id = Guid.NewGuid(), FirstName = "Jane", LastName = "Smith", Email = "jane@example.com" }
-        };
-        _mockRepository.Setup(x => x.SearchAsync(null)).ReturnsAsync(guests);
-
-        // Act
-        var result = await _service.SearchGuestsAsync(null);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count());
-        _mockRepository.Verify(x => x.SearchAsync(null), Times.Once);
-    }
-
-    [Fact]
-    public async Task CreateGuestAsync_WithNewEmail_ReturnsCreatedGuest()
-    {
-        // Arrange
-        var guest = new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        };
-        _mockRepository.Setup(x => x.ExistsByEmailAsync(guest.Email)).ReturnsAsync(false);
+        var guest = new Guest { OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
         _mockRepository.Setup(x => x.AddAsync(It.IsAny<Guest>())).ReturnsAsync(guest);
 
         // Act
-        var result = await _service.CreateGuestAsync(guest);
+        var result = await _service.CreateGuestSnapshotAsync(guest);
 
         // Assert
-        Assert.NotNull(result);
         Assert.Equal(guest.Email, result.Email);
-        _mockRepository.Verify(x => x.ExistsByEmailAsync(guest.Email), Times.Once);
+        _mockRepository.Verify(x => x.ExistsByEmailAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Once);
     }
 
     [Fact]
-    public async Task CreateGuestAsync_WithExistingEmail_ThrowsInvalidOperationException()
+    public async Task CreateGuestSnapshotAsync_WithoutOrg_ThrowsArgumentException()
     {
         // Arrange
-        var guest = new Guest
-        {
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        };
-        _mockRepository.Setup(x => x.ExistsByEmailAsync(guest.Email)).ReturnsAsync(true);
+        var guest = new Guest { FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.CreateGuestAsync(guest));
-
-        Assert.Contains("already exists", exception.Message);
-        _mockRepository.Verify(x => x.ExistsByEmailAsync(guest.Email), Times.Once);
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateGuestSnapshotAsync(guest));
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
     }
 
@@ -220,13 +159,7 @@ public class GuestServiceTests
     public async Task UpdateGuestAsync_WithExistingGuest_ReturnsUpdatedGuest()
     {
         // Arrange
-        var guest = new Guest
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        };
+        var guest = new Guest { Id = Guid.NewGuid(), OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
         _mockRepository.Setup(x => x.ExistsAsync(guest.Id)).ReturnsAsync(true);
         _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Guest>())).ReturnsAsync(guest);
 
@@ -234,64 +167,104 @@ public class GuestServiceTests
         var result = await _service.UpdateGuestAsync(guest);
 
         // Assert
-        Assert.NotNull(result);
         Assert.Equal(guest.Id, result.Id);
-        _mockRepository.Verify(x => x.ExistsAsync(guest.Id), Times.Once);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Guest>()), Times.Once);
     }
 
     [Fact]
-    public async Task UpdateGuestAsync_WithNonExistentGuest_ThrowsInvalidOperationException()
+    public async Task UpdateGuestAsync_WithNonExistentGuest_ThrowsNotFoundException()
     {
         // Arrange
-        var guest = new Guest
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "John",
-            LastName = "Doe",
-            Email = "john.doe@example.com"
-        };
+        var guest = new Guest { Id = Guid.NewGuid(), OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" };
         _mockRepository.Setup(x => x.ExistsAsync(guest.Id)).ReturnsAsync(false);
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.UpdateGuestAsync(guest));
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() => _service.UpdateGuestAsync(guest));
 
-        Assert.Contains("not found", exception.Message);
-        _mockRepository.Verify(x => x.ExistsAsync(guest.Id), Times.Once);
+        Assert.Equal("guest_not_found", exception.Code);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Guest>()), Times.Never);
     }
 
     [Fact]
-    public async Task DeleteGuestAsync_WithExistingGuest_ReturnsTrue()
+    public async Task DeleteGuestAsync_GuestWithoutReferences_DeletesStoredFilesThenRow()
     {
         // Arrange
-        var guestId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.ExistsAsync(guestId)).ReturnsAsync(true);
-        _mockRepository.Setup(x => x.DeleteAsync(guestId)).Returns(Task.CompletedTask);
+        var guestId = SetupGuestInOrg();
+        _mockRepository.Setup(x => x.GetUsageAsync(guestId, RomeToday, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GuestUsage(HasReferences: false, HasOpenBookings: false));
 
         // Act
-        var result = await _service.DeleteGuestAsync(guestId);
+        var result = await _service.DeleteGuestAsync(OrgId, guestId);
 
         // Assert
-        Assert.True(result);
-        _mockRepository.Verify(x => x.ExistsAsync(guestId), Times.Once);
+        Assert.Equal(GuestDeletionResult.Deleted, result);
         _mockRepository.Verify(x => x.DeleteAsync(guestId), Times.Once);
+        _mockGdprService.Verify(
+            x => x.EraseStoredFilesBeforeRemovalAsync(OrgId, guestId, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _mockGdprService.Verify(
+            x => x.EraseGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task DeleteGuestAsync_WithNonExistentGuest_ReturnsFalse()
+    public async Task DeleteGuestAsync_GuestWithPastBookings_SoftDeletesAndAnonymizesInsteadOfRemovingRow()
+    {
+        // Arrange
+        var guestId = SetupGuestInOrg();
+        _mockRepository.Setup(x => x.GetUsageAsync(guestId, RomeToday, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GuestUsage(HasReferences: true, HasOpenBookings: false));
+
+        // Act
+        var result = await _service.DeleteGuestAsync(OrgId, guestId);
+
+        // Assert
+        Assert.Equal(GuestDeletionResult.Anonymized, result);
+        _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
+        _mockGdprService.Verify(
+            x => x.EraseGuestDataAsync(OrgId, guestId, GuestService.HostDeletionReason, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteGuestAsync_GuestWithOpenBooking_ThrowsDomainConflict()
+    {
+        // Arrange
+        var guestId = SetupGuestInOrg();
+        _mockRepository.Setup(x => x.GetUsageAsync(guestId, RomeToday, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GuestUsage(HasReferences: true, HasOpenBookings: true));
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<DomainConflictException>(() => _service.DeleteGuestAsync(OrgId, guestId));
+
+        Assert.Equal("guest_has_open_bookings", exception.Code);
+        _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
+        _mockGdprService.Verify(
+            x => x.EraseGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteGuestAsync_GuestNotInOrg_ThrowsNotFoundWithoutTouchingIt()
     {
         // Arrange
         var guestId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.ExistsAsync(guestId)).ReturnsAsync(false);
+        _mockRepository.Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>())).ReturnsAsync((Guest?)null);
 
-        // Act
-        var result = await _service.DeleteGuestAsync(guestId);
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<NotFoundException>(() => _service.DeleteGuestAsync(OrgId, guestId));
 
-        // Assert
-        Assert.False(result);
-        _mockRepository.Verify(x => x.ExistsAsync(guestId), Times.Once);
-        _mockRepository.Verify(x => x.DeleteAsync(guestId), Times.Never);
+        Assert.Equal("guest_not_found", exception.Code);
+        _mockRepository.Verify(x => x.GetUsageAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    private Guid SetupGuestInOrg()
+    {
+        var guestId = Guid.NewGuid();
+        _mockRepository
+            .Setup(x => x.GetByIdInOrgAsync(OrgId, guestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Guest { Id = guestId, OrgId = OrgId, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" });
+        return guestId;
     }
 }

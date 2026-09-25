@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -183,18 +184,46 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
     }
 
     [Fact]
-    public async Task AC1_PutOnboarding_WithoutExistingOrg_Returns400AndDoesNotProvision()
+    public async Task PutOnboarding_WithoutOrgAndWithoutConsents_Returns422ConsentsRequiredAndDoesNotProvision()
     {
         var userId = $"auth0|plg-put-first-{Guid.NewGuid():N}";
-        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner");
 
         var response = await client.PutAsJsonAsync("/api/users/onboarding", new { rentalType = "ShortTerm" });
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // A1-01: a stable code the client answers with the consents step, not a generic 400 dead end.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("consents_required", problem.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId);
         Assert.Null(user);
+    }
+
+    [Fact]
+    public async Task PutOnboarding_WithoutOrgWithConsents_ProvisionsOrgAndRecordsConsents()
+    {
+        var userId = $"auth0|plg-put-consents-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner");
+
+        var response = await client.PutAsJsonAsync(
+            "/api/users/onboarding",
+            BuildOnboardingPayload("ShortTerm"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("orgProvisioned").GetBoolean());
+        Assert.True(body.GetProperty("consentsRecorded").GetBoolean());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var orgId = Guid.Parse(body.GetProperty("orgId").GetString()!);
+        var user = await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == userId);
+        Assert.Equal(orgId, user.OrgId);
+        Assert.Equal(4, await db.ConsentRecords.IgnoreQueryFilters().CountAsync(c => c.UserId == userId && c.OrgId == orgId));
     }
 
     private async Task SeedActivationMilestonesAsync(string userId, Guid orgId)
@@ -224,7 +253,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
             NightlyRate = 120m,
             CleaningFee = 40m,
             DamageDeposit = 100m,
-            CinCode = "IT-12345-0123456789",
+            CinCode = "IT058091C27G5FFZDZ",
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,
             CreatedAt = DateTime.UtcNow,
@@ -234,6 +263,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var guest = new Guest
         {
+            OrgId = orgId,
             FirstName = "PLG",
             LastName = "Guest",
             Email = $"plg-guest-{Guid.NewGuid():N}@example.com",
@@ -248,8 +278,8 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
             PropertyId = property.Id,
             OrgId = orgId,
             GuestId = guest.Id,
-            CheckInDate = DateTime.UtcNow.Date.AddDays(7),
-            CheckOutDate = DateTime.UtcNow.Date.AddDays(10),
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(7),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(10),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Direct,

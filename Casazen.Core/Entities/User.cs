@@ -21,8 +21,12 @@ public class User
     [Phone, MaxLength(20)]
     public string PhoneNumber { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Primary role. A new user has <see cref="UserRole.None"/> until the onboarding sets the host role together with
+    /// the legal consents (PL-02, A1-05): no role, no host context.
+    /// </summary>
     [Required]
-    public UserRole Role { get; set; } = UserRole.PropertyOwner;
+    public UserRole Role { get; set; } = UserRole.None;
 
     public RentalType? RentalType { get; set; }
 
@@ -40,7 +44,18 @@ public class User
     [MaxLength(64)]
     public string? LastUsedContextKey { get; set; }
 
+    /// <summary>
+    /// False once an admin deactivated the account (PL-03, A1-04): every authenticated API request of the user is
+    /// refused with 403 <c>account_inactive</c>, whatever the roles in the token.
+    /// </summary>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Auth0 roles removed from the account when it was deactivated (role names such as <c>Admin</c>, <c>Supplier</c>),
+    /// given back by the reactivation. Null while the account is active, and when no role could be removed (Auth0
+    /// unreachable or not configured at deactivation time: the roles are then still in Auth0).
+    /// </summary>
+    public List<string>? SuspendedAuth0Roles { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -59,7 +74,10 @@ public enum UserRole
     Guest,
     Staff,
     LongTermLandlord, // 5 — append only, do not insert before existing values
-    Supplier // 6
+    Supplier, // 6
+
+    /// <summary>7 — no role yet: default of a new user until the onboarding (PL-02). Stored as 7, append only.</summary>
+    None,
 }
 
 public enum RentalType

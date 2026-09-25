@@ -11,12 +11,13 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/compliance")]
-[Authorize(Policy = "PropertyOwner")]
+[Authorize(Policy = "RequireContext:short-rent:booking.read")]
 public class ComplianceController(
     IComplianceWizardService complianceWizardService,
     IOrgContextResolver orgContextResolver) : ControllerBase
 {
     [HttpGet("summary")]
+    [Authorize(Policy = "RequireContext:short-rent:booking.read")]
     [ProducesResponseType(typeof(ComplianceSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ComplianceSummaryDto>> GetSummary(CancellationToken cancellationToken)
@@ -35,6 +36,8 @@ public class ComplianceController(
         GuestCheckInsIncomplete = MapSection(summary.GuestCheckInsIncomplete),
         CheckoutsDue = MapSection(summary.CheckoutsDue),
         AlloggiatiFailures = MapSection(summary.AlloggiatiFailures),
+        AlloggiatiManualRequired = MapSection(summary.AlloggiatiManualRequired),
+        TurnoversPending = MapSection(summary.TurnoversPending),
     };
 
     private static ComplianceSummarySectionDto MapSection(ComplianceSummarySection section) => new()
@@ -44,7 +47,9 @@ public class ComplianceController(
         {
             Id = i.Id,
             Label = i.Label,
-            RouteLink = i.RouteLink,
+            Action = i.Action,
+            PropertyId = i.PropertyId,
+            BookingId = i.BookingId,
         }),
     };
 }

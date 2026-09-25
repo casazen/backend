@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -8,101 +9,179 @@ namespace Casazen.Infrastructure.Services;
 
 public class NotificationService(
     AppDbContext db,
-    IEmailService emailService,
-    IPushNotificationService pushNotificationService,
+    IEmailQueue emailQueue,
+    IPushNotificationService pushNotifications,
+    PublicSiteLinks links,
     ILogger<NotificationService> logger) : INotificationService
 {
-    public async Task SendBookingConfirmationAsync(Guid bookingId)
+    public async Task SendStayAlertAsync(StayAlert alert, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Sending booking confirmation for {BookingId}", bookingId);
-        await Task.Delay(100); // Simulate email send
-    }
+        ArgumentNullException.ThrowIfNull(alert);
 
-    public async Task SendPaymentReceiptAsync(Guid paymentId)
-    {
-        logger.LogInformation("Sending payment receipt for {PaymentId}", paymentId);
-        await Task.Delay(100); // Simulate email send
-    }
-
-    public async Task SendPropertyUpdateAsync(Guid propertyId)
-    {
-        logger.LogInformation("Sending property update notification for {PropertyId}", propertyId);
-        await Task.Delay(100); // Simulate email send
-    }
-
-    public async Task SendOtaSyncNotificationAsync(Guid propertyId, string platform)
-    {
-        logger.LogInformation("Sending OTA sync notification for {PropertyId} on {Platform}", propertyId, platform);
-        await Task.Delay(100); // Simulate email send
-    }
-
-    public async Task SendRefundNotificationAsync(Guid paymentId)
-    {
-        logger.LogInformation("Sending refund notification for {PaymentId}", paymentId);
-        await Task.Delay(100);
-    }
-
-    public async Task SendAlloggiatiDeadlineAlertAsync(Guid bookingId)
-    {
+        // Background job: no tenant filter; the booking id comes from the job's own query.
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Org)
             .Include(b => b.Property)
             .Include(b => b.Guest)
-            .FirstOrDefaultAsync(b => b.Id == bookingId);
+            .FirstOrDefaultAsync(b => b.Id == alert.BookingId, cancellationToken);
 
         if (booking is null)
         {
-            logger.LogWarning("Alloggiati deadline alert skipped because booking {BookingId} was not found", bookingId);
+            logger.LogWarning("Stay alert {Kind} skipped because booking {BookingId} was not found", alert.Kind, alert.BookingId);
             return;
         }
 
-        var hostEmail = booking.Org?.ContactEmail;
-        if (!string.IsNullOrWhiteSpace(hostEmail))
+        var culture = EmailTemplates.DefaultCulture;
+        var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
+        var propertyName = booking.Property.Name;
+        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
+        var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
+        var (template, email) = alert.Kind switch
         {
-            var subject = $"Alloggiati Web in scadenza - {booking.Property.Name} ({booking.CheckInDate:dd/MM/yyyy})";
-            var html = BuildAlloggiatiDeadlineHtml(booking.Property.Name, booking.CheckInDate, booking.Guest.FirstName);
-            var result = await emailService.SendEmailAsync(hostEmail, subject, html);
+            StayAlertKind.GuestDataMissing => (
+                EmailTemplates.Names.GuestCheckInIncomplete,
+                EmailTemplates.GuestCheckInIncomplete(culture, guestName, propertyName, booking.CheckInDate, bookingUrl)),
+            StayAlertKind.AlloggiatiDeadlineApproaching => (
+                EmailTemplates.Names.AlloggiatiDeadline,
+                EmailTemplates.AlloggiatiDeadline(
+                    culture, guestName, propertyName, booking.CheckInDate, alert.ShortStay, alert.DeadlineUtc, bookingUrl)),
+            StayAlertKind.AlloggiatiOverdue => (
+                EmailTemplates.Names.AlloggiatiOverdue,
+                EmailTemplates.AlloggiatiOverdue(
+                    culture, guestName, propertyName, booking.CheckInDate, alert.DeadlineUtc, alert.ReminderNumber, alert.MaxReminders, bookingUrl)),
+            StayAlertKind.AlloggiatiFailed => (
+                EmailTemplates.Names.AlloggiatiFailed,
+                EmailTemplates.AlloggiatiFailed(culture, guestName, propertyName, booking.CheckInDate, bookingUrl)),
+            StayAlertKind.CheckoutReminder => (
+                EmailTemplates.Names.CheckoutReminder,
+                EmailTemplates.CheckoutReminder(culture, guestName, propertyName, booking.CheckOutDate, bookingUrl)),
+            _ => throw new ArgumentOutOfRangeException(nameof(alert), alert.Kind, "Unknown stay alert"),
+        };
 
-            if (!result.Success)
-            {
-                logger.LogWarning(
-                    "Failed to send Alloggiati deadline email for booking {BookingId}: {Error}",
-                    bookingId,
-                    result.ErrorDetail);
-            }
-        }
-        else
+        // Delivered by EmailDeliveryJob (retries on transient provider errors). A missing contact address or provider
+        // is logged by the queue; the push still goes out.
+        if (!emailQueue.Enqueue(booking.Org?.ContactEmail, email, template))
         {
             logger.LogWarning(
-                "Alloggiati deadline email skipped for booking {BookingId} because org {OrgId} has no contact email",
-                bookingId,
+                "Stay alert {Kind} email of booking {BookingId} not queued (org {OrgId})",
+                alert.Kind,
+                booking.Id,
                 booking.OrgId);
         }
 
-        await pushNotificationService.SendGuestCheckInIncompleteAsync(bookingId);
+        // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
+        var isCheckoutReminder = alert.Kind == StayAlertKind.CheckoutReminder;
+        var push = isCheckoutReminder
+            ? EmailTemplates.CheckoutReminderPush(culture, propertyName)
+            : EmailTemplates.StayAlertPush(culture, alert.Kind, propertyName, booking.CheckInDate);
+        var deliveryKey = PushDeliveryKeys.StayAlert(
+            booking.Id,
+            alert.Kind,
+            isCheckoutReminder ? booking.CheckOutDate : booking.CheckInDate,
+            alert.ReminderNumber);
+        var route = isCheckoutReminder ? PushRoutes.BookingCheckout(booking.Id) : PushRoutes.Booking(booking.Id);
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.ForStayAlert(alert.Kind), booking.Id, route)))
+        {
+            logger.LogWarning(
+                "Stay alert {Kind} push of booking {BookingId} not queued (org {OrgId})",
+                alert.Kind,
+                booking.Id,
+                booking.OrgId);
+        }
     }
 
-    public async Task SendCheckoutReminderAsync(Guid bookingId)
+    public async Task<bool> SendCinDeadlineAlertAsync(CinDeadlineAlert alert, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Sending checkout reminder for booking {BookingId}", bookingId);
-        await pushNotificationService.SendCheckoutReminderAsync(bookingId);
-        await Task.Delay(100);
+        ArgumentNullException.ThrowIfNull(alert);
+
+        // Background job: no tenant filter; the org and its property ids come from the job's own query.
+        var propertyIds = alert.PropertyIds.ToArray();
+        var propertyNames = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.OrgId == alert.OrgId && propertyIds.Contains(p.Id))
+            .OrderBy(p => p.Name)
+            .Select(p => p.Name)
+            .ToListAsync(cancellationToken);
+        if (propertyNames.Count == 0)
+        {
+            logger.LogWarning("CIN deadline alert of org {OrgId} skipped: none of its properties was found", alert.OrgId);
+            return false;
+        }
+
+        var contactEmail = await db.Orgs
+            .AsNoTracking()
+            .Where(o => o.Id == alert.OrgId)
+            .Select(o => o.ContactEmail)
+            .FirstOrDefaultAsync(cancellationToken);
+        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
+        var complianceUrl = links.IsConfigured ? links.HostCinCompliance() : null;
+        var email = EmailTemplates.CinDeadlineAlert(EmailTemplates.DefaultCulture, alert.Deadline, propertyNames, complianceUrl);
+
+        // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged
+        // by the queue.
+        if (emailQueue.Enqueue(contactEmail, email, EmailTemplates.Names.CinDeadlineAlert))
+            return true;
+
+        logger.LogWarning(
+            "CIN deadline alert email of org {OrgId} not queued ({PropertyCount} properties)",
+            alert.OrgId,
+            propertyNames.Count);
+        return false;
     }
 
-    public async Task SendCinDeadlineAlertAsync(string ownerId, IReadOnlyList<Guid> propertyIds, int daysUntilDeadline)
+    public async Task SendOtaStayReviewAlertAsync(OtaStayReviewAlert alert, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation(
-            "Sending CIN deadline alert for owner {OwnerId}: {PropertyCount} properties, {Days} days remaining",
-            ownerId, propertyIds.Count, daysUntilDeadline);
-        await Task.Delay(100);
-    }
+        ArgumentNullException.ThrowIfNull(alert);
 
-    private static string BuildAlloggiatiDeadlineHtml(string propertyName, DateTime checkInDate, string guestName) =>
-        $"""
-        <p>Attenzione: la comunicazione Alloggiati Web per l'ospite <strong>{guestName}</strong>
-        presso <strong>{propertyName}</strong> e in scadenza per il check-in del
-        <strong>{checkInDate:dd/MM/yyyy}</strong>.</p>
-        <p>Completa o correggi i dati dell'ospite e invia la comunicazione dal gestionale.</p>
-        """;
+        // Called by the iCal sync job: no tenant filter; the booking id comes from the sync's own query.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Include(b => b.Org)
+            .Include(b => b.Property)
+            .Include(b => b.Guest)
+            .FirstOrDefaultAsync(b => b.Id == alert.BookingId, cancellationToken);
+        if (booking is null)
+        {
+            logger.LogWarning("OTA stay review alert skipped because booking {BookingId} was not found", alert.BookingId);
+            return;
+        }
+
+        var culture = EmailTemplates.DefaultCulture;
+        var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
+        var propertyName = booking.Property.Name;
+        var channelName = EmailTemplates.OtaChannelName(booking.Source, booking.ChannelLabel);
+        var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
+        var email = EmailTemplates.HostOtaStayReview(
+            culture,
+            alert.Reason,
+            guestName,
+            propertyName,
+            channelName,
+            booking.CheckInDate,
+            booking.CheckOutDate,
+            alert.ChannelCheckIn,
+            alert.ChannelCheckOut,
+            bookingUrl);
+
+        if (!emailQueue.Enqueue(booking.Org?.ContactEmail, email, EmailTemplates.Names.HostOtaStayReview))
+        {
+            logger.LogWarning(
+                "OTA stay review email of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
+        }
+
+        var push = EmailTemplates.OtaStayReviewPush(culture, alert.Reason, propertyName, channelName, booking.CheckInDate);
+        var deliveryKey = PushDeliveryKeys.OtaStayReview(booking.Id, alert.Reason, alert.ChannelCheckIn, alert.ChannelCheckOut);
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.OtaStayReview, booking.Id, PushRoutes.Booking(booking.Id))))
+        {
+            logger.LogWarning(
+                "OTA stay review push of booking {BookingId} not queued (org {OrgId})", booking.Id, booking.OrgId);
+        }
+    }
 }

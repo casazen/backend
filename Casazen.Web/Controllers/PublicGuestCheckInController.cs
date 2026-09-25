@@ -1,11 +1,13 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Casazen.Web.BackgroundJobs;
+using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.CheckIn;
-using Hangfire;
+using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -18,75 +20,90 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
-    IBackgroundJobClient backgroundJobClient,
+    IAlloggiatiCodeTableService codeTableService,
+    IAlloggiatiReportScheduler alloggiatiReportScheduler,
+    IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
 {
+    /// <summary>Problem code of a submit on a session the guest has already completed (409).</summary>
+    public const string AlreadySubmittedCode = "checkin_already_submitted";
+
     /// <summary>
     /// Returns booking context for the guest form. Transitions session Inviato→InCompilazione on first open.
+    /// Before completion the guests on file are returned with masked document numbers; after completion only the status is
+    /// returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28).
     /// </summary>
     [HttpGet("{token}")]
-    [EnableRateLimiting("GuestCheckIn")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
     public async Task<ActionResult<PublicCheckInContextResponse>> GetContext(string token)
     {
-        var session = await checkInService.GetSessionByTokenAsync(token);
-        if (session is null)
+        var view = await checkInService.GetPublicViewAsync(token);
+        if (view is null)
             return NotFound();
 
-        var booking = session.Booking;
-        var guest = booking.Guest;
+        if (view.IsCompleted)
+            return Ok(new PublicCheckInContextResponse { Completed = true, Status = view.Status.ToString() });
 
         var response = new PublicCheckInContextResponse
         {
-            SessionId = session.Id,
-            PropertyName = booking.Property.Name,
-            CheckInDate = booking.CheckInDate,
-            CheckOutDate = booking.CheckOutDate,
-            Status = session.Status.ToString(),
-            GuestPrefill = new PublicCheckInGuestPrefill
-            {
-                FirstName = guest.FirstName,
-                LastName = guest.LastName,
-                Email = guest.Email,
-                DateOfBirth = guest.DateOfBirth,
-                Nationality = guest.Nationality,
-                Gender = guest.Gender,
-                DocumentNumber = guest.DocumentNumber,
-                DocumentIssuingCountry = guest.DocumentIssuingCountry,
-                PlaceOfBirth = guest.PlaceOfBirth,
-            },
+            Completed = false,
+            Status = view.Status.ToString(),
+            SessionId = view.SessionId,
+            PropertyName = view.PropertyName,
+            CheckInDate = view.CheckInDate,
+            CheckOutDate = view.CheckOutDate,
+            DeclaredGuests = view.DeclaredGuests,
+            Guests = view.Guests?.Select(PublicCheckInGuestPrefill.From).ToList(),
+            AvailableCodeTables = view.AvailableCodeTables,
+            PrivacyNoticeVersion = view.PrivacyNoticeVersion,
+            MarketingConsentVersion = view.MarketingConsentVersion,
         };
 
         return Ok(response);
     }
 
     /// <summary>
-    /// Accepts guest identity data + GDPR consent. On success enqueues Alloggiati job.
-    /// Returns 409 on duplicate submission.
+    /// Official Alloggiati codes (<c>list</c> = <c>comuni</c>, <c>stati</c>, <c>documenti</c> or <c>luoghi</c>) whose
+    /// description matches <c>q</c>, for the guest form. Only with a usable, not yet completed session. Empty until an
+    /// admin imports the tables (the form then asks for the names only).
+    /// </summary>
+    [HttpGet("{token}/codes")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<IEnumerable<AlloggiatiCodeEntryDto>>> SearchCodes(
+        string token,
+        [FromQuery] string? list,
+        [FromQuery] string? q)
+    {
+        if (!AlloggiatiCodeLists.TryParse(list, out var tables))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, AlloggiatiController.CodeListUnknownCode, "AlloggiatiCodeListUnknown");
+
+        if (await checkInService.GetSessionByTokenAsync(token) is null)
+            return NotFound();
+
+        var results = await codeTableService.SearchAsync(
+            tables, q ?? string.Empty, AlloggiatiController.CodeSearchLimit, HttpContext.RequestAborted);
+        return Ok(results.Select(AlloggiatiCodeEntryDto.From));
+    }
+
+    /// <summary>
+    /// Accepts the data of every guest of the stay (CO-12) and the optional marketing consent; the privacy notice shown is
+    /// recorded with its version (CO-15), no consent is asked for the Alloggiati registration. On success schedules the Alloggiati job for
+    /// the arrival day. Invalid data → 400 ValidationProblem with the errors keyed by request property
+    /// (<c>Guests[1].DocumentNumber</c>);
+    /// duplicate submission → 409 <c>checkin_already_submitted</c>.
     /// </summary>
     [HttpPost("{token}")]
-    [EnableRateLimiting("GuestCheckInSubmit")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
     public async Task<IActionResult> Submit(string token, [FromBody] PublicCheckInSubmitRequest request)
     {
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        if (!request.GdprConsent)
-            return BadRequest(new { error = "GdprConsentRequired", message = "GDPR consent is required." });
-
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+        var ip = ClientIp.GetString(HttpContext) ?? string.Empty;
 
         var submitRequest = new GuestCheckInSubmitRequest
         {
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            DateOfBirth = request.DateOfBirth,
-            Nationality = request.Nationality,
-            Gender = request.Gender,
-            DocumentType = request.DocumentType,
-            DocumentNumber = request.DocumentNumber,
-            DocumentIssuingCountry = request.DocumentIssuingCountry,
-            PlaceOfBirth = request.PlaceOfBirth,
-            GdprConsent = request.GdprConsent,
+            Guests = request.Guests.Select(g => g.ToInput()).ToList(),
             MarketingConsent = request.MarketingConsent,
             ConsentIpAddress = ip,
         };
@@ -94,19 +111,38 @@ public class PublicGuestCheckInController(
         var result = await checkInService.SubmitAsync(token, submitRequest);
 
         if (result.Duplicate)
-            return Conflict(new { error = "AlreadySubmitted", message = "Check-in data was already submitted." });
+            return this.ApiProblem(StatusCodes.Status409Conflict, AlreadySubmittedCode, "CheckInAlreadySubmitted");
+
+        if (result.ValidationErrors.Count > 0)
+        {
+            foreach (var error in result.ValidationErrors)
+            {
+                ModelState.AddModelError(
+                    error.ModelStateKey(nameof(request.Guests)),
+                    localizer[error.MessageKey, error.MessageArgs]);
+            }
+
+            return ValidationProblem(ModelState);
+        }
 
         if (!result.Success)
             return NotFound();
 
-        // Enqueue Alloggiati Web report (mandatory within 24h of arrival, D.L. 286/1998)
-        if (result.GuestId.HasValue && result.BookingId.HasValue)
+        // Alloggiati Web (art. 109 TULPS): scheduled for the arrival day in Europe/Rome, not now (the portal accepts
+        // only today or yesterday as arrival date). Idempotent with the host check-in. The session stays Completo:
+        // it becomes AlloggiatiInviato only with a real receipt.
+        if (result.BookingId.HasValue)
         {
-            backgroundJobClient.Enqueue<AlloggiatiWebReportJob>(
-                job => job.ReportGuestAsync(result.GuestId.Value, result.BookingId.Value));
-
-            if (result.SessionId.HasValue)
-                await checkInService.MarkAlloggiatiEnqueuedAsync(result.SessionId.Value);
+            try
+            {
+                await alloggiatiReportScheduler.EnsureScheduledAsync(result.BookingId.Value);
+            }
+            catch (Exception ex)
+            {
+                // The guest's data is saved: the host check-in schedules it again, and from the arrival day the booking
+                // shows "to send manually" anyway.
+                logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled", result.BookingId);
+            }
         }
 
         logger.LogInformation(

@@ -106,7 +106,7 @@ public class ApeComplianceServiceTests
         "ATTESTATO DI PRESTAZIONE ENERGETICA",
         "Classe energetica C. EPgl,nren 120. SIAPE. Certificatore energetico.");
 
-    private static byte[] PdfBytes(string title, string body) => FiscalPdfWriter.Write(title, body);
+    private static byte[] PdfBytes(string title, string body) => LiteralTextPdf.Build(title, body);
 
     private static IFormFile FormFile(byte[] bytes)
     {
