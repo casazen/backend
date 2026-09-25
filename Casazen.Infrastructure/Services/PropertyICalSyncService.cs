@@ -24,6 +24,7 @@ public partial class PropertyICalSyncService
     private readonly IConfiguration _configuration;
     private readonly IOptions<ICalImportOptions> _importOptions;
     private readonly ILogger<PropertyICalSyncService> _logger;
+    private readonly TimeProvider _clock;
 
     public PropertyICalSyncService(
         AppDbContext db,
@@ -33,7 +34,8 @@ public partial class PropertyICalSyncService
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
         IOptions<ICalImportOptions> importOptions,
-        ILogger<PropertyICalSyncService> logger)
+        ILogger<PropertyICalSyncService> logger,
+        TimeProvider clock)
     {
         _db = db;
         _externalHttpClient = externalHttpClient;
@@ -43,6 +45,7 @@ public partial class PropertyICalSyncService
         _configuration = configuration;
         _importOptions = importOptions;
         _logger = logger;
+        _clock = clock;
     }
 
     /// <summary>Import feeds of the property, oldest first (PC-11). Read-only.</summary>
@@ -82,7 +85,7 @@ public partial class PropertyICalSyncService
             {
                 PropertyId = propertyId,
                 OrgId = orgId,
-                ExportToken = Guid.NewGuid(),
+                ExportToken = PropertyICalExport.NewExportToken(),
                 CreatedAt = DateTime.UtcNow,
             };
             _db.PropertyICalExports.Add(export);
@@ -95,11 +98,39 @@ public partial class PropertyICalSyncService
         return export;
     }
 
+    /// <summary>
+    /// Gives the export link of the property a new token (PC-12, A2-22): from now on the old link answers 404, so a
+    /// link that leaked (or was pasted on a channel the host left) stops working. The host pastes the new link on the
+    /// OTAs. Creates the link when the property has none yet. Under the property's advisory lock, like the creation.
+    /// </summary>
+    public async Task<PropertyICalExport> RegenerateExportTokenAsync(Guid propertyId, Guid orgId, CancellationToken ct = default)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            _db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()));
+
+        var export = await _db.PropertyICalExports.FirstOrDefaultAsync(e => e.PropertyId == propertyId, ct);
+        if (export is null)
+        {
+            export = new PropertyICalExport { PropertyId = propertyId, OrgId = orgId, CreatedAt = DateTime.UtcNow };
+            _db.PropertyICalExports.Add(export);
+        }
+
+        export.ExportToken = PropertyICalExport.NewExportToken();
+        await _db.SaveChangesAsync(ct);
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        // Never the token: the link gives access to the feed.
+        _logger.LogInformation("iCal export link of property {PropertyId} regenerated", propertyId);
+        return export;
+    }
+
     // IgnoreQueryFilters (here and in BuildPublicExportAsync): the public export is authorized by the
     // unguessable ExportToken, not by a user, and is scoped to that export's property.
     public async Task<PropertyICalExport?> GetExportByTokenAsync(Guid exportToken, CancellationToken ct = default) =>
         await _db.PropertyICalExports
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.ExportToken == exportToken, ct);
 
@@ -510,7 +541,15 @@ public partial class PropertyICalSyncService
             MessageKey = ICalFeedErrorCodes.NotFoundMessageKey,
         };
 
-    public async Task<string> BuildPublicExportAsync(Guid exportToken, CancellationToken ct = default)
+    /// <summary>
+    /// The public iCal feed of the export link <paramref name="exportToken"/> (PC-12, A2-22; content and format in
+    /// <see cref="ICalExportService"/>): the bookings that take their dates by the occupancy rule of the booking site
+    /// (BK-05), minus pending "pay at the property" requests and OTA stays, and the host's manual blocks. Blocks imported
+    /// from the OTA feeds are never exported (no echo).
+    /// </summary>
+    /// <param name="busySummary">SUMMARY of every event, localized by the caller.</param>
+    /// <exception cref="NotFoundException">No export link has this token (never existed or regenerated).</exception>
+    public async Task<string> BuildPublicExportAsync(Guid exportToken, string busySummary, CancellationToken ct = default)
     {
         var export = await GetExportByTokenAsync(exportToken, ct)
             ?? throw new NotFoundException("iCal export token not found");
@@ -518,20 +557,26 @@ public partial class PropertyICalSyncService
         // Expired checkout holds no longer take their dates, even before the expiry job cancels them (BK-21). A pending
         // "pay at the property" request is left out until the host accepts it: an anonymous request must not block the
         // OTAs (BK-06, A3-06); the approval checks the imported OTA blocks again.
-        var expiredHoldCutoff = CheckoutHolds.CutoffAt(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(_configuration));
+        // Same clock as the public availability (BK-05): a hold is expired for both at the same instant.
+        var expiredHoldCutoff = CheckoutHolds.CutoffAt(
+            _clock.GetUtcNow().UtcDateTime, CheckoutHolds.GetTtlMinutes(_configuration));
         var bookings = await _db.Bookings
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
             .Where(b => b.PropertyId == export.PropertyId)
             .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoff))
             .Where(OnSiteRequests.IsExportedToOtas())
+            .Where(ICalExportService.ExportsBooking)
             .ToListAsync(ct);
 
         var blocks = await _db.CalendarBlocks
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
             .Where(b => b.PropertyId == export.PropertyId)
+            .Where(ICalExportService.ExportsBlock)
             .ToListAsync(ct);
 
-        return _exportService.BuildPropertyFeed(bookings, blocks);
+        return _exportService.BuildPropertyFeed(bookings, blocks, busySummary);
     }
 
     public async Task<IReadOnlyList<CalendarBlock>> GetBlocksInRangeAsync(
