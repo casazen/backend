@@ -15,7 +15,7 @@ CasaZen gives Italian vacation rental owners a single platform to manage their p
 - **Guests** — travellers who book directly or via OTA platforms (Airbnb, Booking.com, etc.)
 
 ### Core value proposition
-CasaZen automates the most burdensome parts of Italian vacation rental management: real-time multi-channel synchronisation, compliant tourist tax calculation, mandatory police reporting (Alloggiati Web), and AI-driven dynamic pricing — all in one API-first platform.
+CasaZen automates the most burdensome parts of Italian vacation rental management: real-time multi-channel synchronisation, compliant tourist tax calculation, mandatory police reporting (Alloggiati Web), and seasonal price suggestions — all in one API-first platform.
 
 ---
 
@@ -64,10 +64,10 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 - **Relationships**: Linked to a `Booking` and a `Guest`.
 - **Business significance**: Italian law (D.L. 286/1998, Art. 7) requires accommodation providers to report guest identities to the police within 24 hours of check-in. This entity tracks submission status.
 
-### PricingAdapterConfig / PricingHistory
-- **Purpose**: Configuration and audit trail for AI-driven dynamic pricing.
-- **Key attributes**: Enabled flag, adaptation frequency, seasonality and public holiday flags, next scheduled run, last adapted timestamp, AI confidence score.
-- **Business significance**: Allows owners to opt into automated price adjustments. Each price change is logged in `PricingHistory` with an AI confidence score for transparency.
+### PricingAdapterConfig / SeasonalPriceSuggestion
+- **Purpose**: "Suggerimenti stagionali" (seasonal price suggestions, PC-15): the host's rules and the suggested nightly price per date.
+- **Key attributes**: Enabled flag, update frequency (daily/weekly), high/low season months and multipliers, national holiday multiplier, last computation; per date: real base price, suggested price, rule applied.
+- **Business significance**: Proposals only: quotes and bookings keep using the property's nightly rate. No AI and no confidence score. `PricingHistory` only logs the (frozen) OTA price push.
 
 ---
 
@@ -172,7 +172,7 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 | BookingStatus | The lifecycle state of a booking: Pending, Confirmed, CheckedIn, CheckedOut, Cancelled. |
 | Circuit breaker | A resilience pattern that halts calls to an external service after repeated failures, preventing cascading errors. Used for all OTA integrations. |
 | GDPR | General Data Protection Regulation — EU regulation governing the collection, storage, and erasure of personal data. Applies to all guest personal data. |
-| Dynamic pricing | AI-driven automatic adjustment of nightly rates based on seasonality, demand signals, and public holidays. Managed via `PricingAdapterConfig`. |
+| Seasonal suggestions | "Suggerimenti stagionali": suggested nightly prices from the property's rate and the host's season and national holiday rules; read-only proposals, no AI. Managed via `PricingAdapterConfig`. |
 
 ---
 

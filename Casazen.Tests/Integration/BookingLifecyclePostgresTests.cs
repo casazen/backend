@@ -58,7 +58,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
             cleaningFee = 0m,
             guestId = Guid.NewGuid(),
             orgId = Guid.NewGuid(),
-            checkInToken = Guid.NewGuid(),
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -69,7 +68,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         Assert.Equal(BookingSource.Manual, stored.Source);
         Assert.Equal(before.GuestId, stored.GuestId);
         Assert.Equal(before.OrgId, stored.OrgId);
-        Assert.Equal(before.CheckInToken, stored.CheckInToken);
         // Priced again by the server: 5 nights x 100 + 50 cleaning; no tourist tax rate for Rome in CasaZen.
         Assert.Equal(550m, stored.BasePrice);
         Assert.Equal(50m, stored.CleaningFee);
@@ -77,7 +75,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         Assert.Equal(0m, stored.TouristTax);
         Assert.Equal(3, stored.NumberOfGuests);
         Assert.Equal(checkIn.AddDays(5), stored.CheckOutDate);
-        Assert.Equal(checkIn.AddDays(12), stored.CheckInTokenExpiresAt);
         Assert.Equal("Culla in camera", stored.SpecialRequests);
     }
 
@@ -182,7 +179,7 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
     }
 
     [PostgresFact]
-    public async Task Confirm_PendingManualBookingLeftByTheOldCode_ConfirmsItOnceAndIssuesTheCheckInToken()
+    public async Task Confirm_PendingManualBookingLeftByTheOldCode_ConfirmsItOnce()
     {
         var (hostId, property) = await SeedHostPropertyAsync();
         var bookingId = await SeedBookingAsync(property, BookingStatus.Pending, BookingSource.Manual, NextYear(9, 10), NextYear(9, 13));
@@ -197,7 +194,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         Assert.Equal("Confirmed", (await confirm.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
         var stored = await LoadAsync(bookingId);
         Assert.Equal(BookingStatus.Confirmed, stored.Status);
-        Assert.NotNull(stored.CheckInToken);
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         Assert.Equal("booking_not_pending", (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         Assert.Equal(HttpStatusCode.UnprocessableEntity, hold.StatusCode);

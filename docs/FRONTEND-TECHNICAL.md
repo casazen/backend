@@ -131,7 +131,7 @@ Static class with typed `get`, `getPaginated`, `post`, `put`, `patch`, `delete` 
 | `bookings.api.ts` | CRUD + check-in + check-out + calendar |
 | `payments.api.ts` | CRUD + process + refund + revenue |
 | `ota.api.ts` | Sync + status + pricing + availability + validate |
-| `pricing-adapter.api.ts` | Config + history + preview + manual sync trigger |
+| `pricing-adapter.api.ts` | Seasonal suggestions: config (rules) + suggestions by date + manual recalculation |
 | `guests.api.ts` | CRUD for guest records |
 | `tourist-tax.api.ts` | Tourist tax rate management |
 | `auth.api.ts` | Auth0 user profile |
@@ -149,7 +149,7 @@ Static class with typed `get`, `getPaginated`, `post`, `put`, `patch`, `delete` 
 | `use-bookings.ts` | `useBookings`, `useBooking`, `useCreateBooking`, `useUpdateBooking`, `useDeleteBooking`, `useCheckIn`, `useCheckOut` | Invalidates `['bookings']` |
 | `use-payments.ts` | `usePayments`, `usePayment`, `useCreatePayment`, `useProcessPayment`, `useRefundPayment`, `useRevenue` | Invalidates `['payments']` |
 | `use-ota.ts` | `useOtaStatus`, `useSyncAll`, `useUpdatePricing`, `useValidateCredentials` | — |
-| `use-pricing-adapter.ts` | `usePricingConfig`, `useSavePricingConfig`, `usePricingHistory`, `usePricingPreview`, `useTriggerSync` | Invalidates `['pricing-adapter']` |
+| `use-pricing-adapter.ts` | `usePricingAdapterConfig`, `useSavePricingAdapterConfig`, `useDisablePricingAdapter`, `useSeasonalSuggestions`, `useRecalculateSuggestions` | Invalidates config and suggestions of the property |
 
 All mutations show a toast on success and on error via Sonner.
 

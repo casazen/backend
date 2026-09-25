@@ -61,7 +61,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 Anonymous / public (non-exhaustive highlights):
 - `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
 - `POST /api/auth/register`, `GET /api/orgs/plans`
-- All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml`), `/api/checkin/*`, `/api/legal/*`
+- All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml` and the guest check-in portal `/api/public/checkin/*`), `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
 ### Authorization (TN-3)
@@ -185,9 +185,6 @@ Property record choices (PC-02):
 | `POST` | `/api/guests` | JWT | Create a guest record |
 | `PUT` | `/api/guests/{id}` | JWT | Update guest details |
 | `DELETE` | `/api/guests/{id}` | JWT | Delete a guest |
-| `GET` | `/api/checkin/{token}` | Anonymous | Guest check-in session by magic token |
-| `POST` | `/api/checkin/{token}/guest-data` | Anonymous | Submit guest identity data |
-| `POST` | `/api/checkin/{token}/document` | Anonymous | Upload ID document for check-in |
 
 #### Leases (long-term)
 
@@ -231,16 +228,15 @@ Property record choices (PC-02):
 | `GET` | `/api/billing/subscription` | OrgBillingAdmin | Current org subscription; `status`: `none`, `trialing`, `active`, `past_due`, `unpaid`, `incomplete`, `canceled` |
 | `PUT` | `/api/billing/profile` | OrgBillingAdmin | Update billing profile |
 
-#### Pricing Adapter (AI Dynamic Pricing)
+#### Seasonal suggestions ("Suggerimenti stagionali", PC-15; `docs/runbooks/seasonal-suggestions.md`)
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/pricing-adapter/config/{propertyId}` | Enable / update AI pricing config |
-| `GET` | `/api/pricing-adapter/config/{propertyId}` | Get current AI pricing config |
-| `DELETE` | `/api/pricing-adapter/config/{propertyId}` | Disable AI pricing |
-| `GET` | `/api/pricing-adapter/history/{propertyId}` | Paginated price change history |
-| `POST` | `/api/pricing-adapter/sync/{propertyId}` | Trigger a manual pricing sync (returns `jobId`) |
-| `GET` | `/api/pricing-adapter/preview/{propertyId}` | Preview suggested prices for next 90 days |
+| `POST` | `/api/pricing-adapter/config/{propertyId}` | Enable / update frequency and rules (computes the suggestions when enabled) |
+| `GET` | `/api/pricing-adapter/config/{propertyId}` | Current config (example rule when never saved) |
+| `DELETE` | `/api/pricing-adapter/config/{propertyId}` | Disable and delete the suggestions |
+| `GET` | `/api/pricing-adapter/suggestions/{propertyId}` | Suggestions by date (real nightly rate x rule), read-only |
+| `POST` | `/api/pricing-adapter/recalculate/{propertyId}` | Recompute now (same logic as the nightly job) |
 
 #### OTA Channel Management
 
@@ -561,7 +557,7 @@ erDiagram
 |---|---|---|
 | `OtaSyncJob` | Hourly | Full OTA availability and booking sync |
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
-| `DynamicPricingJob` | Daily at 02:00 UTC | AI-driven nightly rate adaptation |
+| `DynamicPricingJob` | Daily at 02:00 UTC | Recomputes the seasonal suggestions due by Rome date (daily/weekly), upsert per date |
 | `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
@@ -581,7 +577,6 @@ erDiagram
 | Resend | `Resend` SDK (`ResendEmailService`, the only `IEmailService`) | `Email` section (`Email__Provider`, `Email__ApiKey`, `Email__FromAddress`, `Email__FromName`); see `docs/runbooks/email.md` | Transactional emails (queued on Hangfire) |
 | Alloggiati Web | None yet (manual submission, CO-13 adds the SOAP client) | `AlloggiatiWebService.cs`, `docs/runbooks/alloggiati.md` | Italian police guest registration |
 | OTA platforms (6) | `IChannelAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
-| Public holidays API | `PublicHolidayService` | Configured in service | Feeds AI pricing seasonality |
 
 ---
 
