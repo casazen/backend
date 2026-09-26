@@ -110,7 +110,7 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
         var bookings = context.Bookings.IgnoreQueryFilters().AsNoTracking().Where(b => b.GuestId == guestId);
 
         var hasOpenBookings = await bookings.AnyAsync(
-            b => OpenBookingStatuses.Contains(b.Status) && b.CheckOutDate >= today,
+            b => OpenBookingStatuses.Contains(b.Status),
             cancellationToken);
         var hasReferences = hasOpenBookings
             || await bookings.AnyAsync(cancellationToken)

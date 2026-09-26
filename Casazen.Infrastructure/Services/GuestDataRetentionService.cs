@@ -37,6 +37,8 @@ public sealed class GuestDataRetentionService(
     ILogger<GuestDataRetentionService> logger) : IGuestDataRetentionService
 {
     private const int ChunkSize = 100;
+    private static readonly BookingStatus[] OpenBookingStatuses =
+        [BookingStatus.Pending, BookingStatus.Confirmed, BookingStatus.CheckedIn];
 
     /// <summary>Reference date of the stay-based categories: the latest check-out, or the creation date without bookings.</summary>
     public static DateTime StayReferenceDate(DateTime? latestCheckout, DateTime createdAt) => (latestCheckout ?? createdAt).Date;
@@ -112,7 +114,9 @@ public sealed class GuestDataRetentionService(
         // 1. Every guest of each stay whose check-out is past the period.
         var candidateStartBefore = period.CandidateStartBefore(today);
         var stays = await db.StayGuests
-            .Where(s => s.AnonymizedAt == null && s.Booking.CheckOutDate < candidateStartBefore)
+            .Where(s => s.AnonymizedAt == null
+                && !OpenBookingStatuses.Contains(s.Booking.Status)
+                && s.Booking.CheckOutDate < candidateStartBefore)
             .Select(s => new { s.BookingId, s.Booking.CheckOutDate })
             .Distinct()
             .ToListAsync(cancellationToken);
@@ -242,14 +246,16 @@ public sealed class GuestDataRetentionService(
         CancellationToken cancellationToken)
     {
         var candidateStartBefore = period.CandidateStartBefore(today);
+        var bookings = db.Bookings.IgnoreQueryFilters().AsNoTracking();
         var candidates = await query
             .Select(g => new
             {
                 g.Id,
                 g.CreatedAt,
-                LatestCheckout = db.Bookings.Where(b => b.GuestId == g.Id).Max(b => (DateTime?)b.CheckOutDate),
+                LatestCheckout = bookings.Where(b => b.GuestId == g.Id).Max(b => (DateTime?)b.CheckOutDate),
+                HasOpenBooking = bookings.Any(b => b.GuestId == g.Id && OpenBookingStatuses.Contains(b.Status)),
             })
-            .Where(g => (g.LatestCheckout ?? g.CreatedAt) < candidateStartBefore)
+            .Where(g => !g.HasOpenBooking && (g.LatestCheckout ?? g.CreatedAt) < candidateStartBefore)
             .ToListAsync(cancellationToken);
 
         return candidates

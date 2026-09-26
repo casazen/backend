@@ -37,12 +37,12 @@ public interface IGuestRepository
 
     /// <summary>
     /// Bookings and Alloggiati reports that reference the guest, across every org (the FK does not care
-    /// about tenants), and whether one of the bookings is still open on or after <paramref name="today"/>.
+    /// about tenants), and whether one of the bookings is still in an open lifecycle state.
     /// </summary>
     Task<GuestUsage> GetUsageAsync(Guid guestId, DateTime today, CancellationToken cancellationToken = default);
 }
 
 /// <summary>What still references a guest (TN-1, guest deletion).</summary>
 /// <param name="HasReferences">At least one booking or Alloggiati report points at the guest.</param>
-/// <param name="HasOpenBookings">A pending, confirmed or checked-in booking ends today or later.</param>
+/// <param name="HasOpenBookings">A pending, confirmed or checked-in booking still exists.</param>
 public sealed record GuestUsage(bool HasReferences, bool HasOpenBookings);
