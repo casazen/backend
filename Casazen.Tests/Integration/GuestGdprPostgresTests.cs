@@ -170,7 +170,35 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
     public async Task EraseGuestDataAsync_OpenBooking_Throws409AndChangesNothing()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 11, 9, 0, 0, TimeSpan.Zero));
-        var seeded = await SeedStayAsync(checkOut: new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc));
+        var seeded = await SeedStayAsync(
+            checkOut: new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc),
+            status: BookingStatus.Confirmed);
+        var storage = new Mock<IFileStorage>();
+
+        await using (var scope = NewScope(out var db))
+        {
+            var error = await Assert.ThrowsAsync<Core.Exceptions.DomainConflictException>(() =>
+                NewGdprService(db, storage.Object, clock).EraseGuestDataAsync(seeded.OrgId, seeded.GuestId, "Richiesta", "auth0|host"));
+            Assert.Equal("guest_has_open_bookings", error.Code);
+        }
+
+        await using (var scope = NewScope(out var db))
+        {
+            var guest = await db.Guests.IgnoreQueryFilters().AsNoTracking().SingleAsync(g => g.Id == seeded.GuestId);
+            Assert.Equal(("Giulia", DocumentNumber, seeded.ScanKey), (guest.FirstName, guest.DocumentNumber, guest.DocumentScanUrl));
+            Assert.Empty(await AuditAsync(db, seeded.GuestId));
+        }
+
+        storage.VerifyNoOtherCalls();
+    }
+
+    [PostgresFact]
+    public async Task EraseGuestDataAsync_OverdueActiveBooking_Throws409AndChangesNothing()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 20, 9, 0, 0, TimeSpan.Zero));
+        var seeded = await SeedStayAsync(
+            checkOut: new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc),
+            status: BookingStatus.CheckedIn);
         var storage = new Mock<IFileStorage>();
 
         await using (var scope = NewScope(out var db))
@@ -287,7 +315,10 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 9, 18, 0, 0, TimeSpan.Zero));
         var seeded = await SeedStayAsync(
-            checkOut: new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc), marketingConsent: false, withStayData: false);
+            checkOut: new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc),
+            marketingConsent: false,
+            withStayData: false,
+            status: BookingStatus.Confirmed);
         var options = Options.Create(new GdprOptions { PrivacyNoticeVersion = "notice-2026-10", MarketingConsentVersion = "marketing-2026-10" });
 
         await using (var scope = NewScope(out var db))
@@ -448,6 +479,36 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
         storage.Verify(s => s.DeleteAsync(StorageBucket.Private, seeded.ScanKey, It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [PostgresFact]
+    public async Task ApplyAsync_OverdueActiveBooking_DoesNotApplyRetention()
+    {
+        var checkOut = new DateTime(2027, 1, 10, 0, 0, 0, DateTimeKind.Utc);
+        var seeded = await SeedStayAsync(checkOut: checkOut, status: BookingStatus.CheckedIn);
+        var storage = new Mock<IFileStorage>();
+        var retention = new GdprRetentionOptions
+        {
+            DocumentScans = new RetentionPeriodOptions { Days = 0, Source = "test: scans" },
+            AlloggiatiData = new RetentionPeriodOptions { Days = 0, Source = "test: alloggiati" },
+            FiscalData = new RetentionPeriodOptions { Days = 0, Source = "test: fiscal" },
+        };
+
+        await RunRetentionAsync(storage, retention, checkOut.AddYears(3));
+
+        var guest = await LoadGuestAsync(seeded.GuestId);
+        Assert.Equal(("Giulia", DocumentNumber, seeded.ScanKey), (guest.FirstName, guest.DocumentNumber, guest.DocumentScanUrl));
+        Assert.Null(guest.DataAnonymizedDate);
+        Assert.Null(guest.AlloggiatiDataErasedAt);
+        await using (var scope = NewScope(out var db))
+        {
+            Assert.All(
+                await db.StayGuests.IgnoreQueryFilters().AsNoTracking().Where(s => s.BookingId == seeded.BookingId).ToListAsync(),
+                s => Assert.Null(s.AnonymizedAt));
+            Assert.Empty(await AuditAsync(db, seeded.GuestId));
+        }
+
+        storage.Verify(s => s.DeleteAsync(StorageBucket.Private, seeded.ScanKey, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private async Task RunRetentionAsync(Mock<IFileStorage> storage, GdprRetentionOptions retention, DateTime romeDay)
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(romeDay.Date.AddHours(3), TimeSpan.Zero));
@@ -552,7 +613,8 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
         string? owner = null,
         bool marketingConsent = true,
         DateTime? marketingGrantedAt = null,
-        bool withStayData = true)
+        bool withStayData = true,
+        BookingStatus status = BookingStatus.CheckedOut)
     {
         owner ??= $"auth0|co15-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(owner);
@@ -594,7 +656,7 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             CheckInDate = checkOut.AddDays(-3),
             CheckOutDate = checkOut,
             NumberOfGuests = 3,
-            Status = BookingStatus.Confirmed,
+            Status = status,
             Source = BookingSource.Direct,
             BasePrice = 480m,
             TotalPrice = 480m,
@@ -657,7 +719,7 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             CheckInDate = checkOut.AddDays(-2),
             CheckOutDate = checkOut,
             NumberOfGuests = 1,
-            Status = BookingStatus.Confirmed,
+            Status = BookingStatus.CheckedOut,
             Source = BookingSource.Direct,
             BasePrice = 200m,
             TotalPrice = 200m,
