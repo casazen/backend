@@ -374,6 +374,7 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             TestDeferredCharges.Create(db),
+            Config,
             NullLogger<StripeWebhookHandler>.Instance);
 
     private async Task<OrgEntity> SeedOrgAsync(SubscriptionStatus status, PlanTier tier, bool withSubscription = true)
