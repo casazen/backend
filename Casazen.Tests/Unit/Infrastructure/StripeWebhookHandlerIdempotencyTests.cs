@@ -7,17 +7,20 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
+using Casazen.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stripe;
-using Casazen.Tests.Integration;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
 public class StripeWebhookHandlerIdempotencyTests
 {
+    private static readonly IConfiguration Config = new ConfigurationBuilder().Build();
+
     [Fact]
     public async Task HandleEventAsync_WhenBusinessHandlerThrows_DoesNotPersistProcessedMarker()
     {
@@ -68,6 +71,55 @@ public class StripeWebhookHandlerIdempotencyTests
         var handler = CreateHandler(db, new ThrowingPaymentRepository());
 
         await handler.HandleEventAsync(DirectBookingSucceededEvent("evt_duplicate", paymentIntentId), WebhookSource.Connected);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_SetupIntentSucceededAfterExpiredHoldDatesTaken_CancelsHold()
+    {
+        await using var db = NewDb();
+        var seed = await SeedDeferredSetupHoldAsync(db, minutesAgo: 45);
+        await SeedConfirmedOverlapAsync(db, seed);
+
+        await CreateHandler(db).HandleEventAsync(
+            DirectBookingSetupSucceededEvent("evt_setup_late", seed.BookingId, seed.SetupIntentId, seed.Account),
+            WebhookSource.Connected);
+
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        var payment = await db.Payments.AsNoTracking().SingleAsync(p => p.BookingId == seed.BookingId);
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        Assert.Equal(BookingCancellationReason.DatesUnavailableAtPayment, booking.CancellationReason);
+        Assert.Null(booking.StripePaymentMethodId);
+        Assert.Equal(PaymentStatus.Canceled, payment.Status);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_SetupIntentSucceededWithDifferentIntent_DoesNotConfirmBooking()
+    {
+        await using var db = NewDb();
+        var seed = await SeedDeferredSetupHoldAsync(db, minutesAgo: 5);
+
+        await CreateHandler(db).HandleEventAsync(
+            DirectBookingSetupSucceededEvent("evt_setup_wrong_id", seed.BookingId, "seti_wrong", seed.Account),
+            WebhookSource.Connected);
+
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        Assert.Equal(BookingStatus.Pending, booking.Status);
+        Assert.Null(booking.StripePaymentMethodId);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_SetupIntentSucceededFromDifferentAccount_DoesNotConfirmBooking()
+    {
+        await using var db = NewDb();
+        var seed = await SeedDeferredSetupHoldAsync(db, minutesAgo: 5);
+
+        await CreateHandler(db).HandleEventAsync(
+            DirectBookingSetupSucceededEvent("evt_setup_wrong_account", seed.BookingId, seed.SetupIntentId, "acct_other"),
+            WebhookSource.Connected);
+
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId);
+        Assert.Equal(BookingStatus.Pending, booking.Status);
+        Assert.Null(booking.StripePaymentMethodId);
     }
 
     private static AppDbContext NewDb()
@@ -150,6 +202,116 @@ public class StripeWebhookHandlerIdempotencyTests
         return (booking.Id, org.Id, property.Id, paymentIntentId);
     }
 
+    private static async Task<DeferredSetupSeed> SeedDeferredSetupHoldAsync(AppDbContext db, int minutesAgo)
+    {
+        var account = $"acct_{Guid.NewGuid():N}";
+        var setupIntentId = $"seti_{Guid.NewGuid():N}";
+        var now = DateTime.UtcNow;
+        var org = new OrgEntity
+        {
+            Name = "Deferred Webhook Org",
+            Slug = $"deferred-webhook-{Guid.NewGuid():N}",
+            DisplayName = "Deferred Webhook Org",
+            ContactEmail = "host@example.com",
+            StripeConnectedAccountId = account,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var property = new Property
+        {
+            OrgId = org.Id,
+            OwnerId = "owner|deferred-webhook",
+            Name = "Deferred Villa",
+            Address = "Via Deferred 1",
+            City = "Rome",
+            PostalCode = "00100",
+            MaxGuests = 4,
+            NightlyRate = 100m,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var guest = new Guest
+        {
+            OrgId = org.Id,
+            FirstName = "Deferred",
+            LastName = "Guest",
+            Email = $"deferred.{Guid.NewGuid():N}@example.com",
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var booking = new Booking
+        {
+            OrgId = org.Id,
+            PropertyId = property.Id,
+            GuestId = guest.Id,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(30),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(34),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Pending,
+            Source = BookingSource.Direct,
+            PaymentOption = PaymentOption.OnCancellationDeadline,
+            FreeRefundDeadline = TimeProvider.System.TodayInRome().AddDays(20),
+            StripeSetupIntentId = setupIntentId,
+            TotalPrice = 500m,
+            CreatedAt = now.AddMinutes(-minutesAgo),
+            UpdatedAt = now.AddMinutes(-minutesAgo),
+        };
+        var payment = new Payment
+        {
+            OrgId = org.Id,
+            BookingId = booking.Id,
+            Amount = booking.TotalPrice,
+            Status = PaymentStatus.Pending,
+            Method = Casazen.Core.Entities.PaymentMethod.CreditCard,
+            TransactionId = setupIntentId,
+            StripeAccountId = account,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        db.Orgs.Add(org);
+        db.Properties.Add(property);
+        db.Guests.Add(guest);
+        db.Bookings.Add(booking);
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        return new DeferredSetupSeed(booking.Id, org.Id, property.Id, account, setupIntentId, booking.CheckInDate, booking.CheckOutDate);
+    }
+
+    private static async Task SeedConfirmedOverlapAsync(AppDbContext db, DeferredSetupSeed seed)
+    {
+        var guest = new Guest
+        {
+            OrgId = seed.OrgId,
+            FirstName = "Confirmed",
+            LastName = "Guest",
+            Email = $"confirmed.{Guid.NewGuid():N}@example.com",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        var booking = new Booking
+        {
+            OrgId = seed.OrgId,
+            PropertyId = seed.PropertyId,
+            GuestId = guest.Id,
+            CheckInDate = seed.CheckInDate,
+            CheckOutDate = seed.CheckOutDate,
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+            TotalPrice = 500m,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        db.Guests.Add(guest);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+    }
+
     private static StripeWebhookHandler CreateHandler(AppDbContext db, IPaymentRepository? paymentRepository = null) =>
         new(
             paymentRepository ?? new PaymentRepository(db),
@@ -165,6 +327,7 @@ public class StripeWebhookHandlerIdempotencyTests
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db, paymentRepository),
             TestDeferredCharges.Create(db),
+            Config,
             NullLogger<StripeWebhookHandler>.Instance);
 
     private static Event DirectBookingSucceededEvent(string eventId, string paymentIntentId) =>
@@ -184,6 +347,42 @@ public class StripeWebhookHandlerIdempotencyTests
                 },
             },
         };
+
+    private static Event DirectBookingSetupSucceededEvent(
+        string eventId,
+        Guid bookingId,
+        string setupIntentId,
+        string account) =>
+        new()
+        {
+            Id = eventId,
+            Type = "setup_intent.succeeded",
+            Account = account,
+            Data = new EventData
+            {
+                Object = new SetupIntent
+                {
+                    Id = setupIntentId,
+                    Status = "succeeded",
+                    CustomerId = $"cus_{Guid.NewGuid():N}",
+                    PaymentMethodId = $"pm_{Guid.NewGuid():N}",
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["kind"] = "direct-booking-setup",
+                        ["bookingId"] = bookingId.ToString(),
+                    },
+                },
+            },
+        };
+
+    private sealed record DeferredSetupSeed(
+        Guid BookingId,
+        Guid OrgId,
+        Guid PropertyId,
+        string Account,
+        string SetupIntentId,
+        DateTime CheckInDate,
+        DateTime CheckOutDate);
 
     private sealed class ThrowingPaymentRepository : IPaymentRepository
     {

@@ -402,6 +402,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
                 retryScheduler: _refundRetries.Object,
                 configuration: configuration),
             TestDeferredCharges.Create(db),
+            configuration,
             NullLogger<StripeWebhookHandler>.Instance);
         await handler.HandleEventAsync(stripeEvent, source);
     }

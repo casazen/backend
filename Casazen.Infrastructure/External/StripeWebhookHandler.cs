@@ -7,6 +7,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -26,6 +27,7 @@ public class StripeWebhookHandler(
     IPaymentRefundService paymentRefundService,
     CheckoutPaymentSettlementService checkoutPayments,
     DeferredChargeService deferredCharges,
+    IConfiguration configuration,
     ILogger<StripeWebhookHandler> logger)
 {
     private const string DirectBookingKind = "direct-booking";
@@ -91,7 +93,7 @@ public class StripeWebhookHandler(
                     break;
                 case "setup_intent.succeeded":
                     if (source == WebhookSource.Connected)
-                        checkoutSettlement = await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent);
+                        checkoutSettlement = await HandleSetupIntentSucceededAsync(stripeEvent.Data.Object as SetupIntent, stripeEvent.Account);
                     break;
                 case "charge.refunded":
                     succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
@@ -578,7 +580,7 @@ public class StripeWebhookHandler(
     /// deadline). The confirmation emails follow the commit, once per transition (BK-10): the booking row is locked, so
     /// two different events of the same SetupIntent cannot both see it pending.
     /// </summary>
-    private async Task<CheckoutPaymentSettlement?> HandleSetupIntentSucceededAsync(SetupIntent? setupIntent)
+    private async Task<CheckoutPaymentSettlement?> HandleSetupIntentSucceededAsync(SetupIntent? setupIntent, string? account)
     {
         if (setupIntent is null)
             return null;
@@ -602,6 +604,8 @@ public class StripeWebhookHandler(
             return null;
         }
 
+        await BookingRepository.LockPropertyDatesAsync(dbContext, booking.PropertyId, CancellationToken.None);
+
         if (booking.Status != BookingStatus.Pending)
         {
             logger.LogWarning(
@@ -609,6 +613,32 @@ public class StripeWebhookHandler(
                 setupIntent.Id,
                 bookingId,
                 booking.Status);
+            return null;
+        }
+
+        if (booking.PaymentOption != PaymentOption.OnCancellationDeadline ||
+            !string.Equals(booking.StripeSetupIntentId, setupIntent.Id, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Ignoring setup intent {SetupIntentId} for booking {BookingId}: expected deferred setup intent {ExpectedSetupIntentId} ({PaymentOption})",
+                setupIntent.Id,
+                bookingId,
+                booking.StripeSetupIntentId ?? "none",
+                booking.PaymentOption);
+            return null;
+        }
+
+        var expectedAccount = await ExpectedSetupIntentAccountAsync(booking);
+        if (string.IsNullOrWhiteSpace(account) ||
+            string.IsNullOrWhiteSpace(expectedAccount) ||
+            !string.Equals(expectedAccount, account, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Ignoring setup intent {SetupIntentId} for booking {BookingId}: event account {EventAccount} does not match expected {ExpectedAccount}",
+                setupIntent.Id,
+                bookingId,
+                account ?? "none",
+                expectedAccount ?? "none");
             return null;
         }
 
@@ -625,14 +655,76 @@ public class StripeWebhookHandler(
             return null;
         }
 
+        if (await IsExpiredDeferredHoldUnavailableAsync(booking))
+        {
+            booking.Status = BookingStatus.Cancelled;
+            booking.CancellationReason = BookingCancellationReason.DatesUnavailableAtPayment;
+            booking.UpdatedAt = DateTime.UtcNow;
+
+            var setupPayment = booking.Payments.FirstOrDefault(p => p.TransactionId == booking.StripeSetupIntentId);
+            if (setupPayment is { Status: PaymentStatus.Pending or PaymentStatus.Failed })
+            {
+                setupPayment.Status = PaymentStatus.Canceled;
+                setupPayment.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await dbContext.SaveChangesAsync();
+            logger.LogWarning(
+                "Setup intent {SetupIntentId} succeeded after booking {BookingId}'s hold expired, but the dates are no longer available; booking cancelled",
+                setupIntent.Id,
+                bookingId);
+            return null;
+        }
+
         booking.StripePaymentMethodId = paymentMethodId;
         booking.StripeCustomerId = setupIntent.CustomerId;
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
-        await bookingRepository.UpdateAsync(booking);
+        await dbContext.SaveChangesAsync();
 
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
         return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.ConfirmedWithSavedCard, bookingId);
+    }
+
+    private async Task<string?> ExpectedSetupIntentAccountAsync(Booking booking)
+    {
+        var setupPayment = booking.Payments.FirstOrDefault(p => p.TransactionId == booking.StripeSetupIntentId);
+        if (!string.IsNullOrWhiteSpace(setupPayment?.StripeAccountId))
+            return setupPayment.StripeAccountId;
+
+        return await dbContext.Orgs
+            .AsNoTracking()
+            .Where(o => o.Id == booking.OrgId)
+            .Select(o => o.StripeConnectedAccountId)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task<bool> IsExpiredDeferredHoldUnavailableAsync(Booking booking)
+    {
+        var cutoff = CheckoutHolds.CutoffAt(DateTime.UtcNow, CheckoutHolds.GetTtlMinutes(configuration));
+        var expired = await dbContext.Bookings
+            .Where(b => b.Id == booking.Id)
+            .Where(CheckoutHolds.IsExpired(cutoff))
+            .AnyAsync();
+
+        if (!expired)
+            return false;
+
+        var checkIn = booking.CheckInDate.Date;
+        var checkOut = booking.CheckOutDate.Date;
+        var takenByBooking = await dbContext.Bookings
+            .Where(b => b.PropertyId == booking.PropertyId &&
+                        b.Id != booking.Id &&
+                        b.CheckInDate.Date < checkOut &&
+                        b.CheckOutDate.Date > checkIn)
+            .Where(CheckoutHolds.OccupiesDates(cutoff))
+            .AnyAsync();
+
+        if (takenByBooking)
+            return true;
+
+        return await PropertyICalSyncService.HasOverlappingBlockAsync(
+            dbContext, booking.PropertyId, checkIn, checkOut, CancellationToken.None);
     }
 
     /// <summary>Row lock of the booking for the rest of the event transaction; nothing outside PostgreSQL.</summary>
