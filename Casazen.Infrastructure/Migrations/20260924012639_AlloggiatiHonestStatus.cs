@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Casazen.Infrastructure.Migrations
 {
     /// <summary>
-    /// CO-11 (A5-01, A9-05, A5-03, A5-37): honest Alloggiati Web status. Until CO-11 every report was set to
-    /// <c>Submitted</c> (1) without transmitting anything, so no existing row has a real receipt.
+    /// CO-11 (A5-01, A9-05, A5-03, A5-37): honest Alloggiati Web status. Until CO-11 most reports were set to
+    /// <c>Submitted</c> (1) without transmitting anything; any row that already carries a receipt is treated as sent.
     /// </summary>
     /// <remarks>
     /// <para>Schema: <c>Bookings.ArrivedAt</c> (real arrival, the 24/6-hour term runs from it), the Hangfire job
@@ -15,8 +15,9 @@ namespace Casazen.Infrastructure.Migrations
     /// not sent), a unique index on (<c>BookingId</c>, <c>GuestId</c>) as idempotency key, and the check constraint
     /// <c>CK_AlloggiatiWebReports_SentRequiresReceipt</c>: status <c>Inviato</c> (2) only with a receipt reference.</para>
     /// <para>Data, before the index and the constraint (see <see cref="DeduplicateReportsSql"/>,
-    /// <see cref="HonestStatusSql"/>, <see cref="SessionsSql"/>): duplicates of the same booking and guest are merged
-    /// into the latest row; <c>Submitted</c> (1), <c>Confirmed</c> (2) and <c>Failed</c> (3) without a receipt become
+    /// <see cref="HonestStatusSql"/>, <see cref="SessionsSql"/>): duplicates of the same booking and guest keep a
+    /// receipt-bearing row first, otherwise the latest row; <c>Submitted</c> (1), <c>Confirmed</c> (2) and
+    /// <c>Failed</c> (3) without a receipt become
     /// <c>DaInviareManualmente</c> (4) with no error text, no sent date and no "manually completed" flag (the old flag
     /// meant "the host pressed the simulated send"); a <c>Submitted</c> row with a receipt becomes <c>Inviato</c> (2).
     /// Guest check-in sessions set to <c>AlloggiatiInviato</c> (3) on queueing go back to <c>Completo</c> (2) unless
@@ -26,13 +27,21 @@ namespace Casazen.Infrastructure.Migrations
     /// </remarks>
     public partial class AlloggiatiHonestStatus : Migration
     {
-        /// <summary>Keeps one row per (BookingId, GuestId): the most recently updated one.</summary>
+        /// <summary>Keeps one row per (BookingId, GuestId): receipt-bearing rows win, then the most recently updated one.</summary>
         public const string DeduplicateReportsSql = """
+            WITH ranked AS (
+                SELECT "Id",
+                       row_number() OVER (
+                           PARTITION BY "BookingId", "GuestId"
+                           ORDER BY (btrim(coalesce("ConfirmationNumber", '')) <> '') DESC,
+                                    "UpdatedAt" DESC,
+                                    "Id" DESC) AS rn
+                FROM "AlloggiatiWebReports"
+            )
             DELETE FROM "AlloggiatiWebReports" AS r
-            USING "AlloggiatiWebReports" AS newer
-            WHERE newer."BookingId" = r."BookingId"
-              AND newer."GuestId" = r."GuestId"
-              AND (newer."UpdatedAt", newer."Id") > (r."UpdatedAt", r."Id");
+            USING ranked
+            WHERE ranked."Id" = r."Id"
+              AND ranked.rn > 1;
             """;
 
         /// <summary>Old statuses (0 Pending, 1 Submitted, 2 Confirmed, 3 Failed) to the honest ones.</summary>
