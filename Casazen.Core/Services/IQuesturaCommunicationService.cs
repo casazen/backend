@@ -10,7 +10,8 @@ public interface IQuesturaCommunicationService
 {
     /// <summary>
     /// Declares the delivery date of the property (a calendar date, not after the end of the lease), or clears it with
-    /// <c>null</c> (the start date applies again). 422 <see cref="QuesturaCommunicationErrorCodes.DeliveryDateAfterEnd"/>.
+    /// <c>null</c> (the start date applies again). 422 <see cref="QuesturaCommunicationErrorCodes.DeliveryDateAfterEnd"/>;
+    /// 409 <see cref="QuesturaCommunicationErrorCodes.DeliveryDateLocked"/> after the Questura communication is marked.
     /// </summary>
     Task DeclareDeliveryDateAsync(
         Guid leaseId, string userId, DateTime? deliveryDate, CancellationToken cancellationToken = default);
@@ -53,4 +54,5 @@ public static class QuesturaCommunicationErrorCodes
     public const string ReceiptInvalid = "questura_receipt_invalid";
     public const string ReceiptNotAvailable = "questura_receipt_not_available";
     public const string DeliveryDateAfterEnd = "questura_delivery_date_after_end";
+    public const string DeliveryDateLocked = "questura_delivery_date_locked";
 }
