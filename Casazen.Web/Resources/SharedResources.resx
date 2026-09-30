@@ -300,6 +300,9 @@
   <data name="QuesturaDeliveryDateAfterEnd" xml:space="preserve">
     <value>La data di consegna dell'immobile non può essere successiva alla fine del contratto.</value>
   </data>
+  <data name="QuesturaDeliveryDateLocked" xml:space="preserve">
+    <value>La data di consegna non può più essere modificata dopo che la comunicazione alla Questura è stata dichiarata.</value>
+  </data>
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>La cittadinanza deve essere il codice ISO del paese di 2 lettere (per esempio IT, DE, US).</value>
   </data>

@@ -300,6 +300,9 @@
   <data name="QuesturaDeliveryDateAfterEnd" xml:space="preserve">
     <value>The delivery date of the property cannot be later than the end of the lease.</value>
   </data>
+  <data name="QuesturaDeliveryDateLocked" xml:space="preserve">
+    <value>The delivery date can no longer be changed after the Questura communication has been declared.</value>
+  </data>
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>Citizenship must be the 2-letter ISO country code (for example IT, DE, US).</value>
   </data>
