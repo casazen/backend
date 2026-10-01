@@ -118,6 +118,12 @@ internal static class PostgresAdvisoryLocks
         /// instance never write the table together, and the diff of an import is computed on rows nobody else changes (SU-04).
         /// </summary>
         ComuneImport = 1_087,
+
+        /// <summary>
+        /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
+        /// photo list at the same time, so no photo is lost (PC-04).
+        /// </summary>
+        PropertyPhotos = 1_074,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
