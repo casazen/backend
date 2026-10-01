@@ -107,7 +107,8 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var supplier = await db.Users.AsNoTracking().SingleAsync(u => u.Id == supplierOnly);
-        Assert.Equal(keeper, supplier.OrgId);
+        // PL-05 (A1-40): User.OrgId is the host org only; the supplier-only account reaches the keeper by SupplierOrgId.
+        Assert.Null(supplier.OrgId);
         Assert.Equal(keeper, supplier.SupplierOrgId);
         var host = await db.Users.AsNoTracking().SingleAsync(u => u.Id == dualRole);
         Assert.Equal(hostOrg.Id, host.OrgId);

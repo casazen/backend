@@ -69,6 +69,8 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var user = await db.Users.SingleAsync(u => u.Id == userId);
             Assert.Equal(orgId, user.SupplierOrgId);
+            // PL-05 (A1-40): the supplier org is never written into OrgId, which is the host org only.
+            Assert.Null(user.OrgId);
             var profile = await db.SupplierProfiles.SingleAsync(p => p.OrgId == orgId);
             Assert.Equal(email, profile.Email);
             Assert.Equal($"[\"{PilotCode}\"]", profile.ComuniJson);

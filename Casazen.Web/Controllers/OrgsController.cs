@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Casazen.Core.Entities;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -114,28 +113,9 @@ public class OrgsController(
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
         if (previousSlug is not null && !string.Equals(previousSlug, updated.Slug, StringComparison.Ordinal))
-            InvalidatePublicHostCache(updated, previousSlug);
+            publicHostResolver.InvalidateOrgHosts(updated, publicHostOptions.Value.NormalizedBaseDomain, previousSlug);
 
         return Ok(OrgSettingsDto.FromOrg(updated));
-    }
-
-    /// <summary>
-    /// The resolve-host cache carries the org slug: drop the entries of the org's hosts (custom domain, subdomain and
-    /// slug-as-subdomain fallback, old and new) so the public site does not use the old slug until the cache expires.
-    /// </summary>
-    private void InvalidatePublicHostCache(Org org, string previousSlug)
-    {
-        if (!string.IsNullOrWhiteSpace(org.CustomDomain))
-            publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
-
-        if (publicHostOptions.Value.NormalizedBaseDomain is not { } baseDomain)
-            return;
-
-        foreach (var label in new[] { org.Subdomain, previousSlug, org.Slug })
-        {
-            if (!string.IsNullOrWhiteSpace(label))
-                publicHostResolver.InvalidateCacheForHost($"{label}.{baseDomain}");
-        }
     }
 
     /// <summary>Returns available plan tiers and property limits.</summary>
