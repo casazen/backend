@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -313,7 +315,8 @@ public class Auth0RoleSyncCallersTests
             Mock.Of<IRequestTenantContext>(),
             NullLogger<UsersController>.Instance,
             Mock.Of<IEntitlementService>(),
-            Mock.Of<IHostOnboardingGate>())
+            Mock.Of<IHostOnboardingGate>(),
+            new PublicSiteLinks(Options.Create(new PublicSiteOptions())))
         {
             ControllerContext = new ControllerContext
             {
