@@ -59,7 +59,9 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal(CommitSha, body.RootElement.GetProperty("commit").GetString());
 
         var checks = ReadChecks(body);
-        Assert.Equal(new[] { "auth0", "database", "email", "hangfire", "storage", "stripe" }, checks.Keys.Order().ToArray());
+        Assert.Equal(
+            new[] { "api-url", "auth0", "database", "email", "hangfire", "legal", "storage", "stripe" },
+            checks.Keys.Order().ToArray());
         // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
         // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.
         Assert.Equal("degraded", checks["stripe"]);
@@ -67,6 +69,9 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal("degraded", checks["hangfire"]);
         Assert.Equal("degraded", checks["auth0"]);
         Assert.Equal("degraded", checks["storage"]);
+        // DEPLOY-CFG: the factory sets App:ApiBaseUrl (https) but publishes no legal text and no date in force.
+        Assert.Equal("healthy", checks["api-url"]);
+        Assert.Equal("degraded", checks["legal"]);
         Assert.Equal(_factory.UsesPostgreSql ? "healthy" : "degraded", checks["database"]);
     }
 
