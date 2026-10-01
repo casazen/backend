@@ -18,6 +18,10 @@ namespace Casazen.Web.DTOs;
 /// cleared by sending them explicitly as <c>null</c> (or, for the text ones, blank); leaving them out keeps them.</para>
 /// <para>Server-managed fields (<c>Id</c>, <c>OwnerId</c>, <c>OrgId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>, the
 /// compliance status) are not part of the request. Validation messages are SharedResources keys.</para>
+/// <para>The photo gallery is not part of the request (PC-04, A2-26): photos are uploaded, deleted, ordered and chosen as
+/// cover only through <c>/api/properties/{id}/images</c>, which check the file and the storage object. A <c>photoUrls</c>
+/// sent in the body is ignored, so it can neither point the public page at an arbitrary URL nor at another property's
+/// photo.</para>
 /// <para><c>IsActive</c> is not part of the request either (PC-03, A2-05): a generic save could hide a property from
 /// its own host's list and detail with no way back from the UI. Pausing is the dedicated, reversible
 /// <c>POST /properties/{id}/pause</c> / <c>.../activate</c>; an <c>isActive</c> sent in the body is ignored.</para>
@@ -89,9 +93,6 @@ public class UpdatePropertyRequest
 
     /// <summary>List of amenities available at the property (the whole list replaces the stored one).</summary>
     public List<PropertyAmenity>? Amenities { get; set; }
-
-    /// <summary>Ordered list of photo URLs (the whole list replaces the stored one; the web form does not send it).</summary>
-    public List<string>? PhotoUrls { get; set; }
 
     /// <summary>House rules presented to guests before booking (may be sent empty).</summary>
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
@@ -199,8 +200,6 @@ public class UpdatePropertyRequest
             property.DamageDeposit = damageDeposit;
         if (Amenities is not null)
             property.Amenities = Amenities;
-        if (PhotoUrls is not null)
-            property.PhotoUrls = PhotoUrls;
         if (HouseRules is not null)
             property.HouseRules = HouseRules;
         if (Timezone is not null)
