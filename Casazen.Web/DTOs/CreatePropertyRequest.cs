@@ -10,6 +10,8 @@ namespace Casazen.Web.DTOs;
 /// Request body for creating a new property. Excludes server-managed fields
 /// (<c>Id</c>, <c>OwnerId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>). A new property is always active and not paused
 /// (PC-03, A2-05): <c>isActive</c> is not accepted, pausing is the dedicated <c>POST /properties/{id}/pause</c>.
+/// A new property has an empty photo gallery (PC-04, A2-26): photos are uploaded afterwards with
+/// <c>POST /api/properties/{id}/images</c>; a <c>photoUrls</c> sent in the body is ignored.
 /// </summary>
 public class CreatePropertyRequest
 {
@@ -75,9 +77,6 @@ public class CreatePropertyRequest
     /// <summary>List of amenities available at the property.</summary>
     public List<PropertyAmenity> Amenities { get; set; } = new();
 
-    /// <summary>Ordered list of photo URLs for the property listing.</summary>
-    public List<string> PhotoUrls { get; set; } = new();
-
     /// <summary>House rules presented to guests before booking.</summary>
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
     public string HouseRules { get; set; } = string.Empty;
@@ -130,7 +129,6 @@ public class CreatePropertyRequest
         CleaningFee = CleaningFee,
         DamageDeposit = DamageDeposit,
         Amenities = Amenities,
-        PhotoUrls = PhotoUrls,
         HouseRules = HouseRules,
         CinCode = CinCode,
         Timezone = Timezone,

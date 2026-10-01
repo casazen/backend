@@ -119,6 +119,12 @@ internal static class PostgresAdvisoryLocks
         /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
         /// </summary>
         RentLease = 1_206,
+
+        /// <summary>
+        /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
+        /// photo list at the same time, so no photo is lost (PC-04).
+        /// </summary>
+        PropertyPhotos = 1_074,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
