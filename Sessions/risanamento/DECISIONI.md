@@ -20,6 +20,10 @@ Vincolanti per tutti i task del risanamento. Se un task incontra una scelta di p
 | D14 | Punti legali/fiscali | **Cercare fonti ufficiali** (leggi, Agenzia Entrate, EUR-Lex, documentazione provider) e implementare citandole. I **testi ToS/Privacy/DPA li fornisce il product owner**: non vanno scritti dagli agenti. |
 | D15 | Registrazione RLI e firma elettronica | **Cercare documentazione pubblica** (Openapi.it, provider firma); se non integrabile senza contratto: **flusso manuale onesto** (firma offline con upload, registrazione manuale con promemoria). |
 
+## Aggiornamenti alle decisioni
+
+- **D14 — aggiornamento 2026-10-01:** il PO ha delegato la redazione delle bozze ToS/Privacy/DPA a un agente; restano da validare da un legale. La parte di D14 «i testi ToS/Privacy/DPA li fornisce il product owner: non vanno scritti dagli agenti» è superata (task LEGAL-TEXTS: bozze versione `2026-10-v1`, `backend/docs/runbooks/legal-documents.md`); il resto di D14 (fonti ufficiali per i punti legali e fiscali, niente dati normativi inventati) resta valido. Le bozze non sono attivate di default: l'attivazione, che chiede a ogni host di riaccettare, è una scelta del PO dietro configurazione.
+
 ## Punti non decisi (restano invariati finché non vengono chiesti)
 - Pagamento del fornitore: resta il flag manuale "Pagato" (nessuna integrazione Stripe verso il fornitore).
 - `chargeToGuest`: resta rifiutato per gli affitti brevi (come #340).

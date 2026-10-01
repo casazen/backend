@@ -35,7 +35,10 @@ version changes by itself when an external AI provider is switched on (`LegalDoc
 ## Publishing a new version of a legal document
 
 1. Publish the text and the new version as described in [`legal-documents.md`](legal-documents.md) (PL-14: public
-   pages `/legale/*`; the texts come from the product owner, decision D14).
+   pages `/legale/*`; the texts were drafted by an agent for the product owner and need a lawyer's review, decision D14
+   updated 2026-10-01). The drafts `2026-10-v1` are activated per environment with the Railway variables of
+   [`legal-documents.md` § 5.3](legal-documents.md#53-activation-and-what-the-hosts-see), which is also where the effect on
+   the hosts is described; the text of a document is published only when the values it needs are configured.
 2. The new version is `Legal__Documents__Tos__Version`, `Legal__Documents__Privacy__Version` or
    `Legal__Documents__Dpa__Version` (defaults in `appsettings.json`, overridable per environment in Railway).
 3. From the next request (at most the 60 s cache for users already in memory) every host gets

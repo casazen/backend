@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0`, `legal` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -44,6 +44,7 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |
 | `auth0` | `Auth0__Domain`, `Auth0__Audience` and the Management API client (M2M) configured | M2M client missing (role sync off) or the deprecated static `Auth0__ManagementApiToken` in use; in Development/Testing also `Auth0__Domain` / `Auth0__Audience` missing | `Auth0__Domain` / `Auth0__Audience` missing: nobody can sign in. Outside Development/Testing the app does not even start |
+| `legal` | the Terms, Privacy notice and DPA of the configured versions have a text and every value it needs (company data, court) is configured (LEGAL-TEXTS, D9) | a text or a value is missing: the public page stays "in preparazione". The admin description names the Railway variables (`Legal__Controller__Name`, …) or `no text file for this version`, never values. Expected until the legal drafts are activated: [`legal-documents.md`](legal-documents.md) § 6 | — |
 
 `degraded` means "an optional integration is not configured": the deploy is accepted, CI prints a warning for each
 degraded check. Stripe is optional until payments are switched on; once they are, `stripe` must be `healthy`.

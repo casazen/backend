@@ -8,7 +8,8 @@ namespace Casazen.Web.Extensions;
 /// Real health checks (FD-12, A9-19, issue #16), all anonymous:
 /// <list type="bullet">
 ///   <item><c>/api/health/live</c>: the process answers; no dependency is checked;</item>
-///   <item><c>/api/health/ready</c>: database, Hangfire and configuration of email, storage, Stripe and Auth0; 200 when
+///   <item><c>/api/health/ready</c>: database, Hangfire and configuration of email, storage, Stripe and Auth0, plus the
+///   publication of the legal documents (<c>legal</c>, LEGAL-TEXTS); 200 when
 ///   healthy or degraded (an optional integration is missing), 503 when unhealthy;</item>
 ///   <item><c>/api/health</c>: same as ready (kept for CI and the existing smoke scripts).</item>
 /// </list>
@@ -37,7 +38,8 @@ public static class HealthCheckExtensions
             .AddCheck<EmailConfigurationHealthCheck>("email", tags: [ReadyTag])
             .AddCheck<StorageConfigurationHealthCheck>("storage", tags: [ReadyTag])
             .AddCheck<StripeConfigurationHealthCheck>("stripe", tags: [ReadyTag])
-            .AddCheck<Auth0ConfigurationHealthCheck>("auth0", tags: [ReadyTag]);
+            .AddCheck<Auth0ConfigurationHealthCheck>("auth0", tags: [ReadyTag])
+            .AddCheck<LegalDocumentsHealthCheck>("legal", tags: [ReadyTag]);
 
         return services;
     }
