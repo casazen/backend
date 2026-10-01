@@ -33,7 +33,13 @@ public interface IPropertyRepository
     /// </summary>
     Task<Guid?> GetOrgIdAsync(Guid id);
     Task<Property?> GetPropertyDetailAsync(Guid id);
-    Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId);
+
+    /// <summary>
+    /// Properties of <see cref="HostScope.OrgId"/> for the CIN compliance summary, restricted to
+    /// <see cref="HostScope.OwnerId"/> when set (TN-3 list filter, in SQL), by name. Same reach as the property list
+    /// (MO-12, A6-20): an org-wide role sees the CIN of every property of the org.
+    /// </summary>
+    Task<IEnumerable<Property>> GetByScopeForComplianceAsync(HostScope scope);
     Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);
     Task<bool> SlugExistsInOrgAsync(Guid orgId, string slug, Guid? excludePropertyId = null);
 
