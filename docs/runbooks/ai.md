@@ -23,7 +23,7 @@ does not even take the notes, and `match-supplier` ignores a `notes` field in th
 | `Ai__Model`, `Ai__OpenAiBaseUrl`, `Ai__AnthropicBaseUrl` | `deepseek-v4-flash`, `https://api.deepseek.com`, `https://api.deepseek.com/anthropic` | Provider endpoints. |
 | `Ai__MaxCompletionTokens` | `2048` | `max_tokens` of a completion, also the completion part of the budget reservation. |
 | `Ai__WebSearchMaxTokens` | `4096` | `max_tokens` of a web search (discovery only). |
-| `Ai__Subprocessor__Name` / `__Purpose` / `__Region` / `__TransferMechanism` / `__Website` | name = provider, purpose = "AI text generation", others empty | How the active provider appears in `GET /api/legal/subprocessors` (see GDPR below). |
+| `Ai__Subprocessor__Name` / `__Purpose` / `__Entity` / `__Region` / `__TransferMechanism` / `__Website` | name = provider, purpose = "AI text generation", others empty | How the active provider appears in `GET /api/legal/subprocessors` (see GDPR below). |
 
 The old key `Seo:AiProvider` (`Seo__AiProvider`) was never read and has been removed: the provider is `Ai:Provider`
 only. `AddCasazenAiProvider` is registered once (Program.cs); the unused `AddCasazenExternalServices`, which registered
@@ -65,19 +65,21 @@ Counters are in memory, per replica.
 
 When an external provider is active, `GET /api/legal/subprocessors` (onboarding consents step) adds it to the list
 and the list version becomes `<Legal:Documents:Subprocessors:Version>+ai-<provider>` (e.g. `2026-06-v1+ai-deepseek`):
-every host has to acknowledge the new list again. If the provider is already listed in
-`Legal:Documents:Subprocessors:Items`, nothing is added and the configured version is kept.
+the list acknowledged in the onboarding changes with it. The other subprocessors are detected from the configuration
+too (PL-14, runbook [`legal-documents.md`](legal-documents.md)).
 
-The code does **not** fill in the provider's legal details. Until `Ai__Subprocessor__Region` and
-`Ai__Subprocessor__TransferMechanism` are set, the entry is marked `detailsPending: true` and the onboarding shows
-"sede e base giuridica del trasferimento in corso di definizione".
+The code does **not** fill in the provider's legal details. Until `Ai__Subprocessor__Entity`, `Ai__Subprocessor__Region`
+and `Ai__Subprocessor__TransferMechanism` are set, the entry is marked `detailsPending: true`: the onboarding shows
+"sede e base giuridica del trasferimento in corso di definizione" and the public page `/legale/sub-responsabili` shows
+"in definizione".
 
 **Product owner, before setting `Ai__Provider=DeepSeek` with a key on any environment:**
 
 1. Verify from the provider's official documents where the data is processed and the provider's legal entity, and
    decide the legal basis of the transfer outside the EEA (GDPR chapter V: adequacy decision, standard contractual
    clauses or other). Or choose a provider with processing in the EU.
-2. Set `Ai__Subprocessor__Region`, `Ai__Subprocessor__TransferMechanism` (and optionally `__Website`, `__Purpose`) on
+2. Set `Ai__Subprocessor__Entity`, `Ai__Subprocessor__Region`, `Ai__Subprocessor__TransferMechanism` (and optionally
+   `__Website`, `__Purpose`) on
    Railway, and update the privacy notice / DPA texts (provided by the product owner, D14).
 3. Check `GET /api/legal/subprocessors` on test: the provider is listed, `detailsPending` is `false`.
 

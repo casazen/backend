@@ -298,7 +298,7 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
 | `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
 | `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable` until the web service client (CO-13) |
-| `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors list |
+| `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors actually used by the configuration (GDPR art. 28, `docs/runbooks/legal-documents.md`) |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
