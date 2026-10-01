@@ -97,9 +97,10 @@ public class PropertyService(
         if (!property.IsPaused)
         {
             logger.LogInformation("Pausing property: {Id}", property.Id);
+            var now = _clock.GetUtcNow().UtcDateTime;
             property.IsPaused = true;
-            property.PausedAt = DateTime.UtcNow;
-            property.UpdatedAt = DateTime.UtcNow;
+            property.PausedAt = now;
+            property.UpdatedAt = now;
             await repository.UpdateAsync(property);
         }
         return property;
@@ -113,7 +114,7 @@ public class PropertyService(
             logger.LogInformation("Reactivating property: {Id}", property.Id);
             property.IsPaused = false;
             property.PausedAt = null;
-            property.UpdatedAt = DateTime.UtcNow;
+            property.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
             await repository.UpdateAsync(property);
         }
         return property;

@@ -243,13 +243,23 @@ public class PropertyServiceTests
     [Fact]
     public async Task PausePropertyAsync_NotPaused_SetsIsPausedAndPausedAtAndSaves()
     {
-        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsPaused = false, PausedAt = null };
+        var now = new DateTimeOffset(2026, 7, 14, 9, 30, 0, TimeSpan.Zero);
+        var service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object,
+            new FakeTimeProvider(now));
+        var property = new Property { Id = Guid.NewGuid(), Name = "Villa", IsActive = true, IsPaused = false, PausedAt = null };
         _mockRepository.Setup(x => x.UpdateAsync(property)).ReturnsAsync(property);
 
-        var result = await _service.PausePropertyAsync(property);
+        var result = await service.PausePropertyAsync(property);
 
         Assert.True(result.IsPaused);
-        Assert.NotNull(result.PausedAt);
+        Assert.Equal(now.UtcDateTime, result.PausedAt);
+        Assert.Equal(DateTimeKind.Utc, result.PausedAt!.Value.Kind);
+        // Pausing never touches the active flag: the host still sees and edits the property.
+        Assert.True(result.IsActive);
         _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
     }
 
