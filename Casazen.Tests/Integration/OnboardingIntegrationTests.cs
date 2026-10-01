@@ -39,6 +39,8 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
         using var client = _factory.CreateAuthenticatedClient(roles: string.Empty);
         var response = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload("7"));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation_error", problem.GetProperty("code").GetString());
     }
 
     [Fact]
