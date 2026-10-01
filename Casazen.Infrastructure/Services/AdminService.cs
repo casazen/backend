@@ -46,8 +46,9 @@ public class AdminService(
         // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
 
-        // Properties (filter bypassed — platform-wide): counted in SQL, never materialized in full (A1-27).
-        var propertiesQuery = dbContext.Properties.IgnoreQueryFilters();
+        // Properties (tenant filter bypassed — platform-wide): counted in SQL, never materialized in full (A1-27).
+        // Soft-deleted ones stay out (PC-05): only the tenant filter is bypassed.
+        var propertiesQuery = dbContext.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         var totalProperties = await propertiesQuery.CountAsync();
         var activeProperties = await propertiesQuery.CountAsync(p => p.IsActive);
 
@@ -117,7 +118,8 @@ public class AdminService(
         // every org, so it BYPASSES the global tenant filter with an audit line (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetCinComplianceAsync));
 
-        var query = dbContext.Properties.IgnoreQueryFilters().AsQueryable();
+        // Tenant filter only: a soft-deleted property (PC-05) has no CIN obligation left, it stays out of the report.
+        var query = dbContext.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsQueryable();
 
         // Filtered and paginated in SQL (A1-27): this used to load every property into memory. The regex reuses
         // CinFormat's own pattern constants (single source of truth, .claude/rules/compliance.md) — Npgsql

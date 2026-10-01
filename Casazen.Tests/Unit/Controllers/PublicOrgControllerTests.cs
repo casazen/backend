@@ -75,6 +75,23 @@ public class PublicOrgControllerTests
     }
 
     [Fact]
+    public async Task GetOrg_UnsetOrLegacyTheme_ReturnsDefaultThemeAndPrimaryColor()
+    {
+        // BK-12: the site always gets a theme it supports, and the color under the spec's name (US-023 AC11).
+        var org = BuildOrg("legacy-theme-org");
+        org.PublicThemeId = "theme-from-an-old-release";
+        _orgService.Setup(s => s.GetPublicBySlugAsync("legacy-theme-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("legacy-theme-org", CancellationToken.None);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal("mare", dto.PublicThemeId);
+        Assert.Equal(org.ThemeColor, dto.PrimaryColor);
+        Assert.Equal(dto.PrimaryColor, dto.ThemeColor);
+    }
+
+    [Fact]
     public async Task GetOrg_StoredProWithoutPaidSubscription_ShowPoweredByTrue()
     {
         // A3-37: "Powered by" follows the effective tier, not the stored one (canceled / unpaid / never paid).
