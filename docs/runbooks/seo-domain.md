@@ -11,6 +11,10 @@ Task BK-15, audit defects A3-20, A8-09, A8-20 and A8-29 (P1): the booking sites 
 and the guides (`/p/…`) are served to crawlers as real HTML (title, description, canonical, `hreflang`, Open Graph, JSON-LD),
 with a sitemap per org and a `robots.txt` that keeps the private pages out. Section 8 describes it and how to check it.
 
+Task BK-16, audit defect A3-08 (P1): the org subdomains (`{label}.{PublicHost__BaseDomain}`) and the verified custom domains
+serve the org's booking site at their root, with their own CORS, canonical URLs and sitemap, and never the app or a login.
+Section 9 describes it and how to check it.
+
 Task SE-03, audit defect A8-03 (P0): the CTA of the SEO pages leads to `/signup`, which opens the Auth0 **signup**
 screen in one click and records where the signup came from (UTM parameters, comune, landing page, referrer host).
 Section 6 describes the funnel, the Auth0 setting it needs and how to read the attributions.
@@ -375,8 +379,8 @@ Any other host gets `noindex`: a custom domain still waiting for its verificatio
 another org, a preview deployment. The host is only compared, never written into the page, and a value that is not a plain
 DNS name is ignored (`PublicSiteHosts`).
 
-**Canonical** is always `App__PublicSiteBaseUrl` + `/book/{current slug}[/property/{slug}]` (BK-16 extends it to the org's
-own verified domain). Query strings (`?checkin=…`) are never in it.
+**Canonical** is `App__PublicSiteBaseUrl` + `/book/{current slug}[/property/{slug}]`, or the org's own host when it has one
+that is served (section 9). Query strings (`?checkin=…`) are never in it.
 
 ### JSON-LD (real data only)
 
@@ -447,8 +451,111 @@ Inspector, or share it in WhatsApp: title, description and image of the org or o
   a `robots.txt` is only read at the root of a host, so the root `robots.txt` declares the index `/sitemap-book.xml`, which
   lists the sitemap of every org.
 
+## 9. Org subdomains and custom domains (BK-16)
+
+### What a host serves
+
+| Host | Served when | Otherwise |
+|---|---|---|
+| The public domain (`App__PublicSiteBaseUrl`), local development, `*.vercel.app` | always: the web app | |
+| `{label}.{PublicHost__BaseDomain}` | an org **chose the subdomain mode** with that label (`Org.Subdomain`) and the base domain is configured. Reserved labels (`www`, `api`, ...) never; the slug of an org on the path or custom-domain mode is **not** a host (it used to resolve) | "site not found" |
+| A custom domain | the org is on the custom-domain mode, the domain is **verified**, and the org's **effective** tier is Pro or Scale (a Pro tier nobody pays for is Starter) | "site not found" |
+
+The single decision point is `GET /api/public/resolve-host?host=` (`PublicHostResolver`): the web app start-up, the CORS check
+and the crawler pages all use it, so they cannot disagree. The answer is cached in memory for `PublicHost__ResolveCacheSeconds`
+(default 60 s), also when it is "no org" (in a **bounded** cache of 10,000 hosts: a flood of made-up hosts reaches neither the
+database nor the memory). Setting or verifying a domain, changing a slug or the branding drops the entries of the org's hosts
+at once; a plan change (Stripe webhook) reaches a cached host when the entry expires, within a minute.
+
+### What the web app does on such a host
+
+- **Start-up** (`src/main.tsx`, `HostAwareRoot`): the app's own hosts start at once. Any other host asks `resolve-host` first. A
+  host nobody serves shows "Sito non trovato" (with a link to the public site when `VITE_PUBLIC_SITE_URL` is set); a failed
+  check (network, 5xx) shows an error **with a retry**, never "not found". Neither is indexed.
+- **Routes**: only the org's booking site, for the org of the host. `/book/{another org}` is "not found" there (a domain can
+  never be made to show another host's site under its name); `/app`, `/login`, `/signup`, `/search`, `/p/*`, `/checkin` are "not
+  found", never a redirect to the login; the CasaZen legal documents (`/legale/*`) lead to the public web app.
+- **Clean addresses**: the browser shows `/`, `/property/{slug}`, `/my-bookings`, `/booking/{id}`, `/requests/{id}/confirm`; the
+  router keeps its `/book/{slug}/…` routes (`src/routes/host-site-window.ts`), so no page or link changed. `/book/{slug}/…`
+  addresses (older shares, Stripe return URLs) still work on the host.
+- No Auth0 is loaded on such a host.
+
+### CORS (backend)
+
+An org host calls the API from the browser, so its origin is allowed, and only that: see the "Org hosts" row of
+[`cors-security-headers.md`](cors-security-headers.md). Exactly the origin of the request is answered (`Vary: Origin`), only for
+`/api/public/*` and `/api/legal/*` (the site of an org calls nothing else and has no token), `https` on the default port, no
+credentials. A custom domain waiting for its verification, an unpaid one, a reserved or unknown label, another org's slug and any
+`*` pattern are rejected.
+
+### SEO of an org host
+
+- **Canonical**: the org's own host (`https://host/` and `https://host/property/{slug}`) when the org has one that is served;
+  otherwise `App__PublicSiteBaseUrl/book/{slug}`. The org page on the platform path of an org that has its own host points its
+  canonical at that host. `PublicOrgSiteUrls` is the only place that decides it.
+- **Crawlers** get the HTML of the landing page and of the properties at `/` and `/property/{slug}` (`vercel.json` crawler
+  rewrites, function `api/seo.ts` with `kind=host`): the backend resolves the host (`GET /api/public/seo/hosts/page`). On the
+  web app's own host the same paths serve the single-page app as before. A host nobody serves answers `404` with a noindex page.
+- **Sitemap**: `/sitemap.xml` of an org host is the org's sitemap on its own URLs (the function sends the Host to
+  `GET /api/public/sitemap.xml?host=`); an org with nothing published answers 404. An org with its own host is no longer in
+  `/sitemap-book.xml` (a sitemap lists only URLs of its own host).
+- **robots.txt** is the same file on every host (it is static); it also disallows the clean private paths (`/my-bookings`,
+  `/booking/`, `/requests/`, `/property/*/checkout`). Its `Sitemap:` lines name the web app's sitemaps, not the host's: the host's
+  owner submits `https://<domain>/sitemap.xml` in Search Console (section 4).
+
+### Product owner: what must exist for a host to work
+
+The code resolves and serves hosts; **adding the domain to Vercel and pointing DNS** is configuration (D9). Until BK-17 it is
+manual; BK-17 automates it and the verification.
+
+1. **Subdomains**: `PublicHost__BaseDomain` on Railway (section 2), and in Vercel → project → Settings → Domains the wildcard
+   `*.<base domain>` (Vercel needs the domain's nameservers for a wildcard certificate) on Production.
+2. **A custom domain** (Pro): the host sets it in the console (Impostazioni → Dominio), creates the DNS records it shows, presses
+   "Verifica"; the product owner adds the same domain to the Vercel project (Settings → Domains) so it gets its certificate.
+   An unverified domain is "site not found".
+3. The Vercel project's `VITE_API_BASE_URL` already points to the API; nothing else is needed: the API allows the host's origin
+   by itself once the domain is verified.
+
+### Checks
+
+```bash
+API=https://<railway url of the environment>
+HOST=<a verified custom domain or label.<base domain>>
+
+# the host is served by an org (200 + slug) / is not (404)
+curl -sS "$API/api/public/resolve-host?host=$HOST"
+curl -s -o /dev/null -w "%{http_code}\n" "$API/api/public/resolve-host?host=unknown.example.test"      # 404
+
+# CORS: the host's origin is allowed on a public endpoint, not on a private one, and a stranger is not
+curl -si -X OPTIONS "$API/api/public/orgs/<slug>" -H "Origin: https://$HOST" \
+  -H "Access-Control-Request-Method: GET" | grep -iE "^access-control-allow-origin|^vary"        # allow-origin: https://<host>
+curl -si -X OPTIONS "$API/api/properties" -H "Origin: https://$HOST" \
+  -H "Access-Control-Request-Method: GET" | grep -i "^access-control-allow-origin" || echo "rejected (expected)"
+curl -si -X OPTIONS "$API/api/public/orgs/<slug>" -H "Origin: https://nobody.<base domain>" \
+  -H "Access-Control-Request-Method: GET" | grep -i "^access-control-allow-origin" || echo "rejected (expected)"
+
+# the host's pages
+UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+curl -sS -A "$UA_BOT" "https://$HOST/" | grep -E "<title>|rel=\"canonical\""            # canonical https://<host>/
+curl -sS "https://$HOST/sitemap.xml" | grep -o "<loc>[^<]*</loc>"                          # URLs on https://<host>/
+curl -sS "https://$HOST/" | grep -c '<div id="root">'                                      # 1: people get the app
+```
+
+In the browser: `https://<host>/` shows the org's site (not a login), `https://<host>/property/<slug>` the property, the
+address bar keeps the clean path after a click, `https://<host>/book/<another org>` and `https://<host>/login` say "not found".
+
+### Troubleshooting (BK-16)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Vercel's own 404 / certificate error on the host | the domain is not in the Vercel project (or DNS does not point there yet) | PO step 1 or 2 |
+| "Sito non trovato" on a domain the host verified | the org's plan is not Pro (the domain stops being served), or the domain is not `Verified` | plan page; `POST /api/orgs/{id}/domain/verify` |
+| "Sito non trovato" right after verifying | the answer was cached (60 s) before the verification | wait a minute; the verification itself invalidates it |
+| The browser console shows a CORS error on the host | the origin is not an org host (not verified, not paid, wrong label) or the call is not a public endpoint | `curl` checks above |
+| A subdomain does not work although the org chose it | `PublicHost__BaseDomain` unset (the mode answers `subdomains_not_configured`) or the wildcard domain is not in Vercel | section 2, PO step 1 |
+
 ## Out of scope
 
 - `GET /api/public/sitemap.xml` also answers on the API host (the function needs it); it is declared nowhere.
-- Org subdomains and custom domains as indexed hosts (their own canonical, `robots.txt` and sitemap on their domain) are
-  task BK-16; the Vercel domains API and the domain verification are task BK-17.
+- The Vercel domains API (adding and removing a domain on the project, DNS checks, periodic re-check, honest states in the
+  console, onboarding step) is task BK-17.

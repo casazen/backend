@@ -404,6 +404,185 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal("Villa \"Lago\" <i>", rental.GetProperty("name").GetString());
     }
 
+    // ── Org's own host: subdomain and custom domain (BK-16) ──────────────────────────────
+
+    [Fact]
+    public async Task GetHostPage_VerifiedCustomDomain_RendersTheLandingPageWithTheCanonicalOnThatDomain()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+        var property = await SeedPropertyAsync(org, "Villa Lago");
+
+        var response = await GetAsync($"/api/public/seo/hosts/page?host={domain}&path=/");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains($"<link rel=\"canonical\" href=\"https://{domain}/\">", html);
+        Assert.Contains($"<meta property=\"og:url\" content=\"https://{domain}/\">", html);
+        Assert.Contains($"<a href=\"https://{domain}/property/{property.Slug}\">Villa Lago</a>", html);
+        Assert.Contains("content=\"index,follow", html);
+        Assert.DoesNotContain("/book/", html);
+        var organization = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "Organization");
+        Assert.Equal($"https://{domain}/", organization.GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task GetHostPage_VerifiedCustomDomain_RendersAPropertyAtItsCleanPath()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+        var property = await SeedPropertyAsync(org, "Villa Lago", city: "Como");
+
+        var response = await GetAsync($"/api/public/seo/hosts/page?host={domain}&path=/property/{property.Slug}");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains($"<link rel=\"canonical\" href=\"https://{domain}/property/{property.Slug}\">", html);
+        Assert.Contains("<title>Villa Lago · Como — Rossi Ospitalità</title>", html);
+        var rental = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "VacationRental");
+        Assert.Equal($"https://{domain}/property/{property.Slug}", rental.GetProperty("url").GetString());
+        var breadcrumb = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "BreadcrumbList");
+        Assert.Equal($"https://{domain}/", breadcrumb.GetProperty("itemListElement")[0].GetProperty("item").GetString());
+    }
+
+    [Fact]
+    public async Task GetHostPage_PropertyReachedByIdOnAnOwnHost_IsARedirectToTheSlugPathOfThatHost()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+        var property = await SeedPropertyAsync(org, "Villa Lago");
+
+        var response = await GetAsync($"/api/public/seo/hosts/page?host={domain}&path=/property/{property.Id}");
+
+        Assert.Equal(HttpStatusCode.MovedPermanently, response.StatusCode);
+        Assert.Equal($"/property/{property.Slug}", response.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task GetHostPage_SubdomainOfAnOrgOnTheSubdomainMode_IsServed()
+    {
+        var label = $"v{Guid.NewGuid():N}"[..20];
+        var org = await SeedOrgAsync(subdomain: label);
+        await SeedPropertyAsync(org, "Villa Lago");
+
+        var html = await GetHtmlAsync($"/api/public/seo/hosts/page?host={label}.casazen.it&path=/");
+
+        Assert.Contains($"<link rel=\"canonical\" href=\"https://{label}.casazen.it/\">", html);
+    }
+
+    [Theory]
+    [InlineData("unknown-host.example.test")]
+    [InlineData("casazen-app.vercel.app")]
+    [InlineData("nobody.casazen.it")]
+    [InlineData("www.casazen.it")]
+    [InlineData("evil.example\"><script>")]
+    public async Task GetHostPage_HostThatServesNoOrgSite_Is404MarkedAsAnUnknownHost(string host)
+    {
+        var response = await GetAsync($"/api/public/seo/hosts/page?host={Uri.EscapeDataString(host)}&path=/");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("unknown", Assert.Single(response.Headers.GetValues("X-Seo-Host")));
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("content=\"noindex,nofollow\"", html);
+        Assert.DoesNotContain("evil.example", html);
+    }
+
+    [Fact]
+    public async Task GetHostPage_CustomDomainWaitingForItsVerification_IsAnUnknownHost()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: false);
+        await SeedPropertyAsync(org, "Villa Lago");
+
+        var response = await GetAsync($"/api/public/seo/hosts/page?host={domain}&path=/");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("unknown", Assert.Single(response.Headers.GetValues("X-Seo-Host")));
+        Assert.DoesNotContain("Villa Lago", await response.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData("/book/anything")]
+    [InlineData("/property/")]
+    [InlineData("/other")]
+    [InlineData("/property/a/b")]
+    public async Task GetHostPage_PathWithoutACrawlerPage_IsBadRequestOrNotFound(string path)
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+
+        var response = await GetAsync($"/api/public/seo/hosts/page?host={domain}&path={Uri.EscapeDataString(path)}");
+
+        Assert.True(response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound, response.StatusCode.ToString());
+    }
+
+    [Fact]
+    public async Task GetOrg_OnThePlatformPathOfAnOrgWithItsOwnHost_PointsTheCanonicalAtTheOwnHost()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+        await SeedPropertyAsync(org, "Villa Lago");
+
+        var html = await GetHtmlAsync($"/api/public/seo/orgs/{org.Slug}");
+
+        Assert.Contains($"<link rel=\"canonical\" href=\"https://{domain}/\">", html);
+    }
+
+    [Fact]
+    public async Task OrgSitemap_OrgWithItsOwnHost_IsNotUnderThePlatformPathAndIsLeftOutOfTheIndex()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+        await SeedPropertyAsync(org, "Villa Lago");
+
+        var platformSitemap = await GetAsync($"/api/public/orgs/{org.Slug}/sitemap.xml");
+        var index = await (await GetAsync("/api/public/sitemap-book.xml")).Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, platformSitemap.StatusCode);
+        Assert.DoesNotContain(org.Slug, index);
+    }
+
+    [Fact]
+    public async Task Sitemap_WithTheHostOfAnOrg_ListsItsPagesOnThatHost()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        var org = await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+        var property = await SeedPropertyAsync(org, "Villa Lago");
+        await SeedPropertyAsync(org, "In pausa", paused: true);
+
+        var response = await GetAsync($"/api/public/sitemap.xml?host={domain}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(
+            new[] { $"https://{domain}/", $"https://{domain}/property/{property.Slug}" },
+            Locations(await response.Content.ReadAsStringAsync(), "url"));
+    }
+
+    [Fact]
+    public async Task Sitemap_WithTheHostOfAnOrgWithNothingPublished_Is404NotTheGuidesOfThePlatform()
+    {
+        var domain = $"www.{Guid.NewGuid():N}.example.test";
+        await SeedOrgAsync(planTier: PlanTier.Pro, customDomain: domain, verified: true);
+
+        var response = await GetAsync($"/api/public/sitemap.xml?host={domain}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("?host=")]
+    [InlineData("?host=casazen-app.vercel.app")]
+    [InlineData("?host=unknown-host.example.test")]
+    [InlineData("?host=not%20a%20host")]
+    public async Task Sitemap_WithoutAnOrgHost_IsStillTheGuidesSitemap(string query)
+    {
+        var response = await GetAsync($"/api/public/sitemap.xml{query}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.All(Locations(await response.Content.ReadAsStringAsync(), "url"), loc => Assert.StartsWith(PublicSite + "/p/", loc));
+    }
+
     // ── Sitemaps ────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -567,7 +746,8 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         PlanTier planTier = PlanTier.Starter,
         bool paid = true,
         string? customDomain = null,
-        bool verified = false)
+        bool verified = false,
+        string? subdomain = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -584,8 +764,11 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
             SubscriptionId = withSubscription ? $"sub_test_{Guid.NewGuid():N}" : null,
             SubscriptionStatus = withSubscription ? SubscriptionStatus.Active : SubscriptionStatus.None,
             IsActive = isActive,
-            PublicHostMode = customDomain is null ? PublicHostMode.CasazenPath : PublicHostMode.CustomDomain,
+            PublicHostMode = customDomain is not null
+                ? PublicHostMode.CustomDomain
+                : subdomain is not null ? PublicHostMode.CasazenSubdomain : PublicHostMode.CasazenPath,
             CustomDomain = customDomain,
+            Subdomain = subdomain,
             DomainVerificationStatus = verified ? DomainVerificationStatus.Verified : DomainVerificationStatus.Pending,
             DomainVerificationToken = customDomain is null ? null : "token",
         };

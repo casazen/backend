@@ -167,6 +167,10 @@ public partial class OrgDomainService(
             string.IsNullOrEmpty(org.DomainVerificationToken))
             return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.NotConfigured, null);
 
+        // The effective tier, not the stored one (A3-07): a domain of an org that no longer pays for Pro is not served.
+        if (!await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken))
+            return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.PlanRequired, null);
+
         var result = await domainVerificationService.VerifyAsync(org, cancellationToken);
         if (result.Status == DomainVerificationStatus.Verified)
             publicHostResolver.InvalidateCacheForHost(result.CustomDomain);

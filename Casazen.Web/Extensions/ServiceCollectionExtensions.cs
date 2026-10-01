@@ -319,7 +319,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IOrgBrandingService, OrgBrandingService>();
+        // The hosts that resolve to no org are remembered, bounded, across requests (BK-16).
+        services.AddSingleton<PublicHostMissCache>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
+        // Origins of the orgs' own sites (subdomains and verified custom domains), public endpoints only (BK-16).
+        services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
+        // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
+        services.AddScoped<PublicOrgSiteUrls>();
         // Pages and sitemaps of the public site as crawlers read them (BK-15).
         services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();

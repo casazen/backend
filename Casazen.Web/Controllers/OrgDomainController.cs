@@ -103,6 +103,9 @@ public class OrgDomainController(
                 Message = result.Verification.Message,
             }),
             VerifyOrgDomainOutcome.NotFound => NotFound(),
+            VerifyOrgDomainOutcome.PlanRequired => StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { code = "plan_required", requiredPlan = "Pro" }),
             VerifyOrgDomainOutcome.NotConfigured => BadRequest(new
             {
                 error = "Custom domain is not configured for this organization",

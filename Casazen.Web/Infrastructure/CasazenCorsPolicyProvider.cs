@@ -4,13 +4,15 @@ using Microsoft.AspNetCore.Cors.Infrastructure;
 namespace Casazen.Web.Infrastructure;
 
 /// <summary>
-/// Extension point for origins that are not in the configuration, such as the custom domains of the hosts' booking
-/// sites (task BK-16). Implementations are registered in DI (scoped is fine) and are asked only about origins the
-/// configuration rejects. None is registered today.
+/// Extension point for origins that are not in the configuration, such as the subdomains and custom domains of the hosts'
+/// booking sites (<see cref="OrgHostCorsOriginSource"/>, BK-16). Implementations are registered in DI (scoped is fine)
+/// and are asked only about origins the configuration rejects.
 /// </summary>
 public interface ICorsOriginSource
 {
-    ValueTask<bool> IsOriginAllowedAsync(string origin, CancellationToken cancellationToken);
+    /// <param name="origin">The <c>Origin</c> header of the request.</param>
+    /// <param name="requestPath">Path of the request (of the actual one, for a preflight): a source may limit its origins to some endpoints.</param>
+    ValueTask<bool> IsOriginAllowedAsync(string origin, PathString requestPath, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -35,7 +37,7 @@ public sealed class CasazenCorsPolicyProvider(
 
         foreach (var source in originSources)
         {
-            if (await source.IsOriginAllowedAsync(origin, context.RequestAborted))
+            if (await source.IsOriginAllowedAsync(origin, context.Request.Path, context.RequestAborted))
                 return BuildPolicy(candidate => string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase));
         }
 

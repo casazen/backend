@@ -25,6 +25,19 @@ public static class PublicSitePaths
         return $"{Org(orgSlug)}/property/{Uri.EscapeDataString(propertySlugOrId)}";
     }
 
+    /// <summary>Landing page of an org on its own host (subdomain or custom domain): the root.</summary>
+    public const string HostLanding = "/";
+
+    /// <summary>Public page of a property on the org's own host: <c>/property/{slug or id}</c> (no <c>/book/{slug}</c> prefix).</summary>
+    public static string HostProperty(string propertySlugOrId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertySlugOrId);
+        return $"/property/{Uri.EscapeDataString(propertySlugOrId)}";
+    }
+
+    /// <summary>Sitemap of an org's own host: <c>/sitemap.xml</c> of that host.</summary>
+    public const string HostSitemap = "/sitemap.xml";
+
     /// <summary>
     /// Sitemap of one org (<c>/book/{slug}/sitemap.xml</c>): under the org's own path, so it may only list URLs of that
     /// path, as the sitemap protocol requires.

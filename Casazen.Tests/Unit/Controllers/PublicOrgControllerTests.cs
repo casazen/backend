@@ -1,8 +1,10 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -34,7 +36,10 @@ public class PublicOrgControllerTests
             _orgService.Object,
             _propertyService.Object,
             _entitlementService.Object,
-            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSite })));
+            new PublicOrgSiteUrls(
+                new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSite })),
+                Options.Create(new PublicHostOptions { BaseDomain = "sites.example.test" }),
+                _entitlementService.Object));
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────
@@ -366,6 +371,52 @@ public class PublicOrgControllerTests
 
         var dto = Assert.IsType<PublicPropertyDetailDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal($"{PublicSite}/book/host-org/property/{expectedSegment}", dto.CanonicalUrl);
+    }
+
+    [Fact]
+    public async Task GetOrg_OrgWithAVerifiedCustomDomainOnAPaidPlan_ReturnsTheCanonicalUrlOnItsOwnHost()
+    {
+        var org = BuildOrg("current-slug");
+        org.PublicHostMode = PublicHostMode.CustomDomain;
+        org.CustomDomain = "www.villa-rossi.example.test";
+        org.DomainVerificationStatus = DomainVerificationStatus.Verified;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("current-slug", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("current-slug", CancellationToken.None);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal("https://www.villa-rossi.example.test/", dto.CanonicalUrl);
+    }
+
+    [Fact]
+    public async Task GetOrg_CustomDomainNotVerifiedYet_KeepsThePlatformCanonicalUrl()
+    {
+        var org = BuildOrg("current-slug");
+        org.PublicHostMode = PublicHostMode.CustomDomain;
+        org.CustomDomain = "www.villa-rossi.example.test";
+        org.DomainVerificationStatus = DomainVerificationStatus.Pending;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("current-slug", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("current-slug", CancellationToken.None);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal($"{PublicSite}/book/current-slug", dto.CanonicalUrl);
+    }
+
+    [Fact]
+    public async Task GetProperty_OrgOnTheSubdomainMode_ReturnsTheCanonicalUrlOnTheSubdomainWithoutTheBookPrefix()
+    {
+        var org = BuildOrg("host-org");
+        org.PublicHostMode = PublicHostMode.CasazenSubdomain;
+        org.Subdomain = "villa-rossi";
+        var detail = new PublicPropertyDetailDto { Id = Guid.NewGuid(), Slug = "casa-mare", Name = "Casa Mare" };
+        _orgService.Setup(s => s.GetPublicBySlugAsync("host-org", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync("casa-mare", org.Id)).ReturnsAsync(detail);
+
+        var result = await _controller.GetProperty("host-org", "casa-mare", CancellationToken.None);
+
+        var dto = Assert.IsType<PublicPropertyDetailDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal("https://villa-rossi.sites.example.test/property/casa-mare", dto.CanonicalUrl);
     }
 
     private static OrgEntity BuildOrg(string slug) => new()

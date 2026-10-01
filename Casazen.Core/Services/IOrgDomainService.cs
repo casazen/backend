@@ -51,6 +51,12 @@ public enum VerifyOrgDomainOutcome
 
     /// <summary>Org is not in CustomDomain mode, or is missing CustomDomain/token — controller maps to 400.</summary>
     NotConfigured,
+
+    /// <summary>
+    /// The custom domain is a Pro feature and the org's effective tier is not Pro or Scale (BK-16): the domain is not
+    /// served, so a verification would report "verified" for a site nobody can open — controller maps to 403.
+    /// </summary>
+    PlanRequired,
 }
 
 public sealed record VerifyOrgDomainResult(

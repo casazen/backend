@@ -261,7 +261,7 @@ public class CorsPolicyTests
 
     private sealed class FixedOriginSource(string origin) : ICorsOriginSource
     {
-        public ValueTask<bool> IsOriginAllowedAsync(string candidate, CancellationToken cancellationToken) =>
+        public ValueTask<bool> IsOriginAllowedAsync(string candidate, PathString requestPath, CancellationToken cancellationToken) =>
             ValueTask.FromResult(string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase));
     }
 }

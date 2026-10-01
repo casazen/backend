@@ -26,6 +26,12 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
 {
     private const string SlugPattern = "^[A-Za-z0-9-]{1,100}$";
 
+    /// <summary>The paths of an org's own host that have a crawler page: <c>/</c> and <c>/property/{slug or id}</c>.</summary>
+    private const string HostPathPattern = "^/(?:property/[A-Za-z0-9._~%-]{1,150})?$";
+
+    /// <summary>Header of the 404 for a host that serves no org site (read by the crawler function).</summary>
+    public const string UnknownHostHeader = "X-Seo-Host";
+
     /// <summary>Landing page of an org's booking site.</summary>
     /// <param name="host">Host the crawler used, as the web app saw it: decides whether the page may be indexed there.</param>
     [HttpGet("orgs/{orgSlug}")]
@@ -49,6 +55,22 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         [FromQuery, StringLength(253)] string? host,
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderPropertyAsync(orgSlug, propertySlugOrId, host, cancellationToken));
+
+    /// <summary>
+    /// A page of an org's own site by the host the crawler used (BK-16, subdomain or verified custom domain): the landing page
+    /// (<c>path=/</c>) or a property (<c>path=/property/{slug or id}</c>). A host that serves no org site answers 404 with
+    /// <c>X-Seo-Host: unknown</c>: the web app's own host (the crawler function serves the single-page app there), a preview,
+    /// a custom domain waiting for its verification or no longer paid for.
+    /// </summary>
+    [HttpGet("hosts/page")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status301MovedPermanently)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetHostPage(
+        [FromQuery, Required, StringLength(253)] string host,
+        [FromQuery, Required, RegularExpression(HostPathPattern)] string path,
+        CancellationToken cancellationToken) =>
+        ToResult(await seoService.RenderHostPageAsync(host, path, cancellationToken));
 
     /// <summary>A compliance guide of a comune.</summary>
     [HttpGet("guides/{regionSlug}/{comuneSlug}")]
@@ -87,6 +109,9 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
                 Response.Headers.Location = result.RedirectPath;
                 return Html(StatusCodes.Status301MovedPermanently, result.Html);
             case SeoPageStatus.NotFound:
+                return Html(StatusCodes.Status404NotFound, result.Html);
+            case SeoPageStatus.UnknownHost:
+                Response.Headers[UnknownHostHeader] = "unknown";
                 return Html(StatusCodes.Status404NotFound, result.Html);
             default:
                 return Html(StatusCodes.Status200OK, result.Html);

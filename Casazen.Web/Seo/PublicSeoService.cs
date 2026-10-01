@@ -17,8 +17,9 @@ namespace Casazen.Web.Seo;
 
 /// <inheritdoc cref="IPublicSeoService"/>
 /// <remarks>
-/// Every URL is <c>App:PublicSiteBaseUrl</c> + a path of <see cref="PublicSitePaths"/> / <see cref="SeoPagePaths"/>
-/// (decision D3: no domain written here). What is indexable is decided here and nowhere else:
+/// Every URL is <c>App:PublicSiteBaseUrl</c> + a path of <see cref="PublicSitePaths"/> / <see cref="SeoPagePaths"/>, or, for
+/// an org that has its own host, that host (<see cref="PublicOrgSiteUrls"/>); decision D3: no domain written here. What is
+/// indexable is decided here and nowhere else:
 /// <list type="bullet">
 /// <item>an org page: the org is active and has a published property (<see cref="PublicListing.IsPublished"/>);</item>
 /// <item>a property page: the property is published, otherwise the answer is a real 404;</item>
@@ -35,6 +36,7 @@ public sealed class PublicSeoService(
     ISeoContentService seoContentService,
     IPublicHostResolver hostResolver,
     PublicSiteLinks links,
+    PublicOrgSiteUrls urls,
     IStringLocalizer<SharedResources> localizer) : IPublicSeoService
 {
     /// <summary>Brand of the platform pages (<c>og:site_name</c>, publisher of the guides).</summary>
@@ -55,6 +57,38 @@ public sealed class PublicSeoService(
         if (!string.Equals(org.Slug, orgSlug, StringComparison.Ordinal))
             return Moved(PublicSitePaths.Org(org.Slug));
 
+        return await RenderOrgPageAsync(org, requestHost, cancellationToken);
+    }
+
+    public async Task<SeoPageResult> RenderHostPageAsync(string host, string path, CancellationToken cancellationToken = default)
+    {
+        // The host is only compared: a value that is not a host name, a host of nobody (the platform itself, a preview, a
+        // custom domain still waiting for its verification) and a domain no longer paid for are all "unknown host".
+        var normalizedHost = PublicSiteHosts.Normalize(host);
+        var resolved = normalizedHost is null ? null : await hostResolver.ResolveAsync(normalizedHost, cancellationToken);
+        if (resolved is null)
+            return UnknownHost();
+
+        var org = await orgService.GetPublicBySlugAsync(resolved.Slug, cancellationToken);
+        if (org is null || org.Id != resolved.OrgId)
+            return UnknownHost();
+
+        if (path == PublicSitePaths.HostLanding)
+            return await RenderOrgPageAsync(org, normalizedHost, cancellationToken);
+
+        const string propertyPrefix = "/property/";
+        if (path.StartsWith(propertyPrefix, StringComparison.Ordinal))
+        {
+            var segment = Uri.UnescapeDataString(path[propertyPrefix.Length..]);
+            if (segment.Length > 0 && !segment.Contains('/'))
+                return await RenderPropertyPageAsync(org, segment, normalizedHost, ownHostPaths: true, cancellationToken);
+        }
+
+        return NotFound();
+    }
+
+    private async Task<SeoPageResult> RenderOrgPageAsync(Org org, string? requestHost, CancellationToken cancellationToken)
+    {
         var properties = await PublishedProperties(org.Id)
             .OrderBy(p => p.City).ThenBy(p => p.NightlyRate)
             .Take(MaxListedProperties)
@@ -64,11 +98,11 @@ public sealed class PublicSeoService(
         var indexable = properties.Count > 0 && await IsIndexableHostAsync(requestHost, org.Id, cancellationToken);
         var language = Language();
         var culture = CultureInfo.CurrentUICulture;
-        var canonical = links.TryPublicPage(PublicSitePaths.Org(org.Slug));
+        var canonical = urls.TryLandingUrl(org);
         var displayName = SeoHtml.Collapse(org.DisplayName);
 
         var items = properties
-            .Select(p => (Row: p, Url: links.TryPublicPage(PropertyPath(org.Slug, p)) ?? PropertyPath(org.Slug, p)))
+            .Select(p => (Row: p, Url: urls.TryPropertyUrl(org, PropertySegment(p)) ?? PublicSitePaths.Property(org.Slug, PropertySegment(p))))
             .ToList();
 
         var body = new StringBuilder();
@@ -133,6 +167,16 @@ public sealed class PublicSeoService(
         if (org is null)
             return NotFound();
 
+        var result = await RenderPropertyPageAsync(org, propertySlugOrId, requestHost, ownHostPaths: false, cancellationToken);
+        // An old slug of the org: the same page under the current one (the property was found by its own id or slug).
+        return result.Status == SeoPageStatus.Ok && !string.Equals(org.Slug, orgSlug, StringComparison.Ordinal)
+            ? Moved(PublicSitePaths.Property(org.Slug, propertySlugOrId))
+            : result;
+    }
+
+    private async Task<SeoPageResult> RenderPropertyPageAsync(
+        Org org, string propertySlugOrId, string? requestHost, bool ownHostPaths, CancellationToken cancellationToken)
+    {
         var query = PublishedProperties(org.Id);
         query = Guid.TryParse(propertySlugOrId, out var id)
             ? query.Where(p => p.Id == id)
@@ -142,15 +186,20 @@ public sealed class PublicSeoService(
         if (row is null)
             return NotFound();
 
-        var canonicalPath = PropertyPath(org.Slug, row);
-        var requestedPath = PublicSitePaths.Property(orgSlug, propertySlugOrId);
-        if (!string.Equals(canonicalPath, requestedPath, StringComparison.OrdinalIgnoreCase))
-            return Moved(canonicalPath);
+        // A property reached by id when it has a slug lives at the slug path: permanent redirect, on the same host and in
+        // the same path scheme (own host: /property/{slug}, platform: /book/{org}/property/{slug}).
+        var segment = PropertySegment(row);
+        if (!string.Equals(segment, propertySlugOrId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Moved(ownHostPaths
+                ? PublicSitePaths.HostProperty(segment)
+                : PublicSitePaths.Property(org.Slug, segment));
+        }
 
         var indexable = await IsIndexableHostAsync(requestHost, org.Id, cancellationToken);
         var culture = CultureInfo.CurrentUICulture;
-        var canonical = links.TryPublicPage(canonicalPath);
-        var orgUrl = links.TryPublicPage(PublicSitePaths.Org(org.Slug));
+        var canonical = urls.TryPropertyUrl(org, segment);
+        var orgUrl = urls.TryLandingUrl(org);
         var orgName = SeoHtml.Collapse(org.DisplayName);
         var images = row.PhotoUrls.Select(SeoHtml.TryHttpsUrl).OfType<string>().Take(MaxImages).ToList();
         var cin = CinFormat.GetStatus(row.CinCode) == CinStatus.Valid ? CinFormat.Normalize(row.CinCode) : null;
@@ -287,9 +336,31 @@ public sealed class PublicSeoService(
         links.EnsureConfigured();
 
         var org = await orgService.GetPublicBySlugAsync(orgSlug, cancellationToken);
-        if (org is null || !string.Equals(org.Slug, orgSlug, StringComparison.Ordinal))
+        // An org with its own host has its sitemap there (/sitemap.xml of that host): a sitemap may only list URLs of its own
+        // host, and the canonical URLs of such an org are not on the platform.
+        if (org is null || !string.Equals(org.Slug, orgSlug, StringComparison.Ordinal) || urls.OwnHost(org) is not null)
             return null;
 
+        return await BuildOrgUrlSetAsync(org, cancellationToken);
+    }
+
+    public async Task<HostSitemap> BuildHostSitemapAsync(string host, CancellationToken cancellationToken = default)
+    {
+        var normalizedHost = PublicSiteHosts.Normalize(host);
+        var resolved = normalizedHost is null ? null : await hostResolver.ResolveAsync(normalizedHost, cancellationToken);
+        if (resolved is null)
+            return new HostSitemap(false, null);
+
+        var org = await orgService.GetPublicBySlugAsync(resolved.Slug, cancellationToken);
+        if (org is null || org.Id != resolved.OrgId || urls.OwnHost(org) != normalizedHost)
+            return new HostSitemap(false, null);
+
+        return new HostSitemap(true, await BuildOrgUrlSetAsync(org, cancellationToken));
+    }
+
+    /// <summary>The landing page and the published properties of an org, on the URLs its pages declare as canonical.</summary>
+    private async Task<string?> BuildOrgUrlSetAsync(Org org, CancellationToken cancellationToken)
+    {
         var properties = await PublishedProperties(org.Id)
             .OrderBy(p => p.City).ThenBy(p => p.Name)
             .Take(SeoSitemaps.MaxEntries - 1)
@@ -301,10 +372,10 @@ public sealed class PublicSeoService(
         var lastModified = properties.Max(p => p.UpdatedAt);
         var entries = new List<(string Url, DateTime LastModified)>
         {
-            (links.PublicPage(PublicSitePaths.Org(org.Slug)), lastModified > org.UpdatedAt ? lastModified : org.UpdatedAt),
+            (urls.TryLandingUrl(org) ?? throw NotConfigured(), lastModified > org.UpdatedAt ? lastModified : org.UpdatedAt),
         };
         entries.AddRange(properties.Select(p =>
-            (links.PublicPage(PublicSitePaths.Property(org.Slug, string.IsNullOrWhiteSpace(p.Slug) ? p.Id.ToString() : p.Slug)), p.UpdatedAt)));
+            (urls.TryPropertyUrl(org, string.IsNullOrWhiteSpace(p.Slug) ? p.Id.ToString() : p.Slug) ?? throw NotConfigured(), p.UpdatedAt)));
 
         return SeoSitemaps.UrlSet(entries);
     }
@@ -326,14 +397,18 @@ public sealed class PublicSeoService(
             .Where(o => o.IsActive && orgIds.Contains(o.Id))
             .OrderBy(o => o.Slug)
             .Take(SeoSitemaps.MaxEntries)
-            .Select(o => new { o.Id, o.Slug, o.UpdatedAt })
             .ToListAsync(cancellationToken);
         var lastModifiedByOrg = published.ToDictionary(p => p.OrgId, p => p.LastModified);
 
-        return SeoSitemaps.Index(orgs.Select(o =>
-            (links.PublicPage(PublicSitePaths.OrgSitemap(o.Slug)),
+        // The orgs with their own host are not listed: their sitemap is on their host, not under the platform path.
+        return SeoSitemaps.Index(orgs
+            .Where(o => urls.OwnHost(o) is null)
+            .Select(o => (links.PublicPage(PublicSitePaths.OrgSitemap(o.Slug)),
                 lastModifiedByOrg[o.Id] > o.UpdatedAt ? lastModifiedByOrg[o.Id] : o.UpdatedAt)));
     }
+
+    private static EmailConfigurationException NotConfigured() =>
+        new("App:PublicSiteBaseUrl is missing or invalid: public links cannot be built.");
 
     // ─── Editorial pages (/p/*) ──────────────────────────────────────────────────────────────────────
 
@@ -487,8 +562,9 @@ public sealed class PublicSeoService(
             : T("SeoPropertyDescriptionBasic", row.Name, row.City);
     }
 
-    private static string PropertyPath(string orgSlug, SeoPropertyRow row) =>
-        PublicSitePaths.Property(orgSlug, string.IsNullOrWhiteSpace(row.Slug) ? row.Id.ToString() : row.Slug);
+    /// <summary>The last segment of the property's public path: its slug, the id only when it has none.</summary>
+    private static string PropertySegment(SeoPropertyRow row) =>
+        string.IsNullOrWhiteSpace(row.Slug) ? row.Id.ToString() : row.Slug;
 
     private static string? FirstPhoto(IEnumerable<SeoPropertyRow> properties) =>
         properties.SelectMany(p => p.PhotoUrls).Select(SeoHtml.TryHttpsUrl).OfType<string>().FirstOrDefault();
@@ -524,6 +600,9 @@ public sealed class PublicSeoService(
             SiteName = PlatformName,
             BodyHtml = $"<main>\n<p><a href=\"{SeoHtml.Encode(path)}\">{SeoHtml.Encode(path)}</a></p>\n</main>\n",
         }), path);
+
+    /// <summary>A host that serves no org site: a real 404 the crawler function tells apart from a missing page.</summary>
+    private SeoPageResult UnknownHost() => NotFound() with { Status = SeoPageStatus.UnknownHost };
 
     private SeoPageResult NotFound() =>
         new(SeoPageStatus.NotFound, SeoHtmlRenderer.Render(new SeoDocument
