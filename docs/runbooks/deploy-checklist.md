@@ -21,7 +21,7 @@ and in the password manager, never in the repository (`.claude/rules/security.md
 
 | Place | Environments |
 |---|---|
-| **Railway** | environment `test` = `ASPNETCORE_ENVIRONMENT=Staging`, environment `production` = `Production`; the variables of § 2 and § 3, set per environment (Variables tab). Never the same value in both when the column says "per environment". |
+| **Railway** | environment `test` = `ASPNETCORE_ENVIRONMENT=Staging`, environment `production` = `Production`; the variables of § 2, set per environment (Variables tab). Never the same value in both when the column says "per environment". |
 | **Vercel** | **Preview** (PR previews and the `develop` test deployment) and **Production** (`main`). Set the variable per environment, never "All environments" ([`auth0.md`](auth0.md) § 1.1). |
 | **EAS** | environments `preview` and `production` of the Expo project (`APP_VARIANT` of the build profile, `eas.json`). |
 | **GitHub** | repository Variables / Secrets (Settings → Secrets and variables → Actions). |
@@ -169,7 +169,7 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 | Variable | Req. | Test / Prod | Example (placeholder) | Effect if missing or wrong | Task · runbook |
 |---|---|---|---|---|---|
 | `Legal__ContentPath` | O | same | `LegalDocuments` | Folder of the text files, relative to the API binaries | PL-14 · [`legal-documents.md`](legal-documents.md) |
-| `Legal__Documents__Tos__Version`, `__EffectiveAt`, `__DocumentUrl` (same for `Privacy`, `Dpa`) | PO | same | `2026-06-v1` / `2026-11-15` / `https://<official copy>` | Version the consents refer to (default `1.0` if unset); date in force; optional external https copy. No text and no URL: pages say "in preparazione", `legal: degraded` | PL-14 |
+| `Legal__Documents__{Tos,Privacy,Dpa}__{Version,EffectiveAt,DocumentUrl}` | PO | same | `2026-06-v1` / `2026-11-15` / `https://<official copy>` | Version the consents refer to (default `1.0` if unset); date in force; optional external https copy. No text and no URL: pages say "in preparazione", `legal: degraded` | PL-14 |
 | `Legal__Documents__Subprocessors__Version`, `__EffectiveAt` | PO | same | `2026-10-v1` | Version of the list (gets `+ai-<provider>` with an active AI provider) and its date in force | PL-14, PL14-SUBP |
 | `Legal__Documents__Subprocessors__Providers__{Supabase,Auth0,Stripe,Resend,Expo,Railway,Vercel}__{Entity,Region,TransferMechanism,Source}` | PO | same | committed defaults with their sources | Public facts committed for each provider (PL14-SUBP); the region of Supabase / Auth0 / Railway is read from the configuration, not typed. A missing field = "in definizione", `legal: degraded` |
 | `Legal__Documents__Subprocessors__Providers__{Railway,Vercel}__Enabled` | O | same | `true` | Forces a hosting provider into or out of the list when it cannot be detected (a custom domain hides Vercel) | PL14-SUBP · [`legal-documents.md`](legal-documents.md) § 3 |
