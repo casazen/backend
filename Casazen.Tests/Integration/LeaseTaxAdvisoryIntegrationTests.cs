@@ -110,8 +110,8 @@ public class LeaseTaxAdvisoryIntegrationTests : IClassFixture<CasazenWebApplicat
             monthlyRent = 900m,
             parties = new object[]
             {
-                new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = "RSSMRA80A01H501Z", citizenship = "IT", contactEmail = "mario@example.com" },
-                new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = "VRDGLI85B02F205X", citizenship = "IT", contactEmail = "giulia@example.com" },
+                new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = "RSSMRA80A01H501U", citizenship = "IT", contactEmail = "mario@example.com" },
+                new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = "VRDGLI85B02F205A", citizenship = "IT", contactEmail = "giulia@example.com" },
             },
         });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);

@@ -34,6 +34,7 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
         [nameof(Party.LeaseContractId)] = "foreign key",
         [nameof(Party.LeaseContract)] = "navigation",
         [nameof(Party.Role)] = "shape of the lease",
+        [nameof(Party.Position)] = "shape of the lease (LT-14)",
         [nameof(Party.IsExtraEU)] = "Questura history of the lease, no identity left",
         [nameof(Party.AnonymizedAt)] = "processing metadata",
     };

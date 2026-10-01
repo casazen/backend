@@ -436,7 +436,7 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
-    public async Task CreateDraftAsync_WhenNoTenant_ThrowsInvalidOperationException()
+    public async Task CreateDraftAsync_WhenNoTenant_Throws422TenantRequired()
     {
         // Arrange
         var property = BuildProperty(hasApe: true);
@@ -447,11 +447,92 @@ public class LeaseWorkflowServiceTests
             StartDate: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate: new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent: 1200.00m,
-            Parties: [new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com")]);
+            Parties: [new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501U", "IT", "mario@example.com")]);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        // Act & Assert: a domain rule (422 with code) since LT-14, no longer a generic 400.
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
             _sut.CreateDraftAsync(PropertyId, request));
+        Assert.Equal(LeasePartyErrorCodes.TenantRequired, ex.Code);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_TwoLandlordsAndTwoTenants_KeepsEveryPartyWithItsPositionAndNormalizedCode()
+    {
+        // LT-14 (A7-28): co-owners (spouses) and co-tenants; a company tenant with its 11-digit code.
+        ArrangeCreation();
+        var request = BuildCreateRequest() with
+        {
+            Parties =
+            [
+                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", " rssmra80a01h501u ", "IT", "mario@example.com"),
+                new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123Z", "US", "john@example.com"),
+                new CreatePartyRequest(PartyRole.Landlord, "Anna", "Bianchi", "BNCNNA82A41F205W", "IT", "anna@example.com"),
+                new CreatePartyRequest(PartyRole.Tenant, "Acme", "Srl", "00123456782", "IT", "acme@example.com"),
+            ],
+        };
+
+        var result = await _sut.CreateDraftAsync(PropertyId, request);
+
+        Assert.Equal(
+            [
+                (PartyRole.Landlord, 0, "RSSMRA80A01H501U"),
+                (PartyRole.Tenant, 0, "DOEJHN90B02Z123Z"),
+                (PartyRole.Landlord, 1, "BNCNNA82A41F205W"),
+                (PartyRole.Tenant, 1, "00123456782"),
+            ],
+            result.Parties.Select(p => (p.Role, p.Position, p.FiscalCode)));
+    }
+
+    [Theory]
+    [InlineData("RSSMRA80A01H501Z", LeasePartyErrorCodes.FiscalCodeInvalid)] // wrong check character
+    [InlineData("12345678901", LeasePartyErrorCodes.FiscalCodeInvalid)] // wrong check digit
+    [InlineData("ABC", LeasePartyErrorCodes.FiscalCodeInvalid)]
+    [InlineData("rssmra80a01h501u", LeasePartyErrorCodes.FiscalCodeDuplicate)] // the landlord again
+    public async Task CreateDraftAsync_TenantFiscalCodeRejected_Throws422WithCodeAndStoresNothing(string tenantCode, string code)
+    {
+        ArrangeCreation();
+        var request = BuildCreateRequest() with
+        {
+            Parties =
+            [
+                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501U", "IT", "mario@example.com"),
+                new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", tenantCode, "IT", "john@example.com"),
+            ],
+        };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
+
+        Assert.Equal(code, ex.Code);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_ElevenLandlords_Throws422TooMany()
+    {
+        ArrangeCreation();
+        var landlords = Enumerable.Range(0, LeasePartyRules.MaxPerRole + 1)
+            .Select(i => new CreatePartyRequest(PartyRole.Landlord, "L", $"{i}", NumericCode(i), "IT", $"l{i}@example.com"));
+        var request = BuildCreateRequest() with
+        {
+            Parties = [.. landlords, new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123Z", "IT", "john@example.com")],
+        };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
+
+        Assert.Equal(LeasePartyErrorCodes.TooMany, ex.Code);
+    }
+
+    /// <summary>A valid 11-digit code built from <paramref name="seed"/> (check digit computed).</summary>
+    private static string NumericCode(int seed)
+    {
+        var first10 = (1_000_000_000L + seed).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        for (var check = 0; check <= 9; check++)
+        {
+            if (Casazen.Core.Regulatory.ItalianFiscalCode.IsValidNumericCode(first10 + check))
+                return first10 + check;
+        }
+
+        throw new InvalidOperationException("unreachable");
     }
 
     private void ArrangeCreation()
@@ -517,8 +598,8 @@ public class LeaseWorkflowServiceTests
         MonthlyRent: monthlyRent,
         Parties:
         [
-            new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com"),
-            new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123X", tenantCitizenship, "john@example.com")
+            new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501U", "IT", "mario@example.com"),
+            new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123Z", tenantCitizenship, "john@example.com")
         ],
         CanoneConcordatoCharacteristics: canoneConcordatoCharacteristics);
 
