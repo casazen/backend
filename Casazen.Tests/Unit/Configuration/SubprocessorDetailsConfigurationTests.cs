@@ -89,11 +89,13 @@ public class SubprocessorDetailsConfigurationTests
     {
         var items = LegalSubprocessorCatalog.Build(Appsettings(FullyDetectedEnvironment));
 
-        Assert.Equal(
-            [LegalSubprocessorCatalog.Supabase, LegalSubprocessorCatalog.Auth0, LegalSubprocessorCatalog.Stripe,
-             LegalSubprocessorCatalog.Resend, LegalSubprocessorCatalog.Expo, LegalSubprocessorCatalog.Railway,
-             LegalSubprocessorCatalog.Vercel],
-            items.Select(i => i.Key).ToArray());
+        string?[] expectedKeys =
+        [
+            LegalSubprocessorCatalog.Supabase, LegalSubprocessorCatalog.Auth0, LegalSubprocessorCatalog.Stripe,
+            LegalSubprocessorCatalog.Resend, LegalSubprocessorCatalog.Expo, LegalSubprocessorCatalog.Railway,
+            LegalSubprocessorCatalog.Vercel,
+        ];
+        Assert.Equal(expectedKeys, items.Select(i => i.Key));
         Assert.All(items, item =>
         {
             Assert.False(item.DetailsPending, $"{item.Name} is still pending");
