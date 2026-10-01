@@ -423,6 +423,30 @@
   <data name="OrgSlugTaken" xml:space="preserve">
     <value>Questo indirizzo web (slug) è già usato, o è stato usato, da un'altra organizzazione.</value>
   </data>
+  <data name="OrgBrandingColorInvalid" xml:space="preserve">
+    <value>Il colore non è valido: usa un codice esadecimale, per esempio #1a6b8f.</value>
+  </data>
+  <data name="OrgBrandingThemeInvalid" xml:space="preserve">
+    <value>Questo tema non è disponibile per il sito pubblico.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
+    <value>Lo slogan non può superare i {0} caratteri.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
+    <value>Lo slogan è troppo lungo.</value>
+  </data>
+  <data name="OrgBrandingImageEmpty" xml:space="preserve">
+    <value>Seleziona un'immagine da caricare.</value>
+  </data>
+  <data name="OrgBrandingImageTooLarge" xml:space="preserve">
+    <value>L'immagine supera la dimensione massima di {0} MB.</value>
+  </data>
+  <data name="OrgBrandingImageTypeInvalid" xml:space="preserve">
+    <value>Formato non supportato: carica un'immagine PNG, JPEG o WebP.</value>
+  </data>
+  <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
+    <value>Dimensioni dell'immagine non valide: servono almeno {0}×{1} pixel e al massimo {2}×{3}.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
   </data>

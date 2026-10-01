@@ -317,6 +317,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IOrgBrandingService, OrgBrandingService>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
