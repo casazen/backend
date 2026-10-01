@@ -57,7 +57,8 @@ public class RliExportService(
             ? $"Scadenza registrazione: {deadline:yyyy-MM-dd}"
             : "Scadenza registrazione: da determinare");
         sb.AppendLine("Contraenti:");
-        foreach (var party in lease.Parties)
+        // Every landlord, then every tenant, in the order entered (LT-14): the RLI needs all of them.
+        foreach (var party in lease.Parties.OrderBy(p => p.Role).ThenBy(p => p.Position))
         {
             sb.AppendLine($"- {party.Role}: {party.FirstName} {party.LastName} ({party.Citizenship}) CF:{party.FiscalCode}");
         }

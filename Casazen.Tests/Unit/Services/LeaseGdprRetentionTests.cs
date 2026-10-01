@@ -42,8 +42,8 @@ public class LeaseGdprRetentionTests
             start.AddYears(4),
             1100m,
             [
-                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501Z", "IT", "mario@example.com"),
-                new CreatePartyRequest(PartyRole.Tenant, "Giulia", "Verdi", "VRDGLI85B02F205X", "IT", "giulia@example.com"),
+                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501U", "IT", "mario@example.com"),
+                new CreatePartyRequest(PartyRole.Tenant, "Giulia", "Verdi", "VRDGLI85B02F205A", "IT", "giulia@example.com"),
             ]));
 
         // LT-12 (A7-18): no stored StartDate + 10 years; the retention is counted from the end date on read.
@@ -74,7 +74,7 @@ public class LeaseGdprRetentionTests
             Role = PartyRole.Tenant,
             FirstName = "Giulia",
             LastName = "Verdi",
-            FiscalCode = "VRDGLI85B02F205X",
+            FiscalCode = "VRDGLI85B02F205A",
             Citizenship = "US",
             ContactEmail = "giulia@example.com",
             IsExtraEU = true,
