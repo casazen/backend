@@ -1650,6 +1650,7 @@
   </data>
   <data name="DomainIssue_vercel_rejected" xml:space="preserve">
     <value>The service provider does not accept this domain. Check that it is spelled correctly.</value>
+  </data>
   <data name="SupplierAlreadySuspended" xml:space="preserve">
     <value>The supplier is already suspended.</value>
   </data>
