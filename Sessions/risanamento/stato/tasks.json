@@ -2793,5 +2793,189 @@
   ],
   "wave": 7,
   "notes": "Parte solo dopo tutti gli altri task (sweep finale)."
+ },
+ {
+  "id": "AI-01",
+  "title": "Assistenti AI: ricerca di conferma, spike (Auth0, SDK C#, host) e design (ADR-004, catalogo tool)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "FN-01",
+   "FN-02",
+   "FN-03",
+   "FN-04",
+   "FN-05"
+  ],
+  "wave": 8,
+  "notes": "Stima 5 gg. Parte solo dopo TUTTI gli altri task (FN-01..FN-05 inclusi) e dopo le risposte del PO alle domande bloccanti (DOMANDE-APERTE sez. 8, voci AI-*). Riverifica i fatti [E] del piano (docs/integrations/ai-assistants-plan.md, app. A) con rete aperta, spike Auth0 (CIMD, resource, RFC 9207, DCR) e SDK C# 2.2, server hello su Claude e ChatGPT, disponibilita' in Italia, ADR-004 e catalogo tool. Nessun task AI-* chiude difetti dell'audit."
+ },
+ {
+  "id": "AI-02",
+  "title": "Server MCP read-only nel backend (Casazen.Mcp, /mcp, tool di lettura, flag, rate limit, audit senza PII)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "AI-01",
+   "FD-20",
+   "TN-3",
+   "TN-4"
+  ],
+  "wave": 8,
+  "notes": "Stima 10 gg. docs/integrations/ai-assistants-plan.md par. 2.1-2.4. Riusa i servizi esistenti con policy TN-3 e HostScope, mai il DbContext. Flag FD-20 AiAssistants (default off), DTO con allowlist, test architetturale dei tool, snapshot di tools/list, audit senza PII, errori localizzati IT/EN. LTR, note ospite, pagamenti e documenti esclusi."
+ },
+ {
+  "id": "AI-03",
+  "title": "OAuth con Auth0 per il server MCP (API dedicata, PRM, CIMD o credenziali predefinite, ruoli, revoca)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "AI-02",
+   "FD-14",
+   "PL-11"
+  ],
+  "wave": 8,
+  "notes": "Stima 6 gg. docs/integrations/ai-assistants-plan.md par. 2.3. Audience dedicata (un token web non vale su /mcp), 401 con resource_metadata, parita' dei permessi web/MCP (GetHostScope usa i ruoli del JWT). DCR sul tenant di produzione solo con OK esplicito del PO. Passi Auth0 in docs/runbooks/ai-assistants.md (D9: li applica il PO)."
+ },
+ {
+  "id": "AI-04",
+  "title": "Tool di bozza e scrittura con conferma fuori dal modello e idempotenza",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "AI-02",
+   "AI-03",
+   "AI-11",
+   "BK-06",
+   "SU-07"
+  ],
+  "wave": 8,
+  "notes": "Stima 8 gg. docs/integrations/ai-assistants-plan.md par. 2.5 e 3.4. prepare/confirm con confirmationId monouso, conferma in chat via tool app-only o fuori banda in CasaZen, flag AiAssistantsWrite, tetti per utente/org. Azioni ammesse in GA: domanda aperta al PO. Verificare che approve/decline non muovano denaro. Mai pagamenti, rimborsi, prezzi, invio messaggi, Alloggiati."
+ },
+ {
+  "id": "AI-05",
+  "title": "UI MCP Apps: widget arrivi/partenze, calendario, conformita', conferma (entry Vite separato)",
+  "findings": [],
+  "repos": [
+   "frontend",
+   "backend"
+  ],
+  "deps": [
+   "AI-02",
+   "AI-04"
+  ],
+  "wave": 8,
+  "notes": "Stima 10 gg. docs/integrations/ai-assistants-plan.md par. 2.6. Bundle HTML autocontenuti con componenti, token e i18n del frontend (niente router/store/axios), CSP esatta, ui.domain per Claude con test sul vettore della documentazione, stati loading/errore/vuoto, tema chiaro/scuro, accessibilita'."
+ },
+ {
+  "id": "AI-06",
+  "title": "Plugin bundle Claude con Skills (.claude-plugin, .mcp.json, validate)",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "AI-05"
+  ],
+  "wave": 8,
+  "notes": "Stima 4 gg. docs/integrations/ai-assistants-plan.md par. 4.1. Cartella integrations/ai-assistants-plugin/ da pubblicare in un repo pubblico dedicato (org GitHub e licenza: domanda al PO). Skills senza dati normativi inventati (D14), claude plugin validate in CI, manifest generati da un'unica sorgente con AI-07."
+ },
+ {
+  "id": "AI-07",
+  "title": "Plugin ChatGPT/Codex ('With MCP' + skills) dalla stessa sorgente del plugin Claude",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "AI-05"
+  ],
+  "wave": 8,
+  "notes": "Stima 5 gg. docs/integrations/ai-assistants-plan.md par. 4.2. Documentazione OpenAI non raggiungibile da questa rete: formati e requisiti da riverificare in AI-01. Annotazioni con giustificazione, 5 test positivi e 3 negativi, verifica dominio, manifest (Codex o Agent Plugins 1.0.0) da confermare. Disponibilita' in Italia da verificare."
+ },
+ {
+  "id": "AI-08",
+  "title": "Privacy, DPA e legale per gli assistenti AI: catalogo dati, destinatari, consenso (testi del PO)",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "AI-02",
+   "PL-14"
+  ],
+  "wave": 8,
+  "notes": "Stima 5 gg. docs/integrations/ai-assistants-plan.md par. 3.3. Gate esterno LEGAL-TEXTS (D14): testi ToS/Privacy/DPA li fornisce il PO, gli agenti non li scrivono. Campi ragione sociale/luogo/trasferimento 'in definizione' come PL-14. Parere del DPO su OpenAI/Anthropic (destinatari, sub-responsabili, DPIA, trasferimenti USA) richiesto, non sostituito."
+ },
+ {
+  "id": "AI-09",
+  "title": "Test e sicurezza degli assistenti AI: injection, isolamento tenant, contratto, carico, e2e sugli host",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "AI-06",
+   "AI-07"
+  ],
+  "wave": 8,
+  "notes": "Stima 8 gg. docs/integrations/ai-assistants-plan.md par. 3.1. Red team di prompt injection (note ospite, iCal, messaggi fornitore), isolamento tra org e ruoli, parita' permessi web/MCP, snapshot del catalogo, carico e rate limit, PII nei log, revoca e kill-switch, security-review. Test con TimeProvider fisso."
+ },
+ {
+  "id": "AI-10",
+  "title": "Sottomissione e rollout: beta privata, directory Claude, plugin ChatGPT",
+  "findings": [],
+  "repos": [
+   "backend"
+  ],
+  "deps": [
+   "AI-08",
+   "AI-09",
+   "AI-11",
+   "AI-12"
+  ],
+  "wave": 8,
+  "notes": "Stima 5 gg piu' attese di review (Anthropic senza tempi fissi; OpenAI: fonte secondaria, mediana ~13 gg, fino a mesi). docs/integrations/ai-assistants-plan.md par. 4. Prima Claude; ChatGPT dopo verifica Italia. Servono titolarita' degli account Anthropic/OpenAI, nome/branding e account revisori (domande al PO). Pubblicazione solo dopo i gate di fase 4.4."
+ },
+ {
+  "id": "AI-11",
+  "title": "Impostazioni organizzazione per gli assistenti AI: consenso, attivazione, disattivazione, revoca (BE+FE)",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "AI-03",
+   "PL-02",
+   "PL-12",
+   "PL-14"
+  ],
+  "wave": 8,
+  "notes": "Stima 6 gg. docs/integrations/ai-assistants-plan.md par. 2.2, 3.3 e 3.5. OrgAssistantSettings (ITenantOwned, default spento, opt-in dell'amministratore), consenso versionato, schermata 'Assistenti AI' con i18n IT/EN, revoca dei grant. Senza i testi legali del PO la pagina mostra 'in preparazione' e l'attivazione resta limitata alle org in lista. Piano/prezzo: domanda al PO (OpenAI vieta upsell nel plugin)."
+ },
+ {
+  "id": "AI-12",
+  "title": "Account demo per i revisori, asset e documentazione pubblica degli assistenti AI",
+  "findings": [],
+  "repos": [
+   "backend",
+   "frontend"
+  ],
+  "deps": [
+   "AI-05",
+   "AI-08"
+  ],
+  "wave": 8,
+  "notes": "Stima 4 gg. docs/integrations/ai-assistants-plan.md par. 4.3. Org demo con dati fittizi completi (mai dati reali), utente senza MFA, reset periodico e credenziali ruotabili, documentazione d'uso IT/EN, icona, logo, 3-5 screenshot PNG >= 1000 px per Claude, testi delle inserzioni, 5+3 casi di test OpenAI."
  }
 ]
