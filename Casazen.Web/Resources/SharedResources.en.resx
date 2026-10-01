@@ -354,6 +354,12 @@
   <data name="PropertySlugTaken" xml:space="preserve">
     <value>This web address (slug) is already used by another property in your organization.</value>
   </data>
+  <data name="PropertyHasUpcomingBookings" xml:space="preserve">
+    <value>This property cannot be deleted: it has a booking (pending, confirmed or with the guests already checked in) whose check-out has not passed yet.</value>
+  </data>
+  <data name="PropertyHasActiveLeases" xml:space="preserve">
+    <value>This property cannot be deleted: it has a lease in force or in progress that has not ended yet.</value>
+  </data>
   <data name="BookingUpdateInvalid" xml:space="preserve">
     <value>The booking cannot be changed this way: check the dates, the number of guests and the booking status.</value>
   </data>
@@ -422,6 +428,30 @@
   </data>
   <data name="OrgSlugTaken" xml:space="preserve">
     <value>This web address (slug) is already used, or was used, by another organization.</value>
+  </data>
+  <data name="OrgBrandingColorInvalid" xml:space="preserve">
+    <value>The color is not valid: use a hex code, for example #1a6b8f.</value>
+  </data>
+  <data name="OrgBrandingThemeInvalid" xml:space="preserve">
+    <value>This theme is not available for the public site.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
+    <value>The tagline cannot exceed {0} characters.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
+    <value>The tagline is too long.</value>
+  </data>
+  <data name="OrgBrandingImageEmpty" xml:space="preserve">
+    <value>Select an image to upload.</value>
+  </data>
+  <data name="OrgBrandingImageTooLarge" xml:space="preserve">
+    <value>The image exceeds the maximum size of {0} MB.</value>
+  </data>
+  <data name="OrgBrandingImageTypeInvalid" xml:space="preserve">
+    <value>Unsupported format: upload a PNG, JPEG or WebP image.</value>
+  </data>
+  <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
+    <value>Invalid image size: it must be at least {0}×{1} pixels and at most {2}×{3}.</value>
   </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>

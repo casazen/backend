@@ -99,8 +99,18 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
         };
         var single = Lease();
         var twoLandlords = Lease();
+        // The "Properties" columns of PC-05 (AddPropertySoftDelete) come after this migration point: created just for
+        // the model-based insert and dropped right after, the real migration recreates them.
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Properties" ADD COLUMN "IsDeleted" boolean NOT NULL DEFAULT false;
+            ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
+            """);
         db.AddRange(org, property, single, twoLandlords);
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Properties" DROP COLUMN "IsDeleted";
+            ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
+            """);
         return (single.Id, twoLandlords.Id);
     }
 }

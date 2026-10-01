@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.Infrastructure;
@@ -21,6 +22,7 @@ public sealed class OrgContextResolver(
     IRequestTenantContext tenantContext,
     IHttpContextAccessor httpContextAccessor,
     IUserService userService,
+    IOrgService orgService,
     ILogger<OrgContextResolver> logger) : IOrgContextResolver
 {
     public async Task<Guid?> GetOrProvisionOrgIdAsync(CancellationToken cancellationToken = default)
@@ -37,9 +39,21 @@ public sealed class OrgContextResolver(
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
         if (user.OrgId is Guid linked)
         {
-            // Linked after the tenant was resolved (e.g. by a parallel first request): scope this request to it.
-            tenantContext.SetOrgId(linked);
-            return linked;
+            var linkedOrg = await orgService.GetByIdAsync(linked, cancellationToken);
+            if (linkedOrg?.OrgType == OrgType.Host)
+            {
+                // Linked after the tenant was resolved (e.g. by a parallel first request): scope this request to it.
+                tenantContext.SetOrgId(linked);
+                return linked;
+            }
+
+            // A1-40: User.OrgId points at a non-Host org — typically the caller's own Supplier org, linked at
+            // supplier registration before the host onboarding ever ran. Never treat it as the host tenant:
+            // fall through as if there were no org yet, so the onboarding provisions a real Host org instead
+            // of reusing the supplier one (OrgService.EnsureOrgForUserAsync applies the same rule).
+            logger.LogWarning(
+                "User {UserId} OrgId {OrgId} is not a Host org (type {OrgType}): treating as no host org yet",
+                sub, linked, linkedOrg?.OrgType);
         }
 
         // PL-02 (A1-05): no org without the onboarding and its consents (POST/PUT /api/users/onboarding).

@@ -259,6 +259,37 @@ Il livello indica la profondità nel grafo delle dipendenze: i task dello stesso
 | **FN-04** | Maestro reale (login, push, assert per ID) + seed app + job CI su emulatore | A6-22 | P1 | mobile | FN-03, MO-03 |
 | **FN-05** | Registro spec, PLANNING e documentazione allineati allo stato reale | A7-30 A8-30 | P2 | backend | tutti gli altri task |
 
+## Wave 8 — Integrazione assistenti AI (dopo il risanamento)
+
+> Richiesta del PO del 2026-10-01: prevedere, **al termine degli sviluppi già previsti**, l'integrazione di CasaZen con ChatGPT e Claude tramite i nuovi plugin. **Solo pianificazione**: nessun codice scritto. Piano completo, ricerca documentale con fonti e data, architettura, sicurezza e privacy, percorso di pubblicazione e domande aperte: [`docs/integrations/ai-assistants-plan.md`](../../docs/integrations/ai-assistants-plan.md). Le domande per il PO sono in [`DOMANDE-APERTE.md`](./DOMANDE-APERTE.md), sezione 8 (voci `AI-*`).
+
+**Scelta di fondo**: un solo server MCP remoto nel backend .NET (progetto `Casazen.Mcp`, SDK C# ufficiale), una sola UI MCP Apps, due pacchetti di distribuzione (Claude: connettore + plugin con Skills; ChatGPT: plugin "With MCP" + skills). Lettura prima, bozze poi, scrittura per ultima con conferma fuori dal modello e idempotenza. Stesse policy TN-3, stesso `HostScope`, OAuth con Auth0, flag FD-20 (default spento), consenso per organizzazione.
+
+| ID | Task | Difetti | Sev. | Repo | Dipende da |
+|---|---|---|---|---|---|
+| **AI-01** | Ricerca di conferma, spike (Auth0, SDK C#, host) e design (ADR-004, catalogo tool)<br><sub>Parte solo dopo tutti gli altri task e dopo le risposte del PO. 5 gg.</sub> | - | - | backend | FN-01, FN-02, FN-03, FN-04, FN-05 |
+| **AI-02** | Server MCP read-only nel backend (`Casazen.Mcp`, `/mcp`, tool di lettura, flag, rate limit, audit senza PII)<br><sub>10 gg.</sub> | - | - | backend | AI-01, FD-20, TN-3, TN-4 |
+| **AI-03** | OAuth con Auth0 per il server MCP (API dedicata, PRM, CIMD o credenziali predefinite, ruoli, revoca)<br><sub>DCR in produzione solo con OK del PO. 6 gg.</sub> | - | - | backend | AI-02, FD-14, PL-11 |
+| **AI-11** | Impostazioni organizzazione: consenso, attivazione, disattivazione, revoca (BE+FE)<br><sub>Default spento, opt-in dell'amministratore. 6 gg.</sub> | - | - | backend, frontend | AI-03, PL-02, PL-12, PL-14 |
+| **AI-04** | Tool di bozza e scrittura con conferma fuori dal modello e idempotenza<br><sub>Azioni ammesse in GA: domanda al PO. 8 gg.</sub> | - | - | backend | AI-02, AI-03, AI-11, BK-06, SU-07 |
+| **AI-05** | UI MCP Apps (widget, entry Vite separato nel frontend)<br><sub>10 gg.</sub> | - | - | frontend, backend | AI-02, AI-04 |
+| **AI-06** | Plugin bundle Claude con Skills<br><sub>Repo pubblico dedicato: domanda al PO. 4 gg.</sub> | - | - | backend | AI-05 |
+| **AI-07** | Plugin ChatGPT/Codex ("With MCP" + skills) dalla stessa sorgente<br><sub>Documentazione OpenAI da riverificare in AI-01. 5 gg.</sub> | - | - | backend | AI-05 |
+| **AI-08** | Privacy, DPA e legale: catalogo dati, destinatari, consenso<br><sub>Testi ToS/Privacy/DPA li fornisce il PO (D14, gate `LEGAL-TEXTS`). 5 gg.</sub> | - | - | backend, frontend | AI-02, PL-14 |
+| **AI-12** | Account demo per i revisori, asset e documentazione pubblica<br><sub>Dati fittizi, utente senza MFA. 4 gg.</sub> | - | - | backend, frontend | AI-05, AI-08 |
+| **AI-09** | Test e sicurezza: injection, isolamento tenant, contratto, carico, e2e sugli host<br><sub>8 gg.</sub> | - | - | backend, frontend | AI-06, AI-07 |
+| **AI-10** | Sottomissione e rollout: beta privata, directory Claude, plugin ChatGPT<br><sub>5 gg più le attese di review esterne.</sub> | - | - | backend | AI-08, AI-09, AI-11, AI-12 |
+
+**Livelli** (profondità nel grafo, come nella tabella dell'ordine di esecuzione): 9 AI-01 · 10 AI-02 · 11 AI-03, AI-08 · 12 AI-11 · 13 AI-04 · 14 AI-05 · 15 AI-06, AI-07, AI-12 · 16 AI-09 · 17 AI-10. Percorso critico circa 63 giorni-persona (stima indicativa ±40%, totale circa 76), più i tempi di review di Anthropic e OpenAI che non sono sotto controllo.
+
+**Note operative**
+
+- I task `AI-*` **non chiudono difetti dell'audit** (`findings: []`): i totali 166 task e 335 difetti restano riferiti al risanamento. `AI-xx` (task) non va confuso con `A1-xx` (difetti).
+- Dipendono da **tutti** i task già pianificati, FN-05 incluso. Il carattere jolly `deps: ["*"]` di FN-01, FN-02 e FN-05 **non** include i task `AI-*` (altrimenti ciclo): `stato/tooling/sched.py` è stato aggiornato di conseguenza, e così `stato/tasks.json` e `stato/status.json` (nuovi ID `pending`). La copia viva dello scheduler va allineata.
+- Gate esterni, non task del registro: i testi legali del PO (`LEGAL-TEXTS`, D14), le risposte del PO alle domande bloccanti (DOMANDE-APERTE sezione 8), le configurazioni su Auth0, Anthropic e OpenAI (D9: codice più runbook, le applica il PO).
+- **Fatto da non dare per acquisito**: la documentazione OpenAI (`developers.openai.com`, `help.openai.com`) e `modelcontextprotocol.io`, `auth0.com` non erano raggiungibili dalla rete della sessione di pianificazione; quei fatti sono marcati `[E]` nel piano e vanno riverificati in AI-01 prima di qualsiasi sottomissione.
+- Nessuna decisione di prodotto, legale o commerciale è stata presa: solo default prudenti dichiarati nelle domande aperte.
+
 ## Indice: difetto → task
 
 | Difetto | Sev. | Descrizione | Task |
