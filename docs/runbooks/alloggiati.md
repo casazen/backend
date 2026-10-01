@@ -5,10 +5,9 @@ official code tables, sections at the end), CO-09 (A5-26, A5-27: check-in link a
 "Guest check-in link and host fallback") and CO-21 (OTA stays from iCal blocks, see "Reservations of the OTAs linked by
 iCal"). CO-11 needs no external configuration; CO-12 needs an admin to import the
 official code tables (see "Tabelle codici Alloggiati"). This page explains what the code does, what the migrations
-change and what hosts see. The web service client
-(credentials per host, WSKEY, `Test`/`Send`/`Ricevuta`) and the record file are task CO-13, **blocked** until the
-official manuals are available in the repository: see "Record file and web service (CO-13): blocked" at the end. Sources
-in `.claude/context/regulations/alloggiati.md`.
+change and what hosts see. CO-13 added the **record file** the host uploads on the portal (see "Record file (CO-13)" at the
+end); the web service client (credentials per host, WSKEY, `Test`/`Send`/`Ricevuta`) is **not implemented**, with the reasons
+in the same section. Sources in `.claude/context/regulations/alloggiati.md`.
 
 ## What changed
 
@@ -21,8 +20,8 @@ CasaZen still transmits nothing, so it now says so.
 | `DaInviare` (0) | Waiting for the arrival day: the portal accepts only today or yesterday as arrival date | Guest portal submit or host check-in |
 | `DaInviareManualmente` (4) | Ready, CasaZen does not transmit: the host sends it on the Questura portal | Job at 00:00 Europe/Rome of the arrival day (also shown for any stay whose arrival day has come without a report) |
 | `InviatoManualmente` (6) | The host declared the date he sent it on the portal. CasaZen holds no receipt | `POST /api/alloggiati/{id}/mark-sent-manually` |
-| `Inviato` (2) | Transmitted, with the real receipt | CO-13 only. Database check `CK_AlloggiatiWebReports_SentRequiresReceipt` refuses it without `ConfirmationNumber` |
-| `Rifiutato` (5), `Errore` (3) | Rejected by the portal, technical error | CO-13 |
+| `Inviato` (2) | Transmitted, with the real receipt | the future web service client only (not implemented). Database check `CK_AlloggiatiWebReports_SentRequiresReceipt` refuses it without `ConfirmationNumber` |
+| `Rifiutato` (5), `Errore` (3) | Rejected by the portal, technical error | the future web service client only |
 | 1 (old `Submitted`) | Retired | Never |
 
 - **Scheduling.** `AlloggiatiReportScheduler` schedules `AlloggiatiWebReportJob` with Hangfire `Schedule` at the start
@@ -65,7 +64,7 @@ restored.
 SELECT "Status", count(*), count(*) FILTER (WHERE btrim(coalesce("ConfirmationNumber", '')) <> '') AS with_receipt
 FROM "AlloggiatiWebReports" GROUP BY "Status" ORDER BY 1;
 
--- Sessions still marked "Alloggiati sent" (expected: 0 until CO-13).
+-- Sessions still marked "Alloggiati sent" (expected: 0 until the web service client exists).
 SELECT count(*) FROM "GuestCheckInSessions" WHERE "Status" = 3;
 ```
 
@@ -109,8 +108,8 @@ The integers are CasaZen's own: the official numeric codes are **not** verified 
   (`PUT /api/alloggiati/{bookingId}/stay-guests`, `booking.write`) for walk-in guests, corrections and codes. Since
   CO-09 the document number is masked here too, with "Mostra" (see "Guest check-in link and host fallback").
 - **Record export**: the summary reports `dataComplete` and `exportReady`. A missing code blocks only `exportReady`
-  (the future record export, CO-13), never the data entry nor the manual submission on the portal. CasaZen still
-  generates no record file: positions are not verified (RS-1, CO-13).
+  (the record file, CO-13: `GET /api/alloggiati/{bookingId}/record-file`), never the data entry nor the manual submission on
+  the portal. Positions and rules of the file are verified: see "Record file (CO-13)".
 
 ### Migration `AddStayGuestsAndAlloggiatiCodeTables`
 
@@ -157,7 +156,8 @@ blocked by the proxy of the development environment, so the file format is not v
 | Tipi documento | `.../portalealloggiati/ashx/Download.ashx?ID=2&N=DOCUMENTI` | `Documenti` |
 | Tipi alloggiato | `.../portalealloggiati/ashx/Download.ashx?ID=3&N=TIPO_ALLOGGIATO` | `TipiAlloggiato` |
 
-The same tables come from the web service method `Tabella` (CSV, needs a host's credentials, CO-13).
+The same tables come from the web service method `Tabella` (CSV with `;` separator, needs a host's credentials and a web
+service client, which does not exist: see "Record file (CO-13)").
 
 ### File format accepted
 
@@ -367,69 +367,163 @@ guest; API and rules in [ical.md](ical.md#ota-stays-from-ical-blocks-co-21)).
 - A stay already over cannot be created from a block (422 `ota_stay_block_ended`): a late communication is handled with
   the Questura as explained above.
 
-## Record file and web service (CO-13): blocked
+## Record file (CO-13)
 
-Task CO-13 (decision D6), attempted on 2026-10-01: **no code written**. CasaZen still generates no record file and
-calls no web service; the host keeps sending each schedina on the portal from the per-guest summary (CO-11, CO-12) and
-declaring it with "Segna come inviato manualmente". No status reads "Inviato" (database check
-`CK_AlloggiatiWebReports_SentRequiresReceipt`).
+Task CO-13 (decision D6), second attempt on 2026-10-01. **Done: the record file** the host uploads on the portal.
+**Not done: the web service client** (credentials per host, `Test`/`Send`/`Ricevuta`), see "Web service: not implemented"
+below. CasaZen still transmits nothing: no status reads "Inviato" (database check
+`CK_AlloggiatiWebReports_SentRequiresReceipt`), and downloading the file changes no status.
 
-### Why
+### What the host sees
 
-RS-1 (`.claude/context/regulations/alloggiati.md`, "Specifiche tecniche verificate (2026-09)" and "Verdetto per CO-13")
-read the official manuals only through search-engine extracts and set a prerequisite: before any code, download the
-originals and confirm every line marked **D** (deduced) or **T** (third parties only). On 2026-10-01 the egress proxy of
-the development environment still blocks `alloggiatiweb.poliziadistato.it` and `questure.poliziadistato.it` (curl:
-`CONNECT tunnel failed, response 403`; fetch: `EGRESS_BLOCKED`), including the copies of the manuals published by the
-Questure and the web archive. A new search restricted to `poliziadistato.it` returned only the titles of the same
-documents (plus a summary saying the file holds at most 1000 lines, not read in the document). Writing the file or the
-SOAP client from the deduced data would risk files rejected by the portal or, worse, accepted with shifted fields.
+Booking detail → tab Alloggiati → box "File per il portale Alloggiati Web" (users with `guest.read`):
 
-### What is verified and what is missing
+1. The button "Scarica il file" is enabled when `exportReady` is true (data complete, every official code found, see
+   "Guests of the stay") and the stay does not exceed 30 days. Otherwise it is disabled with the reason.
+2. The host uploads the `.txt` on the portal: menu **File** → "Seleziona" → "Elabora" (the portal shows how many lines are
+   correct) → "Prosegui" (`MANUALEALBERGHI.pdf` p. 16-18). A host with the profile "Gestione Appartamenti" picks the
+   apartment on the portal first (p. 24).
+3. Then "Segna come inviato manualmente" (CO-11): CasaZen records the declaration, it holds no receipt.
 
-| Item | Status (RS-1) | Needed from the official documents |
+The portal accepts only schedine whose arrival date is **today or yesterday** (`MANUALEALBERGHI.pdf` p. 7, 31): a file
+downloaded before the arrival day, or after the day following it, is rejected by the portal (the UI says so; the file is
+still produced, it is not a CasaZen rule).
+
+### The endpoint
+
+`GET /api/alloggiati/{bookingId}/record-file` (`AlloggiatiController.DownloadRecordFile`, service
+`IAlloggiatiWebService.BuildRecordFileAsync`, builder `Casazen.Core/Regulatory/AlloggiatiRecordFile.cs`):
+
+- **Access**: `guest.read` (the file holds the identity documents, like `stay-guests/document-numbers`) **and** `booking.read`
+  on the booking (TN-3). A booking of another org answers 404, a user without the permission 403, no token 401.
+- **Private**: built on every request, **never stored** (no bucket, no table), `Cache-Control: private, no-store`,
+  `Content-Disposition: attachment; filename=alloggiati-<arrival yyyy-MM-dd>-<first 8 hex of the booking id>.txt`
+  (no personal data in the name), `text/plain; charset=utf-8`.
+- **Logs**: user id, booking id and the number of lines on success; on refusal only the kinds and positions of the issues
+  (`DataIncomplete@1:dateOfBirth`). Never names, document numbers or codes of guests.
+- **Content**: one line of 168 characters per guest of the stay in record order (a head of family or group, then its members),
+  CR+LF between lines and none after the last, UTF-8 **without** BOM. All output is ASCII (codes of the official tables, names
+  as below), so characters and bytes agree.
+- **Refusals (422, `DomainRuleException`, localized IT/EN)**: `alloggiati_file_not_ready` (data incomplete or an official code
+  to complete or no code table imported), `alloggiati_file_stay_days_invalid` (stay of less than 1 or more than 30 days; for
+  longer stays the portal wants a new schedina as a new arrival, which CasaZen does not build), `alloggiati_file_name_not_representable`
+  (a name that cannot be written with A-Z, e.g. Cyrillic or Chinese: the host writes the Latin transcription of the document).
+  Nothing is cut, guessed or left blank to make a line fit.
+
+### How a line is built
+
+| Pos. (0-based) | Field | Content in CasaZen |
 |---|---|---|
-| Line of 168 characters, fixed-length fields padded with spaces, CR+LF between lines, none after the last | U | — |
-| Field order and lengths: tipo alloggiato 2, data arrivo 10, cognome 50, nome 30, sesso 1, comune nascita 9, provincia 2, stato nascita 9, cittadinanza 9, tipo documento 5, numero documento 20, luogo rilascio 9 | U | — |
-| Length and position of "giorni di permanenza" (2) and "data di nascita" (10); start position of every field | **D** (sum of the lengths) | the record table of `CREAFILE.pdf` (columns "DA", "A", total characters) |
-| 34 spaces in place of the document fields for familiari and membri gruppo | U | — |
-| Fields 8 and 9 (comune and provincia of birth) left blank for people born abroad | **D** | `CREAFILE.pdf` |
-| Order of the lines: family and group members right after their head | **D** | `CREAFILE.pdf` / `MANUALEALBERGHI.pdf` |
-| Character encoding (ASCII, Windows-1252, UTF-8?) and how accented letters and apostrophes are written | **not found** (T: Windows-1252, accents replaced by the base letter) | `CREAFILE.pdf` |
-| Maximum lines per file (1000?) | search summary only | `CREAFILE.pdf` |
-| Numeric codes of the kinds of guest (16–20?) | **T**, sources disagree | not needed in the code: they come from the imported table `TipiAlloggiato` (CO-12), matched by name |
-| Profile "Gestione Appartamenti": IDAPPARTAMENTO of 6 characters at the end of each line (174 characters) | U (field), D (total) | `MANUALEALBERGHI.pdf`: alignment and padding of the id, where the host finds it |
-| Web service: endpoint `https://alloggiatiweb.poliziadistato.it/service/Service.asmx`, `GenerateToken`, `Test`, `Send`, `Ricevuta`, `Tabella` | U (names and purpose) | the WSDL (exact namespaces, element names and types, SOAP 1.1/1.2), the manual WS (token lifetime, limit of schedine per call, error codes of `TipoErrore`, `EsitoOperazioneServizio` / `ElencoSchedineEsito` layout, name of the token check operation, `GestioneAppartamenti_*` operations) |
-| Receipt: PDF signed, available from the day after, 30 days online, to keep 5 years | U | the manual WS: format of `Ricevuta` (base64 PDF) and the date to pass |
-| Sandbox | none documented (U) | — (`Test` validates without sending, with a host's real credentials) |
+| 0-1 | Tipo alloggiato | code of the kind of guest from the imported table `TipiAlloggiato` (matched by name, CO-12) |
+| 2-11 | Data arrivo | check-in date, `dd/MM/yyyy` |
+| 12-13 | Giorni di permanenza | nights, 2 digits with leading zero (`03`), 1 to 30 |
+| 14-63 | Cognome | capitals A-Z, space, apostrophe; padded to 50 |
+| 64-93 | Nome | same, padded to 30 |
+| 94 | Sesso | `1` male, `2` female |
+| 95-104 | Data di nascita | `dd/MM/yyyy` |
+| 105-113 | Comune di nascita | code from `Comuni`; **9 spaces if born abroad** |
+| 114-115 | Provincia di nascita | province entered by the guest (two letters, `RM` for Rome); **2 spaces if born abroad** |
+| 116-124 | Stato di nascita | code from `Stati` (the code of Italy for those born in Italy) |
+| 125-133 | Cittadinanza | code from `Stati` |
+| 134-138 | Tipo documento | code from `Documenti` |
+| 139-158 | Numero documento | normalized (no spaces, capitals), padded to 20 |
+| 159-167 | Luogo di rilascio | comune code (issued in Italy) or state code (issued abroad) |
 
-### Documents to obtain (from a network that reaches the portal)
+Single guest, head of family and head of group carry fields 134-167; **family and group members have 34 spaces** there.
+Names: accents removed (`José` → `JOSE`), `ß` → `SS`, `Æ` → `AE` and similar, hyphens → space, `.` and `,` dropped,
+apostrophes kept; any other character makes the file refuse (`alloggiati_file_name_not_representable`).
 
-| Document | Official URL |
-|---|---|
-| Invio File (record layout) | https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Download/Manuali/CREAFILE.pdf |
-| Guida al servizio (structures, File Unico "Gestione Appartamenti") | https://alloggiatiweb.poliziadistato.it/portalealloggiati/Download/Manuali/MANUALEALBERGHI.pdf |
-| Manual of the web service "Documento di Descrizione WS_ALLOGGIATI" (latest revision; Rev. 01 of 13/01/2022 known) | portal list https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/SupManuali.aspx (`.../Download/Manuali/MANUALEWS.pdf`), copy https://questure.poliziadistato.it/statics/13/manualewebsercices_alloggiatiweb.pdf |
-| WSDL | https://alloggiatiweb.poliziadistato.it/service/Service.asmx?wsdl |
-| Code tables (for the import of CO-12, also to check their file format) | https://alloggiatiweb.poliziadistato.it/portalealloggiati/tabelle.aspx |
+### Sources read on 2026-10-01 (all copies: the portal is blocked by the proxy)
 
-Use only the versions on `alloggiatiweb.poliziadistato.it`: some Questure publish older manuals with a 236-character
-record (with residence, without days of stay).
+`alloggiatiweb.poliziadistato.it`, `questure.poliziadistato.it`, `regione.piemonte.it`, `hoteldruid.com`, `wiisy.app`,
+`vertoai.it`, `gestione-affitti-brevi-puglia.com`, `office-online.it`, `web.archive.org`, `community.withairbnb.com`,
+`bedzzle.freshdesk.com`, `checkinfacile.com`, `gotocheck.pro`, `persefoneticket.zendesk.com` and `interno.gov.it` answered
+"egress blocked" (WebFetch `EGRESS_BLOCKED`, curl 403 on CONNECT); the proxy was not touched. Reachable: `github.com` (pages,
+through WebFetch), `raw.githubusercontent.com`, `gitlab.com` (API), the npm, PyPI, crates.io, Packagist, RubyGems and Maven
+registries. Search engine results (WebSearch) only showed titles and extracts.
 
-### How to unblock (product owner)
+| # | Source (URL) | Entity / author | Date | Integral copy of the official document? | Used for |
+|---|---|---|---|---|---|
+| 1 | `https://raw.githubusercontent.com/Giginoparrucca/doorstep/main/docs/MANUALEALBERGHI.pdf` (936,621 bytes, SHA-256 `28857705e0c419a3911317f943ac4c1782893f6503a8c9d6484a5018b31462c6`) | Polizia di Stato, "Servizio di Invio Telematico delle Schedine Alloggiati – Guida Servizio Alloggiati Web", 35 pages with index (sections 1-12), PDF metadata: Word 365, author "CERRELLI Luca", created 2022-01-27. Copy in a third-party repository (PR #76 of `Giginoparrucca/doorstep`) | file 2022-01-27 | **Yes**, complete (portal guide; the official URL is `.../portalealloggiati/Download/Manuali/MANUALEALBERGHI.pdf`). Not compared byte for byte with the portal | section 12 and the tables at p. 34-35: layout, UTF-8, 1000 lines, order, blanks, CR+LF; p. 7, 31 arrival window; p. 19 receipts; p. 24-25 apartments |
+| 2 | `https://raw.githubusercontent.com/SergioArc69/invio_schedine-alloggiatiweb/master/ManualeWS.pdf` and `.../Giginoparrucca/doorstep/main/docs/MANUALEWS.pdf` (both 595,167 bytes, identical, SHA-256 `72d6c612ef616453e417f15e723b8fe44fd271cffab38671ec40823d568763a1`) | Polizia di Stato, Centro Elettronico Nazionale, "WS_ALLOGGIATI Documento di Descrizione", **Rev. 01, 24/01/2022**, 21 pages, PDF created 2022-01-24 | 2022-01-24 | **Yes**, complete. The Questura copy RS-1 saw in a search extract says "Rev. 01 13/01/2022": the difference is unexplained | web service: 12 methods with request/response examples, objects, error examples; record tables p. 19-20 |
+| 3 | `.../SergioArc69/invio_schedine-alloggiatiweb/master/Connected%20Services/AlloggiatiWeb/service.wsdl` (28,116 bytes, SHA-256 `4d3b9522893870245ed260133b53a7ceba2c08f91e8baf62b713a7bee36e9f6e`) and `.../Giginoparrucca/doorstep/main/docs/alloggiati.wsdl` (28,736 bytes, SHA-256 `36d5279a0577f0b116ac74f6664246532685bc0178b1d6c6a1f7926c11235cab`, "pulled from the live endpoint" per PR #75) | the service's own WSDL (ASP.NET ASMX), fetched by two developers at different times | 2022 / 2026 | Machine-generated by the official service; the two copies are semantically identical (only attribute order and the case of `Service.asmx` differ) | namespace `AlloggiatiService`, element names and types, SOAP 1.1 and 1.2 bindings |
+| 4 | `.../cito09/alloggiati-web-app` (`api/_alloggiati.js`, `public/index.html`), no licence stated | third-party app that sends to the real portal | 2026 | No (implementation, T) | independent check of positions, padding, 34 spaces, order of family lines, SOAP envelope, **the A-Z-only rule for names** |
+| 5 | `.../SergioArc69/invio_schedine-alloggiatiweb` (`Models/RecordSchedina.cs`), GPL-3.0 | third-party Windows client | n.d. | No (implementation, T). **Code not copied** (licence) | independent check of the 168 characters and of the field comments |
+| 6 | `.../Giginoparrucca/doorstep` PRs #75, #76, #89, #92, #93 (descriptions only) | third-party app | 2026-09 | No (T) | token flow, 48-hour window, per-row errors (`ErroreCod=222 "Cittadinanza non valida"`) |
+| — | `MANUALEPASSAGGIO.pdf` (same repo, 4 pages) | Polizia di Stato | 2022-01-13 | Yes, but irrelevant: migration from the digital certificate to the device codes | none |
+| — | `CREAFILE.pdf` | Polizia di Stato | — | **not obtained** (only the extracts of RS-1); its content is covered by section 12 of source 1 | — |
+| — | `HyperTesto/schedine-alloggiatiweb` (Java generator + SQLite dump of the tables), `connectis/ricestat` (XML protocol for ISTAT and tourist tax, not the Questura record), GitLab `cix99/alloggiati.cloud` (2018) | third parties | — | No | not read in depth: old or off topic |
+| — | npm, PyPI, crates.io, Packagist, RubyGems | — | — | — | no package for Alloggiati exists |
 
-1. Download the documents above with a normal browser (RS-1: manuals, WSDL and tables need no login).
-2. Make them readable to the agents: either place the PDFs and the WSDL in a folder the development environment can read
-   (for example `docs/vendor/alloggiati/`, files of the Polizia di Stato, publicly downloadable), or open the
-   egress proxy to `alloggiatiweb.poliziadistato.it`.
-3. Reopen CO-13. The task then: confirms the D/T lines above in `.claude/context/regulations/alloggiati.md` (marking
-   them U with page numbers); writes the record file generator (one line per stay guest in record order, from
-   `StayGuests` and the imported codes, only when the summary says `exportReady`), downloadable by the host
-   (`booking.read`, own org, private, no-store, no personal data in the logs) with tests built on the examples of the
-   manual; and, only if the WSDL and the manual WS are in hand, the SOAP client (`GenerateToken`, `Test` then `Send`,
-   `Ricevuta` the day after) using the host credentials of `PropertyQuesturaCredentials` (CO-14, `encryption.md` §6),
-   with `Inviato` only after a positive `Send` and the receipt (D6).
+I did not commit the PDFs: their redistribution licence is not stated in the copies and the official portal could not be
+reached to check it. **To confirm that sources 1 and 2 are byte-identical to the portal's** (then they are the official
+documents themselves), from a network that reaches the portal:
 
-Everything CO-13 needs on the CasaZen side is already in place: guests of the stay in record order with the record's
-length limits (CO-12), official code tables imported by an admin (CO-12), `exportReady` in the summary, encrypted
-write-only host credentials (CO-14), and the statuses `Inviato` / `Rifiutato` / `Errore` with the receipt check (CO-11).
+```bash
+curl -sSLO https://alloggiatiweb.poliziadistato.it/portalealloggiati/Download/Manuali/MANUALEALBERGHI.pdf
+curl -sSLO https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Download/Manuali/MANUALEWS.pdf
+sha256sum MANUALEALBERGHI.pdf MANUALEWS.pdf   # compare with the SHA-256 above; a different one means a newer revision: diff section 12
+```
+
+### Verification of the layout (criterion: two independent sources, one an integral official copy)
+
+| Item | Guide (1) | WS manual (2) | cito09 (4) | RecordSchedina.cs (5) | RS-1 extracts of CREAFILE | Verdict |
+|---|---|---|---|---|---|---|
+| 14 fields, positions DA/A, lengths, total 168 | p. 34 | p. 19 | same order and widths | same widths | lengths as in the table | **verified** |
+| 34 blanks for family/group members (19-20) | p. 32, 34 | p. 19 | `' '.repeat(34)` for 19/20 | comment "riempire con blank" | yes | **verified** |
+| Comune and province blank if born abroad, state always written | p. 31-32 | "Obbligatorio se Stato Nascita Italia" | blank, Italy code for Italians | same | "D" | **verified** |
+| CR+LF between lines, none after the last | p. 33-35 | p. 19 | `join('\r\n')` | n.a. | yes | **verified** |
+| Family/group members right after their head | p. 33 | — | head first | — | "D" | **verified** (single official source: guide) |
+| UTF-8, at most 1000 lines | p. 31 | — | UTF-8 | — | 1000 | **verified** (guide + implementation) |
+| Codes 16-20 split into with document (16-18) and without (19-20) | p. 34 | p. 19 | `hasDoc` 16/17/18 | comment `[16,17,18]` | T | **verified**; number-to-name mapping T2, CasaZen reads the table |
+| Allowed characters in names | not stated | not stated | A-Z, space, apostrophe | uppercase | — | **not verified** (T): conservative rule, see above |
+| Leading zero in the days of stay | not stated | not stated | `padNum` zero-padded | `PadRight` (space) | — | **assumption** (the portal parses a number) |
+| Padding of IDAPPARTAMENTO (File Unico) | not stated | not stated | not wired | — | — | **unknown**: File Unico not generated |
+
+### Web service: not implemented
+
+The specification is now in hand (sources 2 and 3) and consistent: endpoint
+`https://alloggiatiweb.poliziadistato.it/service/service.asmx`, namespace `AlloggiatiService`, `GenerateToken` →
+`Authentication_Test` / `Test` → `Send` → `Ricevuta` the day after, request and response examples in `MANUALEWS.pdf` p. 7-18, element
+names in the WSDL. Even so I did not write the client, for reasons the product owner should weigh:
+
+1. **No sandbox and `Send` is irreversible.** The only safe check is `Test` with a real host's credentials. The manual does not
+   say what a repeated `Send` of the same schedine does (duplicates?), the maximum number of schedine per call, the rate or
+   lockout limits, or the token lifetime (the example is one hour), and the error table is only available with credentials
+   (`Tabella(TipoErrore)`). CO-11 requires "no double resend", which cannot be guaranteed from the documents.
+2. **A state is missing.** After a successful `Send` the receipt exists only the day after, for the whole day and the whole
+   account (`Ricevuta(date)`, last 30 days, not the current day): there is no per-schedina receipt, and the `Ricevuta` response
+   carries only the PDF (the portal's receipts list shows a protocol number, `MANUALEALBERGHI.pdf` p. 19; the web service does
+   not return it). The statuses of CO-11 have no "sent, receipt pending" and D6 forbids
+   "Inviato" without a real receipt. That needs a new status (migration), a daily job, a private bucket for the PDFs kept 5 years
+   (`storage.md`) and a decision on what `ConfirmationNumber` holds.
+3. **Product and legal decisions.** Transmitting on behalf of the host sends identity data to the police automatically,
+   from stored credentials (CO-14) and a WSKEY that must be regenerated at every password change (one per day). The host's
+   consent, the failure handling (partial `Send`: only the correct lines are acquired) and the 6-hour/24-hour deadlines need a
+   decision, not a guess.
+
+When the product owner decides to go ahead, the client is a thin SOAP 1.1 wrapper (`HttpClient`, `XDocument`) whose tests can
+be built on the literal request and response examples of `MANUALEWS.pdf`, with `Test` before every `Send`, `Send` only when
+every line is valid, `Inviato` only with the downloaded receipt, and the first run supervised on a real host account.
+
+### Tests
+
+- `Casazen.Tests/Unit/Regulatory/AlloggiatiRecordFileTests.cs`: positions against the official table, the examples of the guide
+  (arrival 16/02/2005, birth 13/03/1973, ROSSI + 45 spaces, PAOLO + 25, AB123CD + 13, `IDENT`), family with 34 blanks, born
+  abroad, days of stay, refusals (codes to complete, incomplete data, 0/31 days, names, codes that do not fit, 1001 lines),
+  UTF-8 without BOM and pure ASCII.
+- `Casazen.Tests/Unit/Services/AlloggiatiWebServiceTests.cs` (`BuildRecordFile_*`): the line built from the stay's guests and
+  synthetic code tables, the report untouched, refusals with their codes, unknown booking.
+- `Casazen.Tests/Integration/AlloggiatiRecordFilePostgresTests.cs` (PostgreSQL): download with headers, two lines, status
+  unchanged, 422 without tables, 422 for a Cyrillic name without personal data in the error, 404 for another org, 401.
+- `HostAuthorizationIntegrationTests`: 403 for a supplier and for a collaborator without `guest.read`, 404/403 for another org.
+- Frontend: `alloggiati-guest-summary.test.tsx` (button states, download, refusal) and `alloggiati-record-file.api.test.ts`.
+  The codes of the tests are **synthetic** (starting with `9`, `91`-`95` for the kinds), never official codes.
+
+### First real check (needs a host account, nothing is sent)
+
+1. Import the four official tables (see "Tabelle codici Alloggiati").
+2. On a test stay with a complete family, download the file and upload it on the portal: "Elabora" shows the correct and wrong
+   lines **without sending** until "Prosegui" (`MANUALEALBERGHI.pdf` p. 16-17); do not press "Prosegui" for a fake stay.
+3. Report any rejected line (portal message and field) to the developers: the open points are the characters allowed in names
+   and the two-digit days of stay. If the portal wants something else, change `AlloggiatiRecordFile` and its tests together.

@@ -6,7 +6,7 @@ namespace Casazen.Core.Entities;
 
 /// <summary>
 /// Credentials of the Alloggiati Web (Questura) account of a property: username, password and web service key (WSKey)
-/// the transmission needs (CO-13). Write-only for clients (CO-14, A5-30): the API sets or replaces them and answers only
+/// the transmission needs (the web service client is not implemented, see <c>docs/runbooks/alloggiati.md</c>). Write-only for clients (CO-14, A5-30): the API sets or replaces them and answers only
 /// whether they are configured and since when, never a value. The three values are encrypted at rest by the EF value
 /// converter of <c>AppDbContext</c> (Data Protection, <c>docs/runbooks/encryption.md</c>); the columns are
 /// <c>text</c> because the payload is longer than the value.
