@@ -316,8 +316,11 @@ public class FieldEncryptionPostgresTests
             // and "AnonymizedAt" do not exist yet, "DataRetentionUntil" still required on Guests): write them by SQL with
             // the columns before CO-15, like the credentials below are written with the columns before CO-14. The guests
             // must exist before the booking and the stay guest, which have a foreign key to them.
+            // Same for the "Properties" columns added after this point (PC-03 pause): created just for the insert.
+            await AddPropertiesColumnsAfterCo14Async(db);
             db.AddRange(org, property);
             await db.SaveChangesAsync();
+            await DropPropertiesColumnsAfterCo14Async(db);
             await InsertGuestBeforeCo15Async(db, guest);
             await InsertGuestBeforeCo15Async(db, empty);
             // CO-21 (unrelated to CO-15) added 4 nullable Bookings columns after this migration point too. They have no
@@ -393,6 +396,20 @@ public class FieldEncryptionPostgresTests
         ALTER TABLE "Bookings" DROP COLUMN "ICalFeedId";
         ALTER TABLE "Bookings" DROP COLUMN "OtaReviewRaisedAt";
         ALTER TABLE "Bookings" DROP COLUMN "OtaReviewReason";
+        """);
+
+    /// <summary>
+    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>), so the
+    /// model-based insert of the property works here too. Paired with <see cref="DropPropertiesColumnsAfterCo14Async"/>.
+    /// </summary>
+    private static Task AddPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Properties" ADD COLUMN "IsPaused" boolean NOT NULL DEFAULT false;
+        ALTER TABLE "Properties" ADD COLUMN "PausedAt" timestamp with time zone;
+        """);
+
+    private static Task DropPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Properties" DROP COLUMN "IsPaused";
+        ALTER TABLE "Properties" DROP COLUMN "PausedAt";
         """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>
