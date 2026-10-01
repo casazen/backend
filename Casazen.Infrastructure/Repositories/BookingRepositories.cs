@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
@@ -20,31 +21,32 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             .FirstOrDefaultAsync(b => b.Id == id);
     }
 
-    public async Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId)
+    public async Task<IReadOnlyList<Booking>> GetByScopeAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default)
     {
-        return await context.Bookings
-            .Where(b => b.PropertyId == propertyId)
-            .Include(b => b.Guest)
-            .Include(b => b.Payments)
-            .OrderByDescending(b => b.CheckInDate)
-            .ToListAsync();
-    }
+        ArgumentNullException.ThrowIfNull(scope);
 
-    public async Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId)
-    {
-        return await context.Bookings
-            .Where(b => b.GuestId == guestId)
-            .Include(b => b.Property)
-            .OrderByDescending(b => b.CheckInDate)
-            .ToListAsync();
-    }
+        // One query whatever the number of bookings (A2-17): org and owner filters in SQL, property and guest joined,
+        // never a lookup per row. Read only, so nothing is tracked.
+        var query = context.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == scope.OrgId);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(b => b.Property.OwnerId == ownerId);
+        if (propertyId is { } property)
+            query = query.Where(b => b.PropertyId == property);
+        if (guestId is { } guest)
+            query = query.Where(b => b.GuestId == guest);
 
-    public async Task<IEnumerable<Booking>> GetAllAsync()
-    {
-        return await context.Bookings
+        return await query
             .Include(b => b.Property)
             .Include(b => b.Guest)
-            .ToListAsync();
+            .OrderByDescending(b => b.CheckInDate)
+            .ThenBy(b => b.Id)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IEnumerable<Booking>> GetByDateRangeAsync(
