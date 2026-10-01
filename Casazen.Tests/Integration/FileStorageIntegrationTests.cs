@@ -151,7 +151,7 @@ public class FileStorageIntegrationTests : IClassFixture<CasazenWebApplicationFa
 
         Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
         using var body = JsonDocument.Parse(await upload.Content.ReadAsStringAsync());
-        var url = body.RootElement.GetProperty("uploadedImages")[0].GetString()!;
+        var url = body.RootElement.GetProperty("photoUrls")[0].GetString()!;
         Assert.StartsWith($"{ApiBaseUrl}/storage/public/properties/{property.Id}/photos/", url);
         Assert.EndsWith(".png", url);
 

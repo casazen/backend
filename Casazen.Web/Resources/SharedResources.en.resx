@@ -453,6 +453,39 @@
   <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
     <value>Invalid image size: it must be at least {0}×{1} pixels and at most {2}×{3}.</value>
   </data>
+  <data name="PublicSearchFilterInvalid" xml:space="preserve">
+    <value>A search filter is not valid.</value>
+  </data>
+  <data name="OrgDocumentContentRequired" xml:space="preserve">
+    <value>Write the text of the document.</value>
+  </data>
+  <data name="OrgDocumentContentTooLong" xml:space="preserve">
+    <value>The text is longer than {0} characters.</value>
+  </data>
+  <data name="OrgDocumentContentTooLongInput" xml:space="preserve">
+    <value>The text is too long.</value>
+  </data>
+  <data name="OrgDocumentHtmlNotAllowed" xml:space="preserve">
+    <value>The text contains HTML code, which is not allowed: write plain text (you can use # for headings, - for lists, **bold** and [text](https://address) for links).</value>
+  </data>
+  <data name="OrgDocumentLinkInvalid" xml:space="preserve">
+    <value>A link is not valid: it must start with https://, http:// or mailto:.</value>
+  </data>
+  <data name="OrgDocumentUrlRequired" xml:space="preserve">
+    <value>Enter the address of the document.</value>
+  </data>
+  <data name="OrgDocumentUrlInvalid" xml:space="preserve">
+    <value>The address is not valid: it must be a complete https:// address, without credentials.</value>
+  </data>
+  <data name="OrgDocumentSourceInvalid" xml:space="preserve">
+    <value>Choose whether to write the text or give the address of a document.</value>
+  </data>
+  <data name="OrgDocumentVersionNotFound" xml:space="preserve">
+    <value>This version of the document does not exist.</value>
+  </data>
+  <data name="OrgDocumentKindUnknown" xml:space="preserve">
+    <value>Unknown document.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
   </data>
@@ -1395,5 +1428,287 @@
   </data>
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
+  </data>
+  <data name="PropertyPhotoNone" xml:space="preserve">
+    <value>Select at least one photo to upload.</value>
+  </data>
+  <data name="PropertyPhotoTooManyFiles" xml:space="preserve">
+    <value>You can upload at most {0} photos at a time.</value>
+  </data>
+  <data name="PropertyPhotoLimitReached" xml:space="preserve">
+    <value>A property can have at most {0} photos (it already has {1}): delete a photo before uploading more.</value>
+  </data>
+  <data name="PropertyPhotoInvalidType" xml:space="preserve">
+    <value>The file "{0}" is not a valid photo: only JPEG, PNG or WebP images are accepted.</value>
+  </data>
+  <data name="PropertyPhotoInvalidSize" xml:space="preserve">
+    <value>The file "{0}" is empty or larger than the {1} MB limit.</value>
+  </data>
+  <data name="PropertyPhotoNotFound" xml:space="preserve">
+    <value>The photo is no longer in the property gallery: reload the page.</value>
+  </data>
+  <data name="PropertyPhotosChanged" xml:space="preserve">
+    <value>The gallery was changed by another user or another tab: reload the page and try again.</value>
+  </data>
+  <data name="PropertyPhotoUrlRequired" xml:space="preserve">
+    <value>Specify the photo.</value>
+  </data>
+  <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
+    <value>The photo address is too long.</value>
+  </data>
+  <data name="SeoNotFoundTitle" xml:space="preserve">
+    <value>Page not found</value>
+  </data>
+  <data name="SeoNotFoundText" xml:space="preserve">
+    <value>The page you asked for does not exist or is no longer available.</value>
+  </data>
+  <data name="SeoOrgTitle" xml:space="preserve">
+    <value>{0} — Book direct</value>
+  </data>
+  <data name="SeoOrgDescriptionOne" xml:space="preserve">
+    <value>Book direct with {0}: one property in {1}.</value>
+  </data>
+  <data name="SeoOrgDescriptionMany" xml:space="preserve">
+    <value>Book direct with {0}: {1} properties ({2}).</value>
+  </data>
+  <data name="SeoOrgDescriptionNone" xml:space="preserve">
+    <value>{0}: there are no properties to book right now.</value>
+  </data>
+  <data name="SeoOurProperties" xml:space="preserve">
+    <value>Our properties</value>
+  </data>
+  <data name="SeoPriceFrom" xml:space="preserve">
+    <value>From {0} per night</value>
+  </data>
+  <data name="SeoLabelDetails" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="SeoLabelGuests" xml:space="preserve">
+    <value>Guests</value>
+  </data>
+  <data name="SeoLabelBedrooms" xml:space="preserve">
+    <value>Bedrooms</value>
+  </data>
+  <data name="SeoLabelBathrooms" xml:space="preserve">
+    <value>Bathrooms</value>
+  </data>
+  <data name="SeoLabelCleaningFee" xml:space="preserve">
+    <value>Cleaning fee</value>
+  </data>
+  <data name="SeoLabelCin" xml:space="preserve">
+    <value>CIN code</value>
+  </data>
+  <data name="SeoLabelAmenities" xml:space="preserve">
+    <value>Amenities</value>
+  </data>
+  <data name="SeoLabelHouseRules" xml:space="preserve">
+    <value>House rules</value>
+  </data>
+  <data name="SeoLabelCancellation" xml:space="preserve">
+    <value>Cancellation policy</value>
+  </data>
+  <data name="SeoPropertyDescriptionFallback" xml:space="preserve">
+    <value>{0} in {1}: sleeps {2}, {3} bedrooms, {4} bathrooms. Book direct with the host.</value>
+  </data>
+  <data name="SeoPropertyDescriptionBasic" xml:space="preserve">
+    <value>{0} in {1}. Book direct with the host.</value>
+  </data>
+  <data name="SeoHubTitle" xml:space="preserve">
+    <value>Short-term rental guides by comune | CasaZen</value>
+  </data>
+  <data name="SeoHubHeading" xml:space="preserve">
+    <value>Short-term rental guides</value>
+  </data>
+  <data name="SeoHubDescription" xml:space="preserve">
+    <value>The guides and tourist tax calculators published on CasaZen, comune by comune.</value>
+  </data>
+  <data name="SeoHubGuides" xml:space="preserve">
+    <value>Guides by comune</value>
+  </data>
+  <data name="SeoHubCalculators" xml:space="preserve">
+    <value>Tourist tax calculation</value>
+  </data>
+  <data name="SeoHubEmpty" xml:space="preserve">
+    <value>No guides have been published yet.</value>
+  </data>
+  <data name="SeoGuideCta" xml:space="preserve">
+    <value>List your home</value>
+  </data>
+  <data name="SeoAmenity_WiFi" xml:space="preserve">
+    <value>WiFi</value>
+  </data>
+  <data name="SeoAmenity_TV" xml:space="preserve">
+    <value>TV</value>
+  </data>
+  <data name="SeoAmenity_CableTV" xml:space="preserve">
+    <value>Cable TV</value>
+  </data>
+  <data name="SeoAmenity_Workspace" xml:space="preserve">
+    <value>Workspace</value>
+  </data>
+  <data name="SeoAmenity_AirConditioning" xml:space="preserve">
+    <value>Air conditioning</value>
+  </data>
+  <data name="SeoAmenity_Heating" xml:space="preserve">
+    <value>Heating</value>
+  </data>
+  <data name="SeoAmenity_Fireplace" xml:space="preserve">
+    <value>Fireplace</value>
+  </data>
+  <data name="SeoAmenity_Kitchen" xml:space="preserve">
+    <value>Kitchen</value>
+  </data>
+  <data name="SeoAmenity_Refrigerator" xml:space="preserve">
+    <value>Refrigerator</value>
+  </data>
+  <data name="SeoAmenity_Microwave" xml:space="preserve">
+    <value>Microwave</value>
+  </data>
+  <data name="SeoAmenity_Dishwasher" xml:space="preserve">
+    <value>Dishwasher</value>
+  </data>
+  <data name="SeoAmenity_CoffeeMaker" xml:space="preserve">
+    <value>Coffee maker</value>
+  </data>
+  <data name="SeoAmenity_Stove" xml:space="preserve">
+    <value>Stove</value>
+  </data>
+  <data name="SeoAmenity_Oven" xml:space="preserve">
+    <value>Oven</value>
+  </data>
+  <data name="SeoAmenity_DiningTable" xml:space="preserve">
+    <value>Dining table</value>
+  </data>
+  <data name="SeoAmenity_Washer" xml:space="preserve">
+    <value>Washing machine</value>
+  </data>
+  <data name="SeoAmenity_Dryer" xml:space="preserve">
+    <value>Dryer</value>
+  </data>
+  <data name="SeoAmenity_IronAndBoard" xml:space="preserve">
+    <value>Iron and ironing board</value>
+  </data>
+  <data name="SeoAmenity_Pool" xml:space="preserve">
+    <value>Pool</value>
+  </data>
+  <data name="SeoAmenity_HotTub" xml:space="preserve">
+    <value>Hot tub</value>
+  </data>
+  <data name="SeoAmenity_Garden" xml:space="preserve">
+    <value>Garden</value>
+  </data>
+  <data name="SeoAmenity_Patio" xml:space="preserve">
+    <value>Patio</value>
+  </data>
+  <data name="SeoAmenity_Balcony" xml:space="preserve">
+    <value>Balcony</value>
+  </data>
+  <data name="SeoAmenity_BBQGrill" xml:space="preserve">
+    <value>Barbecue grill</value>
+  </data>
+  <data name="SeoAmenity_BeachAccess" xml:space="preserve">
+    <value>Beach access</value>
+  </data>
+  <data name="SeoAmenity_Terrace" xml:space="preserve">
+    <value>Terrace</value>
+  </data>
+  <data name="SeoAmenity_FreeParking" xml:space="preserve">
+    <value>Free parking</value>
+  </data>
+  <data name="SeoAmenity_PaidParking" xml:space="preserve">
+    <value>Paid parking</value>
+  </data>
+  <data name="SeoAmenity_Garage" xml:space="preserve">
+    <value>Garage</value>
+  </data>
+  <data name="SeoAmenity_EVCharger" xml:space="preserve">
+    <value>EV charger</value>
+  </data>
+  <data name="SeoAmenity_BikeStorage" xml:space="preserve">
+    <value>Bike storage</value>
+  </data>
+  <data name="SeoAmenity_SmokeDetector" xml:space="preserve">
+    <value>Smoke detector</value>
+  </data>
+  <data name="SeoAmenity_CarbonMonoxideDetector" xml:space="preserve">
+    <value>Carbon monoxide detector</value>
+  </data>
+  <data name="SeoAmenity_FireExtinguisher" xml:space="preserve">
+    <value>Fire extinguisher</value>
+  </data>
+  <data name="SeoAmenity_FirstAidKit" xml:space="preserve">
+    <value>First aid kit</value>
+  </data>
+  <data name="SeoAmenity_SecurityCameras" xml:space="preserve">
+    <value>Security cameras</value>
+  </data>
+  <data name="SeoAmenity_Safe" xml:space="preserve">
+    <value>Safe</value>
+  </data>
+  <data name="SeoAmenity_WheelchairAccessible" xml:space="preserve">
+    <value>Wheelchair accessible</value>
+  </data>
+  <data name="SeoAmenity_Elevator" xml:space="preserve">
+    <value>Elevator</value>
+  </data>
+  <data name="SeoAmenity_StepFreeAccess" xml:space="preserve">
+    <value>Step-free access</value>
+  </data>
+  <data name="SeoAmenity_PetFriendly" xml:space="preserve">
+    <value>Pets allowed</value>
+  </data>
+  <data name="SeoAmenity_SmokingAllowed" xml:space="preserve">
+    <value>Smoking allowed</value>
+  </data>
+  <data name="SeoAmenity_Crib" xml:space="preserve">
+    <value>Crib</value>
+  </data>
+  <data name="SeoAmenity_HighChair" xml:space="preserve">
+    <value>High chair</value>
+  </data>
+  <data name="SeoAmenity_Gym" xml:space="preserve">
+    <value>Gym</value>
+  </data>
+  <data name="SeoAmenity_Sauna" xml:space="preserve">
+    <value>Sauna</value>
+  </data>
+  <data name="SeoAmenity_SelfCheckIn" xml:space="preserve">
+    <value>Self check-in</value>
+  </data>
+  <data name="SeoAmenity_LongTermStaysAllowed" xml:space="preserve">
+    <value>Long stays allowed</value>
+  </data>
+  <data name="SeoAmenity_LuggageDropOffAllowed" xml:space="preserve">
+    <value>Luggage drop-off</value>
+  </data>
+  <data name="SeoAmenity_PrivateEntrance" xml:space="preserve">
+    <value>Private entrance</value>
+  </data>
+  <data name="DomainIssue_ownership_txt_missing" xml:space="preserve">
+    <value>We cannot find the TXT record that proves you own the domain. Check that it was created and wait for the DNS to propagate (it can take a few hours).</value>
+  </data>
+  <data name="DomainIssue_dns_not_pointing" xml:space="preserve">
+    <value>The domain does not point to our service yet: create the CNAME record shown (for a domain without www, the A records) and wait for the DNS to propagate.</value>
+  </data>
+  <data name="DomainIssue_vercel_verification_pending" xml:space="preserve">
+    <value>The service provider asks for one more TXT record to confirm the domain: add it and check again.</value>
+  </data>
+  <data name="DomainIssue_vercel_not_configured" xml:space="preserve">
+    <value>Activating custom domains is not available on the platform yet. Your domain will activate by itself as soon as it is.</value>
+  </data>
+  <data name="DomainIssue_vercel_unauthorized" xml:space="preserve">
+    <value>We cannot activate the domain right now because of a platform configuration problem. We will retry automatically; if it lasts, contact support.</value>
+  </data>
+  <data name="DomainIssue_vercel_unavailable" xml:space="preserve">
+    <value>The activation service is not answering right now. We will retry automatically.</value>
+  </data>
+  <data name="DomainIssue_domain_taken" xml:space="preserve">
+    <value>This domain is already in use by another CasaZen site.</value>
+  </data>
+  <data name="DomainIssue_vercel_domain_in_use" xml:space="preserve">
+    <value>This domain is already linked to another project or account of the service provider and we cannot activate it. Contact support.</value>
+  </data>
+  <data name="DomainIssue_vercel_rejected" xml:space="preserve">
+    <value>The service provider does not accept this domain. Check that it is spelled correctly.</value>
   </data>
 </root>

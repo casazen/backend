@@ -30,6 +30,13 @@ public class PublicOrgDto
 
     public bool ShowPoweredBy { get; set; }
 
+    /// <summary>
+    /// Absolute URL of the landing page on the public domain (<c>App:PublicSiteBaseUrl</c>), for the <c>canonical</c> and
+    /// <c>og:url</c> of the page (BK-15); <c>null</c> only when that is not configured (Development/Testing). Set by the
+    /// endpoint, never built in the browser.
+    /// </summary>
+    public string? CanonicalUrl { get; set; }
+
     /// <param name="org">The public org.</param>
     /// <param name="effectiveTier">
     /// The org's effective tier (<c>IEntitlementService.ResolveEffectiveTier</c>), never the stored one: a canceled

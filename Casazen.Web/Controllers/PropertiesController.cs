@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
@@ -38,7 +39,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
 public class PropertiesController(
     IPropertyService propertyService,
-    IImageStorageService imageStorageService,
+    IPropertyPhotoService photoService,
     IPropertyAuthorizationService authorizationService,
     ILeaseContractRepository leaseContractRepository,
     IPropertyDocumentService documentService,
@@ -495,15 +496,32 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// The public search across orgs (BK-20, A8-13): published properties of active orgs, cheapest first within a city, at
+    /// most 50. Every filter is optional: <c>city</c> (part of the name), <c>bedrooms</c> and <c>bathrooms</c> (at least),
+    /// <c>guests</c> (sleeps at least), <c>minPrice</c> and <c>maxPrice</c> (nightly rate). Each result carries
+    /// <c>orgSlug</c>, which with <c>slug</c> gives <c>/book/{orgSlug}/property/{slug}</c>. A value out of range is a 400.
+    /// </summary>
     [HttpGet("search")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> Search(
-        [FromQuery] string? city,
-        [FromQuery] int? bedrooms,
-        [FromQuery] decimal? maxPrice)
+        [FromQuery, StringLength(100, ErrorMessage = "PublicSearchFilterInvalid")] string? city,
+        [FromQuery, Range(0, 50, ErrorMessage = "PublicSearchFilterInvalid")] int? bedrooms,
+        [FromQuery, Range(0, 50, ErrorMessage = "PublicSearchFilterInvalid")] int? bathrooms,
+        [FromQuery, Range(1, 100, ErrorMessage = "PublicSearchFilterInvalid")] int? guests,
+        [FromQuery, Range(typeof(decimal), "0", "1000000", ErrorMessage = "PublicSearchFilterInvalid")] decimal? minPrice,
+        [FromQuery, Range(typeof(decimal), "0", "1000000", ErrorMessage = "PublicSearchFilterInvalid")] decimal? maxPrice)
     {
-        var properties = await propertyService.SearchAsync(city, bedrooms, maxPrice);
+        var properties = await propertyService.SearchAsync(new PublicPropertySearchCriteria
+        {
+            City = city,
+            MinBedrooms = bedrooms,
+            MinBathrooms = bathrooms,
+            Guests = guests,
+            MinPrice = minPrice,
+            MaxPrice = maxPrice,
+        });
         return Ok(properties);
     }
 
@@ -519,170 +537,176 @@ public class PropertiesController(
         return Ok(property);
     }
 
-    // Image Management Endpoints
+    // ─── Photo gallery (PC-04, A2-26) ────────────────────────────────────────────
 
-    [HttpPost("{id}/images")]
+    /// <summary>
+    /// The photo gallery of a property: the photos in display order (absolute public URLs; the first is the cover) and
+    /// the upload rules. Short-rent only, like every short-stay side of the property.
+    /// </summary>
+    /// <response code="200">The gallery.</response>
+    /// <response code="403">The caller may not read this property (TN-3).</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpGet("{id:guid}/images")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPhotosResponse>> GetImages(Guid id)
+    {
+        var (property, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        return Ok(PropertyPhotosResponse.From(property!.PhotoUrls));
+    }
+
+    /// <summary>
+    /// Adds photos to the gallery (multipart field <c>images</c>, at most 10 files per request, 10 MB each, JPEG/PNG/WebP
+    /// checked on their content, 20 photos per property). All or none: one invalid file stores nothing. The new photos
+    /// go after the existing ones; the first photo of a gallery is its cover.
+    /// </summary>
+    /// <response code="200">The gallery after the upload.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="413">The request is larger than 10 files of 10 MB.</response>
+    /// <response code="422"><c>property_photo_none</c>, <c>property_photo_too_many_files</c>, <c>property_photo_invalid_type</c>,
+    /// <c>property_photo_invalid_size</c> or <c>property_photo_limit_reached</c>.</response>
+    [HttpPost("{id:guid}/images")]
     [Consumes("multipart/form-data")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
-    public async Task<ActionResult<Property>> UploadImages(Guid id, [FromForm] List<IFormFile> images)
+    [RequestSizeLimit(PropertyPhotoLimits.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = PropertyPhotoLimits.MaxRequestBytes)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<PropertyPhotosResponse>> UploadImages(
+        Guid id,
+        [FromForm] List<IFormFile> images,
+        CancellationToken cancellationToken)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+        var (property, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.Upload");
+        if (denied is not null)
+            return denied;
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to upload images to property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
-        }
-
-        // Validate maximum image limit (20 images)
-        const int maxImages = 20;
-        if (property.PhotoUrls.Count + images.Count > maxImages)
-        {
-            return BadRequest(new { error = $"Maximum {maxImages} images allowed per property. Current: {property.PhotoUrls.Count}, Attempting to add: {images.Count}" });
-        }
-
-        // Validate and upload each image
-        var uploadedUrls = new List<string>();
-        foreach (var image in images)
-        {
-            if (!imageStorageService.ValidateImage(image))
-            {
-                logger.LogWarning("Invalid image file rejected: {FileName}", image.FileName);
-                return BadRequest(new { error = $"Invalid image file: {image.FileName}. Allowed formats: JPEG, PNG, WebP. Max size: 10MB" });
-            }
-
-            try
-            {
-                var url = await imageStorageService.UploadImageAsync(image, id);
-                await propertyService.AddImageAsync(id, url);
-                uploadedUrls.Add(url);
-                logger.LogInformation("Image uploaded for property {PropertyId}: {ImageUrl}", id, url);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to upload image for property {PropertyId}", id);
-                return StatusCode(500, new { error = "Failed to upload image" });
-            }
-        }
-
-        // Return updated property
-        var updatedProperty = await propertyService.GetPropertyAsync(id);
-        return Ok(new { property = updatedProperty, uploadedImages = uploadedUrls });
+        var gallery = await photoService.AddAsync(id, images, cancellationToken);
+        logger.LogInformation(
+            "Photos uploaded to property {PropertyId} of org {OrgId}: gallery has {Total} photos",
+            id, property!.OrgId, gallery.Count);
+        return Ok(PropertyPhotosResponse.From(gallery));
     }
 
-    [HttpGet("{id}/images")]
-    [Authorize(Policy = CasazenPolicies.PropertyRead)]
-    public async Task<ActionResult<List<string>>> GetImages(Guid id)
-    {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to view images for property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
-        }
-
-        return Ok(property.PhotoUrls);
-    }
-
-    [HttpDelete("{id}/images/{imageIndex}")]
+    /// <summary>
+    /// Deletes a photo: removes it from the gallery and its object from the storage. The photo is identified by its URL
+    /// (not by its position, which another tab may have changed): <c>DELETE /images?url=...</c>. A cover that is deleted
+    /// is replaced by the next photo.
+    /// </summary>
+    /// <response code="200">The gallery after the deletion.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property in the caller's org, or <c>property_photo_not_found</c>: the photo is not in its gallery.</response>
+    [HttpDelete("{id:guid}/images")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
-    public async Task<ActionResult<Property>> DeleteImage(Guid id, int imageIndex)
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPhotosResponse>> DeleteImage(
+        Guid id,
+        [FromQuery, Required(ErrorMessage = "PropertyPhotoUrlRequired"), MaxLength(PropertyPhotoRequestLimits.UrlMaxLength, ErrorMessage = "PropertyPhotoUrlTooLong")]
+        string url,
+        CancellationToken cancellationToken)
     {
-        var userId = GetAuthenticatedUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+        var (property, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.Delete");
+        if (denied is not null)
+            return denied;
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
-
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
-        {
-            logger.LogWarning("User {UserId} attempted to delete image from property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
-        }
-
-        // Validate image index
-        if (imageIndex < 0 || imageIndex >= property.PhotoUrls.Count)
-        {
-            return BadRequest(new { error = $"Invalid image index {imageIndex}. Property has {property.PhotoUrls.Count} images." });
-        }
-
-        try
-        {
-            // Get the image URL before removing it
-            var imageUrl = property.PhotoUrls[imageIndex];
-
-            // Remove from property
-            var updatedProperty = await propertyService.RemoveImageAsync(id, imageIndex);
-
-            // Delete from storage
-            await imageStorageService.DeleteImageAsync(imageUrl);
-
-            logger.LogInformation("Image deleted from property {PropertyId} at index {Index}", id, imageIndex);
-            return Ok(updatedProperty);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return BadRequest(new { error = $"Invalid image index {imageIndex}" });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to delete image from property {PropertyId}", id);
-            return StatusCode(500, new { error = "Failed to delete image" });
-        }
+        var gallery = await photoService.DeleteAsync(id, url, cancellationToken);
+        logger.LogInformation(
+            "Photo deleted from property {PropertyId} of org {OrgId}: gallery has {Total} photos",
+            id, property!.OrgId, gallery.Count);
+        return Ok(PropertyPhotosResponse.From(gallery));
     }
 
-    [HttpPut("{id}/images/order")]
+    /// <summary>
+    /// Sets the order of the gallery. The body is the list of every photo URL of the gallery, each once, in the new
+    /// order (the first becomes the cover).
+    /// </summary>
+    /// <response code="200">The gallery in the new order.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    /// <response code="409"><c>property_photos_changed</c>: the list is not the current gallery (another tab or user changed it).</response>
+    [HttpPut("{id:guid}/images/order")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
-    public async Task<ActionResult<Property>> ReorderImages(Guid id, [FromBody] List<string> orderedImageUrls)
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PropertyPhotosResponse>> ReorderImages(
+        Guid id,
+        [FromBody] List<string> orderedImageUrls,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.Reorder");
+        if (denied is not null)
+            return denied;
+
+        var gallery = await photoService.ReorderAsync(id, orderedImageUrls, cancellationToken);
+        return Ok(PropertyPhotosResponse.From(gallery));
+    }
+
+    /// <summary>
+    /// Makes a photo of the gallery the cover (what public pages, search results and the org site show first): it moves
+    /// first, the others keep their order. Idempotent.
+    /// </summary>
+    /// <response code="200">The gallery with the new cover first.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property in the caller's org, or <c>property_photo_not_found</c>: the photo is not in its gallery.</response>
+    [HttpPut("{id:guid}/images/cover")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PropertyPhotosResponse>> SetCoverImage(
+        Guid id,
+        [FromBody] SetPropertyCoverPhotoRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizePropertyAsync(id, PropertyOperations.Write, "PropertyPhoto.SetCover");
+        if (denied is not null)
+            return denied;
+
+        var gallery = await photoService.SetCoverAsync(id, request.Url, cancellationToken);
+        return Ok(PropertyPhotosResponse.From(gallery));
+    }
+
+    /// <summary>
+    /// TN-3 check of the photo endpoints: the property of the caller's org (the tenant filter hides another org's one, so
+    /// 404), the host permission for the row (403), and the audit of an org-wide role acting on a colleague's property.
+    /// </summary>
+    private async Task<(Property? Property, ActionResult? Denied)> AuthorizePropertyAsync(
+        Guid id,
+        HostOperationRequirement operation,
+        string? auditAction = null)
     {
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+            return (null, Unauthorized());
 
-        var property = await propertyService.GetPropertyAsync(id);
-        if (property == null)
-            return NotFound();
+        var property = await propertyService.GetPropertyRecordAsync(id);
+        if (property is null)
+            return (null, NotFound());
 
-        if (!authorizationService.CanAccess(userId, property.OwnerId, GetUserRoles()))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), operation))
         {
-            logger.LogWarning("User {UserId} attempted to reorder images for property {PropertyId} owned by {OwnerId}",
-                userId, id, property.OwnerId);
-            return Forbid();
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on the photos of property {PropertyId}",
+                userId, operation.PermissionKey, id);
+            return (null, Forbid());
         }
 
-        try
-        {
-            var updatedProperty = await propertyService.ReorderImagesAsync(id, orderedImageUrls);
-            logger.LogInformation("Images reordered for property {PropertyId}", id);
-            return Ok(updatedProperty);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to reorder images for property {PropertyId}", id);
-            return StatusCode(500, new { error = "Failed to reorder images" });
-        }
+        if (auditAction is not null)
+            await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), auditAction);
+
+        return (property, null);
     }
 
     // ─── Detail + Documents ──────────────────────────────────────────────────────
