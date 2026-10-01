@@ -16,16 +16,19 @@ public class ActivationChecklistTests
         bool chargesEnabled = true,
         bool detailsSubmitted = true,
         string? requirementsDueJson = null,
-        bool isActive = true) => new()
+        bool isActive = true)
     {
-        Name = "Casa Rossi",
-        Slug = "casa-rossi",
-        IsActive = isActive,
-        StripeConnectedAccountId = connectedAccountId,
-        ConnectChargesEnabled = chargesEnabled,
-        ConnectDetailsSubmitted = detailsSubmitted,
-        ConnectRequirementsDueJson = requirementsDueJson,
-    };
+        return new OrgEntity
+        {
+            Name = "Casa Rossi",
+            Slug = "casa-rossi",
+            IsActive = isActive,
+            StripeConnectedAccountId = connectedAccountId,
+            ConnectChargesEnabled = chargesEnabled,
+            ConnectDetailsSubmitted = detailsSubmitted,
+            ConnectRequirementsDueJson = requirementsDueJson,
+        };
+    }
 
     private static ActivationFacts Facts(
         OrgEntity? org,
