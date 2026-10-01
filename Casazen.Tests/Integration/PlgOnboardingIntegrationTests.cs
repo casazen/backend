@@ -201,7 +201,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         Assert.Equal(
             ["account", "organization", "property", "cin", "payments", "sitePublished", "firstBooking"],
-            status.GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("key").GetString()).ToArray());
+            status.GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("key").GetString()!).ToArray());
         Assert.Equal("done", StepOf(status, "account").GetProperty("state").GetString());
         // The org was provisioned with a generated slug (and the placeholder name): the host has not chosen them.
         Assert.Equal("todo", StepOf(status, "organization").GetProperty("state").GetString());
