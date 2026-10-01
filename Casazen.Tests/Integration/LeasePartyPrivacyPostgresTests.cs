@@ -256,13 +256,22 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
 
         var landlord = new Party
         {
-            Role = PartyRole.Landlord, FirstName = "Mario", LastName = "Rossi", FiscalCode = landlordCf,
-            Citizenship = "IT", ContactEmail = "mario.rossi@example.com",
+            Role = PartyRole.Landlord,
+            FirstName = "Mario",
+            LastName = "Rossi",
+            FiscalCode = landlordCf,
+            Citizenship = "IT",
+            ContactEmail = "mario.rossi@example.com",
         };
         var tenant = new Party
         {
-            Role = PartyRole.Tenant, FirstName = "Giulia", LastName = "Verdi", FiscalCode = tenantCf,
-            Citizenship = "US", ContactEmail = "giulia.verdi@example.com", IsExtraEU = true,
+            Role = PartyRole.Tenant,
+            FirstName = "Giulia",
+            LastName = "Verdi",
+            FiscalCode = tenantCf,
+            Citizenship = "US",
+            ContactEmail = "giulia.verdi@example.com",
+            IsExtraEU = true,
         };
         var lease = new LeaseContract
         {
