@@ -24,6 +24,12 @@ public class PropertyDetailResponse
     public IReadOnlyList<string> PhotoUrls { get; set; } = [];
     public string HouseRules { get; set; } = string.Empty;
     public bool IsActive { get; set; }
+
+    /// <summary>Host-set pause (PC-03, A2-05): hidden from public bookings until reactivated, own slot and history kept.</summary>
+    public bool IsPaused { get; set; }
+
+    /// <summary>UTC instant the property was paused; null when not paused.</summary>
+    public DateTime? PausedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

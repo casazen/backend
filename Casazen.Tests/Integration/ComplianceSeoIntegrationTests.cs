@@ -28,15 +28,16 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
 
     public ComplianceSeoIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
+    // SE-01 (A8-04): a draft is never public, in any environment (it used to be served in Testing/Development/Staging).
     [Fact]
-    public async Task AC2_ComplianceGuide_Returns404_WhenNotReviewed_InTestingEnvAllowsDraft()
+    public async Task AC2_ComplianceGuide_DraftPage_Returns404()
     {
         await SeedSeoPageAsync(LegalReviewStatus.Draft, SeoPageType.ComplianceGuide);
 
         var client = _factory.CreateClient();
         var response = await client.GetAsync("/api/public/content/affitti-brevi/lombardia/como");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -137,7 +138,7 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     [Fact]
     public async Task SitemapAndHub_PagesWithoutContentDraftOrWithoutRate_AreLeftOut()
     {
-        // Reviewed guide without any revision (nothing to show), a draft with content, a calculator without a rate.
+        // Guide marked reviewed without any revision (nothing to show), a draft with content, a published calculator without a rate.
         await SeedPageAsync("013133", "affitti-brevi/lombardia/menaggio", SeoPageType.ComplianceGuide, LegalReviewStatus.Reviewed, bodyHtml: null);
         await SeedPageAsync("015146", "affitti-brevi/lombardia/milano", SeoPageType.ComplianceGuide, LegalReviewStatus.Draft, "<p>Bozza</p>");
         await SeedPageAsync("082053", "tassa-soggiorno/palermo", SeoPageType.TouristTaxCalc, LegalReviewStatus.Reviewed, "<p>Palermo</p>");
@@ -300,19 +301,27 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         if (bodyHtml is null)
             return;
 
-        context.SeoContentRevisions.Add(new SeoContentRevision
+        var revision = new SeoContentRevision
         {
             PageId = page.Id,
             BodyHtml = bodyHtml,
             AiModelTier = AiModelTier.Economy,
             PromptTokens = 100,
             SourceDataVersion = "test-v1",
-        });
+        };
+        context.SeoContentRevisions.Add(revision);
         await context.SaveChangesAsync();
+
+        if (status == LegalReviewStatus.Reviewed)
+        {
+            page.PublishedRevisionId = revision.Id;
+            page.PublishedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+        }
     }
 
     /// <summary>
-    /// Creates a reviewed compliance guide page with a revision written straight to the database,
+    /// Creates a published compliance guide page with a revision written straight to the database,
     /// bypassing the repository (simulates content stored before the allowlist).
     /// </summary>
     private async Task<Guid> SeedPageWithRawRevisionAsync(string comuneCode, string slug, string bodyHtml)
@@ -335,20 +344,24 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         context.SeoContentPages.Add(page);
         await context.SaveChangesAsync();
 
-        context.SeoContentRevisions.Add(new SeoContentRevision
+        var revision = new SeoContentRevision
         {
             PageId = page.Id,
             BodyHtml = bodyHtml,
             AiModelTier = AiModelTier.Economy,
             PromptTokens = 100,
             SourceDataVersion = "test-v1",
-        });
+        };
+        context.SeoContentRevisions.Add(revision);
+        await context.SaveChangesAsync();
+
+        page.PublishedRevisionId = revision.Id;
         await context.SaveChangesAsync();
         return page.Id;
     }
 
     /// <summary>
-    /// Ensures the Como page of <paramref name="pageType"/> exists with <paramref name="status"/>.
+    /// Ensures the Como page of <paramref name="pageType"/> exists with <paramref name="status"/> (Reviewed: published).
     /// Tests of this class share one database (class fixture) and (ComuneCode, PageType) is a unique
     /// index, so the page is updated when a previous test already created it.
     /// </summary>
@@ -383,18 +396,25 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         page.LastRefreshedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
 
-        if (page.Revisions.Count == 0)
+        var revision = page.Revisions.FirstOrDefault();
+        if (revision is null)
         {
-            context.SeoContentRevisions.Add(new SeoContentRevision
+            revision = new SeoContentRevision
             {
                 PageId = page.Id,
                 BodyHtml = "<article><p>Guida compliance Como</p></article>",
                 AiModelTier = AiModelTier.Economy,
                 PromptTokens = 100,
                 SourceDataVersion = "test-v1",
-            });
+            };
+            context.SeoContentRevisions.Add(revision);
             await context.SaveChangesAsync();
         }
+
+        // SE-01: public = an approved revision; a draft has none.
+        page.PublishedRevisionId = status == LegalReviewStatus.Reviewed ? revision.Id : null;
+        page.PublishedAt = status == LegalReviewStatus.Reviewed ? DateTime.UtcNow : null;
+        await context.SaveChangesAsync();
     }
 
     private async Task SeedTouristTaxRateAsync(string city, decimal rate, int? maxNights = null)

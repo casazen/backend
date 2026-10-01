@@ -289,11 +289,11 @@ public class BookingService(
             cancellationToken);
     }
 
-    /// <summary>An active property whose compliance allows public bookings; 404 otherwise.</summary>
+    /// <summary>An active, unpaused property whose compliance allows public bookings; 404 otherwise (PC-03, A2-05).</summary>
     private async Task<Property> GetBookablePropertyAsync(Guid propertyId)
     {
         var property = await propertyRepository.GetByIdAsync(propertyId);
-        if (property is null || !property.IsActive || property.ComplianceStatus != PropertyComplianceStatus.Active)
+        if (property is null || !property.IsActive || property.IsPaused || property.ComplianceStatus != PropertyComplianceStatus.Active)
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
         return property;
