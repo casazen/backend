@@ -600,7 +600,8 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
     private async Task<(HttpClient Client, string UserId, Guid OrgId)> OnboardAsync(string label)
     {
         var userId = $"auth0|plg-{label}-{Guid.NewGuid():N}";
-        var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        // PropertyOwner: the host role, so the org settings (OrgBillingAdmin) are open to this client once onboarded.
+        var client = _factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner");
         var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
