@@ -76,7 +76,7 @@ public enum AlloggiatiWebStatus
     // 1 was "Submitted", set without transmitting anything: retired by CO-11, the migration
     // AlloggiatiHonestStatus moved those rows to DaInviareManualmente.
 
-    /// <summary>Transmitted, with the real receipt in <see cref="AlloggiatiWebReport.ConfirmationNumber"/> (CO-13). Never without a receipt.</summary>
+    /// <summary>Transmitted, with the real receipt in <see cref="AlloggiatiWebReport.ConfirmationNumber"/> (web service client, not implemented). Never without a receipt.</summary>
     Inviato = 2,
 
     /// <summary>Technical error while preparing or transmitting the communication.</summary>
@@ -85,7 +85,7 @@ public enum AlloggiatiWebStatus
     /// <summary>Ready, but CasaZen does not transmit: the host must send it on the Questura portal.</summary>
     DaInviareManualmente = 4,
 
-    /// <summary>Rejected by Alloggiati Web (CO-13).</summary>
+    /// <summary>Rejected by Alloggiati Web (web service client, not implemented).</summary>
     Rifiutato = 5,
 
     /// <summary>The host declared having sent it on the portal (date in <see cref="AlloggiatiWebReport.ReportedAt"/>). CasaZen holds no receipt.</summary>

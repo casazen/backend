@@ -39,6 +39,9 @@ public class AppDbContext(
 
     // Operator privacy notice and booking terms of the public site, versioned (BK-14, A3-21)
     public DbSet<OrgSiteDocument> OrgSiteDocuments { get; set; } = null!;
+
+    /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
+    public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;

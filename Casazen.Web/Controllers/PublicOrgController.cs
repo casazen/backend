@@ -3,6 +3,7 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Services;
 using Casazen.Core.SiteDocuments;
 using Casazen.Web.DTOs.Orgs;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,7 @@ public class PublicOrgController(
     IOrgService orgService,
     IPropertyService propertyService,
     IEntitlementService entitlementService,
+    PublicOrgSiteUrls siteUrls,
     IOrgSiteDocumentService siteDocumentService) : ControllerBase
 {
     [HttpGet("{slug}")]
@@ -31,7 +33,9 @@ public class PublicOrgController(
         if (org is null)
             return NotFound();
 
-        return Ok(PublicOrgDto.FromOrg(org, entitlementService.ResolveEffectiveTier(org)));
+        var dto = PublicOrgDto.FromOrg(org, entitlementService.ResolveEffectiveTier(org));
+        dto.CanonicalUrl = siteUrls.TryLandingUrl(org);
+        return Ok(dto);
     }
 
     [HttpGet("{slug}/properties")]
@@ -65,6 +69,8 @@ public class PublicOrgController(
         if (property is null)
             return NotFound();
 
+        property.CanonicalUrl = siteUrls.TryPropertyUrl(
+            org, string.IsNullOrWhiteSpace(property.Slug) ? property.Id.ToString() : property.Slug);
         return Ok(property);
     }
 
