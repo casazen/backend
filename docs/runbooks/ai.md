@@ -7,7 +7,7 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 
 | Caller | Data in the prompt | Guard |
 |---|---|---|
-| SEO page generation (`SeoPageGenerationJob`, `SeoContentRefreshJob`, admin "Genera" `POST /api/admin/seo/generate`, bootstrap) | Public regulatory data only: comune name, page type, CIN / Alloggiati notes, tourist tax rate | Platform budget; the batch stops at the first page the budget cannot cover. `POST generate` is rate limited per user. |
+| SEO page generation (`SeoPageGenerationJob`, `SeoContentRefreshJob`, admin "Genera" `POST /api/admin/seo/generate`, bootstrap) | Public regulatory data only: comune name and ISTAT code, page type, the verified CIN / Alloggiati facts with their official URLs, the tourist tax rates in force with their source URL (versioned prompt `SeoContentPrompt`) | Platform budget; the batch stops at the first page the budget cannot cover. `POST generate` is rate limited per user. The output is checked and stored as a **draft**: it is published only after a person approves it ([`seo-domain.md`](seo-domain.md) section 7, SE-01). |
 | AI supplier match `POST /api/service-requests/match-supplier` (reason sentence, web search, LLM extraction) | Category code, urgency, open requests count; for the web search the property's city and a fixed category term | **Behind `Features:AiSupplierDiscovery`, off (D11).** When on: category allowlist, per-user and per-org rate limit, platform budget. |
 
 Never put in a prompt sent to an external provider: the host's free-text notes, guest data (names, phone numbers,
@@ -18,7 +18,7 @@ does not even take the notes, and `match-supplier` ignores a `notes` field in th
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `Ai__Provider` | `Stub` | `Stub`: template text, no external call, no cost. `DeepSeek`: external provider. |
+| `Ai__Provider` | `Stub` | `Stub`: template text, no external call, no cost; the SEO generation stores it as "contenuto non generato" (`AiProviderNotConfigured`), never as publishable text. `DeepSeek`: external provider. |
 | `Ai__ApiKey` | — | Without a key DeepSeek answers empty and makes no call. **An external provider is "active" only with `Provider=DeepSeek` and a key.** |
 | `Ai__Model`, `Ai__OpenAiBaseUrl`, `Ai__AnthropicBaseUrl` | `deepseek-v4-flash`, `https://api.deepseek.com`, `https://api.deepseek.com/anthropic` | Provider endpoints. |
 | `Ai__MaxCompletionTokens` | `2048` | `max_tokens` of a completion, also the completion part of the budget reservation. |
@@ -82,6 +82,9 @@ The code does **not** fill in the provider's legal details. Until `Ai__Subproces
 3. Check `GET /api/legal/subprocessors` on test: the provider is listed, `detailsPending` is `false`.
 
 ## SEO bootstrap (A8-26)
+
+The bootstrap creates **drafts only** (SE-01, A8-04): nothing is published until an admin reads and approves each text
+([`seo-domain.md`](seo-domain.md) section 7). `Seo:AutoApproveAfterBootstrap` no longer exists.
 
 With `Seo:BootstrapOnStartup=true` the first start with no SEO page queues the generation of every registry comune,
 **once per environment**: under a Hangfire distributed lock (replicas starting together queue it once) and with a

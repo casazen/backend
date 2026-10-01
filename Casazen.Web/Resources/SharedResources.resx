@@ -1219,6 +1219,21 @@
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
   </data>
+  <data name="SeoCounselRequired" xml:space="preserve">
+    <value>Questa pagina è tra le prime {0} e può essere pubblicata solo dopo la revisione legale: conferma che il testo è stato revisionato.</value>
+  </data>
+  <data name="SeoRevisionNotPublishable" xml:space="preserve">
+    <value>Questa revisione non contiene un testo pubblicabile (contenuto non generato, vuoto o non valido): rigenera la pagina.</value>
+  </data>
+  <data name="SeoRevisionOutdated" xml:space="preserve">
+    <value>Nel frattempo è arrivata una revisione più recente: ricarica la pagina e rileggi il testo prima di approvarlo.</value>
+  </data>
+  <data name="SeoRevisionAlreadyPublished" xml:space="preserve">
+    <value>Questa revisione è già quella pubblicata.</value>
+  </data>
+  <data name="SeoPageNotPublished" xml:space="preserve">
+    <value>La pagina non è pubblicata: non c'è niente da ritirare.</value>
+  </data>
   <data name="CheckoutWizardNotStarted" xml:space="preserve">
     <value>Avvia il check-out prima di completarlo: apri di nuovo la procedura di check-out del soggiorno.</value>
   </data>

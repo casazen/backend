@@ -30,7 +30,7 @@ public class DeepSeekAiProvider(
         if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
             logger.LogDebug("Ai:ApiKey not configured; returning empty AI response.");
-            return new AiGenerationResult(string.Empty, 0, 0, tier, false);
+            return new AiGenerationResult(string.Empty, 0, 0, tier, FromCache: false, ProviderConfigured: false);
         }
 
         var baseUrl = config.OpenAiBaseUrl.TrimEnd('/');
