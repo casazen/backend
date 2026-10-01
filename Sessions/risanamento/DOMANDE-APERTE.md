@@ -1,6 +1,8 @@
 # Domande aperte e documentazione — piano di risanamento CasaZen
 
-Aggiornato dopo ~105/166 task chiusi. Ogni voce riporta l'ID del task tra parentesi: cerca `grep -n "<ID>"` in `notes.log` (`Sessions/risanamento/stato/notes.log`) per il dettaglio tecnico completo. Questo file viene rigenerato/ampliato a ogni ondata: nulla viene tolto, solo aggiunto o marcato risolto.
+**Fonte unica** delle domande aperte. Aggiornato dalla sessione di ripresa del 2026-10-01 (branch `claude/sleepy-edison-oil8ru`). Ogni voce riporta l'ID del task tra parentesi. Nulla viene tolto: le voci risolte si spostano in fondo, nella sezione **Chiuse**, con la data e la risposta.
+
+Le voci nuove di questa sessione sono nella sezione **8** (in fondo, prima di *Chiuse*), con il formato `- [ ] TASK-ID — domanda — default prudente applicato — data`.
 
 ---
 
@@ -37,7 +39,7 @@ Aggiornato dopo ~105/166 task chiusi. Ogni voce riporta l'ID del task tra parent
 
 **Rete/ambiente agenti (non produzione, ma blocca dei task):**
 - RS-6 **bloccato**: `www.istat.it` e altri siti ISTAT/gov ufficiali sono bloccati dal proxy di rete dell'ambiente (403). Serve una di queste due cose per sbloccare SU-04 (codici catastali comuni): (a) whitelistare `www.istat.it` nella rete dell'ambiente, oppure (b) fornire tu il CSV ufficiale dei codici catasto/ISTAT comuni.
-- FD-19 **bloccato**: pulizia file di scarto (`.idea/`, `StripeWebhookHandler.cs.bak`, `AddContextAuthorization.sql`, 3 classi vuote in `Payments/`, `Casazen.Web.http`, `.claude/settings.local.json` tracciato per errore) richiede una tua conferma esplicita perché il classificatore di sicurezza blocca `git rm` in automatico. Dimmi "ok rimuovi" per procedere — il lavoro è pronto (`.gitignore` già aggiornato e pubblicato).
+- ~~FD-19 bloccato~~ → chiuso il 2026-10-01 (vedi *Chiuse*).
 
 ---
 
@@ -141,6 +143,41 @@ Dati normativi verificati da fonti ufficiali (mai inventati), con le relative in
 - **CO-22**: implementare l'invio Ross1000 (Regione Lombardia), oggi solo documentato (RS-9).
 - **EXTRA non ancora assegnati**: mostrare il BookingCode al posto del Guid in console host; catalogo `CancellationPolicy` con seed/admin; email "Pagamento ricevuto" per addebiti differiti.
 - **FD-05**: alcuni messaggi di errore inglesi non ancora tradotti (#425, minori).
+
+---
+
+## 8. Emerse nelle sessioni di ripresa
+
+### Sessione Cursor (2026-09-25) — lavoro non pubblicato su GitHub
+
+Queste domande sono state annotate in Cursor mentre si lavorava a BK-18, PL-06, MO-12 e PC-14, ma di quel lavoro non risulta nessun branch né commit su GitHub: nella sessione del 2026-10-01 i quattro task vengono rifatti da capo e le domande riverificate sul codice.
+
+- [ ] BK-18 — Se Stripe fallisce dopo il salvataggio di booking+guest, cancellare entrambi i record (niente PII) oppure lasciare il booking `Cancelled` per audit? — default: cancellare booking+guest (minimizzazione GDPR, A3-33) — 2026-09-25
+- [ ] BK-18 — Pulire anche i `Guest` orfani già presenti in produzione, o solo impedire i nuovi? — default: solo prevenzione (niente backfill distruttivo) — 2026-09-25
+- [ ] PL-06 — Il 400 `staleDocuments` del backend non ha un `code` ProblemDetails stabile (`stale_documents`). Il FE lo riconosce dal campo `staleDocuments`. Va aggiunto il code lato BE? — default: riconoscimento dal campo, niente code inventato — 2026-09-25
+- [ ] PL-06 — Dopo la modifica del tipo operatore si apre la pagina piano. Un utente senza ruolo billing admin vede il blocco PL-12. Meglio tornare al profilo? — default: pagina piano come da A1-15 — 2026-09-25
+- [ ] MO-12 — `GET /api/properties/cin-compliance` è filtrato per owner (`GetOwnerCinComplianceAsync`), non per `HostScope`: un PropertyManager vede le proprietà in lista ma non il riepilogo CIN dell'org. Va allineato allo scope dell'org? — default: lasciato owner-only (fuori da A6-20) — 2026-09-25
+- [ ] PC-14 — `GET /api/bookings` resta un array non paginato per non rompere il contratto FE; A2-17 chiedeva la paginazione. Introdurla in un task dedicato (nuova forma della risposta o header Link)? — default: stesso array, filtro `HostScope` in una sola query — 2026-09-25
+
+### Sessione 2026-10-01
+
+- [ ] AMBIENTE — Il proxy di rete di questa sessione blocca ancora `istat.it`, `*.gov.it` e `dati.gov.it`. RS-6 resta bloccato. SU-04 viene implementato con import dei dati ufficiali da file CSV fornito dall'admin, come per le tabelle Alloggiati (CO-12), senza dati scritti a mano. — 2026-10-01
+
+- [ ] SU-16 — La pagina pubblica `/help/ical` (usata dalle impostazioni iCal dell'host) ha "Indietro" fisso verso `/app/supplier/calendar`, anche per gli host, e dal wizard di attivazione si perde lo step (#327). Correggerla con `navigate(-1)` e un fallback per contesto? — default: lasciata com'è (fuori da A4-32) — 2026-10-01
+- [ ] PL-06 — (conferma del dubbio Cursor) Il 400 `staleDocuments` (`UsersController.ToConsentError`) ha solo `error` (testo italiano inline) e `staleDocuments`, senza `code` ProblemDetails né messaggio localizzato. Serve un piccolo task BE per un code stabile `stale_documents` + resx? — default: il FE lo riconosce dal campo — 2026-10-01
+- [ ] PL-06 — Il backend valida `planTier` ma lo ignora anche al primo onboarding: il selettore del piano nell'onboarding è solo decorativo (A1-03/FD-18). Toglierlo o renderlo effettivo (checkout)? — default: invariato — 2026-10-01
+- [ ] BK-19 — Verificare nel dashboard Stripe (test e live) che gli endpoint webhook platform e connect siano sulla API version `2025-12-15.clover`, quella dell'SDK. — default: tolleranza attiva, con log della versione ricevuta. La firma resta sempre verificata. — 2026-10-01
+- [ ] PL-07 — Il nuovo converter JSON degli enum accetta ancora il numero di un valore dichiarato (es. `1` = LongTerm), per non rompere i client attuali. I valori non dichiarati danno 400. Accettare solo i nomi? — default: numeri dichiarati accettati (basta `allowIntegerValues: false` per cambiare) — 2026-10-01
+- [ ] PL-07 — L'upload documenti in `PropertiesController` risponde ancora `BadRequest({error})` invece di ProblemDetails (fuori perimetro). Da allineare in FN-01? — default: invariato — 2026-10-01
+- [ ] MO-09 — Il backend accetta il check-out anticipato, prima della data di partenza, senza nessun controllo. L'app ora mostra un avviso e chiede una conferma esplicita. Serve anche un controllo lato server (rifiuto, oppure conferma obbligatoria)? — default: nessuna modifica al backend — 2026-10-01
+- [ ] MO-10 — Il finding chiedeva la scelta del fornitore con punteggio (`match-supplier`), ma quell'endpoint è dietro il flag AI spento (D11). L'app fa la stessa scelta manuale del web. Inoltre l'API fornitori non espone prezzi, quindi in app non se ne mostrano. Va bene così? — default: scelta manuale, senza prezzi — 2026-10-01
+
+---
+
+## Chiuse
+
+- [x] FD-19 — OK alla rimozione dei file di scarto? → **Sì** ("ok rimuovi", 2026-10-01). Rimossi `.idea/`, `StripeWebhookHandler.cs.bak`, `AddContextAuthorization.sql`, le 3 classi vuote in `Payments/`, `Casazen.Web.http` e `.claude/settings.local.json`. Corretto anche `.gitignore`: i commenti sulla stessa riga impedivano di ignorare `settings.local.json` e `opencode.json`. Nota: chi aveva un `.claude/settings.local.json` personale lo vedrà sparire al pull; basta ricrearlo, ora è ignorato. — 2026-10-01
+- [x] PR — Come portare i commit del branch `claude/app-analysis-fixes-plan-p0mx0a` su `develop`? → **Risolta**: mergiato con le PR casazen/backend#451, casazen/frontend#209 e casazen/mobile#5. I 9 task interrotti vengono ripresi sul nuovo branch `claude/sleepy-edison-oil8ru`. — 2026-10-01
 
 ---
 

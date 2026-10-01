@@ -12,16 +12,14 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// Public SEO compliance pages and tourist tax calculator (US-020 #258).
 /// AllowAnonymous: marketing/SEO pages must be indexable without auth; no PII collected (AC2, AC3, AC8).
+/// A page is public only with a revision approved by an admin, and it shows that revision, never a newer draft, in every
+/// environment (SE-01, A8-04, A8-05): drafts are read in the admin SEO dashboard.
 /// </summary>
 [ApiController]
 [Route("api/public")]
 [AllowAnonymous]
-public class PublicContentController(
-    ISeoContentService seoContentService,
-    IWebHostEnvironment environment) : ControllerBase
+public class PublicContentController(ISeoContentService seoContentService) : ControllerBase
 {
-    private bool AllowDraftPages() =>
-        environment.IsStaging() || environment.IsDevelopment() || environment.EnvironmentName == "Testing";
 
     /// <summary>
     /// Hub of the published pages (SE-02, A8-02): the same pages as the sitemap, linked from the public footer so that
@@ -40,11 +38,7 @@ public class PublicContentController(
         string comuneSlug,
         CancellationToken cancellationToken)
     {
-        var page = await seoContentService.GetComplianceGuideAsync(
-            regionSlug,
-            comuneSlug,
-            AllowDraftPages(),
-            cancellationToken);
+        var page = await seoContentService.GetComplianceGuideAsync(regionSlug, comuneSlug, cancellationToken);
 
         return page is null ? NotFound() : Ok(page);
     }
@@ -56,10 +50,7 @@ public class PublicContentController(
         string comuneSlug,
         CancellationToken cancellationToken)
     {
-        var page = await seoContentService.GetTouristTaxPageAsync(
-            comuneSlug,
-            AllowDraftPages(),
-            cancellationToken);
+        var page = await seoContentService.GetTouristTaxPageAsync(comuneSlug, cancellationToken);
 
         return page is null ? NotFound() : Ok(page);
     }

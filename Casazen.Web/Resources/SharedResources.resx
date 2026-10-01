@@ -36,6 +36,21 @@
   <data name="UserInactiveRoleChange" xml:space="preserve">
     <value>L'utente è disattivato: riattivalo prima di cambiarne il ruolo.</value>
   </data>
+  <data name="UserRoleNotManageable" xml:space="preserve">
+    <value>Ruolo sconosciuto o non gestibile dall'amministratore: {0}.</value>
+  </data>
+  <data name="UserLastActiveAdminRoleChange" xml:space="preserve">
+    <value>Non puoi togliere il ruolo Amministratore all'ultimo amministratore attivo: nomina prima un altro amministratore.</value>
+  </data>
+  <data name="UserRoleUnknown" xml:space="preserve">
+    <value>Ruolo sconosciuto.</value>
+  </data>
+  <data name="RentalTypeUnknown" xml:space="preserve">
+    <value>Tipo di affitto sconosciuto.</value>
+  </data>
+  <data name="EnumValueInvalid" xml:space="preserve">
+    <value>Valore non ammesso. Valori consentiti: {0}.</value>
+  </data>
   <data name="UserDeactivated" xml:space="preserve">
     <value>Utente disattivato: CasaZen rifiuta ogni sua richiesta e su Auth0 l'account è bloccato, senza ruoli.</value>
   </data>
@@ -380,6 +395,33 @@
   </data>
   <data name="OrgDomainSubdomainsNotConfigured" xml:space="preserve">
     <value>I sottodomini CasaZen non sono ancora disponibili: usa il percorso CasaZen o un dominio personalizzato.</value>
+  </data>
+  <data name="OrgNameRequired" xml:space="preserve">
+    <value>Il nome dell'organizzazione è obbligatorio.</value>
+  </data>
+  <data name="OrgNameTooLong" xml:space="preserve">
+    <value>Il nome dell'organizzazione non può superare i 200 caratteri.</value>
+  </data>
+  <data name="OrgSlugRequired" xml:space="preserve">
+    <value>L'indirizzo web (slug) è obbligatorio.</value>
+  </data>
+  <data name="OrgSlugTooLong" xml:space="preserve">
+    <value>L'indirizzo web (slug) non può superare i 100 caratteri.</value>
+  </data>
+  <data name="OrgContactEmailRequired" xml:space="preserve">
+    <value>L'email di contatto è obbligatoria.</value>
+  </data>
+  <data name="OrgContactEmailTooLong" xml:space="preserve">
+    <value>L'email di contatto non può superare i 255 caratteri.</value>
+  </data>
+  <data name="OrgSlugInvalid" xml:space="preserve">
+    <value>Questo indirizzo web (slug) non è valido: usa da {0} a {1} caratteri tra lettere, numeri e trattini.</value>
+  </data>
+  <data name="OrgSlugReserved" xml:space="preserve">
+    <value>Questo indirizzo web (slug) è riservato alla piattaforma: scegline un altro.</value>
+  </data>
+  <data name="OrgSlugTaken" xml:space="preserve">
+    <value>Questo indirizzo web (slug) è già usato, o è stato usato, da un'altra organizzazione.</value>
   </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
@@ -1218,6 +1260,21 @@
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, oppure period=Last30Days.</value>
+  </data>
+  <data name="SeoCounselRequired" xml:space="preserve">
+    <value>Questa pagina è tra le prime {0} e può essere pubblicata solo dopo la revisione legale: conferma che il testo è stato revisionato.</value>
+  </data>
+  <data name="SeoRevisionNotPublishable" xml:space="preserve">
+    <value>Questa revisione non contiene un testo pubblicabile (contenuto non generato, vuoto o non valido): rigenera la pagina.</value>
+  </data>
+  <data name="SeoRevisionOutdated" xml:space="preserve">
+    <value>Nel frattempo è arrivata una revisione più recente: ricarica la pagina e rileggi il testo prima di approvarlo.</value>
+  </data>
+  <data name="SeoRevisionAlreadyPublished" xml:space="preserve">
+    <value>Questa revisione è già quella pubblicata.</value>
+  </data>
+  <data name="SeoPageNotPublished" xml:space="preserve">
+    <value>La pagina non è pubblicata: non c'è niente da ritirare.</value>
   </data>
   <data name="CheckoutWizardNotStarted" xml:space="preserve">
     <value>Avvia il check-out prima di completarlo: apri di nuovo la procedura di check-out del soggiorno.</value>

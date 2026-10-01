@@ -35,6 +35,7 @@ public class AppDbContext(
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
+    public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
@@ -71,6 +72,7 @@ public class AppDbContext(
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
+    public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
@@ -380,6 +382,43 @@ public class AppDbContext(
             .HasForeignKey(r => r.PageId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // SE-01: the public sees only the approved revision; deleting it makes the page non-public.
+        modelBuilder.Entity<SeoContentPage>()
+            .HasOne(p => p.PublishedRevision)
+            .WithMany()
+            .HasForeignKey(p => p.PublishedRevisionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<SeoContentRevision>()
+            .Property(r => r.ContentStatus)
+            .HasConversion<string>()
+            .HasMaxLength(40)
+            .HasDefaultValue(SeoContentStatus.Generated)
+            .HasSentinel((SeoContentStatus)(-1));
+
+        modelBuilder.Entity<SeoContentRevision>()
+            .HasIndex(r => new { r.PageId, r.GeneratedAt });
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .Property(e => e.Action)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .HasOne<SeoContentPage>()
+            .WithMany()
+            .HasForeignKey(e => e.PageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .HasOne<SeoContentRevision>()
+            .WithMany()
+            .HasForeignKey(e => e.RevisionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SeoContentReviewEvent>()
+            .HasIndex(e => new { e.PageId, e.OccurredAt });
+
         modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
 
         // PricingAdapterConfig → Property (1-to-1)
@@ -586,6 +625,16 @@ public class AppDbContext(
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
+
+        // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasOne(a => a.Org)
+            .WithMany()
+            .HasForeignKey(a => a.OrgId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasIndex(a => a.OrgId);
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)

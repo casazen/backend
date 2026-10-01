@@ -38,6 +38,6 @@ public static class RateLimitPolicies
     /// <summary>Public iCal export feeds polled by the OTAs.</summary>
     public const string PublicIcal = "PublicIcal";
 
-    /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>, <c>api/auth/register</c>).</summary>
+    /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>).</summary>
     public const string PublicRegistration = "PublicRegistration";
 }

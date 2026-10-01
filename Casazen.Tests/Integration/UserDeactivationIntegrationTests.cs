@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -261,6 +262,24 @@ public class UserDeactivationIntegrationTests(UserDeactivationIntegrationTests.D
         var response = await admin.PutAsJsonAsync($"/api/users/{Uri.EscapeDataString(targetId)}/role", new { role = "Admin" });
 
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, UserActivationErrors.UserInactive);
+        Assert.Equal(UserRole.PropertyOwner, (await LoadUserAsync(targetId)).Role);
+        factory.Auth0.Verify(a => a.AssignRoleAsync(targetId, It.IsAny<UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// PL-07 (A1-35, A7-31): <c>Enum.TryParse</c> alone accepts a numeric string with no declared member ("99" is
+    /// outside UserRole's 0-7 range) and would otherwise reach Auth0 sync and persistence as an undefined role.
+    /// </summary>
+    [PostgresFact]
+    public async Task ChangeRole_NumericRoleValue_Returns400ValidationErrorWithoutCallingAuth0()
+    {
+        var targetId = NewUserId("role-numeric");
+        await SeedUserAsync(targetId, UserRole.PropertyOwner);
+        using var admin = factory.CreateAuthenticatedClient(NewUserId("admin"), roles: "Admin");
+
+        var response = await admin.PutAsJsonAsync($"/api/users/{Uri.EscapeDataString(targetId)}/role", new { role = "99" });
+
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, ProblemCodes.ValidationError);
         Assert.Equal(UserRole.PropertyOwner, (await LoadUserAsync(targetId)).Role);
         factory.Auth0.Verify(a => a.AssignRoleAsync(targetId, It.IsAny<UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }

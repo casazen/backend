@@ -1357,6 +1357,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<bool>("ContactEmailPublic")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1483,6 +1486,25 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"Subdomain\" IS NOT NULL");
 
                     b.ToTable("Orgs");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
+                {
+                    b.Property<string>("Slug")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Slug");
+
+                    b.HasIndex("OrgId");
+
+                    b.ToTable("OrgSlugAliases");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>
@@ -2154,6 +2176,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsPaused")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("Latitude")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -2181,6 +2206,9 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.PrimitiveCollection<List<string>>("PhotoUrls")
                         .IsRequired()
@@ -3051,6 +3079,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("PublishedRevisionId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("RegionCode")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -3073,10 +3104,53 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("LegalReviewStatus");
 
+                    b.HasIndex("PublishedRevisionId");
+
                     b.HasIndex("ComuneCode", "PageType")
                         .IsUnique();
 
                     b.ToTable("SeoContentPages");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SeoContentReviewEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("CounselApproved")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RevisionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RevisionId");
+
+                    b.HasIndex("PageId", "OccurredAt");
+
+                    b.ToTable("SeoContentReviewEvents");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentRevision", b =>
@@ -3092,6 +3166,13 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ContentStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("Generated");
+
                     b.Property<DateTime>("GeneratedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3101,6 +3182,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("PromptTokens")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PromptVersion")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("SourceDataVersion")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -3108,7 +3193,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PageId");
+                    b.HasIndex("PageId", "GeneratedAt");
 
                     b.ToTable("SeoContentRevisions");
                 });
@@ -4417,6 +4502,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Party");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Org");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -4761,6 +4857,30 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SeoContentPage", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SeoContentRevision", "PublishedRevision")
+                        .WithMany()
+                        .HasForeignKey("PublishedRevisionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("PublishedRevision");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SeoContentReviewEvent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SeoContentPage", null)
+                        .WithMany()
+                        .HasForeignKey("PageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.SeoContentRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SeoContentRevision", b =>

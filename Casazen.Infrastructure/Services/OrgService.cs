@@ -1,9 +1,11 @@
-using System.Text.RegularExpressions;
-using Casazen.Core.Entities;
+﻿using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -27,8 +29,41 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
             : await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
     }
 
-    public Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default) =>
-        dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Slug == slug && o.IsActive, cancellationToken);
+    /// <remarks>
+    /// Also resolves a previous slug of the org (<see cref="OrgSlugAlias"/>, PL-04): links shared before a slug change
+    /// keep working. The returned org carries its current slug, so the site can redirect to the canonical address.
+    /// </remarks>
+    public async Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default)
+    {
+        var orgId = await ResolveOrgIdBySlugAsync(dbContext, slug, cancellationToken);
+        return orgId is null
+            ? null
+            : await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId && o.IsActive, cancellationToken);
+    }
+
+    /// <summary>
+    /// The org whose current or previous public slug is <paramref name="slug"/>, or <c>null</c> (PL-04, A1-23). Shared by
+    /// every anonymous lookup that receives an org slug from a public link.
+    /// </summary>
+    internal static async Task<Guid?> ResolveOrgIdBySlugAsync(
+        AppDbContext dbContext,
+        string slug,
+        CancellationToken cancellationToken)
+    {
+        var current = await dbContext.Orgs.AsNoTracking()
+            .Where(o => o.Slug == slug)
+            .Select(o => (Guid?)o.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is not null)
+            return current;
+
+        // IgnoreQueryFilters: the slug comes from a public link, the org is not known yet (anonymous or another
+        // tenant's visitor); the alias only maps the link to its org, the caller then applies its own checks.
+        return await dbContext.OrgSlugAliases.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.Slug == slug)
+            .Select(a => (Guid?)a.OrgId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 
     public Task<Org?> GetByVerifiedCustomDomainAsync(string host, CancellationToken cancellationToken = default) =>
         dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o =>
@@ -52,8 +87,9 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
     /// <remarks>
     /// Race-safe on the first access (A1-14): web, mobile and dashboard widgets provision in parallel. On
     /// PostgreSQL the check and the insert run in one transaction holding an advisory lock on the user (one
-    /// org per user) and one on the base slug (users whose ids sanitize to the same slug). The loser of the
-    /// race waits, then finds the org linked by the winner and returns it.
+    /// org per user). The loser of the race waits, then finds the org linked by the winner and returns it.
+    /// The new org gets a neutral random slug (A1-23): never the identity-provider id; the host chooses a readable
+    /// one in the org settings (<see cref="UpdateSettingsAsync"/>).
     /// </remarks>
     public async Task<Org> EnsureOrgForUserAsync(
         string userId,
@@ -66,12 +102,10 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         if (linked is not null)
             return linked;
 
-        var baseSlug = BaseSlugFor(userId);
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             dbContext,
             cancellationToken,
-            (PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId),
-            (PostgresAdvisoryLocks.Scope.OrgSlug, baseSlug));
+            (PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId));
 
         // Re-read under the lock: a parallel request may have linked an org while this one waited.
         linked = await GetLinkedOrgAsync(userId, cancellationToken);
@@ -96,7 +130,7 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
                 user.SupplierOrgId = previousOrgId;
         }
 
-        var slug = await AllocateUniqueSlugAsync(baseSlug, cancellationToken);
+        var slug = await AllocateNeutralSlugAsync(cancellationToken);
         var orgName = string.IsNullOrWhiteSpace(displayName) ? "La mia organizzazione" : displayName.Trim();
         var org = new Org
         {
@@ -195,6 +229,137 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         return org;
     }
 
+    /// <remarks>
+    /// Slug changes run in one transaction holding advisory locks on the new and the old value (same
+    /// <see cref="PostgresAdvisoryLocks.Scope.OrgSlug"/> key space, taken in a stable order): two orgs racing for the
+    /// same slug never both get it, and the unique index on <c>Orgs.Slug</c> (23505 → 409) backs the check. The old
+    /// slug becomes an <see cref="OrgSlugAlias"/> of the org, so shared links keep working and nobody else can take it.
+    /// An unchanged slug is never revalidated: an org keeps a legacy slug until it chooses a new one.
+    /// </remarks>
+    public async Task<Org?> UpdateSettingsAsync(
+        Guid orgId,
+        string name,
+        string slug,
+        string contactEmail,
+        bool contactEmailPublic,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return null;
+
+        var trimmedName = name.Trim();
+        var normalizedEmail = contactEmail.Trim();
+        var newSlug = IsCurrentSlug(org, slug) ? org.Slug : OrgSlugHelper.NormalizeRequired(slug);
+        var previousSlug = org.Slug;
+        var slugChanged = !string.Equals(previousSlug, newSlug, StringComparison.Ordinal);
+
+        // Disposing an uncommitted transaction rolls it back, so a thrown DomainException below needs no manual
+        // cleanup; null when the slug is unchanged (no lock needed) or the provider is not PostgreSQL.
+        var slugLocks = new[] { previousSlug, newSlug }
+            .Order(StringComparer.Ordinal)
+            .Select(value => (PostgresAdvisoryLocks.Scope.OrgSlug, value))
+            .ToArray();
+        await using var transaction = slugChanged
+            ? await PostgresAdvisoryLocks.BeginLockedTransactionAsync(dbContext, cancellationToken, slugLocks)
+            : null;
+
+        if (slugChanged)
+        {
+            if (await IsSlugTakenByAnotherOrgAsync(orgId, newSlug, cancellationToken))
+                throw new DomainConflictException(OrgSlugHelper.TakenCode, "OrgSlugTaken");
+
+            // IgnoreQueryFilters: the org is identified explicitly (aliases of this org only); the caller's tenant
+            // filter would hide nothing here, but the update must not depend on the request's tenant context.
+            var ownAliases = await dbContext.OrgSlugAliases.IgnoreQueryFilters()
+                .Where(a => a.OrgId == orgId && (a.Slug == newSlug || a.Slug == previousSlug))
+                .ToListAsync(cancellationToken);
+
+            // Back to a previous slug: it is the current one again, no longer an alias.
+            dbContext.OrgSlugAliases.RemoveRange(ownAliases.Where(a => a.Slug == newSlug));
+            if (!string.IsNullOrEmpty(previousSlug) && ownAliases.All(a => a.Slug != previousSlug))
+            {
+                dbContext.OrgSlugAliases.Add(new OrgSlugAlias
+                {
+                    Slug = previousSlug,
+                    OrgId = orgId,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
+
+            org.Slug = newSlug;
+        }
+
+        org.Name = trimmedName;
+        org.DisplayName = trimmedName;
+        org.ContactEmail = normalizedEmail;
+        org.ContactEmailPublic = contactEmailPublic;
+        org.UpdatedAt = DateTime.UtcNow;
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new DomainConflictException(OrgSlugHelper.TakenCode, "OrgSlugTaken");
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        return org;
+    }
+
+    public async Task<OrgSlugAvailability?> CheckSlugAvailabilityAsync(
+        Guid orgId,
+        string slug,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return null;
+
+        if (IsCurrentSlug(org, slug))
+            return new OrgSlugAvailability(org.Slug, true, null);
+
+        string normalized;
+        try
+        {
+            normalized = OrgSlugHelper.NormalizeRequired(slug);
+        }
+        catch (DomainRuleException ex)
+        {
+            return new OrgSlugAvailability(OrgSlugHelper.Sanitize(slug), false, ex.Code);
+        }
+
+        if (string.Equals(normalized, org.Slug, StringComparison.Ordinal))
+            return new OrgSlugAvailability(normalized, true, null);
+
+        return await IsSlugTakenByAnotherOrgAsync(orgId, normalized, cancellationToken)
+            ? new OrgSlugAvailability(normalized, false, OrgSlugHelper.TakenCode)
+            : new OrgSlugAvailability(normalized, true, null);
+    }
+
+    /// <summary>The value submitted is the org's current slug as is (also a legacy slug the rules would now refuse).</summary>
+    private static bool IsCurrentSlug(Org org, string? slug) =>
+        string.Equals(slug?.Trim(), org.Slug, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Another org uses <paramref name="slug"/>: as its current slug, as a previous slug (alias) or as its subdomain,
+    /// which would shadow this org's slug-as-subdomain fallback (<see cref="GetBySubdomainOrSlugAsync"/>).
+    /// </summary>
+    private async Task<bool> IsSlugTakenByAnotherOrgAsync(Guid orgId, string slug, CancellationToken cancellationToken)
+    {
+        if (await dbContext.Orgs.AsNoTracking()
+                .AnyAsync(o => o.Id != orgId && (o.Slug == slug || o.Subdomain == slug), cancellationToken))
+            return true;
+
+        // IgnoreQueryFilters: the aliases of every org reserve their value, not only the caller's.
+        return await dbContext.OrgSlugAliases.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(a => a.OrgId != orgId && a.Slug == slug, cancellationToken);
+    }
+
     public async Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default)
@@ -210,32 +375,18 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         return orgs.ToDictionary(o => o.Id);
     }
 
-    private static string BaseSlugFor(string userId)
+    /// <summary>
+    /// A neutral slug not used by any org, now or as a previous slug. A collision of the random part is practically
+    /// impossible; the unique index on <c>Orgs.Slug</c> still refuses a duplicate.
+    /// </summary>
+    private async Task<string> AllocateNeutralSlugAsync(CancellationToken cancellationToken)
     {
-        var baseSlug = $"org-{SanitizeSlugPart(userId)}";
-        return baseSlug.Length > 90 ? baseSlug[..90] : baseSlug;
-    }
-
-    private async Task<string> AllocateUniqueSlugAsync(string baseSlug, CancellationToken cancellationToken)
-    {
-        var candidate = baseSlug;
-        var suffix = 0;
-        while (await dbContext.Orgs.AnyAsync(o => o.Slug == candidate, cancellationToken))
+        while (true)
         {
-            suffix++;
-            candidate = $"{baseSlug}-{suffix}";
+            var candidate = OrgSlugHelper.GenerateNeutral();
+            if (!await dbContext.Orgs.AnyAsync(o => o.Slug == candidate, cancellationToken) &&
+                !await dbContext.OrgSlugAliases.IgnoreQueryFilters().AnyAsync(a => a.Slug == candidate, cancellationToken))
+                return candidate;
         }
-
-        return candidate;
     }
-
-    private static string SanitizeSlugPart(string value)
-    {
-        var sanitized = SlugSanitizer().Replace(value.ToLowerInvariant(), "-");
-        sanitized = sanitized.Trim('-');
-        return string.IsNullOrWhiteSpace(sanitized) ? "user" : sanitized;
-    }
-
-    [GeneratedRegex(@"[^a-z0-9]+")]
-    private static partial Regex SlugSanitizer();
 }
