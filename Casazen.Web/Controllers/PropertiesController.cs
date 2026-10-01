@@ -51,11 +51,15 @@ public class PropertiesController(
     ILogger<PropertiesController> logger) : ControllerBase
 {
     /// <summary>
-    /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role, otherwise the ones
-    /// they own, filtered in SQL. Shared by short-rent hosts and long-term landlords (A7-06).
+    /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role (a PropertyManager of
+    /// the org sees the properties whose pushes it receives, MO-12, A6-20), otherwise the ones they own, filtered in SQL.
+    /// Shared by short-rent hosts and long-term landlords (A7-06). Each row is the property record
+    /// (<see cref="PropertyResponse"/>), never the entity.
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Property>>> GetAll()
+    [ProducesResponseType(typeof(IEnumerable<PropertyResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll()
     {
         // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
@@ -70,7 +74,7 @@ public class PropertiesController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var properties = await propertyService.GetPropertiesAsync(scope);
-        return Ok(properties);
+        return Ok(properties.Select(PropertyResponse.From).ToList());
     }
 
     /// <summary>
@@ -335,8 +339,14 @@ public class PropertiesController(
     private static bool IsCityChange(string currentCity, string requestedCity) =>
         !string.Equals(currentCity.Trim(), requestedCity.Trim(), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// CIN status of the properties the caller sees in <c>GET /api/properties</c> (TN-3 scope, MO-12): the owner's own,
+    /// every property of the org for an org-wide role, so a PropertyManager gets the summary of the properties it handles.
+    /// </summary>
     [HttpGet("cin-compliance")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(CinComplianceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CinComplianceResponse>> GetCinCompliance(
         [FromQuery] string? cinStatus,
         [FromQuery] int page = 1,
@@ -346,12 +356,16 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 200) pageSize = 50;
 
         try
         {
-            var result = await propertyService.GetOwnerCinComplianceAsync(userId, cinStatus, page, pageSize);
+            var result = await propertyService.GetCinComplianceAsync(scope, cinStatus, page, pageSize);
             return Ok(new CinComplianceResponse
             {
                 Items = result.Items.Select(i => new CinComplianceItemResponse

@@ -121,12 +121,15 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
     }
 
-    public async Task<IEnumerable<Property>> GetByOwnerForComplianceAsync(string ownerId)
+    public async Task<IEnumerable<Property>> GetByScopeForComplianceAsync(HostScope scope)
     {
-        return await context.Properties
-            .Where(p => p.OwnerId == ownerId)
-            .OrderBy(p => p.Name)
-            .ToListAsync();
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId);
+        if (scope.OwnerId is { } ownerId)
+            query = query.Where(p => p.OwnerId == ownerId);
+
+        return await query.OrderBy(p => p.Name).ToListAsync();
     }
 
     public async Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId)
