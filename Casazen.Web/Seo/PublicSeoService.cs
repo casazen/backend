@@ -25,7 +25,7 @@ namespace Casazen.Web.Seo;
 /// <item>a property page: the property is published, otherwise the answer is a real 404;</item>
 /// <item>the request came on the web app's own host or on a host that resolves to the same org (an org subdomain or a
 /// verified custom domain, BK-16). Any other host, such as a custom domain still waiting for its verification or a
-/// preview deployment, gets <c>noindex</c>: <paramref name="requestHost"/> is only compared, never written into a page.</item>
+/// preview deployment, gets <c>noindex</c>: the request host is only compared, never written into a page.</item>
 /// </list>
 /// The texts follow the culture of the request (Italian by default, which is what the web app asks for); the document says
 /// so in its <c>lang</c>.

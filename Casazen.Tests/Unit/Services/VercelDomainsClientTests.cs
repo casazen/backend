@@ -166,7 +166,7 @@ public class VercelDomainsClientTests
     {
         var longCode = new string('a', 200);
         _http.When(HttpMethod.Get, $"{Base}/v9/*")
-            .Respond(HttpStatusCode.BadRequest, "application/json", $$"""{"error":{"code":"bad code!<script>{{longCode}}"}}""");
+            .Respond(HttpStatusCode.BadRequest, "application/json", $$$"""{"error":{"code":"bad code!<script>{{{longCode}}}"}}""");
 
         var result = await CreateClient().GetDomainAsync("www.example.it");
 
@@ -266,7 +266,7 @@ public class VercelDomainsClientTests
     public async Task AnyCall_Failing_NeverLogsTheTokenOrTheProviderMessage()
     {
         _http.When(HttpMethod.Get, $"{Base}/v9/*")
-            .Respond(HttpStatusCode.Forbidden, "application/json", $$"""{"error":{"code":"forbidden","message":"token {{Token}} is not allowed"}}""");
+            .Respond(HttpStatusCode.Forbidden, "application/json", $$$"""{"error":{"code":"forbidden","message":"token {{{Token}}} is not allowed"}}""");
         _http.When(HttpMethod.Post, $"{Base}/v10/*").Throw(new HttpRequestException("no route to host"));
         var client = CreateClient();
 

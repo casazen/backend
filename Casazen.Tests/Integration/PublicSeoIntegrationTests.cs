@@ -642,14 +642,15 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task GetGuide_ApprovedRevision_IsServedAsAnIndexableArticle()
     {
-        await SeedGuideAsync("013075", "como", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p><script>alert(1)</script>");
+        // Own comune: a page is seeded once per comune and shared by the tests of this class.
+        await SeedGuideAsync("013040", "bellagio", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p><script>alert(1)</script>");
 
-        var response = await GetAsync("/api/public/seo/guides/lombardia/como");
+        var response = await GetAsync("/api/public/seo/guides/lombardia/bellagio");
         var html = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("<meta property=\"og:type\" content=\"article\">", html);
-        Assert.Contains($"<link rel=\"canonical\" href=\"{PublicSite}/p/affitti-brevi/lombardia/como\">", html);
+        Assert.Contains($"<link rel=\"canonical\" href=\"{PublicSite}/p/affitti-brevi/lombardia/bellagio\">", html);
         Assert.Contains("content=\"index,follow", html);
         Assert.Contains("<h2>CIN</h2>", html);
         Assert.Contains("Il CIN è obbligatorio.", html);
@@ -673,9 +674,10 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task GetTouristTaxPage_WithoutARateInForce_IsNoindexLikeTheSitemap()
     {
-        await SeedGuideAsync("013075", "como", "<p>Calcolatore</p>", SeoPageType.TouristTaxCalc, slugPrefix: "tassa-soggiorno");
+        // Palermo: no rate is seeded for it (Como has one), so no rate is in force.
+        await SeedGuideAsync("082053", "palermo", "<p>Calcolatore</p>", SeoPageType.TouristTaxCalc, slugPrefix: "tassa-soggiorno");
 
-        var response = await GetAsync("/api/public/seo/tourist-tax/como");
+        var response = await GetAsync("/api/public/seo/tourist-tax/palermo");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("content=\"noindex,nofollow\"", await response.Content.ReadAsStringAsync());
@@ -718,7 +720,9 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
 
     // ── Helpers ─────────────────────────────────────────────────────────────────────
 
-    private Task<HttpResponseMessage> GetAsync(string url) => _factory.CreateClient().GetAsync(url);
+    // No redirect following: a 301 is the answer under test, not a request to repeat.
+    private Task<HttpResponseMessage> GetAsync(string url) =>
+        _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false }).GetAsync(url);
 
     private async Task<string> GetHtmlAsync(string url)
     {
@@ -806,7 +810,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
             Name = name,
             Slug = $"casa-{Guid.NewGuid():N}",
             Description = description,
-            Address = "Via Segreta 1",
+            Address = $"Via Segreta {Guid.NewGuid():N}",
             City = city,
             PostalCode = "22100",
             Latitude = 45.81m,

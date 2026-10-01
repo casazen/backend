@@ -30,10 +30,10 @@ public class DomainRecheckServiceTests
 
     public DomainRecheckServiceTests()
     {
-        _entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<Org>())).Returns(PlanTier.Pro);
+        _entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns(PlanTier.Pro);
         _vercel.SetupGet(v => v.IsConfigured).Returns(true);
-        _verification.Setup(v => v.VerifyAsync(It.IsAny<Org>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Org org, CancellationToken _) => new DomainVerificationResult(
+        _verification.Setup(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgEntity org, CancellationToken _) => new DomainVerificationResult(
                 org.DomainVerificationStatus, org.CustomDomain!, _clock.GetUtcNow().UtcDateTime, org.DomainStatusDetail));
     }
 
@@ -48,7 +48,7 @@ public class DomainRecheckServiceTests
         var summary = await CreateService(db).RunAsync();
 
         Assert.Equal(1, summary.Checked);
-        _verification.Verify(v => v.VerifyAsync(It.Is<Org>(o => o.CustomDomain == "a.example.it"), It.IsAny<CancellationToken>()), Times.Once);
+        _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "a.example.it"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -101,7 +101,7 @@ public class DomainRecheckServiceTests
         var summary = await CreateService(db).RunAsync();
 
         Assert.Equal(1, summary.Checked);
-        _verification.Verify(v => v.VerifyAsync(It.Is<Org>(o => o.CustomDomain == "old.example.it"), It.IsAny<CancellationToken>()), Times.Never);
+        _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "old.example.it"), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class DomainRecheckServiceTests
         var summary = await CreateService(db).RunAsync();
 
         Assert.Equal(0, summary.Checked);
-        _verification.Verify(v => v.VerifyAsync(It.IsAny<Org>(), It.IsAny<CancellationToken>()), Times.Never);
+        _verification.Verify(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -135,12 +135,12 @@ public class DomainRecheckServiceTests
     {
         await using var db = CreateDb();
         await SeedAsync(db, "lapsed.example.it", DomainVerificationStatus.Verified, checkedAt: Ago(hours: 30));
-        _entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<Org>())).Returns(PlanTier.Starter);
+        _entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns(PlanTier.Starter);
 
         var summary = await CreateService(db).RunAsync();
 
         Assert.Equal(0, summary.Checked);
-        _verification.Verify(v => v.VerifyAsync(It.IsAny<Org>(), It.IsAny<CancellationToken>()), Times.Never);
+        _verification.Verify(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -157,8 +157,8 @@ public class DomainRecheckServiceTests
 
         Assert.Equal(2, summary.Checked);
         // Null (never checked) sorts first, then the oldest.
-        _verification.Verify(v => v.VerifyAsync(It.Is<Org>(o => o.CustomDomain == "never.example.it"), It.IsAny<CancellationToken>()), Times.Once);
-        _verification.Verify(v => v.VerifyAsync(It.Is<Org>(o => o.CustomDomain == "a.example.it"), It.IsAny<CancellationToken>()), Times.Once);
+        _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "never.example.it"), It.IsAny<CancellationToken>()), Times.Once);
+        _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "a.example.it"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ─── Outcomes and isolation ────────────────────────────────────────────────────────────────────
@@ -170,8 +170,8 @@ public class DomainRecheckServiceTests
         await SeedAsync(db, "up.example.it", DomainVerificationStatus.Pending);
         await SeedAsync(db, "down.example.it", DomainVerificationStatus.Verified, checkedAt: Ago(hours: 30));
         await SeedAsync(db, "same.example.it", DomainVerificationStatus.Pending);
-        _verification.Setup(v => v.VerifyAsync(It.IsAny<Org>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Org org, CancellationToken _) => new DomainVerificationResult(
+        _verification.Setup(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgEntity org, CancellationToken _) => new DomainVerificationResult(
                 org.CustomDomain switch
                 {
                     "up.example.it" => DomainVerificationStatus.Verified,
@@ -195,13 +195,13 @@ public class DomainRecheckServiceTests
         await using var db = CreateDb();
         await SeedAsync(db, "boom.example.it", DomainVerificationStatus.Pending, checkedAt: null);
         await SeedAsync(db, "fine.example.it", DomainVerificationStatus.Pending, checkedAt: Ago(hours: 4));
-        _verification.Setup(v => v.VerifyAsync(It.Is<Org>(o => o.CustomDomain == "boom.example.it"), It.IsAny<CancellationToken>()))
+        _verification.Setup(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "boom.example.it"), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("dns exploded"));
 
         var summary = await CreateService(db).RunAsync();
 
         Assert.Equal(1, summary.Checked);
-        _verification.Verify(v => v.VerifyAsync(It.Is<Org>(o => o.CustomDomain == "fine.example.it"), It.IsAny<CancellationToken>()), Times.Once);
+        _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "fine.example.it"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -209,7 +209,7 @@ public class DomainRecheckServiceTests
     {
         await using var db = CreateDb();
         await SeedAsync(db, "a.example.it", DomainVerificationStatus.Pending);
-        _verification.Setup(v => v.VerifyAsync(It.IsAny<Org>(), It.IsAny<CancellationToken>()))
+        _verification.Setup(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CreateService(db).RunAsync());

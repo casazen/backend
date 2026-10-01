@@ -588,6 +588,10 @@ and **never takes a verified site down**.
 | A verified domain loses its records | demoted to `Failed` (host no longer served) after `PublicHost__FailuresBeforeDemotion` (2) consecutive failed checks, with the reason; it used to stay `Verified` for ever (A3-25) |
 | The host changes or drops the domain, or the org is deactivated | the domain is queued in the table `PendingDomainRemovals` and the job removes it from the Vercel project (a failed call is retried at the next run; a domain another org uses by then stays; the web app's own domain is never removed) |
 
+**Domains verified before BK-17** (by the ownership TXT alone) stay served. The first runs of `domain-recheck` check them: with the
+Vercel variables set the domain is added to the project (and kept `Verified` once Vercel accepts it); without them nothing changes
+(a verified site is never taken down for a platform setting); a domain whose TXT or DNS is gone is demoted after two checks.
+
 Whatever a check changes, the cached answers of the host are dropped at once (`resolve-host`, CORS), so a verified domain is served
 and a demoted one stops being served without waiting for the cache.
 

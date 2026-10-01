@@ -39,10 +39,10 @@ public sealed class PublicOrgSiteUrls(
                 return PublicSiteHosts.Normalize(org.CustomDomain);
 
             case PublicHostMode.CasazenSubdomain when hostOptions.Value.NormalizedBaseDomain is { } baseDomain:
-            {
-                var label = string.IsNullOrWhiteSpace(org.Subdomain) ? org.Slug : org.Subdomain;
-                return PublicSiteHosts.Normalize($"{label}.{baseDomain}");
-            }
+                {
+                    var label = string.IsNullOrWhiteSpace(org.Subdomain) ? org.Slug : org.Subdomain;
+                    return PublicSiteHosts.Normalize($"{label}.{baseDomain}");
+                }
 
             default:
                 return null;

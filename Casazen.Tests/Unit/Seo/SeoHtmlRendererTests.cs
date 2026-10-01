@@ -104,8 +104,8 @@ public class SeoHtmlRendererTests
         var html = SeoHtmlRenderer.Render(document);
 
         // The only <script> elements are the JSON-LD blocks; nothing else is markup written by the host.
-        Assert.Equal(1, Regex.Matches(html, "<script", RegexOptions.IgnoreCase).Count);
-        Assert.Equal(1, Regex.Matches(html, "</script>", RegexOptions.IgnoreCase).Count);
+        Assert.Single(Regex.Matches(html, "<script", RegexOptions.IgnoreCase));
+        Assert.Single(Regex.Matches(html, "</script>", RegexOptions.IgnoreCase));
         Assert.DoesNotContain("<script>alert", html);
         Assert.DoesNotContain("\" onload=\"", html);
         Assert.DoesNotContain("\" onerror=\"", html);

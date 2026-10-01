@@ -41,7 +41,8 @@ public sealed class VercelDomainsClient(
     public Task<VercelCallResult<bool>> RemoveDomainAsync(string domain, CancellationToken cancellationToken = default) =>
         SendAsync<bool>(HttpMethod.Delete, $"v9/projects/{Project}/domains/{Encode(domain)}", null, (_, _) => Task.FromResult(true), cancellationToken);
 
-    private string Project => Uri.EscapeDataString(options.Value.ProjectId!.Trim());
+    // Empty when not configured: SendAsync answers NotConfigured before any request is built from it.
+    private string Project => Uri.EscapeDataString(options.Value.ProjectId?.Trim() ?? string.Empty);
 
     private static string Encode(string domain) => Uri.EscapeDataString(domain);
 

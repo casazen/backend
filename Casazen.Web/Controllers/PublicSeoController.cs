@@ -32,8 +32,10 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
     /// <summary>Header of the 404 for a host that serves no org site (read by the crawler function).</summary>
     public const string UnknownHostHeader = "X-Seo-Host";
 
-    /// <summary>Landing page of an org's booking site.</summary>
-    /// <param name="host">Host the crawler used, as the web app saw it: decides whether the page may be indexed there.</param>
+    /// <summary>
+    /// Landing page of an org's booking site. <c>host</c> is the host the crawler used, as the web app saw it: it decides
+    /// whether the page may be indexed there.
+    /// </summary>
     [HttpGet("orgs/{orgSlug}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status301MovedPermanently)]

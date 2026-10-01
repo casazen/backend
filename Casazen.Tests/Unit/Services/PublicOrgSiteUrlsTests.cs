@@ -31,14 +31,14 @@ public class PublicOrgSiteUrlsTests
         DomainVerificationStatus status = DomainVerificationStatus.Pending,
         string? subdomain = null,
         PlanTier tier = PlanTier.Starter) => new()
-    {
-        Slug = "villa-rossi",
-        PublicHostMode = mode,
-        CustomDomain = customDomain,
-        DomainVerificationStatus = status,
-        Subdomain = subdomain,
-        PlanTier = tier,
-    };
+        {
+            Slug = "villa-rossi",
+            PublicHostMode = mode,
+            CustomDomain = customDomain,
+            DomainVerificationStatus = status,
+            Subdomain = subdomain,
+            PlanTier = tier,
+        };
 
     [Fact]
     public void OwnHost_PathMode_IsNullAndTheCanonicalIsThePlatformPath()

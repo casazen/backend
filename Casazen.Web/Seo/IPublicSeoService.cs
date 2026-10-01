@@ -19,6 +19,7 @@ public enum SeoPageStatus
     UnknownHost,
 }
 
+/// <param name="Status">How the page is answered.</param>
 /// <param name="Html">The document to serve; for a redirect, a minimal one; for "not found", a noindex page.</param>
 /// <param name="RedirectPath">Same-host path of the canonical page, only for <see cref="SeoPageStatus.MovedPermanently"/>.</param>
 public sealed record SeoPageResult(SeoPageStatus Status, string Html, string? RedirectPath = null);
@@ -33,7 +34,9 @@ public sealed record HostSitemap(bool IsOrgHost, string? Xml);
 public interface IPublicSeoService
 {
     /// <summary>Landing page of an org's booking site (<c>/book/{slug}</c>).</summary>
+    /// <param name="orgSlug">Slug of the org.</param>
     /// <param name="requestHost">Host the crawler used (the Host header the web app received); <c>null</c> when unknown.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
     Task<SeoPageResult> RenderOrgAsync(string orgSlug, string? requestHost, CancellationToken cancellationToken = default);
 
     /// <summary>A property page (<c>/book/{slug}/property/{slug or id}</c>): published properties only, 404 otherwise.</summary>

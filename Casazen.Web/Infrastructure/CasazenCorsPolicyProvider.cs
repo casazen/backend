@@ -12,6 +12,7 @@ public interface ICorsOriginSource
 {
     /// <param name="origin">The <c>Origin</c> header of the request.</param>
     /// <param name="requestPath">Path of the request (of the actual one, for a preflight): a source may limit its origins to some endpoints.</param>
+    /// <param name="cancellationToken">Cancels the check.</param>
     ValueTask<bool> IsOriginAllowedAsync(string origin, PathString requestPath, CancellationToken cancellationToken);
 }
 
