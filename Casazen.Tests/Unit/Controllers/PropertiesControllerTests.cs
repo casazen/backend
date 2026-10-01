@@ -5,6 +5,8 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -135,8 +137,8 @@ public class PropertiesControllerTests
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var returnedProperties = Assert.IsAssignableFrom<IEnumerable<Property>>(okResult.Value);
-        Assert.Equal(2, returnedProperties.Count());
+        var returnedProperties = Assert.IsAssignableFrom<IEnumerable<PropertyResponse>>(okResult.Value).ToList();
+        Assert.Equal(["Property 1", "Property 2"], returnedProperties.Select(p => p.Name));
         _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
     }
 
@@ -873,6 +875,47 @@ public class PropertiesControllerTests
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(propertyId), Times.Once);
+        VerifyHostAuthorization(existingProperty, PropertyOperations.Write);
+    }
+
+    [Fact]
+    public async Task Delete_PropertyHasUpcomingBookings_PropagatesTheConflictWithoutSwallowingIt()
+    {
+        // The 409 property_has_upcoming_bookings (PC-05) is turned into ProblemDetails by the error middleware
+        // (FD-05): the controller must not catch it.
+        var userId = "auth0|test_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property { Id = propertyId, Name = "Booked", OwnerId = userId };
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.DeletePropertyAsync(propertyId))
+            .ThrowsAsync(new DomainConflictException(PropertyService.HasUpcomingBookingsCode, "PropertyHasUpcomingBookings"));
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => _controller.Delete(propertyId));
+
+        Assert.Equal(PropertyService.HasUpcomingBookingsCode, error.Code);
+    }
+
+    [Fact]
+    public async Task Delete_AsAdminCrossOwner_LogsPrivilegedAccess()
+    {
+        var adminId = "auth0|admin_user";
+        SetupUserClaims(adminId, ["Admin"]);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var ownerId = "auth0|owner";
+        var existingProperty = new Property { Id = propertyId, Name = "Someone else's", OwnerId = ownerId };
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.DeletePropertyAsync(propertyId)).ReturnsAsync(true);
+
+        await _controller.Delete(propertyId);
+
+        _mockAuditService.Verify(
+            x => x.LogPrivilegedPropertyAccessAsync(adminId, propertyId, ownerId, "Property.Delete", default),
+            Times.Once);
     }
 
     [Fact]
@@ -1022,6 +1065,45 @@ public class PropertiesControllerTests
 
         // Org-wide role: the scope has no owner filter (TN-3), so the manager can pick any property of the org.
         _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, null)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null, "auth0|cin-owner")]
+    [InlineData("PropertyManager", null)]
+    [InlineData("Admin", null)]
+    public async Task GetCinCompliance_CallerRole_UsesTheSameScopeAsThePropertyList(string? role, string? expectedOwner)
+    {
+        // MO-12 (A6-20): an org-wide role sees the CIN of every property of the org, as in GET /api/properties; any
+        // other caller only the properties they own.
+        SetupUserClaims("auth0|cin-owner", role is null ? null : [role]);
+        _mockService
+            .Setup(x => x.GetCinComplianceAsync(It.IsAny<HostScope>(), null, 1, 50))
+            .ReturnsAsync(new OwnerCinComplianceResult(
+                [],
+                0,
+                new CinComplianceSummary(0, 0, 0, new CinDeadlineStatus(null, CinDeadlinePhase.NotConfigured, null), false)));
+
+        var result = await _controller.GetCinCompliance(null);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        _mockService.Verify(x => x.GetCinComplianceAsync(new HostScope(DefaultOrgId, expectedOwner), null, 1, 50), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCinCompliance_WithoutOrg_Returns403WithoutQuerying()
+    {
+        SetupUserClaims("auth0|no-org");
+        _mockOrgContextResolver
+            .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var result = await _controller.GetCinCompliance(null);
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, problem.StatusCode);
+        _mockService.Verify(
+            x => x.GetCinComplianceAsync(It.IsAny<HostScope>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>()),
+            Times.Never);
     }
 
     [Fact]

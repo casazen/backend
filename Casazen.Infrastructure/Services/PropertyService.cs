@@ -127,11 +127,37 @@ public class PropertyService(
             throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
+    /// <summary>
+    /// 409: the property has a pending, confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a
+    /// host cannot make a property with a guest already booked disappear.
+    /// </summary>
+    public const string HasUpcomingBookingsCode = "property_has_upcoming_bookings";
+
+    /// <summary>409: the property has a lease in force or in progress that has not ended yet (PC-05, A2-18).</summary>
+    public const string HasActiveLeasesCode = "property_has_active_leases";
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): its historical bookings and fiscal data are kept and stay reachable by
+    /// the fiscal reports, never removed. False when there is nothing to delete (unknown or already deleted).
+    /// </summary>
+    /// <exception cref="DomainConflictException">
+    /// <see cref="HasUpcomingBookingsCode"/> or <see cref="HasActiveLeasesCode"/>: nothing changed.
+    /// </exception>
     public async Task<bool> DeletePropertyAsync(Guid id)
     {
         logger.LogInformation("Deleting property: {Id}", id);
-        await repository.DeleteAsync(id);
-        return true;
+        var outcome = await repository.SoftDeleteAsync(id, _clock.GetUtcNow().UtcDateTime, _clock.TodayInRome());
+        switch (outcome)
+        {
+            case PropertySoftDeleteOutcome.HasUpcomingStays:
+                logger.LogWarning("Delete of property {Id} refused: it has a stay that has not checked out yet", id);
+                throw new DomainConflictException(HasUpcomingBookingsCode, "PropertyHasUpcomingBookings");
+            case PropertySoftDeleteOutcome.HasActiveLeases:
+                logger.LogWarning("Delete of property {Id} refused: it has a lease that has not ended yet", id);
+                throw new DomainConflictException(HasActiveLeasesCode, "PropertyHasActiveLeases");
+            default:
+                return outcome == PropertySoftDeleteOutcome.Deleted;
+        }
     }
 
     public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
@@ -440,16 +466,18 @@ public class PropertyService(
 
     internal static CinStatus ResolveCinStatus(string? cinCode) => CinFormat.GetStatus(cinCode);
 
-    public async Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(
-        string ownerId, string? cinStatus, int page, int pageSize)
+    public async Task<OwnerCinComplianceResult> GetCinComplianceAsync(
+        HostScope scope, string? cinStatus, int page, int pageSize)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         if (!string.IsNullOrWhiteSpace(cinStatus) &&
             cinStatus is not ("valid" or "missing" or "invalid"))
         {
             throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
         }
 
-        var properties = await repository.GetByOwnerForComplianceAsync(ownerId);
+        var properties = await repository.GetByScopeForComplianceAsync(scope);
         var items = properties.Select(p => new OwnerCinComplianceItem(
             PropertyId: p.Id,
             PropertyName: p.Name,

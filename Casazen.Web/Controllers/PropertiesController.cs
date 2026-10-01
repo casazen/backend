@@ -51,11 +51,15 @@ public class PropertiesController(
     ILogger<PropertiesController> logger) : ControllerBase
 {
     /// <summary>
-    /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role, otherwise the ones
-    /// they own, filtered in SQL. Shared by short-rent hosts and long-term landlords (A7-06).
+    /// Properties of the caller's org the caller may handle (TN-3): every one for an org-wide role (a PropertyManager of
+    /// the org sees the properties whose pushes it receives, MO-12, A6-20), otherwise the ones they own, filtered in SQL.
+    /// Shared by short-rent hosts and long-term landlords (A7-06). Each row is the property record
+    /// (<see cref="PropertyResponse"/>), never the entity.
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Property>>> GetAll()
+    [ProducesResponseType(typeof(IEnumerable<PropertyResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll()
     {
         // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
@@ -70,7 +74,7 @@ public class PropertiesController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var properties = await propertyService.GetPropertiesAsync(scope);
-        return Ok(properties);
+        return Ok(properties.Select(PropertyResponse.From).ToList());
     }
 
     /// <summary>
@@ -335,8 +339,14 @@ public class PropertiesController(
     private static bool IsCityChange(string currentCity, string requestedCity) =>
         !string.Equals(currentCity.Trim(), requestedCity.Trim(), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// CIN status of the properties the caller sees in <c>GET /api/properties</c> (TN-3 scope, MO-12): the owner's own,
+    /// every property of the org for an org-wide role, so a PropertyManager gets the summary of the properties it handles.
+    /// </summary>
     [HttpGet("cin-compliance")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(CinComplianceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CinComplianceResponse>> GetCinCompliance(
         [FromQuery] string? cinStatus,
         [FromQuery] int page = 1,
@@ -346,12 +356,16 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 200) pageSize = 50;
 
         try
         {
-            var result = await propertyService.GetOwnerCinComplianceAsync(userId, cinStatus, page, pageSize);
+            var result = await propertyService.GetCinComplianceAsync(scope, cinStatus, page, pageSize);
             return Ok(new CinComplianceResponse
             {
                 Items = result.Items.Select(i => new CinComplianceItemResponse
@@ -436,8 +450,24 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row is kept (<c>IsDeleted</c>/<c>DeletedAt</c>), never removed, so
+    /// its historical bookings and fiscal data (tourist tax, CIN, cedolare secca) stay intact for the Italian
+    /// compliance retention; it just stops appearing in every normal read (the property lists, the plan's used slots).
+    /// Refused with 409 while a stay or a lease is still to come: a property with a guest or a tenant already booked
+    /// cannot simply disappear. A deleted property answers 404 everywhere afterwards, pause/activate included.
+    /// </summary>
+    /// <response code="204">Property soft-deleted.</response>
+    /// <response code="403">The caller may not delete this property.</response>
+    /// <response code="404">No property with this id in the caller's org (or already deleted).</response>
+    /// <response code="409"><c>property_has_upcoming_bookings</c>: a pending, confirmed or checked-in stay has not
+    /// checked out yet; <c>property_has_active_leases</c>: a lease in force or in progress has not ended yet.</response>
     [HttpDelete("{id}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var userId = GetAuthenticatedUserId();
@@ -449,15 +479,19 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        if (!authorizationService.CanAccess(userId, existing.OwnerId, GetUserRoles()))
+        var roles = GetUserRoles();
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), PropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to delete property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
             return Forbid();
         }
 
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Delete");
+
+        // 409 property_has_upcoming_bookings / property_has_active_leases: ProblemDetails from the error middleware (FD-05).
         await propertyService.DeletePropertyAsync(id);
-        logger.LogInformation("Property deleted: {PropertyId} by user {UserId}", id, userId);
+        logger.LogInformation("Property soft-deleted: {PropertyId} by user {UserId}", id, userId);
         return NoContent();
     }
 

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Casazen.Core.Branding;
 
 namespace Casazen.Core.Services;
 
@@ -9,6 +10,7 @@ namespace Casazen.Core.Services;
 /// <item><c>suppliers/{supplierOrgId}/photos/{file}</c> — public bucket</item>
 /// <item><c>properties/{propertyId}/documents/{file}</c> — private bucket</item>
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
+/// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
 /// <c>Guest.DocumentScanUrl</c>); public files are stored as their absolute public URL.
@@ -26,6 +28,10 @@ public static partial class StorageKeys
 
     public static string GuestDocument(Guid orgId, Guid guestId, string fileName) =>
         $"guest-documents/{orgId}/{guestId}/{fileName}";
+
+    /// <summary>Logo or hero image of the org's public booking site (public bucket, BK-12).</summary>
+    public static string OrgBrandingImage(Guid orgId, BrandingImageKind kind, string fileName) =>
+        $"orgs/{orgId}/branding/{kind.ToString().ToLowerInvariant()}/{fileName}";
 
     /// <summary>RLI registration receipt of a lease (private bucket, LT-01).</summary>
     public static string LeaseRegistrationReceipt(Guid orgId, Guid leaseId, string fileName) =>

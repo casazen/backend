@@ -390,8 +390,12 @@ public partial class FiscalService(
                 .ToListAsync(cancellationToken))
             .ToHashSet();
 
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05, A2-18), tenant filter kept: a property soft-deleted during
+        // or after the tax year was still the org's that year, so its stays keep counting toward the threshold and it
+        // keeps its line in the year's reports. One deleted before the year started is left out.
         var properties = await db.Properties.AsNoTracking()
-            .Where(p => p.OrgId == orgId)
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.OrgId == orgId && (!p.IsDeleted || p.DeletedAt == null || p.DeletedAt >= yearStart))
             .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode, p.OwnerId })
             .ToListAsync(cancellationToken);
 

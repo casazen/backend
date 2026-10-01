@@ -39,6 +39,12 @@ public interface IPropertyService
     /// <summary>Reactivates a paused property (PC-03, A2-05). Idempotent when already active.</summary>
     Task<Property> ActivatePropertyAsync(Property property);
 
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row and its bookings, payments and fiscal data are kept, the
+    /// property leaves every normal read and frees its plan slot. A paused property (PC-03) can be deleted too.
+    /// Refused with 409 (<c>DomainConflictException</c>) while a stay or a lease is still to come. False when there is
+    /// nothing to delete.
+    /// </summary>
     Task<bool> DeletePropertyAsync(Guid id);
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
@@ -48,7 +54,12 @@ public interface IPropertyService
     Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex);
     Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls);
     Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId);
-    Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(string ownerId, string? cinStatus, int page, int pageSize);
+
+    /// <summary>
+    /// CIN status of the properties in the caller's <paramref name="scope"/> (TN-3, same reach as the property list):
+    /// the owner's own properties, every property of the org for an org-wide role (MO-12, A6-20).
+    /// </summary>
+    Task<OwnerCinComplianceResult> GetCinComplianceAsync(HostScope scope, string? cinStatus, int page, int pageSize);
     Task UpdatePropertyCinAsync(Guid propertyId, string? cinCode);
 
     /// <summary>

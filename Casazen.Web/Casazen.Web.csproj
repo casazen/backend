@@ -21,6 +21,8 @@
   <ItemGroup>
     <!-- Lease contract templates provided by the product owner (LT-03): shipped with the API. -->
     <None Update="LeaseTemplates\**\*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Texts of the legal documents provided by the product owner (D14, PL-14): docs/runbooks/legal-documents.md. -->
+    <None Update="LegalDocuments\**\*.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

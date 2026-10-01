@@ -34,9 +34,10 @@ version changes by itself when an external AI provider is switched on (`LegalDoc
 
 ## Publishing a new version of a legal document
 
-1. Publish the text (task PL-14 for the pages; the texts come from the product owner, decision D14).
-2. Change the version in Railway, per environment: `Legal__Documents__Tos__Version`,
-   `Legal__Documents__Privacy__Version` or `Legal__Documents__Dpa__Version` (defaults in `appsettings.json`).
+1. Publish the text and the new version as described in [`legal-documents.md`](legal-documents.md) (PL-14: public
+   pages `/legale/*`; the texts come from the product owner, decision D14).
+2. The new version is `Legal__Documents__Tos__Version`, `Legal__Documents__Privacy__Version` or
+   `Legal__Documents__Dpa__Version` (defaults in `appsettings.json`, overridable per environment in Railway).
 3. From the next request (at most the 60 s cache for users already in memory) every host gets
    `onboarding_required` until they accept the new version: web users land on the consents step, app users on the
    activation screen. Admin and supplier areas keep working.

@@ -37,7 +37,27 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var body = await subprocessors.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(ConsentVersion, body.GetProperty("version").GetString());
-        Assert.True(body.GetProperty("items").GetArrayLength() >= 4);
+        // PL-14 (A9-40): the list comes from the configuration in use, not from a hand-written list.
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        var auth0 = Assert.Single(items, i => i.GetProperty("key").GetString() == "auth0");
+        Assert.Equal("US", auth0.GetProperty("region").GetString()); // Testing tenant: test.auth0.com
+        Assert.Contains(items, i => i.GetProperty("key").GetString() == "expo");
+        Assert.DoesNotContain(items, i => i.GetProperty("name").GetString() == "SendGrid");
+    }
+
+    [Fact]
+    public async Task GetTos_TextNotProvided_NotAvailableWithVersionAndDate()
+    {
+        var client = _factory.CreateClient();
+
+        var tos = await client.GetFromJsonAsync<JsonElement>("/api/legal/tos?lang=en");
+
+        Assert.Equal("tos", tos.GetProperty("key").GetString());
+        Assert.Equal(ConsentVersion, tos.GetProperty("version").GetString());
+        Assert.Equal("2026-06-01T00:00:00Z", tos.GetProperty("effectiveAt").GetString());
+        // No text from the product owner yet (D14): "in preparation", never an invented text.
+        Assert.False(tos.GetProperty("available").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, tos.GetProperty("contentHtml").ValueKind);
     }
 
     [Fact]
@@ -224,6 +244,60 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         var user = await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == userId);
         Assert.Equal(orgId, user.OrgId);
         Assert.Equal(4, await db.ConsentRecords.IgnoreQueryFilters().CountAsync(c => c.UserId == userId && c.OrgId == orgId));
+    }
+
+    [Fact]
+    public async Task PostOnboarding_UserAlreadyLinkedToSupplierOrg_ProvisionsANewHostOrgAndKeepsTheSupplierLink()
+    {
+        // A1-40: a supplier registers first (User.OrgId = User.SupplierOrgId = the Supplier org, as
+        // SupplierService links them), then does the host onboarding. It must get a real, new Host org — never
+        // the Supplier org — and the supplier link must survive.
+        var userId = $"auth0|plg-supplier-then-host-{Guid.NewGuid():N}";
+        Guid supplierOrgId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var supplierOrg = new Casazen.Core.Entities.Org
+            {
+                Name = "Fornitore Srl",
+                Slug = $"plg-supplier-{Guid.NewGuid():N}"[..30],
+                DisplayName = "Fornitore Srl",
+                ContactEmail = "fornitore@example.com",
+                OrgType = OrgType.Supplier,
+            };
+            db.Orgs.Add(supplierOrg);
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Email = "fornitore@example.com",
+                FirstName = "Mario",
+                LastName = "Fornitore",
+                Role = UserRole.Supplier,
+                OrgId = supplierOrg.Id,
+                SupplierOrgId = supplierOrg.Id,
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+            supplierOrgId = supplierOrg.Id;
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: "Supplier", email: "fornitore@example.com");
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var orgId = Guid.Parse(body.GetProperty("orgId").GetString()!);
+        // The core A1-40 guarantee: never the Supplier org (orgProvisioned is not asserted here — it reflects
+        // whether the account had *any* OrgId before the call, which was already true for this supplier).
+        Assert.NotEqual(supplierOrgId, orgId);
+
+        using var checkScope = _factory.Services.CreateScope();
+        var checkDb = checkScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await checkDb.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == userId);
+        Assert.Equal(orgId, user.OrgId);
+        Assert.Equal(supplierOrgId, user.SupplierOrgId);
+        var hostOrg = await checkDb.Orgs.IgnoreQueryFilters().SingleAsync(o => o.Id == orgId);
+        Assert.Equal(OrgType.Host, hostOrg.OrgType);
     }
 
     private async Task SeedActivationMilestonesAsync(string userId, Guid orgId)
