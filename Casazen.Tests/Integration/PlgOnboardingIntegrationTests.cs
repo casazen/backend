@@ -184,6 +184,232 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.True(status.GetProperty("activated").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(status.GetProperty("publicBookingUrl").GetString()));
         Assert.Contains("/book/", status.GetProperty("publicBookingUrl").GetString()!);
+        Assert.Equal("done", StepOf(status, "sitePublished").GetProperty("state").GetString());
+        Assert.Equal("done", StepOf(status, "payments").GetProperty("state").GetString());
+        Assert.Equal("done", StepOf(status, "cin").GetProperty("state").GetString());
+        Assert.Equal("done", StepOf(status, "firstBooking").GetProperty("state").GetString());
+    }
+
+    // ─── PL-15: the checklist reflects the real state (A1-37, A3-26, PLG-AC10) ──────────────────
+
+    [Fact]
+    public async Task GetOnboardingStatus_NewHost_ListsEveryStepAndTheGeneratedProfileIsNotConfigured()
+    {
+        var (client, _, _) = await OnboardAsync("steps");
+
+        var status = await GetStatusAsync(client);
+
+        Assert.Equal(
+            ["account", "organization", "property", "cin", "payments", "sitePublished", "firstBooking"],
+            status.GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("key").GetString()).ToArray());
+        Assert.Equal("done", StepOf(status, "account").GetProperty("state").GetString());
+        // The org was provisioned with a generated slug (and the placeholder name): the host has not chosen them.
+        Assert.Equal("todo", StepOf(status, "organization").GetProperty("state").GetString());
+        Assert.Equal("org_profile_incomplete", ReasonOf(status, "organization"));
+        Assert.Equal("todo", StepOf(status, "property").GetProperty("state").GetString());
+        Assert.Equal("blocked", StepOf(status, "cin").GetProperty("state").GetString());
+        Assert.Equal("todo", StepOf(status, "payments").GetProperty("state").GetString());
+        Assert.Equal("connect_not_started", ReasonOf(status, "payments"));
+        Assert.Equal("blocked", StepOf(status, "sitePublished").GetProperty("state").GetString());
+        Assert.Equal("blocked", StepOf(status, "firstBooking").GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_OrgNameAndSlugChosenInSettings_OrganizationStepIsDone()
+    {
+        var (client, _, _) = await OnboardAsync("org-settings");
+        Assert.Equal("todo", StepOf(await GetStatusAsync(client), "organization").GetProperty("state").GetString());
+
+        var put = await client.PutAsJsonAsync("/api/orgs/me/settings", new
+        {
+            name = "Villa Parco Rentals",
+            slug = $"villa-parco-{Guid.NewGuid():N}"[..30],
+            contactEmail = "host@villaparco.it",
+            contactEmailPublic = false,
+        });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+
+        var step = StepOf(await GetStatusAsync(client), "organization");
+        Assert.Equal("done", step.GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_PublishedPropertyButStripeNotReady_SiteIsNotPublishedAndHasNoLink()
+    {
+        var (client, userId, orgId) = await OnboardAsync("no-stripe");
+        await SeedPropertyAsync(userId, orgId);
+
+        // A published property, no Stripe account: the link would answer every guest with a 409 (A3-26).
+        var status = await GetStatusAsync(client);
+        Assert.True(status.GetProperty("propertyCreated").GetBoolean());
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("publicBookingUrl").ValueKind);
+        Assert.Equal("inProgress", StepOf(status, "sitePublished").GetProperty("state").GetString());
+        Assert.Equal("payments_not_ready", ReasonOf(status, "sitePublished"));
+        Assert.Equal("connect_not_started", ReasonOf(status, "payments"));
+
+        // The Connect onboarding is started, Stripe still asks for data: started is not done.
+        await UpdateOrgAsync(orgId, org =>
+        {
+            org.StripeConnectedAccountId = "acct_started";
+            org.ConnectDetailsSubmitted = false;
+            org.ConnectRequirementsDueJson = "[\"individual.verification.document\"]";
+        });
+        status = await GetStatusAsync(client);
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("inProgress", StepOf(status, "payments").GetProperty("state").GetString());
+        Assert.Equal("connect_requirements_due", ReasonOf(status, "payments"));
+
+        // Everything submitted, Stripe has not enabled charges yet.
+        await UpdateOrgAsync(orgId, org =>
+        {
+            org.ConnectDetailsSubmitted = true;
+            org.ConnectRequirementsDueJson = null;
+        });
+        status = await GetStatusAsync(client);
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("connect_pending_verification", ReasonOf(status, "payments"));
+
+        // Stripe enables charges (account.updated): now guests can book.
+        await UpdateOrgAsync(orgId, org => org.ConnectChargesEnabled = true);
+        status = await GetStatusAsync(client);
+        Assert.True(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Contains("/book/", status.GetProperty("publicBookingUrl").GetString()!);
+        Assert.Equal("done", StepOf(status, "payments").GetProperty("state").GetString());
+        Assert.Equal("awaiting_first_booking", ReasonOf(status, "firstBooking"));
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_AllPropertiesPaused_SiteIsNotPublishedUntilOneIsReactivated()
+    {
+        var (client, userId, orgId) = await OnboardAsync("paused");
+        await UpdateOrgAsync(orgId, org => EnableCharges(org));
+        var propertyId = await SeedPropertyAsync(userId, orgId, p => { p.IsPaused = true; p.PausedAt = DateTime.UtcNow; });
+
+        // PC-03: a paused property is created but it is not a published site.
+        var status = await GetStatusAsync(client);
+        Assert.True(status.GetProperty("propertyCreated").GetBoolean());
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("publicBookingUrl").ValueKind);
+        Assert.Equal("todo", StepOf(status, "sitePublished").GetProperty("state").GetString());
+        Assert.Equal("properties_paused", ReasonOf(status, "sitePublished"));
+        Assert.Equal(0, StepOf(status, "sitePublished").GetProperty("done").GetInt32());
+        Assert.Equal(1, StepOf(status, "sitePublished").GetProperty("total").GetInt32());
+
+        await UpdatePropertyAsync(propertyId, p => { p.IsPaused = false; p.PausedAt = null; });
+        status = await GetStatusAsync(client);
+        Assert.True(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal(1, StepOf(status, "sitePublished").GetProperty("done").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_PausedAndPublishedProperty_SiteIsPublished()
+    {
+        var (client, userId, orgId) = await OnboardAsync("one-paused");
+        await UpdateOrgAsync(orgId, org => EnableCharges(org));
+        await SeedPropertyAsync(userId, orgId, p => { p.IsPaused = true; p.PausedAt = DateTime.UtcNow; });
+        await SeedPropertyAsync(userId, orgId);
+
+        var status = await GetStatusAsync(client);
+
+        Assert.True(status.GetProperty("sitePublished").GetBoolean());
+        var site = StepOf(status, "sitePublished");
+        Assert.Equal(1, site.GetProperty("done").GetInt32());
+        Assert.Equal(2, site.GetProperty("total").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(PropertyComplianceStatus.Pending)]
+    [InlineData(PropertyComplianceStatus.Suspended)]
+    public async Task GetOnboardingStatus_PropertyWithoutTheComplianceActivation_SiteSaysCompliancePending(PropertyComplianceStatus compliance)
+    {
+        var (client, userId, orgId) = await OnboardAsync($"compliance-{compliance}");
+        await UpdateOrgAsync(orgId, org => EnableCharges(org));
+        await SeedPropertyAsync(userId, orgId, p => p.ComplianceStatus = compliance);
+
+        var status = await GetStatusAsync(client);
+
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("compliance_pending", ReasonOf(status, "sitePublished"));
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_DeactivatedProperty_SiteSaysPropertiesInactive()
+    {
+        var (client, userId, orgId) = await OnboardAsync("inactive");
+        await UpdateOrgAsync(orgId, org => EnableCharges(org));
+        await SeedPropertyAsync(userId, orgId, p => p.IsActive = false);
+
+        var status = await GetStatusAsync(client);
+
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("properties_inactive", ReasonOf(status, "sitePublished"));
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_SoftDeletedProperty_CountsAsNoPropertyAtAll()
+    {
+        var (client, userId, orgId) = await OnboardAsync("deleted");
+        await UpdateOrgAsync(orgId, org => EnableCharges(org));
+        await SeedPropertyAsync(userId, orgId, p => { p.IsDeleted = true; p.DeletedAt = DateTime.UtcNow; });
+
+        var status = await GetStatusAsync(client);
+
+        Assert.False(status.GetProperty("propertyCreated").GetBoolean());
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("no_property", ReasonOf(status, "property"));
+        Assert.Equal("blocked", StepOf(status, "cin").GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_CinOnlyOnSomeProperties_CinStepIsInProgressWithTheCounts()
+    {
+        var (client, userId, orgId) = await OnboardAsync("cin");
+        await SeedPropertyAsync(userId, orgId);
+        await SeedPropertyAsync(userId, orgId, p => p.CinCode = null);
+        // The old invented format is not a CIN (compliance.md).
+        await SeedPropertyAsync(userId, orgId, p => p.CinCode = "IT-123456-1234567890");
+
+        var cin = StepOf(await GetStatusAsync(client), "cin");
+
+        Assert.Equal("inProgress", cin.GetProperty("state").GetString());
+        Assert.Equal("cin_missing_or_invalid", cin.GetProperty("reason").GetString());
+        Assert.Equal(1, cin.GetProperty("done").GetInt32());
+        Assert.Equal(3, cin.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_PublishedPropertyOfAnotherOrg_DoesNotMakeThisSitePublished()
+    {
+        var (client, _, orgId) = await OnboardAsync("tenant-a");
+        await UpdateOrgAsync(orgId, org => EnableCharges(org));
+        var (_, otherUserId, otherOrgId) = await OnboardAsync("tenant-b");
+        await UpdateOrgAsync(otherOrgId, org => EnableCharges(org));
+        await SeedPropertyAsync(otherUserId, otherOrgId);
+
+        var status = await GetStatusAsync(client);
+
+        Assert.False(status.GetProperty("propertyCreated").GetBoolean());
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("no_property", ReasonOf(status, "sitePublished"));
+    }
+
+    [Fact]
+    public async Task GetOnboardingStatus_DisabledOrg_SiteIsBlocked()
+    {
+        var (client, userId, orgId) = await OnboardAsync("disabled");
+        await UpdateOrgAsync(orgId, org =>
+        {
+            EnableCharges(org);
+            org.IsActive = false;
+        });
+        await SeedPropertyAsync(userId, orgId);
+
+        var status = await GetStatusAsync(client);
+
+        Assert.False(status.GetProperty("sitePublished").GetBoolean());
+        Assert.Equal("blocked", StepOf(status, "sitePublished").GetProperty("state").GetString());
+        Assert.Equal("org_inactive", ReasonOf(status, "sitePublished"));
     }
 
     [Fact]
@@ -309,6 +535,10 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         org.IsActive = true;
         if (string.IsNullOrWhiteSpace(org.Slug))
             org.Slug = $"plg-{Guid.NewGuid():N}"[..20];
+        // PL-15 (A1-37, A3-26): the site counts as published only when guests can pay, like the checkout requires.
+        org.StripeConnectedAccountId = $"acct_{Guid.NewGuid():N}"[..20];
+        org.ConnectChargesEnabled = true;
+        org.ConnectDetailsSubmitted = true;
 
         var property = new Property
         {
@@ -365,6 +595,90 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         });
 
         await db.SaveChangesAsync();
+    }
+
+    private async Task<(HttpClient Client, string UserId, Guid OrgId)> OnboardAsync(string label)
+    {
+        var userId = $"auth0|plg-{label}-{Guid.NewGuid():N}";
+        var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return (client, userId, Guid.Parse(body.GetProperty("orgId").GetString()!));
+    }
+
+    private static async Task<JsonElement> GetStatusAsync(HttpClient client)
+    {
+        var response = await client.GetAsync("/api/onboarding/status");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    private static JsonElement StepOf(JsonElement status, string key) =>
+        status.GetProperty("steps").EnumerateArray().Single(s => s.GetProperty("key").GetString() == key);
+
+    private static string? ReasonOf(JsonElement status, string key) =>
+        StepOf(status, key).TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String
+            ? reason.GetString()
+            : null;
+
+    private static void EnableCharges(OrgEntity org)
+    {
+        org.StripeConnectedAccountId = $"acct_{Guid.NewGuid():N}"[..20];
+        org.ConnectChargesEnabled = true;
+        org.ConnectDetailsSubmitted = true;
+    }
+
+    private async Task UpdateOrgAsync(Guid orgId, Action<OrgEntity> change)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.IgnoreQueryFilters().FirstAsync(o => o.Id == orgId);
+        change(org);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task UpdatePropertyAsync(Guid propertyId, Action<Property> change)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var property = await db.Properties.IgnoreQueryFilters().FirstAsync(p => p.Id == propertyId);
+        change(property);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>A property that is published (active, compliance activated, valid CIN) unless <paramref name="change"/> says otherwise.</summary>
+    private async Task<Guid> SeedPropertyAsync(string userId, Guid orgId, Action<Property>? change = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var property = new Property
+        {
+            OwnerId = userId,
+            OrgId = orgId,
+            Name = "PLG Checklist Villa",
+            Description = "Checklist property",
+            Address = $"Via PLG {Guid.NewGuid():N}",
+            City = "Rome",
+            PostalCode = "00100",
+            Latitude = 41.9028m,
+            Longitude = 12.4964m,
+            Bedrooms = 2,
+            Bathrooms = 1,
+            MaxGuests = 4,
+            NightlyRate = 120m,
+            CleaningFee = 40m,
+            DamageDeposit = 100m,
+            CinCode = "IT058091C27G5FFZDZ",
+            IsActive = true,
+            ComplianceStatus = PropertyComplianceStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        change?.Invoke(property);
+        db.Properties.Add(property);
+        await db.SaveChangesAsync();
+        return property.Id;
     }
 
     private static object BuildOnboardingPayload(string rentalType, object? consents = null) => new
