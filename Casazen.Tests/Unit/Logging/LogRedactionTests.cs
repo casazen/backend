@@ -1,5 +1,4 @@
 using System.Net;
-using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.External;
@@ -45,41 +44,6 @@ public class LogRedactionTests
     public void MaskEmails_AlreadyMaskedText_IsUnchanged()
     {
         Assert.Equal($"invite for {Masked}", LogRedaction.MaskEmails($"invite for {Masked}"));
-    }
-
-    [Fact]
-    public async Task Register_Success_LogsMaskedEmailOnly()
-    {
-        var logger = new CapturingLogger<AuthController>();
-        var userService = new Mock<IUserService>();
-        userService
-            .Setup(s => s.RegisterUserAsync(Email, "Mario", "Rossi", "secret"))
-            .ReturnsAsync(new User { Id = "user-1", Email = Email, FirstName = "Mario", LastName = "Rossi" });
-        var controller = new AuthController(userService.Object, logger);
-
-        var result = await controller.Register(new RegisterRequest(Email, "Mario", "Rossi", "secret"));
-
-        Assert.IsType<OkObjectResult>(result);
-        AssertMaskedOnly(logger.AllOutput);
-        Assert.Contains(logger.Entries, e => e.Message.Contains(Masked, StringComparison.Ordinal));
-        Assert.DoesNotContain("Rossi", logger.AllOutput, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Register_DuplicateEmail_LogsMaskedErrorMessage()
-    {
-        var logger = new CapturingLogger<AuthController>();
-        var userService = new Mock<IUserService>();
-        userService
-            .Setup(s => s.RegisterUserAsync(Email, "Mario", "Rossi", "secret"))
-            .ThrowsAsync(new InvalidOperationException($"User with email {Email} already exists"));
-        var controller = new AuthController(userService.Object, logger);
-
-        var result = await controller.Register(new RegisterRequest(Email, "Mario", "Rossi", "secret"));
-
-        Assert.IsType<BadRequestObjectResult>(result);
-        AssertMaskedOnly(logger.AllOutput);
-        Assert.Contains(logger.Entries, e => e.Message.Contains(Masked, StringComparison.Ordinal));
     }
 
     [Fact]

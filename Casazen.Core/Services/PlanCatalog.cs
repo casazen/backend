@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Validation;
 
 namespace Casazen.Core.Services;
 
@@ -33,7 +34,8 @@ public static class PlanCatalog
     public static bool TryParseTier(string? value, out PlanTier tier)
     {
         tier = default;
-        if (!Enum.TryParse(value, ignoreCase: true, out PlanTier parsed))
+        // Names only (PL-07): Enum.TryParse would also take "1" or "Starter,Pro".
+        if (!EnumNames.TryParseDefined(value, out PlanTier parsed))
             return false;
 
         if (!Entries.Any(e => e.Tier == parsed))
