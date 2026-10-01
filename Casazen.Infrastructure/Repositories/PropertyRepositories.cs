@@ -84,6 +84,9 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     public async Task<Property> UpdateAsync(Property property)
     {
         context.Properties.Update(property);
+        // The photo gallery is written only by PropertyPhotoService, under the property's photo lock (PC-04): a save of
+        // the other fields, from a copy of the row read earlier, must never put back an older photo list.
+        context.Entry(property).Property(p => p.PhotoUrls).IsModified = false;
         await context.SaveChangesAsync();
         return property;
     }

@@ -1357,4 +1357,31 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>Lo stesso codice fiscale è indicato per più parti del contratto.</value>
   </data>
+  <data name="PropertyPhotoNone" xml:space="preserve">
+    <value>Seleziona almeno una foto da caricare.</value>
+  </data>
+  <data name="PropertyPhotoTooManyFiles" xml:space="preserve">
+    <value>Puoi caricare al massimo {0} foto alla volta.</value>
+  </data>
+  <data name="PropertyPhotoLimitReached" xml:space="preserve">
+    <value>Una proprietà può avere al massimo {0} foto (ne ha già {1}): elimina una foto prima di caricarne altre.</value>
+  </data>
+  <data name="PropertyPhotoInvalidType" xml:space="preserve">
+    <value>Il file "{0}" non è una foto valida: sono ammesse solo immagini JPEG, PNG o WebP.</value>
+  </data>
+  <data name="PropertyPhotoInvalidSize" xml:space="preserve">
+    <value>Il file "{0}" è vuoto o supera la dimensione massima di {1} MB.</value>
+  </data>
+  <data name="PropertyPhotoNotFound" xml:space="preserve">
+    <value>La foto non è più nella galleria della proprietà: ricarica la pagina.</value>
+  </data>
+  <data name="PropertyPhotosChanged" xml:space="preserve">
+    <value>La galleria è stata modificata da un altro utente o da un'altra scheda: ricarica la pagina e riprova.</value>
+  </data>
+  <data name="PropertyPhotoUrlRequired" xml:space="preserve">
+    <value>Indica la foto.</value>
+  </data>
+  <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
+    <value>L'indirizzo della foto è troppo lungo.</value>
+  </data>
 </root>

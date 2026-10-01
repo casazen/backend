@@ -267,67 +267,6 @@ public class PropertyService(
         return row is null ? null : MapPublicPropertyDetail(row);
     }
 
-    public async Task<Property> AddImageAsync(Guid propertyId, string imageUrl)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        // Add image URL to the list
-        property.PhotoUrls.Add(imageUrl);
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Adding image to property {PropertyId}: {ImageUrl}", propertyId, imageUrl);
-        return await repository.UpdateAsync(property);
-    }
-
-    public async Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        if (imageIndex < 0 || imageIndex >= property.PhotoUrls.Count)
-        {
-            throw new ArgumentOutOfRangeException(nameof(imageIndex), $"Invalid image index {imageIndex}");
-        }
-
-        // Remove image URL from the list
-        property.PhotoUrls.RemoveAt(imageIndex);
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Removing image at index {Index} from property {PropertyId}", imageIndex, propertyId);
-        return await repository.UpdateAsync(property);
-    }
-
-    public async Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        // Validate that all URLs in the new order exist in the current list
-        var currentUrls = property.PhotoUrls.ToHashSet();
-        if (!orderedImageUrls.All(url => currentUrls.Contains(url)) ||
-            orderedImageUrls.Count != property.PhotoUrls.Count)
-        {
-            throw new InvalidOperationException("Invalid image URLs provided for reordering");
-        }
-
-        // Update the order
-        property.PhotoUrls = orderedImageUrls;
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Reordering images for property {PropertyId}", propertyId);
-        return await repository.UpdateAsync(property);
-    }
-
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
     {
         // 404 through the error middleware (FD-05); any other failure stays a 500, never a "not found" (A2-36).
