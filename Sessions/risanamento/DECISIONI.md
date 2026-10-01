@@ -24,3 +24,4 @@ Vincolanti per tutti i task del risanamento. Se un task incontra una scelta di p
 - Pagamento del fornitore: resta il flag manuale "Pagato" (nessuna integrazione Stripe verso il fornitore).
 - `chargeToGuest`: resta rifiutato per gli affitti brevi (come #340).
 - Durata dell'attesa di approvazione per "Paga in struttura": configurabile, da decidere (vedi BK-06).
+- Integrazione con ChatGPT e Claude (Wave 8, richiesta del PO del 2026-10-01: prevederla a fine sviluppi, solo pianificazione): **nessuna decisione presa** su azioni consentite, canali ospite e fornitore, piani e prezzo, titolarità degli account Anthropic e OpenAI, nome e branding, regioni dei dati, qualificazione GDPR dei due fornitori. Le domande sono in `DOMANDE-APERTE.md` sezione 8 (voci `AI-*`), il piano in `docs/integrations/ai-assistants-plan.md`.

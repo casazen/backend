@@ -322,10 +322,12 @@ public partial class SupplierService
         await transaction.CreateSavepointAsync(savepoint, cancellationToken);
         try
         {
+            // Legacy supplier-only accounts (OrgId = the duplicate supplier org) are detached, not moved to the keeper:
+            // User.OrgId is the host org only (PL-05, A1-40), and they reach the keeper through SupplierOrgId (above).
             var orgMembers = await db.Users
                 .Where(u => u.OrgId == duplicateId)
                 .ExecuteUpdateAsync(
-                    set => set.SetProperty(u => u.OrgId, keeperId).SetProperty(u => u.UpdatedAt, now),
+                    set => set.SetProperty(u => u.OrgId, (Guid?)null).SetProperty(u => u.UpdatedAt, now),
                     cancellationToken);
             var devices = await db.DeviceRegistrations
                 .Where(d => d.OrgId == duplicateId)

@@ -71,7 +71,9 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
         Assert.Contains("\"maintenance\"", keeper.CategoriesJson);
         Assert.Contains("\"cleaning\"", keeper.CategoriesJson);
         var user = await after.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|su14-mig-supplier");
-        Assert.Equal(active, user.OrgId);
+        // This migration moved the supplier-only account's OrgId to the keeper; the later PL-05 migration
+        // SeparateSupplierOrgFromHostOrgId then detaches it (OrgId is the host org only, A1-40).
+        Assert.Null(user.OrgId);
         Assert.Equal(active, user.SupplierOrgId);
         var days = await after.SupplierAvailability.AsNoTracking().Where(a => a.OrgId == active).ToListAsync();
         Assert.Equal(2, days.Count);

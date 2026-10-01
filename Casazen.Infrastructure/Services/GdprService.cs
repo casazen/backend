@@ -62,7 +62,10 @@ public class GdprService(
         var guest = await db.Guests.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guestId && g.OrgId == orgId, cancellationToken)
             ?? throw GuestNotFound(guestId);
 
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05), tenant filter kept: b.Property.Name joins the property,
+        // and a stay at a since soft-deleted property is still the guest's data (GDPR art. 15/20 export).
         var bookings = await db.Bookings.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => b.GuestId == guest.Id && b.OrgId == orgId)
             .OrderBy(b => b.CheckInDate).ThenBy(b => b.Id)
             .Select(b => new
@@ -395,7 +398,10 @@ public class GdprService(
             .Select(y => new { y.PropertyId, y.TaxYear, Regime = y.Regime.ToString(), y.IsPrimaryForCedolare })
             .ToListAsync(cancellationToken);
         // Taxpayers recorded per property (CO-18).
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05), tenant filter kept: the fiscal years above still name
+        // a since soft-deleted property, and its taxpayer belongs to the same fiscal record.
         var propertyTaxpayers = await db.Properties.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
             .Select(p => new { PropertyId = p.Id, FiscalCode = p.TaxpayerFiscalCode })
             .ToListAsync(cancellationToken);
@@ -421,7 +427,10 @@ public class GdprService(
         org.PartitaIvaNumber = "00000000000";
         org.UpdatedAt = DateTime.UtcNow;
         // Codici fiscali of the taxpayers recorded on the org's properties (CO-18): removed, the org profile applies again.
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05), tenant filter kept: a soft-deleted property keeps its row,
+        // so its codice fiscale must be anonymized too.
         var properties = await db.Properties
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && p.TaxpayerFiscalCode != null)
             .ToListAsync(cancellationToken);
         foreach (var property in properties)
