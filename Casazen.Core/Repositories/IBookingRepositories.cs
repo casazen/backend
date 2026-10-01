@@ -40,6 +40,14 @@ public interface IBookingRepository
     Task<Booking> AddAsync(Booking booking);
     Task<Booking> UpdateAsync(Booking booking);
     Task DeleteAsync(Guid id);
+
+    /// <summary>
+    /// Removes a direct checkout whose payment could not be started (BK-18, A3-33): the booking, its payment rows and its
+    /// guest snapshot, in one transaction under the property lock. The guest is kept when anything else still references
+    /// it (another booking, an Alloggiati report). Nothing happens when the booking does not exist.
+    /// </summary>
+    Task DiscardCheckoutAttemptAsync(Guid bookingId);
+
     Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source);
     Task<Booking> UpsertOtaBookingAsync(Booking booking);
 }

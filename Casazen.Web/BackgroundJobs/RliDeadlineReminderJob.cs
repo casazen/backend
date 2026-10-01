@@ -47,7 +47,8 @@ public class RliDeadlineReminderJob(
             .Include(l => l.Property)
             .Include(l => l.Parties)
             .Include(l => l.Events)
-            .Where(l => l.Status != LeaseStatus.Registered && l.Status != LeaseStatus.Rejected)
+            // Anonymized parties (LT-12) have no address left to remind.
+            .Where(l => l.Status != LeaseStatus.Registered && l.Status != LeaseStatus.Rejected && l.PartiesAnonymizedAt == null)
             .ToListAsync();
 
         foreach (var lease in leases)
@@ -153,7 +154,7 @@ public class RliDeadlineReminderJob(
         if (lease.Events.Any(e => e.EventType == LeaseEventType.DeadlineReminderSent && e.Payload == payload))
             return;
 
-        var to = lease.Parties.FirstOrDefault(p => p.Role == PartyRole.Landlord)?.ContactEmail;
+        var to = lease.Parties.FirstOrDefault(p => p.Role == PartyRole.Landlord && p.AnonymizedAt == null)?.ContactEmail;
         if (string.IsNullOrWhiteSpace(to))
         {
             logger.LogInformation("Skip RLI reminder {Payload} for LeaseId={LeaseId}: no landlord email", payload, lease.Id);

@@ -699,6 +699,37 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     }
 
     [Fact]
+    public async Task RequestErasure_LeaseInForce_SchedulesForTheDayAfterTheEndOnceAndOnlyInTheOrg()
+    {
+        // LT-12 (A7-18): the request is recorded (event once); the parties keep their data while the lease is in force.
+        var owner = UniqueOwner("erasure");
+        var otherOrgOwner = UniqueOwner("erasure-other-org");
+        var property = await _factory.SeedPropertyAsync(owner);
+        await _factory.SeedOrgForOwnerAsync(otherOrgOwner);
+        using var client = LandlordClient(owner);
+        var leaseId = (await ReadJson(await client.PostAsJsonAsync("/api/leases", CreateBody(property.Id)))).GetProperty("id").GetGuid();
+        var path = $"/api/leases/{leaseId}/erasure-request";
+
+        using var otherOrgClient = LandlordClient(otherOrgOwner);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherOrgClient.PostAsync(path, null)).StatusCode);
+
+        var first = await client.PostAsync(path, null);
+        var second = await client.PostAsync(path, null);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var body = await ReadJson(first);
+        Assert.Equal("Scheduled", body.GetProperty("status").GetString());
+        Assert.Equal(new DateTime(2030, 9, 1), body.GetProperty("anonymizationFrom").GetDateTime().Date);
+        Assert.Equal(0, body.GetProperty("partiesKept").GetInt32());
+
+        var lease = await GetLease(client, leaseId);
+        Assert.Single(lease.GetProperty("events").EnumerateArray(), e => e.GetProperty("eventType").GetString() == "ErasureRequested");
+        Assert.All(lease.GetProperty("parties").EnumerateArray(), p => Assert.NotEqual("ANONYMIZED", p.GetProperty("lastName").GetString()));
+        AssertNoPartyPiiNorInternalFields(lease.GetRawText());
+    }
+
+    [Fact]
     public async Task PublicFeatures_Default_ReturnsRliAndESignProvidersOff()
     {
         using var client = _factory.CreateClient();

@@ -142,14 +142,10 @@ public class BookingService(
                 DirectBookingErrorCodes.DeferredPaymentUnavailable, "DirectBookingDeferredPaymentUnavailable");
         }
 
-        var pendingTtlMinutes = GetPendingDirectTtlMinutes();
-
-        if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, pendingTtlMinutes))
-        {
-            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
-        }
-
-        var guest = await CreateGuestSnapshotWithConsentAsync(
+        // BK-18 (A3-33): the guest snapshot (personal data and consent) is only built in memory here. It is written with
+        // the booking, in the same insert under the property lock, once the stay is validated and the dates are free: a
+        // rejected checkout leaves no guest behind.
+        var guest = NewGuestSnapshotWithConsent(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
         var basePrice = price.BasePrice;
@@ -166,6 +162,7 @@ public class BookingService(
             PropertyId = input.PropertyId,
             OrgId = property.OrgId,
             GuestId = guest.Id,
+            Guest = guest,
             CheckInDate = checkIn,
             CheckOutDate = checkOut,
             NumberOfAdults = input.NumberOfAdults,
@@ -207,15 +204,20 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
+        if (!await IsPropertyAvailableAsync(input.PropertyId, checkIn, checkOut, GetPendingDirectTtlMinutes()))
+        {
+            throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
+        }
+
         Booking createdBooking;
         try
         {
+            // Booking and guest snapshot in one insert: a concurrent checkout that takes the dates first leaves neither.
             createdBooking = await repository.AddAsync(booking);
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
         {
-            await guestRepository.DeleteAsync(guest.Id);
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
@@ -231,21 +233,31 @@ public class BookingService(
         string? clientSecret = null;
         string? setupIntentClientSecret = null;
 
-        switch (input.PaymentOption)
+        try
         {
-            case PaymentOption.Immediate:
-                clientSecret = await HandleImmediatePaymentAsync(
-                    createdBooking, org.StripeConnectedAccountId!, amountCents, currency, metadata);
-                break;
+            switch (input.PaymentOption)
+            {
+                case PaymentOption.Immediate:
+                    clientSecret = await HandleImmediatePaymentAsync(
+                        createdBooking, org.StripeConnectedAccountId!, amountCents, currency, metadata);
+                    break;
 
-            case PaymentOption.OnCancellationDeadline:
-                setupIntentClientSecret = await HandleDeferredPaymentAsync(
-                    createdBooking, org.StripeConnectedAccountId!, guest, amountCents, currency, metadata);
-                break;
+                case PaymentOption.OnCancellationDeadline:
+                    setupIntentClientSecret = await HandleDeferredPaymentAsync(
+                        createdBooking, org.StripeConnectedAccountId!, guest, amountCents, currency, metadata);
+                    break;
 
-            case PaymentOption.OnSite:
-                await OpenOnSiteRequestAsync(createdBooking, onSiteEmailToken!);
-                break;
+                case PaymentOption.OnSite:
+                    await OpenOnSiteRequestAsync(createdBooking, onSiteEmailToken!);
+                    break;
+            }
+        }
+        catch (Exception)
+        {
+            // BK-18 (A3-33): the guest never got a payment to complete, so the attempt is not a booking. It is removed
+            // with its guest snapshot instead of staying as a cancelled booking that keeps the guest's personal data.
+            await DiscardFailedCheckoutAsync(createdBooking.Id);
+            throw;
         }
 
         var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
@@ -402,9 +414,6 @@ public class BookingService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Stripe PaymentIntent creation failed for booking {BookingId}", booking.Id);
-            booking.Status = BookingStatus.Cancelled;
-            booking.UpdatedAt = DateTime.UtcNow;
-            await repository.UpdateAsync(booking);
             throw new PaymentProcessingException("Payment initialization failed", ex);
         }
 
@@ -452,9 +461,6 @@ public class BookingService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Stripe SetupIntent creation failed for booking {BookingId}", booking.Id);
-            booking.Status = BookingStatus.Cancelled;
-            booking.UpdatedAt = DateTime.UtcNow;
-            await repository.UpdateAsync(booking);
             throw new PaymentProcessingException("Payment initialization failed", ex);
         }
 
@@ -572,7 +578,28 @@ public class BookingService(
 
     private int GetPendingDirectTtlMinutes() => CheckoutHolds.GetTtlMinutes(configuration);
 
-    private async Task<Guest> CreateGuestSnapshotWithConsentAsync(
+    /// <summary>
+    /// Removes a checkout whose payment could not be started (BK-18). Best effort: when the removal fails too, the attempt
+    /// stays a pending hold that the checkout hold expiry cancels, and the original error is still the answer.
+    /// </summary>
+    private async Task DiscardFailedCheckoutAsync(Guid bookingId)
+    {
+        try
+        {
+            await repository.DiscardCheckoutAttemptAsync(bookingId);
+            logger.LogWarning("Direct checkout {BookingId} discarded with its guest snapshot: payment not started", bookingId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Direct checkout {BookingId} could not be discarded after its payment failed to start; it stays a pending hold",
+                bookingId);
+        }
+    }
+
+    /// <summary>The guest of a direct checkout with its consent, not saved: it is written with its booking.</summary>
+    private static Guest NewGuestSnapshotWithConsent(
         Guid orgId,
         DirectBookingGuestInput guestInput,
         string consentVersion,
@@ -580,7 +607,7 @@ public class BookingService(
     {
         var now = DateTime.UtcNow;
 
-        var guest = new Guest
+        return new Guest
         {
             OrgId = orgId,
             FirstName = guestInput.FirstName,
@@ -596,7 +623,5 @@ public class BookingService(
             CreatedAt = now,
             UpdatedAt = now,
         };
-
-        return await guestRepository.AddAsync(guest);
     }
 }

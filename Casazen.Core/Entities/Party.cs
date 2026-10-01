@@ -43,4 +43,11 @@ public class Party
     public string ContactEmail { get; set; } = string.Empty;
 
     public bool IsExtraEU { get; set; }
+
+    /// <summary>
+    /// When the personal data of the party were anonymized (LT-12): names, fiscal code, citizenship and email replaced
+    /// (<c>LeasePartyAnonymizer</c>). <see cref="Role"/> and <see cref="IsExtraEU"/> stay: they keep the shape of the
+    /// lease and no longer identify anyone.
+    /// </summary>
+    public DateTime? AnonymizedAt { get; set; }
 }
