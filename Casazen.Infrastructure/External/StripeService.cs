@@ -157,7 +157,9 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
                 Amount = amountCents,
                 Currency = currency,
                 Metadata = metadata,
-                ApplicationFeeAmount = 0,
+                // No platform take-rate yet (A3-40): omitted, not an explicit 0. ApplicationFeeAmount is a nullable
+                // field Stripe treats as "no application fee" when unset; sending a literal 0 is unverified in test
+                // mode and Stripe may reject it. Set this to the real fee amount if/when a take-rate ships.
                 AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
                 {
                     Enabled = true,
@@ -418,7 +420,7 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             Confirm = true,
             OffSession = true,
             Metadata = metadata,
-            ApplicationFeeAmount = 0,
+            // See CreateConnectedAccountPaymentIntentAsync above (A3-40): omitted, not an explicit 0.
         };
 
         var paymentIntent = await new PaymentIntentService(Client).CreateAsync(
