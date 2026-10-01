@@ -25,7 +25,8 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
     public async Task Onboarding_HostWithRolesWithoutOrg_CreatesOrgOnceAndRepeatsIdempotently()
     {
         var userId = NewUserId();
-        using var client = factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner");
+        var email = NewEmail();
+        using var client = factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner", email: email);
 
         // First login: the user row exists, the org does not.
         var before = await client.GetFromJsonAsync<JsonElement>("/api/users/me");
@@ -36,7 +37,7 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
         Assert.Equal(HttpStatusCode.UnprocessableEntity, withoutConsents.StatusCode);
         var problem = await withoutConsents.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("consents_required", problem.GetProperty("code").GetString());
-        Assert.Equal(0, await CountOrgsOfAsync(userId));
+        Assert.Equal(0, await CountOrgsOfAsync(email));
 
         // PUT with consents: creates the org and records the consents.
         var first = await ReadOkAsync(await client.PutAsJsonAsync(OnboardingPath, Payload("ShortTerm")));
@@ -61,7 +62,7 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal(1, await CountOrgsOfAsync(userId));
+        Assert.Equal(1, await CountOrgsOfAsync(email));
         Assert.True(await db.UserContextMemberships.AnyAsync(m => m.UserId == userId && m.ContextKey == "short-rent"));
     }
 
@@ -69,7 +70,8 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
     public async Task Onboarding_HostWithRolesWithoutOrg_ParallelRequestsLinkOneOrg()
     {
         var userId = NewUserId();
-        using var client = factory.CreateAuthenticatedClient(userId, roles: "LongTermLandlord");
+        var email = NewEmail();
+        using var client = factory.CreateAuthenticatedClient(userId, roles: "LongTermLandlord", email: email);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/users/me")).StatusCode);
 
         // Double click, or the web and a second tab completing the wizard at the same time.
@@ -79,17 +81,19 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
 
         var bodies = await Task.WhenAll(responses.Select(ReadOkAsync));
         Assert.Single(bodies.Select(b => b.GetProperty("orgId").GetString()).Distinct());
-        Assert.Equal(1, await CountOrgsOfAsync(userId));
+        Assert.Equal(1, await CountOrgsOfAsync(email));
     }
 
     private static string NewUserId() => $"auth0|pl01-{Guid.NewGuid():N}";
 
-    private async Task<int> CountOrgsOfAsync(string userId)
+    private static string NewEmail() => $"pl01.{Guid.NewGuid():N}@example.com";
+
+    /// <summary>Orgs provisioned for the user: the slug is neutral (A1-23), the contact email is the one of this test.</summary>
+    private async Task<int> CountOrgsOfAsync(string email)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var slugPrefix = $"org-{userId.Replace("|", "-")}";
-        return await db.Orgs.CountAsync(o => o.Slug.StartsWith(slugPrefix));
+        return await db.Orgs.CountAsync(o => o.ContactEmail == email);
     }
 
     private static async Task<JsonElement> ReadOkAsync(HttpResponseMessage response)
