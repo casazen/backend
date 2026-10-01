@@ -19,6 +19,7 @@ public class PublicOrgControllerTests
     private readonly Mock<IOrgService> _orgService = new();
     private readonly Mock<IPropertyService> _propertyService = new();
     private readonly Mock<IEntitlementService> _entitlementService = new();
+    private readonly Mock<IOrgSiteDocumentService> _siteDocumentService = new();
     private readonly PublicOrgController _controller;
 
     public PublicOrgControllerTests()
@@ -26,7 +27,11 @@ public class PublicOrgControllerTests
         // Default: the stored tier is paid for (the effective-tier rules are covered by EntitlementServiceTests).
         _entitlementService.Setup(s => s.ResolveEffectiveTier(It.IsAny<OrgEntity>()))
             .Returns((OrgEntity o) => o.PlanTier);
-        _controller = new PublicOrgController(_orgService.Object, _propertyService.Object, _entitlementService.Object);
+        _controller = new PublicOrgController(
+            _orgService.Object,
+            _propertyService.Object,
+            _entitlementService.Object,
+            _siteDocumentService.Object);
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.DTOs;
 using Casazen.Core.Services;
+using Casazen.Core.SiteDocuments;
+using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +17,8 @@ namespace Casazen.Web.Controllers;
 public class PublicOrgController(
     IOrgService orgService,
     IPropertyService propertyService,
-    IEntitlementService entitlementService) : ControllerBase
+    IEntitlementService entitlementService,
+    IOrgSiteDocumentService siteDocumentService) : ControllerBase
 {
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
@@ -63,5 +66,29 @@ public class PublicOrgController(
             return NotFound();
 
         return Ok(property);
+    }
+
+    /// <summary>
+    /// The operator's privacy notice or booking terms (BK-14, A3-21): <c>kind</c> is <c>privacy</c> or <c>terms</c>.
+    /// 200 with <c>published: false</c> when the operator has not published it (or withdrew it): that is a normal state of
+    /// the page, not an error. 404 for an unknown org or kind.
+    /// </summary>
+    [HttpGet("{slug}/documents/{kind}")]
+    [ProducesResponseType(typeof(PublicOrgDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PublicOrgDocumentDto>> GetDocument(
+        [StringLength(100)] string slug,
+        [StringLength(20)] string kind,
+        CancellationToken cancellationToken)
+    {
+        if (!OrgSiteDocumentRules.TryParseKind(kind, out var parsedKind))
+            return NotFound();
+
+        var org = await orgService.GetPublicBySlugAsync(slug, cancellationToken);
+        if (org is null)
+            return NotFound();
+
+        var document = await siteDocumentService.GetPublishedAsync(org.Id, parsedKind, cancellationToken);
+        return Ok(document is null ? PublicOrgDocumentDto.NotPublished(parsedKind) : PublicOrgDocumentDto.From(document));
     }
 }

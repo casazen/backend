@@ -36,6 +36,9 @@ public class AppDbContext(
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
     public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
+
+    // Operator privacy notice and booking terms of the public site, versioned (BK-14, A3-21)
+    public DbSet<OrgSiteDocument> OrgSiteDocuments { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
@@ -639,6 +642,23 @@ public class AppDbContext(
 
         modelBuilder.Entity<OrgSlugAlias>()
             .HasIndex(a => a.OrgId);
+
+        // Operator documents of the public site (BK-14, A3-21): immutable versions numbered per org and kind. The unique
+        // index is the guarantee of the numbering under concurrent publishes (23505, the loser takes the next number).
+        modelBuilder.Entity<OrgSiteDocument>(entity =>
+        {
+            entity.HasOne(d => d.Org)
+                .WithMany()
+                .HasForeignKey(d => d.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(d => d.Kind).HasConversion<string>().HasMaxLength(20);
+            entity.Property(d => d.Source).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(d => new { d.OrgId, d.Kind, d.Version })
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgSiteDocuments_Org_Kind_Version");
+        });
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)
