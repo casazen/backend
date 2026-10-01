@@ -762,7 +762,7 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
                 Email = email,
                 FirstName = "Sara",
                 LastName = "Fornitore",
-                OrgId = org.Id,
+                // A supplier account links its supplier org only: User.OrgId is the host org (PL-05, A1-40).
                 SupplierOrgId = org.Id,
                 IsActive = true,
             },
