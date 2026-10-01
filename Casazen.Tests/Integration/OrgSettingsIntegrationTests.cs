@@ -2,7 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -246,6 +249,53 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
             contactEmailPublic = false,
         });
         Assert.Equal(HttpStatusCode.Conflict, takeOver.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetMe_AfterSlugChange_PublicSiteUrlUsesTheNewSlugOnTheConfiguredBaseUrl()
+    {
+        var ownerId = $"auth0|settings-share-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        await SetSlugAsync(org.Id, $"villa-prima-{Guid.NewGuid():N}"[..30]);
+        var newSlug = $"villa-dopo-{Guid.NewGuid():N}"[..30];
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var update = await client.PutAsJsonAsync("/api/orgs/me/settings", new
+        {
+            name = "Villa Dopo",
+            slug = newSlug,
+            contactEmail = "host@villadopo.it",
+            contactEmailPublic = false,
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        var me = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/users/me");
+
+        // MO-11 (A6-09, A3-22): the app shares {publicSiteUrl}/property/{slug}; the base is App:PublicSiteBaseUrl (D3).
+        var orgJson = me.GetProperty("org");
+        Assert.Equal(newSlug, orgJson.GetProperty("slug").GetString());
+        Assert.Equal($"https://casazen-app.vercel.app/book/{newSlug}", orgJson.GetProperty("publicSiteUrl").GetString());
+    }
+
+    [Fact]
+    public async Task GetMe_PublicSiteBaseUrlMissing_PublicSiteUrlIsNull()
+    {
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["App:PublicSiteBaseUrl"] = "" })));
+        var ownerId = $"auth0|settings-share-unset-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(TestAuthHandler.SchemeName, "test");
+        client.DefaultRequestHeaders.Add("X-Test-User", ownerId);
+        client.DefaultRequestHeaders.Add("X-Test-Roles", "PropertyOwner");
+
+        var me = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/users/me");
+
+        // No fallback domain (D3): without the public URL the app gets no link to share instead of a broken one.
+        var orgJson = me.GetProperty("org");
+        Assert.Equal(org.Slug, orgJson.GetProperty("slug").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, orgJson.GetProperty("publicSiteUrl").ValueKind);
     }
 
     [Fact]
