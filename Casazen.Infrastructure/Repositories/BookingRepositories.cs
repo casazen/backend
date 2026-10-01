@@ -136,6 +136,42 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         }
     }
 
+    public async Task DiscardCheckoutAttemptAsync(Guid bookingId)
+    {
+        var propertyId = await context.Bookings
+            .Where(b => b.Id == bookingId)
+            .Select(b => (Guid?)b.PropertyId)
+            .FirstOrDefaultAsync();
+        if (propertyId is null)
+            return;
+
+        await using var transaction = await BeginPropertyGuardTransactionAsync(propertyId.Value);
+
+        var booking = await context.Bookings
+            .Include(b => b.Payments)
+            .FirstOrDefaultAsync(b => b.Id == bookingId);
+        if (booking is null)
+            return;
+
+        var guestId = booking.GuestId;
+        context.Payments.RemoveRange(booking.Payments);
+        context.Bookings.Remove(booking);
+        await context.SaveChangesAsync();
+
+        // IgnoreQueryFilters: a reference from any org keeps the guest, as the Restrict foreign keys count every row.
+        var guestStillReferenced =
+            await context.Bookings.IgnoreQueryFilters().AnyAsync(b => b.GuestId == guestId) ||
+            await context.AlloggiatiWebReports.IgnoreQueryFilters().AnyAsync(r => r.GuestId == guestId);
+        if (!guestStillReferenced && await context.Guests.FindAsync(guestId) is { } guest)
+        {
+            context.Guests.Remove(guest);
+            await context.SaveChangesAsync();
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync();
+    }
+
     public async Task<Booking?> GetByExternalIdAsync(Guid propertyId, string externalId, BookingSource source)
     {
         return await context.Bookings

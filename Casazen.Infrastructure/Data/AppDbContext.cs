@@ -35,6 +35,7 @@ public class AppDbContext(
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Org> Orgs { get; set; } = null!;
+    public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
@@ -626,6 +627,16 @@ public class AppDbContext(
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
+
+        // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasOne(a => a.Org)
+            .WithMany()
+            .HasForeignKey(a => a.OrgId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrgSlugAlias>()
+            .HasIndex(a => a.OrgId);
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)

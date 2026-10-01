@@ -316,9 +316,11 @@ public class FieldEncryptionPostgresTests
             // and "AnonymizedAt" do not exist yet, "DataRetentionUntil" still required on Guests): write them by SQL with
             // the columns before CO-15, like the credentials below are written with the columns before CO-14. The guests
             // must exist before the booking and the stay guest, which have a foreign key to them.
+            // The org row in SQL: the current Org entity has columns that later migrations add (PL-04).
+            await LegacyOrgRows.InsertAsync(db, org);
             // Same for the "Properties" columns added after this point (PC-03 pause): created just for the insert.
             await AddPropertiesColumnsAfterCo14Async(db);
-            db.AddRange(org, property);
+            db.Add(property);
             await db.SaveChangesAsync();
             await DropPropertiesColumnsAfterCo14Async(db);
             await InsertGuestBeforeCo15Async(db, guest);

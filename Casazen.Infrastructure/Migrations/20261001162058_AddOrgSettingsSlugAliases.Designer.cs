@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261001150938_AddPropertySoftDelete")]
-    partial class AddPropertySoftDelete
+    [Migration("20261001162058_AddOrgSettingsSlugAliases")]
+    partial class AddOrgSettingsSlugAliases
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1360,6 +1360,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<bool>("ContactEmailPublic")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1486,6 +1489,25 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"Subdomain\" IS NOT NULL");
 
                     b.ToTable("Orgs");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
+                {
+                    b.Property<string>("Slug")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Slug");
+
+                    b.HasIndex("OrgId");
+
+                    b.ToTable("OrgSlugAliases");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>
@@ -2144,9 +2166,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -2158,9 +2177,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsPaused")
@@ -2233,11 +2249,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId", "Slug")
                         .IsUnique()
                         .HasDatabaseName("UIX_Properties_OrgId_Slug")
-                        .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false");
+                        .HasFilter("\"Slug\" IS NOT NULL");
 
                     b.HasIndex("Address", "City", "PostalCode", "IsActive")
                         .IsUnique()
-                        .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
+                        .HasFilter("\"IsActive\" = true");
 
                     b.ToTable("Properties");
                 });
@@ -4487,6 +4503,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Party");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Org");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>

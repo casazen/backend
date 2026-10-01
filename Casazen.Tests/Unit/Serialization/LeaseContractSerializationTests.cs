@@ -27,7 +27,6 @@ public class LeaseContractSerializationTests
             EndDate = DateTime.UtcNow.AddYears(4),
             MonthlyRent = 1200m,
             RegistrationDeadline = DateTime.UtcNow.AddDays(30),
-            DataRetentionUntil = DateTime.UtcNow.AddYears(10),
             Property = new Property
             {
                 Id = Guid.NewGuid(),

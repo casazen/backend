@@ -45,7 +45,9 @@ public class UsersController(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        pageSize = Math.Min(pageSize, 100);
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
         logger.LogInformation("Admin: listing users page={Page} pageSize={PageSize}", page, pageSize);
         var (users, total) = await userService.GetPagedAsync(search, role, isActive, page, pageSize);
         var userList = users.ToList();
@@ -195,6 +197,87 @@ public class UsersController(
         }
 
         return Ok(new { id, role = newRole.ToString(), rolesSynced = true });
+    }
+
+    /// <summary>Returns the roles the user currently holds in Auth0, restricted to the ones an admin can manage
+    /// (A1-17: Admin, PropertyOwner, LongTermLandlord, Supplier). Admin only.</summary>
+    [HttpGet("{id}/roles")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<UserRolesDto>> GetRoles(string id)
+    {
+        Auth0UserRolesResult result;
+        try
+        {
+            result = await userService.GetRolesAsync(id, HttpContext.RequestAborted);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+
+        if (!result.Sync.Succeeded)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                result.Sync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
+        }
+
+        return Ok(new UserRolesDto
+        {
+            Id = id,
+            Roles = result.Roles.Where(AdminManageableRoles.All.Contains).Select(r => r.ToString()).ToList(),
+        });
+    }
+
+    /// <summary>
+    /// Grants and revokes roles so the user's Auth0 roles match <paramref name="dto"/> exactly, among the roles an
+    /// admin can manage (A1-17: Admin, PropertyOwner, LongTermLandlord, Supplier — every other current role of the
+    /// user, e.g. Guest from a booking, is left untouched). Admin only.
+    /// </summary>
+    [HttpPut("{id}/roles")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<UserRolesDto>> UpdateRoles(string id, [FromBody] UpdateUserRolesDto dto)
+    {
+        var roles = new List<UserRole>();
+        foreach (var name in dto.Roles.Distinct())
+        {
+            if (!EnumNames.TryParseDefined<UserRole>(name, out var role) || !AdminManageableRoles.All.Contains(role))
+                return this.ApiProblem(
+                    StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "UserRoleNotManageable", name);
+            roles.Add(role);
+        }
+
+        var adminSub = GetSub();
+        if (adminSub == null)
+            return Unauthorized();
+
+        RoleSetUpdateResult result;
+        try
+        {
+            result = await userService.UpdateRolesAsync(id, roles, adminSub, HttpContext.RequestAborted);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+
+        if (!result.RoleSync.Succeeded)
+        {
+            // Same as ChangeRole: the roles are unchanged, so this must not be reported as done. Retrying is safe.
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                result.RoleSync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
+                "Auth0RoleSyncFailed");
+        }
+
+        return Ok(new UserRolesDto
+        {
+            Id = id,
+            Roles = result.Roles.Select(r => r.ToString()).ToList(),
+            RolesGranted = result.RolesGranted.Select(r => r.ToString()).ToList(),
+            RolesRevoked = result.RolesRevoked.Select(r => r.ToString()).ToList(),
+        });
     }
 
     /// <summary>
