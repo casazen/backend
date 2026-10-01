@@ -1,4 +1,5 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
@@ -35,20 +36,12 @@ public class BookingService(
         return await repository.GetByIdAsync(id);
     }
 
-    public async Task<IEnumerable<Booking>> GetPropertyBookingsAsync(Guid propertyId)
-    {
-        return await repository.GetByPropertyAsync(propertyId);
-    }
-
-    public async Task<IEnumerable<Booking>> GetGuestBookingsAsync(Guid guestId)
-    {
-        return await repository.GetByGuestAsync(guestId);
-    }
-
-    public async Task<IEnumerable<Booking>> GetAllBookingsAsync()
-    {
-        return await repository.GetAllAsync();
-    }
+    public Task<IReadOnlyList<Booking>> GetBookingsAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default) =>
+        repository.GetByScopeAsync(scope, propertyId, guestId, cancellationToken);
 
     public async Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest)
     {

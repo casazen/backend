@@ -53,7 +53,7 @@ public class PropertyAuthorizationServiceTests
     public async Task CanAccessPropertyAsync_WhenUserIsOwner_ReturnsTrue()
     {
         var propertyId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId))
+        _mockRepository.Setup(x => x.GetRecordAsync(propertyId))
             .ReturnsAsync(new Property { Id = propertyId, OwnerId = "auth0|owner" });
 
         var result = await _service.CanAccessPropertyAsync("auth0|owner", propertyId, []);
@@ -65,7 +65,7 @@ public class PropertyAuthorizationServiceTests
     public async Task CanAccessPropertyAsync_WhenUserIsNotOwner_ReturnsFalse()
     {
         var propertyId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId))
+        _mockRepository.Setup(x => x.GetRecordAsync(propertyId))
             .ReturnsAsync(new Property { Id = propertyId, OwnerId = "auth0|owner" });
 
         var result = await _service.CanAccessPropertyAsync("auth0|attacker", propertyId, []);
@@ -77,12 +77,12 @@ public class PropertyAuthorizationServiceTests
     public async Task CanAccessPropertyAsync_WhenPropertyNotFound_ReturnsFalse()
     {
         var propertyId = Guid.NewGuid();
-        _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync((Property?)null);
+        _mockRepository.Setup(x => x.GetRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
         var result = await _service.CanAccessPropertyAsync("auth0|user", propertyId, []);
 
         Assert.False(result);
-        _mockRepository.Verify(x => x.GetByIdAsync(propertyId), Times.Once);
+        _mockRepository.Verify(x => x.GetRecordAsync(propertyId), Times.Once);
     }
 
     [Fact]
@@ -93,6 +93,6 @@ public class PropertyAuthorizationServiceTests
         var result = await _service.CanAccessPropertyAsync("auth0|manager", propertyId, ["PropertyManager"]);
 
         Assert.True(result);
-        _mockRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
+        _mockRepository.Verify(x => x.GetRecordAsync(It.IsAny<Guid>()), Times.Never);
     }
 }

@@ -26,34 +26,49 @@ public class BookingsController(
     IOtaStayService otaStays,
     ILogger<BookingsController> logger) : ControllerBase
 {
+    /// <summary>
+    /// The bookings the caller sees, latest check-in first, as a plain array (web list, dashboard, guest detail):
+    /// <c>propertyId</c> and <c>guestId</c> narrow it. TN-3: filtered in SQL by the caller's scope (org, and the owned
+    /// properties for a non org-wide role) in one query whatever the number of bookings (PC-14, A2-17). With
+    /// <c>propertyId</c>: 404 when the property is not in the caller's org, 403 without <c>booking.read</c> on it.
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll([FromQuery] Guid? propertyId = null, [FromQuery] Guid? guestId = null)
+    [ProducesResponseType(typeof(IEnumerable<BookingResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<BookingResponseDto>>> GetAll(
+        [FromServices] IOrgContextResolver orgContextResolver,
+        [FromServices] IAuthorizationService hostAuthorization,
+        [FromQuery] Guid? propertyId = null,
+        [FromQuery] Guid? guestId = null)
     {
-        var userId = GetUserId();
-        if (userId == null)
+        if (GetUserId() == null)
             return Unauthorized();
 
-        IEnumerable<Booking> bookings;
+        var cancellationToken = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        // No org yet: nothing of any org is visible (the tenant filter showed nothing either).
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
+            return Ok(Array.Empty<BookingResponseDto>());
 
-        if (propertyId.HasValue)
+        if (propertyId is { } id)
         {
-            if (!await authorizationService.CanAccessPropertyAsync(userId, propertyId.Value, GetUserRoles()))
-                return NotFound();
+            var property = await propertyService.GetPropertyRecordAsync(id);
+            if (property == null)
+                return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
 
-            bookings = await bookingService.GetPropertyBookingsAsync(propertyId.Value);
-        }
-        else if (guestId.HasValue)
-        {
-            bookings = await bookingService.GetGuestBookingsAsync(guestId.Value);
-            bookings = await FilterAccessibleBookingsAsync(bookings, userId);
-        }
-        else
-        {
-            bookings = await bookingService.GetAllBookingsAsync();
-            bookings = await FilterAccessibleBookingsAsync(bookings, userId);
+            if (!await hostAuthorization.IsAuthorizedAsync(User, HostResource.ForProperty(property), BookingOperations.Read))
+            {
+                logger.LogWarning(
+                    "User {UserId} denied booking.read on the bookings of property {PropertyId}",
+                    User.GetUserId(), id);
+                return Forbid();
+            }
         }
 
-        return Ok(bookings.Select(BookingMapper.ToResponse));
+        var bookings = await bookingService.GetBookingsAsync(scope, propertyId, guestId, cancellationToken);
+        var nowUtc = DateTime.UtcNow;
+        return Ok(bookings.Select(b => BookingMapper.ToResponse(b, nowUtc)).ToList());
     }
 
     [HttpGet("{id}")]
@@ -335,18 +350,4 @@ public class BookingsController(
 
     private IReadOnlyList<string> GetUserRoles() =>
         User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
-
-    private async Task<IReadOnlyList<Booking>> FilterAccessibleBookingsAsync(IEnumerable<Booking> bookings, string userId)
-    {
-        var roles = GetUserRoles();
-        var visible = new List<Booking>();
-
-        foreach (var booking in bookings)
-        {
-            if (await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, roles))
-                visible.Add(booking);
-        }
-
-        return visible;
-    }
 }
