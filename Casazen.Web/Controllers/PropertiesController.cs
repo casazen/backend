@@ -10,6 +10,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Validation;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
@@ -254,14 +255,14 @@ public class PropertiesController(
     /// Pauses a property (PC-03, A2-05): a dedicated action, separate from <see cref="Update"/>, so it never fails on
     /// unrelated fields. Hidden from public search, its public page and new guest bookings until reactivated; still
     /// counts against the plan's property limit, stays fully visible and editable to the host, and its existing
-    /// bookings are untouched. Idempotent.
+    /// bookings are untouched. Idempotent. Short-rent only: publication and guest bookings are short-stay concepts.
     /// </summary>
     /// <param name="id">The unique identifier of the property to pause.</param>
     /// <response code="200">The pause state right after the change.</response>
     /// <response code="403">The caller may not change this property.</response>
     /// <response code="404">No property with this id in the caller's org.</response>
     [HttpPost("{id:guid}/pause")]
-    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(PropertyPauseStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -275,7 +276,7 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), PropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to pause property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
@@ -295,7 +296,7 @@ public class PropertiesController(
     /// <response code="403">The caller may not change this property.</response>
     /// <response code="404">No property with this id in the caller's org.</response>
     [HttpPost("{id:guid}/activate")]
-    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(PropertyPauseStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -309,7 +310,7 @@ public class PropertiesController(
         if (existing == null)
             return NotFound();
 
-        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), SharedPropertyOperations.Write))
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(existing), PropertyOperations.Write))
         {
             logger.LogWarning("User {UserId} attempted to activate property {PropertyId} owned by {OwnerId}",
                 userId, id, existing.OwnerId);
@@ -769,7 +770,9 @@ public class PropertiesController(
         if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
             return Forbid();
 
-        if (!Enum.TryParse<DocumentType>(documentType, ignoreCase: true, out var docType))
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"), which would
+        // otherwise reach storage and the DB as an undefined document type (PL-07, A1-35, A7-31).
+        if (!EnumNames.TryParseDefined<DocumentType>(documentType, out var docType))
             return BadRequest(new { error = $"Invalid document type: {documentType}" });
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Upload");

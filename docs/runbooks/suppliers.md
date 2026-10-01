@@ -164,7 +164,7 @@ Check: `curl -s "$RAILWAY_TEST_URL/api/suppliers/registration-options"` returns 
 
 | Endpoint | Policy | Default |
 |---|---|---|
-| `POST /api/suppliers/register` | `PublicRegistration` (bucket shared with `POST /api/auth/register`) | 5 / 10 min |
+| `POST /api/suppliers/register` | `PublicRegistration` | 5 / 10 min |
 | `POST /api/suppliers/invites/lookup`, `GET /api/suppliers/registration-options` | `PublicRead` | 120 / min |
 
 The invite page calls `lookup` once per load and `register` once per submit: an invited supplier who logs in and
