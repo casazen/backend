@@ -330,7 +330,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IOssRevenueTracker, OssRevenueTracker>();
-        services.AddScoped<IRentBillingService, NullRentBillingService>();
+        services.AddScoped<IRentBillingService, RentBillingService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();

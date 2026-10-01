@@ -621,6 +621,16 @@ internal sealed class ScriptedDeferredChargeStripe : IStripeService
         string connectedAccountId, long amountCents, string currency, Dictionary<string, string> metadata) =>
         throw new NotSupportedException();
 
+    public Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
     public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) => throw new NotSupportedException();
 
     public Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default) =>

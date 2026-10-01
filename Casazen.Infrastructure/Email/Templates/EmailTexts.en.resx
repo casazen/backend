@@ -612,4 +612,43 @@
   <data name="CinDeadlineAlert_Cta" xml:space="preserve">
     <value>Open CIN compliance</value>
   </data>
+  <data name="Rent_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="Rent_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="Rent_Personal" xml:space="preserve">
+    <value>This link is personal: do not forward it. If you have already paid, ignore this email.</value>
+  </data>
+  <data name="RentPayment_Cta" xml:space="preserve">
+    <value>Pay the rent</value>
+  </data>
+  <data name="RentPaymentRequest_Subject" xml:space="preserve">
+    <value>Rent due on {1} - {0}</value>
+  </data>
+  <data name="RentPaymentRequest_Body" xml:space="preserve">
+    <value>the rent of &lt;strong&gt;€{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt;, period from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;, is due by &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="RentPaymentRequest_Landlord" xml:space="preserve">
+    <value>You can pay it online from the link below: the payment goes directly to the Stripe account of {0}. If you agreed another payment method with the landlord, you can keep using it.</value>
+  </data>
+  <data name="RentPaymentFailed_Subject" xml:space="preserve">
+    <value>Rent payment failed - {0}</value>
+  </data>
+  <data name="RentPaymentFailed_Body" xml:space="preserve">
+    <value>the online payment of the rent of &lt;strong&gt;€{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt;, period from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;, did not go through and was not collected. You can try again from the link below, also with another payment method.</value>
+  </data>
+  <data name="RentPaymentReceived_Subject" xml:space="preserve">
+    <value>Rent received - {0}, period from {1}</value>
+  </data>
+  <data name="RentPaymentReceived_Body" xml:space="preserve">
+    <value>the tenant paid online the rent of &lt;strong&gt;€{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt;, period from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt;. Stripe confirmed the payment on {4}.</value>
+  </data>
+  <data name="RentPaymentReceived_Payout" xml:space="preserve">
+    <value>The amount is on your connected Stripe account and is paid out according to the payout settings of your Stripe account.</value>
+  </data>
+  <data name="RentPaymentReceived_Cta" xml:space="preserve">
+    <value>Open the lease</value>
+  </data>
 </root>

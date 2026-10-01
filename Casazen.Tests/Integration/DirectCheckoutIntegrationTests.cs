@@ -1002,6 +1002,34 @@ internal sealed class FakeStripeService : IStripeService
     public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) =>
         Task.FromResult(new PaymentIntent { Id = paymentIntentId });
 
+    /// <summary>Idempotent creations received (LT-06 rent): one PaymentIntent per idempotency key, as Stripe does.</summary>
+    public System.Collections.Concurrent.ConcurrentDictionary<string, PaymentIntent> IdempotentPaymentIntents { get; } = new();
+
+    public Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowWhenUnavailable(connectedAccountId);
+        var paymentIntent = IdempotentPaymentIntents.GetOrAdd(idempotencyKey, _ => new PaymentIntent
+        {
+            Id = $"pi_test_{Guid.NewGuid():N}",
+            ClientSecret = $"pi_test_secret_{Guid.NewGuid():N}",
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+            Description = description,
+            Status = "requires_payment_method",
+        });
+        LastPaymentIntentId = paymentIntent.Id;
+        return Task.FromResult(paymentIntent);
+    }
+
+
     /// <summary>Refund requests received, in order (BK-02): account, idempotency key and amount are asserted on them.</summary>
     public System.Collections.Concurrent.ConcurrentQueue<StripeRefundCreateRequest> RefundRequests { get; } = new();
 
@@ -1044,6 +1072,8 @@ internal sealed class FakeStripeService : IStripeService
             Id = paymentIntentId,
             Status = StatusOf(paymentIntentId, PaymentIntentStatus),
             ClientSecret = $"{paymentIntentId}_secret_test",
+            // Amount of an intent created with an idempotency key (LT-06), so a payable one can be reused.
+            Amount = IdempotentPaymentIntents.Values.FirstOrDefault(pi => pi.Id == paymentIntentId)?.Amount ?? 0,
         });
 
     public Task<PaymentIntent> CancelPaymentIntentAsync(

@@ -612,4 +612,43 @@
   <data name="CinDeadlineAlert_Cta" xml:space="preserve">
     <value>Apri Conformità CIN</value>
   </data>
+  <data name="Rent_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="Rent_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="Rent_Personal" xml:space="preserve">
+    <value>Il link è personale: non inoltrarlo. Se hai già pagato, ignora questa email.</value>
+  </data>
+  <data name="RentPayment_Cta" xml:space="preserve">
+    <value>Paga il canone</value>
+  </data>
+  <data name="RentPaymentRequest_Subject" xml:space="preserve">
+    <value>Canone di locazione in scadenza il {1} - {0}</value>
+  </data>
+  <data name="RentPaymentRequest_Body" xml:space="preserve">
+    <value>è in scadenza il canone di &lt;strong&gt;{0} €&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt;, periodo dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;, da pagare entro il &lt;strong&gt;{4}&lt;/strong&gt;.</value>
+  </data>
+  <data name="RentPaymentRequest_Landlord" xml:space="preserve">
+    <value>Puoi pagarlo online dal link qui sotto: il pagamento va direttamente sul conto Stripe di {0}. Se hai concordato un altro metodo di pagamento con il locatore, puoi continuare a usarlo.</value>
+  </data>
+  <data name="RentPaymentFailed_Subject" xml:space="preserve">
+    <value>Pagamento del canone non riuscito - {0}</value>
+  </data>
+  <data name="RentPaymentFailed_Body" xml:space="preserve">
+    <value>il pagamento online del canone di &lt;strong&gt;{0} €&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt;, periodo dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;, non è andato a buon fine e non risulta incassato. Puoi riprovare dal link qui sotto, anche con un altro metodo di pagamento.</value>
+  </data>
+  <data name="RentPaymentReceived_Subject" xml:space="preserve">
+    <value>Canone ricevuto - {0}, periodo dal {1}</value>
+  </data>
+  <data name="RentPaymentReceived_Body" xml:space="preserve">
+    <value>il conduttore ha pagato online il canone di &lt;strong&gt;{0} €&lt;/strong&gt; per l'immobile &lt;strong&gt;{1}&lt;/strong&gt;, periodo dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;. Stripe ha confermato il pagamento il {4}.</value>
+  </data>
+  <data name="RentPaymentReceived_Payout" xml:space="preserve">
+    <value>L'importo è sul tuo account Stripe collegato e viene versato secondo le impostazioni di pagamento del tuo account Stripe.</value>
+  </data>
+  <data name="RentPaymentReceived_Cta" xml:space="preserve">
+    <value>Apri il contratto</value>
+  </data>
 </root>

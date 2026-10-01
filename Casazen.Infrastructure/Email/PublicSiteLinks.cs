@@ -117,6 +117,19 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}?token={Uri.EscapeDataString(checkoutToken)}");
     }
 
+    /// <summary>
+    /// Public page where a tenant pays a rent installment online (route <c>/rent/pay/:installmentId</c>, LT-06). Only the
+    /// installment id and the random token are in the link, no personal data.
+    /// </summary>
+    public string RentPayment(Guid installmentId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/rent/pay/{installmentId:D}?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>Host console: detail page of one lease (route <c>/app/long-rent/leases/:id</c>, LT-06).</summary>
+    public string HostLease(Guid leaseId) => Build($"/app/long-rent/leases/{leaseId:D}");
+
     /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 

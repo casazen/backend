@@ -29,7 +29,6 @@ public class StripeWebhookHandler(
     ILogger<StripeWebhookHandler> logger)
 {
     private const string DirectBookingKind = "direct-booking";
-    private const string RentChargeKind = "rent-charge";
 
     public Task HandleEventAsync(Event stripeEvent) =>
         HandleEventAsync(stripeEvent, WebhookSource.Platform);
@@ -70,6 +69,8 @@ public class StripeWebhookHandler(
         CheckoutPaymentSettlement? checkoutSettlement = null;
         // Deferred charge failed (BK-08): guest and host emails once the event is committed.
         DeferredChargeNotice? deferredChargeNotice = null;
+        // Rent installment paid or failed (LT-06): landlord or tenant emails once the event is committed.
+        RentPaymentNotice? rentNotice = null;
         try
         {
             switch (stripeEvent.Type)
@@ -79,6 +80,13 @@ public class StripeWebhookHandler(
                 case "payment_intent.payment_failed" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.canceled" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
                     (checkoutSettlement, deferredChargeNotice) = await HandleDeferredChargeAsync(
+                        (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
+                    break;
+                case "payment_intent.succeeded" when IsRentCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.processing" when IsRentCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.payment_failed" when IsRentCharge(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.canceled" when IsRentCharge(stripeEvent.Data.Object as PaymentIntent):
+                    rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
                 case "payment_intent.succeeded":
@@ -158,6 +166,9 @@ public class StripeWebhookHandler(
 
         if (deferredChargeNotice is not null)
             await deferredCharges.CompleteAsync(deferredChargeNotice);
+
+        if (rentNotice is not null)
+            await rentBillingService.CompleteAsync(rentNotice);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -553,14 +564,6 @@ public class StripeWebhookHandler(
             return null;
 
         TryGetMetadataKind(paymentIntent, out var kind);
-        if (string.Equals(kind, RentChargeKind, StringComparison.Ordinal))
-        {
-            if (source == WebhookSource.Connected &&
-                paymentIntent.Metadata.TryGetValue("rentLedgerEntryId", out var entryIdRaw) &&
-                Guid.TryParse(entryIdRaw, out var entryId))
-                await rentBillingService.HandleRentPaymentSucceededAsync(entryId);
-            return null;
-        }
         // On the Connect endpoint only the checkout's own PaymentIntents: the host's other charges are not CasaZen's.
         if (source == WebhookSource.Connected && !string.Equals(kind, DirectBookingKind, StringComparison.Ordinal))
             return null;
@@ -646,6 +649,42 @@ public class StripeWebhookHandler(
             .ToListAsync();
     }
 
+    private static bool IsRentCharge(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        TryGetMetadataKind(paymentIntent, out var kind) &&
+        string.Equals(kind, RentCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// An event of a rent installment PaymentIntent (LT-06, A7-07), from the Connect endpoint or the platform endpoint
+    /// listening to connected accounts (the event's <c>account</c>): applied in the event transaction, never dropped as
+    /// processed without effect. Events of the platform account itself are ignored (rent is charged on the landlord's
+    /// connected account).
+    /// </summary>
+    private async Task<RentPaymentNotice?> HandleRentChargeAsync(
+        PaymentIntent paymentIntent,
+        string eventType,
+        WebhookSource source,
+        string? account)
+    {
+        var installmentId = paymentIntent.Metadata.TryGetValue(RentCharges.InstallmentMetadataKey, out var raw) &&
+                            Guid.TryParse(raw, out var parsed)
+            ? parsed
+            : (Guid?)null;
+        logger.LogInformation(
+            "Rent payment intent {PaymentIntentId}: {EventType} (source={Source}, account={AccountId})",
+            paymentIntent.Id,
+            eventType,
+            source,
+            account ?? "none");
+        return await rentBillingService.ApplyPaymentIntentEventAsync(new RentPaymentIntentEvent(
+            paymentIntent.Id,
+            eventType,
+            account,
+            installmentId,
+            paymentIntent.Amount,
+            paymentIntent.LastPaymentError?.Code));
+    }
+
     private static bool IsDeferredCharge(PaymentIntent? paymentIntent) =>
         paymentIntent is not null &&
         TryGetMetadataKind(paymentIntent, out var kind) &&
@@ -676,14 +715,6 @@ public class StripeWebhookHandler(
 
         if (TryGetMetadataKind(paymentIntent, out var kind))
         {
-            if (string.Equals(kind, RentChargeKind, StringComparison.Ordinal))
-            {
-                if (source == WebhookSource.Connected &&
-                    paymentIntent.Metadata.TryGetValue("rentLedgerEntryId", out var entryIdRaw) &&
-                    Guid.TryParse(entryIdRaw, out var entryId))
-                    await rentBillingService.HandleRentPaymentFailedAsync(entryId, eventType == "payment_intent.canceled");
-                return;
-            }
             if (string.Equals(kind, DirectBookingKind, StringComparison.Ordinal) && source == WebhookSource.Connected)
             {
                 logger.LogInformation("Direct booking payment failed/canceled: {PaymentIntentId}", paymentIntent.Id);

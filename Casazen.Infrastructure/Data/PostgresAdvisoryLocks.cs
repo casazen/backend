@@ -112,6 +112,13 @@ internal static class PostgresAdvisoryLocks
         /// now") and the supplier's manual changes never write the same days at once (SU-15).
         /// </summary>
         SupplierCalendarSync = 1_065,
+
+        /// <summary>
+        /// Rent of one lease (key: lease id): the schedule set-up, the tenant's payment session, an offline payment, the
+        /// payment webhooks and the collection job change its installments one at a time, so an installment never gets
+        /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
+        /// </summary>
+        RentLease = 1_206,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
