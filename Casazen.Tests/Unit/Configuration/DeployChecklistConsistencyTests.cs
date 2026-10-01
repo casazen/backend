@@ -57,6 +57,7 @@ public class DeployChecklistConsistencyTests
         ["CedolareAdvisory"] = typeof(CedolareAdvisoryOptions),
         ["Cors"] = typeof(CorsOriginOptions),
         ["Seo"] = typeof(SeoBootstrapOptions),
+        ["Vercel"] = typeof(VercelDomainsOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>
