@@ -39,14 +39,22 @@ public interface IPropertyService
     /// <summary>Reactivates a paused property (PC-03, A2-05). Idempotent when already active.</summary>
     Task<Property> ActivatePropertyAsync(Property property);
 
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row and its bookings, payments and fiscal data are kept, the
+    /// property leaves every normal read and frees its plan slot. A paused property (PC-03) can be deleted too.
+    /// Refused with 409 (<c>DomainConflictException</c>) while a stay or a lease is still to come. False when there is
+    /// nothing to delete.
+    /// </summary>
     Task<bool> DeletePropertyAsync(Guid id);
-    Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
+
+    /// <summary>
+    /// The public search across orgs (BK-20, A8-13): published properties of active orgs matching
+    /// <paramref name="criteria"/>, cheapest first within a city, at most 50. Each result carries its org's slug.
+    /// </summary>
+    Task<IEnumerable<PublicPropertyDto>> SearchAsync(PublicPropertySearchCriteria criteria);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
     Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id);
     Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId);
-    Task<Property> AddImageAsync(Guid propertyId, string imageUrl);
-    Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex);
-    Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls);
     Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId);
 
     /// <summary>

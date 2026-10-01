@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Authorization;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Repositories;
@@ -21,10 +22,30 @@ public interface IPropertyRepository
     Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
-    IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null);
+    /// <summary>
+    /// Published properties of active orgs (<c>PublicListing.IsPublished</c>) matching <paramref name="criteria"/>,
+    /// optionally of one org: the query of the public search, the org's property list and the public property pages.
+    /// </summary>
+    IQueryable<Property> GetSearchQueryable(PublicPropertySearchCriteria criteria, Guid? orgId = null);
     Task<Property> AddAsync(Property property);
     Task<Property> UpdateAsync(Property property);
-    Task DeleteAsync(Guid id);
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): sets <see cref="Property.IsDeleted"/> and
+    /// <see cref="Property.DeletedAt"/> instead of removing the row, so its fiscal history (tourist tax, CIN,
+    /// cedolare secca) stays intact. Refused, changing nothing, while the property has a stay still to come (pending,
+    /// confirmed or checked-in, check-out on <paramref name="todayInRome"/> or later) or a lease in force (not draft
+    /// nor rejected, end date on <paramref name="todayInRome"/> or later). On PostgreSQL the check and the update run
+    /// under the property's booking lock, so a booking created at the same time is either seen or waits.
+    /// </summary>
+    /// <param name="deletedAtUtc">UTC instant recorded in <see cref="Property.DeletedAt"/>.</param>
+    /// <param name="todayInRome">Today's calendar date in Europe/Rome (stay dates are calendar dates).</param>
+    Task<PropertySoftDeleteOutcome> SoftDeleteAsync(
+        Guid id,
+        DateTime deletedAtUtc,
+        DateTime todayInRome,
+        CancellationToken cancellationToken = default);
+
     Task<bool> ExistsAsync(Guid id);
 
     /// <summary>
@@ -47,4 +68,20 @@ public interface IPropertyRepository
     Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync();
 
     Task<bool> CancellationPolicyExistsAsync(Guid id);
+}
+
+/// <summary>Result of <see cref="IPropertyRepository.SoftDeleteAsync"/> (PC-05).</summary>
+public enum PropertySoftDeleteOutcome
+{
+    /// <summary>The property is now soft-deleted.</summary>
+    Deleted,
+
+    /// <summary>No such property for the caller (other org, never existed, or already deleted): nothing changed.</summary>
+    NotFound,
+
+    /// <summary>A pending, confirmed or checked-in stay has not checked out yet: nothing changed.</summary>
+    HasUpcomingStays,
+
+    /// <summary>A lease is in force or in progress (not draft nor rejected) and has not ended yet: nothing changed.</summary>
+    HasActiveLeases,
 }
