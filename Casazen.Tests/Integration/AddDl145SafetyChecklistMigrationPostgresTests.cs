@@ -111,8 +111,8 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Orgs are written through the model; Properties and the old JSON column with SQL (later migrations add columns to
-    /// the current Property entity).
+    /// Orgs, Properties and the old JSON column are written with SQL (later migrations add columns to the current
+    /// Org and Property entities).
     /// </summary>
     private static async Task<Seed> SeedPreviousStateAsync(AppDbContext db)
     {
@@ -125,9 +125,8 @@ public class AddDl145SafetyChecklistMigrationPostgresTests : IAsyncLifetime
             PlanTier = PlanTier.Starter,
             IsActive = true,
         };
-        db.Orgs.Add(org);
-
-        await db.SaveChangesAsync();
+        // The org row in SQL: the current Org entity has columns that later migrations add (PL-04).
+        await LegacyOrgRows.InsertAsync(db, org);
 
         // Property rows in SQL: the current Property entity has columns that later migrations add (LT-10).
         async Task<Guid> NewPropertyAsync(string name)

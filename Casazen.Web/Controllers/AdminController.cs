@@ -61,7 +61,9 @@ public class AdminController(
             return BadRequest(new { error = $"Unknown cinStatus value '{cinStatus}'" });
         }
 
-        pageSize = Math.Min(pageSize, 100);
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
         try
         {
