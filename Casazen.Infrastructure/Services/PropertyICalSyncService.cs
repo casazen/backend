@@ -748,6 +748,7 @@ public partial class PropertyICalSyncService
                     EndUtc = b.EndUtc,
                     Summary = b.Summary,
                     BookingId = b.BookingId,
+                    ManualReason = b.ManualReason,
                 },
                 Channel = b.Feed != null ? (ICalFeedChannel?)b.Feed.Channel : null,
                 FeedLabel = b.Feed != null ? b.Feed.Label : null,
@@ -777,7 +778,8 @@ public partial class PropertyICalSyncService
                 r.Block.FeedId,
                 r.Stay is { Status: not BookingStatus.Cancelled } ? r.Stay.Id : null,
                 PropertyOccupancy.IsRepresentedByStay(r.Block, r.Stay),
-                r.Channel is not null && OtaStays.IsConvertible(r.Block, r.Stay?.Status, today)))
+                r.Channel is not null && OtaStays.IsConvertible(r.Block, r.Stay?.Status, today),
+                r.Block.ManualReason))
             .ToList();
     }
 

@@ -87,7 +87,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
         if (booking.Status != BookingStatus.Cancelled &&
-            await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date))
+            (await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date) ||
+             await HasBlockingCalendarBlockAsync(booking)))
         {
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
@@ -223,6 +224,18 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
 
         return await query.AnyAsync();
     }
+
+    /// <summary>
+    /// A calendar block takes a night of a new CasaZen booking (PC-09). The callers check the blocks before (with the
+    /// public availability); this check, under the property lock, closes the gap with a manual block created meanwhile:
+    /// manual blocks are written under the same lock (<c>CalendarBlockService</c>), so a booking and a manual block never
+    /// take the same night. A stay of an OTA channel (CO-21: created from its own imported block) is the channel's
+    /// reservation: blocks never refuse it here.
+    /// </summary>
+    private async Task<bool> HasBlockingCalendarBlockAsync(Booking booking) =>
+        !FiscalCopy.IsOtaBookingSource(booking.Source) &&
+        await context.CalendarBlocks.AnyAsync(
+            PropertyOccupancy.BlockTakesNightIn(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date));
 
     private static HoldExpiryCutoff? ExpiredHoldCutoff(int? directPendingTtlMinutes) =>
         directPendingTtlMinutes.HasValue
