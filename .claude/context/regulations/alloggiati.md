@@ -1,7 +1,10 @@
 # Comunicazione Alloggiati Web
 
-> Aggiornato: 2026-09-23 (task RS-1). Le sezioni "Specifiche tecniche verificate (2026-09)" e
-> "Verdetto per CO-13" sostituiscono le affermazioni tecniche precedenti dove sono in contrasto.
+> Aggiornato: 2026-09-23 (task RS-1) e 2026-10-01 (task CO-13). Le sezioni "Specifiche tecniche verificate (2026-09)" e
+> "Verdetto per CO-13" sostituiscono le affermazioni tecniche precedenti dove sono in contrasto. **Il 2026-10-01 CO-13 ha letto
+> per intero le copie di `MANUALEALBERGHI.pdf` e `MANUALEWS.pdf` e due copie del WSDL** (fonti e checksum nel runbook
+> `docs/runbooks/alloggiati.md`, "Record file (CO-13)"): le righe marcate **D** del tracciato sono ora **U** con il numero di
+> pagina, dove sotto non è indicato altro. `CREAFILE.pdf` non è stato letto (dominio ufficiale bloccato).
 
 ## Riferimento Normativo
 - **Fonte primaria**: Art. 109 TULPS (R.D. 18/06/1931 n. 773), comma 3 nel testo in vigore dal 10/08/2019
@@ -67,6 +70,12 @@ Le sanzioni sono **personali** (a carico del gestore) e non possono essere deleg
   - **D**: dedotto (per esempio per somma delle lunghezze o per coerenza tra fonti ufficiali), **non letto** nel documento;
   - **T**: indicato solo da fonti terze (software house, blog). È un indizio, **non una fonte**.
 - **Prerequisito di CO-13**: prima di scrivere codice, scaricare da una rete non filtrata `CREAFILE.pdf`, `MANUALEALBERGHI.pdf`, il manuale WS e `Service.asmx?wsdl`, poi confermare ogni riga marcata **D** o **T**.
+- **Aggiornamento CO-13 (2026-10-01)**: `alloggiatiweb.poliziadistato.it` e `questure.poliziadistato.it` sono ancora bloccati, ma
+  `MANUALEALBERGHI.pdf` (35 pagine), `MANUALEWS.pdf` (21 pagine, Rev. 01 del 24/01/2022) e il WSDL sono stati letti per intero da
+  copie in repository GitHub pubblici di terzi (non verificate byte per byte sul portale: gli SHA-256 sono nel runbook). Livelli:
+  **U-copia** = riga letta nel testo integrale di una copia del documento ufficiale, con pagina; **T2** = confermata anche da
+  un'implementazione di terzi indipendente. Il tracciato è **verificato** (due documenti ufficiali integrali che coincidono, più due
+  implementazioni di terzi). Non verificato: `CREAFILE.pdf`, la lista dei codici di errore (`TipoErrore`), i limiti del web service.
 
 ### Documentazione ufficiale pubblica (senza login)
 | Documento | URL | Note |
@@ -87,42 +96,43 @@ Le sanzioni sono **personali** (a carico del gestore) e non possono essere deleg
 
 **Regole generali**
 - Una riga per ospite, **168 caratteri** per riga, campi a lunghezza fissa riempiti con spazi (U, CREAFILE.pdf e MANUALEALBERGHI.pdf).
-- Righe separate da **CR+LF**; dopo l'ultima riga **non** si aggiunge CR+LF (U, CREAFILE.pdf).
-- Date nel formato **`gg/mm/aaaa`**, per esempio `16/02/2005` (U, per la data di arrivo; D, per la data di nascita).
-- Niente simboli speciali (U, ma solo da una versione del manuale). **La codifica dei caratteri (ASCII, Windows-1252, ...) non risulta dagli estratti ufficiali**: da verificare. Le fonti terze parlano di ANSI/Windows-1252 e di lettere accentate sostituite dalla lettera base (T).
+- Righe separate da **CR+LF** (ASCII 13 e 10); dopo l'ultima riga **non** si aggiunge CR+LF (U, CREAFILE.pdf; U-copia, MANUALEALBERGHI.pdf p. 33-35, "Nota Bene").
+- Date nel formato **`gg/mm/aaaa`**, per esempio `16/02/2005` (arrivo) e `13/03/1973` (nascita) (U-copia, MANUALEALBERGHI.pdf p. 31).
+- **Codifica: UTF-8** (U-copia, MANUALEALBERGHI.pdf p. 31: "Il file precompilato, con codifica UTF-8"); **al massimo 1000 righe** per file (U-copia, stessa pagina). Il manuale non elenca i caratteri ammessi (la versione più vecchia diceva "niente simboli speciali"). Un client di terzi che invia al portale reale riferisce che **il portale rifiuta i nomi con caratteri diversi da A-Z, spazio e apostrofo** ("Cognome con caratteri non validi") e che vanno traslitterati, non cancellati (T, `cito09/alloggiati-web-app`): CasaZen scrive i nomi in maiuscolo A-Z senza accenti (`AlloggiatiRecordFile.ToRecordName`) e rifiuta di generare il file se un nome non si può scrivere così. Da confermare con la prima chiamata `Test` su un account reale.
+- Il numero di giorni di permanenza va scritto su 2 caratteri: i manuali non dicono se con zero iniziale. CasaZen scrive `03` (T, i client di terzi `padNum`); il minimo 1 e il massimo 30 sono il vincolo del portale (U-copia, "Massimo 30 gg").
 - Nel web service ogni elemento di `ElencoSchedine` è una stringa che rispetta **lo stesso tracciato** (U, manuale WS).
 
-**Campi** (posizioni 0-based come nel manuale. Le posizioni sono **D**, ricostruite sommando le lunghezze, e vanno confermate su CREAFILE.pdf)
+**Campi** (posizioni 0-based "DA" / "A" come nella tabella del manuale: **U-copia**, MANUALEALBERGHI.pdf p. 34 e MANUALEWS.pdf p. 19, che coincidono con le somme delle lunghezze e con le due implementazioni di terzi)
 
 | # | Campo | Pos. | Lung. | Formato / note | Verifica |
 |---|---|---|---|---|---|
 | 1 | Tipo alloggiato | 0–1 | 2 | codice dalla tabella Tipo Alloggiato | U |
 | 2 | Data arrivo | 2–11 | 10 | `gg/mm/aaaa` | U |
-| 3 | Numero giorni di permanenza | 12–13 | 2 | massimo 30, obbligatorio | U (max 30, obbligatorio); D (lunghezza e posizione) |
-| 4 | Cognome | 14–63 | 50 | testo, riempito con spazi | U (lunghezza); D (posizione) |
-| 5 | Nome | 64–93 | 30 | testo, riempito con spazi | U (lunghezza); D (posizione) |
+| 3 | Numero giorni di permanenza | 12–13 | 2 | massimo 30, obbligatorio | U-copia (p. 34, DA 12 A 13) |
+| 4 | Cognome | 14–63 | 50 | testo, riempito con spazi (es. ROSSI + 45 spazi) | U-copia (p. 31 e 34) |
+| 5 | Nome | 64–93 | 30 | testo, riempito con spazi (es. PAOLO + 25 spazi) | U-copia (p. 31 e 34) |
 | 6 | Sesso | 94 | 1 | `1` = maschio, `2` = femmina | U |
-| 7 | Data di nascita | 95–104 | 10 | `gg/mm/aaaa` | D |
-| 8 | Comune di nascita | 105–113 | 9 | codice dalla tabella Comuni, **solo se nato in Italia** | U |
-| 9 | Provincia di nascita | 114–115 | 2 | sigla di targa (Roma = `RM`), **solo se nato in Italia** | U |
-| 10 | Stato di nascita | 116–124 | 9 | codice dalla tabella Stati (anche per i nati in Italia) | U |
+| 7 | Data di nascita | 95–104 | 10 | `gg/mm/aaaa` | U-copia (p. 31 e 34) |
+| 8 | Comune di nascita | 105–113 | 9 | codice dalla tabella Comuni, **solo se nato in Italia**: 9 spazi se nato all'estero | U-copia (p. 31 e 34) |
+| 9 | Provincia di nascita | 114–115 | 2 | sigla di targa (Roma = `RM`), **solo se nato in Italia**: 2 spazi se nato all'estero | U-copia (p. 32 e 34) |
+| 10 | Stato di nascita | 116–124 | 9 | codice dalla tabella Stati, **anche per i nati in Italia** (con il codice dell'Italia) | U-copia (p. 32 e 34) |
 | 11 | Cittadinanza | 125–133 | 9 | codice dalla tabella Stati | U |
 | 12 | Tipo documento | 134–138 | 5 | codice dalla tabella Documenti | U |
 | 13 | Numero documento | 139–158 | 20 | riempito con spazi fino a 20 | U |
 | 14 | Luogo di rilascio documento | 159–167 | 9 | codice comune (se in Italia) o stato (se all'estero) | U |
 | | **Totale** | | **168** | | U |
 
-- **Familiari e membri del gruppo**: al posto dei campi 12–14 vanno **34 spazi** (5+20+9), per arrivare comunque a 168 caratteri (U, CREAFILE.pdf).
-- Per i nati all'estero i campi 8 e 9 si presume vadano lasciati a spazi (D).
-- **Profilo "Gestione Appartamenti" (File Unico)**: in fondo a ogni riga si aggiunge **IDAPPARTAMENTO di 6 caratteri** (U), quindi 174 caratteri totali (D). L'ID viene dall'anagrafica appartamenti del portale; nel web service c'è `Tabella` / `ListaAppartamenti` (D).
-- Nel file, le righe dei familiari e dei membri probabilmente devono seguire quella del rispettivo capofamiglia o capogruppo. **Non verificato**: da confermare su CREAFILE.pdf.
+- **Familiari e membri del gruppo**: al posto dei campi 12–14 vanno **34 spazi** (5+20+9), per arrivare comunque a 168 caratteri (U, CREAFILE.pdf; U-copia, MANUALEALBERGHI.pdf p. 32, colonna "Tipo Alloggiato (19-20)": "Riempire con Blank").
+- Per i nati all'estero i campi 8 e 9 vanno lasciati a spazi: "il campo va comunque completato con 9 spazi bianchi" e "con 2 spazi bianchi" (**U-copia**, MANUALEALBERGHI.pdf p. 31-32).
+- **Profilo "Gestione Appartamenti" (File Unico)**: in fondo a ogni riga si aggiunge **IDAPPARTAMENTO di 6 caratteri** nelle posizioni 168-173 (U-copia, MANUALEALBERGHI.pdf p. 35 e MANUALEWS.pdf p. 20), quindi 174 caratteri (176 con CR+LF). L'ID è "presente nell'elenco appartamenti (non disabilitati)"; nel web service `Tabella(ListaAppartamenti)` restituisce `IDAPP;Descrizione;COMUNE;PROV;Indirizzo;Proprietario` (U-copia, MANUALEWS.pdf p. 18). **Non specificato**: allineamento e riempimento dell'ID nei 6 caratteri (gli ID dell'esempio sono `0`, `1`, `3`, `9`, mentre l'esempio di `GestioneAppartamenti_Test` usa `000004` come parametro intero). Il portale permette a quel profilo di scegliere l'appartamento anche caricando il file da 168 caratteri (MANUALEALBERGHI.pdf p. 24): CasaZen non genera il File Unico.
+- **Ordine delle righe**: quando si inserisce un capo famiglia/gruppo, i familiari/componenti "vanno sempre riportati nelle righe immediatamente successive" (**U-copia**, MANUALEALBERGHI.pdf p. 33).
 
 **Tipi alloggiato**
 - Categorie ufficiali (U): **Ospite singolo**, **Capo famiglia**, **Capo gruppo**, **Familiare**, **Membro gruppo**. Capofamiglia e capogruppo richiedono l'inserimento delle schedine collegate. Singolo, capofamiglia e capogruppo richiedono sempre il documento.
-- **Codici numerici: NON verificati su fonte ufficiale.** Molte fonti terze (T) indicano 16 = Ospite singolo, 17 = Capo famiglia, 18 = Capo gruppo, 19 = Familiare, 20 = Membro gruppo, ma altre fonti terze sono **discordanti**. CO-13 deve leggerli dalla tabella ufficiale `TIPO_ALLOGGIATO` o dal web service `Tabella(Tipi_Alloggiato)` e **non codificarli a mano senza verifica**.
+- **Codici numerici.** Le intestazioni della tabella del tracciato ufficiale raggruppano i tipi in "Tipo Alloggiato (16-17-18)" (con documento) e "Tipo Alloggiato (19-20)" (senza documento) (**U-copia**, MANUALEALBERGHI.pdf p. 34 e MANUALEWS.pdf p. 19): i cinque tipi hanno quindi i codici 16-20, e i tre con documento sono 16, 17, 18. L'abbinamento di ogni numero al nome (16 = Ospite singolo, 17 = Capo famiglia, 18 = Capo gruppo, 19 = Familiare, 20 = Membro gruppo) segue l'ordine delle voci della guida ed è confermato da client di terzi (T2), ma la tabella dei codici non è nei manuali. **CasaZen continua a leggerli solo dalla tabella ufficiale importata** (`TipiAlloggiato`, per nome), non a mano.
 
 **Vincoli applicativi del portale**
-- Il portale accetta come **data di arrivo solo la data odierna o quella del giorno precedente** (U, manuali e FAQ delle Questure). Conseguenze: **non si può inviare prima del giorno di arrivo** e un invio oltre il giorno successivo viene rifiutato.
+- Il portale accetta come **data di arrivo solo la data odierna o quella del giorno precedente** (U-copia, MANUALEALBERGHI.pdf p. 7 e 31; U, manuali e FAQ delle Questure). Conseguenze: **non si può inviare prima del giorno di arrivo** e un invio oltre il giorno successivo viene rifiutato.
 - **Permanenza massima 30 giorni** per schedina. Per una proroga si invia una nuova schedina come nuovo arrivo (U, Questura di Siena).
 
 ### 2. Tabelle codici (comuni, stati/cittadinanze, tipi documento, luoghi di rilascio)
@@ -142,29 +152,31 @@ Le sanzioni sono **personali** (a carico del gestore) e non possono essere deleg
 - **Autenticazione** (U, manuale WS e Allegato tecnico):
   1. il gestore si registra al portale con le credenziali rilasciate dalla Questura;
   2. nel portale genera la **WSKEY** (menu profilo in alto a destra, voce "Web Service Key"). È una stringa alfanumerica univoca, **revocabile e rigenerabile** dalla struttura; se ne può generare **una sola al giorno** e **va rigenerata a ogni cambio password**;
-  3. `GenerateToken(Utente, Password, WsKey)` restituisce `TokenInfo` (emissione, scadenza, token). Il token ha **validità temporanea**, ma la durata non risulta dagli estratti;
+  3. `GenerateToken(Utente, Password, WsKey)` restituisce `TokenInfo` (`issued`, `expires`, `token`). Il token ha **validità temporanea**: il manuale non dichiara la durata, ma l'esempio di risposta ha `expires` un'ora dopo `issued` (U-copia, MANUALEWS.pdf p. 7; un client di terzi riferisce 24 ore: T). Si legge `expires` dalla risposta, senza assumere una durata;
   4. le operazioni successive usano `Utente` e `token`.
   - L'OTP serve per il login al portale; `GenerateToken` non ha un parametro OTP (D).
-- **Operazioni osservate** (pagine `service.asmx?op=...` indicizzate e indice del manuale WS):
+- **Operazioni** (12, tutte presenti nel WSDL e descritte con esempi di richiesta e risposta in MANUALEWS.pdf, Rev. 01 del 24/01/2022; namespace `AlloggiatiService`, binding SOAP 1.1 e 1.2, endpoint `https://alloggiatiweb.poliziadistato.it/service/service.asmx`):
 
   | Operazione | Parametri principali | Scopo | Verifica |
   |---|---|---|---|
-  | `GenerateToken` | Utente, Password, WsKey | genera il token temporaneo | U |
-  | `Authentication_Test` | Utente, token | controllo del token ("Controllo del Token di Autenticazione") | U (funzione); D (nome esatto) |
-  | `Test` | Utente, token, ElencoSchedine | **controlla la correttezza** delle schedine **senza inviarle** | U |
-  | `Send` | Utente, token, ElencoSchedine | **invio** delle schedine | U |
-  | `Ricevuta` | Utente, token, Data | scarica la **ricevuta PDF** (base64) di una data | U |
-  | `Tabella` | Utente, token, tipo (`Luoghi`, `Tipi_Documento`, `Tipi_Alloggiato`, `TipoErrore`, forse `ListaAppartamenti`) | scarica una tabella in **CSV** | U (Luoghi, Tipi_Documento, Tipi_Alloggiato, TipoErrore); D (ListaAppartamenti) |
-  | `GestioneAppartamenti_*` (per esempio `GestioneAppartamenti_AggiungiAppartamento`) | — | operazioni del profilo Gestione Appartamenti (anagrafica appartamenti, invio File Unico) | U (esistenza di AggiungiAppartamento); D (le altre) |
+  | `GenerateToken` | Utente, Password, WsKey | genera il token temporaneo | U-copia (p. 7, WSDL) |
+  | `Authentication_Test` | Utente, token | controllo del token ("Controllo del Token di Autenticazione") | U-copia (MANUALEWS.pdf p. 8, WSDL) |
+  | `Test` | Utente, token, ElencoSchedine (`ArrayOfString`, un `string` per riga) | **controlla la correttezza** delle schedine **senza inviarle** | U-copia (p. 9, WSDL) |
+  | `Send` | Utente, token, ElencoSchedine | **invio**: "le sole schedine corrette saranno acquisite dal sistema" (le altre no, le corrette sì: invio parziale possibile) | U-copia (p. 10, WSDL) |
+  | `Ricevuta` | Utente, token, Data (`xs:dateTime`, es. `2021-12-10T00:00:00`) | scarica la **ricevuta PDF** (`base64Binary`) degli invii di quel giorno: "ultimi 30gg escluso il giorno corrente" | U-copia (p. 17, WSDL) |
+  | `Tabella` | Utente, token, tipo (`Luoghi`=0, `Tipi_Documento`=1, `Tipi_Alloggiato`=2, `TipoErrore`=3, `ListaAppartamenti`=4) | scarica una tabella in **CSV con separatore `;`** | U-copia (MANUALEWS.pdf p. 6 e 18, WSDL) |
+  | `GestioneAppartamenti_Test` / `_Send` | Utente, token, ElencoSchedine, IdAppartamento (int) | come `Test` / `Send` per un appartamento; solo utenze "Gestione Appartamenti" | U-copia (p. 11-12) |
+  | `GestioneAppartamenti_FileUnico_Test` / `_Send` | Utente, token, ElencoSchedine (righe da 174 caratteri) | come sopra con l'id dell'appartamento in ogni riga | U-copia (p. 13-14) |
+  | `GestioneAppartamenti_AggiungiAppartamento` / `_DisabilitaAppartamento` | Utente, token, Descrizione, ComuneCodice, Indirizzo, Proprietario / IdAppartamento | anagrafica appartamenti | U-copia (p. 15-16) |
 
-- **Esiti**: strutture `EsitoOperazioneServizio` (esito ed errore con dettaglio `ErroreDettaglio`) ed `ElencoSchedineEsito` (`SchedineValide` più un `Dettaglio` per ogni schedina) (U, indice del manuale WS e pagine `op=Test` e `op=Send`).
+- **Esiti** (U-copia, MANUALEWS.pdf p. 5-6, WSDL): `EsitoOperazioneServizio` = `esito` (boolean), `ErroreCod`, `ErroreDes` (codici nella tabella `TipoErrore`), `ErroreDettaglio`; `ElencoSchedineEsito` = `SchedineValide` (int) più `Dettaglio`, un `EsitoOperazioneServizio` per ogni riga inviata, **nell'ordine delle righe**. La risposta di `Test`/`Send` ha `TestResult`/`SendResult` (esito generale) e `result` (`ElencoSchedineEsito`) come elementi fratelli; quella di `GenerateToken` ha `GenerateTokenResult` (`TokenInfo`) e `result` (esito). Esempi di errori di riga nel manuale: `11 SCHEDINA_FORMATO_NON_CORRETTO` ("Dimensione Riga errata"), `12 SCHEDINA_CAMPO_NON_CORRETTO` ("Data di Arrivo Errata"). La lista completa dei codici non è nel manuale (si scarica con `Tabella(TipoErrore)` con credenziali).
 - **Ambiente di test**: **nessun ambiente di test o sandbox separato risulta documentato** nelle fonti consultate. L'unico strumento è il metodo `Test`, che valida senza inviare ma richiede **credenziali reali** di una struttura.
-- **Non determinato dalle fonti consultate**: durata del token, numero massimo di schedine per chiamata, limiti di frequenza, codici di errore (ottenibili con `Tabella(TipoErrore)`).
+- **Non determinato dalle fonti consultate** (nemmeno dalle copie integrali): durata garantita del token, numero massimo di schedine per chiamata al web service (il file ne ammette 1000), limiti di frequenza o blocchi dell'utenza dopo credenziali errate, lista dei codici di errore (ottenibile con `Tabella(TipoErrore)`), comportamento di un `Send` ripetuto con le stesse schedine (duplicati?). Un client di terzi che usa il servizio reale mappa gli errori di autenticazione 100-104 (credenziali errate, WSKEY scaduta/errata/mancante, utente disabilitato): T, non documentato nel manuale.
 - **Contratti e accreditamenti**: l'Allegato tecnico richiede solo "la preventiva registrazione dell'utente sul portale web e la richiesta di generazione delle chiavi di autorizzazione" (U). **Nessuna fonte consultata prevede** accreditamenti, convenzioni o contratti per il fornitore del software.
 
 ### 4. Ricevuta
 - La ricevuta è un **PDF firmato digitalmente** dalla Polizia di Stato, con QR code di controllo. È emessa **il giorno successivo** all'invio e resta scaricabile online per **30 giorni**. Il gestore la deve **conservare per 5 anni** (U, RICDIGALLO.pdf).
-- Via web service si scarica con `Ricevuta(Utente, token, Data)`.
+- Via web service si scarica con `Ricevuta(Utente, token, Data)`: la data è un giorno degli ultimi 30, **escluso il giorno corrente** (U-copia, MANUALEWS.pdf p. 17); sul portale ogni ricevuta riporta data, numero di schedine inviate e **numero di protocollo** (MANUALEALBERGHI.pdf p. 19). La ricevuta è **per giorno e per utenza**, non per schedina.
 - Conseguenza per CasaZen, coerente con D6 in DECISIONI.md: dopo un `Send` con esito positivo lo stato è "inviato, ricevuta in attesa". Si passa a "ricevuta acquisita" solo dopo aver scaricato la ricevuta del giorno di invio.
 
 ### 5. Tempistiche di legge
@@ -179,9 +191,12 @@ Le sanzioni sono **personali** (a carico del gestore) e non possono essere deleg
 
 ## Verdetto per CO-13
 
-> **Stato CO-13 (2026-10-01): bloccato, nessun codice.** Il proxy blocca ancora `alloggiatiweb.poliziadistato.it` e
-> `questure.poliziadistato.it`: le righe D/T non sono confermabili. Cosa manca e come sbloccare:
-> `docs/runbooks/alloggiati.md`, sezione "Record file and web service (CO-13): blocked".
+> **Stato CO-13 (2026-10-01): file tracciato implementato, client web service NON implementato.** Il proxy blocca ancora
+> `alloggiatiweb.poliziadistato.it` e `questure.poliziadistato.it`, ma le copie integrali dei manuali e del WSDL (repository
+> GitHub di terzi) hanno confermato il tracciato (le righe D sono ora U-copia). CasaZen genera il file da caricare sul portale
+> (`AlloggiatiRecordFile`, `GET /api/alloggiati/{bookingId}/record-file`); l'invio via web service resta fuori perimetro e lo
+> stato "Inviato" resta impossibile senza ricevuta. Dettagli e motivi: `docs/runbooks/alloggiati.md`, sezione "Record file
+> (CO-13)".
 
 **Verdetto: (b), web service integrabile senza contratto.** Ne segue anche (a): il web service accetta le stesse stringhe del tracciato file, che è pubblico.
 
@@ -216,7 +231,7 @@ Condizioni e limiti da rispettare in CO-13:
 
 3. **Integrazione Alloggiati Web** (vedi Verdetto CO-13)
    - Client SOAP verso `Service.asmx`: `GenerateToken`, `Test`, `Send`, `Ricevuta`, `Tabella`
-   - Mapping dei dati CasaZen sul tracciato record a 168 o 174 caratteri
+   - Mapping dei dati CasaZen sul tracciato record a 168 caratteri (**fatto in CO-13**; il File Unico a 174 caratteri non è generato)
    - Gestione cifrata delle credenziali Questura e della WSKEY per ogni host
    - Esito dell'invio e download della ricevuta PDF (conservazione 5 anni)
    - Fallback: file .txt da caricare manualmente
