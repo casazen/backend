@@ -15,7 +15,7 @@ public class LeaseGdprRetentionTests
     private static readonly Guid PropertyId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
     [Fact]
-    public async Task AC7_CreateDraft_SetsTenYearRetentionAndThirtyDayDeadline()
+    public async Task CreateDraftAsync_NewLease_StoresNoRetentionDateNorErasure()
     {
         var start = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
         var property = new Property { Id = PropertyId, OwnerId = OwnerId, OrgId = Guid.NewGuid(), Name = "GDPR Property" };
@@ -46,23 +46,46 @@ public class LeaseGdprRetentionTests
                 new CreatePartyRequest(PartyRole.Tenant, "Giulia", "Verdi", "VRDGLI85B02F205X", "IT", "giulia@example.com"),
             ]));
 
-        Assert.Equal(start.AddYears(10), result.DataRetentionUntil);
+        // LT-12 (A7-18): no stored StartDate + 10 years; the retention is counted from the end date on read.
+        Assert.Null(result.PartiesAnonymizedAt);
         Assert.Null(result.RegistrationDeadline); // fixed at the stipula (LT-04), not StartDate + 30
         Assert.False(result.ErasureRequested);
+        Assert.Null(result.ErasureRequestedAt);
+    }
+
+    [Theory]
+    [InlineData("2030-08-31", "2030-08-31", false)]
+    [InlineData("2030-08-31", "2030-09-01", true)]
+    [InlineData("2030-08-31", "2026-10-01", false)]
+    public void HasEnded_EndDateAndToday_EndsTheDayAfterTheEndDate(string endDate, string today, bool expected)
+    {
+        var end = DateTime.SpecifyKind(DateTime.Parse(endDate, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc);
+        var day = DateTime.SpecifyKind(DateTime.Parse(today, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc);
+
+        Assert.Equal(expected, LeasePartyPrivacyService.HasEnded(end, day));
+        Assert.Equal(end.AddDays(1), LeasePartyPrivacyService.EndedFrom(end));
     }
 
     [Fact]
-    public void AC7_LeaseErasureApi_IsNotImplemented_TrackedGap()
+    public void AnonymizeParty_PartyWithPersonalData_KeepsOnlyRoleAndExtraEuFlag()
     {
-        // Production has LeaseEventType.ErasureRequested and LeaseContract.ErasureRequested,
-        // but ILeaseWorkflowService / IGdprService expose no lease-erasure operation (guest-only GDPR).
-        // US-009 verifies current behaviour; implementing lease erasure is a separate issue.
-        Assert.DoesNotContain(
-            typeof(ILeaseWorkflowService).GetMethods(),
-            m => m.Name.Contains("Erasur", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(
-            typeof(IGdprService).GetMethods(),
-            m => m.Name.Contains("Lease", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(Enum.GetNames<LeaseEventType>(), n => n == nameof(LeaseEventType.ErasureRequested));
+        var party = new Party
+        {
+            Role = PartyRole.Tenant,
+            FirstName = "Giulia",
+            LastName = "Verdi",
+            FiscalCode = "VRDGLI85B02F205X",
+            Citizenship = "US",
+            ContactEmail = "giulia@example.com",
+            IsExtraEU = true,
+        };
+        var now = new DateTime(2031, 1, 1, 3, 0, 0, DateTimeKind.Utc);
+
+        LeasePartyPrivacyService.AnonymizeParty(party, now);
+
+        Assert.Equal(
+            ("ANONYMIZED", "ANONYMIZED", "ANONYMIZED", string.Empty, $"ANON-{party.Id:N}@deleted.local"),
+            (party.FirstName, party.LastName, party.FiscalCode, party.Citizenship, party.ContactEmail));
+        Assert.Equal((PartyRole.Tenant, true, now), (party.Role, party.IsExtraEU, party.AnonymizedAt));
     }
 }

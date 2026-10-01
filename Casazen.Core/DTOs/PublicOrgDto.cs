@@ -9,7 +9,13 @@ public class PublicOrgDto
     public string DisplayName { get; set; } = string.Empty;
     public string? LogoUrl { get; set; }
     public string? ThemeColor { get; set; }
-    public string ContactEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The org's contact email, only when it opted in to publish it (<c>Org.ContactEmailPublic</c>, A1-22/A1-23);
+    /// <c>null</c> otherwise — this endpoint is anonymous, so an unset opt-in must never leak the address (GDPR).
+    /// </summary>
+    public string? ContactEmail { get; set; }
+
     public string? HeroImageUrl { get; set; }
     public string? Tagline { get; set; }
     public string? PublicThemeId { get; set; }
@@ -26,7 +32,7 @@ public class PublicOrgDto
         DisplayName = org.DisplayName,
         LogoUrl = org.LogoUrl,
         ThemeColor = org.ThemeColor,
-        ContactEmail = org.ContactEmail,
+        ContactEmail = org.ContactEmailPublic && !string.IsNullOrWhiteSpace(org.ContactEmail) ? org.ContactEmail : null,
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
         PublicThemeId = org.PublicThemeId,

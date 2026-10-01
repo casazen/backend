@@ -61,8 +61,8 @@ public class LeaseWorkflowService(
             MonthlyRent = request.MonthlyRent,
             SecurityDeposit = request.SecurityDeposit,
             ConcordatoAssessment = concordato,
-            // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04).
-            DataRetentionUntil = request.StartDate.AddYears(10),
+            // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04). No retention date
+            // either: it is computed from the end date and Gdpr:Retention:LeaseParties (LT-12, LeasePartyPrivacyService).
             Parties = parties.Select(p => new Party
             {
                 Role = p.Role,

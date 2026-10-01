@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
@@ -45,15 +46,19 @@ public class AdminService(
         // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
 
-        // Properties (filter bypassed — platform-wide)
-        var allProperties = await dbContext.Properties.IgnoreQueryFilters().ToListAsync();
-        var totalProperties = allProperties.Count;
-        var activeProperties = allProperties.Count(p => p.IsActive);
+        // Properties (filter bypassed — platform-wide): counted in SQL, never materialized in full (A1-27).
+        var propertiesQuery = dbContext.Properties.IgnoreQueryFilters();
+        var totalProperties = await propertiesQuery.CountAsync();
+        var activeProperties = await propertiesQuery.CountAsync(p => p.IsActive);
 
-        // CIN compliance
-        var cinValid = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Valid);
-        var cinMissing = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Missing);
-        var cinInvalid = allProperties.Count(p => CinFormat.GetStatus(p.CinCode) == CinStatus.Invalid);
+        // CIN compliance: valid/missing counted directly in SQL — Npgsql translates Regex.IsMatch to Postgres' native
+        // ~ operator, reusing CinFormat's own pattern constants (single source of truth, A1-27). Invalid is the
+        // remainder, so this needs only two full-table scans instead of loading every row into memory.
+        var cinValid = await propertiesQuery.CountAsync(p =>
+            p.CinCode != null && p.CinCode != "" &&
+            Regex.IsMatch(p.CinCode, CinFormat.Pattern) && !Regex.IsMatch(p.CinCode, CinFormat.LegacyPattern));
+        var cinMissing = await propertiesQuery.CountAsync(p => p.CinCode == null || p.CinCode == "");
+        var cinInvalid = totalProperties - cinValid - cinMissing;
         var cinTotal = totalProperties;
 
         // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
@@ -105,44 +110,60 @@ public class AdminService(
             throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
         }
 
+        // A page below 1 would turn into a negative OFFSET, which Postgres rejects with a 500 (A1-26).
+        page = Math.Max(page, 1);
+
         // Platform-wide admin read (AdminOnly): the CIN-compliance (D.L. 145/2023) report covers
         // every org, so it BYPASSES the global tenant filter with an audit line (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetCinComplianceAsync));
 
-        var properties = await dbContext.Properties.IgnoreQueryFilters().ToListAsync();
+        var query = dbContext.Properties.IgnoreQueryFilters().AsQueryable();
 
-        // Resolve owner emails from user table (best-effort; user may not exist in DB yet)
-        var ownerIds = properties.Select(p => p.OwnerId).Distinct().ToList();
+        // Filtered and paginated in SQL (A1-27): this used to load every property into memory. The regex reuses
+        // CinFormat's own pattern constants (single source of truth, .claude/rules/compliance.md) — Npgsql
+        // translates Regex.IsMatch to Postgres' native ~ operator, so the match still runs server-side.
+        query = cinStatus switch
+        {
+            "missing" => query.Where(p => p.CinCode == null || p.CinCode == ""),
+            "valid" => query.Where(p =>
+                p.CinCode != null && p.CinCode != "" &&
+                Regex.IsMatch(p.CinCode, CinFormat.Pattern) && !Regex.IsMatch(p.CinCode, CinFormat.LegacyPattern)),
+            "invalid" => query.Where(p =>
+                p.CinCode != null && p.CinCode != "" &&
+                (!Regex.IsMatch(p.CinCode, CinFormat.Pattern) || Regex.IsMatch(p.CinCode, CinFormat.LegacyPattern))),
+            _ => query,
+        };
+
+        var totalCount = await query.CountAsync();
+
+        var pageItems = await query
+            .OrderBy(p => p.Name)
+            .ThenBy(p => p.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new { p.Id, p.Name, p.OwnerId, p.CinCode, p.City })
+            .ToListAsync();
+
+        // Owner emails resolved only for this page (best-effort; user may not exist in DB yet), not for every
+        // property on the platform.
+        var ownerIds = pageItems.Select(p => p.OwnerId).Distinct().ToList();
         var userMap = (await dbContext.Users
                 .Where(u => ownerIds.Contains(u.Id))
                 .ToListAsync())
             .ToDictionary(u => u.Id, u => u.Email);
 
-        IEnumerable<CinComplianceItem> items = properties.Select(p =>
-        {
-            var status = CinComplianceRules.ResolveStatus(p.CinCode);
-
-            return new CinComplianceItem(
+        var items = pageItems
+            .Select(p => new CinComplianceItem(
                 PropertyId: p.Id,
                 PropertyName: p.Name,
                 OwnerId: p.OwnerId,
                 OwnerEmail: userMap.GetValueOrDefault(p.OwnerId, "unknown"),
                 CinCode: p.CinCode,
-                CinStatus: status,
-                City: p.City);
-        });
-
-        if (!string.IsNullOrWhiteSpace(cinStatus))
-            items = items.Where(i => i.CinStatus == cinStatus);
-
-        var list = items.ToList();
-        var totalCount = list.Count;
-        var paged = list
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+                CinStatus: CinComplianceRules.ResolveStatus(p.CinCode),
+                City: p.City))
             .ToList();
 
-        return (paged, totalCount);
+        return (items, totalCount);
     }
 
     public Task<IEnumerable<JobStatus>> GetJobStatusesAsync()
@@ -172,6 +193,7 @@ public class AdminService(
                     }
                     catch (Exception ex)
                     {
+                        // A single job's detail lookup failing does not invalidate the whole listing.
                         logger.LogDebug(ex, "Could not retrieve job details for {JobId}", job.LastJobId);
                     }
                 }
@@ -184,10 +206,15 @@ public class AdminService(
                     NextRun: nextRun));
             }
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            // Hangfire storage may not be available in test env (in-memory DB)
-            logger.LogWarning(ex, "Could not retrieve Hangfire job statuses");
+            // JobStorage.Current itself throws only InvalidOperationException, and only when no storage was ever
+            // registered (AddCasazenHangfire, e.g. dev/test without a DB connection string): "no jobs" is then the
+            // honest answer, not a failure (A1-26). Any OTHER exception (Postgres unreachable, timeout…) is a
+            // genuine infrastructure problem and is deliberately left to propagate, so the admin sees an error
+            // instead of a silently empty list.
+            logger.LogInformation(ex, "Hangfire storage not configured: no job statuses to report");
+            return Task.FromResult(Enumerable.Empty<JobStatus>());
         }
 
         return Task.FromResult<IEnumerable<JobStatus>>(results);
