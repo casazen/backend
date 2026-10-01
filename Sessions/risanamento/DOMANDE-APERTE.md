@@ -172,6 +172,24 @@ Queste domande sono state annotate in Cursor mentre si lavorava a BK-18, PL-06, 
 - [ ] MO-09 — Il backend accetta il check-out anticipato, prima della data di partenza, senza nessun controllo. L'app ora mostra un avviso e chiede una conferma esplicita. Serve anche un controllo lato server (rifiuto, oppure conferma obbligatoria)? — default: nessuna modifica al backend — 2026-10-01
 - [ ] MO-10 — Il finding chiedeva la scelta del fornitore con punteggio (`match-supplier`), ma quell'endpoint è dietro il flag AI spento (D11). L'app fa la stessa scelta manuale del web. Inoltre l'API fornitori non espone prezzi, quindi in app non se ne mostrano. Va bene così? — default: scelta manuale, senza prezzi — 2026-10-01
 
+- [ ] PL-04 — Quando l'host cambia lo slug, il vecchio resta come alias (`OrgSlugAlias`): i link già condivisi reindirizzano a quello nuovo e nessun'altra org può prendere il vecchio. Gli alias devono scadere? — default: tenuti per sempre — 2026-10-01
+- [ ] PL-04 — Le org nuove ricevono uno slug neutro (`org-xxxxxxxx`) e l'host sceglie quello leggibile nelle impostazioni. Rinominare in automatico gli slug esistenti `org-<sub>`? — default: no — 2026-10-01
+- [ ] PL-04 — L'email pubblica opt-in vale solo per il sito pubblico anonimo. Gli ospiti con una prenotazione continuano a vedere l'email dell'host nelle email e nella ricerca prenotazione. Va bene? — default: sì — 2026-10-01
+- [ ] PL-04 — Ancora aperto (A1-22): lo step "Nome attività" nell'onboarding non esiste ancora, e il customer Stripe già creato non riceve la nuova email di contatto dell'org. Servono? — default: non fatti — 2026-10-01
+- [x] BK-18 — (dubbi Cursor riverificati) Booking e ospite ora si salvano insieme, dopo la validazione e sotto l'advisory lock. Se il pagamento non parte si cancellano nella stessa transazione: nessun booking `Cancelled` lasciato per audit, che resta nei log con i soli ID. Gli orfani già in produzione non vengono toccati: le query di verifica in sola lettura sono nel runbook `direct-booking.md` §10 e la decisione su cosa cancellare resta al PO. — 2026-10-01
+- [ ] BK-18 — Se Stripe crea il Customer ma poi fallisce il SetupIntent, nome ed email restano sull'account Connect dell'host. Va cancellato il Customer? — default: non gestito — 2026-10-01
+- [ ] BK-18 — I checkout abbandonati (hold scaduto) tengono l'ospite fino alla retention GDPR. Cancellarlo subito alla scadenza dell'hold? — default: invariato — 2026-10-01
+- [ ] PL-09 — Il filtro per ruolo della lista utenti admin guarda solo il ruolo primario: un utente che ha Supplier come ruolo secondario non compare filtrando per Supplier. Correggerlo? — default: invariato — 2026-10-01
+- [ ] PL-09 — Il vecchio `PUT /api/users/{id}/role` resta solo per compatibilità e il FE non lo usa più. Ha comunque la protezione "ultimo admin". Rimuoverlo? — default: tenuto — 2026-10-01
+- [ ] PL-09 — Salvare un utente senza nessun ruolo è consentito, con un avviso, e lo porta a `None`. Bloccarlo? — default: consentito — 2026-10-01
+- [ ] LT-12 — Per quanto si conservano i dati delle parti dei contratti LTR finiti (`Gdpr__Retention__LeaseParties__Years` + `__Source`)? Non c'è un periodo verificato. — default: retention spenta, quindi non anonimizza nulla; le richieste di cancellazione vengono comunque onorate — 2026-10-01
+- [ ] LT-12 — Cancellazione richiesta a contratto finito: oggi l'anonimizzazione è immediata. Va differita per obblighi successivi alla fine del contratto (cessazione RLI, deposito cauzionale)? Da confermare con il DPO. — default: immediata — 2026-10-01
+- [ ] LT-12 — I documenti nel bucket privato (contratto firmato, ricevute RLI e Questura) contengono ancora i dati delle parti e non vengono cancellati. Cancellarli con l'anonimizzazione? — default: conservati — 2026-10-01
+- [ ] LT-14 — Una parte "società" non ha un tipo proprio né la ragione sociale: si inserisce con nome e cognome più CF/P.IVA a 11 cifre. Serve un tipo "persona giuridica"? — default: nessun tipo — 2026-10-01
+- [ ] LT-14 — Massimo 10 parti per ruolo (soglia tecnica di sicurezza). Va bene? — default: 10 — 2026-10-01
+- [x] MO-12 — (dubbio Cursor) `GET /api/properties/cin-compliance` ora usa lo stesso HostScope della lista: un PropertyManager vede il riepilogo CIN delle proprietà dell'org; per l'owner non cambia nulla. — 2026-10-01
+- [ ] PC-14 — (dubbio Cursor, confermato) `GET /api/bookings` non è paginato: lista web, dashboard e dettaglio ospite filtrano e aggregano lato client l'array completo, quindi paginare significa spostare filtri e KPI sul server (vedi A2-29). Ora la lista arriva con una sola query SQL filtrata per HostScope, senza N+1. Pianificare la paginazione server-side? — default: array non paginato — 2026-10-01
+
 ---
 
 ## Chiuse
