@@ -13,7 +13,10 @@ namespace Casazen.Infrastructure.Services;
 /// DB-side authorization data of a user, read once and shared by the JWT supplier backfill, the
 /// context policies and the host onboarding gate (PL-02).
 /// </summary>
-/// <param name="OrgId">The user's org (<c>User.OrgId</c>): the consents below are the ones recorded for it.</param>
+/// <param name="OrgId">
+/// The user's host org (<c>User.OrgId</c>, only when it is a <c>Host</c> org, PL-05): the consents below are the ones
+/// recorded for it.
+/// </param>
 /// <param name="OnboardingCompletedAt">When the user completed the onboarding; <c>null</c> when never.</param>
 /// <param name="AcceptedConsents">
 /// Consents recorded by the user for <paramref name="OrgId"/>, as <see cref="ConsentKey"/> values (type and version):
@@ -106,7 +109,16 @@ public sealed class UserAuthorizationSnapshotStore(
         var user = await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new { u.IsActive, u.Role, u.SupplierOrgId, u.OrgId, u.OnboardingCompletedAt })
+            .Select(u => new
+            {
+                u.IsActive,
+                u.Role,
+                u.SupplierOrgId,
+                // PL-05 (A1-40): only a Host org counts as the user's org for the host gate. A legacy OrgId that points
+                // to a supplier org (pre-PL-05 supplier-only accounts) is no host org: its consents never open host contexts.
+                OrgId = u.OrgId != null && u.Org!.OrgType == OrgType.Host ? u.OrgId : null,
+                u.OnboardingCompletedAt,
+            })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (user is null)

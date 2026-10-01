@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
@@ -137,6 +138,23 @@ public class TenantContextTests
         Assert.Null(tenant.OrgId);
     }
 
+    [Fact]
+    public async Task ResolveAsync_OrgIdPointsToASupplierOrg_LeavesOrgIdNullFailClosed()
+    {
+        // A1-40: OrgId can point at the caller's own Supplier org (linked at supplier registration, before the
+        // host onboarding ever ran). It must never scope the tenant filter — a supplier account reads and
+        // writes no host (ITenantOwned) data through it, exactly like a brand-new user with no org at all.
+        var supplierOrgId = Guid.NewGuid();
+        var services = BuildServices();
+        await SeedUserWithOrgAsync(services, supplierOrgId, OrgType.Supplier);
+        var tenant = NewTenantContext(services, authenticated: true);
+
+        await tenant.ResolveAsync();
+
+        Assert.True(tenant.FilterEnabled);
+        Assert.Null(tenant.OrgId);
+    }
+
     private ServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
@@ -144,10 +162,13 @@ public class TenantContextTests
         return services.BuildServiceProvider();
     }
 
+    /// <summary>Seeds the user with a matching Host-type org (the normal shape of a real row) when <paramref name="orgId"/> is set.</summary>
     private static async Task SeedUserAsync(ServiceProvider services, Guid? orgId, bool isActive = true)
     {
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (orgId is Guid id)
+            db.Orgs.Add(NewOrg(id, OrgType.Host));
         db.Users.Add(new User
         {
             Id = Sub,
@@ -159,6 +180,35 @@ public class TenantContextTests
         });
         await db.SaveChangesAsync();
     }
+
+    /// <summary>Seeds the user with OrgId (and, for a supplier, SupplierOrgId) pointing at an org of the given type.</summary>
+    private static async Task SeedUserWithOrgAsync(ServiceProvider services, Guid orgId, OrgType orgType)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Orgs.Add(NewOrg(orgId, orgType));
+        db.Users.Add(new User
+        {
+            Id = Sub,
+            Email = "tenant@example.com",
+            FirstName = "T",
+            LastName = "C",
+            OrgId = orgId,
+            SupplierOrgId = orgType == OrgType.Supplier ? orgId : null,
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static Casazen.Core.Entities.Org NewOrg(Guid id, OrgType orgType) => new()
+    {
+        Id = id,
+        Name = "Org",
+        Slug = $"org-{id:N}",
+        DisplayName = "Org",
+        ContactEmail = "org@example.com",
+        OrgType = orgType,
+    };
 
     private static async Task SetUserOrgAsync(ServiceProvider services, Guid orgId)
     {

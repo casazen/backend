@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -92,9 +93,17 @@ public sealed class TenantContext(
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             // One read per request for both the tenant and the active flag (PL-03 reuses it, A1-04).
+            // A1-40: User.OrgId can point at the caller's own Supplier org (linked at supplier registration,
+            // before ever completing the host onboarding). Only a Host-type org scopes the tenant filter — a
+            // supplier account must never read or write host data through it; the join resolves to no org,
+            // exactly like a brand-new user (fail-closed), same as OrgContextResolver/OrgService.
             var row = await db.Users.AsNoTracking()
                 .Where(u => u.Id == sub)
-                .Select(u => new { u.OrgId, u.IsActive })
+                .Select(u => new
+                {
+                    OrgId = u.OrgId != null && u.Org!.OrgType == OrgType.Host ? u.OrgId : null,
+                    u.IsActive,
+                })
                 .FirstOrDefaultAsync(cancellationToken);
             orgId = row?.OrgId;
             _callerInactive = row is { IsActive: false };
