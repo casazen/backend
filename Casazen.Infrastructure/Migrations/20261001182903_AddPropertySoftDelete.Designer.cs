@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261001175008_AddPropertySoftDelete")]
+    [Migration("20261001182903_AddPropertySoftDelete")]
     partial class AddPropertySoftDelete
     {
         /// <inheritdoc />
@@ -1666,12 +1666,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LeaseContractId", "Role");
+                    b.HasIndex("LeaseContractId", "Role", "Position")
+                        .IsUnique();
 
                     b.ToTable("Parties");
                 });
