@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261001171913_SeparateSupplierOrgFromHostOrgId")]
+    [Migration("20261001184521_SeparateSupplierOrgFromHostOrgId")]
     partial class SeparateSupplierOrgFromHostOrgId
     {
         /// <inheritdoc />
@@ -1075,14 +1075,14 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("DataRetentionUntil")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("ErasureRequested")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ErasureRequestedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ExternalSigningSessionId")
                         .HasMaxLength(500)
@@ -1097,6 +1097,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PartiesAnonymizedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("PropertyDeliveryDate")
                         .HasColumnType("timestamp with time zone");
@@ -1629,6 +1632,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Citizenship")
                         .IsRequired()
                         .HasMaxLength(2)
@@ -1660,12 +1666,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LeaseContractId", "Role");
+                    b.HasIndex("LeaseContractId", "Role", "Position")
+                        .IsUnique();
 
                     b.ToTable("Parties");
                 });
