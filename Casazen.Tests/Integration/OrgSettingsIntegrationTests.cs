@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using Casazen.Infrastructure.Data;
+using Casazen.Tests.Integration.Postgres;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -81,12 +83,13 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var otherId = $"auth0|settings-conflict-other-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);
         var otherOrg = await _factory.SeedOrgForOwnerAsync(otherId);
+        var otherSlug = await SetSlugAsync(otherOrg.Id, $"villa-presa-{Guid.NewGuid():N}"[..30]);
 
         using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
         var response = await client.PutAsJsonAsync("/api/orgs/me/settings", new
         {
             name = "Mine",
-            slug = otherOrg.Slug,
+            slug = otherSlug,
             contactEmail = "mine@example.com",
             contactEmailPublic = false,
         });
@@ -204,5 +207,116 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(HttpStatusCode.OK, publicResponseOn.StatusCode);
         var publicJsonOn = await publicResponseOn.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         Assert.Equal("private@example.com", publicJsonOn.GetProperty("contactEmail").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateMySettings_SlugChanged_OldPublicLinkResolvesToTheOrgWithItsNewSlug()
+    {
+        var ownerId = $"auth0|settings-alias-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+        var oldSlug = await SetSlugAsync(org.Id, $"villa-vecchia-{Guid.NewGuid():N}"[..30]);
+        var newSlug = $"villa-nuova-{Guid.NewGuid():N}"[..30];
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PutAsJsonAsync("/api/orgs/me/settings", new
+        {
+            name = "Villa Nuova",
+            slug = newSlug,
+            contactEmail = "host@villanuova.it",
+            contactEmailPublic = false,
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var anonymousClient = _factory.CreateClient();
+        var byOld = await anonymousClient.GetAsync($"/api/public/orgs/{oldSlug}");
+        Assert.Equal(HttpStatusCode.OK, byOld.StatusCode);
+        var json = await byOld.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(newSlug, json.GetProperty("slug").GetString());
+        Assert.Equal("Villa Nuova", json.GetProperty("displayName").GetString());
+
+        // The old slug stays reserved to this org.
+        var otherId = $"auth0|settings-alias-other-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(otherId);
+        using var otherClient = _factory.CreateAuthenticatedClient(otherId, "PropertyOwner");
+        var takeOver = await otherClient.PutAsJsonAsync("/api/orgs/me/settings", new
+        {
+            name = "Other",
+            slug = oldSlug,
+            contactEmail = "other@example.com",
+            contactEmailPublic = false,
+        });
+        Assert.Equal(HttpStatusCode.Conflict, takeOver.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetSlugAvailability_SlugOfAnotherOrg_ReturnsUnavailableWithReason()
+    {
+        var ownerId = $"auth0|settings-availability-{Guid.NewGuid():N}";
+        var otherId = $"auth0|settings-availability-other-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(ownerId);
+        var otherOrg = await _factory.SeedOrgForOwnerAsync(otherId);
+        var otherSlug = await SetSlugAsync(otherOrg.Id, $"villa-presa-{Guid.NewGuid():N}"[..30]);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var taken = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+            $"/api/orgs/me/settings/slug-availability?slug={Uri.EscapeDataString(otherSlug)}");
+        var free = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+            $"/api/orgs/me/settings/slug-availability?slug={Uri.EscapeDataString("Villa Libera " + Guid.NewGuid().ToString("N")[..8])}");
+
+        Assert.False(taken.GetProperty("available").GetBoolean());
+        Assert.Equal("org_slug_taken", taken.GetProperty("code").GetString());
+        Assert.True(free.GetProperty("available").GetBoolean());
+        Assert.StartsWith("villa-libera-", free.GetProperty("slug").GetString());
+    }
+
+    [Fact]
+    public async Task GetSlugAvailability_AsStaffRole_Returns403()
+    {
+        var userId = $"auth0|settings-availability-staff-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(userId);
+
+        using var client = _factory.CreateAuthenticatedClient(userId, "Staff");
+        var response = await client.GetAsync("/api/orgs/me/settings/slug-availability?slug=villa-mare");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task UpdateMySettings_TwoOrgsRaceForTheSameSlug_OneGetsItTheOther409()
+    {
+        var firstId = $"auth0|settings-race-a-{Guid.NewGuid():N}";
+        var secondId = $"auth0|settings-race-b-{Guid.NewGuid():N}";
+        var firstOrg = await _factory.SeedOrgForOwnerAsync(firstId);
+        var secondOrg = await _factory.SeedOrgForOwnerAsync(secondId);
+        var slug = $"villa-contesa-{Guid.NewGuid():N}"[..30];
+
+        using var firstClient = _factory.CreateAuthenticatedClient(firstId, "PropertyOwner");
+        using var secondClient = _factory.CreateAuthenticatedClient(secondId, "PropertyOwner");
+        var body = new { name = "Contesa", slug, contactEmail = "host@example.com", contactEmailPublic = false };
+
+        var responses = await Task.WhenAll(
+            firstClient.PutAsJsonAsync("/api/orgs/me/settings", body),
+            secondClient.PutAsJsonAsync("/api/orgs/me/settings", body));
+
+        Assert.Equal(
+            new[] { HttpStatusCode.OK, HttpStatusCode.Conflict },
+            responses.Select(r => r.StatusCode).Order().ToArray());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var owners = await db.Orgs.AsNoTracking()
+            .Where(o => (o.Id == firstOrg.Id || o.Id == secondOrg.Id) && o.Slug == slug)
+            .CountAsync();
+        Assert.Equal(1, owners);
+    }
+
+    /// <summary>The seeded slug (<c>test-org-{sub}</c>) is a legacy one; the conflict tests need one a host could choose.</summary>
+    private async Task<string> SetSlugAsync(Guid orgId, string slug)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
+        org.Slug = slug;
+        await db.SaveChangesAsync();
+        return slug;
     }
 }

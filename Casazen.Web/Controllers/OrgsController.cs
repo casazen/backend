@@ -1,9 +1,13 @@
+using System.ComponentModel.DataAnnotations;
+using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
@@ -16,7 +20,9 @@ namespace Casazen.Web.Controllers;
 public class OrgsController(
     IOrgContextResolver orgContextResolver,
     IEntitlementService entitlementService,
-    IOrgService orgService) : ControllerBase
+    IOrgService orgService,
+    IPublicHostResolver publicHostResolver,
+    IOptions<PublicHostOptions> publicHostOptions) : ControllerBase
 {
     /// <summary>
     /// Returns the caller org's editable identity: name, public slug and contact email with its publication
@@ -43,9 +49,42 @@ public class OrgsController(
     }
 
     /// <summary>
+    /// Whether a slug can become the caller org's public slug (A1-23): its normalized form and, when it cannot, the
+    /// reason code (<c>org_slug_invalid</c>, <c>org_slug_reserved</c>, <c>org_slug_taken</c>). Advisory only: the
+    /// PUT checks again under lock.
+    /// </summary>
+    [HttpGet("me/settings/slug-availability")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgSlugAvailabilityDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgSlugAvailabilityDto>> GetSlugAvailability(
+        [FromQuery, Required, MaxLength(100)] string slug,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var availability = await orgService.CheckSlugAvailabilityAsync(orgId.Value, slug, cancellationToken);
+        if (availability is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(new OrgSlugAvailabilityDto
+        {
+            Slug = availability.Slug,
+            Available = availability.Available,
+            Code = availability.Code,
+        });
+    }
+
+    /// <summary>
     /// Updates the caller org's name, public slug and contact email, including whether the contact email is
     /// published on the public booking site (A1-22, A1-23). 422 <c>org_slug_invalid</c> / <c>org_slug_reserved</c>
-    /// for an unusable slug, 409 <c>org_slug_taken</c> when another org already has it.
+    /// for an unusable slug, 409 <c>org_slug_taken</c> when another org uses it. The previous slug keeps resolving
+    /// to the org (shared links), see <c>IOrgService.UpdateSettingsAsync</c>.
     /// </summary>
     [HttpPut("me/settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -63,6 +102,7 @@ public class OrgsController(
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
+        var previousSlug = (await orgService.GetByIdAsync(orgId.Value, cancellationToken))?.Slug;
         var updated = await orgService.UpdateSettingsAsync(
             orgId.Value,
             dto.Name,
@@ -73,7 +113,29 @@ public class OrgsController(
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
+        if (previousSlug is not null && !string.Equals(previousSlug, updated.Slug, StringComparison.Ordinal))
+            InvalidatePublicHostCache(updated, previousSlug);
+
         return Ok(OrgSettingsDto.FromOrg(updated));
+    }
+
+    /// <summary>
+    /// The resolve-host cache carries the org slug: drop the entries of the org's hosts (custom domain, subdomain and
+    /// slug-as-subdomain fallback, old and new) so the public site does not use the old slug until the cache expires.
+    /// </summary>
+    private void InvalidatePublicHostCache(Org org, string previousSlug)
+    {
+        if (!string.IsNullOrWhiteSpace(org.CustomDomain))
+            publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
+
+        if (publicHostOptions.Value.NormalizedBaseDomain is not { } baseDomain)
+            return;
+
+        foreach (var label in new[] { org.Subdomain, previousSlug, org.Slug })
+        {
+            if (!string.IsNullOrWhiteSpace(label))
+                publicHostResolver.InvalidateCacheForHost($"{label}.{baseDomain}");
+        }
     }
 
     /// <summary>Returns available plan tiers and property limits.</summary>

@@ -36,7 +36,10 @@ public class UpdateOrgSettingsDto
     [MaxLength(200, ErrorMessage = "OrgNameTooLong")]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Free text is accepted and sanitized into slug form server-side (<c>OrgSlugHelper</c>); only its result must be unique and not reserved.</summary>
+    /// <summary>
+    /// Free text is accepted and sanitized into slug form server-side (<c>OrgSlugHelper</c>: 3-63 characters, not
+    /// reserved, unique). The current slug sent back unchanged is kept as is, even a legacy one.
+    /// </summary>
     [Required(ErrorMessage = "OrgSlugRequired")]
     [MaxLength(100, ErrorMessage = "OrgSlugTooLong")]
     public string Slug { get; set; } = string.Empty;
@@ -48,4 +51,16 @@ public class UpdateOrgSettingsDto
 
     /// <summary>Explicit opt-in to publish <see cref="ContactEmail"/> on the public booking site. Defaults to false when omitted.</summary>
     public bool ContactEmailPublic { get; set; }
+}
+
+/// <summary>Result of <c>GET /api/orgs/me/settings/slug-availability</c> (A1-23).</summary>
+public class OrgSlugAvailabilityDto
+{
+    /// <summary>The slug as it would be saved (sanitized).</summary>
+    public string Slug { get; set; } = string.Empty;
+
+    public bool Available { get; set; }
+
+    /// <summary>Why it is not available: <c>org_slug_invalid</c>, <c>org_slug_reserved</c> or <c>org_slug_taken</c>; null when available.</summary>
+    public string? Code { get; set; }
 }

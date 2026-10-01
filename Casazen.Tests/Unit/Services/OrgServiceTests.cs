@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -238,24 +239,146 @@ public class OrgServiceTests
     }
 
     [Fact]
-    public async Task UpdateSettingsAsync_ContactEmailPublicDefaultsFalse_OnNewOrg()
+    public async Task EnsureOrgForUserAsync_NewOrg_NeutralSlugAndContactEmailNotPublic()
     {
-        // A1-22/A1-23: the opt-in is off unless the caller explicitly turns it on.
-        await using var db = CreateDb(nameof(UpdateSettingsAsync_ContactEmailPublicDefaultsFalse_OnNewOrg));
-        var orgId = Guid.NewGuid();
-        db.Orgs.Add(new OrgEntity
+        // A1-23: the slug never carries the identity-provider id; A1-22: the contact email is published only on opt-in.
+        await using var db = CreateDb(nameof(EnsureOrgForUserAsync_NewOrg_NeutralSlugAndContactEmailNotPublic));
+        var userId = "google-oauth2|109876543210987654321";
+        db.Users.Add(new User
         {
-            Id = orgId,
-            Name = "Mine",
-            Slug = "org-mine",
-            DisplayName = "Mine",
-            ContactEmail = string.Empty,
-            PlanTier = PlanTier.Starter,
+            Id = userId,
+            Email = "mario@example.com",
+            FirstName = "Mario",
+            LastName = "Rossi",
+            Role = UserRole.PropertyOwner,
             IsActive = true,
         });
         await db.SaveChangesAsync();
 
-        Assert.False((await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == orgId)).ContactEmailPublic);
+        var org = await new OrgService(db).EnsureOrgForUserAsync(userId, "mario@example.com", "Mario Rossi");
+
+        Assert.Matches("^org-[a-z0-9]{8}$", org.Slug);
+        Assert.DoesNotContain("google", org.Slug, StringComparison.Ordinal);
+        Assert.DoesNotContain("1098765", org.Slug, StringComparison.Ordinal);
+        Assert.False(org.ContactEmailPublic);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SlugChanged_PreviousSlugStillResolvesToTheOrg()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_SlugChanged_PreviousSlugStillResolvesToTheOrg));
+        var orgId = SeedOrg(db, "org-abcd2345");
+        await db.SaveChangesAsync();
+        var service = new OrgService(db);
+
+        var updated = await service.UpdateSettingsAsync(orgId, "Villa Mare", "villa-mare", "host@example.com", false);
+
+        Assert.Equal("villa-mare", updated!.Slug);
+        var alias = await db.OrgSlugAliases.SingleAsync();
+        Assert.Equal(("org-abcd2345", orgId), (alias.Slug, alias.OrgId));
+        var byOld = await service.GetPublicBySlugAsync("org-abcd2345");
+        Assert.Equal(orgId, byOld!.Id);
+        Assert.Equal("villa-mare", byOld.Slug);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SlugIsPreviousSlugOfAnotherOrg_ThrowsConflict()
+    {
+        // The guests holding the other org's old links must never land on this org's site.
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_SlugIsPreviousSlugOfAnotherOrg_ThrowsConflict));
+        var otherId = SeedOrg(db, "villa-nuova");
+        var orgId = SeedOrg(db, "org-mine2345");
+        db.OrgSlugAliases.Add(new OrgSlugAlias { Slug = "villa-vecchia", OrgId = otherId, CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            new OrgService(db).UpdateSettingsAsync(orgId, "Mine", "villa-vecchia", "mine@example.com", false));
+
+        Assert.Equal("org_slug_taken", ex.Code);
+        Assert.Equal("org-mine2345", (await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == orgId)).Slug);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SlugIsSubdomainOfAnotherOrg_ThrowsConflict()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_SlugIsSubdomainOfAnotherOrg_ThrowsConflict));
+        var otherId = SeedOrg(db, "org-other234");
+        (await db.Orgs.FindAsync(otherId))!.Subdomain = "villa-sole";
+        var orgId = SeedOrg(db, "org-mine2345");
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            new OrgService(db).UpdateSettingsAsync(orgId, "Mine", "villa-sole", "mine@example.com", false));
+
+        Assert.Equal("org_slug_taken", ex.Code);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_BackToOwnPreviousSlug_SwapsCurrentSlugAndAlias()
+    {
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_BackToOwnPreviousSlug_SwapsCurrentSlugAndAlias));
+        var orgId = SeedOrg(db, "org-abcd2345");
+        await db.SaveChangesAsync();
+        var service = new OrgService(db);
+        await service.UpdateSettingsAsync(orgId, "Villa", "villa-mare", "host@example.com", false);
+
+        var updated = await service.UpdateSettingsAsync(orgId, "Villa", "org-abcd2345", "host@example.com", false);
+
+        Assert.Equal("org-abcd2345", updated!.Slug);
+        var alias = await db.OrgSlugAliases.AsNoTracking().SingleAsync();
+        Assert.Equal("villa-mare", alias.Slug);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_LegacySlugSentUnchanged_KeepsItWithoutValidation()
+    {
+        // Orgs provisioned before A1-23 have slugs longer than a DNS label: saving the name must not force a new slug.
+        await using var db = CreateDb(nameof(UpdateSettingsAsync_LegacySlugSentUnchanged_KeepsItWithoutValidation));
+        var legacy = "org-google-oauth2-109876543210987654321-and-some-more-characters-to-pass-63";
+        var orgId = SeedOrg(db, legacy);
+        await db.SaveChangesAsync();
+
+        var updated = await new OrgService(db).UpdateSettingsAsync(orgId, "Villa", legacy, "host@example.com", true);
+
+        Assert.Equal(legacy, updated!.Slug);
+        Assert.Equal("Villa", updated.Name);
+        Assert.Empty(await db.OrgSlugAliases.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CheckSlugAvailabilityAsync_VariousSlugs_ReturnsNormalizedSlugAndReason()
+    {
+        await using var db = CreateDb(nameof(CheckSlugAvailabilityAsync_VariousSlugs_ReturnsNormalizedSlugAndReason));
+        var otherId = SeedOrg(db, "villa-presa");
+        db.OrgSlugAliases.Add(new OrgSlugAlias { Slug = "villa-usata", OrgId = otherId, CreatedAt = DateTime.UtcNow });
+        var orgId = SeedOrg(db, "org-mine2345");
+        db.OrgSlugAliases.Add(new OrgSlugAlias { Slug = "la-mia-vecchia", OrgId = orgId, CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        var service = new OrgService(db);
+
+        Assert.Equal(new OrgSlugAvailability("villa-libera", true, null), await service.CheckSlugAvailabilityAsync(orgId, "Villa Libera"));
+        Assert.Equal(new OrgSlugAvailability("org-mine2345", true, null), await service.CheckSlugAvailabilityAsync(orgId, "org-mine2345"));
+        Assert.Equal(new OrgSlugAvailability("la-mia-vecchia", true, null), await service.CheckSlugAvailabilityAsync(orgId, "la-mia-vecchia"));
+        Assert.Equal(new OrgSlugAvailability("villa-presa", false, "org_slug_taken"), await service.CheckSlugAvailabilityAsync(orgId, "villa-presa"));
+        Assert.Equal(new OrgSlugAvailability("villa-usata", false, "org_slug_taken"), await service.CheckSlugAvailabilityAsync(orgId, "villa-usata"));
+        Assert.Equal(new OrgSlugAvailability("admin", false, "org_slug_reserved"), await service.CheckSlugAvailabilityAsync(orgId, "Admin"));
+        Assert.Equal(new OrgSlugAvailability("x", false, "org_slug_invalid"), await service.CheckSlugAvailabilityAsync(orgId, "x!"));
+        Assert.Null(await service.CheckSlugAvailabilityAsync(Guid.NewGuid(), "villa-libera"));
+    }
+
+    private static Guid SeedOrg(AppDbContext db, string slug)
+    {
+        var org = new OrgEntity
+        {
+            Name = "Org",
+            Slug = slug,
+            DisplayName = "Org",
+            ContactEmail = "org@example.com",
+            PlanTier = PlanTier.Starter,
+            IsActive = true,
+        };
+        db.Orgs.Add(org);
+        return org.Id;
     }
 
     // ── GetPublicBySlugAsync ──────────────────────────────────────────────────────

@@ -400,13 +400,13 @@
     <value>The contact email cannot exceed 255 characters.</value>
   </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
-    <value>This web address (slug) is not valid: use letters, numbers and hyphens.</value>
+    <value>This web address (slug) is not valid: use {0} to {1} characters among letters, numbers and hyphens.</value>
   </data>
   <data name="OrgSlugReserved" xml:space="preserve">
     <value>This web address (slug) is reserved for the platform: choose another one.</value>
   </data>
   <data name="OrgSlugTaken" xml:space="preserve">
-    <value>This web address (slug) is already used by another organization.</value>
+    <value>This web address (slug) is already used, or was used, by another organization.</value>
   </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>

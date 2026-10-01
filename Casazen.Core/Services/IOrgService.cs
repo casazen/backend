@@ -63,10 +63,10 @@ public interface IOrgService
     /// <summary>
     /// Updates the org's editable identity (A1-22, A1-23): <c>Name</c> (mirrored into <c>DisplayName</c> — there is
     /// no separate branding UI yet, both are shown as the org's name), its public <c>Slug</c> (sanitized, validated,
-    /// checked for uniqueness) and its <c>ContactEmail</c>, whose publication on the public booking site is opt-in
-    /// (<c>ContactEmailPublic</c>, off by default — GDPR, see <c>.claude/rules/compliance.md</c>). Returns
-    /// <c>null</c> when the org does not exist. Throws <c>DomainRuleException</c> for an unusable slug and
-    /// <c>DomainConflictException</c> when it is already used by another org.
+    /// checked for uniqueness; the previous one is kept as an <c>OrgSlugAlias</c> so shared links keep working) and
+    /// its <c>ContactEmail</c>, whose publication on the public booking site is opt-in (<c>ContactEmailPublic</c>,
+    /// off by default — GDPR). Returns <c>null</c> when the org does not exist. Throws <c>DomainRuleException</c>
+    /// for an unusable slug and <c>DomainConflictException</c> when another org uses it.
     /// </summary>
     Task<Org?> UpdateSettingsAsync(
         Guid orgId,
@@ -75,4 +75,17 @@ public interface IOrgService
         string contactEmail,
         bool contactEmailPublic,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether <paramref name="slug"/> can become the org's public slug (A1-23): its normalized form and, when it
+    /// cannot, the reason code (<c>org_slug_invalid</c>, <c>org_slug_reserved</c>, <c>org_slug_taken</c>). Advisory
+    /// only: <see cref="UpdateSettingsAsync"/> checks again under lock. <c>null</c> when the org does not exist.
+    /// </summary>
+    Task<OrgSlugAvailability?> CheckSlugAvailabilityAsync(
+        Guid orgId,
+        string slug,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>Result of <see cref="IOrgService.CheckSlugAvailabilityAsync"/>.</summary>
+public sealed record OrgSlugAvailability(string Slug, bool Available, string? Code);
