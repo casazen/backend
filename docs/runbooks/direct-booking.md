@@ -437,3 +437,64 @@ Code: `Casazen.Core/Services/DeferredCharges.cs` (rules, settings), `Casazen.Inf
 with emails and the link, `processing` then webhook, failures then cancellation with dates released, guest paid before
 the cancellation, two concurrent runs → one PaymentIntent, webhook kind on Connect and platform), `DirectBookingChargeJobTests`,
 `DeferredChargesTests`, `StripeServiceDeferredChargeTests`, `EmailTemplatesTests`.
+
+## 10. No guest data left by failed checkouts (BK-18)
+
+Task BK-18 (audit defect A3-33, P2). Before it the public checkout saved the guest (name, email, phone, country, consent
+and its IP) **before** the last validation of the stay (check-in in the past) and kept it when Stripe could not start the
+payment (the booking was only set to `Cancelled`). Every rejected or failed attempt left a guest with personal data that no
+real booking needed, against the GDPR data minimisation principle.
+
+### 10.1 What happens now
+
+| Attempt | Booking | Guest |
+|---|---|---|
+| Rejected by a rule (dates, guests, consent, payment option, check-in in the past…) or dates taken (409) | not written | not written: the guest snapshot is built in memory and saved **with the booking, in the same insert** under the property lock, only once the stay is validated and the dates are free |
+| Two checkouts of the same dates at the same time | one booking | only the guest of that booking |
+| Stripe refuses the PaymentIntent / SetupIntent (503 `payment_provider_error`), or the payment row cannot be saved | **removed** (with its payment rows) | **removed** in the same transaction, unless anything else still references it (another booking, an Alloggiati report) |
+| Guest abandons the payment (hold expires) | `Cancelled` by the hold expiry (§ 7, BK-21) | kept with the booking: it is a real booking attempt with a Stripe intent; the GDPR retention applies ([gdpr.md](gdpr.md)) |
+
+- The removed attempt is not kept as a cancelled booking "for audit": the guest never received a payment to complete, and a
+  `Bookings` row needs its guest. The audit trail is the log, with ids only: `Stripe PaymentIntent creation failed for
+  booking {BookingId}` (or `SetupIntent`), then `Direct checkout {BookingId} discarded with its guest snapshot: payment
+  not started`. A Stripe intent created after all (timeout) carries the booking id only; its webhooks find no booking and
+  are ignored.
+- If the removal fails too (database down) the log says `Direct checkout {BookingId} could not be discarded …`: the attempt
+  stays a pending hold, cancelled by the hold expiry like an abandoned checkout, and the guest gets the same 503.
+- The host's manual bookings already saved the guest only after validation and availability (PC-01).
+
+Code: `BookingService.CreateDirectBookingAsync` / `DiscardFailedCheckoutAsync`, `BookingRepository.DiscardCheckoutAttemptAsync`.
+Tests: `DirectCheckoutGuestDataPostgresTests` (past check-in, Stripe refusing the PaymentIntent and the SetupIntent, two
+concurrent checkouts, removal keeping a guest with another booking), `BookingServiceTests.CreateDirectBookingAsync_*`.
+
+### 10.2 Guests left by failed checkouts before BK-18 (read only)
+
+Nothing is deleted automatically: the deploy only prevents new ones. These queries **only count and list ids** (no
+personal data); replace the schema. The checkout's guests are the ones with `DataProcessingPurpose = 'Direct Booking
+Checkout'` (guests added by the host from the guest list have no booking and are **not** orphans).
+
+```sql
+-- 1. Checkout guests without any booking (rejected after the guest was saved)
+SELECT g."Id", g."OrgId", g."CreatedAt"
+FROM casazen_prod."Guests" g
+WHERE g."DataProcessingPurpose" = 'Direct Booking Checkout'
+  AND NOT g."IsDeleted"
+  AND NOT EXISTS (SELECT 1 FROM casazen_prod."Bookings" b WHERE b."GuestId" = g."Id")
+  AND NOT EXISTS (SELECT 1 FROM casazen_prod."AlloggiatiWebReports" r WHERE r."GuestId" = g."Id")
+ORDER BY g."CreatedAt";
+
+-- 2. Checkout guests whose only bookings are direct bookings cancelled without any payment row
+--    (Stripe refused to start the payment)
+SELECT g."Id", g."OrgId", g."CreatedAt", count(b."Id") AS bookings
+FROM casazen_prod."Guests" g
+JOIN casazen_prod."Bookings" b ON b."GuestId" = g."Id"
+WHERE g."DataProcessingPurpose" = 'Direct Booking Checkout'
+  AND NOT g."IsDeleted"
+GROUP BY g."Id", g."OrgId", g."CreatedAt"
+HAVING bool_and(b."Source" = 0 AND b."Status" = 4
+                AND NOT EXISTS (SELECT 1 FROM casazen_prod."Payments" p WHERE p."BookingId" = b."Id"))
+ORDER BY g."CreatedAt";
+```
+
+After the deploy both lists must stop growing (compare `max("CreatedAt")` with the deploy date). Whether the rows found
+are deleted is a decision of the product owner (open question BK-18); until then they follow the GDPR retention.

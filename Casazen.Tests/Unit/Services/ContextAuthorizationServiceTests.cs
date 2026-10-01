@@ -283,7 +283,7 @@ public class ContextAuthorizationServiceTests
             configuration);
         return new ContextAuthorizationService(
             store,
-            new LegalDocumentService(configuration),
+            new LegalDocumentService(configuration, NullLogger<LegalDocumentService>.Instance),
             accessor,
             NullLogger<ContextAuthorizationService>.Instance);
     }
@@ -312,7 +312,7 @@ public class ContextAuthorizationServiceTests
         };
         db.Users.Add(user);
         if (withConsents)
-            await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, new LegalDocumentService(new ConfigurationBuilder().Build()));
+            await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, new LegalDocumentService(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance));
         else
             user.OnboardingCompletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();

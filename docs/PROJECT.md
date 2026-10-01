@@ -34,7 +34,7 @@ Casazen.sln
 │   ├── Migrations/            # EF Core migration files
 │   ├── Repositories/          # Concrete repository implementations
 │   ├── Services/              # Concrete service implementations
-│   ├── External/              # AlloggiatiWebService, SmtpEmailService, StripeService, StripeWebhookHandler
+│   ├── External/              # AlloggiatiWebService, StripeService, StripeWebhookHandler (email: Email/ResendEmailService)
 │   ├── OTA/                   # Channel adapters: Airbnb, BookingCom, Expedia, VRBO, TripAdvisor, Agoda
 │   │   └── Resilience/        # Polly policy factories per platform
 │   └── Payments/              # Stripe payment processing
