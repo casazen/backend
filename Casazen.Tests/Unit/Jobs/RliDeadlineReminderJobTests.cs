@@ -398,7 +398,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
             StartDate = startDate,
             EndDate = endDate ?? startDate.AddYears(4),
             MonthlyRent = 800m,
-            DataRetentionUntil = startDate.AddYears(10),
             PropertyDeliveryDate = deliveryDate,
             QuesturaCommunicationDate = questuraCommunicationDate,
             Parties =
