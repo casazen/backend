@@ -45,8 +45,8 @@ public class AdminService(
         // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
 
-        // Properties (filter bypassed — platform-wide)
-        var allProperties = await dbContext.Properties.IgnoreQueryFilters().ToListAsync();
+        // Properties (tenant filter bypassed — platform-wide; soft-deleted ones stay out, PC-05)
+        var allProperties = await dbContext.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).ToListAsync();
         var totalProperties = allProperties.Count;
         var activeProperties = allProperties.Count(p => p.IsActive);
 
@@ -109,7 +109,8 @@ public class AdminService(
         // every org, so it BYPASSES the global tenant filter with an audit line (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetCinComplianceAsync));
 
-        var properties = await dbContext.Properties.IgnoreQueryFilters().ToListAsync();
+        // Tenant filter only: a soft-deleted property (PC-05) has no CIN obligation left, it stays out of the report.
+        var properties = await dbContext.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).ToListAsync();
 
         // Resolve owner emails from user table (best-effort; user may not exist in DB yet)
         var ownerIds = properties.Select(p => p.OwnerId).Distinct().ToList();

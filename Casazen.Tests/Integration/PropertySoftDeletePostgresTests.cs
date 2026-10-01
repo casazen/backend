@@ -152,12 +152,140 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
 
         clock.Advance(TimeSpan.FromDays(1));
         await using (var db = NewContext())
-            Assert.True(await NewPropertyService(db, clock).DeletePropertyAsync(propertyId));
+            Assert.False(await NewPropertyService(db, clock).DeletePropertyAsync(propertyId));
 
         await using var check = NewContext();
         var raw = await check.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
         // The first delete's timestamp is kept: a second delete of an already-deleted property changes nothing.
         Assert.Equal(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero).UtcDateTime, raw.DeletedAt);
+    }
+
+    [PostgresFact]
+    public async Task DeletePropertyAsync_PendingRequestNotCheckedOutYet_ThrowsConflict()
+    {
+        // A "pay at the property" request waiting for the host, or a checkout hold being paid, would otherwise turn
+        // into a confirmed stay on a deleted property.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+        var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
+        await using (var db = NewContext())
+        {
+            SeedBooking(db, propertyId, orgId, BookingStatus.Pending,
+                checkIn: new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc),
+                checkOut: new DateTime(2026, 11, 5, 0, 0, 0, DateTimeKind.Utc));
+            await db.SaveChangesAsync();
+        }
+
+        await using var db2 = NewContext();
+        var error = await Assert.ThrowsAsync<DomainConflictException>(
+            () => NewPropertyService(db2, clock).DeletePropertyAsync(propertyId));
+        Assert.Equal(PropertyService.HasUpcomingBookingsCode, error.Code);
+    }
+
+    [PostgresFact]
+    public async Task DeletePropertyAsync_CancelledFutureStay_DoesNotBlockTheDelete()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+        var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
+        await using (var db = NewContext())
+        {
+            SeedBooking(db, propertyId, orgId, BookingStatus.Cancelled,
+                checkIn: new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc),
+                checkOut: new DateTime(2026, 11, 5, 0, 0, 0, DateTimeKind.Utc));
+            await db.SaveChangesAsync();
+        }
+
+        await using var db2 = NewContext();
+        Assert.True(await NewPropertyService(db2, clock).DeletePropertyAsync(propertyId));
+    }
+
+    [PostgresFact]
+    public async Task DeletePropertyAsync_SignedLeaseNotEndedYet_ThrowsActiveLeasesConflict()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+        var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
+        await using (var db = NewContext())
+        {
+            SeedLease(db, propertyId, orgId, LeaseStatus.Registered,
+                start: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                end: new DateTime(2029, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            var error = await Assert.ThrowsAsync<DomainConflictException>(
+                () => NewPropertyService(db, clock).DeletePropertyAsync(propertyId));
+            Assert.Equal(PropertyService.HasActiveLeasesCode, error.Code);
+        }
+
+        await using var check = NewContext();
+        Assert.False((await check.Properties.SingleAsync(p => p.Id == propertyId)).IsDeleted);
+    }
+
+    [PostgresFact]
+    public async Task DeletePropertyAsync_OnlyDraftOrEndedLeases_SoftDeletes()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+        var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
+        await using (var db = NewContext())
+        {
+            SeedLease(db, propertyId, orgId, LeaseStatus.Draft,
+                start: new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                end: new DateTime(2030, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+            SeedLease(db, propertyId, orgId, LeaseStatus.Registered,
+                start: new DateTime(2022, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                end: new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+            await db.SaveChangesAsync();
+        }
+
+        await using var db2 = NewContext();
+        Assert.True(await NewPropertyService(db2, clock).DeletePropertyAsync(propertyId));
+    }
+
+    [PostgresFact]
+    public async Task DeletePropertyAsync_PausedProperty_SoftDeletesItAndFreesItsAddressAndSlug()
+    {
+        // PC-03 x PC-05: a paused property can be deleted; the unique address and slug indexes then let the host
+        // create the same unit again.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+        var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
+        Property original;
+        await using (var db = NewContext())
+        {
+            original = await db.Properties.SingleAsync(p => p.Id == propertyId);
+            original.IsPaused = true;
+            original.PausedAt = clock.GetUtcNow().UtcDateTime;
+            original.Slug = "villa-pc05";
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+            Assert.True(await NewPropertyService(db, clock).DeletePropertyAsync(propertyId));
+
+        await using (var db = NewContext())
+        {
+            db.Properties.Add(new Property
+            {
+                OwnerId = original.OwnerId,
+                OrgId = orgId,
+                Name = original.Name,
+                Description = original.Description,
+                Address = original.Address,
+                City = original.City,
+                PostalCode = original.PostalCode,
+                Bedrooms = original.Bedrooms,
+                Bathrooms = original.Bathrooms,
+                MaxGuests = original.MaxGuests,
+                NightlyRate = original.NightlyRate,
+                Slug = "villa-pc05",
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = NewContext();
+        Assert.Equal(1, await check.Properties.CountAsync(p => p.OrgId == orgId));
+        Assert.Equal(2, await check.Properties.IgnoreQueryFilters().CountAsync(p => p.OrgId == orgId));
     }
 
     [PostgresFact]
@@ -235,6 +363,18 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
         await db.SaveChangesAsync();
         return (org.Id, property.Id);
     }
+
+    private static void SeedLease(AppDbContext db, Guid propertyId, Guid orgId, LeaseStatus status, DateTime start, DateTime end) =>
+        db.LeaseContracts.Add(new LeaseContract
+        {
+            PropertyId = propertyId,
+            OrgId = orgId,
+            Status = status,
+            StartDate = start,
+            EndDate = end,
+            MonthlyRent = 800m,
+            DataRetentionUntil = end.AddYears(10),
+        });
 
     private static Booking SeedBooking(
         AppDbContext db,

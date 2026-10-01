@@ -128,23 +128,36 @@ public class PropertyService(
     }
 
     /// <summary>
-    /// 409: the property has a confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a host
-    /// cannot make a property with a guest already booked disappear. A property without one is soft-deleted, its
-    /// historical bookings and fiscal data kept and reachable, never removed.
+    /// 409: the property has a pending, confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a
+    /// host cannot make a property with a guest already booked disappear.
     /// </summary>
     public const string HasUpcomingBookingsCode = "property_has_upcoming_bookings";
 
+    /// <summary>409: the property has a lease in force or in progress that has not ended yet (PC-05, A2-18).</summary>
+    public const string HasActiveLeasesCode = "property_has_active_leases";
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): its historical bookings and fiscal data are kept and stay reachable by
+    /// the fiscal reports, never removed. False when there is nothing to delete (unknown or already deleted).
+    /// </summary>
+    /// <exception cref="DomainConflictException">
+    /// <see cref="HasUpcomingBookingsCode"/> or <see cref="HasActiveLeasesCode"/>: nothing changed.
+    /// </exception>
     public async Task<bool> DeletePropertyAsync(Guid id)
     {
         logger.LogInformation("Deleting property: {Id}", id);
-        if (await repository.HasUpcomingConfirmedBookingsAsync(id, _clock.TodayInRome()))
+        var outcome = await repository.SoftDeleteAsync(id, _clock.GetUtcNow().UtcDateTime, _clock.TodayInRome());
+        switch (outcome)
         {
-            logger.LogWarning("Delete of property {Id} refused: it has an upcoming confirmed or checked-in stay", id);
-            throw new DomainConflictException(HasUpcomingBookingsCode, "PropertyHasUpcomingBookings");
+            case PropertySoftDeleteOutcome.HasUpcomingStays:
+                logger.LogWarning("Delete of property {Id} refused: it has a stay that has not checked out yet", id);
+                throw new DomainConflictException(HasUpcomingBookingsCode, "PropertyHasUpcomingBookings");
+            case PropertySoftDeleteOutcome.HasActiveLeases:
+                logger.LogWarning("Delete of property {Id} refused: it has a lease that has not ended yet", id);
+                throw new DomainConflictException(HasActiveLeasesCode, "PropertyHasActiveLeases");
+            default:
+                return outcome == PropertySoftDeleteOutcome.Deleted;
         }
-
-        await repository.DeleteAsync(id);
-        return true;
     }
 
     public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)

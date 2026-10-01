@@ -874,7 +874,7 @@ public class PropertiesControllerTests
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(propertyId), Times.Once);
-        VerifyHostAuthorization(existingProperty, SharedPropertyOperations.Write);
+        VerifyHostAuthorization(existingProperty, PropertyOperations.Write);
     }
 
     [Fact]

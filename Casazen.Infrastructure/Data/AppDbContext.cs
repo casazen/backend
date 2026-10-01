@@ -314,8 +314,8 @@ public class AppDbContext(
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
         // Unique constraint on property address for active properties only.
-        // Allows a soft-deleted property (PC-05, IsDeleted) to be re-created at the same address: the filter also
-        // excludes it, not just a paused one (IsActive = false, PC-03), so its address frees up on delete too.
+        // A soft-deleted property (PC-05, IsDeleted) frees its address, so it can be re-created there. A paused one
+        // (PC-03, IsPaused) keeps it: pausing is temporary and the property stays the host's.
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
             .IsUnique()
@@ -324,7 +324,8 @@ public class AppDbContext(
         modelBuilder.Entity<Property>()
             .HasIndex(p => new { p.OrgId, p.Slug })
             .IsUnique()
-            .HasFilter("\"Slug\" IS NOT NULL")
+            // A soft-deleted property (PC-05) frees its slug: SlugExistsInOrgAsync no longer sees it either.
+            .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
             .HasDatabaseName("UIX_Properties_OrgId_Slug");
 
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);

@@ -39,6 +39,12 @@ public interface IPropertyService
     /// <summary>Reactivates a paused property (PC-03, A2-05). Idempotent when already active.</summary>
     Task<Property> ActivatePropertyAsync(Property property);
 
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): the row and its bookings, payments and fiscal data are kept, the
+    /// property leaves every normal read and frees its plan slot. A paused property (PC-03) can be deleted too.
+    /// Refused with 409 (<c>DomainConflictException</c>) while a stay or a lease is still to come. False when there is
+    /// nothing to delete.
+    /// </summary>
     Task<bool> DeletePropertyAsync(Guid id);
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);

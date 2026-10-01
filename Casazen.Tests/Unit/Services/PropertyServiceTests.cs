@@ -147,36 +147,58 @@ public class PropertyServiceTests
     }
 
     [Fact]
-    public async Task DeletePropertyAsync_NoUpcomingConfirmedBooking_SoftDeletesProperty()
+    public async Task DeletePropertyAsync_NothingToCome_SoftDeletesWithTheClockInstantAndRomeDate()
     {
-        // Arrange
+        // 23:30 UTC on 30 Sept is already 1 Oct in Rome: "today" for the stays is the Rome date.
+        var now = new DateTimeOffset(2026, 9, 30, 23, 30, 0, TimeSpan.Zero);
+        var service = new PropertyService(
+            _mockRepository.Object,
+            Mock.Of<IPropertyComplianceStatusService>(),
+            new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
+            new Mock<ILogger<PropertyService>>().Object,
+            new FakeTimeProvider(now));
         var propertyId = Guid.NewGuid();
         _mockRepository
-            .Setup(x => x.HasUpcomingConfirmedBookingsAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _mockRepository.Setup(x => x.DeleteAsync(propertyId)).Returns(Task.CompletedTask);
+            .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PropertySoftDeleteOutcome.Deleted);
 
-        // Act
-        var result = await _service.DeletePropertyAsync(propertyId);
+        var result = await service.DeletePropertyAsync(propertyId);
 
-        // Assert
         Assert.True(result);
-        _mockRepository.Verify(x => x.DeleteAsync(propertyId), Times.Once);
+        _mockRepository.Verify(x => x.SoftDeleteAsync(
+            propertyId,
+            now.UtcDateTime,
+            new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task DeletePropertyAsync_HasUpcomingConfirmedBooking_ThrowsConflictAndKeepsProperty()
+    public async Task DeletePropertyAsync_AlreadyDeletedOrUnknown_ReturnsFalse()
     {
-        // Arrange (PC-05, A2-18): a guest already booked must never lose their stay to a delete.
         var propertyId = Guid.NewGuid();
         _mockRepository
-            .Setup(x => x.HasUpcomingConfirmedBookingsAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PropertySoftDeleteOutcome.NotFound);
 
-        // Act & Assert
+        Assert.False(await _service.DeletePropertyAsync(propertyId));
+    }
+
+    [Theory]
+    [InlineData(PropertySoftDeleteOutcome.HasUpcomingStays, PropertyService.HasUpcomingBookingsCode, "PropertyHasUpcomingBookings")]
+    [InlineData(PropertySoftDeleteOutcome.HasActiveLeases, PropertyService.HasActiveLeasesCode, "PropertyHasActiveLeases")]
+    public async Task DeletePropertyAsync_StayOrLeaseStillToCome_ThrowsConflict(
+        PropertySoftDeleteOutcome outcome, string expectedCode, string expectedKey)
+    {
+        // PC-05, A2-18: a guest or tenant already booked must never lose their stay to a delete.
+        var propertyId = Guid.NewGuid();
+        _mockRepository
+            .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+
         var error = await Assert.ThrowsAsync<DomainConflictException>(() => _service.DeletePropertyAsync(propertyId));
-        Assert.Equal(PropertyService.HasUpcomingBookingsCode, error.Code);
-        _mockRepository.Verify(x => x.DeleteAsync(It.IsAny<Guid>()), Times.Never);
+
+        Assert.Equal(expectedCode, error.Code);
+        Assert.Equal(expectedKey, error.MessageKey);
     }
 
     [Fact]

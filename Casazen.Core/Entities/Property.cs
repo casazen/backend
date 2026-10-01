@@ -125,7 +125,7 @@ public class Property : ITenantOwned
     /// Host-set pause (PC-03, A2-05): reversible and temporary — the property stays fully visible and editable to its
     /// host, keeps its plan slot (the entitlement count ignores it), and its existing bookings are untouched, but it
     /// is hidden from public search, its public page and new guest bookings (<c>PublicListing.IsPublished</c>) until
-    /// the host reactivates it. Distinct from a soft delete (A2-18, <c>ArchivedAt</c>/<c>DeletedAt</c>): pausing never
+    /// the host reactivates it. Distinct from a soft delete (PC-05, A2-18, <c>IsDeleted</c>/<c>DeletedAt</c>): pausing never
     /// removes or hides the property from its own host.
     /// </summary>
     public bool IsPaused { get; set; }

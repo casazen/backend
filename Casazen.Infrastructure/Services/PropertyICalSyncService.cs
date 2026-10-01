@@ -131,12 +131,13 @@ public partial class PropertyICalSyncService
     }
 
     // IgnoreQueryFilters (here and in BuildPublicExportAsync): the public export is authorized by the
-    // unguessable ExportToken, not by a user, and is scoped to that export's property.
+    // unguessable ExportToken, not by a user, and is scoped to that export's property. A soft-deleted property's link
+    // stops working (PC-05).
     public async Task<PropertyICalExport?> GetExportByTokenAsync(Guid exportToken, CancellationToken ct = default) =>
         await _db.PropertyICalExports
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .FirstOrDefaultAsync(e => e.ExportToken == exportToken, ct);
+            .FirstOrDefaultAsync(e => e.ExportToken == exportToken && !e.Property.IsDeleted, ct);
 
     public string BuildExportUrl(Guid exportToken)
     {
@@ -604,7 +605,8 @@ public partial class PropertyICalSyncService
     {
         var feedIds = await _db.PropertyICalFeeds
             .AsNoTracking()
-            .Where(f => f.ImportUrl != null && f.ImportUrl != "")
+            // A soft-deleted property (PC-05) is no longer synced.
+            .Where(f => f.ImportUrl != null && f.ImportUrl != "" && !f.Property.IsDeleted)
             .OrderBy(f => f.LastImportAt.HasValue)
             .ThenBy(f => f.LastImportAt)
             .Select(f => f.Id)

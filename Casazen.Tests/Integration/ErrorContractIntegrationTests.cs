@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -143,8 +144,8 @@ public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplication
                 PropertyId = property.Id,
                 OrgId = property.OrgId,
                 GuestId = guest.Id,
-                CheckInDate = DateTime.UtcNow.Date.AddDays(10),
-                CheckOutDate = DateTime.UtcNow.Date.AddDays(12),
+                CheckInDate = TimeProvider.System.TodayInRome().AddDays(10),
+                CheckOutDate = TimeProvider.System.TodayInRome().AddDays(12),
                 NumberOfGuests = 2,
                 Status = BookingStatus.Confirmed,
                 Source = BookingSource.Direct,
@@ -177,9 +178,15 @@ public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplication
 
         var afterDelete = await client.GetAsync($"/api/properties/{property.Id}");
         Assert.Equal(HttpStatusCode.NotFound, afterDelete.StatusCode);
+        // PC-03 x PC-05: a deleted property cannot be paused or reactivated either, nor deleted twice.
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync($"/api/properties/{property.Id}/activate", content: null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync($"/api/properties/{property.Id}")).StatusCode);
+        var list = JsonSerializer.Deserialize<JsonElement>(await (await client.GetAsync("/api/properties")).Content.ReadAsStringAsync());
+        Assert.DoesNotContain(list.EnumerateArray(), p => p.GetProperty("id").GetGuid() == property.Id);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Test assertion: read the stored row past every filter.
         var raw = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property.Id);
         Assert.True(raw.IsDeleted);
         Assert.NotNull(raw.DeletedAt);
