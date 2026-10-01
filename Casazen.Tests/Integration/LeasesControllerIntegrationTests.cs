@@ -21,8 +21,8 @@ namespace Casazen.Tests.Integration;
 
 public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplicationFactory>
 {
-    private const string LandlordCf = "RSSMRA80A01H501Z";
-    private const string TenantCf = "VRDGLI85B02F205X";
+    private const string LandlordCf = "RSSMRA80A01H501U";
+    private const string TenantCf = "VRDGLI85B02F205A";
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private readonly LeaseFlowWebApplicationFactory _factory;
@@ -223,7 +223,7 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
                 role = 999,
                 firstName = "Invalid",
                 lastName = "Role",
-                fiscalCode = "NVLRLE90B02F205X",
+                fiscalCode = "NVLRLE90B02F205P",
                 citizenship = "IT",
                 contactEmail = "invalid-role@example.com",
             }).ToArray(),
@@ -727,6 +727,82 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         Assert.Single(lease.GetProperty("events").EnumerateArray(), e => e.GetProperty("eventType").GetString() == "ErasureRequested");
         Assert.All(lease.GetProperty("parties").EnumerateArray(), p => Assert.NotEqual("ANONYMIZED", p.GetProperty("lastName").GetString()));
         AssertNoPartyPiiNorInternalFields(lease.GetRawText());
+    }
+
+    [Fact]
+    public async Task Create_TwoLandlordsAndTwoTenants_KeepsEveryPartyInTheOrderEntered()
+    {
+        // LT-14 (A7-28): co-owners (spouses) and co-tenants, a company tenant with its 11-digit code.
+        var owner = UniqueOwner("multi-party");
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+        var body = new
+        {
+            propertyId = property.Id,
+            fiscalRegime = "CedolareSecca",
+            startDate = "2026-09-01T00:00:00Z",
+            endDate = "2030-08-31T00:00:00Z",
+            monthlyRent = 1200m,
+            parties = new object[]
+            {
+                new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = "rssmra80a01h501u", citizenship = "IT", contactEmail = "mario@example.com" },
+                new { role = "Landlord", firstName = "Anna", lastName = "Bianchi", fiscalCode = "BNCNNA82A41F205W", citizenship = "IT", contactEmail = "anna@example.com" },
+                new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = TenantCf, citizenship = "IT", contactEmail = "giulia@example.com" },
+                new { role = "Tenant", firstName = "Acme", lastName = "Srl", fiscalCode = "00123456782", citizenship = "IT", contactEmail = "acme@example.com" },
+            },
+        };
+
+        var response = await client.PostAsJsonAsync("/api/leases", body);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var leaseId = (await ReadJson(response)).GetProperty("id").GetGuid();
+        var lease = await GetLease(client, leaseId);
+        Assert.Equal(
+            ["Landlord Rossi", "Landlord Bianchi", "Tenant Verdi", "Tenant Srl"],
+            lease.GetProperty("parties").EnumerateArray()
+                .Select(p => $"{p.GetProperty("role").GetString()} {p.GetProperty("lastName").GetString()}"));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Stored normalized, with the position of each party in its role.
+        Assert.Equal(
+            [(Core.Entities.Enums.PartyRole.Landlord, 0, LandlordCf), (Core.Entities.Enums.PartyRole.Landlord, 1, "BNCNNA82A41F205W")],
+            (await db.Parties.AsNoTracking()
+                .Where(p => p.LeaseContractId == leaseId && p.Role == Core.Entities.Enums.PartyRole.Landlord)
+                .OrderBy(p => p.Position)
+                .ToListAsync())
+            .Select(p => (p.Role, p.Position, p.FiscalCode)));
+    }
+
+    [Theory]
+    [InlineData("RSSMRA80A01H501Z", "lease_party_fiscal_code_invalid")]
+    [InlineData(TenantCf, "lease_party_fiscal_code_duplicate")]
+    public async Task Create_LandlordFiscalCodeRejected_Returns422WithCodeAndStoresNothing(string landlordCode, string code)
+    {
+        var owner = UniqueOwner("bad-cf");
+        var property = await _factory.SeedPropertyAsync(owner);
+        using var client = LandlordClient(owner);
+        var body = new
+        {
+            propertyId = property.Id,
+            fiscalRegime = "CedolareSecca",
+            startDate = "2026-09-01T00:00:00Z",
+            endDate = "2030-08-31T00:00:00Z",
+            monthlyRent = 1200m,
+            parties = new object[]
+            {
+                new { role = "Landlord", firstName = "Mario", lastName = "Rossi", fiscalCode = landlordCode, citizenship = "IT", contactEmail = "mario@example.com" },
+                new { role = "Tenant", firstName = "Giulia", lastName = "Verdi", fiscalCode = TenantCf, citizenship = "IT", contactEmail = "giulia@example.com" },
+            },
+        };
+
+        var response = await client.PostAsJsonAsync("/api/leases", body);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await ReadJson(response);
+        Assert.Equal(code, problem.GetProperty("code").GetString());
+        // The message never repeats the fiscal code (personal data).
+        Assert.DoesNotContain(landlordCode, problem.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        await AssertNoLeasesPersistedAsync(property.Id);
     }
 
     [Fact]
