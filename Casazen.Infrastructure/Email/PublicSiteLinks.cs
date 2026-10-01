@@ -199,6 +199,20 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             && string.IsNullOrEmpty(candidate.UserInfo);
     }
 
+    /// <summary>
+    /// True when <paramref name="host"/> (a host name without scheme, port optional) is the host of
+    /// <c>App:PublicSiteBaseUrl</c>: the web app's own domain, as opposed to an org subdomain or custom domain (BK-15).
+    /// False when the public URL is not configured.
+    /// </summary>
+    public bool IsPublicSiteHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)
+            || !PublicSiteOptions.TryGetBaseUri(options.Value.PublicSiteBaseUrl, out var baseUri))
+            return false;
+
+        return string.Equals(PublicSiteHosts.Normalize(host), PublicSiteHosts.Normalize(baseUri.IdnHost), StringComparison.Ordinal);
+    }
+
     private string Build(string pathAndQuery) => BaseUrl() + pathAndQuery;
 
     private string BaseUrl()
