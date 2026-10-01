@@ -58,4 +58,7 @@ public class AiSubprocessorOptions
     public string? TransferMechanism { get; set; }
 
     public string? Website { get; set; }
+
+    /// <summary>Legal entity and registered office of the provider. To be completed by the product owner.</summary>
+    public string? Entity { get; set; }
 }
