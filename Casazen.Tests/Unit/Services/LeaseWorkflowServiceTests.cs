@@ -59,7 +59,7 @@ public class LeaseWorkflowServiceTests
         // LT-04 (A7-04): no stipula yet, so no deadline stored (it was StartDate + 30).
         Assert.Null(result.StipulaDate);
         Assert.Null(result.RegistrationDeadline);
-        Assert.Equal(request.StartDate.AddYears(10), result.DataRetentionUntil);
+        Assert.Null(result.PartiesAnonymizedAt); // LT-12: no stored retention date, it is counted from the end date
         Assert.False(result.ErasureRequested);
     }
 

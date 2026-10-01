@@ -218,7 +218,6 @@ public class LeaseDtoMapperTests
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2030, 8, 31, 0, 0, 0, DateTimeKind.Utc),
             MonthlyRent = 1200m,
-            DataRetentionUntil = new DateTime(2036, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             ExternalSigningSessionId = "session-1",
             SignedPdfStoragePath = $"leases/{Guid.Empty}/{leaseId}/signed-contract/signed.pdf",
             StipulaDeclaredByUserId = "auth0|owner",

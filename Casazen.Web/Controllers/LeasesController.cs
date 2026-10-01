@@ -125,6 +125,27 @@ public class LeasesController(
     }
 
     /// <summary>
+    /// Erasure request of the parties' data (art. 17 GDPR, LT-12), made by the host for a party who asked. Recorded once
+    /// (<c>ErasureRequested</c> event); the parties are anonymized now if the lease has ended, otherwise from the day after
+    /// its end date (<c>status: Scheduled</c>, <c>anonymizationFrom</c>). A party who is also a party of another lease of
+    /// the org that has not ended keeps its data until that lease ends (<c>PartiallyAnonymized</c>, <c>partiesKept</c>).
+    /// Idempotent. Needs <c>lease.create</c> on the lease (the permission that writes the parties).
+    /// </summary>
+    [HttpPost("{id:guid}/erasure-request")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    [ProducesResponseType(typeof(LeaseErasureResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RequestErasure(
+        Guid id, [FromServices] ILeasePartyPrivacyService partyPrivacy, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Create);
+        if (denied is not null)
+            return denied;
+
+        var result = await partyPrivacy.RequestErasureAsync(id, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Provider signature (LT-02): sends the final contract to the e-signature provider and returns the personal signing
     /// links, persisted (<c>GET signers</c>). Only with <c>Features:ESignProvider</c> on (404 otherwise) and a configured
     /// provider (409 <c>esign_provider_unavailable</c>); 422 <c>contract_template_not_approved</c> while the template is
