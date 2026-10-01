@@ -396,6 +396,9 @@
   <data name="SignupAttributionUnknownComune" xml:space="preserve">
     <value>Il comune indicato non è tra quelli gestiti da CasaZen.</value>
   </data>
+  <data name="SeoEventUnknown" xml:space="preserve">
+    <value>L'evento non è tra quelli registrati (cta_click, signup_start).</value>
+  </data>
   <data name="SignupAttributionOnboardingRequired" xml:space="preserve">
     <value>L'origine dell'iscrizione si registra solo dopo aver completato l'onboarding.</value>
   </data>

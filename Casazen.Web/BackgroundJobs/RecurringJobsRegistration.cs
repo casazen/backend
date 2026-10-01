@@ -63,6 +63,13 @@ public static class RecurringJobsRegistration
             "0 4 1 * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // SE-04: the events of the SEO funnel are deleted after Seo:Events:RetentionDays, nightly.
+        recurringJobManager.AddOrUpdate<SeoEventRetentionJob>(
+            SeoEventRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "30 3 * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<DirectBookingChargeJob>(
             "direct-booking-charge",
             job => job.ExecuteAsync(),

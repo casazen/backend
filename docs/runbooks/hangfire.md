@@ -42,6 +42,7 @@ and production never block each other.
 | `lease-registration-status-poll` | `*/5` | `LeaseRegistrationStatusPollingJob.ExecuteAsync` | 60 s |
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
+| `seo-event-retention` (SE-04: deletes SEO funnel events older than `Seo__Events__RetentionDays`, see [seo-funnel.md](seo-funnel.md)) | 03:30 | `SeoEventRetentionJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days are written) | 60 s |

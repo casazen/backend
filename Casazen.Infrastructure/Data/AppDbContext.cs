@@ -122,6 +122,7 @@ public class AppDbContext(
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
+    public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<RolePermission> RolePermissions { get; set; } = null!;
     public DbSet<UserContextMembership> UserContextMemberships { get; set; } = null!;
@@ -836,6 +837,17 @@ public class AppDbContext(
 
             entity.HasIndex(a => a.RecordedAt)
                 .HasDatabaseName("IX_SignupAttributions_RecordedAt");
+        });
+
+        // SEO funnel events (SE-04): platform data without an org or a person; the report groups by comune over a window,
+        // the nightly retention deletes by date.
+        modelBuilder.Entity<SeoEvent>(entity =>
+        {
+            entity.HasIndex(e => e.OccurredAt)
+                .HasDatabaseName("IX_SeoEvents_OccurredAt");
+
+            entity.HasIndex(e => new { e.ComuneCode, e.OccurredAt })
+                .HasDatabaseName("IX_SeoEvents_ComuneCode_OccurredAt");
         });
 
         // ─── Supplier console (US-022 / #292) ────────────────────────────────────

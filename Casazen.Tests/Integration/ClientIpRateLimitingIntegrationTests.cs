@@ -48,6 +48,8 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         { 17, "GET", "/api/public/suppliers/missing-supplier", null },
         { 18, "POST", "/api/suppliers/invites/lookup", "{}" },
         { 19, "GET", "/api/suppliers/registration-options", null },
+        { 20, "POST", "/api/public/seo/events", "{\"event\":\"cta_click\",\"comuneSlug\":\"como\"}" },
+        { 21, "GET", "/api/public/seo/como/featured-properties", null },
     };
 
     [Theory]
