@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Authorization;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Repositories;
@@ -21,7 +22,11 @@ public interface IPropertyRepository
     Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
-    IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null);
+    /// <summary>
+    /// Published properties of active orgs (<c>PublicListing.IsPublished</c>) matching <paramref name="criteria"/>,
+    /// optionally of one org: the query of the public search, the org's property list and the public property pages.
+    /// </summary>
+    IQueryable<Property> GetSearchQueryable(PublicPropertySearchCriteria criteria, Guid? orgId = null);
     Task<Property> AddAsync(Property property);
     Task<Property> UpdateAsync(Property property);
 

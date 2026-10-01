@@ -496,15 +496,32 @@ public class PropertiesController(
         return NoContent();
     }
 
+    /// <summary>
+    /// The public search across orgs (BK-20, A8-13): published properties of active orgs, cheapest first within a city, at
+    /// most 50. Every filter is optional: <c>city</c> (part of the name), <c>bedrooms</c> and <c>bathrooms</c> (at least),
+    /// <c>guests</c> (sleeps at least), <c>minPrice</c> and <c>maxPrice</c> (nightly rate). Each result carries
+    /// <c>orgSlug</c>, which with <c>slug</c> gives <c>/book/{orgSlug}/property/{slug}</c>. A value out of range is a 400.
+    /// </summary>
     [HttpGet("search")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<IEnumerable<PublicPropertyDto>>> Search(
-        [FromQuery] string? city,
-        [FromQuery] int? bedrooms,
-        [FromQuery] decimal? maxPrice)
+        [FromQuery, StringLength(100, ErrorMessage = "PublicSearchFilterInvalid")] string? city,
+        [FromQuery, Range(0, 50, ErrorMessage = "PublicSearchFilterInvalid")] int? bedrooms,
+        [FromQuery, Range(0, 50, ErrorMessage = "PublicSearchFilterInvalid")] int? bathrooms,
+        [FromQuery, Range(1, 100, ErrorMessage = "PublicSearchFilterInvalid")] int? guests,
+        [FromQuery, Range(typeof(decimal), "0", "1000000", ErrorMessage = "PublicSearchFilterInvalid")] decimal? minPrice,
+        [FromQuery, Range(typeof(decimal), "0", "1000000", ErrorMessage = "PublicSearchFilterInvalid")] decimal? maxPrice)
     {
-        var properties = await propertyService.SearchAsync(city, bedrooms, maxPrice);
+        var properties = await propertyService.SearchAsync(new PublicPropertySearchCriteria
+        {
+            City = city,
+            MinBedrooms = bedrooms,
+            MinBathrooms = bathrooms,
+            Guests = guests,
+            MinPrice = minPrice,
+            MaxPrice = maxPrice,
+        });
         return Ok(properties);
     }
 

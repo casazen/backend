@@ -453,6 +453,39 @@
   <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
     <value>Dimensioni dell'immagine non valide: servono almeno {0}×{1} pixel e al massimo {2}×{3}.</value>
   </data>
+  <data name="PublicSearchFilterInvalid" xml:space="preserve">
+    <value>Un filtro di ricerca non è valido.</value>
+  </data>
+  <data name="OrgDocumentContentRequired" xml:space="preserve">
+    <value>Scrivi il testo del documento.</value>
+  </data>
+  <data name="OrgDocumentContentTooLong" xml:space="preserve">
+    <value>Il testo supera i {0} caratteri.</value>
+  </data>
+  <data name="OrgDocumentContentTooLongInput" xml:space="preserve">
+    <value>Il testo è troppo lungo.</value>
+  </data>
+  <data name="OrgDocumentHtmlNotAllowed" xml:space="preserve">
+    <value>Il testo contiene codice HTML, che non è ammesso: scrivi testo semplice (puoi usare # per i titoli, - per gli elenchi, **grassetto** e [testo](https://indirizzo) per i link).</value>
+  </data>
+  <data name="OrgDocumentLinkInvalid" xml:space="preserve">
+    <value>Un link non è valido: deve iniziare con https://, http:// o mailto:.</value>
+  </data>
+  <data name="OrgDocumentUrlRequired" xml:space="preserve">
+    <value>Inserisci l'indirizzo del documento.</value>
+  </data>
+  <data name="OrgDocumentUrlInvalid" xml:space="preserve">
+    <value>L'indirizzo non è valido: deve essere un indirizzo https:// completo, senza credenziali.</value>
+  </data>
+  <data name="OrgDocumentSourceInvalid" xml:space="preserve">
+    <value>Scegli se scrivere il testo o indicare l'indirizzo di un documento.</value>
+  </data>
+  <data name="OrgDocumentVersionNotFound" xml:space="preserve">
+    <value>Questa versione del documento non esiste.</value>
+  </data>
+  <data name="OrgDocumentKindUnknown" xml:space="preserve">
+    <value>Documento non riconosciuto.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
   </data>

@@ -1025,16 +1025,22 @@ public class PropertiesControllerTests
             new() { Id = Guid.NewGuid(), Name = "Property 2", City = "Rome", Bedrooms = 3, NightlyRate = 150m }
         };
 
-        _mockService.Setup(x => x.SearchAsync("Rome", 2, 200m)).ReturnsAsync(properties);
+        PublicPropertySearchCriteria? received = null;
+        _mockService.Setup(x => x.SearchAsync(It.IsAny<PublicPropertySearchCriteria>()))
+            .Callback<PublicPropertySearchCriteria>(c => received = c)
+            .ReturnsAsync(properties);
 
         // Act
-        var result = await _controller.Search("Rome", 2, 200m);
+        var result = await _controller.Search("Rome", 2, 1, 4, 50m, 200m);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returnedProperties = Assert.IsAssignableFrom<IEnumerable<PublicPropertyDto>>(okResult.Value);
         Assert.Equal(2, returnedProperties.Count());
-        _mockService.Verify(x => x.SearchAsync("Rome", 2, 200m), Times.Once);
+        _mockService.Verify(x => x.SearchAsync(It.IsAny<PublicPropertySearchCriteria>()), Times.Once);
+        Assert.Equal(
+            new PublicPropertySearchCriteria { City = "Rome", MinBedrooms = 2, MinBathrooms = 1, Guests = 4, MinPrice = 50m, MaxPrice = 200m },
+            received);
     }
 
     [Fact]
