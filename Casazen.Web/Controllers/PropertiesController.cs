@@ -10,6 +10,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Validation;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
@@ -676,7 +677,9 @@ public class PropertiesController(
         if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
             return Forbid();
 
-        if (!Enum.TryParse<DocumentType>(documentType, ignoreCase: true, out var docType))
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"), which would
+        // otherwise reach storage and the DB as an undefined document type (PL-07, A1-35, A7-31).
+        if (!EnumNames.TryParseDefined<DocumentType>(documentType, out var docType))
             return BadRequest(new { error = $"Invalid document type: {documentType}" });
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Upload");

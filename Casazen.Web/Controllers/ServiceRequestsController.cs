@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.ServiceRequests;
 using Casazen.Web.Infrastructure;
@@ -130,8 +131,10 @@ public class ServiceRequestsController(
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"): filtering by it
+        // would silently match nothing instead of leaving the filter unapplied like any other unknown value (PL-07).
         ServiceRequestStatus? statusFilter = null;
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ServiceRequestStatus>(status, true, out var parsed))
+        if (EnumNames.TryParseDefined<ServiceRequestStatus>(status, out var parsed))
             statusFilter = parsed;
 
         if (string.Equals(view, "supplier", StringComparison.OrdinalIgnoreCase))

@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
+using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -82,7 +83,9 @@ public class UserRepository(AppDbContext context) : IUserRepository
                 EF.Functions.ILike(u.LastName, pattern));
         }
 
-        if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole))
+        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"): filtering by it
+        // would silently match nothing instead of leaving the filter unapplied like any other unknown value (PL-07).
+        if (EnumNames.TryParseDefined<UserRole>(role, out var parsedRole))
         {
             query = query.Where(u => u.Role == parsedRole);
         }

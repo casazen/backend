@@ -185,7 +185,6 @@ builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsRes
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     })
     // Validation attributes may use a SharedResources key as ErrorMessage (a literal message is kept as is).
     .AddDataAnnotationsLocalization(options =>
@@ -207,6 +206,11 @@ builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsRes
             };
         };
     });
+// Enums as member names; a value no member declares (e.g. 7 or "7") is a 400 validation_error, not a 500 (PL-07).
+builder.Services.AddOptions<JsonOptions>()
+    .Configure<IStringLocalizerFactory>((o, localizerFactory) =>
+        o.JsonSerializerOptions.Converters.Add(
+            new DefinedEnumJsonConverterFactory(localizerFactory.Create(typeof(SharedResources)))));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
