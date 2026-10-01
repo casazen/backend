@@ -365,8 +365,8 @@ public class ComplianceWizardService(
         // re-evaluation after every change and the nightly check (CO-06).
         var blockingSteps = await complianceStatus.GetBlockingStepsAsync(property, cancellationToken);
 
-        var regionCode = await ResolveRegionCodeAsync(property.City, cancellationToken);
-        var touristTax = await ResolveTouristTaxAsync(property.City, cancellationToken);
+        // The regional documents are decided by the region of the comune the host chose (PropertyComplianceStatusService, SU-04).
+        var touristTax = await ResolveTouristTaxAsync(property, cancellationToken);
 
         // Any import feed of the property (PC-11: Airbnb, Booking.com, ... each its own feed).
         var icalComplete = await db.PropertyICalFeeds
@@ -412,38 +412,63 @@ public class ComplianceWizardService(
     }
 
     private async Task<TouristTaxActivationInfo> ResolveTouristTaxAsync(
-        string? propertyCity,
+        Property property,
         CancellationToken cancellationToken)
     {
-        var city = propertyCity?.Trim() ?? string.Empty;
+        var city = property.City?.Trim() ?? string.Empty;
         if (city.Length == 0)
             return new TouristTaxActivationInfo(city, null, null);
 
-        // Same lookup as the checkout and the calculator (BK-03): comune by normalized name, rate in force today in
-        // Europe/Rome and in season. The property has no accommodation category, so category rates do not apply.
+        // Same lookup as the checkout and the calculator (BK-03): by the ISTAT code of the comune the host chose (SU-04),
+        // by the normalized city name for a property without one; rate in force today in Europe/Rome and in season. The
+        // property has no accommodation category, so category rates do not apply.
         var today = _clock.TodayInRomeAsDateOnly();
         var ratesInForce = await touristTaxQuoteService.GetRatesInForceAsync(
-            new TouristTaxComune(null, city), today, cancellationToken);
+            TouristTaxComune.ForProperty(property), today, cancellationToken);
         var rate = TouristTaxCalculator.RateFor(ratesInForce, today);
         var categoryRequired = rate is null
             && ratesInForce.Any(r => !string.IsNullOrWhiteSpace(r.AccommodationCategory));
 
         // Only a page with an approved revision is public (SE-01); the wizard never links a draft or a withdrawn page.
+        // The page of a comune is found by its ISTAT code: the one the host chose from the official list, or, for a property
+        // without one, the comune that has exactly this name (a link to show, never stored).
         string? publicPageSlug = null;
-        var comune = ItalianComuneRegistry.GetByName(city);
-        if (comune is not null)
+        var pageCode = property.ComuneIstatCode ?? await FindComuneCodeByUniqueNameAsync(city, cancellationToken);
+        if (pageCode is { } istatCode)
         {
             var hasPublicPage = await db.SeoContentPages
                 .AsNoTracking()
                 .AnyAsync(p => p.PageType == SeoPageType.TouristTaxCalc
-                               && p.ComuneCode == comune.Code
+                               && p.ComuneCode == istatCode
                                && p.PublishedRevisionId != null,
                     cancellationToken);
             if (hasPublicPage)
-                publicPageSlug = comune.ComuneSlug;
+            {
+                var name = await db.Comuni.AsNoTracking()
+                    .Where(c => c.IstatCode == istatCode)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync(cancellationToken);
+                publicPageSlug = string.IsNullOrEmpty(name) ? null : ComuneNames.Slugify(name);
+            }
         }
 
         return new TouristTaxActivationInfo(city, rate, publicPageSlug) { CategoryRequired = categoryRequired };
+    }
+
+    /// <summary>ISTAT code of the only active comune with this name; <c>null</c> when none or more than one has it.</summary>
+    private async Task<string?> FindComuneCodeByUniqueNameAsync(string city, CancellationToken cancellationToken)
+    {
+        var normalized = ComuneNames.Normalize(city);
+        if (normalized.Length == 0)
+            return null;
+
+        var codes = await db.Comuni
+            .AsNoTracking()
+            .Where(c => c.IsActive && c.NormalizedName == normalized)
+            .Select(c => c.IstatCode)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        return codes.Count == 1 ? codes[0] : null;
     }
 
     /// <summary>
@@ -512,14 +537,4 @@ public class ComplianceWizardService(
         return [departure, alloggiatiStep, cleaning, touristTax, propertyReady];
     }
 
-    private async Task<string> ResolveRegionCodeAsync(string city, CancellationToken cancellationToken)
-    {
-        var rate = await db.TouristTaxRates
-            .AsNoTracking()
-            .Where(t => t.IsActive && t.City.ToLower() == city.ToLower())
-            .Select(t => t.RegionCode)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return string.IsNullOrWhiteSpace(rate) ? "default" : rate;
-    }
 }

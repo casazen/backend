@@ -1,5 +1,3 @@
-using Casazen.Core.Regulatory;
-
 namespace Casazen.Core.Validation;
 
 /// <summary>
@@ -44,16 +42,6 @@ public static class SignupAttributionRules
 
     /// <summary>Resource key of a comune that CasaZen does not know.</summary>
     public const string UnknownComuneKey = "SignupAttributionUnknownComune";
-
-    /// <summary>The comune of a slug or ISTAT code, <c>null</c> when CasaZen does not know it.</summary>
-    public static ComuneInfo? ResolveComune(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        var trimmed = value.Trim();
-        return ItalianComuneRegistry.GetBySlug(trimmed) ?? ItalianComuneRegistry.GetByCode(trimmed);
-    }
 
     /// <summary>Trimmed value, <c>null</c> when empty.</summary>
     public static string? Normalize(string? value) =>

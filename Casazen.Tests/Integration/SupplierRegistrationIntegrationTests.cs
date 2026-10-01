@@ -25,8 +25,11 @@ namespace Casazen.Tests.Integration;
 public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegrationTests.PilotComuniFactory factory)
     : IClassFixture<SupplierRegistrationIntegrationTests.PilotComuniFactory>
 {
-    private const string PilotCode = "H501";
+    // Roma in the official ISTAT list (ISTAT 058091, cadastral H501); Milano (015146, F205) is not a pilot.
+    private const string PilotCode = "058091";
     private const string PilotName = "Roma";
+    private const string PilotCadastralCode = "H501";
+    private const string OtherComuneCode = "015146";
 
     // ─── Invite ─────────────────────────────────────────────────────────────
 
@@ -106,7 +109,7 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         var (_, token, email) = await SeedInviteAsync();
         using var client = factory.CreateAuthenticatedClient($"auth0|comune-{Guid.NewGuid():N}", email: email);
 
-        var response = await RegisterAsync(client, email, "F205", token);
+        var response = await RegisterAsync(client, email, OtherComuneCode, token);
 
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_invite_comune_mismatch");
     }
@@ -230,7 +233,7 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         var email = $"self-{Guid.NewGuid():N}@test.com";
         using var anonymous = factory.CreateClient();
 
-        var response = await RegisterAsync(anonymous, email, " h501 ");
+        var response = await RegisterAsync(anonymous, email, $" {PilotCode} ");
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -240,8 +243,25 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var profile = await db.SupplierProfiles.SingleAsync(p => p.Email == email);
             Assert.Equal($"[\"{PilotCode}\"]", profile.ComuniJson);
+            // The comune of the official list is recorded by its ISTAT code too (SU-04).
+            Assert.Equal($"[\"{PilotCode}\"]", profile.ComuneIstatCodesJson);
             Assert.Equal(Core.Entities.Enums.SupplierStatus.Pending, profile.Status);
         }
+    }
+
+    [PostgresFact]
+    public async Task Register_SelfServeWithTheCadastralCodeOfThePilot_IsStoredByItsIstatCode()
+    {
+        var email = $"cadastral-{Guid.NewGuid():N}@test.com";
+        using var anonymous = factory.CreateClient();
+
+        var response = await RegisterAsync(anonymous, email, $" {PilotCadastralCode.ToLowerInvariant()} ");
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var profile = await db.SupplierProfiles.SingleAsync(p => p.Email == email);
+        Assert.Equal($"[\"{PilotCode}\"]", profile.ComuneIstatCodesJson);
     }
 
     [PostgresFact]
@@ -250,7 +270,7 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         var email = $"outside-{Guid.NewGuid():N}@test.com";
         using var anonymous = factory.CreateClient();
 
-        var response = await RegisterAsync(anonymous, email, "F205");
+        var response = await RegisterAsync(anonymous, email, OtherComuneCode);
 
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_comune_not_pilot");
         using var scope = factory.Services.CreateScope();
@@ -467,7 +487,7 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
     }
 
-    /// <summary>One pilot comune (H501 = Roma) and a recording email queue.</summary>
+    /// <summary>One pilot comune (058091 = Roma, validated against the official sample of the list) and a recording email queue.</summary>
     public class PilotComuniFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

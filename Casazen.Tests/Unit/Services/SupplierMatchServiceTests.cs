@@ -136,7 +136,9 @@ public class SupplierMatchServiceTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Mock.Of<ISafeExternalHttpClient>(),
-            Options.Create(new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
             Mock.Of<ILogger<SupplierService>>());
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.AiSupplierDiscovery)).Returns(aiEnabled);

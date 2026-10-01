@@ -256,10 +256,13 @@ public partial class SupplierService
         var duplicate = await db.SupplierProfiles.AsNoTracking().FirstAsync(sp => sp.OrgId == duplicateId, cancellationToken);
         var (categoriesJson, categoriesAdded) = AppendMissingStrings(keeper.CategoriesJson, duplicate.CategoriesJson);
         var (comuniJson, comuniAdded) = AppendMissingStrings(keeper.ComuniJson, duplicate.ComuniJson);
-        if (categoriesAdded.Count > 0 || comuniAdded.Count > 0)
+        // The comuni chosen from the official ISTAT list (SU-04) move as well.
+        var (istatCodesJson, istatCodesAdded) = AppendMissingStrings(keeper.ComuneIstatCodesJson, duplicate.ComuneIstatCodesJson);
+        if (categoriesAdded.Count > 0 || comuniAdded.Count > 0 || istatCodesAdded.Count > 0)
         {
             keeper.CategoriesJson = categoriesJson;
             keeper.ComuniJson = comuniJson;
+            keeper.ComuneIstatCodesJson = istatCodesJson;
             keeper.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
         }

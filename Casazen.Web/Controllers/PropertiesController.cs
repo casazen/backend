@@ -48,6 +48,7 @@ public class PropertiesController(
     PropertyICalSyncService propertyICalSyncService,
     IComplianceWizardService complianceWizardService,
     IAuthorizationService hostAuthorizationService,
+    IPropertyComuneResolver comuneResolver,
     ILogger<PropertiesController> logger) : ControllerBase
 {
     /// <summary>
@@ -159,6 +160,14 @@ public class PropertiesController(
         var property = request.ToProperty(userId);
         // AC7: tenant key is server-set from the caller's org, never client-supplied.
         property.OrgId = orgId.Value;
+
+        // The comune chosen from the official ISTAT list (SU-04): validated against it, the region follows it.
+        if (!string.IsNullOrWhiteSpace(request.ComuneIstatCode))
+        {
+            var comune = await comuneResolver.ResolveAsync(request.ComuneIstatCode, HttpContext.RequestAborted);
+            property.ComuneIstatCode = comune.IstatCode;
+            property.RegionCode = comune.RegionCode;
+        }
         try
         {
             // AC8: the org's plan limit is enforced server-side, and the check and the insert are one atomic
@@ -250,7 +259,36 @@ public class PropertiesController(
             });
         }
 
+        // The comune of the official ISTAT list (SU-04): checked only when it changes (a comune merged away later does not
+        // block the other edits of the property); the region follows it.
+        var cityChanged = request.City is { } newCity && IsCityChange(existing.City, newCity);
+        PropertyComune? chosenComune = null;
+        var clearComune = false;
+        if (request.ComuneIstatCodeSent)
+        {
+            if (string.IsNullOrWhiteSpace(request.ComuneIstatCode))
+                clearComune = true;
+            else if (!string.Equals(request.ComuneIstatCode.Trim(), existing.ComuneIstatCode, StringComparison.Ordinal))
+                chosenComune = await comuneResolver.ResolveAsync(request.ComuneIstatCode, HttpContext.RequestAborted);
+        }
+        else if (cityChanged && existing.ComuneIstatCode is not null)
+        {
+            // The city was rewritten without choosing a comune: the stored code no longer says where the property is.
+            clearComune = true;
+        }
+
         request.ApplyTo(existing);
+        if (chosenComune is not null)
+        {
+            existing.ComuneIstatCode = chosenComune.IstatCode;
+            existing.RegionCode = chosenComune.RegionCode;
+        }
+        else if (clearComune)
+        {
+            existing.ComuneIstatCode = null;
+            existing.RegionCode = null;
+        }
+
         await propertyService.UpdatePropertyAsync(existing);
         return NoContent();
     }
@@ -1266,6 +1304,14 @@ public class PropertiesController(
                 : localizer[step.MessageKey, step.MessageArgs?.ToArray() ?? []].Value,
             LinkUrl = step.LinkUrl,
             Blockers = step.Blockers.Select(b => ToBlockerDto(step.Id, b, localizer)).ToList(),
+            Warnings = step.Warnings
+                .Select(w => new ActivationWarningDto
+                {
+                    Step = step.Id,
+                    Code = w.Code,
+                    Message = localizer[w.MessageKey, w.MessageArgs.ToArray()].Value,
+                })
+                .ToList(),
             TouristTax = step.TouristTax is not { } tax
                 ? null
                 : new ActivationTouristTaxDto

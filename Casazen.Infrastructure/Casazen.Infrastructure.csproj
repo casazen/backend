@@ -45,4 +45,14 @@
     <EmbeddedResource Include="Documents\Fonts\DejaVuSans-Bold.ttf" LogicalName="Casazen.Infrastructure.Documents.Fonts.DejaVuSans-Bold.ttf" />
   </ItemGroup>
 
+  <!--
+    Official ISTAT comuni list (SU-04): the file the product owner supplied and its source and date, compiled into the assembly and loaded at
+    startup when the database has no list or an older one (ComuneImportService.ImportSeedIfNewerAsync). A build without the file simply has
+    no seed. Format, source and how to update it: Data/Seeds/README.md and docs/runbooks/comuni-istat.md.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Data\Seeds\comuni-istat.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.comuni-istat.csv" Condition="Exists('Data\Seeds\comuni-istat.csv')" />
+    <EmbeddedResource Include="Data\Seeds\comuni-istat.source.json" LogicalName="Casazen.Infrastructure.Data.Seeds.comuni-istat.source.json" Condition="Exists('Data\Seeds\comuni-istat.source.json')" />
+  </ItemGroup>
+
 </Project>

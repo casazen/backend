@@ -48,6 +48,23 @@ public class UpdatePropertyRequest
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string? PostalCode { get; set; }
 
+    /// <summary>
+    /// ISTAT code (6 digits) of the comune, chosen from the official list (<c>GET /api/comuni</c>, SU-04); <c>null</c> or blank
+    /// clears it (and the region that follows it); leaving it out keeps it. Validated against the list when it changes: 422
+    /// <c>comune_istat_unknown</c> / <c>comuni_dataset_unavailable</c>. A <c>city</c> changed <b>without</b> a comune clears the
+    /// stored comune: the code no longer says where the property is.
+    /// </summary>
+    [RegularExpression(ComuneRules.IstatCodePattern, ErrorMessage = "ComuneIstatCodeInvalid")]
+    public string? ComuneIstatCode
+    {
+        get;
+        set
+        {
+            field = value;
+            ComuneIstatCodeSent = true;
+        }
+    }
+
     /// <summary>Geographic latitude of the property.</summary>
     public decimal? Latitude { get; set; }
 
@@ -152,6 +169,10 @@ public class UpdatePropertyRequest
     /// <summary>True when the body carries <see cref="CinCode"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CinCodeSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="ComuneIstatCode"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool ComuneIstatCodeSent { get; private set; }
 
     /// <summary>True when the body carries <see cref="CancellationPolicyId"/>, <c>null</c> included.</summary>
     [JsonIgnore]

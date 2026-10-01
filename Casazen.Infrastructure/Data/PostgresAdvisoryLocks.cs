@@ -112,6 +112,12 @@ internal static class PostgresAdvisoryLocks
         /// now") and the supplier's manual changes never write the same days at once (SU-15).
         /// </summary>
         SupplierCalendarSync = 1_065,
+
+        /// <summary>
+        /// Import of the official ISTAT comuni list (single key): the upload of an admin and the seed file of a starting
+        /// instance never write the table together, and the diff of an import is computed on rows nobody else changes (SU-04).
+        /// </summary>
+        ComuneImport = 1_087,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

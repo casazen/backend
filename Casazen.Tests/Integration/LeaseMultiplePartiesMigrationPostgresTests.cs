@@ -70,7 +70,8 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
 
     /// <summary>
     /// Org, property and two leases through EF: their tables are the same before and after the migration (only the
-    /// parties change, inserted by SQL as the previous schema had them).
+    /// parties change, inserted by SQL as the previous schema had them), apart from the columns of later migrations that
+    /// the property insert needs.
     /// </summary>
     private static async Task<(Guid Single, Guid TwoLandlords)> SeedLeasesAsync(AppDbContext db)
     {
@@ -99,8 +100,18 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
         };
         var single = Lease();
         var twoLandlords = Lease();
+        // The "Properties" columns of the next migration (SU-04 AddComuniIstat) exist only for this model-based insert; the
+        // migration under test creates them for real.
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Properties" ADD COLUMN "ComuneIstatCode" character varying(6);
+            ALTER TABLE "Properties" ADD COLUMN "RegionCode" character varying(10);
+            """);
         db.AddRange(org, property, single, twoLandlords);
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Properties" DROP COLUMN "ComuneIstatCode";
+            ALTER TABLE "Properties" DROP COLUMN "RegionCode";
+            """);
         return (single.Id, twoLandlords.Id);
     }
 }

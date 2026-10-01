@@ -17,6 +17,10 @@ namespace Casazen.Tests.Unit.Services;
 
 public class SeoContentServiceTests
 {
+    /// <summary>The comuni of the tests, as the SEO catalog gives them (Como, Bellagio, Menaggio, Palermo: official codes of the ISTAT list).</summary>
+    private static readonly ISeoComuneCatalog Catalog = new StaticSeoComuneCatalog(
+        ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo, ComuneTestData.MenaggioInfo, ComuneTestData.PalermoInfo);
+
     private static readonly TimeProvider Today = new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero));
 
     /// <summary>The real quote service (the only tourist tax engine) over a repository holding <paramref name="rates"/>.</summary>
@@ -33,6 +37,7 @@ public class SeoContentServiceTests
         new(
             seoRepo,
             QuoteService(rates),
+            Catalog,
             Mock.Of<IAiProvider>(),
             EmailTestHelpers.Links("https://public.test"),
             Mock.Of<ILogger<SeoContentService>>(),
@@ -163,12 +168,13 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             aiProvider.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
 
         var generated = await service.GeneratePagesForComuneBatchAsync(
-            ItalianComuneRegistry.AllCodes.Take(3).ToList(),
+            new List<string> { "013075", "013250", "013145" },
             [SeoPageType.ComplianceGuide, SeoPageType.TouristTaxCalc],
             forceRegenerate: true);
 
@@ -182,7 +188,7 @@ public class SeoContentServiceTests
     [Fact]
     public async Task RefreshStalePagesAsync_BudgetExhausted_StopsAtFirstRefusedCall()
     {
-        var codes = ItalianComuneRegistry.AllCodes.Take(3).ToList();
+        var codes = new List<string> { "013075", "013250", "013145" };
         var seoRepo = new Mock<ISeoContentRepository>();
         seoRepo.Setup(r => r.GetPagesNeedingRefreshAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(codes.Select(code => new SeoContentPage
@@ -200,6 +206,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             aiProvider.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -305,6 +312,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             new StubAiProvider(NullLogger<StubAiProvider>.Instance),
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(),
@@ -330,7 +338,7 @@ public class SeoContentServiceTests
             .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult(SeoGeneratedContentTests.ValidHtml(), 50, 500, AiModelTier.Economy, FromCache: false));
         var service = new SeoContentService(
-            seoRepo.Object, QuoteService(), aiProvider.Object, EmailTestHelpers.Links(),
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(), Today);
 
         await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: true);
@@ -364,7 +372,7 @@ public class SeoContentServiceTests
             .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult(SeoGeneratedContentTests.ValidHtml(), 50, 500, AiModelTier.Economy, FromCache: false));
         var service = new SeoContentService(
-            seoRepo.Object, QuoteService(), aiProvider.Object, EmailTestHelpers.Links(),
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(), Today);
 
         var generated = await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
@@ -421,6 +429,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             aiProvider.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());
@@ -462,6 +471,7 @@ public class SeoContentServiceTests
         var service = new SeoContentService(
             seoRepo.Object,
             QuoteService(),
+            Catalog,
             Mock.Of<IAiProvider>(),
             EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>());

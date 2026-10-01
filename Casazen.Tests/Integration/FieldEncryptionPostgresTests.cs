@@ -401,17 +401,22 @@ public class FieldEncryptionPostgresTests
         """);
 
     /// <summary>
-    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>), so the
-    /// model-based insert of the property works here too. Paired with <see cref="DropPropertiesColumnsAfterCo14Async"/>.
+    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>, SU-04
+    /// <c>AddComuniIstat</c>), so the model-based insert of the property works here too. Paired with
+    /// <see cref="DropPropertiesColumnsAfterCo14Async"/>.
     /// </summary>
     private static Task AddPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE "Properties" ADD COLUMN "IsPaused" boolean NOT NULL DEFAULT false;
         ALTER TABLE "Properties" ADD COLUMN "PausedAt" timestamp with time zone;
+        ALTER TABLE "Properties" ADD COLUMN "ComuneIstatCode" character varying(6);
+        ALTER TABLE "Properties" ADD COLUMN "RegionCode" character varying(10);
         """);
 
     private static Task DropPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE "Properties" DROP COLUMN "IsPaused";
         ALTER TABLE "Properties" DROP COLUMN "PausedAt";
+        ALTER TABLE "Properties" DROP COLUMN "ComuneIstatCode";
+        ALTER TABLE "Properties" DROP COLUMN "RegionCode";
         """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>

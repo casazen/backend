@@ -103,9 +103,9 @@ public static partial class CinFormat
     /// when there is nothing reliable to compare.
     /// </summary>
     /// <remarks>
-    /// Not wired to any endpoint yet: properties only carry a free-text <c>City</c> and
-    /// <c>ItalianComuneRegistry</c> is not a reliable city→ISTAT mapping. Call it once the property has a
-    /// trusted ISTAT code (ISTAT registry, task SU-04).
+    /// <paramref name="trustedIstatComuneCode"/> is only the ISTAT code a host chose from the official list
+    /// (<c>Property.ComuneIstatCode</c>, SU-04), never one derived from the free-text city. It feeds the non-blocking
+    /// warning of the activation wizard (step <c>cin</c>) and <c>cinIstatMismatch</c> of the property.
     /// </remarks>
     public static bool HasIstatComuneMismatch(string? cin, string? trustedIstatComuneCode)
     {

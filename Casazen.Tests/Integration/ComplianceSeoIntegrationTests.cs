@@ -139,7 +139,7 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     public async Task SitemapAndHub_PagesWithoutContentDraftOrWithoutRate_AreLeftOut()
     {
         // Guide marked reviewed without any revision (nothing to show), a draft with content, a published calculator without a rate.
-        await SeedPageAsync("013133", "affitti-brevi/lombardia/menaggio", SeoPageType.ComplianceGuide, LegalReviewStatus.Reviewed, bodyHtml: null);
+        await SeedPageAsync("013145", "affitti-brevi/lombardia/menaggio", SeoPageType.ComplianceGuide, LegalReviewStatus.Reviewed, bodyHtml: null);
         await SeedPageAsync("015146", "affitti-brevi/lombardia/milano", SeoPageType.ComplianceGuide, LegalReviewStatus.Draft, "<p>Bozza</p>");
         await SeedPageAsync("082053", "tassa-soggiorno/palermo", SeoPageType.TouristTaxCalc, LegalReviewStatus.Reviewed, "<p>Palermo</p>");
 
@@ -226,7 +226,7 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     public async Task PublicComplianceGuide_StoredRevisionWithXssPayload_ReturnsSanitizedBody()
     {
         await SeedPageWithRawRevisionAsync(
-            "013040",
+            "013250",
             "affitti-brevi/lombardia/bellagio",
             "<h2>Bellagio</h2><img src=x onerror=alert(1)><svg/onload=alert(1)>" +
             "<p ONCLICK=\"alert(1)\">CIN <a href=\"&#106;avascript:alert(1)\">x</a> " +
@@ -246,7 +246,7 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     [Fact]
     public async Task AddRevisionAsync_MaliciousBody_PersistsSanitizedHtml()
     {
-        var pageId = await SeedPageWithRawRevisionAsync("013182", "affitti-brevi/lombardia/varenna", "<p>v1</p>");
+        var pageId = await SeedPageWithRawRevisionAsync("097084", "affitti-brevi/lombardia/varenna", "<p>v1</p>");
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -277,6 +277,14 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         return XDocument.Parse(xml).Descendants(ns + "loc").Select(loc => loc.Value).ToList();
     }
 
+    /// <summary>CasaZen region code of a comune of the official sample (looked up in the list, never typed).</summary>
+    private string SeoPilotRegionCode(string comuneCode)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var comune = scope.ServiceProvider.GetRequiredService<AppDbContext>().Comuni.Single(c => c.IstatCode == comuneCode);
+        return comune.RegionCode!;
+    }
+
     /// <summary>A page of <paramref name="pageType"/> with an optional revision (<c>null</c>: no revision at all).</summary>
     private async Task SeedPageAsync(
         string comuneCode, string slug, SeoPageType pageType, LegalReviewStatus status, string? bodyHtml)
@@ -288,7 +296,7 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         {
             Slug = slug,
             ComuneCode = comuneCode,
-            RegionCode = ItalianComuneRegistry.GetByCode(comuneCode)!.RegionCode,
+            RegionCode = SeoPilotRegionCode(comuneCode),
             PageType = pageType,
             Title = "Pagina di test",
             MetaDescription = "Test meta",

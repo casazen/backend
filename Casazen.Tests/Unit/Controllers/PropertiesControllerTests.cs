@@ -72,6 +72,7 @@ public class PropertiesControllerTests
             CreatePropertyICalSyncService(),
             _mockComplianceWizardService.Object,
             _mockHostAuthz.Object,
+            Mock.Of<IPropertyComuneResolver>(),
             _mockLogger.Object);
 
         // Defaults: caller has an org and is under the plan limit. Create-path tests that need

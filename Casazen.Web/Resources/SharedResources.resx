@@ -670,6 +670,36 @@
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>La registrazione autonoma non è disponibile per questo comune: scegli uno dei comuni dell'elenco o chiedi un invito.</value>
   </data>
+  <data name="ComuniDatasetUnavailable" xml:space="preserve">
+    <value>L'elenco ufficiale dei comuni ISTAT non è ancora disponibile: non è possibile scegliere né convalidare un comune. Riprova più tardi o contatta il team CasaZen.</value>
+  </data>
+  <data name="ComuneIstatUnknown" xml:space="preserve">
+    <value>Il codice ISTAT {0} non corrisponde a un comune dell'elenco ufficiale: scegli il comune dall'elenco.</value>
+  </data>
+  <data name="ComuniTooMany" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} comuni.</value>
+  </data>
+  <data name="ComuneSearchQueryLength" xml:space="preserve">
+    <value>Scrivi da {0} a {1} caratteri per cercare un comune.</value>
+  </data>
+  <data name="ComuniImportFieldRequired" xml:space="preserve">
+    <value>Questo campo è obbligatorio.</value>
+  </data>
+  <data name="ComuniImportReferenceDateInvalid" xml:space="preserve">
+    <value>Indica la data di riferimento dell'elenco nel formato AAAA-MM-GG (la data "aggiornato al" del file ufficiale).</value>
+  </data>
+  <data name="ComuniImportInvalid" xml:space="preserve">
+    <value>Il file non è valido e nessun comune è stato importato: correggi le righe indicate e riprova.</value>
+  </data>
+  <data name="ActivationCinIstatMismatch" xml:space="preserve">
+    <value>Il comune nel CIN ({0}) è diverso dal comune dell'immobile ({1}). Non è un errore: il CIN non cambia dopo un trasferimento o una riclassificazione. Controlla solo che il CIN sia quello di questo immobile.</value>
+  </data>
+  <data name="ActivationComuneMissing" xml:space="preserve">
+    <value>Scegli il comune dall'elenco ISTAT: servono per i documenti richiesti dalla tua regione, l'imposta di soggiorno e il controllo del CIN.</value>
+  </data>
+  <data name="ComuneIstatCodeInvalid" xml:space="preserve">
+    <value>Il codice ISTAT del comune deve essere di 6 cifre: scegli il comune dall'elenco.</value>
+  </data>
   <data name="OnSiteRequestTooManyNights" xml:space="preserve">
     <value>Con il pagamento in struttura puoi richiedere al massimo {0} notti.</value>
   </data>

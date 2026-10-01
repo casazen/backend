@@ -22,6 +22,19 @@ public class ComplianceActivationStepDto
 
     /// <summary>What keeps this blocking step incomplete, with stable codes; empty when complete.</summary>
     public IEnumerable<ActivationBlockerDto> Blockers { get; set; } = [];
+
+    /// <summary>Non-blocking notes of the step (SU-04): e.g. the comune of the CIN differs from the property's.</summary>
+    public IEnumerable<ActivationWarningDto> Warnings { get; set; } = [];
+}
+
+/// <summary>A note that does not block the activation: stable snake_case code and localized message.</summary>
+public class ActivationWarningDto
+{
+    /// <summary>Id of the wizard step (<c>cin</c>, <c>base-data</c>, ...).</summary>
+    public string Step { get; set; } = string.Empty;
+
+    public string Code { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
 }
 
 /// <summary>One reason why the activation is blocked (CO-07): stable snake_case code and localized message.</summary>

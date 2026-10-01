@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -11,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Casazen.Infrastructure.Repositories;
 
-public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
+public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comuneCatalog) : ISeoContentRepository
 {
     public async Task<SeoContentPage?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -36,7 +37,7 @@ public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
         string comuneSlug,
         CancellationToken cancellationToken = default)
     {
-        var comune = ItalianComuneRegistry.GetByRegionAndComuneSlug(regionSlug, comuneSlug);
+        var comune = await comuneCatalog.GetPilotByRegionAndComuneSlugAsync(regionSlug, comuneSlug, cancellationToken);
         return comune is null ? null : await GetPublishedAsync(pageType, comune.Code, cancellationToken);
     }
 
@@ -44,7 +45,7 @@ public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
         string comuneSlug,
         CancellationToken cancellationToken = default)
     {
-        var comune = ItalianComuneRegistry.GetBySlug(comuneSlug);
+        var comune = await comuneCatalog.GetPilotBySlugAsync(comuneSlug, cancellationToken);
         return comune is null ? null : await GetPublishedAsync(SeoPageType.TouristTaxCalc, comune.Code, cancellationToken);
     }
 
@@ -169,11 +170,11 @@ public class SeoContentRepository(AppDbContext context) : ISeoContentRepository
             .Where(t => t.IsActive)
             .ToListAsync(cancellationToken);
 
+        var comuni = await comuneCatalog.GetByCodesAsync(pages.Select(p => p.ComuneCode), cancellationToken);
         var stale = new List<SeoContentPage>();
         foreach (var page in pages)
         {
-            var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
-            if (comune is null)
+            if (!comuni.TryGetValue(page.ComuneCode, out var comune))
                 continue;
 
             // Same comune matching as the tourist tax engine (ISTAT code, else normalized name: A8-23).

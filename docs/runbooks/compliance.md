@@ -18,7 +18,7 @@ its own: its four blocking steps and their blocker codes are this evaluation.
 |---|---|---|
 | `base-data` | `activation_base_data_incomplete` | name, address, city, max guests > 0, nightly rate > 0 |
 | `cin` | `activation_cin_missing`, `activation_cin_invalid` | `CinFormat` (CO-01, [cin-format.md](cin-format.md)) |
-| `documents` | `activation_documents_missing` | `Compliance:RequiredDocuments` (in practice the `default` list, `CinCertificate`: A5-19 is open in SU-04) |
+| `documents` | `activation_documents_missing` | `Compliance:RequiredDocuments` by the **region** of the property (`Property.RegionCode`, `LOM`, `LAZ`, from the comune the host chose from the ISTAT list, SU-04/A5-19: [comuni-istat.md](comuni-istat.md)); `default` for a property with no comune chosen or a region without an entry |
 | `safety` | `safety_*` | `SafetyChecklistRules` (CO-07): required items, facts and the final confirmation with the current text version |
 
 The tourist tax and the iCal feed are warnings: they never block, never suspend.
@@ -229,4 +229,7 @@ SELECT "Id" FROM casazen_prod."Properties" WHERE "ComplianceStatus" = 1 AND "Com
 - No email on the reactivation (section 3).
 - The iCal export keeps exporting the busy nights of a suspended property (section 2). Whether it should also close the
   whole calendar on the OTAs while the CIN is missing is a product decision (DUBBI CO-06).
-- Required documents per region: A5-19 (SU-04).
+- Required documents per region: done by SU-04 (A5-19). A property already `Active` that lacks a document required by its
+  region (e.g. the APE in Lombardia) is suspended at its next evaluation, once the host chooses the comune: warn the hosts
+  or complete the documents first (see [comuni-istat.md](comuni-istat.md)). Non-blocking notes of the wizard (`warnings`
+  of a step): `comune_istat_missing` on `base-data`, `cin_istat_comune_mismatch` on `cin`.

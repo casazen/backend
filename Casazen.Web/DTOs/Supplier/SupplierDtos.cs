@@ -55,7 +55,15 @@ public class UpdateSupplierProfileRequest
 
     public IEnumerable<string>? Categories { get; set; }
 
+    /// <summary>Comuni written as text (kept as written; the web app sends only the ones it could not match to the list).</summary>
     public IEnumerable<string>? Comuni { get; set; }
+
+    /// <summary>
+    /// ISTAT codes of the comuni chosen from the official list (SU-04): replaces the stored ones; omitted keeps them. 422
+    /// <c>comune_istat_unknown</c> for a code that is not an active comune of the list, <c>comuni_dataset_unavailable</c>
+    /// while the list is not imported.
+    /// </summary>
+    public IEnumerable<string>? ComuneIstatCodes { get; set; }
 
     [MaxLength(2000)]
     public string? Bio { get; set; }
@@ -179,7 +187,15 @@ public class SupplierProfileDto
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public IEnumerable<string> Categories { get; set; } = [];
+
+    /// <summary>Comuni written as text before the official list (or while it is not imported): shown as written.</summary>
     public IEnumerable<string> Comuni { get; set; } = [];
+
+    /// <summary>ISTAT codes of the comuni chosen from the official list (SU-04).</summary>
+    public IEnumerable<string> ComuneIstatCodes { get; set; } = [];
+
+    /// <summary>The chosen comuni with name, province and region; a stored code that is not in the list is only in <see cref="ComuneIstatCodes"/>.</summary>
+    public IEnumerable<ComuneDto> OperatingComuni { get; set; } = [];
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
     public DateTime? TosAcceptedAt { get; set; }
@@ -249,15 +265,19 @@ public class SupplierPickerDto
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
 
-    /// <summary>The supplier as a host sees it when choosing one (short-rent and long-rent search alike).</summary>
-    public static SupplierPickerDto From(SupplierProfile sp) => new()
+    /// <summary>
+    /// The supplier as a host sees it when choosing one (short-rent and long-rent search alike). <c>comuni</c> lists the names
+    /// of the comuni the supplier chose from the official list (<paramref name="listed"/>, by ISTAT code) and then what it
+    /// wrote as text.
+    /// </summary>
+    public static SupplierPickerDto From(SupplierProfile sp, IReadOnlyDictionary<string, Comune>? listed = null) => new()
     {
         OrgId = sp.OrgId,
         LegalName = sp.LegalName,
         Phone = sp.Phone,
         Email = sp.Email,
         Categories = JsonSerializer.Deserialize<IEnumerable<string>>(sp.CategoriesJson, JsonOpts) ?? [],
-        Comuni = JsonSerializer.Deserialize<IEnumerable<string>>(sp.ComuniJson, JsonOpts) ?? [],
+        Comuni = SupplierComuniView.Names(sp, listed),
         Bio = sp.Bio,
         PhotoUrls = JsonSerializer.Deserialize<IEnumerable<string>>(sp.PhotoUrlsJson, JsonOpts) ?? [],
     };

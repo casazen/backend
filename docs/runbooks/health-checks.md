@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -40,6 +40,7 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 |---|---|---|---|
 | `database` | PostgreSQL answers through the app's `AppDbContext` and every EF migration of this build is applied | in-memory database (Development/Testing only) | unreachable, timeout (5 s), **pending migrations**, or no database outside Development/Testing |
 | `hangfire` | storage (this environment's schema, FD-11) answers and **this process's** server sent a heartbeat in the last 2 minutes | only another instance's server is alive | storage unreachable, no live server, or Hangfire not configured outside Development/Testing |
+| `comuni` | the official ISTAT list of the comuni is imported and every `Suppliers:PilotComuni` code is in it (SU-04) | the list is not imported (the API works, the comune pickers say so), or a pilot comune is not an active comune of it: [`comuni-istat.md`](comuni-istat.md) | — |
 | `email` | Resend key, sender and `App__PublicSiteBaseUrl` valid (FD-13) | something missing: emails are skipped. Outside Development/Testing this cannot happen: the app does not start | — |
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |

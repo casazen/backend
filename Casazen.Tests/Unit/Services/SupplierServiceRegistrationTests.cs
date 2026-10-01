@@ -77,6 +77,7 @@ public class SupplierServiceRegistrationTests
     {
         // A4-05: "no categories" used to pass every category filter. A supplier is found only for what it declared.
         await using var db = CreateDbContext();
+        await ComuneTestData.ImportSampleAsync(db);
         var service = CreateService(db);
         var emptyOrgId = await SeedActiveSupplierAsync(db, "[]");
 
@@ -92,6 +93,7 @@ public class SupplierServiceRegistrationTests
     public async Task GetActiveByComune_CategoryCode_ReturnsOnlySuppliersThatDeclaredIt(string category)
     {
         await using var db = CreateDbContext();
+        await ComuneTestData.ImportSampleAsync(db);
         var service = CreateService(db);
         var cleaningOrgId = await SeedActiveSupplierAsync(db, """["maintenance","cleaning"]""");
         var maintenanceOrgId = await SeedActiveSupplierAsync(db, """["maintenance"]""");
@@ -227,7 +229,9 @@ public class SupplierServiceRegistrationTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Mock.Of<ISafeExternalHttpClient>(),
-            Options.Create(new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
             NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()

@@ -36,6 +36,14 @@ public class CreatePropertyRequest
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string PostalCode { get; set; } = string.Empty;
 
+    /// <summary>
+    /// ISTAT code (6 digits) of the comune, chosen from the official list (<c>GET /api/comuni</c>, SU-04). Optional: without it
+    /// the property has no trusted comune (no regional rules, no CIN check, the tourist tax by the written city). Validated
+    /// against the list: 422 <c>comune_istat_unknown</c> / <c>comuni_dataset_unavailable</c>. The region follows it.
+    /// </summary>
+    [RegularExpression(ComuneRules.IstatCodePattern, ErrorMessage = "ComuneIstatCodeInvalid")]
+    public string? ComuneIstatCode { get; set; }
+
     /// <summary>Geographic latitude of the property.</summary>
     public decimal Latitude { get; set; }
 

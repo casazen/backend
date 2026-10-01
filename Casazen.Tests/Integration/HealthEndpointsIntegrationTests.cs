@@ -59,7 +59,7 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal(CommitSha, body.RootElement.GetProperty("commit").GetString());
 
         var checks = ReadChecks(body);
-        Assert.Equal(new[] { "auth0", "database", "email", "hangfire", "storage", "stripe" }, checks.Keys.Order().ToArray());
+        Assert.Equal(new[] { "auth0", "comuni", "database", "email", "hangfire", "storage", "stripe" }, checks.Keys.Order().ToArray());
         // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
         // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.
         Assert.Equal("degraded", checks["stripe"]);
@@ -68,6 +68,8 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal("degraded", checks["auth0"]);
         Assert.Equal("degraded", checks["storage"]);
         Assert.Equal(_factory.UsesPostgreSql ? "healthy" : "degraded", checks["database"]);
+        // The factory loads the official sample of the ISTAT list (SU-04): a list in place and every configured pilot comune in it.
+        Assert.Equal("healthy", checks["comuni"]);
     }
 
     [Fact]
@@ -180,6 +182,9 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
     private sealed class UnreachableDatabaseFactory : CasazenWebApplicationFactory
     {
         public const string UnreachableDatabaseName = "fd12_unreachable";
+
+        // The sample of the ISTAT list is written to the database at startup: this one is never reachable.
+        protected override bool SeedComuneSample => false;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
