@@ -17,7 +17,8 @@ public class PropertyAuthorizationService(IPropertyRepository propertyRepository
     public async Task<bool> CanAccessPropertyAsync(string userId, Guid propertyId, IEnumerable<string> userRoles)
     {
         if (userRoles.Any(HostRoles.OrgWide.Contains)) return true;
-        var property = await propertyRepository.GetByIdAsync(propertyId);
+        // The property row alone: never its bookings and OTA integrations just to read the owner (A2-17).
+        var property = await propertyRepository.GetRecordAsync(propertyId);
         return property != null && property.OwnerId == userId;
     }
 }
