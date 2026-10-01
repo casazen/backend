@@ -39,7 +39,7 @@ Le voci nuove di questa sessione sono nella sezione **8** (in fondo, prima di *C
 
 **Rete/ambiente agenti (non produzione, ma blocca dei task):**
 - RS-6 **bloccato**: `www.istat.it` e altri siti ISTAT/gov ufficiali sono bloccati dal proxy di rete dell'ambiente (403). Serve una di queste due cose per sbloccare SU-04 (codici catastali comuni): (a) whitelistare `www.istat.it` nella rete dell'ambiente, oppure (b) fornire tu il CSV ufficiale dei codici catasto/ISTAT comuni.
-- FD-19 **bloccato**: pulizia file di scarto (`.idea/`, `StripeWebhookHandler.cs.bak`, `AddContextAuthorization.sql`, 3 classi vuote in `Payments/`, `Casazen.Web.http`, `.claude/settings.local.json` tracciato per errore) richiede una tua conferma esplicita perché il classificatore di sicurezza blocca `git rm` in automatico. Dimmi "ok rimuovi" per procedere — il lavoro è pronto (`.gitignore` già aggiornato e pubblicato).
+- ~~FD-19 bloccato~~ → chiuso il 2026-10-01 (vedi *Chiuse*).
 
 ---
 
@@ -162,12 +162,12 @@ Queste domande sono state annotate in Cursor mentre si lavorava a BK-18, PL-06, 
 ### Sessione 2026-10-01
 
 - [ ] AMBIENTE — Il proxy di rete di questa sessione blocca ancora `istat.it`, `*.gov.it` e `dati.gov.it`. RS-6 resta bloccato. SU-04 viene implementato con import dei dati ufficiali da file CSV fornito dall'admin, come per le tabelle Alloggiati (CO-12), senza dati scritti a mano. — 2026-10-01
-- [ ] FD-19 — Serve ancora il tuo OK esplicito ("ok rimuovi") per il `git rm` dei file di scarto elencati nella sezione 1. — 2026-10-01
 
 ---
 
 ## Chiuse
 
+- [x] FD-19 — OK alla rimozione dei file di scarto? → **Sì** ("ok rimuovi", 2026-10-01). Rimossi `.idea/`, `StripeWebhookHandler.cs.bak`, `AddContextAuthorization.sql`, le 3 classi vuote in `Payments/`, `Casazen.Web.http` e `.claude/settings.local.json`. Corretto anche `.gitignore`: i commenti sulla stessa riga impedivano di ignorare `settings.local.json` e `opencode.json`. Nota: chi aveva un `.claude/settings.local.json` personale lo vedrà sparire al pull; basta ricrearlo, ora è ignorato. — 2026-10-01
 - [x] PR — Come portare i commit del branch `claude/app-analysis-fixes-plan-p0mx0a` su `develop`? → **Risolta**: mergiato con le PR casazen/backend#451, casazen/frontend#209 e casazen/mobile#5. I 9 task interrotti vengono ripresi sul nuovo branch `claude/sleepy-edison-oil8ru`. — 2026-10-01
 
 ---
