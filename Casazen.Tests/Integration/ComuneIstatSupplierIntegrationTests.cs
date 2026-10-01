@@ -109,7 +109,7 @@ public class ComuneIstatSupplierIntegrationTests
         // Free text keeps working (as before the list); an empty list of codes needs no list.
         var saved = await client.PutAsJsonAsync("/api/supplier/profile", new { comuni = new[] { "Roma", "Milano" }, comuneIstatCodes = Array.Empty<string>() });
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
-        Assert.Equal(["Roma", "Milano"], JsonSerializer.Deserialize<string[]>((await ReadProfileAsync(_emptyFactory, supplier.OrgId)).ComuniJson));
+        Assert.Equal(["Roma", "Milano"], JsonSerializer.Deserialize<string[]>((await ReadProfileAsync(_emptyFactory, supplier.OrgId)).ComuniJson)!);
     }
 
     [PostgresFact]

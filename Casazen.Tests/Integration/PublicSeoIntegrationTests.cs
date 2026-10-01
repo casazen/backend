@@ -643,7 +643,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     public async Task GetGuide_ApprovedRevision_IsServedAsAnIndexableArticle()
     {
         // Own comune: a page is seeded once per comune and shared by the tests of this class.
-        await SeedGuideAsync("013040", "bellagio", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p><script>alert(1)</script>");
+        await SeedGuideAsync("013250", "bellagio", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p><script>alert(1)</script>");
 
         var response = await GetAsync("/api/public/seo/guides/lombardia/bellagio");
         var html = await response.Content.ReadAsStringAsync();
@@ -675,7 +675,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     public async Task GetTouristTaxPage_WithoutARateInForce_IsNoindexLikeTheSitemap()
     {
         // Palermo: no rate is seeded for it (Como has one), so no rate is in force.
-        await SeedGuideAsync("082053", "palermo", "<p>Calcolatore</p>", SeoPageType.TouristTaxCalc, slugPrefix: "tassa-soggiorno");
+        await SeedGuideAsync("082053", "palermo", "<p>Calcolatore</p>", SeoPageType.TouristTaxCalc, slugPrefix: "tassa-soggiorno", regionCode: "SIC");
 
         var response = await GetAsync("/api/public/seo/tourist-tax/palermo");
 
@@ -834,7 +834,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     private async Task SeedGuideAsync(
-        string comuneCode, string comuneSlug, string bodyHtml, SeoPageType pageType = SeoPageType.ComplianceGuide, string slugPrefix = "affitti-brevi/lombardia")
+        string comuneCode, string comuneSlug, string bodyHtml, SeoPageType pageType = SeoPageType.ComplianceGuide, string slugPrefix = "affitti-brevi/lombardia", string regionCode = "LOM")
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -847,7 +847,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         {
             Slug = slug,
             ComuneCode = comuneCode,
-            RegionCode = ItalianComuneRegistry.GetByCode(comuneCode)!.RegionCode,
+            RegionCode = regionCode,
             PageType = pageType,
             Title = "Affitti brevi a Como: la guida",
             MetaDescription = "CIN, Alloggiati Web e tassa di soggiorno a Como.",
