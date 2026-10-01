@@ -147,6 +147,25 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     }
 
     [PostgresFact]
+    public async Task LookupGuestBooking_PreviousSlugOfTheOrg_StillFindsTheBooking()
+    {
+        // PL-04 (A1-23): the host changed the public slug; links in emails sent before keep working.
+        var org = await SeedOrgAsync();
+        var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 30);
+        var previousSlug = $"old-{Guid.NewGuid():N}";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.OrgSlugAliases.Add(new OrgSlugAlias { Slug = previousSlug, OrgId = org.OrgId, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await PostAsync(LookupPath, new { orgSlug = previousSlug, bookingCode = seed.Code, email = seed.Email });
+
+        Assert.Equal(org.PropertyName, await PropertyNameAsync(response));
+    }
+
+    [PostgresFact]
     public async Task LookupGuestBooking_TooManyAttemptsForOneEmailFromManyIps_Returns429()
     {
         var org = await SeedOrgAsync();
