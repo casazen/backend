@@ -271,10 +271,10 @@ credentials, never to git ([`mobile-release.md`](mobile-release.md) § 5, § 9).
 | frontend | `E2E_STAGING_API_URL`, `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE` | Variables | O | Staging E2E runs against the default test API / skips | [`ci-frontend.md`](ci-frontend.md) |
 | all | `RAILWAY_TOKEN`, `RAILWAY_SERVICE_*`, `VERCEL_TOKEN` | — | **not needed** | Deploys use the native GitHub integrations of Railway and Vercel | [`INFRA.md`](../INFRA.md) |
 
-## 7. Migrations that drop data (applied at the startup of the first deploy that contains them)
+## 7. Migrations that drop or rewrite data (applied at the startup of the first deploy that contains them)
 
-The startup runs `Database.Migrate()`. These migrations of the risanamento drop a table or a column; take the check on
-**production** before the release PR is merged.
+The startup runs `Database.Migrate()`. These migrations of the risanamento drop a table or a column, or rewrite existing
+rows; take the check on **production** before the release PR is merged.
 
 | Migration | What it drops | Check before |
 |---|---|---|
@@ -282,6 +282,7 @@ The startup runs `Database.Migrate()`. These migrations of the risanamento drop 
 | `UnifyTouristTaxOnTouristTaxRates` | table `TaxRates` (never written, every booking recorded tourist tax 0; rates now only in `TouristTaxRates`) | [`tourist-tax-rates.md`](tourist-tax-rates.md): confirm `TouristTaxRates` is filled |
 | `RemoveLegacyBookingCheckInToken` | `Bookings.CheckInToken`, `CheckInTokenExpiresAt` (the removed legacy check-in portal, CO-16) | links of the old portal already answer 404: [`storage.md`](storage.md) § CO-16 |
 | `GuestPrivacyConsentsAndRetention`, `LeasePartyRetention` | `Guests.DataRetentionUntil`, `LeaseContracts.DataRetentionUntil` (the invented 7-year retention) | retention is now configuration: [`gdpr.md`](gdpr.md) § 2-3 |
+| `SeparateSupplierOrgFromHostOrgId` (PL-05) | drops nothing: rewrites the org links of supplier accounts and may split a supplier org that became a host, in one transaction | run the read-only queries of [`suppliers.md`](suppliers.md) § 13.2 on the environment before the deploy |
 | `AddStayAlertStates`, `AddDl145SafetyChecklist`, `AddICalMultiFeed`, `SeasonalPriceSuggestions` | `Bookings.CheckoutReminderJobId` ([`hangfire.md`](hangfire.md) § 9), `Properties.SafetyChecklistJson` ([`compliance.md`](compliance.md)), `PropertyICalFeeds.ExportToken` ([`ical.md`](ical.md): the export link moved to `PropertyICalExports`), `PricingAdapterConfigs.NextScheduledRunAt` ([`seasonal-suggestions.md`](seasonal-suggestions.md)) | Look for rows with a value in these columns on production before the release; no export procedure is documented for them |
 
 ## 8. Keys that look like settings but nothing reads (inert)
