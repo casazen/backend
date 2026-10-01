@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001221017_AddOrgSiteDocuments")]
+    partial class AddOrgSiteDocuments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3680,46 +3683,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("StayGuests");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SupplierAdminAuditEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Action")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ActorUserId")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid?>("InviteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("NewStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("PreviousStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid?>("SupplierOrgId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupplierOrgId", "OccurredAt");
-
-                    b.ToTable("SupplierAdminAuditEntries");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.SupplierAvailability", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3777,9 +3740,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Message")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TokenHash")
                         .HasMaxLength(64)
@@ -3871,13 +3831,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
-
-                    b.Property<DateTime?>("SuspendedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SuspensionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime?>("TosAcceptedAt")
                         .HasColumnType("timestamp with time zone");

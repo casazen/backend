@@ -147,16 +147,17 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `GET` | `/api/properties/{id}/documents/{docId}/download` | Authenticated download from the private bucket (FD-07). Short-rent or long-rent |
 | `DELETE` | `/api/properties/{id}` | Delete a property (owner only). Short-rent only |
 | `GET` | `/api/properties/search` | Search properties by city, bedrooms, max price (anonymous) |
-| `POST` | `/api/properties/{id}/images` | Upload photos (max 20, JPEG/PNG/WebP, 10 MB each) |
-| `GET` | `/api/properties/{id}/images` | List photo URLs |
-| `DELETE` | `/api/properties/{id}/images/{imageIndex}` | Delete a photo by index |
-| `PUT` | `/api/properties/{id}/images/order` | Reorder photos |
+| `GET` | `/api/properties/{id}/images` | The photo gallery (PC-04): `photoUrls` in display order (absolute public URLs, the first is the cover) plus the upload rules (`maxPhotos`, `maxFilesPerRequest`, `maxFileSizeBytes`, `allowedContentTypes`). Short-rent only |
+| `POST` | `/api/properties/{id}/images` | Upload photos (multipart field `images`; at most 10 files per request, 10 MB each, 20 per property; JPEG/PNG/WebP checked on their content). All or none. 422 `property_photo_none`/`_too_many_files`/`_invalid_type`/`_invalid_size`/`_limit_reached`. Answers with the gallery |
+| `DELETE` | `/api/properties/{id}/images?url=...` | Delete a photo **by URL** (not by position) from the gallery and its object from the storage. 404 `property_photo_not_found`. Answers with the gallery |
+| `PUT` | `/api/properties/{id}/images/order` | Set the order: body = every photo URL of the gallery, each once. 409 `property_photos_changed` when the list is not the current gallery. Answers with the gallery |
+| `PUT` | `/api/properties/{id}/images/cover` | Make a photo the cover (body `{ "url": ... }`): it moves first. Answers with the gallery |
 
 Property record choices (PC-02):
 - **Update = PUT with PATCH semantics**, not a full PUT: a client that does not know or show a field (the long-term
   form, the pause toggle of the list, an older app build) can never reset the cleaning fee, deposit, house rules,
   timezone or cancellation policy. The web forms still send every field they show (`toPropertyPayload`), never the
-  photos (managed by the image endpoints).
+  photos (managed by the image endpoints; a `photoUrls` sent to create or update is ignored, PC-04).
 - **Bathrooms stay a whole number** (`int` in the model and the database, 1-50): the form accepts whole numbers only,
   no migration. **Bedrooms 0-100**, `0` = studio (monolocale); the activation wizard no longer requires a bedroom.
 - **No country nor currency** on the property: amounts are in euros and the form has no such fields.

@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Authorization;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
@@ -53,25 +54,44 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     public async Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
     {
-        return await GetSearchQueryable(city, bedrooms, maxPrice).ToListAsync();
+        return await GetSearchQueryable(
+                new PublicPropertySearchCriteria { City = city, MinBedrooms = bedrooms, MaxPrice = maxPrice })
+            .ToListAsync();
     }
 
-    public IQueryable<Property> GetSearchQueryable(string? city, int? bedrooms, decimal? maxPrice, Guid? orgId = null)
+    public IQueryable<Property> GetSearchQueryable(PublicPropertySearchCriteria criteria, Guid? orgId = null)
     {
+        ArgumentNullException.ThrowIfNull(criteria);
+
+        // The site of an inactive org does not resolve (OrgService.GetPublicBySlugAsync): its properties are not offered
+        // either, otherwise a search result would lead to a "site not found" page (BK-20).
         var query = context.Properties.AsQueryable()
-            .Where(PublicListing.IsPublished);
+            .Where(PublicListing.IsPublished)
+            .Where(p => p.Org.IsActive);
 
         if (orgId.HasValue)
             query = query.Where(p => p.OrgId == orgId.Value);
 
-        if (!string.IsNullOrEmpty(city))
-            query = query.Where(p => p.City.ToLower().Contains(city.ToLower()));
+        if (!string.IsNullOrWhiteSpace(criteria.City))
+        {
+            var city = criteria.City.Trim().ToLower();
+            query = query.Where(p => p.City.ToLower().Contains(city));
+        }
 
-        if (bedrooms.HasValue)
-            query = query.Where(p => p.Bedrooms >= bedrooms.Value);
+        if (criteria.MinBedrooms.HasValue)
+            query = query.Where(p => p.Bedrooms >= criteria.MinBedrooms.Value);
 
-        if (maxPrice.HasValue)
-            query = query.Where(p => p.NightlyRate <= maxPrice.Value);
+        if (criteria.MinBathrooms.HasValue)
+            query = query.Where(p => p.Bathrooms >= criteria.MinBathrooms.Value);
+
+        if (criteria.Guests.HasValue)
+            query = query.Where(p => p.MaxGuests >= criteria.Guests.Value);
+
+        if (criteria.MinPrice.HasValue)
+            query = query.Where(p => p.NightlyRate >= criteria.MinPrice.Value);
+
+        if (criteria.MaxPrice.HasValue)
+            query = query.Where(p => p.NightlyRate <= criteria.MaxPrice.Value);
 
         return query;
     }
@@ -86,6 +106,9 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     public async Task<Property> UpdateAsync(Property property)
     {
         context.Properties.Update(property);
+        // The photo gallery is written only by PropertyPhotoService, under the property's photo lock (PC-04): a save of
+        // the other fields, from a copy of the row read earlier, must never put back an older photo list.
+        context.Entry(property).Property(p => p.PhotoUrls).IsModified = false;
         await context.SaveChangesAsync();
         return property;
     }
