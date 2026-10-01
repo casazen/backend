@@ -237,6 +237,21 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task QuoteDirectBookingAsync_PausedProperty_ThrowsNotFound()
+    {
+        // PC-03, A2-05: a paused property is hidden from new guest bookings, like an inactive or non-compliant one,
+        // but stays a normal, active property otherwise (existing bookings untouched, its own host still sees it).
+        var property = ConnectReadyProperty();
+        property.IsPaused = true;
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() => _service.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(3), 2, 0)));
+
+        Assert.Equal("PropertyNotFound", ex.MessageKey);
+    }
+
+    [Fact]
     public async Task QuoteDirectBookingAsync_ArrivalTomorrowForTenNights_DoesNotOfferTheDeferredPayment()
     {
         var property = ConnectReadyProperty();

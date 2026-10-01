@@ -712,6 +712,141 @@ public class PropertiesControllerTests
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
 
+    // ─── Pause / Activate (PC-03, A2-05) ────────────────────────────────────────
+
+    [Fact]
+    public async Task Pause_AsOwner_PausesAndReturnsTheNewStatus()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property { Id = propertyId, Name = "Villa", OwnerId = userId };
+        var pausedAt = DateTime.UtcNow;
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.PausePropertyAsync(existingProperty))
+            .ReturnsAsync(new Property { Id = propertyId, IsPaused = true, PausedAt = pausedAt });
+
+        var result = await _controller.Pause(propertyId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var status = Assert.IsType<PropertyPauseStatusResponse>(ok.Value);
+        Assert.True(status.IsPaused);
+        Assert.Equal(pausedAt, status.PausedAt);
+        _mockService.Verify(x => x.PausePropertyAsync(existingProperty), Times.Once);
+    }
+
+    [Fact]
+    public async Task Pause_WithNonExistentId_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|owner_user_123");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var result = await _controller.Pause(propertyId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockService.Verify(x => x.PausePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Pause_AsNonOwner_ReturnsForbiddenWithoutPausing()
+    {
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property { Id = propertyId, Name = "Villa", OwnerId = ownerId };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
+
+        var result = await _controller.Pause(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.PausePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Pause_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) }
+        };
+
+        var result = await _controller.Pause(Guid.NewGuid());
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activate_AsOwner_ReactivatesAndReturnsTheNewStatus()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property { Id = propertyId, Name = "Villa", OwnerId = userId, IsPaused = true, PausedAt = DateTime.UtcNow };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
+        _mockService.Setup(x => x.ActivatePropertyAsync(existingProperty))
+            .ReturnsAsync(new Property { Id = propertyId, IsPaused = false, PausedAt = null });
+
+        var result = await _controller.Activate(propertyId);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var status = Assert.IsType<PropertyPauseStatusResponse>(ok.Value);
+        Assert.False(status.IsPaused);
+        Assert.Null(status.PausedAt);
+        _mockService.Verify(x => x.ActivatePropertyAsync(existingProperty), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_WithNonExistentId_ReturnsNotFound()
+    {
+        SetupUserClaims("auth0|owner_user_123");
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
+
+        var result = await _controller.Activate(propertyId);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _mockService.Verify(x => x.ActivatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activate_AsNonOwner_ReturnsForbiddenWithoutActivating()
+    {
+        var ownerId = "auth0|owner_user_123";
+        var attackerId = "auth0|attacker_user_456";
+        SetupUserClaims(attackerId);
+
+        var propertyId = Guid.NewGuid();
+        var existingProperty = new Property { Id = propertyId, Name = "Villa", OwnerId = ownerId, IsPaused = true };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
+
+        var result = await _controller.Activate(propertyId);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        _mockService.Verify(x => x.ActivatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activate_WithoutSubClaim_ReturnsUnauthorized()
+    {
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) }
+        };
+
+        var result = await _controller.Activate(Guid.NewGuid());
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
+        _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
     [Fact]
     public async Task Delete_WithValidId_DeletesProperty()
     {

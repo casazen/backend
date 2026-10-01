@@ -27,6 +27,18 @@ public interface IPropertyService
     /// the cancellation policy (422 <c>cancellation_policy_not_found</c>).
     /// </summary>
     Task<Property> UpdatePropertyAsync(Property property);
+
+    /// <summary>
+    /// Pauses a property (PC-03, A2-05): hidden from public search, its public page and new guest bookings until
+    /// reactivated. Still counts against the plan's property limit and stays fully visible and editable to the host;
+    /// its existing bookings are untouched. Idempotent: pausing an already-paused property leaves <c>PausedAt</c> as
+    /// it was.
+    /// </summary>
+    Task<Property> PausePropertyAsync(Property property);
+
+    /// <summary>Reactivates a paused property (PC-03, A2-05). Idempotent when already active.</summary>
+    Task<Property> ActivatePropertyAsync(Property property);
+
     Task<bool> DeletePropertyAsync(Guid id);
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);

@@ -103,11 +103,26 @@ public class UpdatePropertyRequestTests
         Assert.Equal([PropertyAmenity.Heating], property.Amenities);
         Assert.Equal(string.Empty, property.HouseRules);
         Assert.Equal(otherPolicy, property.CancellationPolicyId);
-        Assert.False(property.IsActive);
+        // PC-03, A2-05: isActive is no longer writable through the generic update, the property stays visible.
+        Assert.True(property.IsActive);
         Assert.Equal("IT001272A1ABCDEFGH", property.CinCode);
         Assert.Equal("monolocale-centro", property.Slug);
         // Not in the body: kept.
         Assert.Equal(["https://cdn.example/1.jpg"], property.PhotoUrls);
+    }
+
+    [Fact]
+    public void ApplyTo_IsActiveFalseSent_IsIgnoredAndKeepsThePropertyVisibleAndUnpaused()
+    {
+        // PC-03, A2-05: the old form checkbox / "Pausa" toggle sent { isActive: false } and the property vanished
+        // from its own host's list and detail. Pausing is the dedicated pause/activate action only.
+        var property = StoredProperty();
+
+        Read("""{ "isActive": false, "isPaused": true, "pausedAt": "2026-01-01T00:00:00Z" }""").ApplyTo(property);
+
+        Assert.True(property.IsActive);
+        Assert.False(property.IsPaused);
+        Assert.Null(property.PausedAt);
     }
 
     [Fact]

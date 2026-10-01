@@ -126,6 +126,8 @@ public class SharedPropertyPolicyTests
     [InlineData(nameof(PropertiesController.GetComplianceActivation))]
     [InlineData(nameof(PropertiesController.GetCinCompliance))]
     [InlineData(nameof(PropertiesController.Delete))]
+    [InlineData(nameof(PropertiesController.Pause))]
+    [InlineData(nameof(PropertiesController.Activate))]
     public void ShortStayPropertyActions_RequireTheShortRentContext(string action)
     {
         var policies = Actions().Single(a => a.Key == $"{nameof(PropertiesController)}.{action}").Policies;
