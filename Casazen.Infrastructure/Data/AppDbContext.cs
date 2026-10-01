@@ -76,7 +76,6 @@ public class AppDbContext(
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
-    public DbSet<PlatformBillingMetrics> PlatformBillingMetrics { get; set; } = null!;
 
     // Supplier console (US-022 / #292)
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
@@ -675,20 +674,6 @@ public class AppDbContext(
         modelBuilder.Entity<PlatformInvoice>()
             .Property(i => i.TotalAmount)
             .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>()
-            .Property(m => m.EuB2cCrossBorderRevenue)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>().HasData(
-            new PlatformBillingMetrics
-            {
-                Id = 1,
-                CalendarYear = 2026,
-                EuB2cCrossBorderRevenue = 0m,
-                OssThresholdReached = false,
-                UpdatedAt = new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc),
-            });
 
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);

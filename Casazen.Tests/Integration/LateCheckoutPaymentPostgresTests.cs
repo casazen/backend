@@ -390,9 +390,7 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
             db,
             new FakeStripeBillingService(configuration),
             new EntitlementService(db, configuration),
-            new VatCalculationService(),
-            Mock.Of<IOssRevenueTracker>(),
-            Mock.Of<ISdiEInvoiceService>(),
+            TestPlatformInvoices.Create(db, new FakeStripeBillingService(configuration)),
             Mock.Of<IRentBillingService>(),
             new PaymentRefundService(db, _stripe.Object, _refundRetries.Object, _emails.Object, NullLogger<PaymentRefundService>.Instance),
             TestCheckoutPaymentSettlement.Create(

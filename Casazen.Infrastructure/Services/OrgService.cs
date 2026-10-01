@@ -189,7 +189,7 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         Guid orgId,
         string billingCountry,
         string? vatId,
-        DateTime? vatValidatedAt,
+        BillingEInvoiceDetails? eInvoice = null,
         CancellationToken cancellationToken = default)
     {
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
@@ -197,8 +197,21 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
             return null;
 
         org.BillingCountry = billingCountry.Trim().ToUpperInvariant();
-        org.VatId = string.IsNullOrWhiteSpace(vatId) ? null : vatId.Replace(" ", string.Empty).Trim();
-        org.VatIdValidatedAt = vatValidatedAt;
+        var normalizedVatId = string.IsNullOrWhiteSpace(vatId) ? null : vatId.Replace(" ", string.Empty).Trim();
+        if (!string.Equals(org.VatId, normalizedVatId, StringComparison.Ordinal))
+            org.VatIdValidatedAt = null;
+        org.VatId = normalizedVatId;
+        if (eInvoice is not null)
+        {
+            // Per field: null = unchanged (a client that does not know the field never wipes it), "" = cleared.
+            if (eInvoice.SdiRecipientCode is not null)
+                org.BillingSdiRecipientCode = NullIfEmpty(eInvoice.SdiRecipientCode);
+            if (eInvoice.PecEmail is not null)
+                org.BillingPecEmail = NullIfEmpty(eInvoice.PecEmail);
+            if (eInvoice.FiscalCode is not null)
+                org.BillingFiscalCode = NullIfEmpty(eInvoice.FiscalCode);
+        }
+
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return org;
@@ -364,4 +377,6 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
                 return candidate;
         }
     }
+
+    private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
 }

@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `einvoicing`, `auth0` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -43,6 +43,7 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 | `email` | Resend key, sender and `App__PublicSiteBaseUrl` valid (FD-13) | something missing: emails are skipped. Outside Development/Testing this cannot happen: the app does not start | — |
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |
+| `einvoicing` | an SDI e-invoicing provider is configured and `Billing__VatNumber` is set (PL-13) | no SDI provider (always in this build: the e-invoices of the plans are issued by hand, [billing-tax.md](billing-tax.md)); the description says whether `Sdi__ManualIssuanceAccepted` is set and whether `Billing__VatNumber` is missing | — |
 | `auth0` | `Auth0__Domain`, `Auth0__Audience` and the Management API client (M2M) configured | M2M client missing (role sync off) or the deprecated static `Auth0__ManagementApiToken` in use; in Development/Testing also `Auth0__Domain` / `Auth0__Audience` missing | `Auth0__Domain` / `Auth0__Audience` missing: nobody can sign in. Outside Development/Testing the app does not even start |
 
 `degraded` means "an optional integration is not configured": the deploy is accepted, CI prints a warning for each

@@ -37,6 +37,7 @@ public static class HealthCheckExtensions
             .AddCheck<EmailConfigurationHealthCheck>("email", tags: [ReadyTag])
             .AddCheck<StorageConfigurationHealthCheck>("storage", tags: [ReadyTag])
             .AddCheck<StripeConfigurationHealthCheck>("stripe", tags: [ReadyTag])
+            .AddCheck<EInvoicingConfigurationHealthCheck>("einvoicing", tags: [ReadyTag])
             .AddCheck<Auth0ConfigurationHealthCheck>("auth0", tags: [ReadyTag]);
 
         return services;

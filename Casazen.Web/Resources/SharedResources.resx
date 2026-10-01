@@ -1357,4 +1357,25 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>Lo stesso codice fiscale è indicato per più parti del contratto.</value>
   </data>
+  <data name="BillingSdiRecipientCodeInvalid" xml:space="preserve">
+    <value>Codice destinatario non valido: usa solo lettere e numeri (al massimo 7).</value>
+  </data>
+  <data name="BillingFiscalCodeInvalid" xml:space="preserve">
+    <value>Codice fiscale non valido: usa solo lettere e numeri (al massimo 16).</value>
+  </data>
+  <data name="BillingPecEmailInvalid" xml:space="preserve">
+    <value>Indirizzo PEC non valido.</value>
+  </data>
+  <data name="PlatformInvoiceSdiStatusUnknown" xml:space="preserve">
+    <value>Stato della fattura elettronica non riconosciuto.</value>
+  </data>
+  <data name="PlatformInvoiceSdiReferenceInvalid" xml:space="preserve">
+    <value>Indica il riferimento della fattura elettronica emessa (al massimo 255 caratteri).</value>
+  </data>
+  <data name="PlatformInvoiceNotFound" xml:space="preserve">
+    <value>Fattura non trovata.</value>
+  </data>
+  <data name="PlatformInvoiceSdiAlreadyIssued" xml:space="preserve">
+    <value>La fattura elettronica risulta già inviata o emessa.</value>
+  </data>
 </root>
