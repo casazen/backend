@@ -1378,12 +1378,39 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("DomainCheckFailures")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DomainCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DomainConfiguredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DomainStatusDetail")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("DomainVercelAddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DomainVercelTxtHost")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)");
+
+                    b.Property<string>("DomainVercelTxtValue")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int>("DomainVerificationStatus")
                         .HasColumnType("integer");
 
                     b.Property<string>("DomainVerificationToken")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("DomainVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("FiscalCode")
                         .HasMaxLength(16)
@@ -1825,6 +1852,30 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"StripeRefundId\" IS NOT NULL");
 
                     b.ToTable("PaymentRefunds");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PendingDomainRemoval", b =>
+                {
+                    b.Property<string>("Domain")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Domain");
+
+                    b.ToTable("PendingDomainRemovals");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PlatformAiBudget", b =>

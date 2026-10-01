@@ -59,13 +59,15 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal(CommitSha, body.RootElement.GetProperty("commit").GetString());
 
         var checks = ReadChecks(body);
-        Assert.Equal(new[] { "auth0", "database", "email", "hangfire", "storage", "stripe" }, checks.Keys.Order().ToArray());
+        Assert.Equal(new[] { "auth0", "database", "email", "hangfire", "storage", "stripe", "vercel" }, checks.Keys.Order().ToArray());
         // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
         // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.
         Assert.Equal("degraded", checks["stripe"]);
         Assert.Equal("degraded", checks["email"]);
         Assert.Equal("degraded", checks["hangfire"]);
         Assert.Equal("degraded", checks["auth0"]);
+        // BK-17 (D9): no Vercel token and project, so custom domains cannot be activated.
+        Assert.Equal("degraded", checks["vercel"]);
         Assert.Equal("degraded", checks["storage"]);
         Assert.Equal(_factory.UsesPostgreSql ? "healthy" : "degraded", checks["database"]);
     }

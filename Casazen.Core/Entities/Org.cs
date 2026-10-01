@@ -127,6 +127,39 @@ public class Org
     [MaxLength(128)]
     public string? DomainVerificationToken { get; set; }
 
+    /// <summary>
+    /// Why <see cref="DomainVerificationStatus"/> is what it is (BK-17): a stable code of <c>DomainIssues</c> (e.g.
+    /// <c>dns_not_pointing</c>), <c>null</c> when the domain is verified. The UI explains it in the user's language.
+    /// </summary>
+    [MaxLength(64)]
+    public string? DomainStatusDetail { get; set; }
+
+    /// <summary>UTC instant of the last check of the domain (manual or by the periodic job), <c>null</c> before the first.</summary>
+    public DateTime? DomainCheckedAt { get; set; }
+
+    /// <summary>UTC instant the domain last became <c>Verified</c>; <c>null</c> while it is not.</summary>
+    public DateTime? DomainVerifiedAt { get; set; }
+
+    /// <summary>UTC instant the owner set <see cref="CustomDomain"/>: the periodic job stops checking a pending domain a while after it.</summary>
+    public DateTime? DomainConfiguredAt { get; set; }
+
+    /// <summary>
+    /// UTC instant the domain was found on the Vercel project (added by the platform, BK-17); <c>null</c> when it is not
+    /// there. A domain that was there is removed from the project when the owner changes or drops it.
+    /// </summary>
+    public DateTime? DomainVercelAddedAt { get; set; }
+
+    /// <summary>Consecutive failed checks of a verified domain: it is only demoted after a few, so a DNS hiccup does not take a site down.</summary>
+    public int DomainCheckFailures { get; set; }
+
+    /// <summary>TXT record Vercel asks for before the domain may be used on the project (domain already on another Vercel account), host.</summary>
+    [MaxLength(253)]
+    public string? DomainVercelTxtHost { get; set; }
+
+    /// <summary>Value of the TXT record of <see cref="DomainVercelTxtHost"/>.</summary>
+    [MaxLength(500)]
+    public string? DomainVercelTxtValue { get; set; }
+
     /// <summary>Label for <c>{Subdomain}.casazen.it</c>; falls back to <see cref="Slug"/> when null.</summary>
     [MaxLength(63)]
     public string? Subdomain { get; set; }

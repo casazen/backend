@@ -105,11 +105,32 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
             ALTER TABLE "Properties" ADD COLUMN "IsDeleted" boolean NOT NULL DEFAULT false;
             ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
             """);
+        // The "Orgs" columns of BK-17 (AddDomainActivation) come after this migration point as well.
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Orgs" ADD COLUMN "DomainCheckFailures" integer NOT NULL DEFAULT 0;
+            ALTER TABLE "Orgs" ADD COLUMN "DomainCheckedAt" timestamp with time zone;
+            ALTER TABLE "Orgs" ADD COLUMN "DomainConfiguredAt" timestamp with time zone;
+            ALTER TABLE "Orgs" ADD COLUMN "DomainStatusDetail" character varying(64);
+            ALTER TABLE "Orgs" ADD COLUMN "DomainVercelAddedAt" timestamp with time zone;
+            ALTER TABLE "Orgs" ADD COLUMN "DomainVercelTxtHost" character varying(253);
+            ALTER TABLE "Orgs" ADD COLUMN "DomainVercelTxtValue" character varying(500);
+            ALTER TABLE "Orgs" ADD COLUMN "DomainVerifiedAt" timestamp with time zone;
+            """);
         db.AddRange(org, property, single, twoLandlords);
         await db.SaveChangesAsync();
         await db.Database.ExecuteSqlRawAsync("""
             ALTER TABLE "Properties" DROP COLUMN "IsDeleted";
             ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Orgs" DROP COLUMN "DomainCheckFailures";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainCheckedAt";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainConfiguredAt";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainStatusDetail";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainVercelAddedAt";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainVercelTxtHost";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainVercelTxtValue";
+            ALTER TABLE "Orgs" DROP COLUMN "DomainVerifiedAt";
             """);
         return (single.Id, twoLandlords.Id);
     }

@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
+using Casazen.Infrastructure.Email;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Users;
 using Casazen.Web.Infrastructure;
@@ -25,7 +26,8 @@ public class UsersController(
     IRequestTenantContext tenantContext,
     ILogger<UsersController> logger,
     IEntitlementService entitlementService,
-    IHostOnboardingGate hostOnboardingGate) : ControllerBase
+    IHostOnboardingGate hostOnboardingGate,
+    PublicSiteLinks publicSiteLinks) : ControllerBase
 {
     /// <summary>
     /// 422 on <c>PUT /api/users/onboarding</c> from a user without an org and without consents: the first org is
@@ -483,6 +485,9 @@ public class UsersController(
                 Id = org.Id,
                 Name = org.Name,
                 Slug = org.Slug,
+                PublicSiteUrl = string.IsNullOrWhiteSpace(org.Slug)
+                    ? null
+                    : publicSiteLinks.TryPublicPage($"/book/{Uri.EscapeDataString(org.Slug)}"),
                 PlanTier = entitlementService.ResolveEffectiveTier(org).ToString()
             }
     };

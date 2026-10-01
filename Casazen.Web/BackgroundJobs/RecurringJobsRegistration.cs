@@ -82,6 +82,13 @@ public static class RecurringJobsRegistration
             CheckoutHoldExpiryJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // BK-17: custom domains are checked again (activation, removed DNS records, domains dropped by their host).
+        recurringJobManager.AddOrUpdate<DomainRecheckJob>(
+            DomainRecheckJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            DomainRecheckJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<IcalSupplierSyncJob>(
             "ical-supplier-sync",
             job => job.ExecuteAsync(),
