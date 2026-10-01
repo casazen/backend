@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261001144758_AddOrgSettingsSlugAliases")]
+    [Migration("20261001162058_AddOrgSettingsSlugAliases")]
     partial class AddOrgSettingsSlugAliases
     {
         /// <inheritdoc />
@@ -2179,6 +2179,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsPaused")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("Latitude")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -2206,6 +2209,9 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.PrimitiveCollection<List<string>>("PhotoUrls")
                         .IsRequired()
