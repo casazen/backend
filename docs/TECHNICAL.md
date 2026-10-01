@@ -60,7 +60,7 @@ All endpoints require a `Bearer` JWT token in the `Authorization` header (issued
 
 Anonymous / public (non-exhaustive highlights):
 - `GET /api/health`, `GET /api/health/live`, `GET /api/health/ready`, `GET /api/properties/search`
-- `POST /api/auth/register`, `GET /api/orgs/plans`
+- `GET /api/orgs/plans`
 - All `/api/public/*` (including the SEO sitemap `/api/public/sitemap.xml` and the guest check-in portal `/api/public/checkin/*`), `/api/legal/*`
 - `POST /api/suppliers/register`, webhook receivers under `/webhooks/*`
 
@@ -102,7 +102,6 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Anonymous | Register a new user |
 | `GET` | `/api/auth/profile` | JWT | Current auth profile |
 | `POST` | `/api/auth/logout` | JWT | Logout / invalidate session side-effects |
 | `GET` | `/api/users` | Admin | Paginated user list |
