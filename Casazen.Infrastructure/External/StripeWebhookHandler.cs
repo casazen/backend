@@ -625,6 +625,21 @@ public class StripeWebhookHandler(
             return null;
         }
 
+        if (await PropertyICalSyncService.HasOverlappingBlockAsync(
+                dbContext, booking.PropertyId, booking.CheckInDate, booking.CheckOutDate))
+        {
+            booking.Status = BookingStatus.Cancelled;
+            booking.CancellationReason = BookingCancellationReason.DatesUnavailableAtPayment;
+            booking.UpdatedAt = DateTime.UtcNow;
+            await bookingRepository.UpdateAsync(booking);
+
+            logger.LogWarning(
+                "Setup intent {SetupIntentId} for booking {BookingId} succeeded after an imported calendar block took the dates: booking cancelled",
+                setupIntent.Id,
+                bookingId);
+            return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.Ignored, bookingId);
+        }
+
         booking.StripePaymentMethodId = paymentMethodId;
         booking.StripeCustomerId = setupIntent.CustomerId;
         booking.Status = BookingStatus.Confirmed;

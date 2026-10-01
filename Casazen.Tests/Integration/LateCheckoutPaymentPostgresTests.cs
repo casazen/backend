@@ -140,9 +140,10 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
     }
 
     [PostgresFact]
-    public async Task HandleEventAsync_PaymentOnHoldStillValid_ConfirmsWithTheStandardEmailsOnly()
+    public async Task HandleEventAsync_PaymentOnHoldStillValidOverlappingICalBlock_CancelsBookingAndRefunds()
     {
-        // A hold within its TTL kept its dates in the iCal export: a block imported meanwhile does not undo the payment.
+        // The hold was exported to OTAs, but a block imported before final payment settlement means an OTA reservation
+        // has already taken the nights; CasaZen refunds instead of confirming an overbooking.
         var (property, account) = await SeedCheckoutReadyPropertyAsync();
         var hold = await SeedBookingAsync(property, account, NextYear(10, 1), NextYear(10, 5), BookingStatus.Pending,
             minutesAgo: 5, paymentStatus: PaymentStatus.Pending);
@@ -151,16 +152,13 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         await HandleAsync(Succeeded(hold.PaymentIntentId, account), WebhookSource.Connected);
 
         var booking = await LoadBookingAsync(hold.BookingId);
-        Assert.Equal(BookingStatus.Confirmed, booking.Status);
-        Assert.Equal(PaymentStatus.Completed, Assert.Single(booking.Payments).Status);
-        NoRefundRequested();
-        // BK-10: the standard confirmation (guest) and new booking (host); no refund email.
-        Assert.Equal(
-            [
-                (hold.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
-                (SeededHostEmail, EmailTemplates.Names.HostBookingConfirmed),
-            ],
-            _sentEmails.ToList());
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        Assert.Equal(BookingCancellationReason.DatesUnavailableAtPayment, booking.CancellationReason);
+        Assert.Equal(PaymentStatus.Refunded, Assert.Single(booking.Payments).Status);
+        _stripe.Verify(s => s.CreateRefundAsync(
+            It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == hold.PaymentIntentId && r.ConnectedAccountId == account),
+            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal([(hold.GuestEmail, EmailTemplates.Names.GuestPaymentRefundedDatesUnavailable)], _sentEmails.ToList());
     }
 
     [PostgresFact]

@@ -54,8 +54,9 @@ public sealed record CheckoutPaymentSettlement(CheckoutPaymentOutcome Outcome, G
 /// <c>DirectBooking:PendingTtlMinutes</c>), or on a booking already cancelled. It is never recorded as a bare
 /// "Completed" on a cancelled booking:
 /// <list type="bullet">
-///   <item>hold still valid, or dates still free (no confirmed booking, valid hold or iCal block on them): the booking is
-///   confirmed, and when it had expired or been cancelled the guest gets a confirmation email;</item>
+///   <item>hold still valid (with no iCal block imported meanwhile), or dates still free (no other booking/hold and no
+///   iCal block on them): the booking is confirmed, and when it had expired or been cancelled the guest gets a
+///   confirmation email;</item>
 ///   <item>otherwise the booking stays (or becomes) cancelled and the whole payment is refunded through
 ///   <see cref="PaymentRefundService"/> (BK-02) on the account the PaymentIntent lives on, with the idempotency key
 ///   <c>late-payment-refund:{PaymentIntentId}</c>; the guest is emailed once Stripe confirms the refund.</item>
@@ -150,14 +151,14 @@ public sealed class CheckoutPaymentSettlementService(
         var now = UtcNow;
         var expiredHoldCutoff = CheckoutHolds.CutoffAt(now, CheckoutHolds.GetTtlMinutes(configuration));
 
-        // A hold still within its TTL (or whose payment the expiry job saw in flight) kept its dates in the iCal export:
-        // only another booking can stand in its way. An expired hold or a cancelled booking had released them.
+        // A hold still within its TTL (or whose payment the expiry job saw in flight) keeps other CasaZen bookings out,
+        // but an imported OTA block can still arrive before the payment settles and must win to avoid overbooking.
         var validHold = booking.Status == BookingStatus.Pending &&
             !await db.Bookings
                 .Where(b => b.Id == booking.Id)
                 .Where(CheckoutHolds.IsExpired(expiredHoldCutoff))
                 .AnyAsync(cancellationToken);
-        var datesFree = await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        var datesFree = await AreDatesFreeAsync(booking, expiredHoldCutoff, cancellationToken);
 
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
         await paymentRepository.UpdateAsync(payment);
@@ -289,12 +290,11 @@ public sealed class CheckoutPaymentSettlementService(
 
     /// <summary>
     /// No other booking takes the dates (confirmed, checked in, or a hold still valid:
-    /// <see cref="CheckoutHolds.OccupiesDates"/>) and, when <paramref name="checkCalendarBlocks"/>, no iCal block.
+    /// <see cref="CheckoutHolds.OccupiesDates"/>) and no iCal block takes a night.
     /// </summary>
     private async Task<bool> AreDatesFreeAsync(
         Booking booking,
         HoldExpiryCutoff expiredHoldCutoff,
-        bool checkCalendarBlocks,
         CancellationToken cancellationToken)
     {
         var checkIn = booking.CheckInDate.Date;
@@ -310,8 +310,7 @@ public sealed class CheckoutPaymentSettlementService(
         if (takenByBooking)
             return false;
 
-        return !checkCalendarBlocks ||
-               !await PropertyICalSyncService.HasOverlappingBlockAsync(db, booking.PropertyId, checkIn, checkOut, cancellationToken);
+        return !await PropertyICalSyncService.HasOverlappingBlockAsync(db, booking.PropertyId, checkIn, checkOut, cancellationToken);
     }
 
     /// <summary>
