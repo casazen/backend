@@ -8,10 +8,10 @@ namespace Casazen.Tests.Unit.Infrastructure;
 
 /// <summary>
 /// A3-40: <c>ApplicationFeeAmount</c> must be left unset (null) on the direct-charge PaymentIntents created on the
-/// host's connected account, never sent as an explicit <c>0</c>. Stripe treats the two differently — a nullable field
-/// left unset means "no application fee"; an explicit <c>0</c> is a real value on the wire that some Stripe API
-/// versions have been known to reject on a direct charge, and its presence also invites the (wrong) reading later
-/// that "the fee is exactly zero" versus "no fee applies". Checked on a mocked <see cref="IStripeClient"/>, same
+/// host's connected account, never sent as an explicit <c>0</c>. Left unset, the parameter is not sent at all and
+/// Stripe applies no application fee; an explicit <c>0</c> goes on the wire and was never verified against Stripe
+/// (the audit flagged that it could be rejected on a direct charge). There is no platform take-rate, so omitting it
+/// changes nothing for the host. Checked on a mocked <see cref="IStripeClient"/>, same
 /// pattern as <see cref="StripeServiceDeferredChargeTests"/> and <see cref="StripeServiceRefundTests"/>.
 /// </summary>
 public class StripeServiceApplicationFeeTests
@@ -39,8 +39,7 @@ public class StripeServiceApplicationFeeTests
 
         var request = Assert.Single(_requests);
         var options = Assert.IsType<PaymentIntentCreateOptions>(request.Options);
-        // Null, not 0: an explicit 0 is a real value Stripe could reject on a direct charge, and reads as "fee is
-        // zero" rather than "no fee applies" (A3-40).
+        // Null, not 0: the parameter is omitted from the request (A3-40).
         Assert.Null(options.ApplicationFeeAmount);
     }
 
