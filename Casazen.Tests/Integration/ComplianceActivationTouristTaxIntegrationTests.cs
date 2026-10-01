@@ -188,7 +188,7 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.SeoContentPages.Add(new SeoContentPage
+        var page = new SeoContentPage
         {
             Slug = slug,
             ComuneCode = comuneCode,
@@ -198,7 +198,17 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
             MetaDescription = "Test",
             LegalReviewStatus = status,
             PublishedAt = status == LegalReviewStatus.Reviewed ? DateTime.UtcNow : null,
-        });
+        };
+        db.SeoContentPages.Add(page);
+        var revision = new SeoContentRevision { PageId = page.Id, BodyHtml = "<p>Tassa di soggiorno</p>", SourceDataVersion = "test" };
+        db.SeoContentRevisions.Add(revision);
         await db.SaveChangesAsync();
+
+        // SE-01: a page is public with an approved revision only.
+        if (status == LegalReviewStatus.Reviewed)
+        {
+            page.PublishedRevisionId = revision.Id;
+            await db.SaveChangesAsync();
+        }
     }
 }
