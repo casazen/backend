@@ -179,6 +179,10 @@ Le sanzioni sono **personali** (a carico del gestore) e non possono essere deleg
 
 ## Verdetto per CO-13
 
+> **Stato CO-13 (2026-10-01): bloccato, nessun codice.** Il proxy blocca ancora `alloggiatiweb.poliziadistato.it` e
+> `questure.poliziadistato.it`: le righe D/T non sono confermabili. Cosa manca e come sbloccare:
+> `docs/runbooks/alloggiati.md`, sezione "Record file and web service (CO-13): blocked".
+
 **Verdetto: (b), web service integrabile senza contratto.** Ne segue anche (a): il web service accetta le stesse stringhe del tracciato file, che è pubblico.
 
 Motivazione (fonti ufficiali):
