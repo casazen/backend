@@ -37,7 +37,27 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var body = await subprocessors.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(ConsentVersion, body.GetProperty("version").GetString());
-        Assert.True(body.GetProperty("items").GetArrayLength() >= 4);
+        // PL-14 (A9-40): the list comes from the configuration in use, not from a hand-written list.
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        var auth0 = Assert.Single(items, i => i.GetProperty("key").GetString() == "auth0");
+        Assert.Equal("US", auth0.GetProperty("region").GetString()); // Testing tenant: test.auth0.com
+        Assert.Contains(items, i => i.GetProperty("key").GetString() == "expo");
+        Assert.DoesNotContain(items, i => i.GetProperty("name").GetString() == "SendGrid");
+    }
+
+    [Fact]
+    public async Task GetTos_TextNotProvided_NotAvailableWithVersionAndDate()
+    {
+        var client = _factory.CreateClient();
+
+        var tos = await client.GetFromJsonAsync<JsonElement>("/api/legal/tos?lang=en");
+
+        Assert.Equal("tos", tos.GetProperty("key").GetString());
+        Assert.Equal(ConsentVersion, tos.GetProperty("version").GetString());
+        Assert.Equal("2026-06-01T00:00:00Z", tos.GetProperty("effectiveAt").GetString());
+        // No text from the product owner yet (D14): "in preparation", never an invented text.
+        Assert.False(tos.GetProperty("available").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, tos.GetProperty("contentHtml").ValueKind);
     }
 
     [Fact]

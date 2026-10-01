@@ -1348,4 +1348,19 @@
   <data name="LtrVerifiedAtInFuture" xml:space="preserve">
     <value>The verification date cannot be in the future.</value>
   </data>
+  <data name="LeaseLandlordRequired" xml:space="preserve">
+    <value>The lease needs at least one landlord.</value>
+  </data>
+  <data name="LeaseTenantRequired" xml:space="preserve">
+    <value>The lease needs at least one tenant.</value>
+  </data>
+  <data name="LeasePartiesTooMany" xml:space="preserve">
+    <value>Too many parties for one role: at most {0} landlords and {0} tenants.</value>
+  </data>
+  <data name="LeasePartyFiscalCodeInvalid" xml:space="preserve">
+    <value>The fiscal code of a party is not valid: it needs 16 characters with the right check character (natural person) or 11 digits (company).</value>
+  </data>
+  <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
+    <value>The same fiscal code is given for more than one party of the lease.</value>
+  </data>
 </root>

@@ -46,11 +46,9 @@ public class LeaseWorkflowService(
             ? await AssessConcordatoRentAsync(propertyId, request, term)
             : null;
 
+        // LT-14 (A7-28): one or more landlords and tenants, each with a valid fiscal code, none twice.
         var parties = request.Parties.ToList();
-        if (!parties.Any(p => p.Role == PartyRole.Landlord))
-            throw new InvalidOperationException("At least one Landlord party is required.");
-        if (!parties.Any(p => p.Role == PartyRole.Tenant))
-            throw new InvalidOperationException("At least one Tenant party is required.");
+        LeasePartyRules.Ensure(parties.Select(p => (p.Role, (string?)p.FiscalCode)).ToList());
 
         var lease = new LeaseContract
         {
@@ -63,12 +61,14 @@ public class LeaseWorkflowService(
             ConcordatoAssessment = concordato,
             // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04). No retention date
             // either: it is computed from the end date and Gdpr:Retention:LeaseParties (LT-12, LeasePartyPrivacyService).
-            Parties = parties.Select(p => new Party
+            Parties = parties.Select((p, index) => new Party
             {
                 Role = p.Role,
+                // Order among the parties of the same role, as entered.
+                Position = parties.Take(index).Count(previous => previous.Role == p.Role),
                 FirstName = p.FirstName,
                 LastName = p.LastName,
-                FiscalCode = p.FiscalCode,
+                FiscalCode = ItalianFiscalCode.Normalize(p.FiscalCode),
                 Citizenship = EuMemberStates.NormalizeCode(p.Citizenship),
                 ContactEmail = p.ContactEmail,
                 // Not an EU citizen (27 member states, EuMemberStates): the Questura communication applies (LT-07).

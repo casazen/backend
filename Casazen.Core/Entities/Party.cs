@@ -21,6 +21,13 @@ public class Party
     [Required]
     public PartyRole Role { get; set; }
 
+    /// <summary>
+    /// Order of the party among the parties of the same role, from 0 (LT-14): the order entered, used by the contract,
+    /// the RLI pre-fill and the detail page. Unique per lease and role; leases created before LT-14 have one party per
+    /// role at 0 (migration <c>LeaseMultipleParties</c>).
+    /// </summary>
+    public int Position { get; set; }
+
     [Required]
     [MaxLength(100)]
     public string FirstName { get; set; } = string.Empty;
@@ -29,6 +36,10 @@ public class Party
     [MaxLength(100)]
     public string LastName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Fiscal code, normalized (upper case, no spaces) and validated at creation (LT-14, <c>ItalianFiscalCode</c>): 16
+    /// characters of a natural person or 11 digits. Rows created before LT-14 were only normalized by the migration.
+    /// </summary>
     [Required]
     [MaxLength(16)]
     public string FiscalCode { get; set; } = string.Empty;

@@ -1,13 +1,23 @@
-﻿using Casazen.Core.Entities;
+﻿using Casazen.Core.Authorization;
+using Casazen.Core.Entities;
 
 namespace Casazen.Core.Repositories;
 
 public interface IBookingRepository
 {
     Task<Booking?> GetByIdAsync(Guid id);
-    Task<IEnumerable<Booking>> GetByPropertyAsync(Guid propertyId);
-    Task<IEnumerable<Booking>> GetByGuestAsync(Guid guestId);
-    Task<IEnumerable<Booking>> GetAllAsync();
+
+    /// <summary>
+    /// Bookings in the caller's <paramref name="scope"/> (TN-3: the org and, for a non org-wide role, the properties the
+    /// caller owns), optionally of one property and/or one guest, with their property and guest, latest check-in first.
+    /// One SQL query whatever the number of bookings (A2-17).
+    /// </summary>
+    Task<IReadOnlyList<Booking>> GetByScopeAsync(
+        HostScope scope,
+        Guid? propertyId = null,
+        Guid? guestId = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Bookings of the property shown by the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>
     /// (stay dates, both included: <see cref="Services.HostCalendarRange.BookingShownIn"/>) that take their dates: not cancelled and, when

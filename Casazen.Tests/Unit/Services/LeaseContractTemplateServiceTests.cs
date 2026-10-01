@@ -110,7 +110,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
             LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.CanoneConcordato));
         var sut = CreateSut(_files.Options(FiscalRegime.CanoneConcordato, LeaseTemplateTestFiles.Approved()));
         var lease = BuildLease(FiscalRegime.CanoneConcordato);
-        lease.Parties.Add(new Party { Role = PartyRole.Landlord, FirstName = "Anna", LastName = "Bianchi", FiscalCode = "BNCNNA82A41F205Z" });
+        lease.Parties.Add(new Party { Role = PartyRole.Landlord, FirstName = "Anna", LastName = "Bianchi", FiscalCode = "BNCNNA82A41F205W" });
 
         var text = PdfText(await sut.GeneratePdfAsync(lease));
 
@@ -126,6 +126,36 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
         Assert.DoesNotContain("BOZZA", text, StringComparison.Ordinal);
         Assert.DoesNotContain("3+2", text, StringComparison.Ordinal);
         Assert.DoesNotContain("{{", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GeneratePdfAsync_TwoLandlordsAndTwoTenants_ListsEveryPartyWithFiscalCodeInTheOrderEntered()
+    {
+        // LT-14 (A7-28): co-owners and co-tenants are all parties of the contract, in their position order.
+        _files.Write(
+            FiscalRegime.CedolareSecca,
+            LeaseTemplateTestFiles.ApprovedVersion,
+            LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.CedolareSecca));
+        var sut = CreateSut(_files.Options(FiscalRegime.CedolareSecca, LeaseTemplateTestFiles.Approved()));
+        var lease = BuildLease(FiscalRegime.CedolareSecca);
+        // The second landlord comes first in the collection: the contract follows the position, not the storage order.
+        lease.Parties =
+        [
+            new Party { Role = PartyRole.Landlord, Position = 1, FirstName = "Anna", LastName = "Bianchi", FiscalCode = "BNCNNA82A41F205W" },
+            .. lease.Parties,
+            new Party { Role = PartyRole.Tenant, Position = 1, FirstName = "Giulia", LastName = "Verdi", FiscalCode = "VRDGLI85B42F205E" },
+        ];
+
+        var text = PdfText(await sut.GeneratePdfAsync(lease));
+
+        foreach (var code in new[] { "RSSMRA80A01H501U", "BNCNNA82A41F205W", "VRDLGU85B02F205C", "VRDGLI85B42F205E" })
+            Assert.Contains(code, text, StringComparison.Ordinal);
+        Assert.True(
+            text.IndexOf("Mario Rossi", StringComparison.Ordinal) < text.IndexOf("Anna Bianchi", StringComparison.Ordinal),
+            "the landlord at position 0 comes first");
+        Assert.True(
+            text.IndexOf("Luigi Verdi", StringComparison.Ordinal) < text.IndexOf("Giulia Verdi", StringComparison.Ordinal),
+            "the tenant at position 0 comes first");
     }
 
     [Fact]
@@ -376,7 +406,7 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
         Parties =
         [
             new Party { Role = PartyRole.Landlord, FirstName = "Mario", LastName = "Rossi", FiscalCode = "RSSMRA80A01H501U" },
-            new Party { Role = PartyRole.Tenant, FirstName = "Luigi", LastName = "Verdi", FiscalCode = "VRDLGU85B02F205X" },
+            new Party { Role = PartyRole.Tenant, FirstName = "Luigi", LastName = "Verdi", FiscalCode = "VRDLGU85B02F205C" },
         ],
     };
 }
