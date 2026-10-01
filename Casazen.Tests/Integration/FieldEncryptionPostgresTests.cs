@@ -399,17 +399,22 @@ public class FieldEncryptionPostgresTests
         """);
 
     /// <summary>
-    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>), so the
-    /// model-based insert of the property works here too. Paired with <see cref="DropPropertiesColumnsAfterCo14Async"/>.
+    /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>, PC-05
+    /// <c>AddPropertySoftDelete</c>), so the model-based insert of the property works here too. Paired with
+    /// <see cref="DropPropertiesColumnsAfterCo14Async"/>.
     /// </summary>
     private static Task AddPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE "Properties" ADD COLUMN "IsPaused" boolean NOT NULL DEFAULT false;
         ALTER TABLE "Properties" ADD COLUMN "PausedAt" timestamp with time zone;
+        ALTER TABLE "Properties" ADD COLUMN "IsDeleted" boolean NOT NULL DEFAULT false;
+        ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
         """);
 
     private static Task DropPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE "Properties" DROP COLUMN "IsPaused";
         ALTER TABLE "Properties" DROP COLUMN "PausedAt";
+        ALTER TABLE "Properties" DROP COLUMN "IsDeleted";
+        ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
         """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>

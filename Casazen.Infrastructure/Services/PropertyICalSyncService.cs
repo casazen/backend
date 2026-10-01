@@ -603,10 +603,16 @@ public partial class PropertyICalSyncService
     /// </summary>
     public async Task SyncAllFeedsAsync(CancellationToken ct = default)
     {
+        // A soft-deleted property (PC-05) is no longer synced. IgnoreQueryFilters([SoftDeleteQueryFilter]): the
+        // deleted ones are exactly what this lookup is for (a background job: no tenant filter in effect).
+        var deletedPropertyIds = await _db.Properties
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.IsDeleted)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
         var feedIds = await _db.PropertyICalFeeds
             .AsNoTracking()
-            // A soft-deleted property (PC-05) is no longer synced.
-            .Where(f => f.ImportUrl != null && f.ImportUrl != "" && !f.Property.IsDeleted)
+            .Where(f => f.ImportUrl != null && f.ImportUrl != "" && !deletedPropertyIds.Contains(f.PropertyId))
             .OrderBy(f => f.LastImportAt.HasValue)
             .ThenBy(f => f.LastImportAt)
             .Select(f => f.Id)
