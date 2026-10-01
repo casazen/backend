@@ -110,7 +110,9 @@ Notes:
   affected policy rather than removing it. `Retry-After` tells the client when to retry.
 - Deliberately without a limiter: `webhooks/*` (signed; Stripe and the e-sign provider send from shared IPs),
   `api/health`, `api/legal/*`, `api/orgs/plans`, SEO pages, the SEO hub `api/public/content` and `api/public/sitemap.xml` (search engine crawlers; the web app serves
-  the sitemap through a CDN-cached Vercel function, see [`seo-domain.md`](seo-domain.md)).
+  the sitemap through a CDN-cached Vercel function, see [`seo-domain.md`](seo-domain.md)), and the crawler pages and sitemaps of the booking sites
+  (`api/public/seo/*`, `api/public/sitemap-book.xml`, `api/public/orgs/{slug}/sitemap.xml`, BK-15): they are called by the Vercel
+  Functions of the web app, so every request comes from the same few addresses and a per-IP bucket would only let one flood cut crawlers off.
 
 ## 5. Checks after a deploy
 

@@ -60,7 +60,7 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
 
         var checks = ReadChecks(body);
         Assert.Equal(
-            new[] { "api-url", "auth0", "database", "email", "hangfire", "legal", "storage", "stripe" },
+            new[] { "api-url", "auth0", "database", "email", "hangfire", "legal", "storage", "stripe", "vercel" },
             checks.Keys.Order().ToArray());
         // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
         // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.
@@ -68,6 +68,8 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal("degraded", checks["email"]);
         Assert.Equal("degraded", checks["hangfire"]);
         Assert.Equal("degraded", checks["auth0"]);
+        // BK-17 (D9): no Vercel token and project, so custom domains cannot be activated.
+        Assert.Equal("degraded", checks["vercel"]);
         Assert.Equal("degraded", checks["storage"]);
         // DEPLOY-CFG: the factory sets App:ApiBaseUrl (https) but publishes no legal text and no date in force.
         Assert.Equal("healthy", checks["api-url"]);

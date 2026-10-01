@@ -401,6 +401,11 @@ App__ApiBaseUrl=[https://<railway host of this environment>]
 # Optional: base domain of the org booking subdomains ({label}.<domain>), no default in code (D3, SE-03).
 # Unset = the "subdomain" publication mode is off (docs/runbooks/seo-domain.md).
 # PublicHost__BaseDomain=[domain with a wildcard DNS record to the web app]
+# Optional: custom domains of the hosts (Pro) are added to the Vercel project of THIS environment through the Vercel API (BK-17,
+# docs/runbooks/seo-domain.md section 10). Unset = custom domains stay "waiting": ready `vercel: degraded` names what is missing.
+# Vercel__ApiToken=[Vercel access token scoped to the one team that owns the project — secret, Railway only]
+# Vercel__ProjectId=[prj_... or the name of the Vercel project that serves the web app of this environment]
+# Vercel__TeamId=[team_... of the team that owns the project; unset for a personal account]
 Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
 Hangfire__Schema=hangfire_casazen_test
@@ -463,6 +468,7 @@ The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the te
 | `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `App__ApiBaseUrl` | yes for the iCal export links (https, no default in code) | ready `api-url: degraded`; the export links point to `https://localhost:5001` | [`deploy-checklist.md`](runbooks/deploy-checklist.md), [`ical.md`](runbooks/ical.md) |
 | `PublicHost__BaseDomain` | no (no default in code) | the "subdomain" publication mode answers 422 `subdomains_not_configured`; no host is resolved as an org subdomain | [`seo-domain.md`](runbooks/seo-domain.md) |
+| `Vercel__ApiToken`, `Vercel__ProjectId`, `Vercel__TeamId` | no (custom domains are an optional Pro feature; no default in code) | no custom domain can be activated: it stays `Pending` ("activation not available" in the console), ready `vercel: degraded` names the missing variable. `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0`, `PublicHost__VercelAddresses__0` hold the DNS values Vercel recommends (defaults: the generic ones) | [`seo-domain.md`](runbooks/seo-domain.md) section 10 |
 | `Legal__Documents__{Tos,Privacy,Dpa}__{Version,EffectiveAt,DocumentUrl}`, `Legal__Documents__Subprocessors__*` | no (versions in `appsettings.json`) | pages `/legale/*` say "in preparazione"; subprocessor details shown as "in definizione"; ready `legal: degraded` | [`legal-documents.md`](runbooks/legal-documents.md) |
 | `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
