@@ -453,6 +453,9 @@
   <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
     <value>Invalid image size: it must be at least {0}×{1} pixels and at most {2}×{3}.</value>
   </data>
+  <data name="PublicSearchFilterInvalid" xml:space="preserve">
+    <value>A search filter is not valid.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
   </data>
