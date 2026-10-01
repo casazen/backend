@@ -3,7 +3,6 @@ using Casazen.Core.TouristTax;
 
 namespace Casazen.Core.Services;
 
-public record SeoDisclaimersDto(string LastUpdated, string NotLegalAdvice, string AiGenerated);
 /// <summary>
 /// Call to action of a public SEO page (SE-03): <c>SignupUrl</c> is the web app route <c>/signup</c> with the comune and
 /// the default UTM parameters, on <c>App:PublicSiteBaseUrl</c> (relative only when that is not configured, in
@@ -28,10 +27,17 @@ public record PublicTouristTaxRateSummaryDto(
     DateTime? EffectiveTo,
     string? SourceUrl);
 
+/// <summary>
+/// A published SEO page. <c>BodyHtml</c>, <c>Title</c> and <c>MetaDescription</c> are written in <c>ContentLanguage</c>
+/// (<c>it</c>: the regulations are Italian), whatever the language of the visitor: the client marks the text with it
+/// (SE-05, A8-19). <c>AiGenerated</c>: the text was written by an AI model (then reviewed by an admin, SE-01): the client
+/// shows the AI Act transparency notice next to it (A8-27). The last update is <c>LastRefreshedAt</c>; the disclaimers
+/// ("not legal advice", "AI generated") are texts of the client, in the language of the visitor, not of this API.
+/// </summary>
 public record SeoPagePublicDto(
     Guid Id, SeoPageType PageType, string Title, string MetaDescription, string BodyHtml,
     string ComuneName, string ComuneCode, string RegionCode, string RegionSlug, string ComuneSlug,
-    string? CanonicalUrl, DateTime? LastRefreshedAt, SeoDisclaimersDto Disclaimers, SeoCtaDto Cta,
+    string? CanonicalUrl, DateTime? LastRefreshedAt, bool AiGenerated, string ContentLanguage, SeoCtaDto Cta,
     IReadOnlyList<PublicTouristTaxRateSummaryDto> TouristTaxRates);
 
 /// <summary>A published SEO page listed by the public hub; <c>Path</c> is the web app route (<c>/p/…</c>).</summary>

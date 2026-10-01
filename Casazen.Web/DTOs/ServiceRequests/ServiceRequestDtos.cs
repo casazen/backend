@@ -80,6 +80,12 @@ public class SupplierMatchCandidateDto
     public int MatchScore { get; set; }
     public string MatchReason { get; set; } = string.Empty;
     public string Source { get; set; } = "platform";
+
+    /// <summary>
+    /// The reason was written by an AI model: the client shows the AI Act transparency notice next to it (SE-05, A8-27).
+    /// False for the static reason (flag off, no provider, provider failure).
+    /// </summary>
+    public bool ReasonGeneratedByAi { get; set; }
 }
 
 public class ExternalSupplierSuggestionDto

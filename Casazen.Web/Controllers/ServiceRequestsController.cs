@@ -422,5 +422,6 @@ public class ServiceRequestsController(
         MatchScore = c.MatchScore,
         MatchReason = c.MatchReason,
         Source = c.Source,
+        ReasonGeneratedByAi = c.ReasonGeneratedByAi,
     };
 }

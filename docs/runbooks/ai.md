@@ -29,6 +29,42 @@ The old key `Seo:AiProvider` (`Seo__AiProvider`) was never read and has been rem
 only. `AddCasazenAiProvider` is registered once (Program.cs); the unused `AddCasazenExternalServices`, which registered
 it a second time, has been removed.
 
+## Cache of the AI answers (A8-25, SE-05)
+
+The answers of a paid call are cached by `IAiResponseCache` (`AiResponseCache`, one singleton per process): memory
+only, nothing is written to the database. There is **no cache inside the providers** (the old static dictionaries of
+`DeepSeekAiProvider`, `StubAiProvider` and `AiSupplierDiscoveryService` grew without limit and never expired).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Ai__Cache__MaxEntries` | `500` | Entries in all. Past it the oldest goes first. |
+| `Ai__Cache__MaxEntriesPerOrg` | `50` | Entries one org can hold. Past it the oldest entry of that org is replaced: an org never pushes out the entries of the others. |
+| `Ai__Cache__TtlHours` | `24` | How long an answer stays. A value of 0 or less reads as the default. |
+
+- **Keys.** The SEO content is platform-level: key `comune:page type:data version:prompt version`, no org. The supplier
+  match reason (`supplier-match:category:urgency:load`) and the supplier discovery results
+  (`supplier-discovery:city:category`) are cached **per org**: another org never reads them and fills its own entries.
+- **What is cached.** Only an answer of a configured provider with some text. The stub placeholder, an empty answer, a
+  failure and the budget refusal are never cached.
+- **"Regenerate" regenerates.** `forceRegenerate` (admin "Genera", `SeoContentRefreshJob`) does not read the cache: it
+  asks the provider and replaces the entry. A batch retried after a stop (same data, same prompt version) reuses the
+  cached answers and spends no tokens (`PromptTokens` 0 on the revision).
+- A restart empties the cache; the revisions are in the database, so nothing is lost.
+
+## Transparency notice (EU AI Act, A8-27)
+
+Where AI-written text reaches a person, the web app shows `AiContentNotice` (`aiContentNotice.*`), driven by a flag of
+the API, never by a constant:
+
+| Where | Flag | Notice |
+|---|---|---|
+| Public SEO pages (`/p/...`) | `SeoPagePublic.aiGenerated` (the published revision is `Generated`) | In the footer of the page (`seo`). The other disclaimers ("not legal advice", date) are texts of the web app in the language of the visitor, no longer sent by the API. `contentLanguage` is `it`: the guides are Italian, the page says so to a visitor reading in another language. |
+| Admin SEO review dialog | The revision is `Generated` | Next to the text, worded as a draft (pending) or as the approved page (published). Nothing for a "not generated" state. |
+| `POST /api/service-requests/match-supplier` (flag `AiSupplierDiscovery`, off) | `reasonGeneratedByAi` on the candidate; `source = ai_web_search` on an external suggestion | The API says it; **no screen of the web app or of the app uses this endpoint today**, so no notice is mounted. Whoever builds that screen shows `AiContentNotice kind="supplierReason"` when the flag is true. With the flag off the endpoint answers 404 and the reason is static. |
+
+The property page of the public booking site no longer mounts the component with a constant `false`: no property
+description is AI-generated.
+
 ## Platform AI budget (A8-01, A8-07)
 
 - Row `PlatformAiBudgets` (one per database): `MonthlyTokenCap` (default 500,000), `TokensUsedThisMonth`,
