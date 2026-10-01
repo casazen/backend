@@ -1357,4 +1357,37 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
   </data>
+  <data name="SupplierAlreadySuspended" xml:space="preserve">
+    <value>The supplier is already suspended.</value>
+  </data>
+  <data name="SupplierNotSuspended" xml:space="preserve">
+    <value>The supplier is not suspended: there is nothing to reactivate.</value>
+  </data>
+  <data name="SupplierInviteNotFound" xml:space="preserve">
+    <value>Invite not found.</value>
+  </data>
+  <data name="SupplierInviteNotPending" xml:space="preserve">
+    <value>Only a pending invite can be revoked: this one was already used, has expired or was already revoked.</value>
+  </data>
+  <data name="SupplierInviteNotResendable" xml:space="preserve">
+    <value>An invite that was already used or revoked cannot be sent again: create a new invite.</value>
+  </data>
+  <data name="SupplierInviteDuplicate" xml:space="preserve">
+    <value>Another invite for this email is already pending: revoke it before sending this one again.</value>
+  </data>
+  <data name="SupplierInviteRevoked" xml:space="preserve">
+    <value>This invite was revoked. Ask the CasaZen team to send you a new one.</value>
+  </data>
+  <data name="SupplierSuspended" xml:space="preserve">
+    <value>Your supplier account is suspended: you cannot complete the activation. Contact CasaZen support.</value>
+  </data>
+  <data name="ServiceRequestSupplierNotActive" xml:space="preserve">
+    <value>Your supplier account is not active (it is suspended or not yet activated): you cannot act on requests. Contact CasaZen support.</value>
+  </data>
+  <data name="SupplierSuspendReasonRequired" xml:space="preserve">
+    <value>Enter the reason for the suspension.</value>
+  </data>
+  <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
+    <value>The suspension reason can have at most 500 characters.</value>
+  </data>
 </root>
