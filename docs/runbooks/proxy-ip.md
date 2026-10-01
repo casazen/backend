@@ -99,7 +99,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `PublicTouristTaxCalc` | `POST api/public/tourist-tax/calculate` | 30 / min | `RateLimiting__PublicTouristTaxCalc__PermitLimit` (`SeoTouristTax__RateLimitPermitLimit`) |
 | `PublicResolveHost` | `GET api/public/resolve-host` | 60 / min | `RateLimiting__PublicResolveHost__PermitLimit` (`PublicHost__RateLimitPermitLimit`) |
 | `PublicIcal` | `GET api/public/ical/{token}` (polled by the OTAs from their servers) | 60 / min | `RateLimiting__PublicIcal__PermitLimit` |
-| `PublicRegistration` | `POST api/suppliers/register`, `POST api/auth/register` (shared bucket) | 5 / 10 min | `RateLimiting__PublicRegistration__PermitLimit` |
+| `PublicRegistration` | `POST api/suppliers/register` | 5 / 10 min | `RateLimiting__PublicRegistration__PermitLimit` |
 
 The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`).
 

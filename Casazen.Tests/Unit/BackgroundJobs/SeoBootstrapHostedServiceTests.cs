@@ -1,4 +1,5 @@
 using Casazen.Core.Repositories;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.HostedServices;
 using Hangfire;
@@ -39,7 +40,12 @@ public class SeoBootstrapHostedServiceTests
 
         await CreateService().StartAsync(CancellationToken.None);
 
-        _jobClient.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
+        // SE-01 (A8-04): the bootstrap job only generates drafts, it carries no auto-approval flag any more.
+        _jobClient.Verify(
+            c => c.Create(
+                It.Is<Job>(j => j.Type == typeof(SeoPageGenerationJob) && j.Method.GetParameters().Length == 1),
+                It.IsAny<IState>()),
+            Times.Once);
         Assert.Contains(_marker, p => p.Key == SeoBootstrapHostedService.EnqueuedAtField);
         Assert.Contains(_marker, p => p.Key == SeoBootstrapHostedService.JobIdField && p.Value == "job-seo-1");
     }
@@ -99,7 +105,7 @@ public class SeoBootstrapHostedServiceTests
 
         return new SeoBootstrapHostedService(
             services.BuildServiceProvider(),
-            Options.Create(new SeoBootstrapOptions { BootstrapOnStartup = bootstrapOnStartup, AutoApproveAfterBootstrap = false }),
+            Options.Create(new SeoBootstrapOptions { BootstrapOnStartup = bootstrapOnStartup }),
             NullLogger<SeoBootstrapHostedService>.Instance);
     }
 }
