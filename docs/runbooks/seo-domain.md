@@ -7,6 +7,19 @@ chooses the domain, sets the variables of section 2 and follows sections 3 and 4
 Task SE-01, audit defects A8-04, A8-05, A8-06, A8-21 and R-09: a page is public only with a text a person read and
 approved in the admin dashboard; section 7 describes the review flow, the audit and what the migration withdrew.
 
+Task BK-15, audit defects A3-20, A8-09, A8-20 and A8-29 (P1): the booking sites (`/book/{slug}`, `/book/{slug}/property/…`)
+and the guides (`/p/…`) are served to crawlers as real HTML (title, description, canonical, `hreflang`, Open Graph, JSON-LD),
+with a sitemap per org and a `robots.txt` that keeps the private pages out. Section 8 describes it and how to check it.
+
+Task BK-16, audit defect A3-08 (P1): the org subdomains (`{label}.{PublicHost__BaseDomain}`) and the verified custom domains
+serve the org's booking site at their root, with their own CORS, canonical URLs and sitemap, and never the app or a login.
+Section 9 describes it and how to check it.
+
+Task BK-17, audit defect A3-25 (P1): a custom domain is `Verified` only when the ownership record, the DNS and the Vercel
+project all say so (the platform adds it to the Vercel project through the Vercel API), it is checked again by itself, and the
+console tells the host honestly where it is. Section 10 describes it, what the product owner configures (Vercel token and
+project) and how to check it.
+
 Task SE-03, audit defect A8-03 (P0): the CTA of the SEO pages leads to `/signup`, which opens the Auth0 **signup**
 screen in one click and records where the signup came from (UTM parameters, comune, landing page, referrer host).
 Section 6 describes the funnel, the Auth0 setting it needs and how to read the attributions.
@@ -30,6 +43,9 @@ Section 6 describes the funnel, the Auth0 setting it needs and how to read the a
 | Org subdomains (SE-03) | `{label}.{PublicHost__BaseDomain}`: a **different** domain (wildcard DNS to the web app), with its own variable and **no default** (it was `casazen.it` in code). Unset: the "subdomain" publication mode answers 422 `subdomains_not_configured`, no host is resolved as an org subdomain, the settings page shows no subdomain URL | `PublicHostOptions`, `OrgDomainService`, `PublicHostResolver` |
 | Footer Privacy / Terms (SE-03, PL-14) | The public footer links the web app pages `/legale/privacy` and `/legale/termini` (and, on the CasaZen pages, `/legale/sub-responsabili` and `/legale`). The pages read `GET /api/legal/*`: text provided by the product owner (D14), "in preparazione" until then. No domain in the frontend | frontend `Footer.tsx`, `features/legal/*`; runbook `legal-documents.md` |
 | Frontend (SE-03) | No `casazen.app` in the shipped frontend (test `src/test/no-hardcoded-domain.test.ts`, same claim exception). The web app's own hosts for the custom-host fallback are the host of `VITE_PUBLIC_SITE_URL`, `localhost` and `*.vercel.app` | frontend `src/config/public-site.ts`, `use-custom-host-redirect.ts` |
+| Crawler pages (BK-15) | Known crawlers (`user-agent` rewrites in `vercel.json`) get the HTML of `/book/{slug}`, `/book/{slug}/property/{slug or id}` and `/p/…` from the Vercel Function `api/seo.ts`, which returns `GET {VITE_API_BASE_URL}/public/seo/…` of the backend; people keep getting the single-page app. Section 8 | backend `PublicSeoController`, `Casazen.Web/Seo/*`; frontend `api/seo.ts`, `vercel.json` |
+| Sitemaps of the booking sites (BK-15) | `/sitemap-book.xml` (index: one entry per org with a published property) and `/book/{slug}/sitemap.xml` (landing page + published properties, `lastmod` = `UpdatedAt`), through the same Vercel Function as `/sitemap.xml` (`api/sitemap.ts`). Both are declared in `robots.txt` | `PublicOrgSitemapController`, `PublicSeoService`; frontend `api/sitemap.ts` |
+| `robots.txt` (BK-15) | Production also disallows what is never worth indexing: `/app/`, `/checkin/`, `/login`, `/book/*/my-bookings`, `/book/*/booking/`, `/book/*/requests/`, `/book/*/property/*/checkout`; declares `/sitemap.xml` and `/sitemap-book.xml` | frontend `src/config/robots-txt.ts` |
 
 ### Why a function for the sitemap and a build-time robots.txt
 
@@ -322,8 +338,358 @@ reviewed by a person. Down-migrating does not publish the withdrawn pages again.
    a new comune answers 404 until "Approva e pubblica"; after the approval it answers 200 and the sitemap lists it;
    "Ritira" removes it again.
 
+## 8. Crawler pages and booking-site sitemaps (BK-15)
+
+### Why this way
+
+The web app is a single-page app: `index.html` is empty, so title, description, canonical, Open Graph and JSON-LD only
+existed after JavaScript and API calls. Search engines and link previews (WhatsApp, Facebook, LinkedIn, ...) saw
+`<title>temp-vite</title>`. The pages of a booking site are per org and change whenever a host edits them, so a build-time
+prerender would be stale and would make every deploy depend on the API. The method:
+
+1. `vercel.json` rewrites a request for `/book/:orgSlug`, `/book/:orgSlug/property/:property`, `/p/affitti-brevi`,
+   `/p/affitti-brevi/:region/:comune` or `/p/tassa-soggiorno/:comune` to the Vercel Function `api/seo.ts` **only when the
+   `user-agent` is a known crawler** (Googlebot and the other search engines, the link-preview bots, the AI search and
+   assistant bots: the list is in `vercel.json`, covered by `src/test/vercel-routing.test.ts`). Everybody else, and every
+   other path, keeps getting `index.html`: a failure of the function or of the API can only affect crawlers, which retry.
+   The list is explicit on purpose: a generic "bot" pattern also matches the browser of some phones.
+2. The function calls the backend (`GET {VITE_API_BASE_URL}/public/seo/orgs/{slug}`, `…/orgs/{slug}/properties/{property}`,
+   `…/guides/{region}/{comune}`, `…/tourist-tax/{comune}`, `…/hub`) and passes the answer on. It owns no content: the
+   rules live in the backend (`PublicSeoService`) and are tested there. It sends the Host the crawler used
+   (`x-forwarded-host`), so the backend can decide whether the page may be indexed on that host.
+3. The answer is a plain HTML document (no script, no stylesheet): `lang`, `title`, `description`, `robots`, canonical,
+   `hreflang` (the page itself and `x-default`: one URL per page whatever the language of the visitor), `og:*`, Twitter
+   card, JSON-LD in the head, and the text of the page in the body (the org and its properties with links, the property
+   facts and amenities, the approved text of a guide). A real `404` for an unknown page (the single-page app can only
+   answer `200` with a "not found" screen), a `301` to the canonical path on the same host for an old org slug or a
+   property reached by id, and `Cache-Control: no-store` (the same URL is served to people by the app; an unpublished
+   property must leave crawlers at once). The function adds `X-Robots-Tag: noindex, nofollow` on every deployment that is not
+   Vercel production, next to the `Disallow: /` of its `robots.txt`.
+
+No new variable: the function uses `VITE_API_BASE_URL` (already set per Vercel environment, like the sitemap function) and
+`VERCEL_ENV`; the backend uses `App__PublicSiteBaseUrl` for every URL (decision D3).
+
+### What is indexable (backend `PublicSeoService`)
+
+| Page | Indexed when | Otherwise |
+|---|---|---|
+| Org landing `/book/{slug}` | the org is active and has at least one published property (`PublicListing.IsPublished`: active, not paused, compliance activated) and the request host is allowed (below) | `noindex,nofollow` (no canonical); unknown or inactive org: `404` |
+| Property `/book/{slug}/property/{slug or id}` | the property is published (and the host allowed) | `404` (paused, inactive, compliance pending or suspended, other org's property); `301` when reached by id (it has a slug) or through an old org slug |
+| Guide / tourist tax page | an approved revision exists (SE-01) with text and, for the calculator, a rate in force (same rule as the sitemap) | `404` without an approved revision; `noindex` when it has no text, or the calculator has no rate |
+| Hub `/p/affitti-brevi` | at least one page is published | `noindex` |
+
+**Host rule.** The page is indexable on the web app's own host (`App__PublicSiteBaseUrl`), when no host is sent, or on a
+host that resolves to the same org (an org subdomain, or a custom domain that is **verified** and paid: `resolve-host`).
+Any other host gets `noindex`: a custom domain still waiting for its verification or no longer paid for, the domain of
+another org, a preview deployment. The host is only compared, never written into the page, and a value that is not a plain
+DNS name is ignored (`PublicSiteHosts`).
+
+**Canonical** is `App__PublicSiteBaseUrl` + `/book/{current slug}[/property/{slug}]`, or the org's own host when it has one
+that is served (section 9). Query strings (`?checkin=…`) are never in it.
+
+### JSON-LD (real data only)
+
+- Org page: `Organization` (name, URL, logo, tagline) + `ItemList` of its published properties.
+- Property page: `VacationRental` (spec-branded-booking-site AC12) + `BreadcrumbList`: name, description, URL, `@id`,
+  `image`, `address` (city, postal code, country from the CIN), `geo`, `containsPlace` (`Accommodation`, whole property:
+  `occupancy`, `numberOfBedrooms`, `numberOfBathroomsTotal`, `amenityFeature`), `petsAllowed` (only with the pet-friendly
+  amenity), `identifier` (the valid CIN, otherwise the property id), `brand` (the org) and the nightly price as a
+  `makesOffer`/`UnitPriceSpecification` in EUR. **Left out because the data model does not hold them**: check-in and
+  check-out times, `aggregateRating`/`review` (no review system), a "pets not allowed" rule, availability (it depends on the
+  dates). An invalid or missing CIN is neither shown nor published (compliance rule); unset coordinates (0,0) are not
+  published; street addresses are never published (only city and postal code, as on the page).
+- Guides and calculators: `Article` (headline, description, `dateModified` = approval date, publisher CasaZen) +
+  `BreadcrumbList`; hub: `CollectionPage`.
+
+### Checks after a deploy
+
+```bash
+SITE=https://<public domain>
+API=https://<railway url of the environment>
+ORG=<slug of an org with a published property>
+UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+
+# crawler: real HTML with the head of the page (title, description, canonical, og:*, JSON-LD)
+curl -sS -A "$UA_BOT" "$SITE/book/$ORG" | grep -E "<title>|rel=\"canonical\"|og:image|application/ld\+json"
+curl -sS -A "$UA_BOT" "$SITE/book/$ORG/property/<property slug>" | grep -o '"@type":"VacationRental"'
+
+# people: still the single-page app (index.html), not the crawler page
+curl -sS "$SITE/book/$ORG" | grep -c "<div id=\"root\">"          # 1
+
+# real 404 and 301 for crawlers
+curl -s -o /dev/null -w "%{http_code}\n" -A "$UA_BOT" "$SITE/book/does-not-exist"          # 404
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" -A "$UA_BOT" "$SITE/book/<old slug>"  # 301 /book/<current slug>
+
+# sitemaps: index of the orgs, then the sitemap of one org; every URL on the public domain
+curl -sS "$SITE/sitemap-book.xml" | grep -o "<loc>[^<]*</loc>" | head
+curl -sS "$SITE/book/$ORG/sitemap.xml" | grep -o "<loc>[^<]*</loc>"
+curl -sS "$SITE/robots.txt"       # Disallow lines of the private pages, Sitemap: …/sitemap.xml and …/sitemap-book.xml
+
+# backend directly (what the function calls); host= decides the indexing
+curl -sS "$API/api/public/seo/orgs/$ORG?host=unknown.example.test" | grep -o 'name="robots" content="[^"]*"'   # noindex,nofollow
+```
+
+Search Console: submit `https://<public domain>/sitemap-book.xml` next to `sitemap.xml` (section 4); **URL inspection** of
+`https://<public domain>/book/<slug>` → **Test live URL**: the rendered page shows the org and its properties and
+"User-declared canonical" is the same URL. Link previews: paste the URL in the Facebook Sharing Debugger / LinkedIn Post
+Inspector, or share it in WhatsApp: title, description and image of the org or of the property.
+
+### Troubleshooting (BK-15)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A crawler gets the empty single-page app | its `user-agent` is not in the `vercel.json` list, or the page is not one of the five routes | add the name to the `has` value of the five rewrites (keep `vercel-routing.test.ts` green) |
+| The crawler page answers `503` | API down or `VITE_API_BASE_URL` wrong on that Vercel environment (Functions logs: `seo page unavailable: …`) | `curl "$API/api/public/seo/hub"`; fix the variable and redeploy |
+| `noindex` on a page that should be indexed | org without a published property, or the request host is neither the public domain nor the org's verified domain (e.g. the custom domain is not verified yet) | publish a property (activation wizard) / finish the domain verification (BK-17) |
+| Canonical on the wrong domain | `App__PublicSiteBaseUrl` of that Railway environment | section 2 |
+| A person sees the crawler page | their browser sends a crawler `user-agent` | none: the page has the same content; ask them to use a normal browser |
+
+### Out of scope / open
+
+- Languages: one URL per page (the app switches the language in the browser), so `hreflang` only points at the page itself and
+  `x-default`. Language variants by URL (`/en/…`) are not built.
+- `og:image` is the org logo (spec AC13), then the hero image, then the first property photo; images are used as stored (the
+  spec asks for 1200x630: the branding upload does not enforce a size).
+- The guide pages show the approved text, the disclaimers and the signup CTA; the rates table and the calculator of the
+  tourist tax page are live data of the app and are not repeated in the crawler page.
+- AC14 of spec-branded-booking-site asks for the sitemap to be registered "in `robots.txt` served at `/book/:orgSlug/robots.txt`":
+  a `robots.txt` is only read at the root of a host, so the root `robots.txt` declares the index `/sitemap-book.xml`, which
+  lists the sitemap of every org.
+
+## 9. Org subdomains and custom domains (BK-16)
+
+### What a host serves
+
+| Host | Served when | Otherwise |
+|---|---|---|
+| The public domain (`App__PublicSiteBaseUrl`), local development, `*.vercel.app` | always: the web app | |
+| `{label}.{PublicHost__BaseDomain}` | an org **chose the subdomain mode** with that label (`Org.Subdomain`) and the base domain is configured. Reserved labels (`www`, `api`, ...) never; the slug of an org on the path or custom-domain mode is **not** a host (it used to resolve) | "site not found" |
+| A custom domain | the org is on the custom-domain mode, the domain is **verified**, and the org's **effective** tier is Pro or Scale (a Pro tier nobody pays for is Starter) | "site not found" |
+
+The single decision point is `GET /api/public/resolve-host?host=` (`PublicHostResolver`): the web app start-up, the CORS check
+and the crawler pages all use it, so they cannot disagree. The answer is cached in memory for `PublicHost__ResolveCacheSeconds`
+(default 60 s), also when it is "no org" (in a **bounded** cache of 10,000 hosts: a flood of made-up hosts reaches neither the
+database nor the memory). Setting or verifying a domain, changing a slug or the branding drops the entries of the org's hosts
+at once; a plan change (Stripe webhook) reaches a cached host when the entry expires, within a minute.
+
+### What the web app does on such a host
+
+- **Start-up** (`src/main.tsx`, `HostAwareRoot`): the app's own hosts start at once. Any other host asks `resolve-host` first. A
+  host nobody serves shows "Sito non trovato" (with a link to the public site when `VITE_PUBLIC_SITE_URL` is set); a failed
+  check (network, 5xx) shows an error **with a retry**, never "not found". Neither is indexed.
+- **Routes**: only the org's booking site, for the org of the host. `/book/{another org}` is "not found" there (a domain can
+  never be made to show another host's site under its name); `/app`, `/login`, `/signup`, `/search`, `/p/*`, `/checkin` are "not
+  found", never a redirect to the login; the CasaZen legal documents (`/legale/*`) lead to the public web app.
+- **Clean addresses**: the browser shows `/`, `/property/{slug}`, `/my-bookings`, `/booking/{id}`, `/requests/{id}/confirm`; the
+  router keeps its `/book/{slug}/…` routes (`src/routes/host-site-window.ts`), so no page or link changed. `/book/{slug}/…`
+  addresses (older shares, Stripe return URLs) still work on the host.
+- No Auth0 is loaded on such a host.
+
+### CORS (backend)
+
+An org host calls the API from the browser, so its origin is allowed, and only that: see the "Org hosts" row of
+[`cors-security-headers.md`](cors-security-headers.md). Exactly the origin of the request is answered (`Vary: Origin`), only for
+`/api/public/*` and `/api/legal/*` (the site of an org calls nothing else and has no token), `https` on the default port, no
+credentials. A custom domain waiting for its verification, an unpaid one, a reserved or unknown label, another org's slug and any
+`*` pattern are rejected.
+
+### SEO of an org host
+
+- **Canonical**: the org's own host (`https://host/` and `https://host/property/{slug}`) when the org has one that is served;
+  otherwise `App__PublicSiteBaseUrl/book/{slug}`. The org page on the platform path of an org that has its own host points its
+  canonical at that host. `PublicOrgSiteUrls` is the only place that decides it.
+- **Crawlers** get the HTML of the landing page and of the properties at `/` and `/property/{slug}` (`vercel.json` crawler
+  rewrites, function `api/seo.ts` with `kind=host`): the backend resolves the host (`GET /api/public/seo/hosts/page`). On the
+  web app's own host the same paths serve the single-page app as before. A host nobody serves answers `404` with a noindex page.
+- **Sitemap**: `/sitemap.xml` of an org host is the org's sitemap on its own URLs (the function sends the Host to
+  `GET /api/public/sitemap.xml?host=`); an org with nothing published answers 404. An org with its own host is no longer in
+  `/sitemap-book.xml` (a sitemap lists only URLs of its own host).
+- **robots.txt** is the same file on every host (it is static); it also disallows the clean private paths (`/my-bookings`,
+  `/booking/`, `/requests/`, `/property/*/checkout`). Its `Sitemap:` lines name the web app's sitemaps, not the host's: the host's
+  owner submits `https://<domain>/sitemap.xml` in Search Console (section 4).
+
+### Product owner: what must exist for a host to work
+
+The code resolves and serves hosts. For **custom domains** the platform adds the domain to the Vercel project by itself (section 10);
+for **subdomains** the wildcard domain is configuration (D9).
+
+1. **Subdomains**: `PublicHost__BaseDomain` on Railway (section 2), and in Vercel → project → Settings → Domains the wildcard
+   `*.<base domain>` (Vercel needs the domain's nameservers for a wildcard certificate) on Production.
+2. **A custom domain** (Pro): the host sets it in the console (Impostazioni → Dominio) and creates the DNS records it shows; the
+   platform does the rest once the Vercel variables of section 10 are set (no step in the Vercel dashboard per domain). An
+   unverified domain is "site not found".
+3. The Vercel project's `VITE_API_BASE_URL` already points to the API; nothing else is needed: the API allows the host's origin
+   by itself once the domain is verified.
+
+### Checks
+
+```bash
+API=https://<railway url of the environment>
+HOST=<a verified custom domain or label.<base domain>>
+
+# the host is served by an org (200 + slug) / is not (404)
+curl -sS "$API/api/public/resolve-host?host=$HOST"
+curl -s -o /dev/null -w "%{http_code}\n" "$API/api/public/resolve-host?host=unknown.example.test"      # 404
+
+# CORS: the host's origin is allowed on a public endpoint, not on a private one, and a stranger is not
+curl -si -X OPTIONS "$API/api/public/orgs/<slug>" -H "Origin: https://$HOST" \
+  -H "Access-Control-Request-Method: GET" | grep -iE "^access-control-allow-origin|^vary"        # allow-origin: https://<host>
+curl -si -X OPTIONS "$API/api/properties" -H "Origin: https://$HOST" \
+  -H "Access-Control-Request-Method: GET" | grep -i "^access-control-allow-origin" || echo "rejected (expected)"
+curl -si -X OPTIONS "$API/api/public/orgs/<slug>" -H "Origin: https://nobody.<base domain>" \
+  -H "Access-Control-Request-Method: GET" | grep -i "^access-control-allow-origin" || echo "rejected (expected)"
+
+# the host's pages
+UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+curl -sS -A "$UA_BOT" "https://$HOST/" | grep -E "<title>|rel=\"canonical\""            # canonical https://<host>/
+curl -sS "https://$HOST/sitemap.xml" | grep -o "<loc>[^<]*</loc>"                          # URLs on https://<host>/
+curl -sS "https://$HOST/" | grep -c '<div id="root">'                                      # 1: people get the app
+```
+
+In the browser: `https://<host>/` shows the org's site (not a login), `https://<host>/property/<slug>` the property, the
+address bar keeps the clean path after a click, `https://<host>/book/<another org>` and `https://<host>/login` say "not found".
+
+### Troubleshooting (BK-16)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Vercel's own 404 / certificate error on the host | the domain is not in the Vercel project (or DNS does not point there yet) | section 10 (for a subdomain: PO step 1) |
+| "Sito non trovato" on a domain the host verified | the org's plan is not Pro (the domain stops being served), or the domain is not `Verified` | plan page; `POST /api/orgs/{id}/domain/verify` |
+| "Sito non trovato" right after verifying | the answer was cached (60 s) before the verification | wait a minute; the verification itself invalidates it |
+| The browser console shows a CORS error on the host | the origin is not an org host (not verified, not paid, wrong label) or the call is not a public endpoint | `curl` checks above |
+| A subdomain does not work although the org chose it | `PublicHost__BaseDomain` unset (the mode answers `subdomains_not_configured`) or the wildcard domain is not in Vercel | section 2, PO step 1 |
+
+## 10. Custom domains on Vercel (BK-17)
+
+### What the platform does
+
+A domain is `Verified` only when **all three** are true (`DomainVerificationService`, in this order, so the page names the first
+thing still missing):
+
+| Step | What is checked | If not | State, `detail` code |
+|---|---|---|---|
+| 0 | no other org has the same domain verified | | `Failed`, `domain_taken` |
+| 1 | the **ownership TXT** `_casazen-challenge.<domain>` has the org's random token (proves the host controls the DNS) | host creates it | `Pending`, `ownership_txt_missing` |
+| 2 | the domain **points at Vercel**: a CNAME to `PublicHost__VercelCnameTarget` or under one of `PublicHost__AcceptedCnameSuffixes`, or an A record in `PublicHost__VercelAddresses` (the root of a domain cannot have a CNAME) | host creates it | `Pending`, `dns_not_pointing` |
+| 3 | the domain is **on the Vercel project and Vercel says `verified: true`**: the platform reads it, adds it if it is not there (only now, after the ownership TXT, so nobody can make it claim a domain they do not control), and asks Vercel to verify | see below | see below |
+
+Step 3 outcomes: Vercel asks its own TXT (the domain was used on another Vercel account) → `Pending`, `vercel_verification_pending`
+(the record is shown in the console); no `Vercel__ApiToken` / `Vercel__ProjectId` → `Pending`, `vercel_not_configured`; Vercel refuses
+the token or the project → `Pending`, `vercel_unauthorized`; Vercel down or rate limiting → `Pending`, `vercel_unavailable`; the
+domain belongs to another Vercel project or account → `Failed`, `vercel_domain_in_use`; Vercel does not accept the domain →
+`Failed`, `vercel_rejected`. What only the platform can fix (not configured, token, Vercel down) is `Pending` and retried by itself,
+and **never takes a verified site down**.
+
+| When | What |
+|---|---|
+| The host sets the domain | Pro (effective tier) required; the domain is validated (never the web app's own domain, `*.vercel.app` or a name under `PublicHost__BaseDomain`); a token is generated. Saving **the same domain again** keeps the token the host already published and restarts the periodic checks |
+| "Controlla ora" (`POST /api/orgs/{id}/domain/verify`) | one check now, the answer says the status and the reason (`detail` + `message` in the language of the request) |
+| Hangfire `domain-recheck`, every 15 min | checks what is due: a domain not verified yet every `PublicHost__RecheckPendingMinutes` (30) until `PublicHost__MaxPendingDays` (14) after it was set (then only by hand; the console says so), a verified one every `PublicHost__RecheckVerifiedHours` (24); at most `PublicHost__RecheckBatchSize` (50) per run, longest-unchecked first; one org failing never stops the run; an org whose effective tier is not Pro/Scale is skipped |
+| A verified domain loses its records | demoted to `Failed` (host no longer served) after `PublicHost__FailuresBeforeDemotion` (2) consecutive failed checks, with the reason; it used to stay `Verified` for ever (A3-25) |
+| The host changes or drops the domain, or the org is deactivated | the domain is queued in the table `PendingDomainRemovals` and the job removes it from the Vercel project (a failed call is retried at the next run; a domain another org uses by then stays; the web app's own domain is never removed) |
+
+**Domains verified before BK-17** (by the ownership TXT alone) stay served. The first runs of `domain-recheck` check them: with the
+Vercel variables set the domain is added to the project (and kept `Verified` once Vercel accepts it); without them nothing changes
+(a verified site is never taken down for a platform setting); a domain whose TXT or DNS is gone is demoted after two checks.
+
+Whatever a check changes, the cached answers of the host are dropped at once (`resolve-host`, CORS), so a verified domain is served
+and a demoted one stops being served without waiting for the cache.
+
+What the console shows (`/app/short-rent/settings/domain`): the badge and the explanation of the state (waiting for DNS,
+activating, active, not active), the DNS records to create (TXT, CNAME, the A records for a domain without `www`, Vercel's own TXT
+when it asks), when it was last checked, whether the automatic check still runs, and, while no Vercel token is configured, that
+**nothing the host does will activate the domain yet**. A pending domain is never shown as "your site". On the host's dashboard a
+card (`SiteAddressCard`, only for the org administrator) suggests an address of their own while the site is on the platform path,
+follows a domain that is not active yet, and disappears once the address is settled; it can be dismissed.
+
+### Product owner: what to configure (D9)
+
+The platform signals a missing configuration; it never invents one. `GET /api/health/ready` has a `vercel` check: `degraded` names
+the missing variables (never their values) until the token and the project are set. Custom domains are optional, so it never stops
+a deploy.
+
+Railway, per environment (**test** and **production**):
+
+| Variable | Value |
+|---|---|
+| `Vercel__ApiToken` | the Vercel access token (secret: only Railway holds it) |
+| `Vercel__ProjectId` | the id (`prj_…`) or the name of the Vercel project that serves the web app of **this** environment |
+| `Vercel__TeamId` | the id (`team_…`) of the team that owns the project; leave unset for a project of a personal account |
+| `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0…`, `PublicHost__VercelAddresses__0…` | the DNS values Vercel recommends for the project (step 4); the defaults are the long-standing generic ones (`cname.vercel-dns.com`, suffix `.vercel-dns.com`, A `76.76.21.21`) |
+
+Steps:
+
+1. **Create the token** in Vercel (Account Settings → Tokens) with the narrowest scope the dashboard offers: scoped to the **one team**
+   that owns the project (not "all teams"), the shortest expiration you are willing to rotate, created from an account whose role on
+   the team is the lowest that can edit the domains of the project. The code uses the token only to read, add, verify and remove
+   **domains of one project**; it needs no access to deployments, environment variables or billing. *Which permission names the
+   dashboard shows for that is to be confirmed in the Vercel documentation (see the doubt at the end).* Never put the token in the
+   repository, in `appsettings*.json`, in a GitHub variable or in the frontend: Railway only.
+2. **Find the ids**: project id in Vercel → project → Settings → General → *Project ID*; team id in Team Settings → General → *Team ID*.
+3. **Set the variables** on Railway (test first), redeploy, and check `GET /api/health/ready`: `vercel` must be `healthy`.
+4. **Confirm the DNS values**: in Vercel → project → Settings → Domains, add any domain you own for the test and read the records
+   Vercel recommends (CNAME target and A address). Vercel may show project-specific values: if they differ from the defaults, set
+   `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0` and `PublicHost__VercelAddresses__0` to them (keep the old
+   suffix too: hosts that already created the generic record keep working). Remove the test domain from Vercel afterwards.
+5. **Subdomains** are separate: the wildcard domain of section 9 (PO step 1).
+6. **Try it end to end** on the test environment with a real domain on a Pro org: set it in the console, create the records, press
+   "Controlla ora" (or wait up to 30 minutes), expect `Verified`; open `https://<domain>/` (certificate issued by Vercel). Then drop the
+   domain in the console and check it leaves the Vercel project at the next run of `domain-recheck`.
+7. Before promoting to production, repeat steps 3 to 6 there. Never promote with the test token: the project and the token are per
+   environment.
+
+### Checks
+
+```bash
+API=https://<railway url of the environment>
+
+# configuration: "vercel": "healthy" (or "degraded" naming the missing variable names)
+curl -sS "$API/api/health/ready" | grep -o '"vercel"[^}]*'
+
+# the owner's view (token of an org administrator): state, reason, records, last check
+curl -sS -H "Authorization: Bearer $TOKEN" "$API/api/orgs/$ORG_ID/domain"
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" "$API/api/orgs/$ORG_ID/domain/verify"
+
+# what the DNS says (from anywhere)
+dig +short TXT _casazen-challenge.<domain>
+dig +short CNAME <domain>
+dig +short A <domain>
+```
+
+Domains waiting to leave the project (read-only SQL on the environment's schema): `select * from "PendingDomainRemovals";` (rows
+stay while Vercel fails: `Attempts`, `LastError` hold a status code, never a provider message). The job: Hangfire dashboard →
+Recurring jobs → `domain-recheck` ([`hangfire.md`](hangfire.md)).
+
+### Troubleshooting (BK-17)
+
+| `detail` / symptom | Cause | Fix |
+|---|---|---|
+| `ownership_txt_missing` | the TXT is missing, has another value, or the DNS has not propagated | host: create the TXT exactly as shown; wait (hours at most); "Controlla ora" |
+| `dns_not_pointing` | no CNAME to Vercel's target (or A record of Vercel) yet; a domain **without `www`** cannot have a CNAME | host: CNAME for `www.`, A records for the root |
+| `dns_not_pointing` and the host's DNS provider **proxies** the record (e.g. Cloudflare's orange cloud) | the proxy answers with its own addresses, so the record does not look like Vercel's | host: set the record to "DNS only" |
+| `dns_not_pointing` although the host did it as the page says | Vercel recommends a target/address that is not in the accepted list | step 4: add it to `PublicHost__AcceptedCnameSuffixes` / `PublicHost__VercelAddresses` |
+| `vercel_verification_pending` | the domain is used on another Vercel account/project; Vercel asks its own TXT (`_vercel.<domain>`) | host: create the second TXT shown in the console |
+| `vercel_not_configured` (the console says activation is not available) | `Vercel__ApiToken` or `Vercel__ProjectId` missing | steps 1 to 3; domains activate by themselves at the next run |
+| `vercel_unauthorized` | token expired/revoked, wrong team/project, or the token has no access to the project | create a new token (step 1), check `Vercel__ProjectId` / `Vercel__TeamId`; the logs show `Vercel Domains API … answered 401/403/404` with Vercel's error code (never the token) |
+| `vercel_unavailable` | Vercel down, timeout or 429 | nothing: retried by itself |
+| `vercel_domain_in_use` | the domain is on another Vercel project of the account (or another account) | remove it there, or use another domain; then "Controlla ora" |
+| `vercel_rejected` | Vercel does not accept the name | host: check the spelling |
+| `domain_taken` | another org already has this domain verified | one org per domain: that org must drop it first |
+| A verified domain turned `Failed` | its records were removed or changed (two checks in a row) | host: restore them, then "Controlla ora" |
+| A domain does not activate by itself any more | it has been pending for more than `PublicHost__MaxPendingDays` | host: fix the records and press "Controlla ora", or save the domain again |
+| The domain stays on the Vercel project after the host dropped it | the removal call fails (`PendingDomainRemovals.LastError`) | fix the token/permissions; the job retries |
+
+### Doubts to confirm (Vercel documentation was not reachable when this was written)
+
+- The Vercel REST paths and fields are those of the public API as known: `POST /v10/projects/{id}/domains` (body `name`),
+  `GET /v9/projects/{id}/domains/{domain}`, `POST /v9/projects/{id}/domains/{domain}/verify`, `DELETE /v9/projects/{id}/domains/{domain}`,
+  `teamId` as a query parameter, `verified` and `verification[]` in the answer. **Check them against the current reference before
+  the first activation**; `VercelDomainsClient` is the only place to change, covered by `VercelDomainsClientTests`.
+- The default CNAME target / suffix / A address are the well-known generic values; the dashboard of the project is the authority (step 4).
+- The exact permission names of a minimum-scope Vercel token (step 1).
+
 ## Out of scope
 
-- The `/p/*` pages are rendered in the browser (no prerender): `og:url`, JSON-LD, `noindex` on "not found" pages and
-  the sitemaps of the hosts' booking sites are task BK-15 (A8-09, A8-29).
 - `GET /api/public/sitemap.xml` also answers on the API host (the function needs it); it is declared nowhere.
+- Registering domains, managing the host's DNS or issuing certificates: the host does the DNS, Vercel issues the certificate.
+- Redirecting `apex` to `www` for a host's domain (the host chooses which name to use; both can be added as separate domains).
