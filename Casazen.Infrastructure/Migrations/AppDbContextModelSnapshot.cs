@@ -2173,6 +2173,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -2184,6 +2187,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsPaused")
@@ -2256,11 +2262,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId", "Slug")
                         .IsUnique()
                         .HasDatabaseName("UIX_Properties_OrgId_Slug")
-                        .HasFilter("\"Slug\" IS NOT NULL");
+                        .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false");
 
                     b.HasIndex("Address", "City", "PostalCode", "IsActive")
                         .IsUnique()
-                        .HasFilter("\"IsActive\" = true");
+                        .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
 
                     b.ToTable("Properties");
                 });

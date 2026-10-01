@@ -167,9 +167,8 @@ public partial class SupplierService(
         // email lookup or auto-provisioning a duplicate.
         if (user is not null)
         {
+            // PL-05 (A1-40): only SupplierOrgId. User.OrgId is the host org, set by the host onboarding alone.
             user.SupplierOrgId = org.Id;
-            if (user.OrgId is null)
-                user.OrgId = org.Id;
             user.UpdatedAt = DateTime.UtcNow;
             logger.LogInformation("Linked user {UserId} to supplier org {OrgId} during registration", userId, org.Id);
         }
@@ -307,9 +306,8 @@ public partial class SupplierService(
             method = "verified email";
         }
 
+        // PL-05 (A1-40): only SupplierOrgId. User.OrgId is the host org, set by the host onboarding alone.
         user.SupplierOrgId = profile.OrgId;
-        if (user.OrgId is null)
-            user.OrgId = profile.OrgId;
         user.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
@@ -750,8 +748,8 @@ public partial class SupplierService(
             }
         }
 
-        // Step 1b: User.OrgId — covers the case where the user is ONLY a supplier
-        // (not dual-role) and their OrgId points to a supplier org.
+        // Step 1b: User.OrgId — legacy rows only: before PL-05 (A1-40) a supplier-only account had OrgId = its supplier
+        // org. The migration SeparateSupplierOrgFromHostOrgId moved that link to SupplierOrgId; nothing writes it any more.
         if (user.OrgId is Guid linkedOrgId)
         {
             var linkedOrg = await db.Orgs.AsNoTracking()
@@ -824,9 +822,8 @@ public partial class SupplierService(
         user.SupplierOrgId = org.Id;
         user.UpdatedAt = DateTime.UtcNow;
 
-        // If the user doesn't have an OrgId at all, set it too (single-role supplier).
-        if (user.OrgId is null)
-            user.OrgId = org.Id;
+        // PL-05 (A1-40): User.OrgId stays untouched. It is the host org, set by the host onboarding alone: a supplier org
+        // there would become the tenant of the properties and bookings of a supplier who later becomes a host.
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Auto-provisioned supplier org {OrgId} for user {UserId}", org.Id, userId);

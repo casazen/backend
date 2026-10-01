@@ -55,3 +55,22 @@ columns.
   onboarding right after the org is provisioned) uses `IgnoreQueryFilters()` with an explicit
   `OrgId`/token predicate and a short comment saying why. `IgnoreQueryFilters([AppDbContext.TenantQueryFilter])`
   removes only the tenant filter.
+
+## The tenant is a host org only (PL-05, A1-40)
+
+The tenant of a request is `User.OrgId`, and since PL-05 only when that org has `OrgType = Host`
+(`TenantContext.ResolveAsync`, `OrgContextResolver`, the host onboarding gate). A supplier's org is reached only
+through `User.SupplierOrgId` and the explicit `SupplierOrgId` predicates of the supplier tables (allow-listed in
+`TenantQueryFilterArchitectureTests`): a supplier org never scopes the tenant filter, so a supplier-only account reads
+and writes no `ITenantOwned` row, and a user who is host and supplier sees the host rows of its host org only.
+
+The migration `SeparateSupplierOrgFromHostOrgId` moves the existing rows to this rule. It moves **no** tenant row
+(`ITenantOwned` tables keep their `OrgId`): a supplier org that already held host rows becomes `OrgType = Host` in
+place, and only its supplier side (profile, availability, `SupplierOrgId` links) moves to a new supplier org.
+Procedure, pre-deploy query and post-deploy checks: [`suppliers.md` §13](suppliers.md#13-the-supplier-org-never-becomes-the-host-org--pl-05-a1-40).
+Extra check after the deploy, must be 0 (every tenant row is on a host org):
+
+```sql
+SELECT count(*) FROM "Properties" p JOIN "Orgs" o ON o."Id" = p."OrgId" WHERE o."OrgType" <> 0;
+SELECT count(*) FROM "Bookings" b JOIN "Orgs" o ON o."Id" = b."OrgId" WHERE o."OrgType" <> 0;
+```

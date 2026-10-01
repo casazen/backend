@@ -37,10 +37,11 @@ public class ServiceRequestService(
         // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
 
-        // IgnoreQueryFilters: scoped by the explicit OrgId check below. command.OrgId comes from
-        // OrgContextResolver, which may provision the org after the tenant filter cached a null org.
+        // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId check below. command.OrgId comes from
+        // OrgContextResolver, which may provision the org after the tenant filter cached a null org. The soft-delete
+        // filter stays (PC-05): no new request on a deleted property.
         var property = await db.Properties
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Include(p => p.Org)
             .FirstOrDefaultAsync(p => p.Id == command.PropertyId, cancellationToken);
 

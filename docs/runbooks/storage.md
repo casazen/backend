@@ -17,6 +17,7 @@ Object keys:
 |---|---|
 | public | `properties/{propertyId}/photos/{random}.{ext}` |
 | public | `suppliers/{supplierOrgId}/photos/{random}.{ext}` |
+| public | `orgs/{orgId}/branding/{kind}/{random}.{ext}` — `kind` = `logo` or `hero` of the public booking site (BK-12): type and pixel size checked from the bytes, the previous image is deleted on replace/remove |
 | private | `properties/{propertyId}/documents/{random}.{ext}` |
 | private | `guest-documents/{orgId}/{guestId}/{random}.{ext}` |
 | private | `leases/{orgId}/{leaseId}/registration/{random}.pdf` (RLI receipts, LT-01: only through `GET /api/leases/{id}/registration/receipt`) |
