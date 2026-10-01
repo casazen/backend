@@ -44,7 +44,9 @@ public class UsersController(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        pageSize = Math.Min(pageSize, 100);
+        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
         logger.LogInformation("Admin: listing users page={Page} pageSize={PageSize}", page, pageSize);
         var (users, total) = await userService.GetPagedAsync(search, role, isActive, page, pageSize);
         var userList = users.ToList();
@@ -238,7 +240,8 @@ public class UsersController(
         foreach (var name in dto.Roles.Distinct())
         {
             if (!Enum.TryParse<UserRole>(name, ignoreCase: true, out var role) || !AdminManageableRoles.All.Contains(role))
-                return BadRequest(new { error = $"Unknown or unmanageable role: {name}" });
+                return this.ApiProblem(
+                    StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "UserRoleNotManageable", name);
             roles.Add(role);
         }
 

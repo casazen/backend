@@ -38,7 +38,8 @@ public interface IUserService
         string? search, string? role, bool? isActive, int page, int pageSize);
 
     /// <summary>
-    /// Backfills missing email/name from Auth0 Management API for admin user listings.
+    /// Backfills missing email/name from Auth0 Management API for admin user listings. The Auth0 profiles of the
+    /// page are fetched with bounded parallelism (not one call after the other, A1-26); the DB writes stay sequential.
     /// </summary>
     Task EnrichUsersFromAuth0Async(IList<User> users);
 
@@ -50,6 +51,7 @@ public interface IUserService
     /// <exception cref="KeyNotFoundException">The user does not exist.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// <see cref="UserActivationErrors.UserInactive"/>: the roles of a deactivated user are suspended, reactivate it first.
+    /// <see cref="UserActivationErrors.LastActiveAdmin"/>: moving the last active administrator to another role.
     /// </exception>
     Task<Auth0SyncResult> ChangeRoleAsync(string id, UserRole newRole, string adminSub);
 

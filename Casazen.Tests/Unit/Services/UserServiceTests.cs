@@ -242,9 +242,104 @@ public class UserServiceTests
         _auth0Mock.Verify(a => a.AssignRolesAsync(
             userId, It.Is<IReadOnlyCollection<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Supplier })), It.IsAny<CancellationToken>()), Times.Once);
         _auth0Mock.Verify(a => a.RemoveRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        // DB memberships reconciled with the whole target set: every held role granted, only Admin (not held) revoked.
         _membershipMock.Verify(m => m.GrantAsync(
-            userId, It.Is<IEnumerable<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Supplier })), It.IsAny<CancellationToken>()), Times.Once);
-        _membershipMock.Verify(m => m.RevokeAsync(It.IsAny<string>(), It.IsAny<IEnumerable<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+            userId,
+            It.Is<IEnumerable<UserRole>>(r => r.ToHashSet().SetEquals(new[] { UserRole.PropertyOwner, UserRole.LongTermLandlord, UserRole.Supplier })),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _membershipMock.Verify(m => m.RevokeAsync(
+            userId, It.Is<IEnumerable<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Admin })), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_RetryAfterPartialAuth0Failure_ReconcilesDbMembershipsOfAlreadyGrantedRole()
+    {
+        // Arrange: a previous attempt granted Supplier in Auth0, then failed to revoke LongTermLandlord. On the retry
+        // Auth0 already holds Supplier, so the Auth0 difference is only the revoke — the DB must still get Supplier.
+        var userId = "auth0|partial";
+        var user = new User { Id = userId, Role = UserRole.PropertyOwner };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(
+                Auth0SyncResult.Synced, [UserRole.PropertyOwner, UserRole.LongTermLandlord, UserRole.Supplier]));
+
+        // Act
+        var result = await _service.UpdateRolesAsync(userId, [UserRole.PropertyOwner, UserRole.Supplier], "auth0|admin");
+
+        // Assert
+        Assert.True(result.RoleSync.Succeeded);
+        Assert.Equal([UserRole.PropertyOwner, UserRole.Supplier], result.Roles);
+        Assert.Equal([UserRole.LongTermLandlord], result.RolesRevoked);
+        _auth0Mock.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _membershipMock.Verify(m => m.GrantAsync(
+            userId, It.Is<IEnumerable<UserRole>>(r => r.Contains(UserRole.Supplier)), It.IsAny<CancellationToken>()), Times.Once);
+        _membershipMock.Verify(m => m.RevokeAsync(
+            userId, It.Is<IEnumerable<UserRole>>(r => r.Contains(UserRole.LongTermLandlord) && !r.Contains(UserRole.Supplier)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_NoManageableRoleLeftOnGuest_KeepsUnmanagedPrimaryRole()
+    {
+        // A Guest (role outside the admin-manageable set) saved without any checkbox keeps Guest, not None.
+        var userId = "auth0|guest";
+        var user = new User { Id = userId, Role = UserRole.Guest };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.Guest]));
+
+        var result = await _service.UpdateRolesAsync(userId, [], "auth0|admin");
+
+        Assert.True(result.RoleSync.Succeeded);
+        Assert.Equal(UserRole.Guest, user.Role);
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRolesAsync_DbSaysAdminButAuth0DoesNot_StillGuardsLastActiveAdmin()
+    {
+        var userId = "auth0|db-admin";
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(new User { Id = userId, Role = UserRole.Admin });
+        _repoMock.Setup(r => r.HasOtherActiveAdminAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner]));
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.UpdateRolesAsync(userId, [UserRole.PropertyOwner], "auth0|admin"));
+
+        Assert.Equal(UserActivationErrors.LastActiveAdmin, ex.Code);
+    }
+
+    [Fact]
+    public async Task ChangeRoleAsync_LastActiveAdminToOtherRole_ThrowsWithoutAuth0Calls()
+    {
+        var userId = "auth0|only-admin";
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(new User { Id = userId, Role = UserRole.Admin });
+        _repoMock.Setup(r => r.HasOtherActiveAdminAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.ChangeRoleAsync(userId, UserRole.PropertyOwner, "auth0|admin"));
+
+        Assert.Equal(UserActivationErrors.LastActiveAdmin, ex.Code);
+        _auth0Mock.Verify(a => a.AssignRoleAsync(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrichUsersFromAuth0Async_SeveralIncompleteUsers_FetchesAllProfilesAndSkipsCompleteOnes()
+    {
+        var complete = new User { Id = "auth0|complete", Email = "a@b.it", FirstName = "A", LastName = "B" };
+        var incomplete = Enumerable.Range(0, 6)
+            .Select(i => new User { Id = $"auth0|u{i}", Email = $"u{i}@b.it" })
+            .ToList();
+        _auth0Mock.Setup(a => a.GetUserProfileAsync(It.Is<string>(id => id.StartsWith("auth0|u"))))
+            .ReturnsAsync((string id) => new Auth0UserProfile($"{id}@x.it", "Nome", "Cognome", true));
+
+        await _service.EnrichUsersFromAuth0Async([complete, .. incomplete]);
+
+        _auth0Mock.Verify(a => a.GetUserProfileAsync("auth0|complete"), Times.Never);
+        Assert.All(incomplete, u => Assert.Equal(("Nome", "Cognome"), (u.FirstName, u.LastName)));
+        Assert.All(incomplete, u => Assert.StartsWith("u", u.Email)); // existing e-mail never overwritten
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Exactly(6));
     }
 
     [Fact]

@@ -16,6 +16,9 @@ public class UserService(
     IUserAuthorizationCache authorizationCache,
     ILogger<UserService> logger) : IUserService
 {
+    /// <summary>Concurrent Auth0 profile reads of one admin listing page (A1-26).</summary>
+    private const int MaxConcurrentAuth0ProfileReads = 4;
+
     /// <summary>Roles driven by the onboarding rental-type choice. Other roles (Admin, Supplier…) are never touched.</summary>
     private static readonly UserRole[] OnboardingRoles =
     [
@@ -216,16 +219,33 @@ public class UserService(
     /// <inheritdoc />
     public async Task EnrichUsersFromAuth0Async(IList<User> users)
     {
-        foreach (var user in users)
-        {
-            if (!string.IsNullOrWhiteSpace(user.Email) &&
-                !string.IsNullOrWhiteSpace(user.FirstName) &&
-                !string.IsNullOrWhiteSpace(user.LastName))
-            {
-                continue;
-            }
+        var incomplete = users
+            .Where(u => string.IsNullOrWhiteSpace(u.Email) ||
+                        string.IsNullOrWhiteSpace(u.FirstName) ||
+                        string.IsNullOrWhiteSpace(u.LastName))
+            .ToList();
+        if (incomplete.Count == 0)
+            return;
 
-            var profile = await auth0Management.GetUserProfileAsync(user.Id);
+        // A1-26: the profiles used to be fetched one after the other (up to a whole page of Management API round
+        // trips). They are now fetched in parallel, bounded so a page cannot burst past the Management API rate limit.
+        // Only the HTTP calls run concurrently: the DbContext is not thread-safe, so the writes below stay sequential.
+        using var throttle = new SemaphoreSlim(MaxConcurrentAuth0ProfileReads);
+        var profiles = await Task.WhenAll(incomplete.Select(async user =>
+        {
+            await throttle.WaitAsync();
+            try
+            {
+                return (User: user, Profile: await auth0Management.GetUserProfileAsync(user.Id));
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        }));
+
+        foreach (var (user, profile) in profiles)
+        {
             if (profile is null)
                 continue;
 
@@ -269,6 +289,11 @@ public class UserService(
             throw new DomainRuleException(UserActivationErrors.UserInactive, "UserInactiveRoleChange");
 
         var oldRole = user.Role;
+
+        // Same guard as UpdateRolesAsync (A1-17): never leave the platform without an active administrator.
+        if (oldRole == UserRole.Admin && newRole != UserRole.Admin &&
+            !await repository.HasOtherActiveAdminAsync(id))
+            throw new DomainRuleException(UserActivationErrors.LastActiveAdmin, "UserLastActiveAdminRoleChange");
 
         // Auth0 first: if it fails nothing changes in the DB and the admin can simply retry.
         // Only the previous primary role is removed; any other role (Supplier, LongTermLandlord…) is kept.
@@ -333,46 +358,67 @@ public class UserService(
         }
 
         var current = currentRoles.Roles.Where(AdminManageableRoles.All.Contains).ToHashSet();
-        var toGrant = target.Except(current).ToArray();
-        var toRevoke = current.Except(target).ToArray();
-
-        if (toGrant.Length == 0 && toRevoke.Length == 0)
-            return new RoleSetUpdateResult(user, target.ToArray(), [], [], Auth0SyncResult.Synced);
+        var toGrant = InPriorityOrder(target.Except(current));
+        var toRevoke = InPriorityOrder(current.Except(target));
 
         // Would this leave the platform with zero active admins? Checked before touching Auth0, same spirit as the
-        // deactivation guard (UserRepository.SetActiveAsync).
-        if (toRevoke.Contains(UserRole.Admin) && !await repository.HasOtherActiveAdminAsync(id, cancellationToken))
+        // deactivation guard (UserRepository.SetActiveAsync). The DB primary role counts too: it is what the guard
+        // itself reads, and it can still say Admin after an out-of-band Auth0 change.
+        var removesAdmin = !target.Contains(UserRole.Admin) && (current.Contains(UserRole.Admin) || user.Role == UserRole.Admin);
+        if (removesAdmin && !await repository.HasOtherActiveAdminAsync(id, cancellationToken))
             throw new DomainRuleException(UserActivationErrors.LastActiveAdmin, "UserLastActiveAdminRoleChange");
 
         // Auth0 first: if it fails nothing changes in the DB and the admin can simply retry.
-        var sync = await auth0Management.AssignRolesAsync(id, toGrant, cancellationToken);
-        if (sync.Succeeded && toRevoke.Length > 0)
+        var sync = Auth0SyncResult.Synced;
+        if (toGrant.Count > 0)
+            sync = await auth0Management.AssignRolesAsync(id, toGrant, cancellationToken);
+        if (sync.Succeeded && toRevoke.Count > 0)
             sync = await auth0Management.RemoveRolesAsync(id, toRevoke, cancellationToken);
 
         if (!sync.Succeeded)
         {
             logger.LogWarning(
                 "Roles update not applied, Auth0 sync failed ({ErrorCode}): userId={UserId} target=[{Target}] changedBy={AdminId}",
-                sync.ErrorCode, id, string.Join(", ", target), adminSub);
-            return new RoleSetUpdateResult(user, current.ToArray(), [], [], sync);
+                sync.ErrorCode, id, string.Join(", ", InPriorityOrder(target)), adminSub);
+            return new RoleSetUpdateResult(user, InPriorityOrder(current), [], [], sync);
         }
 
+        // The DB is reconciled with the whole target set, not just with the Auth0 difference: a previous attempt may
+        // have been interrupted between Auth0 and the DB (e.g. grant done, revoke failed), and its retry finds no
+        // Auth0 difference for the part already applied. Grant is idempotent and revoking a context the user does not
+        // hold is a no-op; it also drops legacy memberships of a role the admin removed (A1-29).
         var oldRole = user.Role;
-        user.Role = AdminManageableRoles.All.FirstOrDefault(target.Contains, UserRole.None);
-        user.UpdatedAt = DateTime.UtcNow;
-        await repository.UpdateAsync(user);
+        var newRole = AdminManageableRoles.All.FirstOrDefault(
+            target.Contains,
+            // A role outside the admin-manageable set (Guest, Staff…) is not the admin's to clear.
+            AdminManageableRoles.All.Contains(oldRole) ? UserRole.None : oldRole);
+        if (newRole != oldRole)
+        {
+            user.Role = newRole;
+            user.UpdatedAt = DateTime.UtcNow;
+            await repository.UpdateAsync(user);
+        }
 
-        if (toRevoke.Length > 0)
-            await membershipService.RevokeAsync(id, toRevoke, cancellationToken);
-        if (toGrant.Length > 0)
-            await membershipService.GrantAsync(id, toGrant, cancellationToken);
+        var notTarget = AdminManageableRoles.All.Where(r => !target.Contains(r)).ToList();
+        if (notTarget.Count > 0)
+            await membershipService.RevokeAsync(id, notTarget, cancellationToken);
+        if (target.Count > 0)
+            await membershipService.GrantAsync(id, target, cancellationToken);
         authorizationCache.Invalidate(id);
 
+        // Audit line (AD-AC5): who changed what, with the previous primary role and the exact difference.
         logger.LogInformation(
-            "Roles changed: userId={UserId} oldRole={OldRole} newRole={NewRole} granted=[{Granted}] revoked=[{Revoked}] changedBy={AdminId}",
-            id, oldRole, user.Role, string.Join(", ", toGrant), string.Join(", ", toRevoke), adminSub);
+            "Roles changed: userId={UserId} oldRole={OldRole} newRole={NewRole} oldRoles=[{OldRoles}] newRoles=[{NewRoles}] granted=[{Granted}] revoked=[{Revoked}] changedBy={AdminId}",
+            id, oldRole, newRole, string.Join(", ", InPriorityOrder(current)), string.Join(", ", InPriorityOrder(target)),
+            string.Join(", ", toGrant), string.Join(", ", toRevoke), adminSub);
 
-        return new RoleSetUpdateResult(user, target.ToArray(), toGrant, toRevoke, sync);
+        return new RoleSetUpdateResult(user, InPriorityOrder(target), toGrant, toRevoke, sync);
+    }
+
+    private static IReadOnlyList<UserRole> InPriorityOrder(IEnumerable<UserRole> roles)
+    {
+        var set = roles.ToHashSet();
+        return AdminManageableRoles.All.Where(set.Contains).ToList();
     }
 
     /// <inheritdoc />

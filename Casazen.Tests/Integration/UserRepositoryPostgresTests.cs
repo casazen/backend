@@ -131,15 +131,16 @@ public class UserRepositoryPostgresTests
     }
 
     private static User NewUser(
-        string id, string email, DateTime createdAt, bool isActive = true, UserRole role = UserRole.PropertyOwner) => new()
-    {
-        Id = id,
-        Email = email,
-        FirstName = "Test",
-        LastName = "User",
-        Role = role,
-        IsActive = isActive,
-        CreatedAt = createdAt,
-        UpdatedAt = createdAt,
-    };
+        string id, string email, DateTime createdAt, bool isActive = true, UserRole role = UserRole.PropertyOwner) =>
+        new()
+        {
+            Id = id,
+            Email = email,
+            FirstName = "Test",
+            LastName = "User",
+            Role = role,
+            IsActive = isActive,
+            CreatedAt = createdAt,
+            UpdatedAt = createdAt,
+        };
 }

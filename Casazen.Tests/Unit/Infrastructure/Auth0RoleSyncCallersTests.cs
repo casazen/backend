@@ -114,6 +114,66 @@ public class Auth0RoleSyncCallersTests
     }
 
     [Fact]
+    public async Task UpdateRoles_UnmanageableRole_Returns400ValidationProblemWithoutCallingService()
+    {
+        var userService = new Mock<IUserService>(MockBehavior.Strict);
+        var controller = CreateUsersController(userService.Object, "auth0|admin");
+
+        var result = await controller.UpdateRoles(
+            "auth0|target", new Casazen.Web.DTOs.Users.UpdateUserRolesDto { Roles = ["PropertyOwner", "Staff"] });
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problem = Assert.IsAssignableFrom<ProblemDetails>(objectResult.Value);
+        Assert.Equal(ProblemCodes.ValidationError, problem.Extensions["code"]);
+        userService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task UpdateRoles_Auth0SyncFails_Returns502WithCode()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner };
+        var userService = new Mock<IUserService>();
+        userService.Setup(s => s.UpdateRolesAsync(
+                "auth0|target", It.IsAny<IReadOnlyCollection<UserRole>>(), "auth0|admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoleSetUpdateResult(
+                user, [UserRole.PropertyOwner], [], [], Auth0SyncResult.Failed(Auth0SyncResult.RateLimitedCode)));
+        var controller = CreateUsersController(userService.Object, "auth0|admin");
+
+        var result = await controller.UpdateRoles(
+            "auth0|target", new Casazen.Web.DTOs.Users.UpdateUserRolesDto { Roles = ["PropertyOwner", "Supplier"] });
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+        var problem = Assert.IsAssignableFrom<ProblemDetails>(objectResult.Value);
+        Assert.Equal(Auth0SyncResult.RateLimitedCode, problem.Extensions["code"]);
+    }
+
+    [Fact]
+    public async Task UpdateRoles_Synced_ReturnsResultingRolesAndDifference()
+    {
+        var user = new User { Id = "auth0|target", Role = UserRole.PropertyOwner };
+        var userService = new Mock<IUserService>();
+        userService.Setup(s => s.UpdateRolesAsync(
+                "auth0|target",
+                It.Is<IReadOnlyCollection<UserRole>>(r => r.Count == 2 && r.Contains(UserRole.Supplier)),
+                "auth0|admin",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoleSetUpdateResult(
+                user, [UserRole.PropertyOwner, UserRole.Supplier], [UserRole.Supplier], [], Auth0SyncResult.Synced));
+        var controller = CreateUsersController(userService.Object, "auth0|admin");
+
+        var result = await controller.UpdateRoles(
+            "auth0|target", new Casazen.Web.DTOs.Users.UpdateUserRolesDto { Roles = ["PropertyOwner", "supplier"] });
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<Casazen.Web.DTOs.Users.UserRolesDto>(ok.Value);
+        Assert.Equal(["PropertyOwner", "Supplier"], dto.Roles);
+        Assert.Equal(["Supplier"], dto.RolesGranted);
+        Assert.Empty(dto.RolesRevoked);
+    }
+
+    [Fact]
     public async Task OrgBillingAdmin_NoJwtRoleButShortRentMembership_Succeeds()
     {
         const string sub = "auth0|billing-host";

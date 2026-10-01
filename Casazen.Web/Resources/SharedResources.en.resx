@@ -36,6 +36,9 @@
   <data name="UserInactiveRoleChange" xml:space="preserve">
     <value>The user is deactivated: reactivate it before changing its role.</value>
   </data>
+  <data name="UserRoleNotManageable" xml:space="preserve">
+    <value>Unknown role, or a role an administrator cannot manage: {0}.</value>
+  </data>
   <data name="UserLastActiveAdminRoleChange" xml:space="preserve">
     <value>You cannot remove the Administrator role from the last active administrator: appoint another administrator first.</value>
   </data>
