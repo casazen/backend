@@ -429,6 +429,30 @@
   <data name="OrgSlugTaken" xml:space="preserve">
     <value>This web address (slug) is already used, or was used, by another organization.</value>
   </data>
+  <data name="OrgBrandingColorInvalid" xml:space="preserve">
+    <value>The color is not valid: use a hex code, for example #1a6b8f.</value>
+  </data>
+  <data name="OrgBrandingThemeInvalid" xml:space="preserve">
+    <value>This theme is not available for the public site.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
+    <value>The tagline cannot exceed {0} characters.</value>
+  </data>
+  <data name="OrgBrandingTaglineTooLongInput" xml:space="preserve">
+    <value>The tagline is too long.</value>
+  </data>
+  <data name="OrgBrandingImageEmpty" xml:space="preserve">
+    <value>Select an image to upload.</value>
+  </data>
+  <data name="OrgBrandingImageTooLarge" xml:space="preserve">
+    <value>The image exceeds the maximum size of {0} MB.</value>
+  </data>
+  <data name="OrgBrandingImageTypeInvalid" xml:space="preserve">
+    <value>Unsupported format: upload a PNG, JPEG or WebP image.</value>
+  </data>
+  <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
+    <value>Invalid image size: it must be at least {0}×{1} pixels and at most {2}×{3}.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
   </data>
