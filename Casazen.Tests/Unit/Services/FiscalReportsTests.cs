@@ -762,4 +762,36 @@ public class FiscalReportsTests
         db.Payments.Add(payment);
         return payment;
     }
+
+    /// <summary>
+    /// PC-05, A2-18: the EF Core SoftDelete filter on <see cref="Property"/> propagates through
+    /// <c>Include</c>/navigation (it turns the join into a filtered one), so without
+    /// <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c> a soft-deleted property's payment would silently vanish
+    /// from every fiscal report (<c>FiscalService.Reports.cs</c>, <c>ScopedPayments</c>). This locks in that
+    /// <see cref="FiscalService.GetAnnualReportAsync"/> still reports it.
+    /// </summary>
+    [Fact]
+    public async Task GetAnnualReport_PropertySoftDeletedAfterThePayment_StillReportsItsIncome()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var a = SeedProperty(db, orgId, "A Cedolare 21", taxpayer: TaxpayerX);
+        SeedRegime(db, a, StrFiscalRegime.CedolareSecca21);
+        var stayA = SeedStay(db, a, Day(2026, 3, 1), nights: 3, totalPrice: 1100m, touristTax: 100m);
+        SeedPayment(db, stayA, 1100m, Instant(2026, 3, 1, 10));
+        await db.SaveChangesAsync();
+
+        a.IsDeleted = true;
+        a.DeletedAt = Instant(2026, 6, 1, 0);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var sut = CreateService(db);
+        var report = await sut.GetAnnualReportAsync(new HostScope(orgId, null), TaxYear);
+
+        var line = Assert.Single(report.Properties, l => l.PropertyId == a.Id);
+        Assert.Equal(1100m, line.GrossIncome);
+        Assert.Equal(100m, line.TouristTax);
+    }
 }
