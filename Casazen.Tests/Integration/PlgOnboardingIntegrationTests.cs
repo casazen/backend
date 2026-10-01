@@ -237,7 +237,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var supplierOrg = new Org
+            var supplierOrg = new Casazen.Core.Entities.Org
             {
                 Name = "Fornitore Srl",
                 Slug = $"plg-supplier-{Guid.NewGuid():N}"[..30],

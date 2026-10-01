@@ -118,10 +118,10 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
 
         var user = await dbContext.Users.FirstAsync(u => u.Id == userId, cancellationToken);
 
-        // A1-40: the previous OrgId, if any, was rejected above by GetLinkedOrgAsync because it is not a Host
-        // org — most often the caller's own Supplier org, linked at supplier registration before the host
-        // onboarding ever ran. Keep that link on SupplierOrgId (normally already set by SupplierService) so the
-        // supplier console keeps working, instead of silently losing it once OrgId is replaced below.
+        // PL-05 (A1-40): the previous OrgId, if any, was rejected above by GetLinkedOrgAsync because it is not a Host
+        // org — a legacy link to the caller's own Supplier org (written by the supplier registration before PL-05).
+        // Keep that link on SupplierOrgId (normally already set) so the supplier console keeps working, instead of
+        // silently losing it once OrgId is replaced below.
         if (user.OrgId is Guid previousOrgId && user.SupplierOrgId is null)
         {
             var previousOrg = await dbContext.Orgs.AsNoTracking()
@@ -159,11 +159,10 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
     /// <c>OrgId</c>.
     /// </summary>
     /// <remarks>
-    /// A1-40: <c>User.OrgId</c> can point at a non-Host org — the caller's own Supplier org, linked at supplier
-    /// registration before the host onboarding ever ran (<c>SupplierService</c> sets <c>OrgId</c> when it was
-    /// still null). That link is never reused as the host org: the caller (<see cref="EnsureOrgForUserAsync"/>)
-    /// provisions a real Host org instead, exactly as <c>OrgContextResolver</c> and <c>TenantContext</c> also
-    /// refuse to treat it as the host tenant.
+    /// PL-05 (A1-40): <c>User.OrgId</c> is the host org only. A legacy row may still point at a non-Host org — the
+    /// caller's own Supplier org, written by the supplier registration before PL-05. That link is never reused as the
+    /// host org: the caller (<see cref="EnsureOrgForUserAsync"/>) provisions a real Host org instead, exactly as
+    /// <c>OrgContextResolver</c> and <c>TenantContext</c> also refuse to treat it as the host tenant.
     /// </remarks>
     private async Task<Org?> GetLinkedOrgAsync(string userId, CancellationToken cancellationToken)
     {

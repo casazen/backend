@@ -97,8 +97,8 @@ Error codes (ProblemDetails `code`):
 
 **Decision:** the automatic link "same email → same supplier profile" is **removed**, not merely gated on
 `email_verified`. `SupplierOrgContextResolver` / `SupplierService.GetOrProvisionSupplierOrgIdAsync` (every
-`/api/supplier/*` request) now use only the account's own link (`User.SupplierOrgId`, or `User.OrgId` of a supplier
-org); a Supplier role given by hand without any link still gets a new empty profile, never someone else's. A
+`/api/supplier/*` request) now use only the account's own link (`User.SupplierOrgId`, or the legacy `User.OrgId` of a
+supplier org, section 13); a Supplier role given by hand without any link still gets a new empty profile, never someone else's. A
 pending admin invite is no longer consumed by an account that merely shows the invited email: it is accepted only with
 its token. The only link that uses the email is the explicit claim without token, and only with a verified email.
 
@@ -117,7 +117,8 @@ Auth0 database connection's verification email enabled (default).
 
 ### 2.4 Onboarding
 
-- `GET /api/users/me` returns `supplierOrgId` (also for a supplier-only user whose `orgId` is the supplier org). The
+- `GET /api/users/me` returns `supplierOrgId` (also for a legacy supplier-only user whose `orgId` is the supplier org;
+  since PL-05 a supplier-only user has no `orgId`, section 13). The
   web guard never sends a linked supplier to the host onboarding, even before the `Supplier` role reaches the token;
   its home is the activation wizard (`/app/supplier/activation`, which forwards an active supplier to the dashboard).
 - A host with a supplier profile keeps the host org (`orgId`) and the supplier org (`supplierOrgId`): the context
@@ -375,7 +376,8 @@ the migration there are no duplicate emails left, so a run normally only does th
      duplicate are not copied: the keeper's profile is the one in use);
    - accounts: `SupplierOrgId` = duplicate → keeper; a supplier-only account (`OrgId` = duplicate, no `SupplierOrgId`)
      gets `SupplierOrgId` = keeper;
-   - the duplicate profile is deleted; its org too, after moving `User.OrgId` and push devices to the keeper, **unless
+   - the duplicate profile is deleted; its org too, after detaching the legacy `User.OrgId` links to it (`OrgId` = null,
+     section 13) and moving push devices to the keeper, **unless
      the org also holds host data** (not a supplier org, consents, signup attribution, or rows such as properties or
      bookings that reference it): then the org stays, without its supplier profile, and its accounts keep it as `orgId`.
    - the duplicate's claim token dies with it: its registrant links the keeper with the verified-email claim.
@@ -569,47 +571,87 @@ existing days and checks: [ical.md](ical.md#supplier-calendars-su-15).
 
 ## 13. The Supplier org never becomes the host org — PL-05 (A1-40)
 
-A supplier-only account has `User.OrgId` pointing at its own Supplier org (section 1: `SupplierService` sets it
-when it was still null). Before PL-05, a supplier who then completed the **host** onboarding kept that same org as
-their host tenant: `OrgService.EnsureOrgForUserAsync` reused whatever `OrgId` was already there without checking
-its type, so properties, bookings, plan and public site all landed on `OrgType.Supplier`.
+Before PL-05 the supplier registration, claim and auto-provisioning also wrote the new supplier org into `User.OrgId`
+when it was empty, and the **host** onboarding then reused that `OrgId` without checking its type: a supplier who
+became a host got properties, bookings, plan, consents and public site on an `OrgType.Supplier` org.
 
-**Fix**: every place that resolves the caller's *host* org now requires `Org.OrgType == Host`, and treats any other
-type exactly like "no org yet" (same as a brand-new user, PL-02/A1-05) instead of reusing it:
+**Rule now: `User.OrgId` is the user's host org only; the supplier link is `User.SupplierOrgId` only.**
 
-- `TenantContext.ResolveAsync` (the EF tenant query filter, read once per request) — the primary gate: it runs
-  before every controller, so a fix elsewhere alone would never be reached.
-- `OrgContextResolver.GetOrProvisionOrgIdAsync` (used by ~20 host controllers).
-- `OrgService.EnsureOrgForUserAsync` / `GetLinkedOrgAsync` (`POST`/`PUT /api/users/onboarding`): when the previous
-  `OrgId` was a non-Host org, it provisions a **new** Host org and backfills `SupplierOrgId` from it first if that
-  was somehow still unset, so the supplier console keeps working.
+- `SupplierService` (register, claim, auto-provisioning) writes only `SupplierOrgId`; `fix-orphaned` detaches legacy
+  supplier-only accounts from a deleted duplicate (`OrgId` = null) instead of moving them to the keeper (section 9.3).
+- The host resolvers accept only an org with `OrgType = Host`, so a legacy or wrong `OrgId` is treated as "no host org
+  yet" (fail-closed, like a brand-new user, PL-02/A1-05):
+  - `TenantContext.ResolveAsync`: the EF tenant filter, read once per request before every controller;
+  - `OrgContextResolver.GetOrProvisionOrgIdAsync` (host controllers);
+  - `UserAuthorizationSnapshotStore` (host onboarding gate: the consents count only for a host org);
+  - `OrgService.EnsureOrgForUserAsync` (`POST`/`PUT /api/users/onboarding`): a non-host `OrgId` is never reused; a
+    **new** Host org is created, and a legacy supplier link in `OrgId` is first copied to `SupplierOrgId`.
+- `POST /api/devices` of a supplier-only account (no host org) registers the device under its linked supplier org, as
+  before, so the supplier keeps receiving the push notifications of its requests.
+- A user who is host and supplier sees the host data through `OrgId` (tenant filter) and the supplier data through
+  `SupplierOrgId` (`/api/supplier/*`, explicit `SupplierOrgId` predicates): two orgs, never one.
 
-`SupplierService` is unchanged: a supplier-only account still gets `OrgId` = its Supplier org (section 2.4), which
-is correct — there is no host org to point to until the host onboarding runs.
+### 13.1 Migration `SeparateSupplierOrgFromHostOrgId` (applied at startup, one transaction)
 
-**Data migration** `SeparateSupplierOrgFromHostOrgId` (applied at startup, like `SupplierProfileEmailUnique`):
-for every `User.OrgId` that pointed at a Supplier-type org, it backfills `SupplierOrgId` first if unset, then
-clears `OrgId` to `null` — **but only when that Supplier org holds no host data** (no `Properties`, `Bookings`,
-`LeaseContracts`, `Payments` or `Guests` reference it). A Supplier org that already accumulated host data (the bug
-ran to completion for that user before this fix) is left untouched on purpose: moving that data to a fresh Host org
-is a product decision (which org keeps the Stripe customer, the plan, the bookings) that this migration does not
-make on its own. It logs `RAISE NOTICE 'SeparateSupplierOrgFromHostOrgId: ...'` with the three counts; a non-zero
-`needs_manual_repair` names a real case to follow up by hand (there is no automated repair for it, unlike
-`fix-orphaned` in section 9, which is a different problem — merging duplicate *supplier* profiles — and only
-tolerates this scenario without crashing, section 9.3 "unless the org also holds host data").
+It repairs the existing rows, for every org with `OrgType = 1` (Supplier):
 
-### 13.1 After a deploy
+| Case | What happens |
+|---|---|
+| Account with `OrgId` = a supplier org with a profile and no `SupplierOrgId` (pre-SU-08) | `SupplierOrgId` = that org first (count `supplier_links_backfilled`) |
+| Supplier org **without host data** (the common case: a supplier-only account) | Its accounts get `OrgId` = null and keep `SupplierOrgId` (`host_links_cleared`). An account whose `SupplierOrgId` is **another** org keeps the old `OrgId` (it would otherwise leave this profile held by nobody); no host resolver reads it (`supplier_org_links_kept`) |
+| Supplier org **with host data** (A1-40 already happened: a supplier who became a host before PL-05) | The org becomes `OrgType = Host` and keeps everything host: properties, bookings, guests, payments, consents, slug and aliases, plan, Stripe customer and subscription, Connect account, public site and domain, the accounts' `OrgId` (`orgs_reclassified_host`). Its **supplier side moves to a new supplier org** (`supplier_sides_split`): supplier profile (with its public showcase slug, so `/s/<slug>` links keep working), availability days, `ServiceRequests.SupplierOrgId`, `StayCheckouts.CleaningSupplierOrgId`, `Users.SupplierOrgId`. The new org gets the profile's legal name and email, plan Starter, slug `supplier-<random>`. Nothing is deleted |
 
-- [ ] Deploy log: `SeparateSupplierOrgFromHostOrgId` NOTICE line; if `needs_manual_repair` is not 0, find the
-      affected orgs and open a product decision (do not edit the database by hand):
+"Host data" = a Stripe customer or subscription, a subscription status, a paid tier, a Connect account, a custom domain
+or subdomain on the org, or a row of **any** table whose foreign key references `Orgs` (read from the PostgreSQL
+catalog, so a host table added later counts too), except the supplier and identity links (`SupplierProfiles.OrgId`,
+`ServiceRequests.SupplierOrgId`, `Users.OrgId`, `DeviceRegistrations.OrgId`).
+
+The migration takes a write lock on `Users`, `Orgs` and `SupplierProfiles` for its duration (seconds), so an old
+instance still running cannot link accounts meanwhile. It is idempotent (a second run finds nothing to do). Down is a
+no-op: restoring the old links would bring the bug back. Log (no email, no name):
+`SeparateSupplierOrgFromHostOrgId: supplier_links_backfilled=…, host_links_cleared=…, supplier_org_links_kept=…,
+orgs_reclassified_host=…, supplier_sides_split=…, split_without_holder=…`, then the split pairs
+`<host org id> -> <new supplier org id>`.
+
+### 13.2 Before the deploy (read-only, on the environment's schema)
+
+```sql
+-- Accounts whose OrgId is a supplier org, with the host data that decides the case.
+SELECT u."Id" AS user_id, o."Id" AS org_id, u."SupplierOrgId" = o."Id" AS supplier_link_is_this_org,
+       EXISTS (SELECT 1 FROM "SupplierProfiles" sp WHERE sp."OrgId" = o."Id") AS has_profile,
+       (SELECT count(*) FROM "Properties" p WHERE p."OrgId" = o."Id") AS properties,
+       (SELECT count(*) FROM "Bookings" b WHERE b."OrgId" = o."Id") AS bookings,
+       (SELECT count(*) FROM "ConsentRecords" c WHERE c."OrgId" = o."Id") AS host_consents,
+       o."StripeCustomerId" IS NOT NULL AS stripe_customer, o."PlanTier"
+FROM "Users" u JOIN "Orgs" o ON o."Id" = u."OrgId"
+WHERE o."OrgType" = 1;
+```
+
+Rows with properties, bookings, host consents or a Stripe customer are the orgs that will be **split**: note their ids
+and, if a supplier of them has push or web sessions open, nothing to do (the next request reads the new links).
+In-flight Hangfire pushes addressed to the old supplier org id of a split org reach nobody (the supplier is now on the
+new org): at most one notification lost per open request.
+
+### 13.3 After the deploy
+
+- [ ] Deploy log: the `SeparateSupplierOrgFromHostOrgId` NOTICE lines. `split_without_holder` should be 0 (a split
+      supplier profile that no account holds: run `fix-orphaned` in dry run, section 9.3, it lists it in
+      `orphanProfiles`).
+- [ ] Both must be 0:
       ```sql
-      SELECT u."Id" AS user_id, o."Id" AS org_id, o."Name"
-      FROM "Users" u JOIN "Orgs" o ON o."Id" = u."OrgId"
-      WHERE o."OrgType" = 1;
+      -- No account has a host data org typed Supplier, no supplier org holds a host row of the main tables.
+      SELECT count(*) FROM "Users" u JOIN "Orgs" o ON o."Id" = u."OrgId"
+       WHERE o."OrgType" = 1 AND u."SupplierOrgId" = o."Id";
+      SELECT count(*) FROM "Orgs" o WHERE o."OrgType" = 1
+         AND (EXISTS (SELECT 1 FROM "Properties" p WHERE p."OrgId" = o."Id")
+              OR EXISTS (SELECT 1 FROM "Bookings" b WHERE b."OrgId" = o."Id")
+              OR EXISTS (SELECT 1 FROM "ConsentRecords" c WHERE c."OrgId" = o."Id"));
       ```
-- [ ] Register as a supplier (self-serve or invite), then open the host onboarding as the same account: the org
-      created is a **new** Host org (`GET /api/orgs/me` after onboarding is not the supplier org from
-      `GET /api/users/me`'s `supplierOrgId`), and the supplier console (`/app/supplier/*`) still works.
+- [ ] For each split pair of the log: the host still sees properties and bookings (`/app/...`), and the supplier
+      console (`/app/supplier/inbox`, dashboard, calendar) still shows its requests and availability.
+- [ ] Register as a supplier (self-serve or invite), then complete the host onboarding with the same account:
+      `GET /api/users/me` has an `orgId` different from `supplierOrgId`, a property created then is in the host org,
+      and the supplier console still works.
 
 ## Known limits (other tasks)
 
