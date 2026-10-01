@@ -2,13 +2,19 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>DNS instructions the owner must add at their registrar to activate a custom domain.</summary>
+/// <summary>
+/// DNS instructions the owner must add at their registrar to activate a custom domain: the ownership TXT, the CNAME (or, for
+/// the root of a domain that cannot have one, the A records) and, only when Vercel asks for it, Vercel's own TXT (BK-17).
+/// </summary>
 public sealed record DnsInstructions(
     string CnameHost,
     string CnameTarget,
     string TxtHost,
     string TxtValue,
-    string SslNote);
+    string SslNote,
+    IReadOnlyList<string> ARecordValues,
+    string? VercelTxtHost = null,
+    string? VercelTxtValue = null);
 
 /// <summary>Preview links for each publication mode.</summary>
 public sealed record PublicUrls(
@@ -25,7 +31,22 @@ public sealed record OrgDomainConfig(
     DomainVerificationStatus DomainVerificationStatus,
     bool CanUseCustomDomain,
     DnsInstructions? DnsInstructions,
-    PublicUrls PublicUrls);
+    PublicUrls PublicUrls,
+    DomainStatusInfo Status);
+
+/// <summary>
+/// Honest state of the custom domain for the settings page (BK-17): why it is pending or failed, when it was last checked,
+/// when it became verified, whether the platform can activate domains at all, and whether the periodic check still runs.
+/// </summary>
+/// <param name="Detail">A <c>DomainIssues</c> code, <c>null</c> when verified (or not checked yet).</param>
+/// <param name="ActivationAvailable"><c>false</c> while <c>Vercel__ApiToken</c>/<c>Vercel__ProjectId</c> are not set: no domain is reported as active.</param>
+/// <param name="AutoCheckActive">The periodic job still checks this domain (pending domains are given up on after <c>MaxPendingDays</c>).</param>
+public sealed record DomainStatusInfo(
+    string? Detail,
+    DateTime? CheckedAt,
+    DateTime? VerifiedAt,
+    bool ActivationAvailable,
+    bool AutoCheckActive);
 
 public enum SetOrgDomainOutcome
 {

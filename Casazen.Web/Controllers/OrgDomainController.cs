@@ -2,8 +2,10 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -16,7 +18,8 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = "RequireOrgBillingAdmin")]
 public class OrgDomainController(
     IOrgContextResolver orgContextResolver,
-    IOrgDomainService orgDomainService) : ControllerBase
+    IOrgDomainService orgDomainService,
+    IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
     /// <summary>422: subdomain mode requested while <c>PublicHost__BaseDomain</c> is not configured (D3, no default).</summary>
     public const string SubdomainsNotConfiguredCode = "subdomains_not_configured";
@@ -100,7 +103,10 @@ public class OrgDomainController(
                 DomainVerificationStatus = result.Verification.Status,
                 CustomDomain = result.Verification.CustomDomain,
                 CheckedAt = result.Verification.CheckedAt,
-                Message = result.Verification.Message,
+                Detail = result.Verification.Detail,
+                Message = Explain(result.Verification.Detail),
+                VercelTxtHost = result.Verification.VercelTxtHost,
+                VercelTxtValue = result.Verification.VercelTxtValue,
             }),
             VerifyOrgDomainOutcome.NotFound => NotFound(),
             VerifyOrgDomainOutcome.PlanRequired => StatusCode(
@@ -126,7 +132,7 @@ public class OrgDomainController(
         return null;
     }
 
-    private static OrgDomainConfigDto Map(OrgDomainConfig config) => new()
+    private OrgDomainConfigDto Map(OrgDomainConfig config) => new()
     {
         OrgId = config.OrgId,
         PublicHostMode = config.PublicHostMode,
@@ -143,6 +149,9 @@ public class OrgDomainController(
                 TxtHost = config.DnsInstructions.TxtHost,
                 TxtValue = config.DnsInstructions.TxtValue,
                 SslNote = config.DnsInstructions.SslNote,
+                ARecordValues = config.DnsInstructions.ARecordValues,
+                VercelTxtHost = config.DnsInstructions.VercelTxtHost,
+                VercelTxtValue = config.DnsInstructions.VercelTxtValue,
             },
         PublicUrls = new PublicUrlsDto
         {
@@ -150,5 +159,24 @@ public class OrgDomainController(
             SubdomainUrl = config.PublicUrls.SubdomainUrl,
             CustomDomainUrl = config.PublicUrls.CustomDomainUrl,
         },
+        Status = new DomainStatusDto
+        {
+            Detail = config.Status.Detail,
+            Message = Explain(config.Status.Detail),
+            CheckedAt = config.Status.CheckedAt,
+            VerifiedAt = config.Status.VerifiedAt,
+            ActivationAvailable = config.Status.ActivationAvailable,
+            AutoCheckActive = config.Status.AutoCheckActive,
+        },
     };
+
+    /// <summary>The explanation of a <see cref="DomainIssues"/> code in the language of the request; <c>null</c> without a code or for an unknown one.</summary>
+    private string? Explain(string? detail)
+    {
+        if (string.IsNullOrEmpty(detail))
+            return null;
+
+        var text = localizer[$"DomainIssue_{detail}"];
+        return text.ResourceNotFound ? null : text.Value;
+    }
 }

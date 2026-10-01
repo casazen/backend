@@ -1609,4 +1609,31 @@
   <data name="SeoAmenity_PrivateEntrance" xml:space="preserve">
     <value>Ingresso privato</value>
   </data>
+  <data name="DomainIssue_ownership_txt_missing" xml:space="preserve">
+    <value>Non troviamo il record TXT che dimostra la proprietà del dominio. Controlla che sia stato creato e attendi la propagazione del DNS (può richiedere alcune ore).</value>
+  </data>
+  <data name="DomainIssue_dns_not_pointing" xml:space="preserve">
+    <value>Il dominio non punta ancora al nostro servizio: crea il record CNAME indicato (per un dominio senza www, i record A) e attendi la propagazione del DNS.</value>
+  </data>
+  <data name="DomainIssue_vercel_verification_pending" xml:space="preserve">
+    <value>Il fornitore del servizio chiede un ulteriore record TXT per confermare il dominio: aggiungilo e verifica di nuovo.</value>
+  </data>
+  <data name="DomainIssue_vercel_not_configured" xml:space="preserve">
+    <value>L'attivazione dei domini personalizzati non è ancora disponibile sulla piattaforma. Il tuo dominio si attiverà da solo appena lo sarà.</value>
+  </data>
+  <data name="DomainIssue_vercel_unauthorized" xml:space="preserve">
+    <value>Al momento non riusciamo ad attivare il dominio per un problema di configurazione della piattaforma. Riproveremo in automatico; se il problema dura, contatta il supporto.</value>
+  </data>
+  <data name="DomainIssue_vercel_unavailable" xml:space="preserve">
+    <value>Il servizio di attivazione non risponde in questo momento. Riproveremo in automatico.</value>
+  </data>
+  <data name="DomainIssue_domain_taken" xml:space="preserve">
+    <value>Questo dominio risulta già in uso da un altro sito CasaZen.</value>
+  </data>
+  <data name="DomainIssue_vercel_domain_in_use" xml:space="preserve">
+    <value>Questo dominio è già collegato a un altro progetto o account del fornitore del servizio e non possiamo attivarlo. Contatta il supporto.</value>
+  </data>
+  <data name="DomainIssue_vercel_rejected" xml:space="preserve">
+    <value>Il fornitore del servizio non accetta questo dominio. Controlla che sia scritto correttamente.</value>
+  </data>
 </root>

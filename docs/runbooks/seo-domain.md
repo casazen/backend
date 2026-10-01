@@ -15,6 +15,11 @@ Task BK-16, audit defect A3-08 (P1): the org subdomains (`{label}.{PublicHost__B
 serve the org's booking site at their root, with their own CORS, canonical URLs and sitemap, and never the app or a login.
 Section 9 describes it and how to check it.
 
+Task BK-17, audit defect A3-25 (P1): a custom domain is `Verified` only when the ownership record, the DNS and the Vercel
+project all say so (the platform adds it to the Vercel project through the Vercel API), it is checked again by itself, and the
+console tells the host honestly where it is. Section 10 describes it, what the product owner configures (Vercel token and
+project) and how to check it.
+
 Task SE-03, audit defect A8-03 (P0): the CTA of the SEO pages leads to `/signup`, which opens the Auth0 **signup**
 screen in one click and records where the signup came from (UTM parameters, comune, landing page, referrer host).
 Section 6 describes the funnel, the Auth0 setting it needs and how to read the attributions.
@@ -505,14 +510,14 @@ credentials. A custom domain waiting for its verification, an unpaid one, a rese
 
 ### Product owner: what must exist for a host to work
 
-The code resolves and serves hosts; **adding the domain to Vercel and pointing DNS** is configuration (D9). Until BK-17 it is
-manual; BK-17 automates it and the verification.
+The code resolves and serves hosts. For **custom domains** the platform adds the domain to the Vercel project by itself (section 10);
+for **subdomains** the wildcard domain is configuration (D9).
 
 1. **Subdomains**: `PublicHost__BaseDomain` on Railway (section 2), and in Vercel → project → Settings → Domains the wildcard
    `*.<base domain>` (Vercel needs the domain's nameservers for a wildcard certificate) on Production.
-2. **A custom domain** (Pro): the host sets it in the console (Impostazioni → Dominio), creates the DNS records it shows, presses
-   "Verifica"; the product owner adds the same domain to the Vercel project (Settings → Domains) so it gets its certificate.
-   An unverified domain is "site not found".
+2. **A custom domain** (Pro): the host sets it in the console (Impostazioni → Dominio) and creates the DNS records it shows; the
+   platform does the rest once the Vercel variables of section 10 are set (no step in the Vercel dashboard per domain). An
+   unverified domain is "site not found".
 3. The Vercel project's `VITE_API_BASE_URL` already points to the API; nothing else is needed: the API allows the host's origin
    by itself once the domain is verified.
 
@@ -548,14 +553,139 @@ address bar keeps the clean path after a click, `https://<host>/book/<another or
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Vercel's own 404 / certificate error on the host | the domain is not in the Vercel project (or DNS does not point there yet) | PO step 1 or 2 |
+| Vercel's own 404 / certificate error on the host | the domain is not in the Vercel project (or DNS does not point there yet) | section 10 (for a subdomain: PO step 1) |
 | "Sito non trovato" on a domain the host verified | the org's plan is not Pro (the domain stops being served), or the domain is not `Verified` | plan page; `POST /api/orgs/{id}/domain/verify` |
 | "Sito non trovato" right after verifying | the answer was cached (60 s) before the verification | wait a minute; the verification itself invalidates it |
 | The browser console shows a CORS error on the host | the origin is not an org host (not verified, not paid, wrong label) or the call is not a public endpoint | `curl` checks above |
 | A subdomain does not work although the org chose it | `PublicHost__BaseDomain` unset (the mode answers `subdomains_not_configured`) or the wildcard domain is not in Vercel | section 2, PO step 1 |
 
+## 10. Custom domains on Vercel (BK-17)
+
+### What the platform does
+
+A domain is `Verified` only when **all three** are true (`DomainVerificationService`, in this order, so the page names the first
+thing still missing):
+
+| Step | What is checked | If not | State, `detail` code |
+|---|---|---|---|
+| 0 | no other org has the same domain verified | | `Failed`, `domain_taken` |
+| 1 | the **ownership TXT** `_casazen-challenge.<domain>` has the org's random token (proves the host controls the DNS) | host creates it | `Pending`, `ownership_txt_missing` |
+| 2 | the domain **points at Vercel**: a CNAME to `PublicHost__VercelCnameTarget` or under one of `PublicHost__AcceptedCnameSuffixes`, or an A record in `PublicHost__VercelAddresses` (the root of a domain cannot have a CNAME) | host creates it | `Pending`, `dns_not_pointing` |
+| 3 | the domain is **on the Vercel project and Vercel says `verified: true`**: the platform reads it, adds it if it is not there (only now, after the ownership TXT, so nobody can make it claim a domain they do not control), and asks Vercel to verify | see below | see below |
+
+Step 3 outcomes: Vercel asks its own TXT (the domain was used on another Vercel account) → `Pending`, `vercel_verification_pending`
+(the record is shown in the console); no `Vercel__ApiToken` / `Vercel__ProjectId` → `Pending`, `vercel_not_configured`; Vercel refuses
+the token or the project → `Pending`, `vercel_unauthorized`; Vercel down or rate limiting → `Pending`, `vercel_unavailable`; the
+domain belongs to another Vercel project or account → `Failed`, `vercel_domain_in_use`; Vercel does not accept the domain →
+`Failed`, `vercel_rejected`. What only the platform can fix (not configured, token, Vercel down) is `Pending` and retried by itself,
+and **never takes a verified site down**.
+
+| When | What |
+|---|---|
+| The host sets the domain | Pro (effective tier) required; the domain is validated (never the web app's own domain, `*.vercel.app` or a name under `PublicHost__BaseDomain`); a token is generated. Saving **the same domain again** keeps the token the host already published and restarts the periodic checks |
+| "Controlla ora" (`POST /api/orgs/{id}/domain/verify`) | one check now, the answer says the status and the reason (`detail` + `message` in the language of the request) |
+| Hangfire `domain-recheck`, every 15 min | checks what is due: a domain not verified yet every `PublicHost__RecheckPendingMinutes` (30) until `PublicHost__MaxPendingDays` (14) after it was set (then only by hand; the console says so), a verified one every `PublicHost__RecheckVerifiedHours` (24); at most `PublicHost__RecheckBatchSize` (50) per run, longest-unchecked first; one org failing never stops the run; an org whose effective tier is not Pro/Scale is skipped |
+| A verified domain loses its records | demoted to `Failed` (host no longer served) after `PublicHost__FailuresBeforeDemotion` (2) consecutive failed checks, with the reason; it used to stay `Verified` for ever (A3-25) |
+| The host changes or drops the domain, or the org is deactivated | the domain is queued in the table `PendingDomainRemovals` and the job removes it from the Vercel project (a failed call is retried at the next run; a domain another org uses by then stays; the web app's own domain is never removed) |
+
+Whatever a check changes, the cached answers of the host are dropped at once (`resolve-host`, CORS), so a verified domain is served
+and a demoted one stops being served without waiting for the cache.
+
+What the console shows (`/app/short-rent/settings/domain`): the badge and the explanation of the state (waiting for DNS,
+activating, active, not active), the DNS records to create (TXT, CNAME, the A records for a domain without `www`, Vercel's own TXT
+when it asks), when it was last checked, whether the automatic check still runs, and, while no Vercel token is configured, that
+**nothing the host does will activate the domain yet**. A pending domain is never shown as "your site". On the host's dashboard a
+card (`SiteAddressCard`, only for the org administrator) suggests an address of their own while the site is on the platform path,
+follows a domain that is not active yet, and disappears once the address is settled; it can be dismissed.
+
+### Product owner: what to configure (D9)
+
+The platform signals a missing configuration; it never invents one. `GET /api/health/ready` has a `vercel` check: `degraded` names
+the missing variables (never their values) until the token and the project are set. Custom domains are optional, so it never stops
+a deploy.
+
+Railway, per environment (**test** and **production**):
+
+| Variable | Value |
+|---|---|
+| `Vercel__ApiToken` | the Vercel access token (secret: only Railway holds it) |
+| `Vercel__ProjectId` | the id (`prj_…`) or the name of the Vercel project that serves the web app of **this** environment |
+| `Vercel__TeamId` | the id (`team_…`) of the team that owns the project; leave unset for a project of a personal account |
+| `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0…`, `PublicHost__VercelAddresses__0…` | the DNS values Vercel recommends for the project (step 4); the defaults are the long-standing generic ones (`cname.vercel-dns.com`, suffix `.vercel-dns.com`, A `76.76.21.21`) |
+
+Steps:
+
+1. **Create the token** in Vercel (Account Settings → Tokens) with the narrowest scope the dashboard offers: scoped to the **one team**
+   that owns the project (not "all teams"), the shortest expiration you are willing to rotate, created from an account whose role on
+   the team is the lowest that can edit the domains of the project. The code uses the token only to read, add, verify and remove
+   **domains of one project**; it needs no access to deployments, environment variables or billing. *Which permission names the
+   dashboard shows for that is to be confirmed in the Vercel documentation (see the doubt at the end).* Never put the token in the
+   repository, in `appsettings*.json`, in a GitHub variable or in the frontend: Railway only.
+2. **Find the ids**: project id in Vercel → project → Settings → General → *Project ID*; team id in Team Settings → General → *Team ID*.
+3. **Set the variables** on Railway (test first), redeploy, and check `GET /api/health/ready`: `vercel` must be `healthy`.
+4. **Confirm the DNS values**: in Vercel → project → Settings → Domains, add any domain you own for the test and read the records
+   Vercel recommends (CNAME target and A address). Vercel may show project-specific values: if they differ from the defaults, set
+   `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0` and `PublicHost__VercelAddresses__0` to them (keep the old
+   suffix too: hosts that already created the generic record keep working). Remove the test domain from Vercel afterwards.
+5. **Subdomains** are separate: the wildcard domain of section 9 (PO step 1).
+6. **Try it end to end** on the test environment with a real domain on a Pro org: set it in the console, create the records, press
+   "Controlla ora" (or wait up to 30 minutes), expect `Verified`; open `https://<domain>/` (certificate issued by Vercel). Then drop the
+   domain in the console and check it leaves the Vercel project at the next run of `domain-recheck`.
+7. Before promoting to production, repeat steps 3 to 6 there. Never promote with the test token: the project and the token are per
+   environment.
+
+### Checks
+
+```bash
+API=https://<railway url of the environment>
+
+# configuration: "vercel": "healthy" (or "degraded" naming the missing variable names)
+curl -sS "$API/api/health/ready" | grep -o '"vercel"[^}]*'
+
+# the owner's view (token of an org administrator): state, reason, records, last check
+curl -sS -H "Authorization: Bearer $TOKEN" "$API/api/orgs/$ORG_ID/domain"
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" "$API/api/orgs/$ORG_ID/domain/verify"
+
+# what the DNS says (from anywhere)
+dig +short TXT _casazen-challenge.<domain>
+dig +short CNAME <domain>
+dig +short A <domain>
+```
+
+Domains waiting to leave the project (read-only SQL on the environment's schema): `select * from "PendingDomainRemovals";` (rows
+stay while Vercel fails: `Attempts`, `LastError` hold a status code, never a provider message). The job: Hangfire dashboard →
+Recurring jobs → `domain-recheck` ([`hangfire.md`](hangfire.md)).
+
+### Troubleshooting (BK-17)
+
+| `detail` / symptom | Cause | Fix |
+|---|---|---|
+| `ownership_txt_missing` | the TXT is missing, has another value, or the DNS has not propagated | host: create the TXT exactly as shown; wait (hours at most); "Controlla ora" |
+| `dns_not_pointing` | no CNAME to Vercel's target (or A record of Vercel) yet; a domain **without `www`** cannot have a CNAME | host: CNAME for `www.`, A records for the root |
+| `dns_not_pointing` and the host's DNS provider **proxies** the record (e.g. Cloudflare's orange cloud) | the proxy answers with its own addresses, so the record does not look like Vercel's | host: set the record to "DNS only" |
+| `dns_not_pointing` although the host did it as the page says | Vercel recommends a target/address that is not in the accepted list | step 4: add it to `PublicHost__AcceptedCnameSuffixes` / `PublicHost__VercelAddresses` |
+| `vercel_verification_pending` | the domain is used on another Vercel account/project; Vercel asks its own TXT (`_vercel.<domain>`) | host: create the second TXT shown in the console |
+| `vercel_not_configured` (the console says activation is not available) | `Vercel__ApiToken` or `Vercel__ProjectId` missing | steps 1 to 3; domains activate by themselves at the next run |
+| `vercel_unauthorized` | token expired/revoked, wrong team/project, or the token has no access to the project | create a new token (step 1), check `Vercel__ProjectId` / `Vercel__TeamId`; the logs show `Vercel Domains API … answered 401/403/404` with Vercel's error code (never the token) |
+| `vercel_unavailable` | Vercel down, timeout or 429 | nothing: retried by itself |
+| `vercel_domain_in_use` | the domain is on another Vercel project of the account (or another account) | remove it there, or use another domain; then "Controlla ora" |
+| `vercel_rejected` | Vercel does not accept the name | host: check the spelling |
+| `domain_taken` | another org already has this domain verified | one org per domain: that org must drop it first |
+| A verified domain turned `Failed` | its records were removed or changed (two checks in a row) | host: restore them, then "Controlla ora" |
+| A domain does not activate by itself any more | it has been pending for more than `PublicHost__MaxPendingDays` | host: fix the records and press "Controlla ora", or save the domain again |
+| The domain stays on the Vercel project after the host dropped it | the removal call fails (`PendingDomainRemovals.LastError`) | fix the token/permissions; the job retries |
+
+### Doubts to confirm (Vercel documentation was not reachable when this was written)
+
+- The Vercel REST paths and fields are those of the public API as known: `POST /v10/projects/{id}/domains` (body `name`),
+  `GET /v9/projects/{id}/domains/{domain}`, `POST /v9/projects/{id}/domains/{domain}/verify`, `DELETE /v9/projects/{id}/domains/{domain}`,
+  `teamId` as a query parameter, `verified` and `verification[]` in the answer. **Check them against the current reference before
+  the first activation**; `VercelDomainsClient` is the only place to change, covered by `VercelDomainsClientTests`.
+- The default CNAME target / suffix / A address are the well-known generic values; the dashboard of the project is the authority (step 4).
+- The exact permission names of a minimum-scope Vercel token (step 1).
+
 ## Out of scope
 
 - `GET /api/public/sitemap.xml` also answers on the API host (the function needs it); it is declared nowhere.
-- The Vercel domains API (adding and removing a domain on the project, DNS checks, periodic re-check, honest states in the
-  console, onboarding step) is task BK-17.
+- Registering domains, managing the host's DNS or issuing certificates: the host does the DNS, Vercel issues the certificate.
+- Redirecting `apex` to `www` for a host's domain (the host chooses which name to use; both can be added as separate domains).

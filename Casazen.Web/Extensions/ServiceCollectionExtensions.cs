@@ -329,7 +329,15 @@ public static class ServiceCollectionExtensions
         // Pages and sitemaps of the public site as crawlers read them (BK-15).
         services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
+        services.AddScoped<IDnsRecordLookup, DnsClientRecordLookup>();
+        // Custom domains on the Vercel project: add, verify, remove (BK-17, A3-25); no call without the token and project.
+        // No redirects (the bearer token never follows one to another host) and a bounded answer.
+        services.AddHttpClient<IVercelDomainsClient, Casazen.Infrastructure.External.VercelDomainsClient>(client =>
+                client.MaxResponseContentBufferSize = 1024 * 1024)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
+        services.AddScoped<IDomainRecheckService, DomainRecheckService>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
