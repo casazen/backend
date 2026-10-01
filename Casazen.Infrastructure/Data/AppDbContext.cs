@@ -496,8 +496,10 @@ public class AppDbContext(
             .HasForeignKey(p => p.LeaseContractId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // LT-14: several parties per role, in the order entered.
         modelBuilder.Entity<Party>()
-            .HasIndex(p => new { p.LeaseContractId, p.Role });
+            .HasIndex(p => new { p.LeaseContractId, p.Role, p.Position })
+            .IsUnique();
 
         // LeaseRegistration → LeaseContract (1-to-1, cascade)
         modelBuilder.Entity<LeaseRegistration>()

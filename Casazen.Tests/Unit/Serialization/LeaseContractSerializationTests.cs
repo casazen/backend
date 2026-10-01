@@ -44,7 +44,7 @@ public class LeaseContractSerializationTests
                     Role = PartyRole.Tenant,
                     FirstName = "Mario",
                     LastName = "Rossi",
-                    FiscalCode = "RSSMRA80A01H501Z",
+                    FiscalCode = "RSSMRA80A01H501U",
                     Citizenship = "IT",
                     ContactEmail = "mario@example.com",
                 },

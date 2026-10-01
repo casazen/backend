@@ -21,8 +21,9 @@ namespace Casazen.Web.BackgroundJobs;
 /// <para>Thresholds, not exact days (<see cref="Thresholds"/>): the most urgent threshold reached today is sent once per
 /// deadline, so a skipped run (or a day without a run) sends it at the next run, and two runs never send it twice.
 /// "Overdue" starts the day after the deadline. Each sent threshold is recorded as a <c>DeadlineReminderSent</c> event
-/// with payload <c>{threshold}:{deadline}</c>, and only when the email was accepted: a failed send is retried at the
-/// next run. A deadline that moves (e.g. an earlier signing date declared later) starts its own thresholds.</para>
+/// with payload <c>{threshold}:{deadline}:{partyId}</c>, and only when the email was accepted: a failed send is retried at the
+/// next run. A deadline that moves (e.g. an earlier signing date declared later) starts its own thresholds. Every
+/// landlord of the lease receives it (LT-14), recorded per landlord.</para>
 /// <para>Questura communication for an extra-EU tenant (LT-07, A7-08, <see cref="QuesturaCommunicationDeadline"/>): its
 /// own thresholds on the 48 hours from the delivery of the property (<see cref="QuesturaThresholds"/>), for every lease
 /// with an extra-EU tenant (not rejected, not ended) whose communication the landlord has not declared yet, registered
@@ -149,41 +150,65 @@ public class RliDeadlineReminderJob(
                     EmailTemplates.DefaultCulture, propertyName, deadline, daysRemaining, notSignedYet));
     }
 
+    /// <summary>
+    /// Sends the reminder <paramref name="payload"/> once to <b>every landlord</b> of the lease (LT-14, A7-28: co-owners
+    /// each have the obligation), recorded per landlord as <c>{payload}:{partyId}</c> only when the email was accepted,
+    /// so a failed send is retried for that landlord alone. A reminder recorded before LT-14 with the bare payload
+    /// (sent to the first landlord only) counts as sent to all. Anonymized parties (LT-12) and repeated addresses are
+    /// skipped.
+    /// </summary>
     private async Task SendOnceAsync(LeaseContract lease, string payload, Func<EmailContent> render)
     {
-        if (lease.Events.Any(e => e.EventType == LeaseEventType.DeadlineReminderSent && e.Payload == payload))
+        var sentPayloads = lease.Events
+            .Where(e => e.EventType == LeaseEventType.DeadlineReminderSent && e.Payload is not null)
+            .Select(e => e.Payload!)
+            .ToHashSet(StringComparer.Ordinal);
+        if (sentPayloads.Contains(payload))
             return;
 
-        var to = lease.Parties.FirstOrDefault(p => p.Role == PartyRole.Landlord && p.AnonymizedAt == null)?.ContactEmail;
-        if (string.IsNullOrWhiteSpace(to))
+        var landlords = lease.Parties
+            .Where(p => p.Role == PartyRole.Landlord && p.AnonymizedAt == null && !string.IsNullOrWhiteSpace(p.ContactEmail))
+            .OrderBy(p => p.Position)
+            .DistinctBy(p => p.ContactEmail.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (landlords.Count == 0)
         {
             logger.LogInformation("Skip RLI reminder {Payload} for LeaseId={LeaseId}: no landlord email", payload, lease.Id);
             return;
         }
 
-        // Already inside a Hangfire job: sent directly (FD-13).
-        var content = render();
-        var result = await emailService.SendEmailAsync(to, content.Subject, content.HtmlBody);
-        if (!result.Success)
+        EmailContent? content = null;
+        foreach (var landlord in landlords)
         {
-            // Not recorded: the same threshold is tried again at the next run.
-            logger.LogWarning(
-                "RLI reminder {Payload} for LeaseId={LeaseId} not sent: {ErrorDetail}",
-                payload,
-                lease.Id,
-                result.ErrorDetail);
-            return;
-        }
+            var landlordPayload = $"{payload}:{landlord.Id:N}";
+            if (sentPayloads.Contains(landlordPayload))
+                continue;
 
-        db.LeaseEvents.Add(new LeaseEvent
-        {
-            LeaseContractId = lease.Id,
-            EventType = LeaseEventType.DeadlineReminderSent,
-            OccurredAt = _clock.GetUtcNow().UtcDateTime,
-            Payload = payload,
-        });
-        await db.SaveChangesAsync();
-        logger.LogInformation("Sent RLI reminder {Payload} for LeaseId={LeaseId}", payload, lease.Id);
+            // Already inside a Hangfire job: sent directly (FD-13).
+            content ??= render();
+            var result = await emailService.SendEmailAsync(landlord.ContactEmail.Trim(), content.Subject, content.HtmlBody);
+            if (!result.Success)
+            {
+                // Not recorded: the same threshold is tried again for this landlord at the next run.
+                logger.LogWarning(
+                    "RLI reminder {Payload} for LeaseId={LeaseId} PartyId={PartyId} not sent: {ErrorDetail}",
+                    payload,
+                    lease.Id,
+                    landlord.Id,
+                    result.ErrorDetail);
+                continue;
+            }
+
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = lease.Id,
+                EventType = LeaseEventType.DeadlineReminderSent,
+                OccurredAt = _clock.GetUtcNow().UtcDateTime,
+                Payload = landlordPayload,
+            });
+            await db.SaveChangesAsync();
+            logger.LogInformation("Sent RLI reminder {Payload} for LeaseId={LeaseId} PartyId={PartyId}", payload, lease.Id, landlord.Id);
+        }
     }
 
     /// <summary>
