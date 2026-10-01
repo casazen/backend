@@ -189,7 +189,7 @@ public static class LeaseDtoMapper
             // Only a file of the private bucket can be served (LT-02): a provider path left by the old stub is not one.
             HasSignedPdf: StorageKeys.IsValid(lease.SignedPdfStoragePath),
             lease.HasExtraEUTenant,
-            lease.Parties.OrderBy(p => p.Role).ThenBy(p => p.LastName, StringComparer.Ordinal).Select(ToParty).ToList(),
+            lease.Parties.OrderBy(p => p.Role).ThenBy(p => p.Position).ThenBy(p => p.LastName, StringComparer.Ordinal).Select(ToParty).ToList(),
             lease.Registration is null ? null : ToRegistration(lease.Registration),
             lease.Events.OrderBy(e => e.OccurredAt).Select(e => new LeaseEventDto(e.EventType, e.OccurredAt)).ToList(),
             lease.CreatedAt,

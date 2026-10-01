@@ -35,7 +35,8 @@ No default in code or in `appsettings.json` (the keys are there, empty).
 | `Gdpr__Retention__{Category}__Years` / `__Months` / `__Days` | Retention period of the category (§ 3), summed | The category is not applied |
 | `Gdpr__Retention__{Category}__Source` | Source that justifies the period (law, article, written decision) | The category is not applied, even with a period |
 
-`{Category}` is `DocumentScans`, `AlloggiatiData`, `Marketing` or `FiscalData`. A category is applied only with at
+`{Category}` is `DocumentScans`, `AlloggiatiData`, `Marketing` or `FiscalData`; `LeaseParties` is the parties of the
+long-term leases (§ 7). A category is applied only with at
 least one amount (0 is allowed: `Days = 0` means "the day after the reference date"), no negative amount and a source.
 Otherwise every run of the job logs
 `GDPR retention: category {Category} not applied (...)` and the host's GDPR tab shows "Periodo non configurato".
@@ -113,3 +114,42 @@ storage to delete, see `storage.md` § 5).
 4. Erasure of a test guest with a scan: the object disappears from the private bucket
    (`guest-documents/{orgId}/{guestId}/...`), the export of the same guest shows `ANONYMIZED` and no document.
 5. Database: `select "Action", "Category", "ActorUserId", "FilesDeleted" from "GuestPrivacyAuditEntries" order by "OccurredAt" desc limit 20;`
+
+## 7. Parties of long-term leases (LT-12, #179)
+
+Task LT-12 (audit defect A7-18). The parties of a lease (`Parties`: landlords and tenants) are anonymized **only after
+the lease has ended**: a lease ends the calendar day (Europe/Rome) after its `EndDate`. The old stored
+`LeaseContracts.DataRetentionUntil = StartDate + 10 years` is gone (migration `LeasePartyRetention`): a 4+4 lease with
+renewals can still be in force ten years after its start. Nothing is anonymized before the end date.
+
+| Trigger | When the parties are anonymized | Code |
+|---|---|---|
+| Erasure request (art. 17) | `POST /api/leases/{id}/erasure-request` (`lease.create` on the lease, 404 for another org). Recorded once (`ErasureRequested` flag and timeline event). Lease ended: now (`status: Anonymized`). Lease in force: from the day after `EndDate` (`status: Scheduled`, `anonymizationFrom`), by the nightly job. Idempotent | `LeasesController.RequestErasure`, `LeasePartyPrivacyService.RequestErasureAsync` |
+| Retention | Nightly job `gdpr-data-retention` (same job as the guests): leases whose `EndDate` + `Gdpr:Retention:LeaseParties` ended. **Off until configured** with a period and its source, like the guest categories (§ 2). Without it, every run logs `GDPR retention: lease parties not applied (...)` and only the erasure requests are honoured | `LeasePartyPrivacyService.ApplyRetentionAsync` |
+
+**Parties still involved in a lease in force.** A party whose fiscal code (trimmed, case-insensitive) is also a party,
+not anonymized, of another lease **of the same org** whose end date has not passed keeps its data (typically the landlord
+with other leases, or a tenant who signed a new lease). The lease is retried every night and marked anonymized
+(`PartiesAnonymizedAt`) only when every party is; the erasure endpoint answers `PartiallyAnonymized` with `partiesKept`.
+
+**What is removed**: first and last name, fiscal code (`ANONYMIZED`), citizenship (empty), e-mail
+(`ANON-{partyId}@deleted.local`), and the provider signing link, its expiry and the provider signer id of the party.
+Each party gets `AnonymizedAt`. The RLI reminder skips anonymized leases and parties.
+
+**What stays**: role and extra-EU flag of each party (shape of the lease and Questura history, no identity left), dates,
+amounts and status of the lease, the timeline events (no personal data), the registration code and dates, and **the stored
+documents**: the signed contract (`SignedPdfStoragePath`), the RLI receipt and the Questura receipt in the private bucket
+still contain the parties' data. Deleting them is not done (the RLI receipt is required by a database constraint of a
+`Registered` lease, and the landlord may need the signed contract for its own obligations): decision of the product
+owner, see the open question of LT-12.
+
+Configuration (Railway, per environment), only after the decision of the product owner and the DPO/accountant:
+
+```
+Gdpr__Retention__LeaseParties__Years=<years after the end of the lease>
+Gdpr__Retention__LeaseParties__Source=<article of law or written decision>
+```
+
+Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: lease parties not applied (...)` (or
+`applied`) and `GDPR lease party retention done`. Database:
+`select "Id", "EndDate", "ErasureRequested", "PartiesAnonymizedAt" from "LeaseContracts" where "ErasureRequested" or "PartiesAnonymizedAt" is not null;`

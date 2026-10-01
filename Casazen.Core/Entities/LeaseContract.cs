@@ -112,9 +112,21 @@ public class LeaseContract : ITenantOwned
     [MaxLength(200)]
     public string? QuesturaCommunicationDeclaredByUserId { get; set; }
 
+    /// <summary>
+    /// A party asked for the erasure of their data (art. 17 GDPR, LT-12): the parties are anonymized as soon as the lease
+    /// has ended (the day after <see cref="EndDate"/>), without waiting for the retention period. Never reset.
+    /// </summary>
     public bool ErasureRequested { get; set; } = false;
 
-    public DateTime DataRetentionUntil { get; set; }
+    /// <summary>When the erasure was first requested (UTC instant); null without a request.</summary>
+    public DateTime? ErasureRequestedAt { get; set; }
+
+    /// <summary>
+    /// When every party of the lease was anonymized (LT-12, A7-18), by an erasure request or by the retention period
+    /// <c>Gdpr:Retention:LeaseParties</c> counted from <see cref="EndDate"/>. Null while at least one party keeps its data.
+    /// The retention end is computed on read from the configured period, never stored.
+    /// </summary>
+    public DateTime? PartiesAnonymizedAt { get; set; }
 
     public virtual ICollection<Party> Parties { get; set; } = [];
     public virtual ICollection<LeaseSigner> Signers { get; set; } = [];

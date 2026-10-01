@@ -1,4 +1,5 @@
 using System.Globalization;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
@@ -19,6 +20,8 @@ public class PropertyServiceCinTests
     private readonly Mock<IPropertyComplianceStatusService> _complianceStatus = new();
     private readonly PropertyService _service;
 
+    private static readonly HostScope OwnerScope = new(Guid.Parse("8f1d3a52-5b8e-4f0e-9c1e-2b7a6d4c3e10"), "owner-1");
+
     public PropertyServiceCinTests()
     {
         _service = NewService(new CinOptions());
@@ -33,17 +36,17 @@ public class PropertyServiceCinTests
             Mock.Of<ILogger<PropertyService>>());
 
     [Fact]
-    public async Task GetOwnerCinComplianceAsync_ReturnsSummaryCounts()
+    public async Task GetCinComplianceAsync_ReturnsSummaryCounts()
     {
         var ownerId = "owner-1";
-        _repository.Setup(r => r.GetByOwnerForComplianceAsync(ownerId)).ReturnsAsync([
+        _repository.Setup(r => r.GetByScopeForComplianceAsync(OwnerScope)).ReturnsAsync([
             new Property { Id = Guid.NewGuid(), OwnerId = ownerId, Name = "A", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
             new Property { Id = Guid.NewGuid(), OwnerId = ownerId, Name = "B", Address = "b", City = "Roma", CinCode = null },
             new Property { Id = Guid.NewGuid(), OwnerId = ownerId, Name = "C", Address = "c", City = "Roma", CinCode = "BAD" },
             new Property { Id = Guid.NewGuid(), OwnerId = ownerId, Name = "D", Address = "d", City = "Roma", CinCode = "IT123450123456789" },
         ]);
 
-        var result = await _service.GetOwnerCinComplianceAsync(ownerId, null, 1, 50);
+        var result = await _service.GetCinComplianceAsync(OwnerScope, null, 1, 50);
 
         Assert.Equal(4, result.TotalCount);
         Assert.Equal(1, result.Summary.Valid);
@@ -56,13 +59,13 @@ public class PropertyServiceCinTests
     [InlineData("2026-03-11T09:00:00Z", CinDeadlinePhase.Upcoming, 10)]
     [InlineData("2026-03-20T23:30:00Z", CinDeadlinePhase.DueToday, 0)] // 23:30 UTC on the 20th is 00:30 of the 21st in Rome
     [InlineData("2026-10-07T09:00:00Z", CinDeadlinePhase.Passed, -200)]
-    public async Task GetOwnerCinComplianceAsync_ConfiguredDeadline_ReportsPhaseAndSignedDays(
+    public async Task GetCinComplianceAsync_ConfiguredDeadline_ReportsPhaseAndSignedDays(
         string utcNow, CinDeadlinePhase phase, int days)
     {
-        _repository.Setup(r => r.GetByOwnerForComplianceAsync("owner-1")).ReturnsAsync([]);
+        _repository.Setup(r => r.GetByScopeForComplianceAsync(OwnerScope)).ReturnsAsync([]);
         var service = NewService(new CinOptions { ExposureDeadline = "2026-03-21" }, DateTimeOffset.Parse(utcNow, CultureInfo.InvariantCulture));
 
-        var result = await service.GetOwnerCinComplianceAsync("owner-1", null, 1, 50);
+        var result = await service.GetCinComplianceAsync(OwnerScope, null, 1, 50);
 
         Assert.Equal(new DateOnly(2026, 3, 21), result.Summary.Deadline.Deadline);
         Assert.Equal(phase, result.Summary.Deadline.Phase);
@@ -70,11 +73,11 @@ public class PropertyServiceCinTests
     }
 
     [Fact]
-    public async Task GetOwnerCinComplianceAsync_NoDeadlineConfigured_ReportsNoDateAndNoDays()
+    public async Task GetCinComplianceAsync_NoDeadlineConfigured_ReportsNoDateAndNoDays()
     {
-        _repository.Setup(r => r.GetByOwnerForComplianceAsync("owner-1")).ReturnsAsync([]);
+        _repository.Setup(r => r.GetByScopeForComplianceAsync(OwnerScope)).ReturnsAsync([]);
 
-        var result = await _service.GetOwnerCinComplianceAsync("owner-1", null, 1, 50);
+        var result = await _service.GetCinComplianceAsync(OwnerScope, null, 1, 50);
 
         Assert.Equal(CinDeadlinePhase.NotConfigured, result.Summary.Deadline.Phase);
         Assert.Null(result.Summary.Deadline.Deadline);

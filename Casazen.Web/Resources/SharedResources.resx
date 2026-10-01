@@ -1366,4 +1366,19 @@
   <data name="LtrVerifiedAtInFuture" xml:space="preserve">
     <value>La data di verifica non può essere nel futuro.</value>
   </data>
+  <data name="LeaseLandlordRequired" xml:space="preserve">
+    <value>Il contratto deve avere almeno un locatore.</value>
+  </data>
+  <data name="LeaseTenantRequired" xml:space="preserve">
+    <value>Il contratto deve avere almeno un conduttore.</value>
+  </data>
+  <data name="LeasePartiesTooMany" xml:space="preserve">
+    <value>Troppe parti per un ruolo: al massimo {0} locatori e {0} conduttori.</value>
+  </data>
+  <data name="LeasePartyFiscalCodeInvalid" xml:space="preserve">
+    <value>Il codice fiscale di una parte non è valido: servono 16 caratteri con il carattere di controllo corretto (persona fisica) o 11 cifre (società).</value>
+  </data>
+  <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
+    <value>Lo stesso codice fiscale è indicato per più parti del contratto.</value>
+  </data>
 </root>

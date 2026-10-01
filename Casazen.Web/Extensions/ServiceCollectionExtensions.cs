@@ -297,6 +297,7 @@ public static class ServiceCollectionExtensions
         // CO-15: guest data rights and retention per category (docs/runbooks/gdpr.md); no period has a default.
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
+        services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();

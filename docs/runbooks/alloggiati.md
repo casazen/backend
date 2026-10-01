@@ -6,8 +6,9 @@ official code tables, sections at the end), CO-09 (A5-26, A5-27: check-in link a
 iCal"). CO-11 needs no external configuration; CO-12 needs an admin to import the
 official code tables (see "Tabelle codici Alloggiati"). This page explains what the code does, what the migrations
 change and what hosts see. The web service client
-(credentials per host, WSKEY, `Test`/`Send`/`Ricevuta`) is task CO-13; sources in
-`.claude/context/regulations/alloggiati.md`.
+(credentials per host, WSKEY, `Test`/`Send`/`Ricevuta`) and the record file are task CO-13, **blocked** until the
+official manuals are available in the repository: see "Record file and web service (CO-13): blocked" at the end. Sources
+in `.claude/context/regulations/alloggiati.md`.
 
 ## What changed
 
@@ -365,3 +366,70 @@ guest; API and rules in [ical.md](ical.md#ota-stays-from-ical-blocks-co-21)).
   new check-in date (a report job already scheduled for an earlier day reschedules itself, see "Scheduling" above).
 - A stay already over cannot be created from a block (422 `ota_stay_block_ended`): a late communication is handled with
   the Questura as explained above.
+
+## Record file and web service (CO-13): blocked
+
+Task CO-13 (decision D6), attempted on 2026-10-01: **no code written**. CasaZen still generates no record file and
+calls no web service; the host keeps sending each schedina on the portal from the per-guest summary (CO-11, CO-12) and
+declaring it with "Segna come inviato manualmente". No status reads "Inviato" (database check
+`CK_AlloggiatiWebReports_SentRequiresReceipt`).
+
+### Why
+
+RS-1 (`.claude/context/regulations/alloggiati.md`, "Specifiche tecniche verificate (2026-09)" and "Verdetto per CO-13")
+read the official manuals only through search-engine extracts and set a prerequisite: before any code, download the
+originals and confirm every line marked **D** (deduced) or **T** (third parties only). On 2026-10-01 the egress proxy of
+the development environment still blocks `alloggiatiweb.poliziadistato.it` and `questure.poliziadistato.it` (curl:
+`CONNECT tunnel failed, response 403`; fetch: `EGRESS_BLOCKED`), including the copies of the manuals published by the
+Questure and the web archive. A new search restricted to `poliziadistato.it` returned only the titles of the same
+documents (plus a summary saying the file holds at most 1000 lines, not read in the document). Writing the file or the
+SOAP client from the deduced data would risk files rejected by the portal or, worse, accepted with shifted fields.
+
+### What is verified and what is missing
+
+| Item | Status (RS-1) | Needed from the official documents |
+|---|---|---|
+| Line of 168 characters, fixed-length fields padded with spaces, CR+LF between lines, none after the last | U | — |
+| Field order and lengths: tipo alloggiato 2, data arrivo 10, cognome 50, nome 30, sesso 1, comune nascita 9, provincia 2, stato nascita 9, cittadinanza 9, tipo documento 5, numero documento 20, luogo rilascio 9 | U | — |
+| Length and position of "giorni di permanenza" (2) and "data di nascita" (10); start position of every field | **D** (sum of the lengths) | the record table of `CREAFILE.pdf` (columns "DA", "A", total characters) |
+| 34 spaces in place of the document fields for familiari and membri gruppo | U | — |
+| Fields 8 and 9 (comune and provincia of birth) left blank for people born abroad | **D** | `CREAFILE.pdf` |
+| Order of the lines: family and group members right after their head | **D** | `CREAFILE.pdf` / `MANUALEALBERGHI.pdf` |
+| Character encoding (ASCII, Windows-1252, UTF-8?) and how accented letters and apostrophes are written | **not found** (T: Windows-1252, accents replaced by the base letter) | `CREAFILE.pdf` |
+| Maximum lines per file (1000?) | search summary only | `CREAFILE.pdf` |
+| Numeric codes of the kinds of guest (16–20?) | **T**, sources disagree | not needed in the code: they come from the imported table `TipiAlloggiato` (CO-12), matched by name |
+| Profile "Gestione Appartamenti": IDAPPARTAMENTO of 6 characters at the end of each line (174 characters) | U (field), D (total) | `MANUALEALBERGHI.pdf`: alignment and padding of the id, where the host finds it |
+| Web service: endpoint `https://alloggiatiweb.poliziadistato.it/service/Service.asmx`, `GenerateToken`, `Test`, `Send`, `Ricevuta`, `Tabella` | U (names and purpose) | the WSDL (exact namespaces, element names and types, SOAP 1.1/1.2), the manual WS (token lifetime, limit of schedine per call, error codes of `TipoErrore`, `EsitoOperazioneServizio` / `ElencoSchedineEsito` layout, name of the token check operation, `GestioneAppartamenti_*` operations) |
+| Receipt: PDF signed, available from the day after, 30 days online, to keep 5 years | U | the manual WS: format of `Ricevuta` (base64 PDF) and the date to pass |
+| Sandbox | none documented (U) | — (`Test` validates without sending, with a host's real credentials) |
+
+### Documents to obtain (from a network that reaches the portal)
+
+| Document | Official URL |
+|---|---|
+| Invio File (record layout) | https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Download/Manuali/CREAFILE.pdf |
+| Guida al servizio (structures, File Unico "Gestione Appartamenti") | https://alloggiatiweb.poliziadistato.it/portalealloggiati/Download/Manuali/MANUALEALBERGHI.pdf |
+| Manual of the web service "Documento di Descrizione WS_ALLOGGIATI" (latest revision; Rev. 01 of 13/01/2022 known) | portal list https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/SupManuali.aspx (`.../Download/Manuali/MANUALEWS.pdf`), copy https://questure.poliziadistato.it/statics/13/manualewebsercices_alloggiatiweb.pdf |
+| WSDL | https://alloggiatiweb.poliziadistato.it/service/Service.asmx?wsdl |
+| Code tables (for the import of CO-12, also to check their file format) | https://alloggiatiweb.poliziadistato.it/portalealloggiati/tabelle.aspx |
+
+Use only the versions on `alloggiatiweb.poliziadistato.it`: some Questure publish older manuals with a 236-character
+record (with residence, without days of stay).
+
+### How to unblock (product owner)
+
+1. Download the documents above with a normal browser (RS-1: manuals, WSDL and tables need no login).
+2. Make them readable to the agents: either place the PDFs and the WSDL in a folder the development environment can read
+   (for example `docs/vendor/alloggiati/`, files of the Polizia di Stato, publicly downloadable), or open the
+   egress proxy to `alloggiatiweb.poliziadistato.it`.
+3. Reopen CO-13. The task then: confirms the D/T lines above in `.claude/context/regulations/alloggiati.md` (marking
+   them U with page numbers); writes the record file generator (one line per stay guest in record order, from
+   `StayGuests` and the imported codes, only when the summary says `exportReady`), downloadable by the host
+   (`booking.read`, own org, private, no-store, no personal data in the logs) with tests built on the examples of the
+   manual; and, only if the WSDL and the manual WS are in hand, the SOAP client (`GenerateToken`, `Test` then `Send`,
+   `Ricevuta` the day after) using the host credentials of `PropertyQuesturaCredentials` (CO-14, `encryption.md` §6),
+   with `Inviato` only after a positive `Send` and the receipt (D6).
+
+Everything CO-13 needs on the CasaZen side is already in place: guests of the stay in record order with the record's
+length limits (CO-12), official code tables imported by an admin (CO-12), `exportReady` in the summary, encrypted
+write-only host credentials (CO-14), and the statuses `Inviato` / `Rifiutato` / `Errore` with the receipt check (CO-11).

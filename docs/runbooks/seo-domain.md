@@ -28,7 +28,7 @@ Section 6 describes the funnel, the Auth0 setting it needs and how to read the a
 | Old sitemap | `/sitemap-compliance.xml` on the API host (URLs of another host, declared nowhere) is removed | — |
 | Other links of the backend (SE-03) | The booking-site link of the domain settings and of the activation status (`/book/{slug}`) use `App__PublicSiteBaseUrl` too (the supplier check-in QR was removed by SU-11); the `casazen.app` fallbacks are gone. A test fails if `casazen.app` is written again in the application code (`NoHardcodedPublicDomainTests`; the only exceptions are the Auth0 claim namespace `https://casazen.app/roles` / `…/email` and the Stripe return URLs owned by task PL-11) | `PublicSiteLinks`, `OnboardingService`, `OrgDomainService` |
 | Org subdomains (SE-03) | `{label}.{PublicHost__BaseDomain}`: a **different** domain (wildcard DNS to the web app), with its own variable and **no default** (it was `casazen.it` in code). Unset: the "subdomain" publication mode answers 422 `subdomains_not_configured`, no host is resolved as an org subdomain, the settings page shows no subdomain URL | `PublicHostOptions`, `OrgDomainService`, `PublicHostResolver` |
-| Footer Privacy / Terms (SE-03) | The public footer links the CasaZen documents served by `GET /api/legal/privacy` and `/api/legal/tos` (`documentUrl`, variables `Legal__Documents__Privacy__DocumentUrl` and `Legal__Documents__Tos__DocumentUrl`, texts provided by the product owner, D14). Not configured: no link (before, they pointed to `https://casazen.app/privacy` and `/terms`, pages that do not exist) | frontend `Footer.tsx`, `usePlatformLegalLinks` |
+| Footer Privacy / Terms (SE-03, PL-14) | The public footer links the web app pages `/legale/privacy` and `/legale/termini` (and, on the CasaZen pages, `/legale/sub-responsabili` and `/legale`). The pages read `GET /api/legal/*`: text provided by the product owner (D14), "in preparazione" until then. No domain in the frontend | frontend `Footer.tsx`, `features/legal/*`; runbook `legal-documents.md` |
 | Frontend (SE-03) | No `casazen.app` in the shipped frontend (test `src/test/no-hardcoded-domain.test.ts`, same claim exception). The web app's own hosts for the custom-host fallback are the host of `VITE_PUBLIC_SITE_URL`, `localhost` and `*.vercel.app` | frontend `src/config/public-site.ts`, `use-custom-host-redirect.ts` |
 
 ### Why a function for the sitemap and a build-time robots.txt
@@ -70,7 +70,7 @@ Optional, Railway, per environment (SE-03):
 | Variable | When | Value |
 |---|---|---|
 | `PublicHost__BaseDomain` | only if hosts may publish their booking site on a CasaZen subdomain | the domain whose wildcard record `*.<domain>` points to the Vercel project (e.g. `sites.<your domain>`); no scheme, no dots at the ends. Unset = subdomain mode off |
-| `Legal__Documents__Privacy__DocumentUrl`, `Legal__Documents__Tos__DocumentUrl` | when the product owner publishes the CasaZen Privacy and Terms | absolute https URL of each document; the public footer links them |
+| `Legal__Documents__Privacy__DocumentUrl`, `Legal__Documents__Tos__DocumentUrl` | optional, only for an external official copy | absolute https URL; the page `/legale/*` links it (texts and versions: `legal-documents.md`) |
 
 Vercel (frontend) → Settings → Environment Variables:
 
