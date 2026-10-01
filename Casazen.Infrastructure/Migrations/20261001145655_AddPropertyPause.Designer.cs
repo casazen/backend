@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001145655_AddPropertyPause")]
+    partial class AddPropertyPause
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1357,9 +1360,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<bool>("ContactEmailPublic")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1486,25 +1486,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"Subdomain\" IS NOT NULL");
 
                     b.ToTable("Orgs");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
-                {
-                    b.Property<string>("Slug")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Slug");
-
-                    b.HasIndex("OrgId");
-
-                    b.ToTable("OrgSlugAliases");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>
@@ -4500,17 +4481,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Party");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Org", "Org")
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Org");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaIntegration", b =>

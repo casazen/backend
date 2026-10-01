@@ -8,7 +8,8 @@ namespace Casazen.Web.DTOs;
 
 /// <summary>
 /// Request body for creating a new property. Excludes server-managed fields
-/// (<c>Id</c>, <c>OwnerId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>).
+/// (<c>Id</c>, <c>OwnerId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>). A new property is always active and not paused
+/// (PC-03, A2-05): <c>isActive</c> is not accepted, pausing is the dedicated <c>POST /properties/{id}/pause</c>.
 /// </summary>
 public class CreatePropertyRequest
 {
@@ -102,9 +103,6 @@ public class CreatePropertyRequest
     /// <summary>Optional reference to the cancellation policy applied to new bookings.</summary>
     public Guid? CancellationPolicyId { get; set; }
 
-    /// <summary>Whether the property is visible and bookable. Defaults to <c>true</c>.</summary>
-    public bool IsActive { get; set; } = true;
-
     /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug { get; set; }
@@ -137,7 +135,6 @@ public class CreatePropertyRequest
         CinCode = CinCode,
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,
-        IsActive = IsActive,
         Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant(),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,

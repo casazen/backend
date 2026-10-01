@@ -18,6 +18,9 @@ namespace Casazen.Web.DTOs;
 /// cleared by sending them explicitly as <c>null</c> (or, for the text ones, blank); leaving them out keeps them.</para>
 /// <para>Server-managed fields (<c>Id</c>, <c>OwnerId</c>, <c>OrgId</c>, <c>CreatedAt</c>, <c>UpdatedAt</c>, the
 /// compliance status) are not part of the request. Validation messages are SharedResources keys.</para>
+/// <para><c>IsActive</c> is not part of the request either (PC-03, A2-05): a generic save could hide a property from
+/// its own host's list and detail with no way back from the UI. Pausing is the dedicated, reversible
+/// <c>POST /properties/{id}/pause</c> / <c>.../activate</c>; an <c>isActive</c> sent in the body is ignored.</para>
 /// Kept as a separate class from <see cref="CreatePropertyRequest"/> for API versioning safety.
 /// </remarks>
 public class UpdatePropertyRequest
@@ -134,9 +137,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Whether the property is visible and bookable.</summary>
-    public bool? IsActive { get; set; }
-
     /// <summary>URL slug for direct booking links (unique within org); <c>null</c> or blank removes it.</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug
@@ -205,8 +205,6 @@ public class UpdatePropertyRequest
             property.HouseRules = HouseRules;
         if (Timezone is not null)
             property.Timezone = Timezone.Trim();
-        if (IsActive is { } isActive)
-            property.IsActive = isActive;
         if (CinCodeSent)
             property.CinCode = CinCode;
         if (CancellationPolicyIdSent)
