@@ -368,7 +368,7 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         await SeedPropertyAsync(userId, orgId);
         await SeedPropertyAsync(userId, orgId, p => p.CinCode = null);
         // The old invented format is not a CIN (compliance.md).
-        await SeedPropertyAsync(userId, orgId, p => p.CinCode = "IT-123456-1234567890");
+        await SeedPropertyAsync(userId, orgId, p => p.CinCode = "IT-12345-1234567890");
 
         var cin = StepOf(await GetStatusAsync(client), "cin");
 
