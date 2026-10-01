@@ -47,13 +47,17 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task SearchAsync_WithCityFilter_ReturnsMatchingProperties()
     {
-        // Arrange
+        // Arrange: the public search only offers properties of an active org (BK-20)
+        var org = new OrgEntity { Name = "Org", Slug = "org-search", DisplayName = "Org", ContactEmail = "org@example.com", IsActive = true };
+        _context.Orgs.Add(org);
+        await _context.SaveChangesAsync();
         await _repository.AddAsync(new Property
         {
             Name = "Rome Property",
             City = "Rome",
             Address = "Via Roma",
             OwnerId = "auth0|test_user_123",
+            OrgId = org.Id,
             IsActive = true,
             ComplianceStatus = PropertyComplianceStatus.Active,
         });
@@ -63,7 +67,8 @@ public class PropertyRepositoryTests
             Name = "Milan Property",
             City = "Milan",
             Address = "Via Milano",
-            OwnerId = "auth0|test_user_123"
+            OwnerId = "auth0|test_user_123",
+            OrgId = org.Id,
         });
 
         // Act
