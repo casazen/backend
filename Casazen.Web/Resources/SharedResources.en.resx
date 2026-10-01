@@ -453,6 +453,39 @@
   <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
     <value>Invalid image size: it must be at least {0}×{1} pixels and at most {2}×{3}.</value>
   </data>
+  <data name="PublicSearchFilterInvalid" xml:space="preserve">
+    <value>A search filter is not valid.</value>
+  </data>
+  <data name="OrgDocumentContentRequired" xml:space="preserve">
+    <value>Write the text of the document.</value>
+  </data>
+  <data name="OrgDocumentContentTooLong" xml:space="preserve">
+    <value>The text is longer than {0} characters.</value>
+  </data>
+  <data name="OrgDocumentContentTooLongInput" xml:space="preserve">
+    <value>The text is too long.</value>
+  </data>
+  <data name="OrgDocumentHtmlNotAllowed" xml:space="preserve">
+    <value>The text contains HTML code, which is not allowed: write plain text (you can use # for headings, - for lists, **bold** and [text](https://address) for links).</value>
+  </data>
+  <data name="OrgDocumentLinkInvalid" xml:space="preserve">
+    <value>A link is not valid: it must start with https://, http:// or mailto:.</value>
+  </data>
+  <data name="OrgDocumentUrlRequired" xml:space="preserve">
+    <value>Enter the address of the document.</value>
+  </data>
+  <data name="OrgDocumentUrlInvalid" xml:space="preserve">
+    <value>The address is not valid: it must be a complete https:// address, without credentials.</value>
+  </data>
+  <data name="OrgDocumentSourceInvalid" xml:space="preserve">
+    <value>Choose whether to write the text or give the address of a document.</value>
+  </data>
+  <data name="OrgDocumentVersionNotFound" xml:space="preserve">
+    <value>This version of the document does not exist.</value>
+  </data>
+  <data name="OrgDocumentKindUnknown" xml:space="preserve">
+    <value>Unknown document.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>This field is required.</value>
   </data>
@@ -1395,6 +1428,33 @@
   </data>
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
+  </data>
+  <data name="PropertyPhotoNone" xml:space="preserve">
+    <value>Select at least one photo to upload.</value>
+  </data>
+  <data name="PropertyPhotoTooManyFiles" xml:space="preserve">
+    <value>You can upload at most {0} photos at a time.</value>
+  </data>
+  <data name="PropertyPhotoLimitReached" xml:space="preserve">
+    <value>A property can have at most {0} photos (it already has {1}): delete a photo before uploading more.</value>
+  </data>
+  <data name="PropertyPhotoInvalidType" xml:space="preserve">
+    <value>The file "{0}" is not a valid photo: only JPEG, PNG or WebP images are accepted.</value>
+  </data>
+  <data name="PropertyPhotoInvalidSize" xml:space="preserve">
+    <value>The file "{0}" is empty or larger than the {1} MB limit.</value>
+  </data>
+  <data name="PropertyPhotoNotFound" xml:space="preserve">
+    <value>The photo is no longer in the property gallery: reload the page.</value>
+  </data>
+  <data name="PropertyPhotosChanged" xml:space="preserve">
+    <value>The gallery was changed by another user or another tab: reload the page and try again.</value>
+  </data>
+  <data name="PropertyPhotoUrlRequired" xml:space="preserve">
+    <value>Specify the photo.</value>
+  </data>
+  <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
+    <value>The photo address is too long.</value>
   </data>
   <data name="SeoNotFoundTitle" xml:space="preserve">
     <value>Page not found</value>

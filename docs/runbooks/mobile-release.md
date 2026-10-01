@@ -66,6 +66,13 @@ Rules enforced by the app and by the EAS build:
 - trailing slashes are removed; `EXPO_PUBLIC_API_URL` has **no** `/api` suffix (the app adds it);
 - `EXPO_PUBLIC_AUTH0_DOMAIN` is a bare host name.
 
+`EXPO_PUBLIC_WEB_URL` opens the host console on the web ("Apri sul sito"). The **booking link shared** from the
+Properties tab (MO-11, A6-09, A3-22) does not use it: the app reads `org.publicSiteUrl` from `GET /api/users/me`, built
+by the backend on `App__PublicSiteBaseUrl` with the org's **current** slug (`{base}/book/{orgSlug}`), and appends
+`/property/{propertySlug or id}`. A link shared before a slug change keeps working (old slugs are aliases, PL-04). When
+the backend has no `App__PublicSiteBaseUrl` (possible only in Development/Testing) or the property is not published
+(inactive, paused or compliance not active), the share button is disabled with the reason, never a broken link.
+
 Visibility: **Plain text** (`plaintext`). `EXPO_PUBLIC_*` values are compiled into the JavaScript bundle and readable by anyone who has the app, so they must never contain a real secret (the Native Auth0 app has no client secret: PKCE). `eas-cli` reads only Plain text and Sensitive variables when it evaluates the config locally.
 
 From the CLI (repeat per variable and environment, or use the dashboard):
