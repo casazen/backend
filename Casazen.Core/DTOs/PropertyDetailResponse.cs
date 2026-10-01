@@ -9,6 +9,9 @@ public class PropertyDetailResponse
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
+
+    /// <summary>Interno / scala (PC-06); null when the property has none.</summary>
+    public string? Unit { get; set; }
     public string City { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
     public int Bedrooms { get; set; }

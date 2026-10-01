@@ -330,7 +330,7 @@ public class PropertiesControllerTests
     }
 
     [Fact]
-    public async Task Create_WhenAddressUniqueConstraintViolated_ReturnsConflict()
+    public async Task Create_WhenTheServiceReportsADuplicateAddress_LetsTheErrorMiddlewareAnswer409()
     {
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
@@ -346,15 +346,15 @@ public class PropertiesControllerTests
             NightlyRate = 50m
         };
 
+        // PC-06 (A2-19): the service maps the unique violation of the address index to a domain conflict; the controller
+        // does not swallow it, so the error middleware answers 409 `duplicate_property_address` (never "any unique
+        // index means the address is taken", which also reported a slug race as an address one).
         _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
-            .ThrowsAsync(new DbUpdateException(
-                "unique",
-                new InvalidOperationException("23505 unique constraint UIX")));
+            .ThrowsAsync(new DomainConflictException(PropertyAddress.DuplicateCode, "PropertyAddressTaken"));
 
-        var result = await _controller.Create(request);
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _controller.Create(request));
 
-        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
-        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+        Assert.Equal("duplicate_property_address", ex.Code);
     }
 
     [Fact]

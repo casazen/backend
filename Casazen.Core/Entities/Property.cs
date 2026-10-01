@@ -36,13 +36,28 @@ public class Property : ITenantOwned
     [Required, MaxLength(500)]
     public string Address { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Interno / scala of the apartment inside the building (PC-06, A2-19): free text such as <c>int. 5</c> or
+    /// <c>Scala B int. 5</c>, trimmed with inner spaces collapsed (<see cref="PropertyAddress.NormalizeUnit"/>). Null for
+    /// a property that has no unit (a house, the only apartment of the address). Part of the address uniqueness: several
+    /// apartments of the same building are different properties of the org.
+    /// </summary>
+    [MaxLength(PropertyAddress.UnitMaxLength)]
+    public string? Unit { get; set; }
+
     [Required, MaxLength(50)]
     public string City { get; set; } = string.Empty;
 
     [MaxLength(10)]
     public string PostalCode { get; set; } = string.Empty;
 
+    /// <summary>
+    /// WGS84 latitude in degrees, -90 to 90, stored with <see cref="PropertyAddress.CoordinateScale"/> decimals (about
+    /// 0.1 m, PC-06, A2-33). <c>0</c> together with a longitude of <c>0</c> = not set.
+    /// </summary>
     public decimal Latitude { get; set; }
+
+    /// <summary>WGS84 longitude in degrees, -180 to 180, same precision as <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
 
     [Range(0, 100, ErrorMessage = "Bedrooms must be between 0 (studio) and 100")]

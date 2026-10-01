@@ -130,7 +130,10 @@ public class PropertiesController(
     /// <response code="201">Property created successfully.</response>
     /// <response code="401">The caller is not authenticated.</response>
     /// <response code="403"><c>plan_limit_reached</c>: the org already has as many properties as its plan allows.</response>
-    /// <response code="409">Duplicate active address or slug within the organization.</response>
+    /// <response code="400"><c>validation_error</c>: a field is not valid (errors by field), e.g. a latitude outside -90..90.</response>
+    /// <response code="409"><c>duplicate_property_address</c>: an active property of the org has the same address and unit
+    /// (several apartments of one building differ by <c>unit</c>; another org's property never conflicts, A2-19), or a
+    /// duplicate slug within the organization.</response>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(typeof(Property), StatusCodes.Status201Created)]
@@ -184,15 +187,6 @@ public class PropertiesController(
         {
             logger.LogWarning(ex, "Property creation conflict for user {UserId}", userId);
             return Conflict(new { error = ex.Message, code = "duplicate_property_slug" });
-        }
-        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
-        {
-            logger.LogWarning(ex, "Property creation unique constraint for user {UserId}", userId);
-            return Conflict(new
-            {
-                error = "Indirizzo già usato da un immobile attivo",
-                code = "duplicate_property_address"
-            });
         }
     }
 
@@ -1541,11 +1535,4 @@ public class PropertiesController(
 
     /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
     internal const string PlanLimitReachedCode = "plan_limit_reached";
-
-    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        var inner = ex.InnerException?.Message ?? string.Empty;
-        return inner.Contains("23505", StringComparison.Ordinal)
-            || inner.Contains("unique", StringComparison.OrdinalIgnoreCase);
-    }
 }

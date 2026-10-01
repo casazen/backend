@@ -1387,4 +1387,19 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>Lo stesso codice fiscale è indicato per più parti del contratto.</value>
   </data>
+  <data name="PropertyAddressTaken" xml:space="preserve">
+    <value>Esiste già un immobile attivo della tua organizzazione con questo indirizzo. Se è un altro appartamento dello stesso edificio, indica l'interno o la scala.</value>
+  </data>
+  <data name="PropertyUnitTooLong" xml:space="preserve">
+    <value>L'interno o la scala può avere al massimo 30 caratteri.</value>
+  </data>
+  <data name="PropertyLatitudeRange" xml:space="preserve">
+    <value>La latitudine deve essere compresa tra -90 e 90 gradi.</value>
+  </data>
+  <data name="PropertyLongitudeRange" xml:space="preserve">
+    <value>La longitudine deve essere compresa tra -180 e 180 gradi.</value>
+  </data>
+  <data name="PropertyCoordinatesInvalid" xml:space="preserve">
+    <value>Le coordinate non sono valide: la latitudine deve essere tra -90 e 90 gradi e la longitudine tra -180 e 180.</value>
+  </data>
 </root>

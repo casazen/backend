@@ -19,6 +19,9 @@ public sealed class PropertyResponse
     public string? Slug { get; init; }
     public string Description { get; init; } = string.Empty;
     public string Address { get; init; } = string.Empty;
+
+    /// <summary>Interno / scala (PC-06); null when the property has none.</summary>
+    public string? Unit { get; init; }
     public string City { get; init; } = string.Empty;
     public string PostalCode { get; init; } = string.Empty;
     public decimal Latitude { get; init; }
@@ -66,6 +69,7 @@ public sealed class PropertyResponse
             Slug = property.Slug,
             Description = property.Description,
             Address = property.Address,
+            Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
             Latitude = property.Latitude,

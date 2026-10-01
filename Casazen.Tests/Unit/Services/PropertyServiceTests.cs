@@ -6,9 +6,11 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -503,5 +505,107 @@ public class PropertyServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.ReorderImagesAsync(propertyId, wrongCount));
+    }
+
+    // ─── Unique address, unit and coordinates (PC-06, A2-19, A2-33) ──────────────
+
+    private static DbUpdateException UniqueViolation(string constraintName) =>
+        new("save failed", new PostgresException(
+            "duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation,
+            constraintName: constraintName));
+
+    [Fact]
+    public async Task CreatePropertyAsync_AddressIndexViolation_ThrowsDuplicateAddressConflict()
+    {
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation(PropertyAddress.UniqueIndexName));
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_address", ex.Code);
+        Assert.Equal("PropertyAddressTaken", ex.MessageKey);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_SlugIndexViolation_ThrowsDuplicateSlugConflictNotAnAddressOne()
+    {
+        // Two parallel creates with the same name: the loser must not be told that its ADDRESS is taken.
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation("UIX_Properties_OrgId_Slug"));
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_slug", ex.Code);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_AnotherDatabaseError_IsNotTurnedIntoAConflict()
+    {
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        var failure = UniqueViolation("IX_Something_Else");
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(failure);
+
+        var thrown = await Assert.ThrowsAsync<DbUpdateException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Same(failure, thrown);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_AddressIndexViolation_ThrowsDuplicateAddressConflict()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
+        _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation(PropertyAddress.UniqueIndexName));
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.UpdatePropertyAsync(property));
+
+        Assert.Equal("duplicate_property_address", ex.Code);
+    }
+
+    [Fact]
+    public async Task CreatePropertyAsync_UnitAndCoordinates_AreStoredNormalizedAndRounded()
+    {
+        var property = new Property
+        {
+            Name = "Casa",
+            OrgId = Guid.NewGuid(),
+            Unit = "  Scala  B ",
+            Latitude = 41.9027825m,
+            Longitude = 12.4963664m,
+        };
+        Property? stored = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>()))
+            .Callback((Property p) => stored = p)
+            .ReturnsAsync((Property p) => p);
+
+        await _service.CreatePropertyAsync(property);
+
+        Assert.Equal("Scala B", stored!.Unit);
+        Assert.Equal(41.902783m, stored.Latitude);
+        Assert.Equal(12.496366m, stored.Longitude);
+    }
+
+    [Theory]
+    [InlineData(91, 0)]
+    [InlineData(-90.1, 0)]
+    [InlineData(0, 181)]
+    [InlineData(1234.5, 9999)]
+    public async Task CreatePropertyAsync_CoordinateOutsideTheEarth_IsRefusedBeforeTheInsert(double latitude, double longitude)
+    {
+        var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Latitude = (decimal)latitude, Longitude = (decimal)longitude };
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.CreatePropertyAsync(property));
+
+        Assert.Equal("property_coordinates_invalid", ex.Code);
+        _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdatePropertyAsync_CoordinateOutsideTheEarth_IsRefusedBeforeTheUpdate()
+    {
+        var property = new Property { Id = Guid.NewGuid(), Name = "Casa", OrgId = Guid.NewGuid(), Latitude = 95m };
+
+        await Assert.ThrowsAsync<DomainRuleException>(() => _service.UpdatePropertyAsync(property));
+
+        _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Property>()), Times.Never);
     }
 }
