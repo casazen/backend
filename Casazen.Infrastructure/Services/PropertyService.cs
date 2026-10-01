@@ -160,11 +160,14 @@ public class PropertyService(
         }
     }
 
-    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(PublicPropertySearchCriteria criteria)
     {
-        logger.LogInformation("Searching properties: city={City}, bedrooms={Bedrooms}, maxPrice={MaxPrice}", city, bedrooms, maxPrice);
+        ArgumentNullException.ThrowIfNull(criteria);
+        logger.LogInformation(
+            "Searching properties: city={City}, price={MinPrice}-{MaxPrice}, minBedrooms={MinBedrooms}, minBathrooms={MinBathrooms}, guests={Guests}",
+            criteria.City, criteria.MinPrice, criteria.MaxPrice, criteria.MinBedrooms, criteria.MinBathrooms, criteria.Guests);
 
-        var rows = await repository.GetSearchQueryable(city, bedrooms, maxPrice)
+        var rows = await repository.GetSearchQueryable(criteria)
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
@@ -172,6 +175,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -197,7 +201,7 @@ public class PropertyService(
     {
         logger.LogInformation("Searching public properties for org {OrgId}", orgId);
 
-        var rows = await repository.GetSearchQueryable(null, null, null, orgId)
+        var rows = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None, orgId)
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
@@ -205,6 +209,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -228,12 +233,13 @@ public class PropertyService(
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id)
     {
-        var row = await repository.GetSearchQueryable(null, null, null)
+        var row = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None)
             .Where(p => p.Id == id)
             .Select(p => new PublicPropertyDetailRow
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -259,7 +265,7 @@ public class PropertyService(
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
     {
-        var query = repository.GetSearchQueryable(null, null, null, orgId);
+        var query = repository.GetSearchQueryable(PublicPropertySearchCriteria.None, orgId);
         if (Guid.TryParse(slugOrId, out var id))
             query = query.Where(p => p.Id == id);
         else
@@ -270,6 +276,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -583,6 +590,7 @@ public class PropertyService(
     {
         Id = row.Id,
         Slug = row.Slug,
+        OrgSlug = row.OrgSlug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -605,6 +613,7 @@ public class PropertyService(
     {
         Id = row.Id,
         Slug = row.Slug,
+        OrgSlug = row.OrgSlug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -631,6 +640,7 @@ public class PropertyService(
     {
         public Guid Id { get; init; }
         public string? Slug { get; init; }
+        public string OrgSlug { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public string City { get; init; } = string.Empty;

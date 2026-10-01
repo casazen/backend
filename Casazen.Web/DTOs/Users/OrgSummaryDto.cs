@@ -10,6 +10,13 @@ public class OrgSummaryDto
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Root of the org's public booking site, <c>{App:PublicSiteBaseUrl}/book/{slug}</c> with the current slug (MO-11,
+    /// A6-09, A3-22): the app appends <c>/property/{propertySlugOrId}</c> to share a property. <c>null</c> when the public
+    /// URL is not configured (Development/Testing only, D3: no fallback domain), so a client never builds a broken link.
+    /// </summary>
+    public string? PublicSiteUrl { get; set; }
+
     /// <summary>Effective plan tier name (<c>Starter</c> | <c>Pro</c> | <c>Scale</c>): Starter unless a subscription pays for it.</summary>
     public string PlanTier { get; set; } = string.Empty;
 }

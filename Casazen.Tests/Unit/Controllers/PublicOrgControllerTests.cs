@@ -25,6 +25,7 @@ public class PublicOrgControllerTests
     private readonly Mock<IOrgService> _orgService = new();
     private readonly Mock<IPropertyService> _propertyService = new();
     private readonly Mock<IEntitlementService> _entitlementService = new();
+    private readonly Mock<IOrgSiteDocumentService> _siteDocumentService = new();
     private readonly PublicOrgController _controller;
 
     public PublicOrgControllerTests()
@@ -39,7 +40,8 @@ public class PublicOrgControllerTests
             new PublicOrgSiteUrls(
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSite })),
                 Options.Create(new PublicHostOptions { BaseDomain = "sites.example.test" }),
-                _entitlementService.Object));
+                _entitlementService.Object),
+            _siteDocumentService.Object);
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────
