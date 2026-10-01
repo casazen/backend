@@ -354,6 +354,12 @@
   <data name="PropertySlugTaken" xml:space="preserve">
     <value>This web address (slug) is already used by another property in your organization.</value>
   </data>
+  <data name="PropertyHasUpcomingBookings" xml:space="preserve">
+    <value>This property cannot be deleted: it has a booking (pending, confirmed or with the guests already checked in) whose check-out has not passed yet.</value>
+  </data>
+  <data name="PropertyHasActiveLeases" xml:space="preserve">
+    <value>This property cannot be deleted: it has a lease in force or in progress that has not ended yet.</value>
+  </data>
   <data name="BookingUpdateInvalid" xml:space="preserve">
     <value>The booking cannot be changed this way: check the dates, the number of guests and the booking status.</value>
   </data>
@@ -531,6 +537,15 @@
   </data>
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
+  </data>
+  <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
+    <value>The file for the Alloggiati Web portal cannot be generated: the guest data is incomplete or an official code is missing. Complete the guest's Alloggiati details.</value>
+  </data>
+  <data name="AlloggiatiRecordFileStayDays" xml:space="preserve">
+    <value>The file for the Alloggiati Web portal cannot be generated: the stay lasts {0} days and one schedina accepts from 1 to {1}.</value>
+  </data>
+  <data name="AlloggiatiRecordFileName" xml:space="preserve">
+    <value>The file for the Alloggiati Web portal cannot be generated: the first or last name of guest {0} has characters the portal does not accept. Write them with letters of the Latin alphabet only, as on the document.</value>
   </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tourist tax rate not found.</value>

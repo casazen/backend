@@ -14,9 +14,9 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Alloggiati Web communications of the host's bookings (art. 109 TULPS). CasaZen does not transmit to the
-/// Questura yet (CO-13): the host sends each schedina on the portal from the per-guest summary and declares it
-/// with <c>mark-sent-manually</c> (CO-11, decision D6). Since CO-12 every guest of the stay is registered
-/// (<c>stay-guests</c>): one line per guest, a head of family or group before its members.
+/// Questura: the host sends each schedina on the portal, from the per-guest summary or by uploading the record file
+/// (<c>record-file</c>, CO-13), and declares it with <c>mark-sent-manually</c> (CO-11, decision D6). Since CO-12 every
+/// guest of the stay is registered (<c>stay-guests</c>): one line per guest, a head of family or group before its members.
 /// </summary>
 /// <remarks>
 /// Booking-scoped actions use the TN-3 resource authorization (<see cref="BookingOperations"/> on the booking's
@@ -38,7 +38,7 @@ public class AlloggiatiController(
     IStringLocalizer<SharedResources> localizer,
     ILogger<AlloggiatiController> logger) : ControllerBase
 {
-    /// <summary>Code of a send request while CasaZen has no Alloggiati Web client (422).</summary>
+    /// <summary>Code of a send request: CasaZen has no Alloggiati Web client (422).</summary>
     public const string TransmissionUnavailableCode = "alloggiati_transmission_unavailable";
 
     /// <summary>Code of a code search on an unknown list (400).</summary>
@@ -86,6 +86,35 @@ public class AlloggiatiController(
 
         var summary = await alloggiatiWebService.GetGuestSummaryAsync(bookingId);
         return Ok(AlloggiatiGuestSummaryDto.From(summary));
+    }
+
+    /// <summary>
+    /// The record file to upload on the Alloggiati Web portal, menu "File" (CO-13): one 168-character line per guest of
+    /// the stay, UTF-8, CR+LF. Built on every request from the data and the official codes, never stored: it holds the
+    /// identity documents, so it needs <c>guest.read</c> like the full document numbers, the booking must be of the
+    /// caller's org (another org's booking answers 404) and it is never cached. Every download is logged with the user and
+    /// the booking, never with the data. Downloading is not sending: no status changes, nothing is transmitted (D6).
+    /// 422 when the file cannot be built (data incomplete or codes to complete, stay of more than 30 days, a name that
+    /// cannot be written with the letters the portal accepts).
+    /// </summary>
+    [HttpGet("{bookingId:guid}/record-file")]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> DownloadRecordFile(Guid bookingId)
+    {
+        var (_, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var file = await alloggiatiWebService.BuildRecordFileAsync(bookingId);
+
+        logger.LogInformation(
+            "User {UserId} downloaded the Alloggiati record file of booking {BookingId}: {LineCount} lines",
+            User.GetUserId(), bookingId, file.LineCount);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(file.Content, "text/plain; charset=utf-8", file.FileName);
     }
 
     /// <summary>
@@ -227,8 +256,9 @@ public class AlloggiatiController(
     }
 
     /// <summary>
-    /// Transmission to Alloggiati Web is not available (no web service client yet, CO-13): always 422, nothing is
-    /// changed. The host sends the schedina on the portal and uses <c>mark-sent-manually</c>.
+    /// Transmission to Alloggiati Web is not available (CasaZen has no web service client): always 422, nothing is
+    /// changed. The host sends the schedina on the portal (typing it or uploading the <c>record-file</c>) and uses
+    /// <c>mark-sent-manually</c>.
     /// </summary>
     [HttpPost("{bookingId:guid}/send")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
