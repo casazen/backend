@@ -373,7 +373,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
             StartDate = start,
             EndDate = end,
             MonthlyRent = 800m,
-            DataRetentionUntil = end.AddYears(10),
         });
 
     private static Booking SeedBooking(
