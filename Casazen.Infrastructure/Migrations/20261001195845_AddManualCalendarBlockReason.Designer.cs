@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261001184410_AddManualCalendarBlockReason")]
+    [Migration("20261001195845_AddManualCalendarBlockReason")]
     partial class AddManualCalendarBlockReason
     {
         /// <inheritdoc />
