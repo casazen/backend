@@ -7,6 +7,10 @@ chooses the domain, sets the variables of section 2 and follows sections 3 and 4
 Task SE-01, audit defects A8-04, A8-05, A8-06, A8-21 and R-09: a page is public only with a text a person read and
 approved in the admin dashboard; section 7 describes the review flow, the audit and what the migration withdrew.
 
+Task BK-15, audit defects A3-20, A8-09, A8-20 and A8-29 (P1): the booking sites (`/book/{slug}`, `/book/{slug}/property/…`)
+and the guides (`/p/…`) are served to crawlers as real HTML (title, description, canonical, `hreflang`, Open Graph, JSON-LD),
+with a sitemap per org and a `robots.txt` that keeps the private pages out. Section 8 describes it and how to check it.
+
 Task SE-03, audit defect A8-03 (P0): the CTA of the SEO pages leads to `/signup`, which opens the Auth0 **signup**
 screen in one click and records where the signup came from (UTM parameters, comune, landing page, referrer host).
 Section 6 describes the funnel, the Auth0 setting it needs and how to read the attributions.
@@ -30,6 +34,9 @@ Section 6 describes the funnel, the Auth0 setting it needs and how to read the a
 | Org subdomains (SE-03) | `{label}.{PublicHost__BaseDomain}`: a **different** domain (wildcard DNS to the web app), with its own variable and **no default** (it was `casazen.it` in code). Unset: the "subdomain" publication mode answers 422 `subdomains_not_configured`, no host is resolved as an org subdomain, the settings page shows no subdomain URL | `PublicHostOptions`, `OrgDomainService`, `PublicHostResolver` |
 | Footer Privacy / Terms (SE-03, PL-14) | The public footer links the web app pages `/legale/privacy` and `/legale/termini` (and, on the CasaZen pages, `/legale/sub-responsabili` and `/legale`). The pages read `GET /api/legal/*`: text provided by the product owner (D14), "in preparazione" until then. No domain in the frontend | frontend `Footer.tsx`, `features/legal/*`; runbook `legal-documents.md` |
 | Frontend (SE-03) | No `casazen.app` in the shipped frontend (test `src/test/no-hardcoded-domain.test.ts`, same claim exception). The web app's own hosts for the custom-host fallback are the host of `VITE_PUBLIC_SITE_URL`, `localhost` and `*.vercel.app` | frontend `src/config/public-site.ts`, `use-custom-host-redirect.ts` |
+| Crawler pages (BK-15) | Known crawlers (`user-agent` rewrites in `vercel.json`) get the HTML of `/book/{slug}`, `/book/{slug}/property/{slug or id}` and `/p/…` from the Vercel Function `api/seo.ts`, which returns `GET {VITE_API_BASE_URL}/public/seo/…` of the backend; people keep getting the single-page app. Section 8 | backend `PublicSeoController`, `Casazen.Web/Seo/*`; frontend `api/seo.ts`, `vercel.json` |
+| Sitemaps of the booking sites (BK-15) | `/sitemap-book.xml` (index: one entry per org with a published property) and `/book/{slug}/sitemap.xml` (landing page + published properties, `lastmod` = `UpdatedAt`), through the same Vercel Function as `/sitemap.xml` (`api/sitemap.ts`). Both are declared in `robots.txt` | `PublicOrgSitemapController`, `PublicSeoService`; frontend `api/sitemap.ts` |
+| `robots.txt` (BK-15) | Production also disallows what is never worth indexing: `/app/`, `/checkin/`, `/login`, `/book/*/my-bookings`, `/book/*/booking/`, `/book/*/requests/`, `/book/*/property/*/checkout`; declares `/sitemap.xml` and `/sitemap-book.xml` | frontend `src/config/robots-txt.ts` |
 
 ### Why a function for the sitemap and a build-time robots.txt
 
@@ -322,8 +329,126 @@ reviewed by a person. Down-migrating does not publish the withdrawn pages again.
    a new comune answers 404 until "Approva e pubblica"; after the approval it answers 200 and the sitemap lists it;
    "Ritira" removes it again.
 
+## 8. Crawler pages and booking-site sitemaps (BK-15)
+
+### Why this way
+
+The web app is a single-page app: `index.html` is empty, so title, description, canonical, Open Graph and JSON-LD only
+existed after JavaScript and API calls. Search engines and link previews (WhatsApp, Facebook, LinkedIn, ...) saw
+`<title>temp-vite</title>`. The pages of a booking site are per org and change whenever a host edits them, so a build-time
+prerender would be stale and would make every deploy depend on the API. The method:
+
+1. `vercel.json` rewrites a request for `/book/:orgSlug`, `/book/:orgSlug/property/:property`, `/p/affitti-brevi`,
+   `/p/affitti-brevi/:region/:comune` or `/p/tassa-soggiorno/:comune` to the Vercel Function `api/seo.ts` **only when the
+   `user-agent` is a known crawler** (Googlebot and the other search engines, the link-preview bots, the AI search and
+   assistant bots: the list is in `vercel.json`, covered by `src/test/vercel-routing.test.ts`). Everybody else, and every
+   other path, keeps getting `index.html`: a failure of the function or of the API can only affect crawlers, which retry.
+   The list is explicit on purpose: a generic "bot" pattern also matches the browser of some phones.
+2. The function calls the backend (`GET {VITE_API_BASE_URL}/public/seo/orgs/{slug}`, `…/orgs/{slug}/properties/{property}`,
+   `…/guides/{region}/{comune}`, `…/tourist-tax/{comune}`, `…/hub`) and passes the answer on. It owns no content: the
+   rules live in the backend (`PublicSeoService`) and are tested there. It sends the Host the crawler used
+   (`x-forwarded-host`), so the backend can decide whether the page may be indexed on that host.
+3. The answer is a plain HTML document (no script, no stylesheet): `lang`, `title`, `description`, `robots`, canonical,
+   `hreflang` (the page itself and `x-default`: one URL per page whatever the language of the visitor), `og:*`, Twitter
+   card, JSON-LD in the head, and the text of the page in the body (the org and its properties with links, the property
+   facts and amenities, the approved text of a guide). A real `404` for an unknown page (the single-page app can only
+   answer `200` with a "not found" screen), a `301` to the canonical path on the same host for an old org slug or a
+   property reached by id, and `Cache-Control: no-store` (the same URL is served to people by the app; an unpublished
+   property must leave crawlers at once). The function adds `X-Robots-Tag: noindex, nofollow` on every deployment that is not
+   Vercel production, next to the `Disallow: /` of its `robots.txt`.
+
+No new variable: the function uses `VITE_API_BASE_URL` (already set per Vercel environment, like the sitemap function) and
+`VERCEL_ENV`; the backend uses `App__PublicSiteBaseUrl` for every URL (decision D3).
+
+### What is indexable (backend `PublicSeoService`)
+
+| Page | Indexed when | Otherwise |
+|---|---|---|
+| Org landing `/book/{slug}` | the org is active and has at least one published property (`PublicListing.IsPublished`: active, not paused, compliance activated) and the request host is allowed (below) | `noindex,nofollow` (no canonical); unknown or inactive org: `404` |
+| Property `/book/{slug}/property/{slug or id}` | the property is published (and the host allowed) | `404` (paused, inactive, compliance pending or suspended, other org's property); `301` when reached by id (it has a slug) or through an old org slug |
+| Guide / tourist tax page | an approved revision exists (SE-01) with text and, for the calculator, a rate in force (same rule as the sitemap) | `404` without an approved revision; `noindex` when it has no text, or the calculator has no rate |
+| Hub `/p/affitti-brevi` | at least one page is published | `noindex` |
+
+**Host rule.** The page is indexable on the web app's own host (`App__PublicSiteBaseUrl`), when no host is sent, or on a
+host that resolves to the same org (an org subdomain, or a custom domain that is **verified** and paid: `resolve-host`).
+Any other host gets `noindex`: a custom domain still waiting for its verification or no longer paid for, the domain of
+another org, a preview deployment. The host is only compared, never written into the page, and a value that is not a plain
+DNS name is ignored (`PublicSiteHosts`).
+
+**Canonical** is always `App__PublicSiteBaseUrl` + `/book/{current slug}[/property/{slug}]` (BK-16 extends it to the org's
+own verified domain). Query strings (`?checkin=…`) are never in it.
+
+### JSON-LD (real data only)
+
+- Org page: `Organization` (name, URL, logo, tagline) + `ItemList` of its published properties.
+- Property page: `VacationRental` (spec-branded-booking-site AC12) + `BreadcrumbList`: name, description, URL, `@id`,
+  `image`, `address` (city, postal code, country from the CIN), `geo`, `containsPlace` (`Accommodation`, whole property:
+  `occupancy`, `numberOfBedrooms`, `numberOfBathroomsTotal`, `amenityFeature`), `petsAllowed` (only with the pet-friendly
+  amenity), `identifier` (the valid CIN, otherwise the property id), `brand` (the org) and the nightly price as a
+  `makesOffer`/`UnitPriceSpecification` in EUR. **Left out because the data model does not hold them**: check-in and
+  check-out times, `aggregateRating`/`review` (no review system), a "pets not allowed" rule, availability (it depends on the
+  dates). An invalid or missing CIN is neither shown nor published (compliance rule); unset coordinates (0,0) are not
+  published; street addresses are never published (only city and postal code, as on the page).
+- Guides and calculators: `Article` (headline, description, `dateModified` = approval date, publisher CasaZen) +
+  `BreadcrumbList`; hub: `CollectionPage`.
+
+### Checks after a deploy
+
+```bash
+SITE=https://<public domain>
+API=https://<railway url of the environment>
+ORG=<slug of an org with a published property>
+UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+
+# crawler: real HTML with the head of the page (title, description, canonical, og:*, JSON-LD)
+curl -sS -A "$UA_BOT" "$SITE/book/$ORG" | grep -E "<title>|rel=\"canonical\"|og:image|application/ld\+json"
+curl -sS -A "$UA_BOT" "$SITE/book/$ORG/property/<property slug>" | grep -o '"@type":"VacationRental"'
+
+# people: still the single-page app (index.html), not the crawler page
+curl -sS "$SITE/book/$ORG" | grep -c "<div id=\"root\">"          # 1
+
+# real 404 and 301 for crawlers
+curl -s -o /dev/null -w "%{http_code}\n" -A "$UA_BOT" "$SITE/book/does-not-exist"          # 404
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" -A "$UA_BOT" "$SITE/book/<old slug>"  # 301 /book/<current slug>
+
+# sitemaps: index of the orgs, then the sitemap of one org; every URL on the public domain
+curl -sS "$SITE/sitemap-book.xml" | grep -o "<loc>[^<]*</loc>" | head
+curl -sS "$SITE/book/$ORG/sitemap.xml" | grep -o "<loc>[^<]*</loc>"
+curl -sS "$SITE/robots.txt"       # Disallow lines of the private pages, Sitemap: …/sitemap.xml and …/sitemap-book.xml
+
+# backend directly (what the function calls); host= decides the indexing
+curl -sS "$API/api/public/seo/orgs/$ORG?host=unknown.example.test" | grep -o 'name="robots" content="[^"]*"'   # noindex,nofollow
+```
+
+Search Console: submit `https://<public domain>/sitemap-book.xml` next to `sitemap.xml` (section 4); **URL inspection** of
+`https://<public domain>/book/<slug>` → **Test live URL**: the rendered page shows the org and its properties and
+"User-declared canonical" is the same URL. Link previews: paste the URL in the Facebook Sharing Debugger / LinkedIn Post
+Inspector, or share it in WhatsApp: title, description and image of the org or of the property.
+
+### Troubleshooting (BK-15)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A crawler gets the empty single-page app | its `user-agent` is not in the `vercel.json` list, or the page is not one of the five routes | add the name to the `has` value of the five rewrites (keep `vercel-routing.test.ts` green) |
+| The crawler page answers `503` | API down or `VITE_API_BASE_URL` wrong on that Vercel environment (Functions logs: `seo page unavailable: …`) | `curl "$API/api/public/seo/hub"`; fix the variable and redeploy |
+| `noindex` on a page that should be indexed | org without a published property, or the request host is neither the public domain nor the org's verified domain (e.g. the custom domain is not verified yet) | publish a property (activation wizard) / finish the domain verification (BK-17) |
+| Canonical on the wrong domain | `App__PublicSiteBaseUrl` of that Railway environment | section 2 |
+| A person sees the crawler page | their browser sends a crawler `user-agent` | none: the page has the same content; ask them to use a normal browser |
+
+### Out of scope / open
+
+- Languages: one URL per page (the app switches the language in the browser), so `hreflang` only points at the page itself and
+  `x-default`. Language variants by URL (`/en/…`) are not built.
+- `og:image` is the org logo (spec AC13), then the hero image, then the first property photo; images are used as stored (the
+  spec asks for 1200x630: the branding upload does not enforce a size).
+- The guide pages show the approved text, the disclaimers and the signup CTA; the rates table and the calculator of the
+  tourist tax page are live data of the app and are not repeated in the crawler page.
+- AC14 of spec-branded-booking-site asks for the sitemap to be registered "in `robots.txt` served at `/book/:orgSlug/robots.txt`":
+  a `robots.txt` is only read at the root of a host, so the root `robots.txt` declares the index `/sitemap-book.xml`, which
+  lists the sitemap of every org.
+
 ## Out of scope
 
-- The `/p/*` pages are rendered in the browser (no prerender): `og:url`, JSON-LD, `noindex` on "not found" pages and
-  the sitemaps of the hosts' booking sites are task BK-15 (A8-09, A8-29).
 - `GET /api/public/sitemap.xml` also answers on the API host (the function needs it); it is declared nowhere.
+- Org subdomains and custom domains as indexed hosts (their own canonical, `robots.txt` and sitemap on their domain) are
+  task BK-16; the Vercel domains API and the domain verification are task BK-17.

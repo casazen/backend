@@ -320,6 +320,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IOrgBrandingService, OrgBrandingService>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
+        // Pages and sitemaps of the public site as crawlers read them (BK-15).
+        services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
         services.AddScoped<IOrgDomainService, OrgDomainService>();

@@ -2,8 +2,10 @@ using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Email;
 using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -16,6 +18,8 @@ namespace Casazen.Tests.Unit.Controllers;
 /// </summary>
 public class PublicOrgControllerTests
 {
+    private const string PublicSite = "https://public-site.example.test";
+
     private readonly Mock<IOrgService> _orgService = new();
     private readonly Mock<IPropertyService> _propertyService = new();
     private readonly Mock<IEntitlementService> _entitlementService = new();
@@ -26,7 +30,11 @@ public class PublicOrgControllerTests
         // Default: the stored tier is paid for (the effective-tier rules are covered by EntitlementServiceTests).
         _entitlementService.Setup(s => s.ResolveEffectiveTier(It.IsAny<OrgEntity>()))
             .Returns((OrgEntity o) => o.PlanTier);
-        _controller = new PublicOrgController(_orgService.Object, _propertyService.Object, _entitlementService.Object);
+        _controller = new PublicOrgController(
+            _orgService.Object,
+            _propertyService.Object,
+            _entitlementService.Object,
+            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicSite })));
     }
 
     // ── GetOrg ──────────────────────────────────────────────────────────────────
@@ -327,6 +335,37 @@ public class PublicOrgControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PublicOrgDto>(ok.Value);
         Assert.Equal("contact@casazen-milan.it", dto.ContactEmail);
+    }
+
+    // ── Canonical URL (BK-15) ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetOrg_ConfiguredPublicSite_ReturnsCanonicalUrlOfTheCurrentSlug()
+    {
+        var org = BuildOrg("current-slug");
+        // An old slug of the org still resolves (PL-04): the canonical is always the current one.
+        _orgService.Setup(s => s.GetPublicBySlugAsync("old-slug", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("old-slug", CancellationToken.None);
+
+        var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal($"{PublicSite}/book/current-slug", dto.CanonicalUrl);
+    }
+
+    [Theory]
+    [InlineData("villa-parco", "villa-parco")]
+    [InlineData(null, "11111111-1111-1111-1111-111111111111")]
+    public async Task GetProperty_ConfiguredPublicSite_ReturnsCanonicalUrlWithSlugOrId(string? slug, string expectedSegment)
+    {
+        var org = BuildOrg("host-org");
+        var detail = new PublicPropertyDetailDto { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Slug = slug, Name = "Villa" };
+        _orgService.Setup(s => s.GetPublicBySlugAsync("host-org", It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(expectedSegment, org.Id)).ReturnsAsync(detail);
+
+        var result = await _controller.GetProperty("host-org", expectedSegment, CancellationToken.None);
+
+        var dto = Assert.IsType<PublicPropertyDetailDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal($"{PublicSite}/book/host-org/property/{expectedSegment}", dto.CanonicalUrl);
     }
 
     private static OrgEntity BuildOrg(string slug) => new()
