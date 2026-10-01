@@ -508,6 +508,15 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen non trasmette ancora ad Alloggiati Web: invia la schedina dal portale della Questura con il riepilogo dati e segna l'invio come manuale.</value>
   </data>
+  <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
+    <value>Il file per il portale Alloggiati Web non può essere generato: i dati degli ospiti sono incompleti oppure manca qualche codice ufficiale. Completa la scheda Alloggiati dell'ospite.</value>
+  </data>
+  <data name="AlloggiatiRecordFileStayDays" xml:space="preserve">
+    <value>Il file per il portale Alloggiati Web non può essere generato: il soggiorno dura {0} giorni e una schedina ne accetta da 1 a {1}.</value>
+  </data>
+  <data name="AlloggiatiRecordFileName" xml:space="preserve">
+    <value>Il file per il portale Alloggiati Web non può essere generato: il nome o il cognome dell'ospite {0} contiene caratteri che il portale non accetta. Scrivili solo con lettere dell'alfabeto latino, come sul documento.</value>
+  </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tariffa dell'imposta di soggiorno non trovata.</value>
   </data>
