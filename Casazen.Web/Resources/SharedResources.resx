@@ -354,6 +354,12 @@
   <data name="PropertySlugTaken" xml:space="preserve">
     <value>Questo indirizzo web (slug) è già usato da un altro immobile della tua organizzazione.</value>
   </data>
+  <data name="PropertyHasUpcomingBookings" xml:space="preserve">
+    <value>Questo immobile non può essere eliminato: ha una prenotazione (in attesa, confermata o con ospiti già in casa) il cui check-out non è ancora passato.</value>
+  </data>
+  <data name="PropertyHasActiveLeases" xml:space="preserve">
+    <value>Questo immobile non può essere eliminato: ha un contratto di locazione in corso o in preparazione non ancora scaduto.</value>
+  </data>
   <data name="BookingUpdateInvalid" xml:space="preserve">
     <value>La prenotazione non può essere modificata così: controlla le date, il numero di ospiti e lo stato della prenotazione.</value>
   </data>
@@ -531,6 +537,15 @@
   </data>
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen non trasmette ancora ad Alloggiati Web: invia la schedina dal portale della Questura con il riepilogo dati e segna l'invio come manuale.</value>
+  </data>
+  <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
+    <value>Il file per il portale Alloggiati Web non può essere generato: i dati degli ospiti sono incompleti oppure manca qualche codice ufficiale. Completa la scheda Alloggiati dell'ospite.</value>
+  </data>
+  <data name="AlloggiatiRecordFileStayDays" xml:space="preserve">
+    <value>Il file per il portale Alloggiati Web non può essere generato: il soggiorno dura {0} giorni e una schedina ne accetta da 1 a {1}.</value>
+  </data>
+  <data name="AlloggiatiRecordFileName" xml:space="preserve">
+    <value>Il file per il portale Alloggiati Web non può essere generato: il nome o il cognome dell'ospite {0} contiene caratteri che il portale non accetta. Scrivili solo con lettere dell'alfabeto latino, come sul documento.</value>
   </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tariffa dell'imposta di soggiorno non trovata.</value>
@@ -1407,5 +1422,260 @@
   </data>
   <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
     <value>L'indirizzo della foto è troppo lungo.</value>
+  </data>
+  <data name="SeoNotFoundTitle" xml:space="preserve">
+    <value>Pagina non trovata</value>
+  </data>
+  <data name="SeoNotFoundText" xml:space="preserve">
+    <value>La pagina richiesta non esiste o non è più disponibile.</value>
+  </data>
+  <data name="SeoOrgTitle" xml:space="preserve">
+    <value>{0} — Prenota direttamente</value>
+  </data>
+  <data name="SeoOrgDescriptionOne" xml:space="preserve">
+    <value>Prenota direttamente da {0}: un alloggio a {1}.</value>
+  </data>
+  <data name="SeoOrgDescriptionMany" xml:space="preserve">
+    <value>Prenota direttamente da {0}: {1} alloggi ({2}).</value>
+  </data>
+  <data name="SeoOrgDescriptionNone" xml:space="preserve">
+    <value>{0}: al momento non ci sono alloggi prenotabili.</value>
+  </data>
+  <data name="SeoOurProperties" xml:space="preserve">
+    <value>I nostri alloggi</value>
+  </data>
+  <data name="SeoPriceFrom" xml:space="preserve">
+    <value>Da {0} a notte</value>
+  </data>
+  <data name="SeoLabelDetails" xml:space="preserve">
+    <value>Caratteristiche</value>
+  </data>
+  <data name="SeoLabelGuests" xml:space="preserve">
+    <value>Ospiti</value>
+  </data>
+  <data name="SeoLabelBedrooms" xml:space="preserve">
+    <value>Camere da letto</value>
+  </data>
+  <data name="SeoLabelBathrooms" xml:space="preserve">
+    <value>Bagni</value>
+  </data>
+  <data name="SeoLabelCleaningFee" xml:space="preserve">
+    <value>Pulizie finali</value>
+  </data>
+  <data name="SeoLabelCin" xml:space="preserve">
+    <value>Codice CIN</value>
+  </data>
+  <data name="SeoLabelAmenities" xml:space="preserve">
+    <value>Servizi</value>
+  </data>
+  <data name="SeoLabelHouseRules" xml:space="preserve">
+    <value>Regole della casa</value>
+  </data>
+  <data name="SeoLabelCancellation" xml:space="preserve">
+    <value>Politica di cancellazione</value>
+  </data>
+  <data name="SeoPropertyDescriptionFallback" xml:space="preserve">
+    <value>{0} a {1}: {2} ospiti, {3} camere da letto, {4} bagni. Prenota direttamente dall'host.</value>
+  </data>
+  <data name="SeoPropertyDescriptionBasic" xml:space="preserve">
+    <value>{0} a {1}. Prenota direttamente dall'host.</value>
+  </data>
+  <data name="SeoHubTitle" xml:space="preserve">
+    <value>Guide per gli affitti brevi per comune | CasaZen</value>
+  </data>
+  <data name="SeoHubHeading" xml:space="preserve">
+    <value>Guide per gli affitti brevi</value>
+  </data>
+  <data name="SeoHubDescription" xml:space="preserve">
+    <value>Le guide e i calcolatori della tassa di soggiorno pubblicati su CasaZen, comune per comune.</value>
+  </data>
+  <data name="SeoHubGuides" xml:space="preserve">
+    <value>Guide per comune</value>
+  </data>
+  <data name="SeoHubCalculators" xml:space="preserve">
+    <value>Calcolo della tassa di soggiorno</value>
+  </data>
+  <data name="SeoHubEmpty" xml:space="preserve">
+    <value>Non ci sono ancora guide pubblicate.</value>
+  </data>
+  <data name="SeoGuideCta" xml:space="preserve">
+    <value>Pubblica la tua casa</value>
+  </data>
+  <data name="SeoAmenity_WiFi" xml:space="preserve">
+    <value>Wi-Fi</value>
+  </data>
+  <data name="SeoAmenity_TV" xml:space="preserve">
+    <value>Televisore</value>
+  </data>
+  <data name="SeoAmenity_CableTV" xml:space="preserve">
+    <value>TV via cavo</value>
+  </data>
+  <data name="SeoAmenity_Workspace" xml:space="preserve">
+    <value>Area di lavoro</value>
+  </data>
+  <data name="SeoAmenity_AirConditioning" xml:space="preserve">
+    <value>Aria condizionata</value>
+  </data>
+  <data name="SeoAmenity_Heating" xml:space="preserve">
+    <value>Riscaldamento</value>
+  </data>
+  <data name="SeoAmenity_Fireplace" xml:space="preserve">
+    <value>Camino</value>
+  </data>
+  <data name="SeoAmenity_Kitchen" xml:space="preserve">
+    <value>Cucina</value>
+  </data>
+  <data name="SeoAmenity_Refrigerator" xml:space="preserve">
+    <value>Frigorifero</value>
+  </data>
+  <data name="SeoAmenity_Microwave" xml:space="preserve">
+    <value>Forno a microonde</value>
+  </data>
+  <data name="SeoAmenity_Dishwasher" xml:space="preserve">
+    <value>Lavastoviglie</value>
+  </data>
+  <data name="SeoAmenity_CoffeeMaker" xml:space="preserve">
+    <value>Macchina del caffè</value>
+  </data>
+  <data name="SeoAmenity_Stove" xml:space="preserve">
+    <value>Piano cottura</value>
+  </data>
+  <data name="SeoAmenity_Oven" xml:space="preserve">
+    <value>Forno</value>
+  </data>
+  <data name="SeoAmenity_DiningTable" xml:space="preserve">
+    <value>Tavolo da pranzo</value>
+  </data>
+  <data name="SeoAmenity_Washer" xml:space="preserve">
+    <value>Lavatrice</value>
+  </data>
+  <data name="SeoAmenity_Dryer" xml:space="preserve">
+    <value>Asciugatrice</value>
+  </data>
+  <data name="SeoAmenity_IronAndBoard" xml:space="preserve">
+    <value>Ferro e asse da stiro</value>
+  </data>
+  <data name="SeoAmenity_Pool" xml:space="preserve">
+    <value>Piscina</value>
+  </data>
+  <data name="SeoAmenity_HotTub" xml:space="preserve">
+    <value>Vasca idromassaggio</value>
+  </data>
+  <data name="SeoAmenity_Garden" xml:space="preserve">
+    <value>Giardino</value>
+  </data>
+  <data name="SeoAmenity_Patio" xml:space="preserve">
+    <value>Patio esterno</value>
+  </data>
+  <data name="SeoAmenity_Balcony" xml:space="preserve">
+    <value>Balcone</value>
+  </data>
+  <data name="SeoAmenity_BBQGrill" xml:space="preserve">
+    <value>Barbecue</value>
+  </data>
+  <data name="SeoAmenity_BeachAccess" xml:space="preserve">
+    <value>Accesso alla spiaggia</value>
+  </data>
+  <data name="SeoAmenity_Terrace" xml:space="preserve">
+    <value>Terrazza</value>
+  </data>
+  <data name="SeoAmenity_FreeParking" xml:space="preserve">
+    <value>Parcheggio gratuito</value>
+  </data>
+  <data name="SeoAmenity_PaidParking" xml:space="preserve">
+    <value>Parcheggio a pagamento</value>
+  </data>
+  <data name="SeoAmenity_Garage" xml:space="preserve">
+    <value>Box auto</value>
+  </data>
+  <data name="SeoAmenity_EVCharger" xml:space="preserve">
+    <value>Ricarica per auto elettriche</value>
+  </data>
+  <data name="SeoAmenity_BikeStorage" xml:space="preserve">
+    <value>Deposito biciclette</value>
+  </data>
+  <data name="SeoAmenity_SmokeDetector" xml:space="preserve">
+    <value>Rilevatore di fumo</value>
+  </data>
+  <data name="SeoAmenity_CarbonMonoxideDetector" xml:space="preserve">
+    <value>Rilevatore di monossido di carbonio</value>
+  </data>
+  <data name="SeoAmenity_FireExtinguisher" xml:space="preserve">
+    <value>Estintore</value>
+  </data>
+  <data name="SeoAmenity_FirstAidKit" xml:space="preserve">
+    <value>Kit di pronto soccorso</value>
+  </data>
+  <data name="SeoAmenity_SecurityCameras" xml:space="preserve">
+    <value>Telecamere di sicurezza</value>
+  </data>
+  <data name="SeoAmenity_Safe" xml:space="preserve">
+    <value>Cassaforte</value>
+  </data>
+  <data name="SeoAmenity_WheelchairAccessible" xml:space="preserve">
+    <value>Accessibile in sedia a rotelle</value>
+  </data>
+  <data name="SeoAmenity_Elevator" xml:space="preserve">
+    <value>Ascensore</value>
+  </data>
+  <data name="SeoAmenity_StepFreeAccess" xml:space="preserve">
+    <value>Accesso senza gradini</value>
+  </data>
+  <data name="SeoAmenity_PetFriendly" xml:space="preserve">
+    <value>Animali ammessi</value>
+  </data>
+  <data name="SeoAmenity_SmokingAllowed" xml:space="preserve">
+    <value>Si può fumare</value>
+  </data>
+  <data name="SeoAmenity_Crib" xml:space="preserve">
+    <value>Culla</value>
+  </data>
+  <data name="SeoAmenity_HighChair" xml:space="preserve">
+    <value>Seggiolone</value>
+  </data>
+  <data name="SeoAmenity_Gym" xml:space="preserve">
+    <value>Palestra</value>
+  </data>
+  <data name="SeoAmenity_Sauna" xml:space="preserve">
+    <value>Area sauna</value>
+  </data>
+  <data name="SeoAmenity_SelfCheckIn" xml:space="preserve">
+    <value>Check-in autonomo</value>
+  </data>
+  <data name="SeoAmenity_LongTermStaysAllowed" xml:space="preserve">
+    <value>Soggiorni lunghi ammessi</value>
+  </data>
+  <data name="SeoAmenity_LuggageDropOffAllowed" xml:space="preserve">
+    <value>Deposito bagagli</value>
+  </data>
+  <data name="SeoAmenity_PrivateEntrance" xml:space="preserve">
+    <value>Ingresso privato</value>
+  </data>
+  <data name="DomainIssue_ownership_txt_missing" xml:space="preserve">
+    <value>Non troviamo il record TXT che dimostra la proprietà del dominio. Controlla che sia stato creato e attendi la propagazione del DNS (può richiedere alcune ore).</value>
+  </data>
+  <data name="DomainIssue_dns_not_pointing" xml:space="preserve">
+    <value>Il dominio non punta ancora al nostro servizio: crea il record CNAME indicato (per un dominio senza www, i record A) e attendi la propagazione del DNS.</value>
+  </data>
+  <data name="DomainIssue_vercel_verification_pending" xml:space="preserve">
+    <value>Il fornitore del servizio chiede un ulteriore record TXT per confermare il dominio: aggiungilo e verifica di nuovo.</value>
+  </data>
+  <data name="DomainIssue_vercel_not_configured" xml:space="preserve">
+    <value>L'attivazione dei domini personalizzati non è ancora disponibile sulla piattaforma. Il tuo dominio si attiverà da solo appena lo sarà.</value>
+  </data>
+  <data name="DomainIssue_vercel_unauthorized" xml:space="preserve">
+    <value>Al momento non riusciamo ad attivare il dominio per un problema di configurazione della piattaforma. Riproveremo in automatico; se il problema dura, contatta il supporto.</value>
+  </data>
+  <data name="DomainIssue_vercel_unavailable" xml:space="preserve">
+    <value>Il servizio di attivazione non risponde in questo momento. Riproveremo in automatico.</value>
+  </data>
+  <data name="DomainIssue_domain_taken" xml:space="preserve">
+    <value>Questo dominio risulta già in uso da un altro sito CasaZen.</value>
+  </data>
+  <data name="DomainIssue_vercel_domain_in_use" xml:space="preserve">
+    <value>Questo dominio è già collegato a un altro progetto o account del fornitore del servizio e non possiamo attivarlo. Contatta il supporto.</value>
+  </data>
+  <data name="DomainIssue_vercel_rejected" xml:space="preserve">
+    <value>Il fornitore del servizio non accetta questo dominio. Controlla che sia scritto correttamente.</value>
   </data>
 </root>

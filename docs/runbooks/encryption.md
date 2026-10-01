@@ -145,7 +145,7 @@ an org-wide role — otherwise 403):
 - UI: property detail page, card "Credenziali Alloggiati Web (Questura)": status "Configurate il <data>" or "Non
   configurate", form with empty fields (password and WSKey masked), replace and remove with confirmation. Only users
   with `property.write` see the form.
-- CasaZen does not transmit to Alloggiati Web yet (CO-13): the credentials are stored for that integration.
+- CasaZen does not transmit to Alloggiati Web (the web service client is not implemented, `alloggiati.md`): the credentials are stored for that integration.
 
 ## 7. Document numbers in API answers
 
@@ -154,6 +154,9 @@ an org-wide role — otherwise 403):
 - The full number comes only from `GET /api/guests/{id}/document-number` (explicit "Show" in the guest page): same org
   (404 otherwise), `guest.read` (403 otherwise), `Cache-Control: private, no-store`, logged with user and guest.
   The stay guests have the equivalent `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers` (CO-09).
+- The Alloggiati record file `GET /api/alloggiati/{bookingId}/record-file` (CO-13) contains the full numbers, decrypted by
+  the converter while it is built: same org (404 otherwise), `guest.read` (403 otherwise), `Cache-Control: private, no-store`,
+  logged with user, booking and number of lines, **never stored** (see `alloggiati.md`, "Record file (CO-13)").
 
 ## 8. Adding an encrypted column
 

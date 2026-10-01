@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Branding;
@@ -247,6 +248,9 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
         org.Slug = slug;
+        // The slug is also the label of the org's subdomain: only an org that chose the subdomain mode is served on it (BK-16).
+        org.PublicHostMode = PublicHostMode.CasazenSubdomain;
+        org.Subdomain = slug;
         await db.SaveChangesAsync();
         return slug;
     }

@@ -112,7 +112,8 @@ public class OnboardingService(
                 && userConsents.Any(c => c.Type == ConsentType.SubprocessorsAck && c.Version == subprocessors.Version);
         }
 
-        var propertyCreated = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
+        // Tenant filter only (PC-05): a soft-deleted property no longer counts as created or active.
+        var propertyCreated = orgId.HasValue && await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AnyAsync(p => p.OrgId == orgId, cancellationToken);
 
         Org? org = null;
@@ -122,7 +123,7 @@ public class OnboardingService(
                 .FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         }
 
-        var hasActiveProperty = orgId.HasValue && await db.Properties.IgnoreQueryFilters()
+        var hasActiveProperty = orgId.HasValue && await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AnyAsync(p => p.OrgId == orgId && p.IsActive, cancellationToken);
 
         var sitePublished = org is { IsActive: true } && hasActiveProperty;

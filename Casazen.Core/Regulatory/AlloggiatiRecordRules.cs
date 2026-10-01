@@ -9,7 +9,8 @@ namespace Casazen.Core.Regulatory;
 /// Rules of the Alloggiati Web record for the guests of a stay (CO-12, A5-02). Source:
 /// <c>.claude/context/regulations/alloggiati.md</c>, "Tracciato record" and "Tipi alloggiato" (RS-1). Only facts marked
 /// verified (U) there are used: field lengths, the five kinds of guest, the document only for single guests and heads
-/// of family or group, sex 1/2, comune and province only when born in Italy. Positions and table codes are not used.
+/// of family or group, sex 1/2, comune and province only when born in Italy. The positions of the line and its text
+/// (verified in CO-13) are in <see cref="AlloggiatiRecordFile"/>; table codes still come only from the imported tables.
 /// </summary>
 public static partial class AlloggiatiRecordRules
 {

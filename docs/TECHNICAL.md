@@ -297,8 +297,9 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/alloggiati/summary` | booking.read | Alloggiati queue / summary |
 | `GET` | `/api/alloggiati/{bookingId}/status` | booking.read | Submission status for a booking |
 | `GET` | `/api/alloggiati/{bookingId}/guest-summary` | booking.read | Per-guest data to copy on the Questura portal, in record order |
+| `GET` | `/api/alloggiati/{bookingId}/record-file` | booking.read + guest.read | The record file to upload on the portal (CO-13): one 168-character line per guest, UTF-8, CR+LF; built on request, never stored, `private, no-store`; `422 alloggiati_file_not_ready` / `alloggiati_file_stay_days_invalid` / `alloggiati_file_name_not_representable`. Downloading changes no status (`docs/runbooks/alloggiati.md`) |
 | `POST` | `/api/alloggiati/{bookingId}/mark-sent-manually` | booking.write | Host declares the schedina sent on the portal (`{ sentOn }`) → `InviatoManualmente` |
-| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable` until the web service client (CO-13) |
+| `POST` | `/api/alloggiati/{bookingId}/send` | booking.write | Always `422 alloggiati_transmission_unavailable`: CasaZen has no web service client |
 | `GET` | `/api/legal/subprocessors` | Anonymous | Sub-processors actually used by the configuration (GDPR art. 28, `docs/runbooks/legal-documents.md`) |
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
@@ -587,7 +588,7 @@ erDiagram
 | `OtaSyncJob` | Hourly | Full OTA availability and booking sync |
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
 | `DynamicPricingJob` | Daily at 02:00 UTC | Recomputes the seasonal suggestions due by Rome date (daily/weekly), upsert per date |
-| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (no transmission until CO-13) |
+| `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (CasaZen does not transmit: no web service client) |
 | `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
