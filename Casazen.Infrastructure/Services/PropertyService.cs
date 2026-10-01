@@ -466,16 +466,18 @@ public class PropertyService(
 
     internal static CinStatus ResolveCinStatus(string? cinCode) => CinFormat.GetStatus(cinCode);
 
-    public async Task<OwnerCinComplianceResult> GetOwnerCinComplianceAsync(
-        string ownerId, string? cinStatus, int page, int pageSize)
+    public async Task<OwnerCinComplianceResult> GetCinComplianceAsync(
+        HostScope scope, string? cinStatus, int page, int pageSize)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
         if (!string.IsNullOrWhiteSpace(cinStatus) &&
             cinStatus is not ("valid" or "missing" or "invalid"))
         {
             throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
         }
 
-        var properties = await repository.GetByOwnerForComplianceAsync(ownerId);
+        var properties = await repository.GetByScopeForComplianceAsync(scope);
         var items = properties.Select(p => new OwnerCinComplianceItem(
             PropertyId: p.Id,
             PropertyName: p.Name,

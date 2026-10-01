@@ -6,6 +6,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -136,8 +137,8 @@ public class PropertiesControllerTests
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var returnedProperties = Assert.IsAssignableFrom<IEnumerable<Property>>(okResult.Value);
-        Assert.Equal(2, returnedProperties.Count());
+        var returnedProperties = Assert.IsAssignableFrom<IEnumerable<PropertyResponse>>(okResult.Value).ToList();
+        Assert.Equal(["Property 1", "Property 2"], returnedProperties.Select(p => p.Name));
         _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
     }
 
@@ -1064,6 +1065,45 @@ public class PropertiesControllerTests
 
         // Org-wide role: the scope has no owner filter (TN-3), so the manager can pick any property of the org.
         _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, null)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null, "auth0|cin-owner")]
+    [InlineData("PropertyManager", null)]
+    [InlineData("Admin", null)]
+    public async Task GetCinCompliance_CallerRole_UsesTheSameScopeAsThePropertyList(string? role, string? expectedOwner)
+    {
+        // MO-12 (A6-20): an org-wide role sees the CIN of every property of the org, as in GET /api/properties; any
+        // other caller only the properties they own.
+        SetupUserClaims("auth0|cin-owner", role is null ? null : [role]);
+        _mockService
+            .Setup(x => x.GetCinComplianceAsync(It.IsAny<HostScope>(), null, 1, 50))
+            .ReturnsAsync(new OwnerCinComplianceResult(
+                [],
+                0,
+                new CinComplianceSummary(0, 0, 0, new CinDeadlineStatus(null, CinDeadlinePhase.NotConfigured, null), false)));
+
+        var result = await _controller.GetCinCompliance(null);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        _mockService.Verify(x => x.GetCinComplianceAsync(new HostScope(DefaultOrgId, expectedOwner), null, 1, 50), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCinCompliance_WithoutOrg_Returns403WithoutQuerying()
+    {
+        SetupUserClaims("auth0|no-org");
+        _mockOrgContextResolver
+            .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var result = await _controller.GetCinCompliance(null);
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, problem.StatusCode);
+        _mockService.Verify(
+            x => x.GetCinComplianceAsync(It.IsAny<HostScope>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>()),
+            Times.Never);
     }
 
     [Fact]
