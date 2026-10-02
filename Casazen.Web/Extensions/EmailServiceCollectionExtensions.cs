@@ -45,6 +45,9 @@ public static class EmailServiceCollectionExtensions
             {
                 resend.ApiToken = email.Value.ApiKey?.Trim() ?? string.Empty;
                 resend.ThrowExceptions = false;
+                // Test-only mail catcher of the ephemeral E2E stack (refused by the validator in Production/Staging).
+                if (!string.IsNullOrWhiteSpace(email.Value.ApiUrl))
+                    resend.ApiUrl = email.Value.ApiUrl.Trim().TrimEnd('/');
             });
         services.AddHttpClient<IResend, ResendClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
 
