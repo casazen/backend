@@ -89,6 +89,11 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 | `Hangfire__DistributedLockTimeoutMinutes` | O | same | `30` | Default 30; must exceed the longest recurring job | FD-11 |
 | `Hangfire__DashboardEnabled` | O | `false` / `false` | `false` | Default off (on in Development). When on: reachable only with the `X-Hangfire-ApiKey` header or an Admin role | FD-11 |
 | `Hangfire__DashboardApiKey` | O | per environment | `<random 32+ chars>` | Secret. Only meaningful with the dashboard enabled | FD-11 |
+| `Hangfire__WorkerCount` | O | same | `4` | Hangfire workers, default **4** (Hangfire's own default is 20). Whole number 1-50, anything else: **startup**. The free Supabase session pooler grants about 15 connections, and with 20 workers the API opened 26 at rest | HOSTING · [`free-hosting-analysis.md`](free-hosting-analysis.md) |
+| `Database__MaxPoolSize` | O | same | `6` | Npgsql pool of the EF contexts (requests and jobs), default **6**, 1-500. A `Maximum Pool Size` written in the connection string wins (use it for a direct database) | HOSTING |
+| `Database__MinPoolSize` | O | same | `0` | Default 0; must not exceed `Database__MaxPoolSize` (**startup**) | HOSTING |
+| `Database__HangfireMaxPoolSize` | O | same | `8` | Pool of Hangfire's storage (its own pool, `Application Name=casazen-hangfire`). Default `2 x Hangfire__WorkerCount`. Below `WorkerCount + 2` the readiness check warns | HOSTING |
+| `Database__ConnectionBudget` | O | same | `15` | Connections the database grants to this user. Default: 15 on a Supabase session pooler host, 60 on a direct `db.<ref>.supabase.co` host, unchecked elsewhere (`0`). When the pools can exceed it, `db-connections` is `degraded` | HOSTING |
 | `Seo__BootstrapOnStartup` | O | `true` default | `true` | `true`: the first start with no SEO page queues draft generation of every registry comune, once per environment (drafts only). `false` skips it | FD-21, SE-01 · [`ai.md`](ai.md), [`seo-domain.md`](seo-domain.md) |
 
 ### 2.3 Authentication (Auth0)
@@ -216,6 +221,8 @@ off, **O** = optional, **PO** = a decision of the product owner with no default 
 | `Logging__LogLevel__Default`, `__Microsoft`, `__Hangfire` | O | same | `Information` / `Warning` / `Information` | Log levels | — |
 | `CASAZEN_MIGRATION_TARGET` | O | local tooling | `test` / `prod` | Used only by `dotnet ef` and `scripts/migrate.*` to choose the Supabase connection string; not a runtime variable | FD-02 · [`INFRA.md`](../INFRA.md) |
 
+**Supabase pooler port.** The connection string must use the **session** pooler (port `5432`, host `*.pooler.supabase.com`, user `postgres.<project-ref>`) or the direct host, never the transaction pooler (port `6543`): it silently breaks PostgreSQL advisory locks (overbooking and plan-limit protection) and Hangfire's locks. Outside Development and Testing the **startup is refused** with port 6543, and `db-connections` is `degraded` when the pools can exceed the connection budget.
+
 ## 3. Local development (backend)
 
 Copy `Casazen.Web/appsettings.Development.example.json` to `appsettings.Development.json` (gitignored) and keep real values
@@ -302,7 +309,7 @@ Do not set these expecting an effect. DEPLOY-CFG removed from `appsettings.json`
 | Key | Why inert |
 |---|---|
 | `Auth0__ClientId`, `Auth0__ClientSecret` | `Auth0Options` has no such property; the API validates tokens with `Domain` + `Audience` only (the SPA/Native client ids live in Vercel and EAS) |
-| `Hangfire__Schedules__OtaSync`, `__BookingPull`, `Hangfire__WorkerCount`, `Hangfire__ServerName`, `Hangfire__DashboardPath` | Cron expressions are constants in `RecurringJobsRegistration`; the worker count is Hangfire's default; the server name is `HangfireServerIdentity.ServerName`; the dashboard path is `/hangfire` |
+| `Hangfire__Schedules__OtaSync`, `__BookingPull`, `Hangfire__ServerName`, `Hangfire__DashboardPath` | Cron expressions are constants in `RecurringJobsRegistration`; the server name is `HangfireServerIdentity.ServerName`; the dashboard path is `/hangfire` |
 | `Billing__OssThresholdAmount` | PL-13 removed the OSS tracker and its threshold; the VAT is computed by Stripe Tax |
 | `Sdi__Provider`, `Sdi__ProviderConfigured`, `Vies__StubMode` | Not read any more: PL-13 replaced them with `Sdi__ManualIssuanceAccepted` (a provider is registered in code, not by configuration) |
 | `OTA__Airbnb__*`, `OTA__BookingCom__*`, `OTA__Expedia__*` (`ApiKey`, `Endpoint`, `BaseUrl`) | Adapters do not read credentials from configuration; only `OTA__WebhookSecret` and `OTA__Resilience__*` are read |

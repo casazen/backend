@@ -60,7 +60,7 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
 
         var checks = ReadChecks(body);
         Assert.Equal(
-            new[] { "api-url", "auth0", "comuni", "database", "einvoicing", "email", "hangfire", "legal", "storage", "stripe", "vercel" },
+            new[] { "api-url", "auth0", "comuni", "database", "db-connections", "einvoicing", "email", "hangfire", "legal", "storage", "stripe", "vercel" },
             checks.Keys.Order().ToArray());
         // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
         // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.

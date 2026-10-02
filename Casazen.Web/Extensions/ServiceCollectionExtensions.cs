@@ -38,6 +38,14 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
             configuration.GetConnectionString("DefaultConnection"));
+        // Bounded Npgsql pool (HOSTING): the EF contexts of requests and jobs share Database:MaxPoolSize connections.
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            connectionString = DatabaseConnectionSettings
+                .Resolve(configuration, connectionString, hangfireRegistered: false)
+                .ForEntityFramework();
+        }
+
         services.AddDbContext<AppDbContext>(options =>
         {
             if (!string.IsNullOrEmpty(connectionString))
