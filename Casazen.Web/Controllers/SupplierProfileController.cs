@@ -6,6 +6,7 @@ using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
@@ -27,6 +28,7 @@ namespace Casazen.Web.Controllers;
 public class SupplierProfileController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
+    IComuneDirectory comuneDirectory,
     CalendarSyncService calendarSyncService,
     IImageStorageService imageStorageService,
     ILogger<SupplierProfileController> logger) : ControllerBase
@@ -105,12 +107,14 @@ public class SupplierProfileController(
         var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
-        return Ok(MapProfile(profile));
+        return Ok(await MapProfileAsync(profile, cancellationToken));
     }
 
     /// <summary>
     /// Updates the caller's supplier profile fields. <c>categories</c> holds codes of <c>GET /api/service-categories</c>;
-    /// any other value is a 422 <c>invalid_service_category</c> and nothing is saved (SU-03).
+    /// any other value is a 422 <c>invalid_service_category</c> and nothing is saved (SU-03). <c>comuneIstatCodes</c> holds the
+    /// ISTAT codes of the comuni chosen from the official list (<c>GET /api/comuni</c>): a code that is not an active comune of
+    /// it is a 422 <c>comune_istat_unknown</c>, any code while the list is not imported <c>comuni_dataset_unavailable</c> (SU-04).
     /// </summary>
     [HttpPut("profile")]
     [ProducesResponseType(typeof(SupplierProfileDto), StatusCodes.Status200OK)]
@@ -134,11 +138,12 @@ public class SupplierProfileController(
             orgId.Value,
             request.LegalName, request.VatNumber, request.Phone,
             request.Categories, request.Comuni, request.Bio, request.PhotoUrls,
-            cancellationToken);
+            cancellationToken,
+            request.ComuneIstatCodes);
 
         if (profile is null) return NotFound(new { error = "Supplier profile not found" });
 
-        var dto = MapProfile(profile);
+        var dto = await MapProfileAsync(profile, cancellationToken);
         logger.LogInformation(
             "UpdateProfile result: Categories={CatCount}, Comuni={ComCount}, Bio={BioLen}",
             dto.Categories.Count(),
@@ -514,6 +519,18 @@ public class SupplierProfileController(
             CalendarSyncErrorCode = syncErrorCode,
             CalendarSyncError = syncErrorMessage,
         };
+    }
+
+    private async Task<SupplierProfileDto> MapProfileAsync(
+        Casazen.Core.Entities.SupplierProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var codes = SupplierComuniView.IstatCodes(profile);
+        var listed = await comuneDirectory.GetByIstatCodesAsync(codes, cancellationToken);
+        var dto = MapProfile(profile);
+        dto.ComuneIstatCodes = codes;
+        dto.OperatingComuni = codes.Where(listed.ContainsKey).Select(c => ComuneDto.From(listed[c])).ToList();
+        return dto;
     }
 
     private static SupplierProfileDto MapProfile(Casazen.Core.Entities.SupplierProfile profile) => new()

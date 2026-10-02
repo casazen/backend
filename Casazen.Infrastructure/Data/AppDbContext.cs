@@ -71,6 +71,10 @@ public class AppDbContext(
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
+
+    // Official ISTAT list of the comuni and the log of its imports (SU-04)
+    public DbSet<Comune> Comuni { get; set; } = null!;
+    public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
@@ -291,6 +295,31 @@ public class AppDbContext(
             .HasForeignKey(e => e.ImportId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // SU-04: official ISTAT list of the comuni. The ISTAT code is the key; the cadastral code is unique among the active
+        // comuni only (a comune that changes province gets a new ISTAT code and keeps its cadastral code, so the old row,
+        // deactivated, and the new one coexist).
+        modelBuilder.Entity<Comune>(entity =>
+        {
+            entity.HasIndex(c => c.CadastralCode)
+                .IsUnique()
+                .HasFilter("\"IsActive\"")
+                .HasDatabaseName("IX_Comuni_CadastralCode_Active");
+            entity.HasIndex(c => c.CadastralCode);
+            entity.HasIndex(c => c.NormalizedName);
+            entity.HasIndex(c => c.ProvinceCode);
+            entity.HasIndex(c => c.RegionIstatCode);
+            entity.HasOne(c => c.SourceImport)
+                .WithMany()
+                .HasForeignKey(c => c.SourceImportId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.SourceImportId);
+        });
+        modelBuilder.Entity<ComuneImport>(entity =>
+        {
+            entity.HasIndex(i => i.ImportedAt);
+            entity.HasIndex(i => i.ReferenceDate);
+        });
+
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.Entity<PropertyQuesturaCredentials>(entity =>
         {
@@ -321,6 +350,9 @@ public class AppDbContext(
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
+
+        // SU-04: the comune chosen from the official list; the region follows it.
+        modelBuilder.Entity<Property>().HasIndex(p => p.ComuneIstatCode);
 
         // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
         // the same building could not create the second, and a host whose address was already used by ANOTHER org got a
@@ -882,6 +914,12 @@ public class AppDbContext(
 
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.Status);
+
+        // SU-04: comuni chosen from the official list. A column added to a table with rows: the profiles that exist start
+        // with none (nothing is inferred from the free-text ComuniJson).
+        modelBuilder.Entity<SupplierProfile>()
+            .Property(sp => sp.ComuneIstatCodesJson)
+            .HasDefaultValueSql("'[]'::jsonb");
 
         modelBuilder.Entity<SupplierProfile>()
             .HasIndex(sp => sp.ClaimTokenHash)

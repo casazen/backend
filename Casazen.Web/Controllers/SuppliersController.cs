@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -27,7 +28,8 @@ public class SuppliersController(
     IUserService userService,
     IAuth0ManagementService auth0Management,
     IUserAuthorizationCache authorizationCache,
-    IOptions<SupplierRegistrationOptions> registrationOptions,
+    ISupplierPilotComuni pilotComuni,
+    IComuneDirectory comuneDirectory,
     AppDbContext db,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService,
@@ -198,15 +200,15 @@ public class SuppliersController(
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     [ProducesResponseType(typeof(SupplierRegistrationOptionsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
-    public ActionResult<SupplierRegistrationOptionsResponse> GetRegistrationOptions()
+    public async Task<ActionResult<SupplierRegistrationOptionsResponse>> GetRegistrationOptions(
+        CancellationToken cancellationToken)
     {
-        var options = registrationOptions.Value;
+        // The pilots as the official ISTAT list knows them (code and name), SU-04.
+        var pilots = await pilotComuni.GetAsync(cancellationToken);
         return Ok(new SupplierRegistrationOptionsResponse
         {
-            SelfServeEnabled = options.SelfServeEnabled,
-            PilotComuni = options.PilotComuni
-                .Select(c => new SupplierPilotComuneDto { Code = c.Code.Trim(), Name = c.Name.Trim() })
-                .ToList(),
+            SelfServeEnabled = pilots.Count > 0,
+            PilotComuni = pilots.Select(c => new SupplierPilotComuneDto { Code = c.Code, Name = c.Name }).ToList(),
         });
     }
 
@@ -276,7 +278,7 @@ public class SuppliersController(
         [FromQuery] GetSuppliersQuery query,
         CancellationToken cancellationToken)
     {
-        var resolvedComune = query.Comune?.Trim();
+        var target = ComuneTarget.FromInput(query.Comune);
 
         if (query.PropertyId is Guid pid)
         {
@@ -294,15 +296,19 @@ public class SuppliersController(
             if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
                 return Forbid();
 
-            resolvedComune = property.City;
+            // The property's chosen comune (ISTAT code) when it has one, its written city otherwise (SU-04).
+            target = ComuneTarget.ForProperty(property);
         }
 
-        if (string.IsNullOrWhiteSpace(resolvedComune))
+        if (target.IsEmpty)
             return BadRequest(new { error = "Specificare comune o propertyId." });
 
-        var suppliers = await supplierService.GetActiveByComune(resolvedComune, query.Category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComuneAsync(target, query.Category, cancellationToken);
 
-        var items = suppliers.Select(SupplierPickerDto.From).ToList();
+        // The comuni chosen from the official list are shown by name (SU-04).
+        var listed = await comuneDirectory.GetByIstatCodesAsync(
+            suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
+        var items = suppliers.Select(sp => SupplierPickerDto.From(sp, listed)).ToList();
 
         return Ok(new PagedResultDto<SupplierPickerDto>
         {

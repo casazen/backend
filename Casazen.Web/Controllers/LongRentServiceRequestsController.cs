@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
@@ -29,6 +30,7 @@ namespace Casazen.Web.Controllers;
 public class LongRentServiceRequestsController(
     IServiceRequestService serviceRequestService,
     ISupplierService supplierService,
+    IComuneDirectory comuneDirectory,
     IAuthorizationService authorizationService,
     IOrgContextResolver orgContextResolver,
     AppDbContext db) : ControllerBase
@@ -97,11 +99,13 @@ public class LongRentServiceRequestsController(
         var (property, denied) = await AuthorizePropertyAsync(propertyId, LongRentPropertyOperations.Read, cancellationToken);
         if (denied is not null) return denied;
 
-        var suppliers = await supplierService.GetActiveByComune(property!.City, category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComuneAsync(new ComuneTarget(property!.ComuneIstatCode, property.City), category, cancellationToken);
 
+        var listed = await comuneDirectory.GetByIstatCodesAsync(
+            suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
-            Items = suppliers.Select(SupplierPickerDto.From).ToList(),
+            Items = suppliers.Select(sp => SupplierPickerDto.From(sp, listed)).ToList(),
             TotalCount = suppliers.Count,
             Page = 1,
             PageSize = suppliers.Count,
@@ -196,7 +200,7 @@ public class LongRentServiceRequestsController(
         var property = await db.Properties
             .AsNoTracking()
             .Where(p => p.Id == propertyId)
-            .Select(p => new PropertyRef(p.OrgId, p.OwnerId, p.City))
+            .Select(p => new PropertyRef(p.OrgId, p.OwnerId, p.City, p.ComuneIstatCode))
             .FirstOrDefaultAsync(cancellationToken);
 
         if (property is null)
@@ -208,5 +212,5 @@ public class LongRentServiceRequestsController(
             : (null, Forbid());
     }
 
-    private sealed record PropertyRef(Guid OrgId, string OwnerId, string City);
+    private sealed record PropertyRef(Guid OrgId, string OwnerId, string City, string? ComuneIstatCode);
 }

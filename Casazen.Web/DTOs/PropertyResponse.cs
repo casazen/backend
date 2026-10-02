@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 
 namespace Casazen.Web.DTOs;
 
@@ -36,6 +37,15 @@ public sealed class PropertyResponse
     public IReadOnlyList<string> PhotoUrls { get; init; } = [];
     public string HouseRules { get; init; } = string.Empty;
     public string? CinCode { get; init; }
+
+    /// <summary>ISTAT code of the comune chosen from the official list (SU-04); null until chosen.</summary>
+    public string? ComuneIstatCode { get; init; }
+
+    /// <summary>CasaZen's region code (<c>LOM</c>) that follows <see cref="ComuneIstatCode"/>; null until a comune is chosen.</summary>
+    public string? RegionCode { get; init; }
+
+    /// <summary>The CIN is valid and its ISTAT comune differs from <see cref="ComuneIstatCode"/>: a non-blocking warning.</summary>
+    public bool CinIstatMismatch { get; init; }
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
     public bool IsActive { get; init; }
@@ -84,6 +94,9 @@ public sealed class PropertyResponse
             PhotoUrls = [.. property.PhotoUrls],
             HouseRules = property.HouseRules,
             CinCode = property.CinCode,
+            ComuneIstatCode = property.ComuneIstatCode,
+            RegionCode = property.RegionCode,
+            CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
             IsActive = property.IsActive,

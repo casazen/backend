@@ -55,7 +55,7 @@ public class SupplierMatchService(
             throw new UnauthorizedAccessException("Proprietà non appartiene all'organizzazione.");
 
         var aiEnabled = featureFlags.IsEnabled(FeatureFlags.AiSupplierDiscovery);
-        var suppliers = await supplierService.GetActiveByComune(property.City, category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComuneAsync(ComuneTarget.ForProperty(property), category, cancellationToken);
         if (suppliers.Count == 0)
         {
             if (!aiEnabled)

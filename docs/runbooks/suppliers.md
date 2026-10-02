@@ -144,14 +144,18 @@ by invite (the page says so). Admin invites are not limited to the pilot comuni.
 
 - Code and name are both required and codes must be unique (case-insensitive): otherwise the **startup fails** with
   the list of problems and Railway keeps the previous deployment.
-- The code is compared with the form value trimmed and case-insensitive, and stored on the supplier profile
-  (`SupplierProfiles.ComuniJson`) exactly as configured. Use the **same code format as the admin invites** of that
-  comune. Matching with the hosts' properties still goes through `ItalianComuneRegistry` until SU-04 introduces the
-  ISTAT registry and picker (A4-12): a code that the registry does not know matches only a property whose city is
-  written exactly the same way.
-- Invite emails show "Name (code)" when the invite's comune is a configured pilot comune, otherwise only the code.
-  `ItalianComuneRegistry` is deliberately not used for names: it knows 12 comuni and maps the cadastral code `F205`
-  to Firenze, while `F205` is Milano (A4-12, fixed by SU-04).
+- **The code is the ISTAT code of the comune** (6 digits, e.g. `058091`, SU-04). Once the official ISTAT list is imported
+  ([comuni-istat.md](comuni-istat.md)) it is validated against it: the name shown to the supplier is the one of the
+  list, a cadastral code (`H501`) is turned into the ISTAT code, and a code that is not an active comune is **not
+  offered** (self-serve is off when none remains; `GET /api/admin/comuni` and the health check `comuni` name it). The
+  registration form's code is compared with the pilot's as the same comune, and the supplier profile stores the pilot's
+  ISTAT code in `ComuniJson` and in `ComuneIstatCodesJson`. Without the list the configuration is used as written.
+- Matching with the hosts' properties is **by ISTAT code** (the property's chosen comune, the supplier's chosen comuni);
+  what a supplier wrote as text (`H501`, `Roma`) is resolved against the list and only compared as a name when it cannot be
+  (list not imported, ambiguous name). `ItalianComuneRegistry` is gone: it knew 12 comuni and got four codes wrong
+  (Torino, Bellagio, Menaggio, Varenna) and mapped the cadastral code `F205` to Firenze while it is Milano (A4-12).
+- Admin invites: with the list imported the invite's comune must be an active comune (ISTAT code, cadastral code or a
+  unique name) and is stored as its ISTAT code (422 `comune_istat_unknown`); invite emails show "Name (code)".
 - The staging golden journey (`frontend/e2e/golden-journey-*.spec.ts`) self-registers suppliers with comune
   `058091`: on the test environment either configure that code as a pilot comune or expect `supplier_self_serve_unavailable`.
 

@@ -23,7 +23,9 @@ public partial class SupplierService(
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     ISafeExternalHttpClient externalHttpClient,
-    IOptions<SupplierRegistrationOptions> registrationOptions,
+    ISupplierPilotComuni pilotComuni,
+    IComuneDirectory comuneDirectory,
+    ISupplierComuneMatcher comuneMatcher,
     ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -94,7 +96,7 @@ public partial class SupplierService(
             if (!EmailsMatch(invite!.Email, accountEmail) || !EmailsMatch(invite.Email, email))
                 throw new DomainRuleException("supplier_invite_email_mismatch", "SupplierInviteEmailMismatch");
             if (!string.IsNullOrWhiteSpace(invite.ComuneCode)
-                && !string.Equals(invite.ComuneCode.Trim(), comuneCode, StringComparison.OrdinalIgnoreCase))
+                && !await IsSameComuneAsync(invite.ComuneCode, comuneCode, cancellationToken))
                 throw new DomainRuleException("supplier_invite_comune_mismatch", "SupplierInviteComuneMismatch");
 
             email = invite.Email.Trim();
@@ -107,15 +109,14 @@ public partial class SupplierService(
             if (userId is not null && !EmailsMatch(accountEmail, email))
                 throw new DomainRuleException("supplier_account_email_mismatch", "SupplierAccountEmailMismatch");
 
-            var options = registrationOptions.Value;
-            if (!options.SelfServeEnabled)
+            if (!await pilotComuni.IsSelfServeEnabledAsync(cancellationToken))
             {
                 logger.LogWarning(
-                    "Supplier self-serve registration refused: no pilot comune configured (Suppliers__PilotComuni)");
+                    "Supplier self-serve registration refused: no pilot comune configured or none found in the official list (Suppliers__PilotComuni)");
                 throw new DomainRuleException("supplier_self_serve_unavailable", "SupplierSelfServeUnavailable");
             }
 
-            var pilot = options.FindPilotComune(comuneCode)
+            var pilot = await pilotComuni.FindAsync(comuneCode, cancellationToken)
                 ?? throw new DomainRuleException("supplier_comune_not_pilot", "SupplierComuneNotPilot");
             comuneCode = pilot.Code.Trim();
         }
@@ -144,6 +145,10 @@ public partial class SupplierService(
             Phone = registration.Phone,
             ComuniJson = JsonSerializer.Serialize(new[] { comuneCode }, JsonOpts),
         };
+        // A comune that is in the official list is also recorded by its code (SU-04); one that is not (the list is not
+        // imported, an old invite) stays as written.
+        if (await comuneDirectory.FindByIstatCodeAsync(comuneCode, activeOnly: true, cancellationToken) is { } listed)
+            profile.ComuneIstatCodesJson = JsonSerializer.Serialize(new[] { listed.IstatCode }, JsonOpts);
         // The invite's categories are codes already (validated when the invite was created, SU-03).
         if (!string.IsNullOrWhiteSpace(invite?.CategoriesJson))
             profile.CategoriesJson = invite.CategoriesJson;
@@ -347,9 +352,24 @@ public partial class SupplierService(
         return new SupplierInvitePreview(
             invite!.Email.Trim(),
             invite.ComuneCode.Trim(),
-            registrationOptions.Value.FindPilotComune(invite.ComuneCode)?.Name.Trim(),
+            await ResolveComuneNameAsync(invite.ComuneCode, cancellationToken),
             DeserializeStrings(invite.CategoriesJson),
             invite.ExpiresAt);
+    }
+
+    /// <summary>
+    /// True when two values name the same comune: written alike, or both found in the official list as the same comune (an
+    /// invite stores the ISTAT code while an older registration form may still send the cadastral code, SU-04).
+    /// </summary>
+    private async Task<bool> IsSameComuneAsync(string a, string b, CancellationToken cancellationToken)
+    {
+        a = a.Trim();
+        b = b.Trim();
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var resolved = await comuneDirectory.ResolveAsync([a, b], cancellationToken);
+        return resolved.TryGetValue(a, out var first) && resolved.TryGetValue(b, out var second) && first.IstatCode == second.IstatCode;
     }
 
     private static DomainRuleException InviteInvalid() =>
@@ -402,10 +422,15 @@ public partial class SupplierService(
         IEnumerable<string>? comuni,
         string? bio,
         IEnumerable<string>? photoUrls,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IEnumerable<string>? comuneIstatCodes = null)
     {
         // Only category codes are stored (SU-03): an Italian label or unknown value is rejected (422), never saved.
         var categoryCodes = categories is null ? null : ServiceCategories.RequireAll(categories);
+
+        // Only codes of the official list are stored (SU-04): an unknown code, or any code while the list is not imported,
+        // is rejected (422), never saved.
+        var istatCodes = comuneIstatCodes is null ? null : await RequireListedComuniAsync(comuneIstatCodes, cancellationToken);
 
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
@@ -416,6 +441,7 @@ public partial class SupplierService(
         if (phone is not null) profile.Phone = phone;
         if (categoryCodes is not null) profile.CategoriesJson = JsonSerializer.Serialize(categoryCodes, JsonOpts);
         if (comuni is not null) profile.ComuniJson = JsonSerializer.Serialize(comuni, JsonOpts);
+        if (istatCodes is not null) profile.ComuneIstatCodesJson = JsonSerializer.Serialize(istatCodes, JsonOpts);
         if (bio is not null) profile.Bio = bio.Length == 0 ? null : bio;
         if (photoUrls is not null) profile.PhotoUrlsJson = JsonSerializer.Serialize(photoUrls, JsonOpts);
         profile.UpdatedAt = DateTime.UtcNow;
@@ -431,7 +457,9 @@ public partial class SupplierService(
             return Array.Empty<ActivationStep>();
 
         var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
-        var comuni = JsonSerializer.Deserialize<string[]>(profile.ComuniJson, JsonOpts) ?? [];
+        var comuni = SupplierComuneMatcher.ReadStrings(profile.ComuniJson)
+            .Concat(SupplierComuneMatcher.ReadStrings(profile.ComuneIstatCodesJson))
+            .ToArray();
 
         return
         [
@@ -537,27 +565,29 @@ public partial class SupplierService(
         return count;
     }
 
-    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default) =>
+        GetActiveByComuneAsync(ComuneTarget.FromInput(comuneCode), category, cancellationToken);
+
+    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
+        ComuneTarget target,
+        string? category,
+        CancellationToken cancellationToken = default)
     {
         // Filter by category code (SU-03). An unknown code is an error (422), not an empty list that hides the mistake;
         // a supplier matches only when it declared the code (no categories = no match).
         var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
 
-        var all = await db.SupplierProfiles
+        var active = await db.SupplierProfiles
             .Where(sp => sp.Status == SupplierStatus.Active)
             .ToListAsync(cancellationToken);
 
-        return all.Where(sp =>
-        {
-            var comuni = JsonSerializer.Deserialize<string[]>(sp.ComuniJson, JsonOpts) ?? [];
-            if (!comuni.Any(c => ItalianComuneRegistry.Matches(comuneCode, c)))
-                return false;
+        // By ISTAT code when the comune is known (SU-04): the supplier's chosen comuni, and what it wrote before resolved
+        // against the official list; by the written name only when the comune cannot be resolved.
+        var inComune = await comuneMatcher.FilterAsync(active, target, cancellationToken);
 
-            if (categoryCode is not null)
-                return DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal);
-
-            return true;
-        }).ToList();
+        return categoryCode is null
+            ? inComune.ToList()
+            : inComune.Where(sp => DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal)).ToList();
     }
 
     public async Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default)
@@ -637,6 +667,12 @@ public partial class SupplierService(
         email = email.Trim();
         comuneCode = comuneCode.Trim();
 
+        // With the official list imported the invite names a comune of it, stored by its ISTAT code (SU-04); a cadastral code
+        // or a name that identifies one is turned into it. Without the list the value is kept as written.
+        var comune = await ResolveInviteComuneAsync(comuneCode, cancellationToken);
+        if (comune is not null)
+            comuneCode = comune.IstatCode;
+
         // Invites created before SU-01 (no token hash) can no longer be accepted, and a revoked one (SU-12) does not work
         // anymore: neither blocks a new one.
         var existing = await db.SupplierInviteRecords
@@ -667,7 +703,7 @@ public partial class SupplierService(
         };
 
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
-        var inviteEmail = BuildInviteEmail(invite, token);
+        var inviteEmail = BuildInviteEmail(invite, token, comune?.Name ?? await ResolveComuneNameAsync(comuneCode, cancellationToken));
 
         db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
@@ -881,7 +917,9 @@ public partial class SupplierService(
 
         // Profile completion: 5 dimensions — identity(=1) + categories + comuni + bio + tos
         var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
-        var comuni = JsonSerializer.Deserialize<string[]>(profile.ComuniJson, JsonOpts) ?? [];
+        var comuni = SupplierComuneMatcher.ReadStrings(profile.ComuniJson)
+            .Concat(SupplierComuneMatcher.ReadStrings(profile.ComuneIstatCodesJson))
+            .ToArray();
         var hasBio = !string.IsNullOrWhiteSpace(profile.Bio);
         var hasTos = profile.TosAcceptedAt.HasValue;
         int completionSteps = 1 + (categories.Length > 0 ? 1 : 0) + (comuni.Length > 0 ? 1 : 0) + (hasBio ? 1 : 0) + (hasTos ? 1 : 0);
@@ -944,6 +982,56 @@ public partial class SupplierService(
         return profile;
     }
 
-    private EmailContent BuildInviteEmail(SupplierInviteRecord invite, string token) =>
-        SupplierInviteEmails.Build(publicSiteLinks, registrationOptions.Value, invite, token);
+    private EmailContent BuildInviteEmail(SupplierInviteRecord invite, string token, string? comuneName) =>
+        SupplierInviteEmails.Build(publicSiteLinks, invite, token, comuneName);
+
+    private Task<string?> ResolveComuneNameAsync(string comuneCode, CancellationToken cancellationToken) =>
+        SupplierInviteEmails.ResolveComuneNameAsync(pilotComuni, comuneDirectory, comuneCode, cancellationToken);
+
+    /// <summary>
+    /// The comune an invite is for, when the official list is imported: it must be one of its active comuni (an ISTAT code,
+    /// a cadastral code or a unique name), else 422 <c>comune_istat_unknown</c>. <c>null</c> when the list is not imported.
+    /// </summary>
+    private async Task<Comune?> ResolveInviteComuneAsync(string comuneCode, CancellationToken cancellationToken)
+    {
+        if (!await comuneDirectory.IsAvailableAsync(cancellationToken))
+            return null;
+
+        var resolved = await comuneDirectory.ResolveAsync([comuneCode], cancellationToken);
+        if (resolved.TryGetValue(comuneCode, out var comune) && comune.IsActive)
+            return comune;
+
+        throw new DomainRuleException(ComuneErrorCodes.IstatUnknown, ComuneErrorCodes.IstatUnknownMessageKey, comuneCode);
+    }
+
+    /// <summary>
+    /// The ISTAT codes of <paramref name="codes"/>, trimmed and without repetitions, each one an active comune of the official
+    /// list: 422 <c>comuni_dataset_unavailable</c> when the list is not imported, <c>comune_istat_unknown</c> for a code that
+    /// is not in it, <c>comuni_too_many</c> above <see cref="ComuneErrorCodes.MaxSupplierComuni"/>.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> RequireListedComuniAsync(IEnumerable<string> codes, CancellationToken cancellationToken)
+    {
+        var distinct = codes
+            .Select(c => c?.Trim() ?? string.Empty)
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (distinct.Count == 0)
+            return distinct;
+
+        if (distinct.Count > ComuneErrorCodes.MaxSupplierComuni)
+            throw new DomainRuleException(ComuneErrorCodes.TooMany, ComuneErrorCodes.TooManyMessageKey, ComuneErrorCodes.MaxSupplierComuni);
+
+        if (!await comuneDirectory.IsAvailableAsync(cancellationToken))
+            throw new DomainRuleException(ComuneErrorCodes.DatasetUnavailable, ComuneErrorCodes.DatasetUnavailableMessageKey);
+
+        var found = await comuneDirectory.GetByIstatCodesAsync(distinct, cancellationToken);
+        foreach (var code in distinct)
+        {
+            if (!found.TryGetValue(code, out var comune) || !comune.IsActive)
+                throw new DomainRuleException(ComuneErrorCodes.IstatUnknown, ComuneErrorCodes.IstatUnknownMessageKey, code);
+        }
+
+        return distinct;
+    }
 }

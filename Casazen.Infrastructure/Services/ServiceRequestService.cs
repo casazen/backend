@@ -26,6 +26,7 @@ public class ServiceRequestService(
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotifications,
+    ISupplierComuneMatcher comuneMatcher,
     ILogger<ServiceRequestService> logger) : IServiceRequestService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -78,8 +79,8 @@ public class ServiceRequestService(
                 ServiceRequestErrorCodes.SupplierInactive, ServiceRequestErrorCodes.SupplierInactiveMessageKey);
         }
 
-        var comuni = JsonSerializer.Deserialize<string[]>(supplier.ComuniJson, JsonOpts) ?? [];
-        if (!comuni.Any(c => ItalianComuneRegistry.Matches(property.City, c)))
+        // By ISTAT code when the property has a chosen comune (SU-04), by the written city otherwise.
+        if (!await comuneMatcher.CoversAsync(supplier, ComuneTarget.ForProperty(property), cancellationToken))
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.SupplierOutsideComune, ServiceRequestErrorCodes.SupplierOutsideComuneMessageKey);

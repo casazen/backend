@@ -395,6 +395,15 @@ public static class ServiceCollectionExtensions
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
+        // Official ISTAT comuni list (SU-04): read side, import (admin upload and the seed file of the deploy), the SEO view,
+        // the supplier matching by ISTAT code and the validated pilot comuni of the supplier registration.
+        services.AddScoped<IComuneDirectory, ComuneDirectory>();
+        services.AddScoped<IComuneImportService, ComuneImportService>();
+        services.AddScoped<ISeoComuneCatalog, SeoComuneCatalog>();
+        services.AddScoped<ISupplierComuneMatcher, SupplierComuneMatcher>();
+        services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
+        services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
+
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()
             .BindConfiguration(SupplierRegistrationOptions.SectionName)

@@ -34,9 +34,20 @@ public class SupplierProfile
     [Column(TypeName = "jsonb")]
     public string CategoriesJson { get; set; } = "[]";
 
-    /// <summary>JSON array of Italian comune codes where the supplier operates.</summary>
+    /// <summary>
+    /// JSON array of the comuni where the supplier operates as the supplier or an admin wrote them: free text or old codes
+    /// (<c>H501</c>, <c>Roma</c>). Kept for what was typed before the official list (SU-04); the comuni chosen from it are in
+    /// <see cref="ComuneIstatCodesJson"/>. A supplier covers the union of the two.
+    /// </summary>
     [Column(TypeName = "jsonb")]
     public string ComuniJson { get; set; } = "[]";
+
+    /// <summary>
+    /// JSON array of ISTAT codes (6 digits) of the comuni the supplier chose from the official list (<c>Comuni</c>, SU-04),
+    /// each one validated against it. The matching with the property is by code.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public string ComuneIstatCodesJson { get; set; } = "[]";
 
     [MaxLength(2000)]
     public string? Bio { get; set; }

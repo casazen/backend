@@ -97,7 +97,7 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
     public async Task GetActivation_ReviewedPublicPage_ReturnsItsSlugAndIgnoresDrafts()
     {
         await SeedTouristTaxPageAsync("082053", "SIC", "tassa-soggiorno/palermo", LegalReviewStatus.Reviewed);
-        await SeedTouristTaxPageAsync("013040", "LOM", "tassa-soggiorno/bellagio", LegalReviewStatus.Draft);
+        await SeedTouristTaxPageAsync("013250", "LOM", "tassa-soggiorno/bellagio", LegalReviewStatus.Draft);
         var (hostId, palermoId) = await SeedReadyPropertyAsync("Palermo");
         var (_, bellagioId) = await SeedReadyPropertyAsync("Bellagio", hostId);
         using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");

@@ -52,6 +52,22 @@ public class Property : ITenantOwned
     public string PostalCode { get; set; } = string.Empty;
 
     /// <summary>
+    /// ISTAT code (6 digits) of the comune of the property, chosen by the host from the official list (<c>Comuni</c>, SU-04).
+    /// Null until chosen: it is never inferred from the free-text <see cref="City"/>. It is the trusted comune of the
+    /// tourist tax, of the regional rules and of the CIN check (<c>CinFormat.HasIstatComuneMismatch</c>), and it is cleared
+    /// when the city is changed without choosing a comune.
+    /// </summary>
+    [MaxLength(Casazen.Core.Regulatory.ComuneRules.IstatCodeLength)]
+    public string? ComuneIstatCode { get; set; }
+
+    /// <summary>
+    /// CasaZen's code of the region (<c>LOM</c>, <c>LAZ</c>) of <see cref="ComuneIstatCode"/>, set together with it from the
+    /// official list; the key of <c>Compliance:RequiredDocuments</c>. Null while no comune is chosen.
+    /// </summary>
+    [MaxLength(10)]
+    public string? RegionCode { get; set; }
+
+    /// <summary>
     /// WGS84 latitude in degrees, -90 to 90, stored with <see cref="PropertyAddress.CoordinateScale"/> decimals (about
     /// 0.1 m, PC-06, A2-33). <c>0</c> together with a longitude of <c>0</c> = not set.
     /// </summary>

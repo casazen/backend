@@ -43,4 +43,7 @@ public static class RateLimitPolicies
 
     /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>).</summary>
     public const string PublicRegistration = "PublicRegistration";
+
+    /// <summary>Search of the official comuni list for the pickers (<c>api/comuni</c>, SU-04): one request per pause in typing.</summary>
+    public const string PublicComuni = "PublicComuni";
 }

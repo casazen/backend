@@ -402,7 +402,8 @@ public class FieldEncryptionPostgresTests
 
     /// <summary>
     /// Adds the "Properties" columns of the migrations after this point (PC-03 <c>AddPropertyPause</c>, PC-05
-    /// <c>AddPropertySoftDelete</c>), so the model-based insert of the property works here too. Paired with
+    /// <c>AddPropertySoftDelete</c>, SU-04 <c>AddComuniIstat</c>), so the model-based insert of the property works here
+    /// too. Paired with
     /// <see cref="DropPropertiesColumnsAfterCo14Async"/>.
     /// </summary>
     private static Task AddPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
@@ -410,6 +411,8 @@ public class FieldEncryptionPostgresTests
         ALTER TABLE "Properties" ADD COLUMN "PausedAt" timestamp with time zone;
         ALTER TABLE "Properties" ADD COLUMN "IsDeleted" boolean NOT NULL DEFAULT false;
         ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
+        ALTER TABLE "Properties" ADD COLUMN "ComuneIstatCode" character varying(6);
+        ALTER TABLE "Properties" ADD COLUMN "RegionCode" character varying(10);
         ALTER TABLE "Properties" ADD COLUMN "Unit" character varying(30);
         ALTER TABLE "Properties" ADD COLUMN "AddressKey" text;
         """);
@@ -419,6 +422,8 @@ public class FieldEncryptionPostgresTests
         ALTER TABLE "Properties" DROP COLUMN "PausedAt";
         ALTER TABLE "Properties" DROP COLUMN "IsDeleted";
         ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
+        ALTER TABLE "Properties" DROP COLUMN "ComuneIstatCode";
+        ALTER TABLE "Properties" DROP COLUMN "RegionCode";
         ALTER TABLE "Properties" DROP COLUMN "Unit";
         ALTER TABLE "Properties" DROP COLUMN "AddressKey";
         """);

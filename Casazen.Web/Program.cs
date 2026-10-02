@@ -186,6 +186,9 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
     .Bind(builder.Configuration.GetSection(Casazen.Core.Options.ShortStayFiscalOptions.SectionName))
     .Validate(o => o.IsValid(), "ShortStayFiscal: threshold, nights and rates must be positive (rates below 1) and every source set.")
     .ValidateOnStart();
+// The official ISTAT comuni list is loaded before the SEO bootstrap, which generates the pages of its pilot comuni (SU-04).
+builder.Services.Configure<ComuniOptions>(builder.Configuration.GetSection(ComuniOptions.SectionName));
+builder.Services.AddHostedService<ComuneSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 // Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();

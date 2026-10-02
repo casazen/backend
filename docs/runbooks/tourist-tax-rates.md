@@ -11,9 +11,10 @@ deploy and what the admin still has to do.
   drops the table. The authenticated `POST /api/tourist-tax-rates/calculate` is removed too (unused).
 - **Single engine: `Casazen.Core/TouristTax/TouristTaxCalculator`**, reached through `ITouristTaxQuoteService`. Used by
   the checkout quote, the direct booking, the host (manual) booking, the activation wizard and the public calculator.
-- **Comune lookup:** by ISTAT code when both the rate and the comune carry one (public pages: `ItalianComuneRegistry`),
-  otherwise by normalized name: case, accents, spaces, apostrophes and hyphens do not matter (`" ROMA "` = `roma`,
-  `Forlì` = `forli`). Properties have no ISTAT code yet, so they match by city name.
+- **Comune lookup:** by ISTAT code when both the rate and the comune carry one, otherwise by normalized name: case,
+  accents, spaces, apostrophes and hyphens do not matter (`" ROMA "` = `roma`, `Forlì` = `forli`). The comune of a
+  property carries the ISTAT code the host chose from the official list (`Property.ComuneIstatCode`, SU-04: [comuni-istat.md](comuni-istat.md));
+  a property with none matches by city name. The comune of the public pages comes from the same list.
 
 ### Rules of the calculation
 

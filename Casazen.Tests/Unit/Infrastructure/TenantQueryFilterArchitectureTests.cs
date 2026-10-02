@@ -47,6 +47,8 @@ public class TenantQueryFilterArchitectureTests
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
         [typeof(AlloggiatiCodeEntry)] = "Platform reference data: official Alloggiati Web code tables (comuni, stati, documents), imported by admins and read by every org and by the anonymous guest portal (CO-12).",
         [typeof(AlloggiatiCodeTableImport)] = "Platform reference data: log of the admin imports of the official Alloggiati code tables, not tenant data (CO-12).",
+        [typeof(Comune)] = "Platform reference data: the official ISTAT list of the comuni (SU-04), the same for every org, loaded only from the official file (seed or admin import) and read by every org, by the public comune search and by the anonymous supplier registration.",
+        [typeof(ComuneImport)] = "Platform reference data: log of the imports of the official ISTAT comuni list (file, SHA-256, source, reference date, counts), written by the import and read by admins, not tenant data (SU-04).",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId. A host-org filter would hide the request from the supplier who takes, completes or rejects it, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository).",

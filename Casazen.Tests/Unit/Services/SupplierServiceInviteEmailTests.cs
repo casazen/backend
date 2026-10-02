@@ -160,7 +160,9 @@ public class SupplierServiceInviteEmailTests
             queue.Object,
             EmailTestHelpers.Links(),
             Mock.Of<ISafeExternalHttpClient>(),
-            Options.Create(new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
             NullLogger<SupplierService>.Instance);
 
         var invite = await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
@@ -179,7 +181,9 @@ public class SupplierServiceInviteEmailTests
             queue,
             EmailTestHelpers.Links(publicSiteBaseUrl),
             Mock.Of<ISafeExternalHttpClient>(),
-            Options.Create(options ?? new SupplierRegistrationOptions()),
+            ComuneTestServices.Pilots(db, options),
+            ComuneTestServices.Directory(db),
+            ComuneTestServices.Matcher(db),
             NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()

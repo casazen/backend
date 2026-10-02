@@ -103,7 +103,7 @@ public class SeoGeneratedContentTests
 /// <summary>SE-01 (A8-06): the SEO prompt has instructions and names the only facts and sources the text may use.</summary>
 public class SeoContentPromptTests
 {
-    private static readonly ComuneInfo Como = ItalianComuneRegistry.GetByCode("013075")!;
+    private static readonly ComuneInfo Como = ComuneTestData.ComoInfo;
 
     [Fact]
     public void Build_ComplianceGuide_HasLanguageFormatStructureAndSourceRules()

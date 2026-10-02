@@ -23,7 +23,8 @@ public sealed class SupplierAdminService(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
-    IOptions<SupplierRegistrationOptions> registrationOptions,
+    ISupplierPilotComuni pilotComuni,
+    IComuneDirectory comuneDirectory,
     TimeProvider timeProvider,
     ILogger<SupplierAdminService> logger) : ISupplierAdminService
 {
@@ -269,7 +270,8 @@ public sealed class SupplierAdminService(
         invite.ExpiresAt = now.Add(SupplierInviteTokens.Validity);
 
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
-        var email = SupplierInviteEmails.Build(publicSiteLinks, registrationOptions.Value, invite, token);
+        var comuneName = await SupplierInviteEmails.ResolveComuneNameAsync(pilotComuni, comuneDirectory, invite.ComuneCode, cancellationToken);
+        var email = SupplierInviteEmails.Build(publicSiteLinks, invite, token, comuneName);
 
         db.SupplierAdminAuditEntries.Add(new SupplierAdminAuditEntry
         {

@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
@@ -19,6 +20,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using Npgsql;
 
@@ -47,6 +49,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
+
+    /// <summary>
+    /// Loads the 29 official rows of <see cref="ComuneTestData"/> into the test database at startup (SU-04): the comuni the
+    /// tests need, resolved through the real import. A suite that tests the list not being imported returns false.
+    /// </summary>
+    protected virtual bool SeedComuneSample => true;
 
     /// <summary>True when the app runs on a dedicated PostgreSQL database; false only for the local InMemory fallback.</summary>
     public bool UsesPostgreSql { get; }
@@ -86,6 +94,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "1000",
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
+                ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
+                // The official comuni list is not loaded into every test database (7,894 rows): tests that need comuni seed the
+                // few they use (ComuneTestData) or import the official file themselves.
+                ["Comuni:SeedOnStartup"] = "false",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
@@ -116,6 +128,9 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         {
             if (UsesPostgreSql)
                 UseDedicatedPostgresDatabase(services);
+
+            if (SeedComuneSample)
+                services.AddHostedService(serviceProvider => new ComuneSampleSeeder(serviceProvider));
 
             // One Data Protection provider for every test host of the process (PC-11): the EF model is cached per
             // provider (DataProtectionModelCacheKeyFactory), so the hosts share one model instead of building one each,
@@ -382,4 +397,18 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             services.Remove(descriptor);
     }
 
+}
+
+/// <summary>Imports the official sample of the comuni list when the host starts (see <see cref="CasazenWebApplicationFactory.SeedComuneSample"/>).</summary>
+internal sealed class ComuneSampleSeeder(IServiceProvider serviceProvider) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!await db.Comuni.AnyAsync(cancellationToken))
+            await ComuneTestData.ImportSampleAsync(db);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

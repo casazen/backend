@@ -40,9 +40,17 @@ A row of `SeoEvents` is `{ Id, Event, ComuneCode, UtmSource, UtmMedium, UtmCampa
 
 ## Featured properties: which comune is a property in
 
-A property is listed under the comune whose official name equals its city (case-insensitive) until SU-04: the host
-chooses the comune (`Property.ComuneIstatCode`) from the official list; then the match is on the ISTAT code and the
-free-text city is no longer read. A property without a chosen comune is not listed under any page once SU-04 is in.
+The key is the ISTAT code (SE-04-RELINK, closes A8-10): a property is listed under the comune whose official code
+(table `Comune`, SU-04) equals `Property.ComuneIstatCode`, the comune the host chose from the official list. The
+free-text city is not read for a property that has a code.
+
+Fallback, only for a property **without** a code (created before SU-04 and not yet edited): the official comune name
+is compared with the city, case-insensitive. It can confuse homonymous comuni of different provinces; it disappears
+as hosts choose their comune. A property with a code of another comune is never listed by its city text.
+
+Funnel events and the admin report already use the ISTAT code only: `SeoEvents.ComuneCode` and
+`SignupAttributions.ComuneCode` are codes (the page sends a slug or a code, resolved by `ISeoComuneCatalog` against
+the official list when recorded), and the report groups by code and names it from `Comune`. No name match is involved.
 
 ## Checks after a deploy
 

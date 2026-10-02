@@ -993,6 +993,7 @@ public class ServiceRequestServiceTests
             queue ?? new RecordingEmailQueue(),
             EmailTestHelpers.Links(publicSiteBaseUrl),
             push ?? Mock.Of<IPushNotificationService>(),
+            ComuneTestServices.Matcher(db),
             NullLogger<ServiceRequestService>.Instance);
     }
 

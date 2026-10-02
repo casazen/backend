@@ -65,9 +65,15 @@ public interface ISupplierService
     Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>Updates mutable profile fields. Returns the updated profile or null if not found.</summary>
+    /// <remarks>
+    /// <paramref name="comuni"/> is the free text of the supplier (kept as written); <paramref name="comuneIstatCodes"/> the
+    /// comuni chosen from the official ISTAT list (SU-04): when sent it replaces the stored ones, when <c>null</c> they stay.
+    /// </remarks>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
-    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
+    /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code. Codes <c>comuni_dataset_unavailable</c> (the official list is
+    /// not imported), <c>comune_istat_unknown</c> (a code that is not an active comune of it), <c>comuni_too_many</c>:
+    /// <paramref name="comuneIstatCodes"/>.
     /// </exception>
     Task<SupplierProfile?> UpdateProfileAsync(
         Guid orgId,
@@ -78,7 +84,8 @@ public interface ISupplierService
         IEnumerable<string>? comuni,
         string? bio,
         IEnumerable<string>? photoUrls,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IEnumerable<string>? comuneIstatCodes = null);
 
     /// <summary>
     /// Returns wizard step statuses for the activation flow (AC5).
@@ -120,6 +127,15 @@ public interface ISupplierService
     /// <see cref="Casazen.Core.Suppliers.ServiceCategories"/> code.
     /// </exception>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComune(string comuneCode, string? category, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same as <see cref="GetActiveByComune"/> for a <see cref="Casazen.Core.Suppliers.ComuneTarget"/>: matched by ISTAT code
+    /// when the comune has one (the property's chosen comune), by the written name otherwise (SU-04, A4-12).
+    /// </summary>
+    Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
+        Casazen.Core.Suppliers.ComuneTarget target,
+        string? category,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Creates an admin invite record. Returns the generated invite id.</summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">

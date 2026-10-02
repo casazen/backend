@@ -745,6 +745,36 @@
   <data name="SupplierComuneNotPilot" xml:space="preserve">
     <value>Self-registration is not available for this municipality: choose one from the list or ask for an invitation.</value>
   </data>
+  <data name="ComuniDatasetUnavailable" xml:space="preserve">
+    <value>The official ISTAT comuni list is not available yet: a comune cannot be chosen or validated. Try again later or contact the CasaZen team.</value>
+  </data>
+  <data name="ComuneIstatUnknown" xml:space="preserve">
+    <value>The ISTAT code {0} is not a comune of the official list: choose the comune from the list.</value>
+  </data>
+  <data name="ComuniTooMany" xml:space="preserve">
+    <value>You can list at most {0} comuni.</value>
+  </data>
+  <data name="ComuneSearchQueryLength" xml:space="preserve">
+    <value>Type {0} to {1} characters to search for a comune.</value>
+  </data>
+  <data name="ComuniImportFieldRequired" xml:space="preserve">
+    <value>This field is required.</value>
+  </data>
+  <data name="ComuniImportReferenceDateInvalid" xml:space="preserve">
+    <value>Give the reference date of the list as YYYY-MM-DD (the "updated to" date of the official file).</value>
+  </data>
+  <data name="ComuniImportInvalid" xml:space="preserve">
+    <value>The file is not valid and no comune was imported: fix the listed lines and try again.</value>
+  </data>
+  <data name="ActivationCinIstatMismatch" xml:space="preserve">
+    <value>The comune in the CIN ({0}) differs from the comune of the property ({1}). This is not an error: a CIN does not change after a relocation or reclassification. Just check that the CIN is the one of this property.</value>
+  </data>
+  <data name="ActivationComuneMissing" xml:space="preserve">
+    <value>Choose the comune from the ISTAT list: it is needed for the documents your region requires, the tourist tax and the CIN check.</value>
+  </data>
+  <data name="ComuneIstatCodeInvalid" xml:space="preserve">
+    <value>The ISTAT code of the comune must be 6 digits: choose the comune from the list.</value>
+  </data>
   <data name="OnSiteRequestTooManyNights" xml:space="preserve">
     <value>With payment at the property you can request at most {0} nights.</value>
   </data>

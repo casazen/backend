@@ -22,6 +22,18 @@ public class PropertyDetailResponse
     public decimal DamageDeposit { get; set; }
     public string? CinCode { get; set; }
     public CinStatus CinStatus { get; set; }
+
+    /// <summary>
+    /// True when the CIN is valid, the property has a comune chosen from the official list and the ISTAT code inside the CIN
+    /// is another one (SU-04): a non-blocking warning, the CIN does not change after a relocation or reclassification.
+    /// </summary>
+    public bool CinIstatMismatch { get; set; }
+
+    /// <summary>ISTAT code of the comune chosen from the official list; null until chosen.</summary>
+    public string? ComuneIstatCode { get; set; }
+
+    /// <summary>CasaZen's region code of <see cref="ComuneIstatCode"/> (<c>LOM</c>); null until a comune is chosen.</summary>
+    public string? RegionCode { get; set; }
     public string Timezone { get; set; } = "Europe/Rome";
     public IReadOnlyList<string> Amenities { get; set; } = [];
     public IReadOnlyList<string> PhotoUrls { get; set; } = [];

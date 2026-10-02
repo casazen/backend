@@ -18,6 +18,7 @@ namespace Casazen.Infrastructure.Services;
 public class SeoContentService(
     ISeoContentRepository repository,
     ITouristTaxQuoteService touristTaxQuoteService,
+    ISeoComuneCatalog comuneCatalog,
     IAiProvider aiProvider,
     PublicSiteLinks publicSiteLinks,
     ILogger<SeoContentService> logger,
@@ -57,7 +58,7 @@ public class SeoContentService(
         PublicTouristTaxCalculateRequest request,
         CancellationToken cancellationToken = default)
     {
-        var comune = ItalianComuneRegistry.GetBySlug(request.ComuneSlug);
+        var comune = await comuneCatalog.GetPilotBySlugAsync(request.ComuneSlug, cancellationToken);
         if (comune is null)
             return null;
 
@@ -105,7 +106,8 @@ public class SeoContentService(
             pageSize,
             cancellationToken);
 
-        return (items.Select(i => MapAdminPage(i.Page, i.LatestRevision, i.LastReviewEvent)).ToList(), total);
+        var comuni = await comuneCatalog.GetByCodesAsync(items.Select(i => i.Page.ComuneCode), cancellationToken);
+        return (items.Select(i => MapAdminPage(i.Page, i.LatestRevision, i.LastReviewEvent, comuni)).ToList(), total);
     }
 
     public async Task<SeoPageAdminDetailDto?> GetAdminPageAsync(Guid pageId, CancellationToken cancellationToken = default)
@@ -119,9 +121,10 @@ public class SeoContentService(
             ? latest?.Id == publishedId ? latest : await repository.GetRevisionAsync(publishedId, cancellationToken)
             : null;
         var history = await repository.GetReviewEventsAsync(page.Id, cancellationToken);
+        var comuni = await comuneCatalog.GetByCodesAsync([page.ComuneCode], cancellationToken);
 
         return new SeoPageAdminDetailDto(
-            MapAdminPage(page, latest is null ? null : Summary(latest), history.FirstOrDefault()),
+            MapAdminPage(page, latest is null ? null : Summary(latest), history.FirstOrDefault(), comuni),
             published is null ? null : Preview(published),
             latest is not null && latest.Id != page.PublishedRevisionId ? Preview(latest) : null,
             history.Select(ToDto).ToList());
@@ -223,7 +226,7 @@ public class SeoContentService(
 
         foreach (var comuneCode in comuneCodes)
         {
-            var comune = ItalianComuneRegistry.GetByCode(comuneCode);
+            var comune = await comuneCatalog.GetByCodeAsync(comuneCode, cancellationToken);
             if (comune is null)
             {
                 logger.LogWarning("Unknown comune code {ComuneCode}; skipping SEO generation", comuneCode);
@@ -275,7 +278,7 @@ public class SeoContentService(
 
         foreach (var page in stalePages)
         {
-            var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
+            var comune = await comuneCatalog.GetByCodeAsync(page.ComuneCode, cancellationToken);
             if (comune is null)
                 continue;
 
@@ -356,12 +359,12 @@ public class SeoContentService(
     private async Task<IReadOnlyList<IndexablePage>> GetIndexablePagesAsync(CancellationToken cancellationToken)
     {
         var candidates = await repository.GetPublishedPagesForSitemapAsync(cancellationToken);
+        var comuni = await comuneCatalog.GetByCodesAsync(candidates.Select(p => p.ComuneCode), cancellationToken);
         var today = _clock.TodayInRomeAsDateOnly();
         var pages = new List<IndexablePage>(candidates.Count);
         foreach (var page in candidates)
         {
-            var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
-            if (comune is null)
+            if (!comuni.TryGetValue(page.ComuneCode, out var comune))
                 continue;
 
             // A8-12 (BK-03): a calculator page of a comune without a rate in force is not worth indexing.
@@ -481,7 +484,7 @@ public class SeoContentService(
 
     private async Task<SeoPagePublicDto> MapPublicPageAsync(SeoContentPage page, CancellationToken cancellationToken)
     {
-        var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode)
+        var comune = await comuneCatalog.GetByCodeAsync(page.ComuneCode, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown comune code {page.ComuneCode}");
 
         // SE-01 (A8-05): the approved revision only, never a newer draft. Sanitized again on read (FD-15).
@@ -513,7 +516,7 @@ public class SeoContentService(
             taxRates.Select(ToPublicSummary).ToList());
     }
 
-    /// <summary>The registry gives a trusted ISTAT code: rates carrying one are matched by code, the others by name.</summary>
+    /// <summary>The official list gives a trusted ISTAT code: rates carrying one are matched by code, the others by name.</summary>
     private static TouristTaxComune ToTouristTaxComune(ComuneInfo comune) => new(comune.Code, comune.Name);
 
     private static PublicTouristTaxRateSummaryDto ToPublicSummary(TouristTaxRate rate) =>
@@ -537,9 +540,10 @@ public class SeoContentService(
     private SeoPageAdminDto MapAdminPage(
         SeoContentPage page,
         SeoRevisionSummary? latest,
-        SeoReviewEventSummary? lastReviewEvent)
+        SeoReviewEventSummary? lastReviewEvent,
+        IReadOnlyDictionary<string, ComuneInfo> comuni)
     {
-        var comune = ItalianComuneRegistry.GetByCode(page.ComuneCode);
+        var comune = comuni.GetValueOrDefault(page.ComuneCode);
         var publicPath = comune is null ? null : SeoPagePaths.For(comune, page.PageType);
 
         return new SeoPageAdminDto(
