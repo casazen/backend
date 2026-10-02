@@ -291,7 +291,7 @@ public class SuppliersController(
                 .FirstOrDefaultAsync(p => p.Id == pid && p.OrgId == orgId.Value, cancellationToken);
 
             if (property is null)
-                return NotFound(new { error = "Proprietà non trovata." });
+                return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
 
             if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
                 return Forbid();
@@ -301,7 +301,7 @@ public class SuppliersController(
         }
 
         if (target.IsEmpty)
-            return BadRequest(new { error = "Specificare comune o propertyId." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSearchTargetRequired");
 
         var suppliers = await supplierService.GetActiveByComuneAsync(target, query.Category, cancellationToken);
 

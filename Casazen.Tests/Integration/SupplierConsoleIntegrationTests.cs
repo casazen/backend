@@ -594,7 +594,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     }
 
     [Fact]
-    public async Task GetSuppliers_WithoutComuneOrPropertyId_Returns400WithItalianMessage()
+    public async Task GetSuppliers_WithoutComuneOrPropertyId_Returns400WithTheLocalizedProblem()
     {
         await _factory.SeedOrgForOwnerAsync();
         using var client = _factory.CreateAuthenticatedClient(roles: "PropertyOwner");
@@ -602,9 +602,93 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var response = await client.GetAsync("/api/suppliers");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Specificare comune o propertyId", body);
-        Assert.DoesNotContain("The comune field is required", body);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation_error", problem.GetProperty("code").GetString());
+        Assert.Equal("Indica il comune oppure l'immobile per cercare i fornitori.", problem.GetProperty("detail").GetString());
+
+        var english = await GetAsync(client, "/api/suppliers", "en");
+        Assert.Equal(
+            "Provide the municipality or the property to search for suppliers.",
+            (await english.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
+    }
+
+    // ─── A4-27: API messages come from the localized resources (no inline text) ──────────────────────────
+
+    [Fact]
+    public async Task GetAvailability_ToBeforeFrom_Returns400LocalizedInItalianAndEnglish()
+    {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+        const string url = "/api/supplier/availability?from=2026-10-10&to=2026-10-01";
+
+        var italian = await GetAsync(client, url, null);
+        var english = await GetAsync(client, url, "en");
+
+        Assert.Equal(HttpStatusCode.BadRequest, italian.StatusCode);
+        var it = await italian.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation_error", it.GetProperty("code").GetString());
+        Assert.Equal("La data finale deve essere uguale o successiva alla data iniziale.", it.GetProperty("detail").GetString());
+        Assert.Equal(
+            "The end date must be on or after the start date.",
+            (await english.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task GetAvailability_RangeOverTheLimit_Returns400NamingTheLimit()
+    {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await GetAsync(client, "/api/supplier/availability?from=2026-10-01&to=2027-03-01", "en");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "The maximum range is 90 days.",
+            (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task GetPublicShowcase_UnknownSlug_Returns404LocalizedProblem()
+    {
+        using var client = _factory.CreateClient();
+
+        var italian = await GetAsync(client, "/api/public/suppliers/non-esiste", null);
+        var english = await GetAsync(client, "/api/public/suppliers/non-esiste", "en");
+
+        Assert.Equal(HttpStatusCode.NotFound, italian.StatusCode);
+        var it = await italian.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("not_found", it.GetProperty("code").GetString());
+        Assert.Equal("Questa vetrina fornitore non esiste o non è più disponibile.", it.GetProperty("detail").GetString());
+        Assert.Equal(
+            "This supplier showcase does not exist or is no longer available.",
+            (await english.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task AdminInvite_SecondPendingInviteForTheSameEmail_Returns409LocalizedDuplicate()
+    {
+        var email = $"invite-{Guid.NewGuid():N}@test.com";
+        using var admin = _factory.CreateAuthenticatedClient(roles: "Admin");
+        var first = await admin.PostAsJsonAsync("/api/admin/suppliers/invite", new { email, comuneCode = "H501" });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await admin.PostAsJsonAsync("/api/admin/suppliers/invite", new { email, comuneCode = "H501" });
+
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        var problem = await second.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("duplicate_invite", problem.GetProperty("code").GetString());
+        Assert.Equal(
+            "Esiste già un altro invito in attesa per questa email: revocalo prima di reinviare questo.",
+            problem.GetProperty("detail").GetString());
+        Assert.DoesNotContain(email, problem.GetProperty("detail").GetString()!);
+    }
+
+    private static async Task<HttpResponseMessage> GetAsync(HttpClient client, string url, string? language)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (language is not null)
+            request.Headers.Add("Accept-Language", language);
+        return await client.SendAsync(request);
     }
 
     [Fact]
