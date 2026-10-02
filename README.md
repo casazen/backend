@@ -29,7 +29,7 @@ dotnet run --project Casazen.Web
 
 **API Swagger:** https://localhost:5001/swagger
 
-Local PostgreSQL and Railway deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md`.
+Local PostgreSQL and the deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md` (hosting in revisione: Railway è stato cancellato dal PO il 2026-10-02, vedi `docs/runbooks/free-hosting-analysis.md` quando il task HOSTING la pubblica).
 
 ---
 
@@ -257,7 +257,7 @@ curl -X GET "https://localhost:5001/api/ota/bookings?platform=airbnb&propertyId=
 - Timeout: 30 seconds per request
 
 ## 📊 Database
-**SQL Server Schema:**
+**Database schema (PostgreSQL):**
 
 ```
 Users

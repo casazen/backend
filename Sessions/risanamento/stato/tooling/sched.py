@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # usage: sched.py set ID STATUS [note] | sched.py ready | sched.py summary
 import json,sys,functools
-P='/tmp/claude-0/-home-user/ff7c6e50-c922-54c6-adf8-152faa99238a/scratchpad/plan/'
+P='/tmp/claude-0/-home-user/9c8184b5-4d4a-5ad1-b5a4-defdd11e6e5c/scratchpad/plan/'
 T=json.load(open(P+'tasks.json')); S=json.load(open(P+'status.json'))
 ids=[x['id'] for x in T]; X={x['id']:x for x in T}
 # '*' = every task except itself, the FN-* sweeps and the AI-* tasks of wave 8 (they run after FN-05: counting them would be a cycle)

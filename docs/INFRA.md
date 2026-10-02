@@ -2,6 +2,8 @@
 
 > Zero-cost production stack: **Supabase** (PostgreSQL) + **Railway** (.NET API) + **Vercel** (React SPA)
 
+> **Hosting in revisione (2026-10-02):** il PO ha cancellato l'abbonamento Railway e non vuole costi. Il database resta su Supabase; l'hosting gratuito del backend è in analisi (task HOSTING, `docs/runbooks/free-hosting-analysis.md`). Ogni riferimento a Railway in questo file è **storico** finché quell'analisi non è chiusa: non usarlo per configurare nuovi ambienti.
+
 ---
 
 ## Overview
@@ -164,6 +166,8 @@ You do **not** need: `RAILWAY_TOKEN`, `RAILWAY_SERVICE_TEST`, `RAILWAY_SERVICE_P
 ---
 
 ## PostgreSQL migration (completed in codebase)
+
+> Storico: il passaggio da SQL Server a PostgreSQL è già stato fatto. Il codice usa solo Npgsql e le migrazioni attuali sono PostgreSQL: **non** rieseguire i passi sotto, che restano come documentazione della migrazione.
 
 The backend uses **Npgsql** and PostgreSQL migrations. For a fresh database:
 
@@ -343,6 +347,8 @@ Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure t
 ---
 
 ## Railway Setup (Backend API)
+
+> Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi la nota in cima e `docs/runbooks/free-hosting-analysis.md`. Questa sezione è storica.
 
 ### Create project
 

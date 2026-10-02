@@ -7,6 +7,8 @@ from memory, and `DeployChecklistConsistencyTests` fails when a variable written
 configuration section of the code is not mentioned here. Detail per area stays in the linked runbooks; where a runbook and
 this file disagree, this file was checked against the code later (see § 9 for the corrections made).
 
+> **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway; dove questa checklist dice "Railway" va letto "l'host del backend", in attesa dell'analisi del task HOSTING (`free-hosting-analysis.md`). Le variabili restano quelle lette dal codice.
+
 Nothing in this file is a secret: examples are placeholders. Real values live only in the panels named in the "Where" column
 and in the password manager, never in the repository (`.claude/rules/security.md`).
 

@@ -5,12 +5,12 @@ title: Expo host app — calendar, bookings, push (complement to web)
 phase: 1
 type: feature
 priority: P0
-status: specced
+status: partial
 issue:
 depends_on: [micro-marketplace-v0, guest-check-in-portal, ical-calendar-sync]
 blocks: [golden-journey-e2e]
 exit_contributes_to: GJ app suite M1–M7; on-the-go host operations
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Native Host App (US-025)
@@ -25,7 +25,7 @@ last_reviewed: 2026-08-13
 
 Replaces deprecated `spec-pwa-host-shell` strategy.
 
-**Phase:** 1 — MVP · **Type:** feature · **Status:** specced
+**Phase:** 1 — MVP · **Type:** feature · **Status:** partial (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

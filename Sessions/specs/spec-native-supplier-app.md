@@ -5,12 +5,12 @@ title: Expo supplier app — inbox + push
 phase: 2
 type: feature
 priority: P1
-status: specced
+status: planned
 issue:
 depends_on: [supplier-console-web, native-host-app]
 blocks: []
 exit_contributes_to: Fase 2 ecosystem — supplier on-the-go; extends F1–F2 to native binary
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-02
 ---
 
 # Spec — Native Supplier App (US-028)
@@ -23,7 +23,7 @@ last_reviewed: 2026-08-13
 
 **Fase 2** React Native app for suppliers: same APIs as `spec-supplier-console-web`, optimized for inbox, presa in carico, push on new requests. Replaces mobile-web-only F1–F2 tests with native Maestro suite when shipped.
 
-**Phase:** 2 · **Type:** feature · **Status:** specced
+**Phase:** 2 · **Type:** feature · **Status:** planned (realigned 2026-10-02, see Sessions/specs/README.md)
 
 ---
 

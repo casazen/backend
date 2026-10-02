@@ -146,7 +146,7 @@ CasaZen automates the most burdensome parts of Italian vacation rental managemen
 | Rule | Description | Where enforced |
 |---|---|---|
 | CIN format | Property CIN code must match the official BDSR format (e.g. `IT058091C27G5FFZDZ`), spaces and hyphens ignored | `CinFormat` (via `CinCodeAttribute` and the property services) |
-| Tourist tax source | Rates must come from the `TouristTaxRate` entity — never hardcoded | `TaxCalculationService` |
+| Tourist tax source | Rates must come from the `TouristTaxRate` entity — never hardcoded | `TouristTaxCalculator` (via `ITouristTaxQuoteService`) |
 | Booking status machine | Only valid transitions: Pending→Confirmed→CheckedIn→CheckedOut; any state→Cancelled | `BookingsController` check-in/check-out actions |
 | Check-in date validation | Cannot check in before the booking's check-in date | `BookingsController.CheckIn` |
 | Availability check | A property cannot have overlapping confirmed bookings | `IBookingService.IsPropertyAvailableAsync` |

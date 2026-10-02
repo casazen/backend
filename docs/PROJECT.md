@@ -12,12 +12,14 @@ Web reporting, tourist tax, GDPR).
 - **Framework**: ASP.NET Core Web API with Swagger/OpenAPI
 - **Database**: PostgreSQL via Supabase (EF Core 10 / Npgsql, code-first migrations)
 - **Auth**: Auth0 — JWT Bearer validated on every `/api` endpoint
-- **Background jobs**: Hangfire (OTA sync hourly, booking pull every 15 min, GDPR retention, pricing)
+- **Background jobs**: Hangfire, one schema per environment (iCal sync, rent collection, booking expiry, email and push delivery, GDPR retention, CIN and compliance checks; OTA sync and booking pull run only with `Features:OtaPartnerApi`, off by default: D10; see `docs/runbooks/hangfire.md`)
 - **Payments**: Stripe (webhook signature verification required)
 - **Email**: Resend (`IEmailService`, templates in `Casazen.Infrastructure/Email/Templates`, sending queued on Hangfire; see `docs/runbooks/email.md`)
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
 - **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`)
+- **Hosting**: Supabase (DB) + Vercel (FE); Railway è stato cancellato dal PO il 2026-10-02 e l'hosting gratuito del backend è in revisione (`docs/runbooks/free-hosting-analysis.md`, task HOSTING). `docs/INFRA.md` è storico per la parte Railway.
+- **Stato del risanamento**: `Sessions/risanamento/RIEPILOGO-FINALE.md` (cosa è fatto, cosa resta); runbook in `docs/runbooks/index.md`
 
 ## Repo layout
 ```

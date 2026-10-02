@@ -39,6 +39,7 @@ secrets/vercel.production.env
 ## Logs
 logs/
 *.log
+!Sessions/risanamento/stato/notes.log
 
 ## Uploaded files
 wwwroot/uploads/
