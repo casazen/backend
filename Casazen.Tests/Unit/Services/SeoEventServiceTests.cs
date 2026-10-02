@@ -20,7 +20,9 @@ public class SeoEventServiceTests
     private readonly FakeTimeProvider _clock = new(Now);
 
     private static readonly ISeoComuneCatalog Catalog = new StaticSeoComuneCatalog(
-        ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo, ComuneTestData.MenaggioInfo, ComuneTestData.PalermoInfo);
+        ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo, ComuneTestData.MenaggioInfo, ComuneTestData.PalermoInfo,
+        new Casazen.Core.Regulatory.ComuneInfo(ComuneTestData.Roma, "Roma", "LAZ", "lazio", "roma"),
+        new Casazen.Core.Regulatory.ComuneInfo(ComuneTestData.Milano, "Milano", "LOM", "lombardia", "milano"));
 
     private AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
