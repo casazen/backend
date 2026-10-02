@@ -40,6 +40,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoContentPage)] = "Platform SEO content (public comune pages) managed by admins.",
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
+        [typeof(SeoEvent)] = "Platform analytics of the public SEO pages (SE-04): written by the anonymous events endpoint, read by admins only as totals per comune; no org and no person (no IP, user or visitor id), deleted after Seo:Events:RetentionDays.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
         [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",

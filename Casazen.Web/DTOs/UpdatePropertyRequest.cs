@@ -69,10 +69,14 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Geographic latitude of the property.</summary>
+    /// <summary>Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals are rounded.</summary>
+    [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyLatitudeRange")]
     public decimal? Latitude { get; set; }
 
-    /// <summary>Geographic longitude of the property.</summary>
+    /// <summary>Geographic longitude in degrees, -180 to 180 (A2-33); more than 6 decimals are rounded.</summary>
+    [Range(typeof(decimal), "-180", "180", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyLongitudeRange")]
     public decimal? Longitude { get; set; }
 
     /// <summary>Number of bedrooms (0–100): <c>0</c> is a studio flat (monolocale, A2-27).</summary>
@@ -155,6 +159,21 @@ public class UpdatePropertyRequest
         }
     }
 
+    /// <summary>
+    /// Interno / scala (PC-06, A2-19); <c>null</c> or blank removes it. Together with the address it must be unique within
+    /// the org: 409 <c>duplicate_property_address</c> otherwise.
+    /// </summary>
+    [MaxLength(PropertyAddress.UnitMaxLength, ErrorMessage = "PropertyUnitTooLong")]
+    public string? Unit
+    {
+        get;
+        set
+        {
+            field = value;
+            UnitSent = true;
+        }
+    }
+
     /// <summary>URL slug for direct booking links (unique within org); <c>null</c> or blank removes it.</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug
@@ -178,6 +197,10 @@ public class UpdatePropertyRequest
     /// <summary>True when the body carries <see cref="CancellationPolicyId"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CancellationPolicyIdSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="Unit"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool UnitSent { get; private set; }
 
     /// <summary>True when the body carries <see cref="Slug"/>, <c>null</c> included.</summary>
     [JsonIgnore]
@@ -204,9 +227,11 @@ public class UpdatePropertyRequest
         if (PostalCode is not null)
             property.PostalCode = PostalCode;
         if (Latitude is { } latitude)
-            property.Latitude = latitude;
+            property.Latitude = PropertyAddress.RoundCoordinate(latitude);
         if (Longitude is { } longitude)
-            property.Longitude = longitude;
+            property.Longitude = PropertyAddress.RoundCoordinate(longitude);
+        if (UnitSent)
+            property.Unit = PropertyAddress.NormalizeUnit(Unit);
         if (Bedrooms is { } bedrooms)
             property.Bedrooms = bedrooms;
         if (Bathrooms is { } bathrooms)

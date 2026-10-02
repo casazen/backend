@@ -396,6 +396,9 @@
   <data name="SignupAttributionUnknownComune" xml:space="preserve">
     <value>The given comune (municipality) is not one CasaZen manages.</value>
   </data>
+  <data name="SeoEventUnknown" xml:space="preserve">
+    <value>The event is not one that is recorded (cta_click, signup_start).</value>
+  </data>
   <data name="SignupAttributionOnboardingRequired" xml:space="preserve">
     <value>The signup source can be recorded only after completing the onboarding.</value>
   </data>
@@ -1494,6 +1497,21 @@
   </data>
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
+  </data>
+  <data name="PropertyAddressTaken" xml:space="preserve">
+    <value>An active property of your organization already has this address. If it is another apartment in the same building, enter the unit or staircase.</value>
+  </data>
+  <data name="PropertyUnitTooLong" xml:space="preserve">
+    <value>The unit or staircase can have at most 30 characters.</value>
+  </data>
+  <data name="PropertyLatitudeRange" xml:space="preserve">
+    <value>The latitude must be between -90 and 90 degrees.</value>
+  </data>
+  <data name="PropertyLongitudeRange" xml:space="preserve">
+    <value>The longitude must be between -180 and 180 degrees.</value>
+  </data>
+  <data name="PropertyCoordinatesInvalid" xml:space="preserve">
+    <value>The coordinates are not valid: the latitude must be between -90 and 90 degrees and the longitude between -180 and 180.</value>
   </data>
   <data name="BillingSdiRecipientCodeInvalid" xml:space="preserve">
     <value>Invalid SDI recipient code: use letters and digits only (at most 7).</value>

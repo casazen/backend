@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
@@ -157,6 +158,7 @@ builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
 builder.Services.AddScoped<RliDeadlineReminderJob>();
 builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
+builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 builder.Services.AddScoped<DomainRecheckJob>();
@@ -164,6 +166,8 @@ builder.Services.AddScoped<PropertyComplianceCheckJob>();
 builder.Services.AddScoped<IAlloggiatiReportScheduler, AlloggiatiReportScheduler>();
 builder.Services.Configure<SeoBootstrapOptions>(
     builder.Configuration.GetSection(SeoBootstrapOptions.SectionName));
+builder.Services.Configure<SeoEventOptions>(
+    builder.Configuration.GetSection(SeoEventOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
 // Vercel Domains API (BK-17): the token and the project of the web app, set by the product owner (D9).

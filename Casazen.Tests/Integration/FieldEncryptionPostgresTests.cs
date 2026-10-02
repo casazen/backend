@@ -413,6 +413,8 @@ public class FieldEncryptionPostgresTests
         ALTER TABLE "Properties" ADD COLUMN "DeletedAt" timestamp with time zone;
         ALTER TABLE "Properties" ADD COLUMN "ComuneIstatCode" character varying(6);
         ALTER TABLE "Properties" ADD COLUMN "RegionCode" character varying(10);
+        ALTER TABLE "Properties" ADD COLUMN "Unit" character varying(30);
+        ALTER TABLE "Properties" ADD COLUMN "AddressKey" text;
         """);
 
     private static Task DropPropertiesColumnsAfterCo14Async(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
@@ -422,6 +424,8 @@ public class FieldEncryptionPostgresTests
         ALTER TABLE "Properties" DROP COLUMN "DeletedAt";
         ALTER TABLE "Properties" DROP COLUMN "ComuneIstatCode";
         ALTER TABLE "Properties" DROP COLUMN "RegionCode";
+        ALTER TABLE "Properties" DROP COLUMN "Unit";
+        ALTER TABLE "Properties" DROP COLUMN "AddressKey";
         """);
 
     /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>

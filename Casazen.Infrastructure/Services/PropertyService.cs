@@ -10,6 +10,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -29,6 +30,12 @@ public class PropertyService(
 
     /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
     public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
+
+    /// <summary>422: a latitude outside -90..90 or a longitude outside -180..180.</summary>
+    public const string PropertyCoordinatesInvalidCode = "property_coordinates_invalid";
+
+    /// <summary>The unique index of <c>(OrgId, Slug)</c> (see <c>AppDbContext</c>).</summary>
+    private const string SlugUniqueIndexName = "UIX_Properties_OrgId_Slug";
 
     public async Task<Property?> GetPropertyAsync(Guid id)
     {
@@ -69,15 +76,26 @@ public class PropertyService(
     {
         logger.LogInformation("Creating property: {Name}", property.Name);
         property.CinCode = CinFormat.Normalize(property.CinCode);
+        NormalizeLocation(property);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         await EnsureCancellationPolicyExistsAsync(property);
-        return await repository.AddAsync(property);
+        try
+        {
+            return await repository.AddAsync(property);
+        }
+        catch (DbUpdateException ex) when (ToUniqueConflict(ex) is { } conflict)
+        {
+            // The unique indexes are the guarantee under concurrency (A2-19): no address check before the insert.
+            logger.LogWarning("Property of org {OrgId} refused by a unique index: {Code}", property.OrgId, conflict.Code);
+            throw conflict;
+        }
     }
 
     public async Task<Property> UpdatePropertyAsync(Property property)
     {
         logger.LogInformation("Updating property: {Id}", property.Id);
         property.CinCode = CinFormat.Normalize(property.CinCode);
+        NormalizeLocation(property);
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -86,10 +104,51 @@ public class PropertyService(
         }
 
         await EnsureCancellationPolicyExistsAsync(property);
-        var updated = await repository.UpdateAsync(property);
+        Property updated;
+        try
+        {
+            updated = await repository.UpdateAsync(property);
+        }
+        catch (DbUpdateException ex) when (ToUniqueConflict(ex) is { } conflict)
+        {
+            // Another property took the address (or the slug) between the read and this save (A2-19).
+            logger.LogWarning("Update of property {Id} refused by a unique index: {Code}", property.Id, conflict.Code);
+            throw conflict;
+        }
+
         await complianceStatus.ReevaluateAsync(updated.Id);
         return updated;
     }
+
+    /// <summary>
+    /// The unit and the coordinates as stored (trimmed unit, coordinates with the precision of the column), and a
+    /// coordinate outside the earth refused before it reaches the database (422): the API validates the same ranges at its
+    /// boundary, this protects every other caller of the service and the <c>numeric(9,6)</c> columns (PC-06, A2-33).
+    /// </summary>
+    private static void NormalizeLocation(Property property)
+    {
+        if (!PropertyAddress.IsValidLatitude(property.Latitude) || !PropertyAddress.IsValidLongitude(property.Longitude))
+            throw new DomainRuleException(PropertyCoordinatesInvalidCode, "PropertyCoordinatesInvalid");
+
+        property.Unit = PropertyAddress.NormalizeUnit(property.Unit);
+        property.Latitude = PropertyAddress.RoundCoordinate(property.Latitude);
+        property.Longitude = PropertyAddress.RoundCoordinate(property.Longitude);
+    }
+
+    /// <summary>
+    /// 409 for a violation of the unique address index (same org, same address and unit) or of the unique slug index of
+    /// the org, null for any other database error. Neither index spans orgs: the conflict never tells that ANOTHER org
+    /// has a property at this address.
+    /// </summary>
+    private static DomainConflictException? ToUniqueConflict(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres
+            ? postgres.ConstraintName switch
+            {
+                PropertyAddress.UniqueIndexName => new DomainConflictException(PropertyAddress.DuplicateCode, "PropertyAddressTaken"),
+                SlugUniqueIndexName => new DomainConflictException("duplicate_property_slug", "PropertySlugTaken"),
+                _ => null,
+            }
+            : null;
 
     public async Task<Property> PausePropertyAsync(Property property)
     {
@@ -313,6 +372,7 @@ public class PropertyService(
             Name = property.Name,
             Description = property.Description,
             Address = property.Address,
+            Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
             Bedrooms = property.Bedrooms,
