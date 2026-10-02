@@ -27,6 +27,7 @@ public class ServiceRequestService(
     PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotifications,
     ISupplierComuneMatcher comuneMatcher,
+    ILegalDocumentService legalDocuments,
     ILogger<ServiceRequestService> logger) : IServiceRequestService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -374,18 +375,32 @@ public class ServiceRequestService(
             throw new UnauthorizedAccessException($"Service request {id} belongs to another supplier");
 
         // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
-        var status = await db.SupplierProfiles
+        var profile = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => sp.OrgId == supplierOrgId)
-            .Select(sp => (SupplierStatus?)sp.Status)
+            .Select(sp => new { sp.Status, sp.TosAcceptedAt, sp.TosVersion })
             .FirstOrDefaultAsync(cancellationToken);
-        if (status != SupplierStatus.Active)
+        if (profile?.Status != SupplierStatus.Active)
         {
             logger.LogInformation(
                 "ServiceRequest {Id}: action refused, supplier {SupplierOrgId} is {SupplierStatus}",
-                id, supplierOrgId, status?.ToString() ?? "without a profile");
+                id, supplierOrgId, profile?.Status.ToString() ?? "without a profile");
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.SupplierNotActive, ServiceRequestErrorCodes.SupplierNotActiveMessageKey);
+        }
+
+        // SU-05: a new Terms of Service version must be accepted again before the supplier keeps acting on requests.
+        // A supplier that accepted before versions were recorded is only asked to accept (it is not blocked).
+        var tos = SupplierActivationRules.TosState(
+            new SupplierProfile { TosAcceptedAt = profile.TosAcceptedAt, TosVersion = profile.TosVersion },
+            legalDocuments.GetTos().Version);
+        if (tos.BlocksActions)
+        {
+            logger.LogInformation(
+                "ServiceRequest {Id}: action refused, supplier {SupplierOrgId} accepted Terms {AcceptedVersion}, current is {CurrentVersion}",
+                id, supplierOrgId, tos.AcceptedVersion, tos.CurrentVersion);
+            throw new DomainRuleException(
+                SupplierActivation.TosReacceptanceRequiredCode, SupplierActivation.TosReacceptanceRequiredMessageKey);
         }
 
         return request;

@@ -232,6 +232,7 @@ public class SupplierServiceRegistrationTests
             ComuneTestServices.Pilots(db),
             ComuneTestServices.Directory(db),
             ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()

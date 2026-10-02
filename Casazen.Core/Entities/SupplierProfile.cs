@@ -58,6 +58,21 @@ public class SupplierProfile
 
     public DateTime? TosAcceptedAt { get; set; }
 
+    /// <summary>
+    /// Version of the Terms of Service (<c>Legal:Documents:Tos:Version</c>) the supplier accepted at <see cref="TosAcceptedAt"/>
+    /// (SU-05, A4-31). Null for a supplier that accepted before the version was recorded: it accepted a text it could not
+    /// read, so the console asks it to accept the current version (without blocking its work, see the runbook). The full
+    /// history is in the <c>ConsentRecords</c> of the supplier org.
+    /// </summary>
+    [MaxLength(100)]
+    public string? TosVersion { get; set; }
+
+    /// <summary>
+    /// Step (1-5) of the activation wizard the supplier reached, saved by the server so that it resumes where it stopped
+    /// on any device (SU-05, A4-09). Null until the wizard saved a step: the first incomplete step is shown.
+    /// </summary>
+    public int? ActivationStep { get; set; }
+
     /// <summary>UTC moment a platform admin suspended the profile (SU-12); null while it is not suspended.</summary>
     public DateTime? SuspendedAt { get; set; }
 

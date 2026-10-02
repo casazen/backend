@@ -994,6 +994,7 @@ public class ServiceRequestServiceTests
             EmailTestHelpers.Links(publicSiteBaseUrl),
             push ?? Mock.Of<IPushNotificationService>(),
             ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<ServiceRequestService>.Instance);
     }
 

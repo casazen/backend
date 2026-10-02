@@ -1912,4 +1912,19 @@
   <data name="RentBillingDayRange" xml:space="preserve">
     <value>Il giorno di scadenza deve essere compreso tra 1 e 28.</value>
   </data>
+  <data name="SupplierActivationBlocked" xml:space="preserve">
+    <value>Il profilo non può essere attivato: mancano alcuni requisiti obbligatori.</value>
+  </data>
+  <data name="SupplierProfileRequirements" xml:space="preserve">
+    <value>Il profilo è attivo e deve restare completo: servono ragione sociale, telefono valido, almeno una categoria, almeno un comune e una descrizione.</value>
+  </data>
+  <data name="SupplierTosVersionStale" xml:space="preserve">
+    <value>I Termini di Servizio sono stati aggiornati. Ricarica la pagina e accetta la versione corrente.</value>
+  </data>
+  <data name="SupplierTosReacceptanceRequired" xml:space="preserve">
+    <value>Devi accettare la nuova versione dei Termini di Servizio prima di gestire le richieste.</value>
+  </data>
+  <data name="SupplierActivationStepInvalid" xml:space="preserve">
+    <value>Il passo dell'attivazione deve essere compreso tra 1 e {0}.</value>
+  </data>
 </root>
