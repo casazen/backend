@@ -612,6 +612,27 @@
   <data name="CinDeadlineAlert_Cta" xml:space="preserve">
     <value>Apri Conformità CIN</value>
   </data>
+  <data name="ServiceRequestPaid_Subject" xml:space="preserve">
+    <value>Richiesta fornitore segnata come pagata — {0}</value>
+  </data>
+  <data name="ServiceRequestPaid_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="ServiceRequestPaid_Body" xml:space="preserve">
+    <value>L'host ha segnato come &lt;strong&gt;pagata&lt;/strong&gt; la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestPaid_Hint" xml:space="preserve">
+    <value>Il pagamento avviene direttamente tra te e l'host, fuori da CasaZen: questa è solo la conferma dell'host.</value>
+  </data>
+  <data name="ServiceRequestPaid_Cta" xml:space="preserve">
+    <value>Apri la console fornitore</value>
+  </data>
+  <data name="Push_ServiceRequestPaid_Title" xml:space="preserve">
+    <value>Richiesta segnata come pagata</value>
+  </data>
+  <data name="Push_ServiceRequestPaid_Body" xml:space="preserve">
+    <value>{0} presso {1}: l'host ha segnato il servizio come pagato.</value>
+  </data>
   <data name="Rent_Greeting" xml:space="preserve">
     <value>Gentile {0},</value>
   </data>

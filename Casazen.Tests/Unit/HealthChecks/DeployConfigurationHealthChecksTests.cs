@@ -101,7 +101,7 @@ public class DeployConfigurationHealthChecksTests
         var result = await CheckLegalAsync(legal);
 
         Assert.Equal(HealthStatus.Degraded, result.Status);
-        Assert.Contains("Tos 2026-10-v1: no text (LegalDocuments/tos/2026-10-v1.it.html)", result.Description);
+        Assert.Contains("Tos 2026-10-v1: no text file for this version (LegalDocuments/tos/2026-10-v1.it.html)", result.Description);
         Assert.Contains("Legal__Documents__Tos__DocumentUrl", result.Description);
         Assert.DoesNotContain("Privacy", result.Description);
         Assert.DoesNotContain("Dpa", result.Description);
@@ -186,6 +186,9 @@ public class DeployConfigurationHealthChecksTests
                 "2026-10-v1", effectiveAt, kind.ToString(), "summary", kind == LegalDocumentKind.Tos ? tosUrl : null));
             var hasText = kind != LegalDocumentKind.Tos || tosText;
             legal.Setup(l => l.GetText(kind, "it")).Returns(hasText ? new LegalDocumentText("it", "<p>Testo</p>") : null);
+            var hasExternalCopy = kind == LegalDocumentKind.Tos && tosUrl is not null;
+            legal.Setup(l => l.GetPublication(kind)).Returns(new LegalDocumentPublication(
+                kind, "2026-10-v1", hasText, hasExternalCopy, hasText, [], []));
         }
 
         var items = (pendingProviders ?? []).Select(name => new SubprocessorItem(name, "Purpose", string.Empty, null, null, true))
