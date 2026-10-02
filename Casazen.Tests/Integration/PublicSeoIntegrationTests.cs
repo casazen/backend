@@ -656,7 +656,7 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Contains("Il CIN è obbligatorio.", html);
         Assert.DoesNotContain("alert(1)", html);
         Assert.Contains("non consulenza legale", html);
-        Assert.Contains("Contenuto generato con AI", html);
+        Assert.Contains("amministratore CasaZen prima della pubblicazione", html);
         var article = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "Article");
         Assert.Equal("CasaZen", article.GetProperty("publisher").GetProperty("name").GetString());
         var breadcrumb = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "BreadcrumbList");

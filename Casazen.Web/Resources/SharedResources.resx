@@ -1783,6 +1783,18 @@
   <data name="DomainIssue_vercel_rejected" xml:space="preserve">
     <value>Il fornitore del servizio non accetta questo dominio. Controlla che sia scritto correttamente.</value>
   </data>
+  <data name="SeoDisclaimerLastUpdated" xml:space="preserve">
+    <value>Ultimo aggiornamento: {0}</value>
+  </data>
+  <data name="SeoDisclaimerLastUpdatedUnknown" xml:space="preserve">
+    <value>Data di aggiornamento non disponibile</value>
+  </data>
+  <data name="SeoDisclaimerNotLegalAdvice" xml:space="preserve">
+    <value>Informazione generale, non consulenza legale. L'host resta responsabile degli adempimenti.</value>
+  </data>
+  <data name="SeoDisclaimerAiGenerated" xml:space="preserve">
+    <value>Testo generato con l'ausilio dell'AI e approvato da un amministratore CasaZen prima della pubblicazione: verifica sempre le fonti ufficiali.</value>
+  </data>
   <data name="SupplierAlreadySuspended" xml:space="preserve">
     <value>Il fornitore è già sospeso.</value>
   </data>
