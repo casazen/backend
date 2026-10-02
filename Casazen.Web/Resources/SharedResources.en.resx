@@ -2104,9 +2104,6 @@
   <data name="NoOrganizationContext" xml:space="preserve">
     <value>No organization context for the current user.</value>
   </data>
-  <data name="TouristTaxRateNotFound" xml:space="preserve">
-    <value>No tourist tax rate found for city: {0}</value>
-  </data>
   <data name="ActivationStepBaseData" xml:space="preserve">
     <value>Property basic data</value>
   </data>

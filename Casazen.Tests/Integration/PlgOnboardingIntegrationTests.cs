@@ -450,6 +450,90 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
     }
 
     [Fact]
+    public async Task PostOnboarding_WithStaleConsentVersion_Returns400StaleDocumentsProblemKeepingTheDocumentsList()
+    {
+        var userId = $"auth0|plg-stale-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        var consents = new
+        {
+            tosAccepted = true,
+            tosVersion = "1900-01-01-outdated",
+            privacyAccepted = true,
+            privacyVersion = ConsentVersion,
+            dpaAccepted = true,
+            dpaVersion = ConsentVersion,
+            subprocessorsAcknowledged = true,
+            subprocessorsVersion = ConsentVersion,
+        };
+
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm", consents));
+
+        // FN-01: a stable code and a localized detail; the clients recognize the stale documents by their own field.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("stale_documents", problem.GetProperty("code").GetString());
+        Assert.Equal("Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.", problem.GetProperty("detail").GetString());
+        var documents = problem.GetProperty("staleDocuments").EnumerateArray().Select(d => d.GetString()).ToList();
+        Assert.Contains("tos", documents);
+        Assert.False(problem.TryGetProperty("error", out _));
+    }
+
+    [Fact]
+    public async Task PostOnboarding_WithStaleConsentVersionAndEnglishAcceptLanguage_ReturnsEnglishDetail()
+    {
+        var userId = $"auth0|plg-stale-en-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/users/onboarding")
+        {
+            Content = JsonContent.Create(BuildOnboardingPayload("ShortTerm", new
+            {
+                tosAccepted = true,
+                tosVersion = "1900-01-01-outdated",
+                privacyAccepted = true,
+                privacyVersion = ConsentVersion,
+                dpaAccepted = true,
+                dpaVersion = ConsentVersion,
+                subprocessorsAcknowledged = true,
+                subprocessorsVersion = ConsentVersion,
+            })),
+        };
+        request.Headers.AcceptLanguage.ParseAdd("en");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Some legal documents have been updated. Please accept the current versions.", problem.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task PostOnboarding_WithRequiredConsentNotAccepted_Returns400ConsentsIncompleteProblem()
+    {
+        var userId = $"auth0|plg-incomplete-{Guid.NewGuid():N}";
+        using var client = _factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        var consents = new
+        {
+            tosAccepted = false,
+            tosVersion = ConsentVersion,
+            privacyAccepted = true,
+            privacyVersion = ConsentVersion,
+            dpaAccepted = true,
+            dpaVersion = ConsentVersion,
+            subprocessorsAcknowledged = true,
+            subprocessorsVersion = ConsentVersion,
+        };
+
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm", consents));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("consents_incomplete", problem.GetProperty("code").GetString());
+        Assert.Equal("Tutti i consensi obbligatori devono essere accettati.", problem.GetProperty("detail").GetString());
+        Assert.False(problem.TryGetProperty("staleDocuments", out _));
+    }
+
+    [Fact]
     public async Task PutOnboarding_WithoutOrgWithConsents_ProvisionsOrgAndRecordsConsents()
     {
         var userId = $"auth0|plg-put-consents-{Guid.NewGuid():N}";

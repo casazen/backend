@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.Extensions.DependencyInjection;
@@ -191,6 +192,10 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("org_domain_in_use", problem.GetProperty("code").GetString());
+        Assert.Equal("Dominio o sottodominio già in uso.", problem.GetProperty("detail").GetString());
+        Assert.False(problem.TryGetProperty("error", out _));
     }
 
     [Fact]

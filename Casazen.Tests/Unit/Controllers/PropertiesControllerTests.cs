@@ -359,7 +359,7 @@ public class PropertiesControllerTests
     }
 
     [Fact]
-    public async Task Create_WhenSlugAlreadyInUse_ReturnsConflict()
+    public async Task Create_WhenSlugAlreadyInUse_PropagatesTheDomainConflict()
     {
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
@@ -377,12 +377,13 @@ public class PropertiesControllerTests
         };
 
         _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
-            .ThrowsAsync(new InvalidOperationException("Slug already in use within this organization."));
+            .ThrowsAsync(new DomainConflictException("duplicate_property_slug", "PropertySlugTaken"));
 
-        var result = await _controller.Create(request);
+        // The domain conflict reaches the error middleware: 409 with the code and the localized PropertySlugTaken message.
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _controller.Create(request));
 
-        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
-        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+        Assert.Equal("duplicate_property_slug", ex.Code);
+        Assert.Equal("PropertySlugTaken", ex.MessageKey);
     }
 
     [Fact]
@@ -1635,7 +1636,58 @@ public class PropertiesControllerTests
 
         var result = await _controller.UploadDocument(propertyId, mockFile, "InvalidType");
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        // FN-01: a ProblemDetails with a stable code, not the legacy { error } body.
+        var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
+        Assert.Equal("validation_error", problem.Extensions["code"]);
+    }
+
+    [Fact]
+    public async Task UploadDocument_InvalidFile_ReturnsBadRequestProblemWithTheServiceCode()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        var mockFile = CreateMockFormFile("doc.exe", "application/octet-stream", 1024);
+        _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.FloorPlan, userId))
+            .ThrowsAsync(new DomainRuleException("invalid_document_file", "DocumentFileInvalid"));
+
+        var result = await _controller.UploadDocument(propertyId, mockFile, "FloorPlan");
+
+        var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
+        Assert.Equal("invalid_document_file", problem.Extensions["code"]);
+    }
+
+    [Fact]
+    public async Task UploadDocument_ApeNotOfficial_ReturnsBadRequestProblemKeepingTheApeCode()
+    {
+        var userId = "auth0|owner_user_123";
+        SetupUserClaims(userId);
+        AllowAuthorization();
+
+        var propertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
+            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
+        var mockFile = CreateMockFormFile("ape.pdf", "application/pdf", 1024);
+        _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.Ape, userId))
+            .ThrowsAsync(ApeComplianceException.InvalidContent());
+
+        var result = await _controller.UploadDocument(propertyId, mockFile, "Ape");
+
+        var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
+        Assert.Equal(ApeComplianceException.InvalidContentCode, problem.Extensions["code"]);
+        // The English text of the exception never reaches the client.
+        Assert.DoesNotContain("not a valid APE", problem.Detail ?? string.Empty);
+    }
+
+    private static ProblemDetails AssertProblem(IActionResult? result, int status)
+    {
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(status, objectResult.StatusCode);
+        return Assert.IsType<ProblemDetails>(objectResult.Value);
     }
 
     [Fact]

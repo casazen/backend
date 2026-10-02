@@ -168,32 +168,25 @@ public class PropertiesController(
             property.ComuneIstatCode = comune.IstatCode;
             property.RegionCode = comune.RegionCode;
         }
-        try
-        {
-            // AC8: the org's plan limit is enforced server-side, and the check and the insert are one atomic
-            // step (A1-21): parallel creates cannot exceed the limit. Client-side gating is advisory.
-            var created = await entitlementService.CreatePropertyWithinLimitAsync(
-                orgId.Value,
-                () => propertyService.CreatePropertyAsync(property),
-                HttpContext.RequestAborted);
-            if (created is null)
-            {
-                var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, HttpContext.RequestAborted);
-                logger.LogWarning(
-                    "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
-                    orgId, entitlement.PlanTier, entitlement.MaxProperties);
 
-                return this.ApiProblem(StatusCodes.Status403Forbidden, PlanLimitReachedCode, "PlanLimitReached");
-            }
-
-            logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-        }
-        catch (DomainConflictException ex)
+        // AC8: the org's plan limit is enforced server-side, and the check and the insert are one atomic
+        // step (A1-21): parallel creates cannot exceed the limit. Client-side gating is advisory.
+        var created = await entitlementService.CreatePropertyWithinLimitAsync(
+            orgId.Value,
+            () => propertyService.CreatePropertyAsync(property),
+            HttpContext.RequestAborted);
+        if (created is null)
         {
-            logger.LogWarning(ex, "Property creation conflict ({Code}) for user {UserId}", ex.Code, userId);
-            return this.ApiProblem(StatusCodes.Status409Conflict, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
+            var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, HttpContext.RequestAborted);
+            logger.LogWarning(
+                "Property creation blocked by plan limit for org {OrgId} (tier {PlanTier}, limit {Limit})",
+                orgId, entitlement.PlanTier, entitlement.MaxProperties);
+
+            return this.ApiProblem(StatusCodes.Status403Forbidden, PlanLimitReachedCode, "PlanLimitReached");
         }
+
+        logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     /// <summary>
