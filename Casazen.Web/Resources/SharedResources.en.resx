@@ -1912,4 +1912,19 @@
   <data name="RentBillingDayRange" xml:space="preserve">
     <value>The due day must be between 1 and 28.</value>
   </data>
+  <data name="SupplierActivationBlocked" xml:space="preserve">
+    <value>The profile cannot be activated: some required items are missing.</value>
+  </data>
+  <data name="SupplierProfileRequirements" xml:space="preserve">
+    <value>The profile is active and must stay complete: it needs a business name, a valid phone number, at least one category, at least one municipality and a description.</value>
+  </data>
+  <data name="SupplierTosVersionStale" xml:space="preserve">
+    <value>The Terms of Service have been updated. Reload the page and accept the current version.</value>
+  </data>
+  <data name="SupplierTosReacceptanceRequired" xml:space="preserve">
+    <value>You must accept the new version of the Terms of Service before handling requests.</value>
+  </data>
+  <data name="SupplierActivationStepInvalid" xml:space="preserve">
+    <value>The activation step must be between 1 and {0}.</value>
+  </data>
 </root>

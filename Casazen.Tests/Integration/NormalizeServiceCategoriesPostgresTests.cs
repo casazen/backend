@@ -167,6 +167,7 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
             ComuneTestServices.Pilots(db),
             ComuneTestServices.Directory(db),
             ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<SupplierService>.Instance);
 
     private static async Task<string[]> CategoriesAsync(AppDbContext db, Guid supplierOrgId)

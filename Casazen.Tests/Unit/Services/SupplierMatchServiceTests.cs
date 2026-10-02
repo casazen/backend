@@ -238,6 +238,7 @@ public class SupplierMatchServiceTests
             ComuneTestServices.Pilots(db),
             ComuneTestServices.Directory(db),
             ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             Mock.Of<ILogger<SupplierService>>());
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.AiSupplierDiscovery)).Returns(aiEnabled);

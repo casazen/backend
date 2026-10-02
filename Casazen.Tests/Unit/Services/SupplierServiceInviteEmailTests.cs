@@ -163,6 +163,7 @@ public class SupplierServiceInviteEmailTests
             ComuneTestServices.Pilots(db),
             ComuneTestServices.Directory(db),
             ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<SupplierService>.Instance);
 
         var invite = await service.CreateInviteAsync("supplier@test.com", "H501", null, null);
@@ -184,6 +185,7 @@ public class SupplierServiceInviteEmailTests
             ComuneTestServices.Pilots(db, options),
             ComuneTestServices.Directory(db),
             ComuneTestServices.Matcher(db),
+            LegalTestServices.Legal(),
             NullLogger<SupplierService>.Instance);
 
     private static AppDbContext CreateDbContext()

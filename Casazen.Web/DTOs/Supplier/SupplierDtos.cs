@@ -75,6 +75,24 @@ public class CompleteActivationRequest
 {
     [Required]
     public bool TosAccepted { get; set; }
+
+    /// <summary>The Terms of Service version the supplier saw (<c>tos.currentVersion</c> of the activation status); 409 when it is not the current one.</summary>
+    [Required, MaxLength(100)]
+    public string TosVersion { get; set; } = string.Empty;
+}
+
+/// <summary>Re-acceptance of the current Terms of Service by an active supplier.</summary>
+public class AcceptSupplierTosRequest
+{
+    [Required, MaxLength(100)]
+    public string TosVersion { get; set; } = string.Empty;
+}
+
+/// <summary>The wizard step (1-5) the supplier reached.</summary>
+public class SetActivationStepRequest
+{
+    [Range(1, 5)]
+    public int Step { get; set; }
 }
 
 public class UpdateAvailabilityRequest
@@ -203,16 +221,40 @@ public class SupplierProfileDto
 
 public class ActivationStatusDto
 {
+    /// <summary><c>Pending</c> (never activated), <c>Active</c> or <c>Suspended</c>.</summary>
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>Step number (1-5) to open: saved by the server, so the wizard resumes where the supplier stopped.</summary>
+    public int CurrentStep { get; set; }
+
     public IEnumerable<ActivationStepDto> Steps { get; set; } = [];
+    public SupplierTosDto Tos { get; set; } = new();
 }
 
 public class ActivationStepDto
 {
+    /// <summary><c>identity</c>, <c>services</c>, <c>showcase</c>, <c>profile</c>, <c>terms</c>.</summary>
     public string Id { get; set; } = string.Empty;
-    public string Label { get; set; } = string.Empty;
+
+    /// <summary><c>completed</c> or <c>pending</c>.</summary>
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>Stable code of the first missing requirement (the client translates it), null when the step is complete.</summary>
     public string? Blocker { get; set; }
+
+    /// <summary>False for a step that never blocks the activation.</summary>
+    public bool Required { get; set; }
+}
+
+public class SupplierTosDto
+{
+    public string CurrentVersion { get; set; } = string.Empty;
+    public string? AcceptedVersion { get; set; }
+    public DateTime? AcceptedAt { get; set; }
+    public bool ReacceptanceRequired { get; set; }
+
+    /// <summary>The supplier cannot take, complete or reject requests until it accepts the current version.</summary>
+    public bool BlocksActions { get; set; }
 }
 
 public class CompleteActivationResponse

@@ -26,6 +26,7 @@ public partial class SupplierService(
     ISupplierPilotComuni pilotComuni,
     IComuneDirectory comuneDirectory,
     ISupplierComuneMatcher comuneMatcher,
+    ILegalDocumentService legalDocuments,
     ILogger<SupplierService> logger) : ISupplierService
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -436,6 +437,10 @@ public partial class SupplierService(
         if (profile is null)
             return null;
 
+        // Requirements already missing before this edit (a profile activated before SU-05): the edit may leave them missing,
+        // it just cannot take one more away.
+        var missingBefore = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).ToHashSet();
+
         if (legalName is not null) profile.LegalName = legalName;
         if (vatNumber is not null) profile.VatNumber = vatNumber.Length == 0 ? null : vatNumber;
         if (phone is not null) profile.Phone = phone;
@@ -446,40 +451,64 @@ public partial class SupplierService(
         if (photoUrls is not null) profile.PhotoUrlsJson = JsonSerializer.Serialize(photoUrls, JsonOpts);
         profile.UpdatedAt = DateTime.UtcNow;
 
+        // An active supplier is shown to hosts because it met the requirements (SU-05): an edit cannot take them away
+        // (empty categories, comuni or description would leave an "Active" profile that no host can find).
+        if (profile.Status == SupplierStatus.Active)
+        {
+            var removed = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).Where(c => !missingBefore.Contains(c)).ToList();
+            if (removed.Count > 0)
+            {
+                db.Entry(profile).State = EntityState.Detached;
+                throw new DomainRuleException(
+                    SupplierActivation.ProfileRequirementsCode, SupplierActivation.ProfileRequirementsMessageKey);
+            }
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return profile;
     }
 
-    public async Task<IReadOnlyList<ActivationStep>> GetActivationStepsAsync(Guid orgId, CancellationToken cancellationToken = default)
+    public async Task<SupplierActivationState?> GetActivationAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+        var profile = await db.SupplierProfiles.AsNoTracking().FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
         if (profile is null)
-            return Array.Empty<ActivationStep>();
+            return null;
 
-        var categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [];
-        var comuni = SupplierComuneMatcher.ReadStrings(profile.ComuniJson)
-            .Concat(SupplierComuneMatcher.ReadStrings(profile.ComuneIstatCodesJson))
-            .ToArray();
+        var currentTosVersion = legalDocuments.GetTos().Version;
+        var tos = SupplierActivationRules.TosState(profile, currentTosVersion);
+        var steps = SupplierActivationRules.Steps(profile, tos);
 
-        return
-        [
-            new ActivationStep("identity", "Identità e contatti", "completed"),
-            new ActivationStep("categories", "Categorie di servizio",
-                categories.Length > 0 ? "completed" : "pending",
-                categories.Length == 0 ? "Scegli almeno una categoria" : null),
-            new ActivationStep("comuni", "Comuni di operatività",
-                comuni.Length > 0 ? "completed" : "pending",
-                comuni.Length == 0 ? "Seleziona almeno un comune" : null),
-            new ActivationStep("profile", "Profilo professionale",
-                !string.IsNullOrWhiteSpace(profile.Bio) ? "completed" : "pending",
-                string.IsNullOrWhiteSpace(profile.Bio) ? "Aggiungi una descrizione professionale" : null),
-            new ActivationStep("tos", "Termini di servizio",
-                profile.TosAcceptedAt.HasValue ? "completed" : "pending",
-                !profile.TosAcceptedAt.HasValue ? "Accetta i termini di servizio" : null),
-        ];
+        var firstIncomplete = steps.FindIndex(s => s.Required && s.Status != SupplierActivation.StepStatus.Completed);
+        var current = profile.ActivationStep is >= 1 and <= SupplierActivation.StepCount
+            ? profile.ActivationStep.Value
+            : (firstIncomplete >= 0 ? firstIncomplete + 1 : SupplierActivation.StepCount);
+
+        return new SupplierActivationState(steps, current, tos);
     }
 
-    public async Task<SupplierProfile> CompleteActivationAsync(Guid orgId, bool tosAccepted, CancellationToken cancellationToken = default)
+    public async Task SetActivationStepAsync(Guid orgId, int step, CancellationToken cancellationToken = default)
+    {
+        if (step is < 1 or > SupplierActivation.StepCount)
+            throw new DomainRuleException(SupplierActivation.StepInvalidCode, SupplierActivation.StepInvalidMessageKey, SupplierActivation.StepCount);
+
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
+
+        if (profile.ActivationStep == step)
+            return;
+
+        profile.ActivationStep = step;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<SupplierProfile> CompleteActivationAsync(
+        Guid orgId,
+        bool tosAccepted,
+        string? tosVersion,
+        string userId,
+        string? clientIpAddress,
+        CancellationToken cancellationToken = default)
     {
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
             ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
@@ -488,17 +517,74 @@ public partial class SupplierService(
         if (profile.Status == SupplierStatus.Suspended)
             throw new DomainRuleException("supplier_suspended", "SupplierSuspended");
 
-        // Only ToS gates activation. Categories, comuni, and bio can be completed later.
+        // The requirements are read from the stored profile (SU-05): the client cannot declare them done.
+        var blockers = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).ToList();
         if (!tosAccepted)
-            throw new InvalidOperationException("Devi accettare i termini di servizio");
+            blockers.Add(SupplierActivation.Blockers.TosNotAccepted);
+        if (blockers.Count > 0)
+        {
+            logger.LogInformation("Supplier {OrgId} activation refused: {Blockers}", orgId, string.Join(',', blockers));
+            throw new SupplierActivationBlockedException(blockers);
+        }
 
-        profile.TosAcceptedAt = DateTime.UtcNow;
+        var accepted = RequireCurrentTosVersion(tosVersion);
+        RecordTosAcceptance(profile, accepted, userId, clientIpAddress);
         profile.Status = SupplierStatus.Active;
-        profile.UpdatedAt = DateTime.UtcNow;
+        profile.ActivationStep = SupplierActivation.StepCount;
 
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Supplier {OrgId} activated", orgId);
+        logger.LogInformation("Supplier {OrgId} activated (Terms {TosVersion})", orgId, accepted);
         return profile;
+    }
+
+    public async Task<SupplierProfile> AcceptTosAsync(
+        Guid orgId,
+        string? tosVersion,
+        string userId,
+        string? clientIpAddress,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
+
+        var accepted = RequireCurrentTosVersion(tosVersion);
+        RecordTosAcceptance(profile, accepted, userId, clientIpAddress);
+
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Supplier {OrgId} accepted Terms {TosVersion}", orgId, accepted);
+        return profile;
+    }
+
+    /// <summary>The version the supplier saw must be the one in force (like the host consents): 409 otherwise.</summary>
+    private string RequireCurrentTosVersion(string? tosVersion)
+    {
+        var current = legalDocuments.GetTos().Version;
+        if (!string.Equals(tosVersion, current, StringComparison.Ordinal))
+        {
+            throw new DomainConflictException(
+                SupplierActivation.TosVersionStaleCode, SupplierActivation.TosVersionStaleMessageKey);
+        }
+
+        return current;
+    }
+
+    private void RecordTosAcceptance(SupplierProfile profile, string version, string userId, string? clientIpAddress)
+    {
+        var now = DateTime.UtcNow;
+        profile.TosAcceptedAt = now;
+        profile.TosVersion = version;
+        profile.UpdatedAt = now;
+
+        // Proof of the acceptance, like the host consents (A4-31): who, which version, when, from which IP.
+        db.ConsentRecords.Add(new ConsentRecord
+        {
+            UserId = userId,
+            OrgId = profile.OrgId,
+            Type = ConsentType.Tos,
+            Version = version,
+            IpAddress = clientIpAddress,
+            RecordedAt = now,
+        });
     }
 
     public async Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(

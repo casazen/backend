@@ -113,15 +113,16 @@ public class ComuneIstatSupplierIntegrationTests
     }
 
     [PostgresFact]
-    public async Task Activation_ComuniStep_IsCompleteWithOnlyComuniChosenFromTheList()
+    public async Task Activation_ServicesStep_DoesNotMissComuniWithOnlyComuniChosenFromTheList()
     {
         var supplier = await SeedSupplierAsync(_factory, written: [], chosen: [ComuneTestData.Como]);
         using var client = _factory.CreateAuthenticatedClient(supplier.UserId, "Supplier");
 
         var activation = await client.GetFromJsonAsync<JsonElement>("/api/supplier/profile/activation");
 
-        var step = activation.GetProperty("steps").EnumerateArray().Single(s => s.GetProperty("id").GetString() == "comuni");
-        Assert.Equal("completed", step.GetProperty("status").GetString());
+        // SU-05: categories and comuni are the "services" step; a comune chosen from the list satisfies the comuni requirement.
+        var step = activation.GetProperty("steps").EnumerateArray().Single(s => s.GetProperty("id").GetString() == "services");
+        Assert.NotEqual("comuni_missing", step.GetProperty("blocker").GetString());
     }
 
     [PostgresFact]
