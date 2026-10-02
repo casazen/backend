@@ -10,6 +10,9 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static partial class SupplierInviteTokens
 {
+    /// <summary>How long an invite link can be used, from its creation or from the moment an admin sends it again.</summary>
+    public static readonly TimeSpan Validity = TimeSpan.FromDays(7);
+
     /// <summary>Length of a token and of its hash (both hex).</summary>
     public const int Length = 64;
 

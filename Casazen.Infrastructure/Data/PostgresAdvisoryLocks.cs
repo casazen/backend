@@ -112,6 +112,12 @@ internal static class PostgresAdvisoryLocks
         /// now") and the supplier's manual changes never write the same days at once (SU-15).
         /// </summary>
         SupplierCalendarSync = 1_065,
+
+        /// <summary>
+        /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
+        /// photo list at the same time, so no photo is lost (PC-04).
+        /// </summary>
+        PropertyPhotos = 1_074,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

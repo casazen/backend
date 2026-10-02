@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
@@ -151,7 +152,10 @@ public partial class FiscalService
         // Stay dates are stored as midnight UTC of the calendar date (FD-06).
         var from = period.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var toExclusive = period.To.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05): b.Property may since have been soft-deleted — the
+        // tourist tax history of a stay stays reportable regardless.
         var stays = await db.Bookings.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => b.OrgId == scope.OrgId
                 && (scope.OwnerId == null || b.Property.OwnerId == scope.OwnerId)
                 && b.CheckInDate >= from
@@ -351,11 +355,16 @@ public partial class FiscalService
         return (string.IsNullOrWhiteSpace(org.DisplayName) ? org.Name : org.DisplayName, org.FiscalCode);
     }
 
-    /// <summary>Payments of the scope: the org, and only the caller's own properties without org-wide access (TN-3).</summary>
+    /// <summary>
+    /// Payments of the scope: the org, and only the caller's own properties without org-wide access (TN-3).
+    /// IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05): a payment's property may since have been soft-deleted —
+    /// the fiscal history it is part of must stay reportable, so <c>p.Booking.Property</c> still resolves.
+    /// </summary>
     private IQueryable<Payment> ScopedPayments(HostScope scope) =>
         db.Payments.AsNoTracking()
             .Include(p => p.Booking)
             .ThenInclude(b => b.Property)
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == scope.OrgId && (scope.OwnerId == null || p.Booking.Property.OwnerId == scope.OwnerId));
 
     /// <summary>

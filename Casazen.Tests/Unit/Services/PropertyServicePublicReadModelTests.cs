@@ -61,7 +61,7 @@ public class PropertyServicePublicReadModelTests
         });
         await context.SaveChangesAsync();
 
-        var result = (await CreateService(context).SearchAsync("Milan", null, null)).ToList();
+        var result = (await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "Milan" })).ToList();
 
         Assert.Single(result);
         var dto = result[0];
@@ -81,7 +81,7 @@ public class PropertyServicePublicReadModelTests
             new Property { OwnerId = "auth0|b", OrgId = org.Id, Name = "Inactive", Address = "B", City = "Rome", IsActive = false, NightlyRate = 50m, Bedrooms = 1, Bathrooms = 1, MaxGuests = 2 });
         await context.SaveChangesAsync();
 
-        var result = await CreateService(context).SearchAsync(null, null, null);
+        var result = await CreateService(context).SearchAsync(PublicPropertySearchCriteria.None);
 
         Assert.Single(result);
         Assert.Equal("Active", result.First().Name);
@@ -111,7 +111,7 @@ public class PropertyServicePublicReadModelTests
         }
         await context.SaveChangesAsync();
 
-        var result = await CreateService(context).SearchAsync("CapCity", null, null);
+        var result = await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "CapCity" });
 
         Assert.Equal(50, result.Count());
     }
@@ -203,7 +203,7 @@ public class PropertyServicePublicReadModelTests
         });
         await context.SaveChangesAsync();
 
-        var dto = (await CreateService(context).SearchAsync("Turin", null, null)).Single();
+        var dto = (await CreateService(context).SearchAsync(new PublicPropertySearchCriteria { City = "Turin" })).Single();
 
         Assert.Equal(expected, dto.CinStatus);
     }

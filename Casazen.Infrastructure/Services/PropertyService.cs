@@ -127,18 +127,47 @@ public class PropertyService(
             throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
+    /// <summary>
+    /// 409: the property has a pending, confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a
+    /// host cannot make a property with a guest already booked disappear.
+    /// </summary>
+    public const string HasUpcomingBookingsCode = "property_has_upcoming_bookings";
+
+    /// <summary>409: the property has a lease in force or in progress that has not ended yet (PC-05, A2-18).</summary>
+    public const string HasActiveLeasesCode = "property_has_active_leases";
+
+    /// <summary>
+    /// Soft-deletes the property (PC-05, A2-18): its historical bookings and fiscal data are kept and stay reachable by
+    /// the fiscal reports, never removed. False when there is nothing to delete (unknown or already deleted).
+    /// </summary>
+    /// <exception cref="DomainConflictException">
+    /// <see cref="HasUpcomingBookingsCode"/> or <see cref="HasActiveLeasesCode"/>: nothing changed.
+    /// </exception>
     public async Task<bool> DeletePropertyAsync(Guid id)
     {
         logger.LogInformation("Deleting property: {Id}", id);
-        await repository.DeleteAsync(id);
-        return true;
+        var outcome = await repository.SoftDeleteAsync(id, _clock.GetUtcNow().UtcDateTime, _clock.TodayInRome());
+        switch (outcome)
+        {
+            case PropertySoftDeleteOutcome.HasUpcomingStays:
+                logger.LogWarning("Delete of property {Id} refused: it has a stay that has not checked out yet", id);
+                throw new DomainConflictException(HasUpcomingBookingsCode, "PropertyHasUpcomingBookings");
+            case PropertySoftDeleteOutcome.HasActiveLeases:
+                logger.LogWarning("Delete of property {Id} refused: it has a lease that has not ended yet", id);
+                throw new DomainConflictException(HasActiveLeasesCode, "PropertyHasActiveLeases");
+            default:
+                return outcome == PropertySoftDeleteOutcome.Deleted;
+        }
     }
 
-    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice)
+    public async Task<IEnumerable<PublicPropertyDto>> SearchAsync(PublicPropertySearchCriteria criteria)
     {
-        logger.LogInformation("Searching properties: city={City}, bedrooms={Bedrooms}, maxPrice={MaxPrice}", city, bedrooms, maxPrice);
+        ArgumentNullException.ThrowIfNull(criteria);
+        logger.LogInformation(
+            "Searching properties: city={City}, price={MinPrice}-{MaxPrice}, minBedrooms={MinBedrooms}, minBathrooms={MinBathrooms}, guests={Guests}",
+            criteria.City, criteria.MinPrice, criteria.MaxPrice, criteria.MinBedrooms, criteria.MinBathrooms, criteria.Guests);
 
-        var rows = await repository.GetSearchQueryable(city, bedrooms, maxPrice)
+        var rows = await repository.GetSearchQueryable(criteria)
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
@@ -146,6 +175,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -171,7 +201,7 @@ public class PropertyService(
     {
         logger.LogInformation("Searching public properties for org {OrgId}", orgId);
 
-        var rows = await repository.GetSearchQueryable(null, null, null, orgId)
+        var rows = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None, orgId)
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
@@ -179,6 +209,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -202,12 +233,13 @@ public class PropertyService(
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id)
     {
-        var row = await repository.GetSearchQueryable(null, null, null)
+        var row = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None)
             .Where(p => p.Id == id)
             .Select(p => new PublicPropertyDetailRow
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -233,7 +265,7 @@ public class PropertyService(
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
     {
-        var query = repository.GetSearchQueryable(null, null, null, orgId);
+        var query = repository.GetSearchQueryable(PublicPropertySearchCriteria.None, orgId);
         if (Guid.TryParse(slugOrId, out var id))
             query = query.Where(p => p.Id == id);
         else
@@ -244,6 +276,7 @@ public class PropertyService(
             {
                 Id = p.Id,
                 Slug = p.Slug,
+                OrgSlug = p.Org.Slug,
                 Name = p.Name,
                 Description = p.Description,
                 City = p.City,
@@ -265,67 +298,6 @@ public class PropertyService(
             .FirstOrDefaultAsync();
 
         return row is null ? null : MapPublicPropertyDetail(row);
-    }
-
-    public async Task<Property> AddImageAsync(Guid propertyId, string imageUrl)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        // Add image URL to the list
-        property.PhotoUrls.Add(imageUrl);
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Adding image to property {PropertyId}: {ImageUrl}", propertyId, imageUrl);
-        return await repository.UpdateAsync(property);
-    }
-
-    public async Task<Property> RemoveImageAsync(Guid propertyId, int imageIndex)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        if (imageIndex < 0 || imageIndex >= property.PhotoUrls.Count)
-        {
-            throw new ArgumentOutOfRangeException(nameof(imageIndex), $"Invalid image index {imageIndex}");
-        }
-
-        // Remove image URL from the list
-        property.PhotoUrls.RemoveAt(imageIndex);
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Removing image at index {Index} from property {PropertyId}", imageIndex, propertyId);
-        return await repository.UpdateAsync(property);
-    }
-
-    public async Task<Property> ReorderImagesAsync(Guid propertyId, List<string> orderedImageUrls)
-    {
-        var property = await repository.GetByIdAsync(propertyId);
-        if (property == null)
-        {
-            throw new InvalidOperationException($"Property {propertyId} not found");
-        }
-
-        // Validate that all URLs in the new order exist in the current list
-        var currentUrls = property.PhotoUrls.ToHashSet();
-        if (!orderedImageUrls.All(url => currentUrls.Contains(url)) ||
-            orderedImageUrls.Count != property.PhotoUrls.Count)
-        {
-            throw new InvalidOperationException("Invalid image URLs provided for reordering");
-        }
-
-        // Update the order
-        property.PhotoUrls = orderedImageUrls;
-        property.UpdatedAt = DateTime.UtcNow;
-
-        logger.LogInformation("Reordering images for property {PropertyId}", propertyId);
-        return await repository.UpdateAsync(property);
     }
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
@@ -557,6 +529,7 @@ public class PropertyService(
     {
         Id = row.Id,
         Slug = row.Slug,
+        OrgSlug = row.OrgSlug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -579,6 +552,7 @@ public class PropertyService(
     {
         Id = row.Id,
         Slug = row.Slug,
+        OrgSlug = row.OrgSlug,
         Name = row.Name,
         Description = row.Description,
         City = row.City,
@@ -605,6 +579,7 @@ public class PropertyService(
     {
         public Guid Id { get; init; }
         public string? Slug { get; init; }
+        public string OrgSlug { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public string City { get; init; } = string.Empty;

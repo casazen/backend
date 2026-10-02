@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -96,6 +97,9 @@ public sealed class HostBookingService(
 
         if (datesChanged)
         {
+            // The dates lock of the property first (the repository takes it again when it saves): a manual block is
+            // written under it (PC-09), so it cannot take the new nights between this check and the save.
+            await BookingRepository.LockPropertyDatesAsync(db, booking.PropertyId, cancellationToken);
             if (await propertyICalSyncService.HasOverlappingBlockAsync(booking.PropertyId, checkIn, checkOut, cancellationToken))
                 throw DatesUnavailable();
 
