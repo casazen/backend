@@ -27,7 +27,7 @@ Suite `frontend/e2e/gj-l3/golden-journey.spec.ts` (Playwright project `gj-l3`), 
 
 Variants: **pay at the property** (D5) always runs; **Stripe test card** runs only with the Stripe secrets (section 3) and is
 otherwise reported as SKIPPED (annotation + job summary), never as a pass. `e2e/.auth/gj-seed.json` (ids, emails) is written
-for the app suite of FN-04 and uploaded as a CI artifact; it is not committed.
+for debugging and uploaded as a CI artifact; it is not committed. The app suite of FN-04 does not read it: it has its own API seed with stays in the states the flows need ([`mobile-e2e.md`](mobile-e2e.md)).
 
 Deterministic: stay dates are `today` and `today + 2` in Europe/Rome (the clock of `RomeCalendar`), accounts, slugs and
 emails are unique per run (fresh organization, no cleanup, no test-only endpoint), the DB is created and dropped per run,

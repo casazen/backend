@@ -72,7 +72,9 @@ for b in develop main; do
 done
 ```
 
-No secrets or variables are needed. The bundle is built without `EXPO_PUBLIC_*`, so it only proves that the app bundles; it is not a release artifact. Not in CI yet: native / EAS builds, and the Maestro flows on an emulator (task FN-04).
+No secrets or variables are needed. The bundle is built without `EXPO_PUBLIC_*`, so it only proves that the app bundles; it is not a release artifact. It also fails when the bundle contains the dev-only auth shortcuts or the values of the Maestro E2E build. Not in CI: native / EAS builds.
+
+**Maestro on an emulator** (task FN-04) is a second workflow, `e2e-android.yml`, check name **`Maestro on Android emulator`**: real login, flows by `testID`, ephemeral backend. It needs two secrets and runs on PRs to `main`, on PRs labelled `e2e-app`, on pushes to `main` and nightly. Setup, secrets and what is and is not proven: [`mobile-e2e.md`](mobile-e2e.md).
 
 Mobile-specific notes (details in `casazen/mobile/README.md`, section CI):
 
