@@ -94,6 +94,9 @@ public static class PushTypes
     public const string ServiceRequestTaken = "service-request-taken";
     public const string ServiceRequestCompleted = "service-request-completed";
     public const string ServiceRequestRejected = "service-request-rejected";
+
+    /// <summary>The host marked a completed service request as paid: pushed to the supplier org (SU-09).</summary>
+    public const string ServiceRequestPaid = "service-request-paid";
     public const string NewBooking = "new-booking";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";

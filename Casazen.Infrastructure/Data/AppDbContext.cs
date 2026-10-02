@@ -82,12 +82,12 @@ public class AppDbContext(
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
-    public DbSet<PlatformBillingMetrics> PlatformBillingMetrics { get; set; } = null!;
 
     // Supplier console (US-022 / #292)
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+    public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
@@ -701,20 +701,6 @@ public class AppDbContext(
             .Property(i => i.TotalAmount)
             .HasPrecision(18, 2);
 
-        modelBuilder.Entity<PlatformBillingMetrics>()
-            .Property(m => m.EuB2cCrossBorderRevenue)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformBillingMetrics>().HasData(
-            new PlatformBillingMetrics
-            {
-                Id = 1,
-                CalendarYear = 2026,
-                EuB2cCrossBorderRevenue = 0m,
-                OssThresholdReached = false,
-                UpdatedAt = new DateTime(2026, 6, 11, 0, 0, 0, DateTimeKind.Utc),
-            });
-
         // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.OrgId);
@@ -896,6 +882,11 @@ public class AppDbContext(
             .HasIndex(i => i.TokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
+
+        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
+        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
+        modelBuilder.Entity<SupplierAdminAuditEntry>()
+            .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()

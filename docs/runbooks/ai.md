@@ -23,7 +23,7 @@ does not even take the notes, and `match-supplier` ignores a `notes` field in th
 | `Ai__Model`, `Ai__OpenAiBaseUrl`, `Ai__AnthropicBaseUrl` | `deepseek-v4-flash`, `https://api.deepseek.com`, `https://api.deepseek.com/anthropic` | Provider endpoints. |
 | `Ai__MaxCompletionTokens` | `2048` | `max_tokens` of a completion, also the completion part of the budget reservation. |
 | `Ai__WebSearchMaxTokens` | `4096` | `max_tokens` of a web search (discovery only). |
-| `Ai__Subprocessor__Name` / `__Purpose` / `__Entity` / `__Region` / `__TransferMechanism` / `__Website` | name = provider, purpose = "AI text generation", others empty | How the active provider appears in `GET /api/legal/subprocessors` (see GDPR below). |
+| `Ai__Subprocessor__Name` / `__Purpose` / `__Entity` / `__Region` / `__TransferMechanism` / `__Website` / `__Source` | name = provider, purpose = "AI text generation"; entity and region as declared by DeepSeek (see GDPR below), transfer mechanism empty, `Source` = official URL + consultation date | How the active provider appears in `GET /api/legal/subprocessors` (see GDPR below). |
 
 The old key `Seo:AiProvider` (`Seo__AiProvider`) was never read and has been removed: the provider is `Ai:Provider`
 only. `AddCasazenAiProvider` is registered once (Program.cs); the unused `AddCasazenExternalServices`, which registered
@@ -109,14 +109,26 @@ and `Ai__Subprocessor__TransferMechanism` are set, the entry is marked `detailsP
 "sede e base giuridica del trasferimento in corso di definizione" and the public page `/legale/sub-responsabili` shows
 "in definizione".
 
+PL14-SUBP: `appsettings.json` carries what DeepSeek publicly declares in its privacy policy (consulted 2026-10-01,
+`Ai:Subprocessor:Source`): the entities are **Hangzhou DeepSeek Artificial Intelligence Co., Ltd. and Beijing DeepSeek
+Artificial Intelligence Co., Ltd.** (registered in China) and the personal data is **collected, processed and stored in
+the People's Republic of China**. The policy names no GDPR transfer mechanism ("appropriate safeguards … where
+required"), so `Ai:Subprocessor:TransferMechanism` is empty and the entry stays `detailsPending: true`: the transfer
+basis is a decision of the product owner, not something the code or an agent can fill in. Context to weigh before the
+decision: on 30 January 2025 the Italian Data Protection Authority ordered the immediate limitation of the processing of
+Italian users' data by these two companies for the DeepSeek chatbot service
+([press release](https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/10097450)); the order concerns the
+consumer service, not necessarily the paid API, which is exactly what needs a legal opinion.
+
 **Product owner, before setting `Ai__Provider=DeepSeek` with a key on any environment:**
 
-1. Verify from the provider's official documents where the data is processed and the provider's legal entity, and
-   decide the legal basis of the transfer outside the EEA (GDPR chapter V: adequacy decision, standard contractual
-   clauses or other). Or choose a provider with processing in the EU.
-2. Set `Ai__Subprocessor__Entity`, `Ai__Subprocessor__Region`, `Ai__Subprocessor__TransferMechanism` (and optionally
-   `__Website`, `__Purpose`) on
-   Railway, and update the privacy notice / DPA texts (provided by the product owner, D14).
+1. Check the entity and location above on the provider's current documents and decide the legal basis of the transfer
+   outside the EEA (GDPR chapter V: adequacy decision, standard contractual clauses or other), with a legal opinion
+   given the point above. Or choose a provider with processing in the EU. The default (`Ai__Provider=Stub`) sends
+   nothing anywhere and keeps the entry out of the list.
+2. Set `Ai__Subprocessor__TransferMechanism` (and, if the checks change them, `__Entity`, `__Region`, `__Source`,
+   optionally `__Website`, `__Purpose`) on Railway, and update the privacy notice / DPA texts (provided by the product
+   owner, D14).
 3. Check `GET /api/legal/subprocessors` on test: the provider is listed, `detailsPending` is `false`.
 
 ## SEO bootstrap (A8-26)

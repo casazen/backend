@@ -345,11 +345,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
-        services.AddScoped<IVatCalculationService, VatCalculationService>();
-        services.AddScoped<IViesService, ViesService>();
-        services.AddScoped<ISdiEInvoiceService, SdiEInvoiceService>();
+        // PL-13: VAT computed by Stripe Tax (no rate in code); no SDI provider is integrated in this build, so the
+        // e-invoices are issued manually (health check "einvoicing", docs/runbooks/billing-tax.md).
+        services.AddScoped<ISdiEInvoiceProvider, UnconfiguredSdiEInvoiceProvider>();
+        services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
-        services.AddScoped<IOssRevenueTracker, OssRevenueTracker>();
         services.AddScoped<IRentBillingService, NullRentBillingService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
@@ -389,6 +389,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
+        services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()

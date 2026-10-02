@@ -41,7 +41,6 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
-        [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",
@@ -53,6 +52,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SupplierProfile)] = "Keyed by the supplier org: hosts of every org read active profiles to match and create requests, the public showcase reads them anonymously, admins approve them. The owner reaches it as User.SupplierOrgId, which the tenant filter (User.OrgId) does not know.",
         [typeof(SupplierAvailability)] = "Supplier-org data (see SupplierProfile): written and read by the supplier through User.SupplierOrgId, read anonymously by the public showcase; every query filters by the supplier OrgId explicitly.",
         [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
+        [typeof(SupplierAdminAuditEntry)] = "Platform-wide audit log of the admin actions on suppliers and invites (SU-12): suspension, reactivation, invite resend and revoke. Not tenant data: written and read only by SupplierAdminService behind the AdminOnly policy.",
 
         // Rows owned by a user, not by an org.
         [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",

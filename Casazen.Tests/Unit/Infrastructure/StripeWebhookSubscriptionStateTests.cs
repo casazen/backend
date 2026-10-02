@@ -148,6 +148,22 @@ public class StripeWebhookSubscriptionStateTests
     }
 
     [Fact]
+    public async Task HandleEventAsync_InvoicePaidWithoutAutomaticTax_RecordsNoVatAndManualEInvoice()
+    {
+        // A1-08 (d): before PL-13 the invoice recorded 22% VAT that Stripe never charged, and SDI stayed "pending".
+        var org = await SeedOrgAsync(SubscriptionStatus.Active, PlanTier.Pro, subscriptionId: "sub_current");
+
+        await HandleAsync(Invoice("invoice.paid", "sub_current", org, "subscription_cycle"));
+
+        var invoice = await _db.PlatformInvoices.AsNoTracking().SingleAsync(i => i.OrgId == org.Id);
+        Assert.Equal(0m, invoice.VatAmount);
+        Assert.Equal(29.00m, invoice.TotalAmount);
+        Assert.Equal(PlatformInvoiceVatTreatments.AutomaticTaxDisabled, invoice.VatTreatment);
+        Assert.Equal(PlatformInvoiceTaxReviewReasons.AutomaticTaxDisabled, invoice.TaxReviewReason);
+        Assert.Equal(PlatformInvoiceSdiStatuses.ManualRequired, invoice.SdiStatus);
+    }
+
+    [Fact]
     public async Task HandleEventAsync_RenewalPaymentFailed_StartsPastDueGrace()
     {
         var org = await SeedOrgAsync(SubscriptionStatus.Active, PlanTier.Pro, subscriptionId: "sub_current");
@@ -225,9 +241,7 @@ public class StripeWebhookSubscriptionStateTests
             _db,
             new FakeStripeBillingService(Config),
             new EntitlementService(_db, Config),
-            new VatCalculationService(),
-            Mock.Of<IOssRevenueTracker>(),
-            Mock.Of<ISdiEInvoiceService>(),
+            TestPlatformInvoices.Create(_db, new FakeStripeBillingService(Config)),
             Mock.Of<IRentBillingService>(),
             Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(_db),
