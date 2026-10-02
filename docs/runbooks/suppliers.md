@@ -877,6 +877,39 @@ Audit A4-25 / A4-27 (web and API; the app's own texts are the mobile tasks).
   `SharedResourcesLocalizationTests` fails when a key misses one of the two languages.
 - No deploy step: no migration, no configuration.
 
+## 18. Public showcase of a supplier (v0) — SU-13
+
+Audit A4-16, issue #303 (minimum). Before SU-13 the page `/s/:slug` called the API with a relative URL (on Vercel it got
+`index.html`), nobody ever generated the slug, and the error said "Supplier not found" in English.
+
+| What | Behaviour |
+|---|---|
+| Address | `{App__PublicSiteBaseUrl}/fornitori/{slug}`, a page of the CasaZen web app in its public shell (`PublicSiteShell`, not an org's booking site). **No domain is written in the code**: the API builds the absolute URL from `App__PublicSiteBaseUrl` (`PublicSiteLinks.TryPublicPage`) and the web app only knows the path. Without that variable the preview says the public address is not configured and shows no link. The old `/s/:slug` redirects to the new path |
+| Slug | `SupplierProfiles.ShowcaseSlug`: lowercase ASCII from the business name (`Pulizie Città Srl` → `pulizie-citta-srl`), `-2`, `-3`, `-4`, then `-<6 hex>` on a collision. Generated when the profile is **activated** and then **never changed** (a link already shared keeps working after a rename). Unique index `UIX_SupplierProfiles_ShowcaseSlug` (where not null), migration `SupplierShowcaseSlugUnique`; the 23505 of a race retries with the next candidate |
+| Suppliers activated before SU-13 | They have no slug. `GET /api/supplier/showcase` (the console's *Vetrina* page) generates it the first time they open it; there is no batch backfill. Before the migration check that no two profiles share a hand-set slug: `SELECT "ShowcaseSlug", count(*) FROM "SupplierProfiles" WHERE "ShowcaseSlug" IS NOT NULL GROUP BY 1 HAVING count(*) > 1;` |
+| Public API | `GET /api/public/suppliers/{slug}` (anonymous, `PublicRead` rate limit): only an **Active** supplier with that slug (looked up lowercase); a pending, suspended or unknown one is 404 `not_found` with the localized message. Content: business name, category codes, comuni by name, description, photos, the availability of the next 14 days. **Never** the phone, email, VAT number or status |
+| Preview | `GET /api/supplier/showcase` (supplier policy): the same content from the caller's own profile whatever its status, plus `status`, `published`, `slug`, `publicPath`, `publicUrl`, `indexable: false`. A pending supplier previews a page nobody else can open (no slug, no URL) with the way to the activation; a suspended one is told it is not visible |
+| Web | Sidebar *Vetrina* and the *Anteprima vetrina* button on the profile page (`/app/supplier/showcase`): the preview, the public URL (copy, open in a new tab). Public page: loading skeleton; **404 → "Fornitore non trovato"**; any other failure → an error with a retry (never "not found"); translated categories, only absolute photo URLs |
+
+### SEO: `noindex` in v0, consistent with BK-15
+
+BK-15 makes the booking sites and the guides indexable (crawler HTML from the Vercel Function, sitemaps) and keeps the
+private pages out. The supplier showcase is **not** indexable in v0: the page sets `<meta name="robots"
+content="noindex,nofollow">` in every state, `/fornitori/` is in `DISALLOWED_PATHS` of `robots.txt` (production), the API
+answer carries `X-Robots-Tag: noindex`, the page is not in any sitemap and no crawler rewrite serves it. Making it
+indexable is a product decision (it publishes the business name and description of every active supplier): it needs the
+crawler page and the sitemap entry of BK-15's pattern and the removal of these three signals.
+
+### After a deploy
+
+- [ ] Migration `SupplierShowcaseSlugUnique` applied (a unique index).
+- [ ] `App__PublicSiteBaseUrl` set: `GET /api/supplier/showcase` of an active supplier returns `publicUrl` on that domain.
+- [ ] Activate a test supplier: `ShowcaseSlug` is set; `GET /api/public/suppliers/{slug}` is 200 with `X-Robots-Tag: noindex`;
+      the same call for a pending supplier's slug (set by hand) is 404.
+- [ ] Open `/fornitori/{slug}` signed out: the page shows the supplier in the public shell; `/fornitori/non-esiste` says
+      "Fornitore non trovato"; with the API down it shows an error with *Riprova*, not "not found".
+- [ ] `https://<domain>/robots.txt` (production build) has `Disallow: /fornitori/`.
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
