@@ -1291,6 +1291,42 @@
   <data name="OtaStayBlockNotFound" xml:space="preserve">
     <value>Calendar block not found.</value>
   </data>
+  <data name="CalendarBlockNotFound" xml:space="preserve">
+    <value>Calendar block not found.</value>
+  </data>
+  <data name="CalendarBlockInvalidRange" xml:space="preserve">
+    <value>The end date must be after the start date.</value>
+  </data>
+  <data name="CalendarBlockInPast" xml:space="preserve">
+    <value>Past dates cannot be blocked: the block must start today or later.</value>
+  </data>
+  <data name="CalendarBlockTooLong" xml:space="preserve">
+    <value>A block can last at most {0} nights. To close the property for longer, pause it.</value>
+  </data>
+  <data name="CalendarBlockInvalidReason" xml:space="preserve">
+    <value>Choose the reason of the block: owner stay, maintenance or other.</value>
+  </data>
+  <data name="CalendarBlockNoteTooLong" xml:space="preserve">
+    <value>The note is too long (at most 200 characters).</value>
+  </data>
+  <data name="CalendarBlockOverlapsBooking" xml:space="preserve">
+    <value>A booking already takes one of these nights: cancel it or choose other dates.</value>
+  </data>
+  <data name="CalendarBlockOverlapsBlock" xml:space="preserve">
+    <value>You have already blocked one of these nights: remove that block or choose other dates.</value>
+  </data>
+  <data name="CalendarBlockNotManual" xml:space="preserve">
+    <value>This block comes from a channel calendar (iCal): remove it on the channel or unlink the calendar, not here.</value>
+  </data>
+  <data name="CalendarBlockStartRequired" xml:space="preserve">
+    <value>Enter the start date of the block.</value>
+  </data>
+  <data name="CalendarBlockEndRequired" xml:space="preserve">
+    <value>Enter the end date of the block.</value>
+  </data>
+  <data name="CalendarBlockReasonRequired" xml:space="preserve">
+    <value>Enter the reason of the block.</value>
+  </data>
   <data name="OtaStayBlockNotImported" xml:space="preserve">
     <value>Only a block imported from a linked OTA calendar can become a stay.</value>
   </data>

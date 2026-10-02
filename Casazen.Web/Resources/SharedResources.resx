@@ -1291,6 +1291,42 @@
   <data name="OtaStayBlockNotFound" xml:space="preserve">
     <value>Blocco del calendario non trovato.</value>
   </data>
+  <data name="CalendarBlockNotFound" xml:space="preserve">
+    <value>Blocco del calendario non trovato.</value>
+  </data>
+  <data name="CalendarBlockInvalidRange" xml:space="preserve">
+    <value>La data di fine deve essere successiva alla data di inizio.</value>
+  </data>
+  <data name="CalendarBlockInPast" xml:space="preserve">
+    <value>Non puoi bloccare date già passate: il blocco deve iniziare da oggi in poi.</value>
+  </data>
+  <data name="CalendarBlockTooLong" xml:space="preserve">
+    <value>Un blocco può durare al massimo {0} notti. Per chiudere l'immobile più a lungo mettilo in pausa.</value>
+  </data>
+  <data name="CalendarBlockInvalidReason" xml:space="preserve">
+    <value>Scegli il motivo del blocco: soggiorno del proprietario, manutenzione o altro.</value>
+  </data>
+  <data name="CalendarBlockNoteTooLong" xml:space="preserve">
+    <value>La nota è troppo lunga (massimo 200 caratteri).</value>
+  </data>
+  <data name="CalendarBlockOverlapsBooking" xml:space="preserve">
+    <value>Una prenotazione occupa già una di queste notti: annullala o scegli altre date.</value>
+  </data>
+  <data name="CalendarBlockOverlapsBlock" xml:space="preserve">
+    <value>Hai già bloccato una di queste notti: elimina quel blocco o scegli altre date.</value>
+  </data>
+  <data name="CalendarBlockNotManual" xml:space="preserve">
+    <value>Questo blocco arriva dal calendario di un canale (iCal): si toglie dal canale o scollegando il calendario, non da qui.</value>
+  </data>
+  <data name="CalendarBlockStartRequired" xml:space="preserve">
+    <value>Indica la data di inizio del blocco.</value>
+  </data>
+  <data name="CalendarBlockEndRequired" xml:space="preserve">
+    <value>Indica la data di fine del blocco.</value>
+  </data>
+  <data name="CalendarBlockReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del blocco.</value>
+  </data>
   <data name="OtaStayBlockNotImported" xml:space="preserve">
     <value>Solo un blocco importato da un calendario OTA collegato può diventare un soggiorno.</value>
   </data>

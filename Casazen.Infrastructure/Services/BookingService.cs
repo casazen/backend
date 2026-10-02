@@ -109,9 +109,7 @@ public class BookingService(
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var org = await orgService.GetByIdAsync(property.OrgId);
-        if (org is null ||
-            string.IsNullOrWhiteSpace(org.StripeConnectedAccountId) ||
-            !org.ConnectChargesEnabled)
+        if (org is null || !org.CanTakeDirectPayments)
         {
             throw new DomainConflictException(DirectBookingErrorCodes.PaymentsNotReady, "DirectBookingPaymentsNotReady");
         }

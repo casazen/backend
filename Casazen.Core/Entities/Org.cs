@@ -14,6 +14,12 @@ public class Org
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// Name given to an org provisioned without a display name (the access token carries none, A1-02). An org still
+    /// named so has not chosen its name yet: the activation checklist (PL-15) keeps asking for it.
+    /// </summary>
+    public const string PlaceholderName = "La mia organizzazione";
+
     [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
@@ -92,6 +98,15 @@ public class Org
 
     /// <summary>JSON array of outstanding Stripe requirement field names (e.g. <c>["individual.verification.document"]</c>).</summary>
     public string? ConnectRequirementsDueJson { get; set; }
+
+    /// <summary>
+    /// The org can take a direct booking payment (PL-15, A3-26): a connected account is linked <b>and</b> Stripe reports
+    /// charges enabled. Having started the Connect onboarding is not enough. The checkout (<c>BookingService</c>) and the
+    /// activation checklist (<c>OnboardingService</c>) both read this one rule.
+    /// </summary>
+    [NotMapped]
+    public bool CanTakeDirectPayments =>
+        !string.IsNullOrWhiteSpace(StripeConnectedAccountId) && ConnectChargesEnabled;
 
     public bool IsActive { get; set; } = true;
 

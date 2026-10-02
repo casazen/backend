@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001195845_AddManualCalendarBlockReason")]
+    partial class AddManualCalendarBlockReason
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1381,39 +1384,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<int>("DomainCheckFailures")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("DomainCheckedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DomainConfiguredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DomainStatusDetail")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime?>("DomainVercelAddedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DomainVercelTxtHost")
-                        .HasMaxLength(253)
-                        .HasColumnType("character varying(253)");
-
-                    b.Property<string>("DomainVercelTxtValue")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<int>("DomainVerificationStatus")
                         .HasColumnType("integer");
 
                     b.Property<string>("DomainVerificationToken")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
-
-                    b.Property<DateTime?>("DomainVerifiedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("FiscalCode")
                         .HasMaxLength(16)
@@ -1519,57 +1495,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"Subdomain\" IS NOT NULL");
 
                     b.ToTable("Orgs");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.OrgSiteDocument", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Content")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ContentHtml")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ExternalUrl")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("PublishedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("PublishedByUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("WithdrawnAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrgId", "Kind", "Version")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_OrgSiteDocuments_Org_Kind_Version");
-
-                    b.ToTable("OrgSiteDocuments");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
@@ -1906,30 +1831,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasFilter("\"StripeRefundId\" IS NOT NULL");
 
                     b.ToTable("PaymentRefunds");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.PendingDomainRemoval", b =>
-                {
-                    b.Property<string>("Domain")
-                        .HasMaxLength(253)
-                        .HasColumnType("character varying(253)");
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("LastAttemptAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("LastError")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime>("RequestedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Domain");
-
-                    b.ToTable("PendingDomainRemovals");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PlatformAiBudget", b =>
@@ -2278,9 +2179,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -2292,9 +2190,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsPaused")
@@ -2367,11 +2262,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId", "Slug")
                         .IsUnique()
                         .HasDatabaseName("UIX_Properties_OrgId_Slug")
-                        .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false");
+                        .HasFilter("\"Slug\" IS NOT NULL");
 
                     b.HasIndex("Address", "City", "PostalCode", "IsActive")
                         .IsUnique()
-                        .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
+                        .HasFilter("\"IsActive\" = true");
 
                     b.ToTable("Properties");
                 });
@@ -3683,46 +3578,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("StayGuests");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.SupplierAdminAuditEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Action")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ActorUserId")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid?>("InviteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("NewStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("PreviousStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid?>("SupplierOrgId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupplierOrgId", "OccurredAt");
-
-                    b.ToTable("SupplierAdminAuditEntries");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.SupplierAvailability", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3780,9 +3635,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Message")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TokenHash")
                         .HasMaxLength(64)
@@ -3874,13 +3726,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
-
-                    b.Property<DateTime?>("SuspendedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SuspensionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime?>("TosAcceptedAt")
                         .HasColumnType("timestamp with time zone");
@@ -4671,17 +4516,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
 
                     b.Navigation("Party");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.OrgSiteDocument", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Org", "Org")
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Org");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgSlugAlias", b =>
