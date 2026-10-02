@@ -6,7 +6,10 @@ A4-22). The code is in place; the product owner sets the pilot comuni (section 3
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
 KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
-host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15).
+host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15). Section 14:
+the platform admin's supplier list, suspension and invites (SU-12, A4-29).
+Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
+and the payment notification to the supplier (SU-09, A4-28).
 
 ## 1. How a supplier joins
 
@@ -653,12 +656,129 @@ new org): at most one notification lost per open request.
       `GET /api/users/me` has an `orgId` different from `supplierOrgId`, a property created then is in the host org,
       and the supplier console still works.
 
+## 14. Admin: supplier list, suspension and invites — SU-12
+
+Everything here is behind the policy `AdminOnly` (Auth0 role `Admin`); the web page is `/app/admin/suppliers` (menu
+*Fornitori*, permission `admin.users.manage`), with the tabs **Fornitori** and **Inviti** and a button to the existing
+invite form. No manual database work is needed to suspend a supplier or to handle an invite.
+
+### 14.1 API
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/admin/suppliers?search=&status=&page=&pageSize=` | Suppliers, newest first, **paginated in SQL** (`pageSize` 1-100, `page` at least 1; out of range values are clamped). `search` matches the legal name or the email, case-insensitive, LIKE wildcards escaped. `status` is `Pending`, `Active` or `Suspended`. Each item has the status, categories, comuni, the suspension date and note, and `openRequests` (new, taken, in progress). |
+| `POST /api/admin/suppliers/{orgId}/suspend` | Body `{ "reason": "…" }`, required, at most 500 characters (400 `validation_error` otherwise). 404 `supplier_not_found`, 409 `supplier_already_suspended`. |
+| `POST /api/admin/suppliers/{orgId}/reactivate` | 404 `supplier_not_found`, 409 `supplier_not_suspended`. |
+| `GET /api/admin/suppliers/{orgId}/audit` | Audit trail of the supplier, newest first (at most 50 lines): action, admin (name or email, from `Users`), time, reason, status before and after. |
+| `GET /api/admin/suppliers/invites?search=&state=&page=&pageSize=` | Invites, newest first, paginated in SQL. `state` is `Pending`, `Used`, `Expired` or `Revoked`; `search` matches the invited email. The link token is never returned (only its hash is stored, section 1). |
+| `POST /api/admin/suppliers/invites/{id}/resend` | A **new token** (the old link stops working), a new 7-day expiry, the invite email queued on Hangfire. Allowed for a pending or expired invite (also one created before SU-01, which had no token hash). 409 `supplier_invite_not_resendable` (used or revoked), 409 `duplicate_invite` (another invite for the email is pending), 409 `supplier_email_taken` (a profile with the email exists since), 404 `supplier_invite_not_found`. |
+| `DELETE /api/admin/suppliers/invites/{id}` | Revokes a pending invite (204): the row is kept with `RevokedAt`, and the link answers 422 `supplier_invite_revoked` in the lookup and in the registration. 409 `supplier_invite_not_pending` (used, expired or already revoked), 404 `supplier_invite_not_found`. A revoked invite does not block a new invite for the same email. |
+
+The invite state is computed on read: `Used` (accepted), `Revoked`, `Expired` (past its expiry, or no token hash), otherwise
+`Pending`.
+
+### 14.2 What a suspended supplier can and cannot do (A4-29)
+
+| | Suspended supplier |
+|---|---|
+| Receives new requests | No: it is not in the host search (only `Active` suppliers are) and a request addressed to it is refused with 422 `service_request_supplier_inactive` |
+| Take, complete or reject a request | **No**: 422 `service_request_supplier_not_active`, checked before the state machine, after the 404 and the 403 for another supplier's request. Nothing is saved and nobody is notified. The same applies to a supplier that is still `Pending` |
+| Lift the suspension with the activation wizard | No: `POST /api/supplier/profile/activation/complete` answers 422 `supplier_suspended`. Only an admin reactivates it |
+| Sign in, read the inbox, the detail and the history, edit the profile | Yes (read access stays): the console shows a banner *Account fornitore sospeso* and disables the buttons of the requests. The reason of the suspension is an internal note and is **never** sent to the supplier |
+| Be paid for work already done | Yes: *Segna pagato* is the host's action and does not depend on the supplier's status |
+| Open requests (new, taken, in progress) | They stay as they are. The list shows how many each supplier has open, and the suspend dialog warns about them. What to do with them is a product question (see the open questions of SU-12) |
+
+Reactivation sets the status back to `Active` if the supplier had accepted the terms (it was active before),
+otherwise to `Pending`: a reactivation never skips the activation wizard.
+
+### 14.3 Audit trail
+
+Table `SupplierAdminAuditEntries` (migration `SupplierAdminSuspension`): one row per admin action, written in the same
+transaction as the change, never updated: `Suspended`, `Reactivated`, `InviteResent`, `InviteRevoked` with the admin's Auth0
+subject, the time (UTC), the reason (suspension) and the status before and after. The rows of a supplier are shown in
+the page (*Storico*); the invite rows (`InviteId`) can be read in the database. There is no foreign key: the trail
+survives the deletion of an org by `fix-orphaned` (section 9). The logs carry only ids and the masked email, never
+the reason.
+
+### 14.4 After a deploy
+
+- [ ] As admin: `/app/admin/suppliers` lists the suppliers with their status; the filter *Sospeso* and the search by
+      name or email work, 20 per page.
+- [ ] *Sospendi* on an active supplier without a reason is not possible; with a reason the badge becomes *Sospeso*,
+      the row shows the note, *Storico* shows who did it and when.
+- [ ] As that supplier: the console shows the suspension banner, the buttons of the requests are disabled, and the
+      supplier is no longer offered to hosts (marketplace and request creation).
+- [ ] *Riattiva* brings it back (*Attivo* if it had accepted the terms).
+- [ ] *Inviti*: *Reinvia* on an expired invite → the email arrives with a new link that works; the old link does not.
+      *Revoca* on a pending invite → its link shows "Questo invito è stato revocato".
+
+## 15. Host: timeline, rejection reason, "Segna pagato", another supplier — SU-09
+
+### 15.1 The timeline of a request
+
+Every request the host reads (`GET /api/service-requests`, `GET /api/service-requests/{id}`, and the long-rent twins
+under `/api/long-rent/service-requests`) carries `history`: one step per transition of the state machine, oldest
+first, rebuilt from the dates the request keeps (the same builder as the supplier console, section 11.3, so host and
+supplier read the same story and no column was added):
+
+| Step | Party | Date |
+|---|---|---|
+| `Richiesto` | `Host` | `createdAt` |
+| `PresoInCarico` | `Supplier` | `takenAt` |
+| `Completato` | `Supplier` | `completedAt` |
+| `Pagato` | `Host` | `paidAt` |
+| `Rifiutato` | `Supplier` | `updatedAt` (a rejection is final, nothing updates the request afterwards), with the reason in `reason` |
+
+- **Who:** the web shows the host's steps as "Il tuo team" and the supplier's steps with the supplier's business name
+  (`supplierName`). A **member of the supplier's team is never named to the host**: `actorName` is always null in
+  the host answer (the supplier console names the member to the supplier's own team, section 11).
+- **Dates** are UTC instants; the web shows them in Europe/Rome.
+- The web (`ServiceRequestTimeline`, used by the booking, the property, the long-rent property and the marketplace
+  pages) also says what the request is waiting for ("In attesa che il fornitore accetti o rifiuti", ...).
+  Loading, load error with *Riprova* and empty states are in the cards and in the marketplace page.
+
+### 15.2 "Segna pagato" and the payment notification
+
+- Payment of the supplier stays a **manual flag** (DECISIONI.md, undecided points: no Stripe integration towards the
+  supplier): CasaZen does not pay the supplier and there is no transfer to it. The web asks for an explicit confirmation before the call ("Confermi di aver pagato ...?
+  CasaZen non effettua il pagamento: questo segna solo che l'hai già fatto. L'operazione non si può annullare"). The
+  buttons *Segna pagato* and *Richiedi ad altro fornitore* need `property.write` of the context (short-rent or
+  long-rent) and are hidden otherwise; the API checks it anyway. A 409 or 422 (the request changed meanwhile, for
+  example paid from another tab) reloads the list.
+- When the host marks a request as paid the **supplier is notified**, on Hangfire and never inside the host's
+  request: an email to the supplier profile's address (template `service-request-paid`, `EmailTexts.resx` IT/EN, says
+  that the payment is made outside CasaZen and links the supplier console, from `App:PublicSiteBaseUrl`) and one push
+  to the supplier org's devices (`service-request-paid`, delivery key `service-request:{id}:Pagato`, opens the app's
+  property list like the "new request" push). A failure to queue them is logged and never an error for the host.
+  A supplier suspended after completing the work (SU-12) is notified too: it is still owed what it completed.
+- The host is told of a rejection (email with the reason, and push) since A6-08; the reason is never on the lock screen.
+
+### 15.3 Asking another supplier after a rejection
+
+*Richiedi ad altro fornitore* appears on a rejected request (not when a newer, not rejected request for the same job
+already exists: then the row says "Già richiesto a un altro fornitore"). It opens the normal request form for the same
+property (short-rent: the same stay, **D2**; long-rent: the property) with the same category and notes, and without the
+suppliers that already rejected that job (same property, stay and category) in the list. The API does not forbid asking
+a supplier that rejected again: the exclusion is only the default of the form. The result is an ordinary new request
+(`POST /api/service-requests` or `/api/long-rent/service-requests`), linked to the old one only by the stay.
+
+### 15.4 After a deploy
+
+- [ ] Reject a new request as the supplier with a reason → on the booking, the property and the marketplace page the
+      host sees *Rifiutato*, the date and "Motivo del rifiuto: ...", and the button *Richiedi ad altro fornitore*.
+- [ ] The button opens the form with the stay, category and notes filled in, without the supplier that rejected; the
+      new request appears in the supplier's inbox and the old row says "Già richiesto a un altro fornitore".
+- [ ] Take and complete a request → the timeline shows each step with the date in Italian time, then *Segna pagato*
+      asks for confirmation; cancelling calls nothing; confirming marks it *Pagato* and the supplier gets an email and
+      a push ("Richiesta segnata come pagata").
+- [ ] As a user without `property.write` (read-only role): the timeline is readable, with no buttons.
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
 - The activation requirements (only the ToS today) are task SU-05.
-- Service requests: host timeline, rejection reason and "paid" confirmation are SU-09 (the history of section 11.3
-  can be reused there); the app's supplier choice (today the first result) is MO-10 and its
-  error states MO-07. `chargeToGuest` is still always refused, also for long-rent (open product point).
+- Service requests: the host timeline, rejection reason and "paid" confirmation are in section 14 (SU-09), but only on
+  the web: the app's supplier choice (today the first result) is MO-10 and its error states MO-07. `chargeToGuest` is
+  still always refused, also for long-rent (open product point).

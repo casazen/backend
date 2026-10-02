@@ -126,6 +126,28 @@ public class UpdatePropertyRequestTests
     }
 
     [Fact]
+    public void ApplyTo_PhotoUrlsSent_IsIgnoredBecauseTheGalleryHasItsOwnEndpoints()
+    {
+        // PC-04, A2-26: a client could otherwise point the public page at any URL, or at another property's photo
+        // (which a later delete from the gallery would then remove from the storage).
+        var property = StoredProperty();
+
+        Read("""{ "photoUrls": ["https://evil.example/x.jpg", "https://cdn.example/other-property/2.jpg"] }""").ApplyTo(property);
+
+        Assert.Equal(["https://cdn.example/1.jpg"], property.PhotoUrls);
+    }
+
+    [Fact]
+    public void ToProperty_PhotoUrlsSent_StartsWithAnEmptyGallery()
+    {
+        var request = JsonSerializer.Deserialize<CreatePropertyRequest>(
+            """{ "name": "Casa", "address": "Via Roma 1", "city": "Rimini", "photoUrls": ["https://evil.example/x.jpg"] }""",
+            WebJson)!;
+
+        Assert.Empty(request.ToProperty("auth0|owner").PhotoUrls);
+    }
+
+    [Fact]
     public void ApplyTo_NullableFieldsSentAsNull_ClearsThem()
     {
         var property = StoredProperty();

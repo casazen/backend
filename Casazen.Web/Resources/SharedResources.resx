@@ -456,6 +456,39 @@
   <data name="OrgBrandingImageDimensionsInvalid" xml:space="preserve">
     <value>Dimensioni dell'immagine non valide: servono almeno {0}×{1} pixel e al massimo {2}×{3}.</value>
   </data>
+  <data name="PublicSearchFilterInvalid" xml:space="preserve">
+    <value>Un filtro di ricerca non è valido.</value>
+  </data>
+  <data name="OrgDocumentContentRequired" xml:space="preserve">
+    <value>Scrivi il testo del documento.</value>
+  </data>
+  <data name="OrgDocumentContentTooLong" xml:space="preserve">
+    <value>Il testo supera i {0} caratteri.</value>
+  </data>
+  <data name="OrgDocumentContentTooLongInput" xml:space="preserve">
+    <value>Il testo è troppo lungo.</value>
+  </data>
+  <data name="OrgDocumentHtmlNotAllowed" xml:space="preserve">
+    <value>Il testo contiene codice HTML, che non è ammesso: scrivi testo semplice (puoi usare # per i titoli, - per gli elenchi, **grassetto** e [testo](https://indirizzo) per i link).</value>
+  </data>
+  <data name="OrgDocumentLinkInvalid" xml:space="preserve">
+    <value>Un link non è valido: deve iniziare con https://, http:// o mailto:.</value>
+  </data>
+  <data name="OrgDocumentUrlRequired" xml:space="preserve">
+    <value>Inserisci l'indirizzo del documento.</value>
+  </data>
+  <data name="OrgDocumentUrlInvalid" xml:space="preserve">
+    <value>L'indirizzo non è valido: deve essere un indirizzo https:// completo, senza credenziali.</value>
+  </data>
+  <data name="OrgDocumentSourceInvalid" xml:space="preserve">
+    <value>Scegli se scrivere il testo o indicare l'indirizzo di un documento.</value>
+  </data>
+  <data name="OrgDocumentVersionNotFound" xml:space="preserve">
+    <value>Questa versione del documento non esiste.</value>
+  </data>
+  <data name="OrgDocumentKindUnknown" xml:space="preserve">
+    <value>Documento non riconosciuto.</value>
+  </data>
   <data name="CheckInFieldRequired" xml:space="preserve">
     <value>Campo obbligatorio.</value>
   </data>
@@ -1261,6 +1294,42 @@
   <data name="OtaStayBlockNotFound" xml:space="preserve">
     <value>Blocco del calendario non trovato.</value>
   </data>
+  <data name="CalendarBlockNotFound" xml:space="preserve">
+    <value>Blocco del calendario non trovato.</value>
+  </data>
+  <data name="CalendarBlockInvalidRange" xml:space="preserve">
+    <value>La data di fine deve essere successiva alla data di inizio.</value>
+  </data>
+  <data name="CalendarBlockInPast" xml:space="preserve">
+    <value>Non puoi bloccare date già passate: il blocco deve iniziare da oggi in poi.</value>
+  </data>
+  <data name="CalendarBlockTooLong" xml:space="preserve">
+    <value>Un blocco può durare al massimo {0} notti. Per chiudere l'immobile più a lungo mettilo in pausa.</value>
+  </data>
+  <data name="CalendarBlockInvalidReason" xml:space="preserve">
+    <value>Scegli il motivo del blocco: soggiorno del proprietario, manutenzione o altro.</value>
+  </data>
+  <data name="CalendarBlockNoteTooLong" xml:space="preserve">
+    <value>La nota è troppo lunga (massimo 200 caratteri).</value>
+  </data>
+  <data name="CalendarBlockOverlapsBooking" xml:space="preserve">
+    <value>Una prenotazione occupa già una di queste notti: annullala o scegli altre date.</value>
+  </data>
+  <data name="CalendarBlockOverlapsBlock" xml:space="preserve">
+    <value>Hai già bloccato una di queste notti: elimina quel blocco o scegli altre date.</value>
+  </data>
+  <data name="CalendarBlockNotManual" xml:space="preserve">
+    <value>Questo blocco arriva dal calendario di un canale (iCal): si toglie dal canale o scollegando il calendario, non da qui.</value>
+  </data>
+  <data name="CalendarBlockStartRequired" xml:space="preserve">
+    <value>Indica la data di inizio del blocco.</value>
+  </data>
+  <data name="CalendarBlockEndRequired" xml:space="preserve">
+    <value>Indica la data di fine del blocco.</value>
+  </data>
+  <data name="CalendarBlockReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del blocco.</value>
+  </data>
   <data name="OtaStayBlockNotImported" xml:space="preserve">
     <value>Solo un blocco importato da un calendario OTA collegato può diventare un soggiorno.</value>
   </data>
@@ -1398,6 +1467,33 @@
   </data>
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>Lo stesso codice fiscale è indicato per più parti del contratto.</value>
+  </data>
+  <data name="PropertyPhotoNone" xml:space="preserve">
+    <value>Seleziona almeno una foto da caricare.</value>
+  </data>
+  <data name="PropertyPhotoTooManyFiles" xml:space="preserve">
+    <value>Puoi caricare al massimo {0} foto alla volta.</value>
+  </data>
+  <data name="PropertyPhotoLimitReached" xml:space="preserve">
+    <value>Una proprietà può avere al massimo {0} foto (ne ha già {1}): elimina una foto prima di caricarne altre.</value>
+  </data>
+  <data name="PropertyPhotoInvalidType" xml:space="preserve">
+    <value>Il file "{0}" non è una foto valida: sono ammesse solo immagini JPEG, PNG o WebP.</value>
+  </data>
+  <data name="PropertyPhotoInvalidSize" xml:space="preserve">
+    <value>Il file "{0}" è vuoto o supera la dimensione massima di {1} MB.</value>
+  </data>
+  <data name="PropertyPhotoNotFound" xml:space="preserve">
+    <value>La foto non è più nella galleria della proprietà: ricarica la pagina.</value>
+  </data>
+  <data name="PropertyPhotosChanged" xml:space="preserve">
+    <value>La galleria è stata modificata da un altro utente o da un'altra scheda: ricarica la pagina e riprova.</value>
+  </data>
+  <data name="PropertyPhotoUrlRequired" xml:space="preserve">
+    <value>Indica la foto.</value>
+  </data>
+  <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
+    <value>L'indirizzo della foto è troppo lungo.</value>
   </data>
   <data name="SeoNotFoundTitle" xml:space="preserve">
     <value>Pagina non trovata</value>
@@ -1653,5 +1749,38 @@
   </data>
   <data name="DomainIssue_vercel_rejected" xml:space="preserve">
     <value>Il fornitore del servizio non accetta questo dominio. Controlla che sia scritto correttamente.</value>
+  </data>
+  <data name="SupplierAlreadySuspended" xml:space="preserve">
+    <value>Il fornitore è già sospeso.</value>
+  </data>
+  <data name="SupplierNotSuspended" xml:space="preserve">
+    <value>Il fornitore non è sospeso: non c'è nulla da riattivare.</value>
+  </data>
+  <data name="SupplierInviteNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="SupplierInviteNotPending" xml:space="preserve">
+    <value>Solo un invito in attesa può essere revocato: questo è già stato usato, è scaduto o è già stato revocato.</value>
+  </data>
+  <data name="SupplierInviteNotResendable" xml:space="preserve">
+    <value>Un invito già usato o revocato non si può reinviare: crea un nuovo invito.</value>
+  </data>
+  <data name="SupplierInviteDuplicate" xml:space="preserve">
+    <value>Esiste già un altro invito in attesa per questa email: revocalo prima di reinviare questo.</value>
+  </data>
+  <data name="SupplierInviteRevoked" xml:space="preserve">
+    <value>Questo invito è stato revocato. Chiedi al team CasaZen di inviartene uno nuovo.</value>
+  </data>
+  <data name="SupplierSuspended" xml:space="preserve">
+    <value>Il tuo account fornitore è sospeso: non puoi completare l'attivazione. Contatta il supporto CasaZen.</value>
+  </data>
+  <data name="ServiceRequestSupplierNotActive" xml:space="preserve">
+    <value>Il tuo account fornitore non è attivo (è sospeso o non ancora attivato): non puoi eseguire azioni sulle richieste. Contatta il supporto CasaZen.</value>
+  </data>
+  <data name="SupplierSuspendReasonRequired" xml:space="preserve">
+    <value>Indica il motivo della sospensione.</value>
+  </data>
+  <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
+    <value>Il motivo della sospensione può avere al massimo 500 caratteri.</value>
   </data>
 </root>

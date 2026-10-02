@@ -273,6 +273,7 @@ public static class ServiceCollectionExtensions
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -302,6 +303,7 @@ public static class ServiceCollectionExtensions
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
+        services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
@@ -319,6 +321,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
         services.AddScoped<IOrgBrandingService, OrgBrandingService>();
+        services.AddScoped<IOrgSiteDocumentService, OrgSiteDocumentService>();
         // The hosts that resolve to no org are remembered, bounded, across requests (BK-16).
         services.AddSingleton<PublicHostMissCache>();
         services.AddScoped<IPublicHostResolver, PublicHostResolver>();
@@ -389,6 +392,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoEventService, SeoEventService>();
         services.AddScoped<ISeoFeaturedPropertiesService, SeoFeaturedPropertiesService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
+        services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()

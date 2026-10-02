@@ -1,0 +1,131 @@
+<!--
+  Bozza redatta da un agente AI su incarico del PO: richiede revisione di un legale prima dell'uso in produzione.
+  Accordo sul trattamento dei dati personali (DPA, art. 28 GDPR), versione 2026-10-v1 (italiano, testo di riferimento). Sezioni identiche alla versione inglese.
+  I segnaposto {{...}} sono sostituiti dalla configurazione (docs/runbooks/legal-documents.md): se un dato obbligatorio manca
+  il documento non viene pubblicato. L'elenco dei sub-responsabili non è ripetuto qui: è la pagina dinamica /legale/sub-responsabili.
+  Le misure di sicurezza elencate sono solo quelle realmente implementate nel codice (verificare con la checklist del runbook a ogni nuova versione).
+  Non modificare questo file dopo che una versione è stata accettata: serve una nuova versione.
+-->
+<h2>1. Parti, ruoli e ambito</h2>
+<p><strong>1.1</strong> Il presente accordo (il «DPA») è concluso tra il Cliente, che lo accetta per la propria Organizzazione, quale titolare del trattamento (il «Titolare»), e <strong>{{Controller.Name}}</strong>, con sede legale in {{Controller.Address}}, partita IVA {{Controller.VatId}}, PEC {{Controller.Pec}}, quale responsabile del trattamento («CasaZen» o il «Responsabile»). Disciplina il trattamento ai sensi dell'art. 28 del Regolamento (UE) 2016/679 («GDPR») e forma parte integrante dei <a href="{{Site.BaseUrl}}/legale/termini">Termini di Servizio</a>.</p>
+<p><strong>1.2</strong> Il DPA si applica ai dati personali che CasaZen tratta per conto del Titolare nell'erogazione del Servizio (i «Dati del Titolare»). Non si applica ai dati di cui CasaZen è titolare (descritti nell'<a href="{{Site.BaseUrl}}/legale/privacy">Informativa Privacy</a>: account, fatturazione, sicurezza), né ai dati che i Fornitori del marketplace ricevono dal Titolare e trattano come titolari autonomi, né ai dati che Stripe tratta come titolare autonomo.</p>
+<p><strong>1.3</strong> Se il Cliente tratta i dati per conto di un altro titolare (ad esempio un gestore che amministra gli immobili di un proprietario), dichiara di essere autorizzato da quest'ultimo, di agire come suo responsabile e di impartire a CasaZen istruzioni conformi a quelle ricevute: CasaZen è in tal caso sub-responsabile ai sensi dell'art. 28, paragrafi 2 e 4, GDPR.</p>
+
+<h2>2. Oggetto e durata</h2>
+<p><strong>2.1</strong> L'oggetto del trattamento è la fornitura del Servizio descritto nei Termini di Servizio.</p>
+<p><strong>2.2</strong> Il DPA ha effetto dall'accettazione e dura quanto il contratto tra le parti, e comunque fino al completamento della restituzione o della cancellazione dei Dati del Titolare prevista dall'art. 13.</p>
+
+<h2>3. Natura e finalità del trattamento</h2>
+<p><strong>3.1</strong> <em>Natura</em>: raccolta (tramite il portale di check-in e gli inserimenti del Titolare e dei suoi collaboratori), registrazione, organizzazione, conservazione, consultazione, elaborazione, comunicazione ai destinatari che il Titolare sceglie (ad esempio email di conferma agli ospiti, richieste ai Fornitori, pagamenti tramite Stripe), esportazione, cifratura, cancellazione e anonimizzazione.</p>
+<p><strong>3.2</strong> <em>Finalità</em>: eseguire le funzioni del Servizio che il Titolare usa: gestione di immobili e prenotazioni; sito di prenotazione e incasso dei pagamenti; check-in degli ospiti e preparazione dei dati per le comunicazioni previste dalla legge; imposta di soggiorno; contratti di locazione; richieste ai Fornitori; sincronizzazione dei calendari; email e notifiche.</p>
+<p><strong>3.3</strong> CasaZen non tratta i Dati del Titolare per finalità proprie e non determina finalità e mezzi diversi da quelli delle istruzioni del Titolare (art. 28.10 GDPR).</p>
+
+<h2>4. Tipi di dati e categorie di interessati</h2>
+<p><strong>4.1</strong> <em>Categorie di interessati</em>: ospiti che prenotano o soggiornano; componenti del gruppo e accompagnatori, anche minorenni; conduttori e altre parti dei contratti di locazione; persone di contatto e altre persone i cui dati il Titolare inserisce nel Servizio.</p>
+<p><strong>4.2</strong> <em>Tipi di dati</em>, secondo le funzioni usate dal Titolare:</p>
+<ul>
+<li>dati anagrafici e di contatto: nome, cognome, email, telefono, indirizzo, città, CAP, paese;</li>
+<li>dati per le comunicazioni previste dalla legge (Alloggiati Web): data e luogo di nascita, cittadinanza, sesso, tipo di documento, numero, luogo di rilascio, date di rilascio e di scadenza, ruolo nel gruppo di soggiorno;</li>
+<li>copia del documento d'identità, se caricata, conservata nell'archivio privato;</li>
+<li>dati della prenotazione: date, numero di adulti e minori, richieste speciali, codice di prenotazione, importi e imposta di soggiorno;</li>
+<li>dati dei pagamenti: identificativi dei pagamenti e dei metodi presso Stripe, importi, stato, rimborsi. I numeri delle carte non sono raccolti né conservati da CasaZen;</li>
+<li>dati del check-in: stato e scadenza del collegamento, tempi di compilazione, esito dell'email di invio;</li>
+<li>consensi e informative mostrate agli ospiti: versione, data, origine, indirizzo IP, eventuale nota;</li>
+<li>dati dei contratti di locazione: nome, codice fiscale, cittadinanza ed email delle parti, importi, date, contratto firmato e ricevuta di registrazione;</li>
+<li>dati dei soggiorni di portali terzi inseriti dal Titolare (nome ed email dell'ospite) quando converte un blocco di calendario in soggiorno;</li>
+<li>credenziali dell'account Alloggiati Web del Titolare, se le registra.</li>
+</ul>
+<p><strong>4.3</strong> Il Servizio non è progettato per trattare categorie particolari di dati (art. 9 GDPR) né dati relativi a condanne penali. Il Titolare non le inserisce nei campi liberi (richieste speciali, note) salvo che sia indispensabile e sotto la propria responsabilità; se le inserisce, CasaZen le tratta come ogni altro contenuto di quel campo.</p>
+
+<h2>5. Istruzioni documentate e responsabilità del Titolare</h2>
+<p><strong>5.1</strong> CasaZen tratta i Dati del Titolare soltanto su istruzioni documentate del Titolare, anche per quanto riguarda i trasferimenti verso un paese terzo. Sono istruzioni documentate: il DPA, i Termini di Servizio, l'uso e la configurazione delle funzioni del Servizio da parte del Titolare e dei suoi collaboratori e le richieste scritte del Titolare coerenti con questi documenti.</p>
+<p><strong>5.2</strong> Se il diritto dell'Unione o dello Stato membro cui è soggetta impone a CasaZen un trattamento diverso, CasaZen ne informa il Titolare prima del trattamento, salvo che la legge lo vieti per rilevanti motivi di interesse pubblico.</p>
+<p><strong>5.3</strong> CasaZen informa immediatamente il Titolare se ritiene che un'istruzione violi il GDPR o altre disposizioni sulla protezione dei dati.</p>
+<p><strong>5.4</strong> Il Titolare garantisce di avere una base giuridica per i trattamenti che affida a CasaZen, di aver informato gli interessati ai sensi degli artt. 13 e 14 GDPR, di inserire solo dati necessari, esatti e aggiornati, e di mantenere sicuri gli accessi dei propri collaboratori. Restano a carico del Titolare gli adempimenti verso le autorità (ad esempio la comunicazione degli ospiti all'autorità di pubblica sicurezza).</p>
+
+<h2>6. Riservatezza</h2>
+<p><strong>6.1</strong> CasaZen garantisce che le persone autorizzate a trattare i Dati del Titolare sono vincolate da un obbligo di riservatezza, contrattuale o legale, e vi accedono nei limiti di quanto necessario per assistenza, manutenzione e sicurezza.</p>
+<p><strong>6.2</strong> CasaZen non comunica i Dati del Titolare a terzi se non ai sub-responsabili dell'art. 8, ai destinatari scelti dal Titolare con le funzioni del Servizio e alle autorità quando la legge lo impone, informandone il Titolare ove consentito.</p>
+
+<h2>7. Misure di sicurezza (art. 32 GDPR)</h2>
+<p><strong>7.1</strong> CasaZen applica le misure tecniche e organizzative seguenti, implementate nel Servizio alla data di entrata in vigore del DPA:</p>
+<ul>
+<li><strong>Separazione dei dati per Organizzazione.</strong> Ogni dato è associato all'Organizzazione del Titolare; a ogni lettura il Servizio applica automaticamente il filtro per Organizzazione e una risorsa di un'altra Organizzazione risulta non trovata.</li>
+<li><strong>Autenticazione e accesso per ruoli.</strong> Ogni richiesta è autenticata con un token verificato e autorizzata da regole per ruolo e per singola risorsa; le funzioni di amministrazione della piattaforma sono riservate a un ruolo dedicato; un account può essere disattivato.</li>
+<li><strong>Cifratura in transito.</strong> L'accesso al Servizio avviene su HTTPS, con HSTS sulle API; la connessione al database richiede TLS.</li>
+<li><strong>Cifratura dei dati più sensibili a livello di colonna.</strong> Numero e luogo di rilascio dei documenti degli ospiti e dei componenti del gruppo, credenziali Alloggiati Web, chiavi dei portali di prenotazione e indirizzi di importazione dei calendari sono cifrati nel database con cifratura autenticata (AES-256-CBC con HMAC-SHA256); le chiavi sono conservate cifrate con un certificato dell'ambiente e ruotano automaticamente. Nome, email e telefono non sono cifrati a livello di colonna perché servono alle ricerche; sono protetti dal controllo degli accessi e dalle misure dei fornitori di infrastruttura.</li>
+<li><strong>Archivio privato dei documenti.</strong> Copie dei documenti, contratti e ricevute sono in un archivio non pubblico, leggibili solo tramite un'API autenticata con controllo dell'Organizzazione o tramite collegamenti firmati di pochi minuti.</li>
+<li><strong>Riduzione dell'esposizione dei dati.</strong> Il numero di documento è mostrato mascherato (ultime tre cifre) e in chiaro solo su richiesta esplicita, registrata; le credenziali Alloggiati Web non sono mai restituite dalle API.</li>
+<li><strong>Collegamenti e token.</strong> I collegamenti di check-in e di conferma sono casuali, hanno una scadenza e sono conservati solo come impronta (hash); i link di esportazione dei calendari non contengono dati degli ospiti.</li>
+<li><strong>Pagamenti.</strong> I numeri delle carte non transitano da CasaZen; le notifiche di Stripe sono accettate solo con firma verificata ed elaborate una sola volta.</li>
+<li><strong>Registri tecnici senza dati personali in chiaro.</strong> I registri applicativi non contengono indirizzi email in chiaro (sono mascherati), nomi, token di accesso né credenziali.</li>
+<li><strong>Protezione delle interfacce.</strong> Intestazioni di sicurezza HTTP, elenco delle origini consentite senza credenziali, limitazione della frequenza delle richieste sulle funzioni pubbliche e verifiche contro l'accesso a indirizzi interni quando il Servizio scarica indirizzi indicati dagli utenti.</li>
+<li><strong>Tracciabilità.</strong> Esportazioni, cancellazioni, anonimizzazioni e applicazioni dei tempi di conservazione sono registrate senza dati personali dell'ospite; lo storico dei consensi è tenuto in forma di sola aggiunta.</li>
+<li><strong>Segreti e configurazione.</strong> Le chiavi e le credenziali del Servizio sono nelle variabili degli ambienti di esecuzione, non nel codice; in produzione l'applicazione non si avvia senza la configurazione di cifratura richiesta.</li>
+<li><strong>Cancellazione e minimizzazione.</strong> Strumenti di cancellazione, anonimizzazione ed esportazione per ospite e un processo notturno che applica i periodi di conservazione configurati (art. 13).</li>
+<li><strong>Copie di sicurezza.</strong> Gestite dal fornitore del database, secondo i suoi tempi di conservazione.</li>
+</ul>
+<p><strong>7.2</strong> Il Titolare è responsabile della corretta assegnazione dei ruoli ai propri collaboratori, della riservatezza delle credenziali e della sicurezza dei propri dispositivi.</p>
+<p><strong>7.3</strong> CasaZen può aggiornare le misure per adeguarle allo stato della tecnica, purché non riduca il livello complessivo di sicurezza.</p>
+
+<h2>8. Sub-responsabili</h2>
+<p><strong>8.1</strong> Il Titolare autorizza in via generale CasaZen a ricorrere ai sub-responsabili indicati, con finalità, società, luogo del trattamento e strumento di trasferimento, nell'<a href="{{Site.BaseUrl}}/legale/sub-responsabili">elenco dei sub-responsabili</a>, sempre aggiornato rispetto alla configurazione del Servizio e non ripetuto in questo documento.</p>
+<p><strong>8.2</strong> CasaZen vincola ciascun sub-responsabile con un contratto che impone gli stessi obblighi di protezione dei dati del DPA, in particolare garanzie sufficienti sulle misure tecniche e organizzative (art. 28.4 GDPR). CasaZen resta pienamente responsabile verso il Titolare dell'adempimento degli obblighi del sub-responsabile.</p>
+<p><strong>8.3</strong> CasaZen informa il Titolare di ogni modifica prevista (aggiunta o sostituzione di un sub-responsabile) con un preavviso di almeno {{Dpa.SubprocessorNoticeDays}} giorni, per email all'indirizzo dell'account o con un avviso nell'app, aggiornando l'elenco. La sola pubblicazione dell'elenco non costituisce notifica.</p>
+<p><strong>8.4</strong> Entro il preavviso il Titolare può opporsi alla modifica per motivi ragionevoli legati alla protezione dei dati, scrivendo a <a href="mailto:{{Controller.PrivacyEmail}}">{{Controller.PrivacyEmail}}</a>. Le parti cercano in buona fede una soluzione; se non la trovano, il Titolare può recedere dal contratto senza costi aggiuntivi prima che il nuovo sub-responsabile sia attivato per i suoi dati.</p>
+<p><strong>8.5</strong> Quando una sostituzione è urgente per ragioni di sicurezza o di continuità del Servizio, CasaZen la comunica appena possibile e applica comunque l'art. 8.4.</p>
+
+<h2>9. Trasferimenti verso paesi terzi</h2>
+<p><strong>9.1</strong> CasaZen trasferisce i Dati del Titolare fuori dallo Spazio economico europeo solo ai sub-responsabili elencati e nel rispetto del capo V del GDPR: decisione di adeguatezza (art. 45 GDPR), garanzie adeguate come le clausole contrattuali standard (art. 46 GDPR) o altro strumento valido. Per ciascun sub-responsabile l'elenco indica il luogo del trattamento e lo strumento usato.</p>
+
+<h2>10. Assistenza per i diritti degli interessati</h2>
+<p><strong>10.1</strong> Se un interessato si rivolge a CasaZen per esercitare un diritto sui Dati del Titolare, CasaZen lo invita a rivolgersi al Titolare e gli inoltra la richiesta senza ingiustificato ritardo; non risponde nel merito senza istruzioni del Titolare, salvo obbligo di legge.</p>
+<p><strong>10.2</strong> CasaZen assiste il Titolare con misure tecniche e organizzative adeguate, in particolare con gli strumenti del Servizio:</p>
+<ul>
+<li><strong>accesso e portabilità (artt. 15 e 20)</strong>: esportazione dei dati di un ospite in un file JSON strutturato (anagrafica, nascita, documento, prenotazioni e pagamenti, componenti dei soggiorni, sessioni di check-in, comunicazioni Alloggiati, storico dei consensi), con la richiesta GET /api/gdpr/guests/{id}/export; riepilogo di consensi e conservazione con GET /api/gdpr/guests/{id};</li>
+<li><strong>rettifica (art. 16 GDPR)</strong>: modifica dei dati dell'ospite e dei componenti del gruppo nelle schede del Servizio;</li>
+<li><strong>cancellazione (art. 17 GDPR)</strong>: DELETE /api/gdpr/guests/{id}, che cancella i campi personali dell'ospite e dei componenti dei suoi soggiorni, la copia del documento, l'indirizzo IP e le note dei consensi e le richieste speciali delle prenotazioni; non è consentita finché un soggiorno è aperto, perché la comunicazione prevista dalla legge è ancora in corso (art. 17.3.b GDPR); la richiesta ripetuta non cambia nulla;</li>
+<li><strong>anonimizzazione</strong>: POST /api/gdpr/guests/{id}/anonymize, con gli stessi effetti senza segnare il record come cancellato;</li>
+<li><strong>consenso al marketing e opposizione (artt. 7.3 e 21)</strong>: PUT /api/gdpr/guests/{id}/consent; il Titolare non può concedere il consenso al posto dell'ospite e può registrarne la revoca solo su richiesta documentata dell'ospite, con una nota;</li>
+<li><strong>parti dei contratti di locazione</strong>: POST /api/leases/{id}/erasure-request; i dati delle parti sono anonimizzati dopo la fine del contratto;</li>
+<li><strong>dati fiscali dell'Organizzazione</strong>: GET /api/gdpr/org/export e POST /api/gdpr/org/anonymize.</li>
+</ul>
+<p><strong>10.3</strong> Per le richieste non coperte da questi strumenti (ad esempio la limitazione del trattamento, art. 18 GDPR) CasaZen assiste su richiesta scritta. L'assistenza è prestata in tempo utile perché il Titolare possa rispondere nel termine dell'art. 12.3 GDPR.</p>
+<p><strong>10.4</strong> <em>Cosa resta dopo una cancellazione.</em> Restano: la scheda dell'ospite con nomi sostituiti da «ANONYMIZED» e un indirizzo email segnaposto, perché prenotazioni e comunicazioni vi sono collegate; le prenotazioni con date, importi, pagamenti e riferimenti Stripe, che sono scritture contabili del Titolare; gli eventi di consenso (finalità, azione, versione, data), senza indirizzo IP né note, come prova del consenso o dell'informativa; lo stato della comunicazione Alloggiati e il riferimento della ricevuta, come prova di un obbligo di legge; i registri di audit, che non contengono dati personali. CasaZen non rimuove i dati che Stripe conserva per i pagamenti, né le copie di sicurezza dei fornitori, che scadono secondo i loro tempi.</p>
+
+<h2>11. Assistenza per sicurezza, valutazione d'impatto e consultazione preventiva</h2>
+<p><strong>11.1</strong> CasaZen assiste il Titolare nel rispetto degli obblighi degli artt. da 32 a 36 GDPR, tenendo conto della natura del trattamento e delle informazioni di cui dispone: su richiesta scritta fornisce la descrizione delle misure di sicurezza e le informazioni necessarie per una valutazione d'impatto sulla protezione dei dati (art. 35 GDPR) e per la consultazione preventiva dell'autorità di controllo (art. 36 GDPR).</p>
+
+<h2>12. Violazioni dei dati personali</h2>
+<p><strong>12.1</strong> CasaZen notifica al Titolare, senza ingiustificato ritardo dopo esserne venuta a conoscenza (art. 33.2 GDPR) e ove possibile entro {{Dpa.BreachNotificationHours}} ore, ogni violazione di sicurezza che comporti la distruzione, la perdita, la modifica, la divulgazione non autorizzata o l'accesso non autorizzato ai Dati del Titolare. La notifica è inviata all'indirizzo email dell'account.</p>
+<p><strong>12.2</strong> La notifica descrive, per quanto noto: la natura della violazione, le categorie e il numero approssimativo di interessati e di registrazioni, un recapito per ulteriori informazioni, le probabili conseguenze e le misure adottate o proposte. Le informazioni non ancora disponibili sono fornite appena possibile, per fasi.</p>
+<p><strong>12.3</strong> CasaZen adotta senza ritardo le misure per contenere e rimediare alla violazione e collabora con il Titolare. Il Titolare valuta la notifica all'autorità di controllo entro 72 ore dalla conoscenza (art. 33.1 GDPR) e la comunicazione agli interessati (art. 34 GDPR); CasaZen non vi provvede per suo conto, salvo istruzione o obbligo di legge.</p>
+<p><strong>12.4</strong> CasaZen documenta le violazioni che riguardano i Dati del Titolare, con i fatti, gli effetti e i rimedi.</p>
+
+<h2>13. Conservazione, restituzione e cancellazione</h2>
+<p><strong>13.1</strong> <em>Durante il contratto.</em> Il Servizio applica ogni notte i periodi di conservazione seguenti a ciascuna categoria; il Titolare può in ogni momento cancellare, anonimizzare o esportare i dati con gli strumenti dell'art. 10. Se per una categoria non è configurato alcun periodo, il Servizio non cancella nulla in automatico: i dati restano finché il Titolare non ne dispone la cancellazione.</p>
+<table>
+<thead><tr><th>Categoria</th><th>Periodo applicato dal Servizio</th></tr></thead>
+<tbody>
+<tr><td>Copie dei documenti d'identità caricate</td><td>{{#if Retention.DocumentScans}}{{Retention.DocumentScans}} dopo l'ultimo check-out dell'ospite{{#else}}nessun periodo applicato{{/if}}</td></tr>
+<tr><td>Dati per la comunicazione Alloggiati Web (nascita, cittadinanza, sesso, documento) e dati dei componenti del gruppo</td><td>{{#if Retention.AlloggiatiData}}{{Retention.AlloggiatiData}} dopo il check-out del soggiorno{{#else}}nessun periodo applicato{{/if}}</td></tr>
+<tr><td>Consenso al marketing dell'ospite</td><td>{{#if Retention.Marketing}}{{Retention.Marketing}} dalla data del consenso{{#else}}nessuna durata massima: il consenso dura fino alla revoca{{/if}}</td></tr>
+<tr><td>Dati fiscali e contabili dell'ospite (anonimizzazione del record)</td><td>{{#if Retention.FiscalData}}{{Retention.FiscalData}} dopo l'ultimo check-out dell'ospite{{#else}}nessun periodo applicato{{/if}}</td></tr>
+<tr><td>Dati delle parti dei contratti di locazione</td><td>{{#if Retention.LeaseParties}}{{Retention.LeaseParties}} dalla data di fine del contratto{{#else}}nessun periodo applicato; l'anonimizzazione avviene su richiesta, dopo la fine del contratto{{/if}}</td></tr>
+</tbody>
+</table>
+<p><strong>13.2</strong> <em>Alla cessazione.</em> Entro {{Terms.DataReturnDays}} giorni dalla cessazione del contratto il Titolare sceglie se farsi restituire i Dati del Titolare, in un formato strutturato di uso comune, con gli strumenti di esportazione dell'app o su richiesta scritta, e se farli cancellare. Se il Titolare non sceglie, CasaZen li cancella o li rende anonimi allo scadere di tale termine.</p>
+<p><strong>13.3</strong> Dopo la restituzione o alla scadenza del termine CasaZen cancella o rende anonimi i Dati del Titolare e le copie esistenti, salvo che il diritto dell'Unione o dello Stato membro ne imponga la conservazione: in tal caso li tratta solo per tale scopo e ne informa il Titolare. Le copie di sicurezza dei fornitori scadono secondo i loro tempi. Su richiesta CasaZen conferma per iscritto la cancellazione.</p>
+
+<h2>14. Informazioni e audit</h2>
+<p><strong>14.1</strong> CasaZen mette a disposizione del Titolare le informazioni necessarie per dimostrare il rispetto degli obblighi dell'art. 28 GDPR, compresa la documentazione sulle misure di sicurezza e quella che i sub-responsabili rendono disponibile.</p>
+<p><strong>14.2</strong> CasaZen consente e contribuisce alle attività di revisione, comprese le ispezioni, realizzate dal Titolare o da un revisore da lui incaricato e vincolato alla riservatezza. Salvo violazione dei dati o richiesta di un'autorità, la revisione non è richiesta più di una volta ogni dodici mesi, è preannunciata per iscritto con almeno {{Dpa.AuditNoticeDays}} giorni di anticipo, ha durata ragionevole, avviene preferibilmente da remoto e non include l'accesso ai dati di altri clienti né a informazioni che compromettano la sicurezza. I costi sono a carico del Titolare, salvo che la revisione accerti una violazione sostanziale del DPA da parte di CasaZen.</p>
+
+<h2>15. Responsabilità</h2>
+<p><strong>15.1</strong> Restano ferme le responsabilità verso gli interessati e le autorità previste dalla legge, compreso l'art. 82 GDPR. Nei rapporti tra le parti si applicano, nei limiti consentiti dalla legge, le limitazioni di responsabilità dell'art. 14 dei Termini di Servizio, che non si applicano ai danni causati con dolo o colpa grave.</p>
+
+<h2>16. Disposizioni finali</h2>
+<p><strong>16.1</strong> Il DPA è accettato separatamente dai Termini nell'onboarding, con la versione registrata. Le modifiche seguono l'art. 15 dei Termini di Servizio (preavviso di almeno {{Terms.ChangeNoticeDays}} giorni) e, per i sub-responsabili, l'art. 8.</p>
+<p><strong>16.2</strong> In caso di contrasto sul trattamento dei dati personali prevale il DPA sui Termini di Servizio.</p>
+<p><strong>16.3</strong> Si applicano la legge italiana e il foro dell'art. 16 dei Termini di Servizio ({{Terms.GoverningCourt}}), salvo il foro inderogabile.</p>
+<p><strong>16.4</strong> Le richieste relative al DPA si inviano a <a href="mailto:{{Controller.PrivacyEmail}}">{{Controller.PrivacyEmail}}</a> o alla PEC {{Controller.Pec}}.</p>

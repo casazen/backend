@@ -37,6 +37,9 @@ public class AppDbContext(
     public DbSet<Org> Orgs { get; set; } = null!;
     public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
 
+    // Operator privacy notice and booking terms of the public site, versioned (BK-14, A3-21)
+    public DbSet<OrgSiteDocument> OrgSiteDocuments { get; set; } = null!;
+
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
@@ -85,6 +88,7 @@ public class AppDbContext(
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+    public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
@@ -644,6 +648,23 @@ public class AppDbContext(
         modelBuilder.Entity<OrgSlugAlias>()
             .HasIndex(a => a.OrgId);
 
+        // Operator documents of the public site (BK-14, A3-21): immutable versions numbered per org and kind. The unique
+        // index is the guarantee of the numbering under concurrent publishes (23505, the loser takes the next number).
+        modelBuilder.Entity<OrgSiteDocument>(entity =>
+        {
+            entity.HasOne(d => d.Org)
+                .WithMany()
+                .HasForeignKey(d => d.OrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(d => d.Kind).HasConversion<string>().HasMaxLength(20);
+            entity.Property(d => d.Source).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(d => new { d.OrgId, d.Kind, d.Version })
+                .IsUnique()
+                .HasDatabaseName("UIX_OrgSiteDocuments_Org_Kind_Version");
+        });
+
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.CustomDomain)
             .IsUnique()
@@ -888,6 +909,11 @@ public class AppDbContext(
             .HasIndex(i => i.TokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
+
+        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
+        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
+        modelBuilder.Entity<SupplierAdminAuditEntry>()
+            .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()

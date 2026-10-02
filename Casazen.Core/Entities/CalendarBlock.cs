@@ -14,6 +14,9 @@ public class CalendarBlock : ITenantOwned
     /// <summary>Column length of <see cref="Summary"/>: longer feed summaries are truncated (PC-10).</summary>
     public const int SummaryMaxLength = 500;
 
+    /// <summary>Longest note the host may write on a manual block (PC-09), stored in <see cref="Summary"/>.</summary>
+    public const int ManualNoteMaxLength = 200;
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -38,8 +41,15 @@ public class CalendarBlock : ITenantOwned
 
     public DateTime EndUtc { get; set; }
 
+    /// <summary>
+    /// SUMMARY of the imported event, or the note of the host on a manual block (at most <see cref="ManualNoteMaxLength"/>
+    /// characters, PC-09). Shown to the host only: never exported (<c>ICalExportService</c> writes a neutral text).
+    /// </summary>
     [MaxLength(SummaryMaxLength)]
     public string? Summary { get; set; }
+
+    /// <summary>Why the host closed the dates (PC-09): set on a <see cref="CalendarBlockSource.Manual"/> block only.</summary>
+    public CalendarBlockReason? ManualReason { get; set; }
 
     public DateTime? LastSyncedAt { get; set; }
 
