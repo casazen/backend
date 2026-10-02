@@ -114,6 +114,13 @@ internal static class PostgresAdvisoryLocks
         SupplierCalendarSync = 1_065,
 
         /// <summary>
+        /// Rent of one lease (key: lease id): the schedule set-up, the tenant's payment session, an offline payment, the
+        /// payment webhooks and the collection job change its installments one at a time, so an installment never gets
+        /// two payable PaymentIntents or an offline payment while it is paid online (LT-06).
+        /// </summary>
+        RentLease = 1_206,
+
+        /// <summary>
         /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>

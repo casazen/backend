@@ -1813,4 +1813,55 @@
   <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
     <value>The suspension reason can have at most 500 characters.</value>
   </data>
+  <data name="RentLeaseNotSigned" xml:space="preserve">
+    <value>The rent can be set up only for a lease signed by every party.</value>
+  </data>
+  <data name="RentLeaseDatesInvalid" xml:space="preserve">
+    <value>The lease dates do not allow a rent schedule.</value>
+  </data>
+  <data name="RentBillingDayInvalid" xml:space="preserve">
+    <value>The due day must be between {0} and {1}.</value>
+  </data>
+  <data name="RentAmountInvalid" xml:space="preserve">
+    <value>The installment amount must be greater than zero, with at most two decimals.</value>
+  </data>
+  <data name="RentCadenceLocked" xml:space="preserve">
+    <value>The cadence cannot change: some installments are paid or have a payment in progress.</value>
+  </data>
+  <data name="RentScheduleNotFound" xml:space="preserve">
+    <value>The rent schedule has not been set up yet.</value>
+  </data>
+  <data name="RentInstallmentNotFound" xml:space="preserve">
+    <value>Rent installment not found.</value>
+  </data>
+  <data name="RentInstallmentAlreadyPaid" xml:space="preserve">
+    <value>The installment is already paid.</value>
+  </data>
+  <data name="RentInstallmentInFlight" xml:space="preserve">
+    <value>An online payment of the installment is in progress: wait for Stripe's outcome.</value>
+  </data>
+  <data name="RentInstallmentNotPayable" xml:space="preserve">
+    <value>The installment can no longer be paid online: contact the landlord.</value>
+  </data>
+  <data name="RentOnlinePaymentsUnavailable" xml:space="preserve">
+    <value>To request online payments, connect a Stripe account enabled for charges (Settings > Payments).</value>
+  </data>
+  <data name="RentNoTenantEmail" xml:space="preserve">
+    <value>No tenant has an email address to send the payment request to.</value>
+  </data>
+  <data name="RentPaymentRequestNotSent" xml:space="preserve">
+    <value>The payment request was not sent: the email service is unavailable. Try again later.</value>
+  </data>
+  <data name="RentPaidOnInvalid" xml:space="preserve">
+    <value>Enter a valid payment date, not in the future (note of at most 500 characters).</value>
+  </data>
+  <data name="RentPaymentLinkInvalid" xml:space="preserve">
+    <value>The payment link is not valid or was replaced by a newer one.</value>
+  </data>
+  <data name="RentCadenceRequired" xml:space="preserve">
+    <value>Choose the rent cadence (monthly, bimonthly, quarterly or semiannual).</value>
+  </data>
+  <data name="RentBillingDayRange" xml:space="preserve">
+    <value>The due day must be between 1 and 28.</value>
+  </data>
 </root>
