@@ -15,14 +15,14 @@ public static class SupplierShowcaseMapper
         SupplierProfile profile,
         IReadOnlyDictionary<string, Comune> listed,
         IEnumerable<(DateOnly Date, bool Available)> availability) => new()
-    {
-        Slug = profile.ShowcaseSlug,
-        LegalName = profile.LegalName,
-        Categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [],
-        // The comuni chosen from the official list are shown by name (SU-04), then what the supplier wrote.
-        Comuni = SupplierComuniView.Names(profile, listed),
-        Bio = profile.Bio,
-        PhotoUrls = JsonSerializer.Deserialize<string[]>(profile.PhotoUrlsJson, JsonOpts) ?? [],
-        Availability = availability.Select(a => new AvailabilityEntryDto { Date = a.Date, Available = a.Available }).ToList(),
-    };
+        {
+            Slug = profile.ShowcaseSlug,
+            LegalName = profile.LegalName,
+            Categories = JsonSerializer.Deserialize<string[]>(profile.CategoriesJson, JsonOpts) ?? [],
+            // The comuni chosen from the official list are shown by name (SU-04), then what the supplier wrote.
+            Comuni = SupplierComuniView.Names(profile, listed),
+            Bio = profile.Bio,
+            PhotoUrls = JsonSerializer.Deserialize<string[]>(profile.PhotoUrlsJson, JsonOpts) ?? [],
+            Availability = availability.Select(a => new AvailabilityEntryDto { Date = a.Date, Available = a.Available }).ToList(),
+        };
 }
