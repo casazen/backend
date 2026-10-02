@@ -54,7 +54,7 @@ public class LogRedactionTests
         supplierService
             .Setup(s => s.CreateInviteAsync(Email, "015146", null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SupplierInvite(Guid.NewGuid(), DateTime.UtcNow.AddDays(7)));
-        var controller = new AdminSuppliersController(supplierService.Object, logger);
+        var controller = new AdminSuppliersController(supplierService.Object, Mock.Of<ISupplierAdminService>(), logger);
 
         var result = await controller.InviteSupplier(
             new AdminInviteSupplierRequest { Email = Email, ComuneCode = "015146" },

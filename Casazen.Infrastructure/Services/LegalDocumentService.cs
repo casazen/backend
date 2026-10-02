@@ -9,10 +9,18 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Versions, dates and texts of the legal documents (PL-14). The texts are provided by the product owner (D14) and
-/// never written by code: an HTML fragment per version and language under <c>Legal:ContentPath</c>
-/// (<c>{kind}/{version}.{lang}.html</c>, shipped with the API). While a text is missing the clients show "in
-/// preparation" and the consent still refers to the configured version. Runbook: <c>docs/runbooks/legal-documents.md</c>.
+/// Versions, dates and texts of the legal documents (PL-14, LEGAL-TEXTS). The texts are never written by code: an HTML
+/// fragment per version and language under <c>Legal:ContentPath</c> (<c>{kind}/{version}.{lang}.html</c>, shipped with
+/// the API), with placeholders for the controller's data and the real plans (<see cref="LegalDocumentTemplate"/>,
+/// <see cref="LegalVariables"/>). The drafts were written by an AI agent for the product owner (D14, updated 2026-10-01)
+/// and need a lawyer's review before production use.
+/// <para>
+/// <b>Fail-closed.</b> A text is served only when the file of the <i>configured</i> version exists and every value it
+/// needs is configured; otherwise the clients show "in preparation" (never a placeholder), the health check
+/// <c>legal</c> is degraded and the startup log says what to set (D9). The consent always refers to the configured
+/// version: publishing a new text means changing the version (re-acceptance by the hosts, PL-02), a value of the
+/// controller's data does not. Runbook: <c>docs/runbooks/legal-documents.md</c>.
+/// </para>
 /// </summary>
 public partial class LegalDocumentService(IConfiguration configuration, ILogger<LegalDocumentService> logger)
     : ILegalDocumentService
@@ -21,8 +29,8 @@ public partial class LegalDocumentService(IConfiguration configuration, ILogger<
     public const string DefaultLanguage = "it";
     private static readonly string[] SupportedLanguages = [DefaultLanguage, "en"];
 
-    // Texts change only with a deploy: one read per file and process.
-    private readonly ConcurrentDictionary<string, LegalDocumentText?> _texts = new(StringComparer.Ordinal);
+    // Texts and values change only with a deploy: one read and rendering per file and process.
+    private readonly ConcurrentDictionary<string, TextEntry> _entries = new(StringComparer.Ordinal);
 
     private string GetVersion(string key) =>
         configuration[$"Legal:Documents:{key}:Version"] ?? "1.0";
@@ -55,7 +63,7 @@ public partial class LegalDocumentService(IConfiguration configuration, ILogger<
     public LegalDocumentText? GetText(LegalDocumentKind kind, string? language)
     {
         var version = GetVersion(kind.ToString());
-        if (!SafeVersionRegex().IsMatch(version) || version.Contains("..", StringComparison.Ordinal))
+        if (!IsSafeVersion(version))
         {
             logger.LogWarning("Legal document {Kind}: version {Version} is not a valid file name, no text served", kind, version);
             return null;
@@ -65,13 +73,49 @@ public partial class LegalDocumentService(IConfiguration configuration, ILogger<
         string[] candidates = requested == DefaultLanguage ? [DefaultLanguage] : [requested, DefaultLanguage];
         foreach (var candidate in candidates)
         {
-            var path = Path.Combine(ContentRoot(), kind.ToString().ToLowerInvariant(), $"{version}.{candidate}.html");
-            var text = _texts.GetOrAdd(path, p => ReadText(p, candidate));
+            var text = GetEntry(kind, version, candidate).Text;
             if (text is not null)
                 return text;
         }
 
         return null;
+    }
+
+    public LegalDocumentPublication GetPublication(LegalDocumentKind kind)
+    {
+        var version = GetVersion(kind.ToString());
+        var hasExternalCopy = ReadHttpsUrl($"Legal:Documents:{kind}:DocumentUrl") is not null;
+        if (!IsSafeVersion(version))
+        {
+            return new LegalDocumentPublication(
+                kind, version, HasText: false, hasExternalCopy, TextFileFound: false, [],
+                ["the version is not a valid file name (letters, digits, '.', '_', '+', '-')"]);
+        }
+
+        var italian = GetEntry(kind, version, DefaultLanguage);
+        var missing = new SortedSet<string>(italian.Missing, StringComparer.Ordinal);
+        var problems = new List<string>(italian.Problems);
+
+        // A translation is optional, but one that cannot be published is a problem to report: the English reader would
+        // silently get the Italian text.
+        foreach (var language in SupportedLanguages.Where(l => l != DefaultLanguage))
+        {
+            var translation = GetEntry(kind, version, language);
+            if (!translation.FileFound || translation.Text is not null)
+                continue;
+
+            missing.UnionWith(translation.Missing);
+            problems.AddRange(translation.Problems.Select(p => $"{language}: {p}"));
+        }
+
+        return new LegalDocumentPublication(
+            kind, version, HasText: italian.Text is not null, hasExternalCopy, italian.FileFound, [.. missing], problems);
+    }
+
+    private TextEntry GetEntry(LegalDocumentKind kind, string version, string language)
+    {
+        var path = Path.Combine(ContentRoot(), kind.ToString().ToLowerInvariant(), $"{version}.{language}.html");
+        return _entries.GetOrAdd(path, p => ReadText(kind, p, language));
     }
 
     /// <summary>
@@ -98,22 +142,47 @@ public partial class LegalDocumentService(IConfiguration configuration, ILogger<
         return Path.IsPathRooted(path) ? path : Path.Combine(AppContext.BaseDirectory, path);
     }
 
-    private LegalDocumentText? ReadText(string path, string language)
+    private TextEntry ReadText(LegalDocumentKind kind, string path, string language)
     {
         try
         {
             if (!File.Exists(path))
-                return null;
+                return TextEntry.NotFound;
+
+            var rendered = LegalDocumentTemplate.Render(File.ReadAllText(path), LegalVariables.Create(configuration, language));
+            if (!rendered.IsComplete)
+            {
+                // Fail-closed: no text is better than a text with a placeholder (names only, never values).
+                logger.LogWarning(
+                    "Legal document {Kind} ({Language}) is not published: missing or invalid {Missing}; problems: {Problems}. " +
+                    "The public page stays 'in preparation' (docs/runbooks/legal-documents.md)",
+                    kind, language, string.Join(", ", rendered.MissingConfiguration), string.Join("; ", rendered.Problems));
+                return new TextEntry(FileFound: true, Text: null, rendered.MissingConfiguration, rendered.Problems);
+            }
 
             // Same allowlist as the public editorial pages: the frontend sanitizes again before rendering.
-            var html = SeoHtmlSanitizer.Sanitize(File.ReadAllText(path));
-            return html.Length == 0 ? null : new LegalDocumentText(language, html);
+            var html = SeoHtmlSanitizer.Sanitize(rendered.Html);
+            return html.Length == 0
+                ? new TextEntry(FileFound: true, Text: null, [], ["the text is empty"])
+                : new TextEntry(FileFound: true, new LegalDocumentText(language, html), [], []);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogError(ex, "Legal document text {Path} cannot be read", path);
-            return null;
+            return new TextEntry(FileFound: true, Text: null, [], ["the text file cannot be read"]);
         }
+    }
+
+    private static bool IsSafeVersion(string version) =>
+        SafeVersionRegex().IsMatch(version) && !version.Contains("..", StringComparison.Ordinal);
+
+    private sealed record TextEntry(
+        bool FileFound,
+        LegalDocumentText? Text,
+        IReadOnlyList<string> Missing,
+        IReadOnlyList<string> Problems)
+    {
+        public static TextEntry NotFound { get; } = new(false, null, [], []);
     }
 
     private static string NormalizeLanguage(string? language)

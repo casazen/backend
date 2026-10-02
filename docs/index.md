@@ -12,6 +12,7 @@
 | [TECHNICAL.md](TECHNICAL.md) | Architecture, API reference, data model, design patterns, infrastructure | Backend developers |
 | [PROJECT.md](PROJECT.md) | Compressed AI context — stack, layout, conventions, gotchas | AI agents, onboarding developers |
 | [INFRA.md](INFRA.md) | Hosting setup: Supabase + Railway + Vercel, multi-env release, release bundles | DevOps, backend developers |
+| [runbooks/deploy-checklist.md](runbooks/deploy-checklist.md) | Every deploy variable of backend, frontend and mobile (where, required or not, effect when missing), ordered pre-deploy blockers, checked against the code | Product Owner, DevOps |
 | [AI-STRATEGY.md](AI-STRATEGY.md) | AI positioning, AI roadmap for the PMS core, and the AI-powered supplier & services marketplace vision | Product Owner, founders, architects |
 | [integrations/ai-assistants-plan.md](integrations/ai-assistants-plan.md) | Plan (no code yet) to integrate CasaZen with ChatGPT and Claude through a remote MCP server, MCP Apps UI and plugins: documentation research with sources, architecture, security/privacy, publication path, tasks AI-01..AI-12, open questions (Italian) | Product Owner, architects, backend developers |
 

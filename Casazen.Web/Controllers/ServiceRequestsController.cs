@@ -7,6 +7,7 @@ using Casazen.Core.Suppliers;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.ServiceRequests;
+using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -391,6 +392,13 @@ public class ServiceRequestsController(
         RejectionReason = r.RejectionReason,
         CreatedAt = r.CreatedAt,
         UpdatedAt = r.UpdatedAt,
+        History = ServiceRequestHistory
+            .Build(
+                new ServiceRequestMilestones(
+                    r.Status, r.CreatedAt, r.UpdatedAt, r.TakenAt, r.CompletedAt, r.PaidAt, r.RejectionReason),
+                takenByName: null)
+            .Select(h => ServiceRequestHistoryEntryDto.From(h))
+            .ToList(),
     };
 
     private static SupplierMatchResponse MapMatchResult(SupplierMatchResult result) => new()

@@ -558,10 +558,11 @@ message can quote the document). Skipped events are logged as counts with the ty
 | `Review alert of OTA stay … not delivered` | Error | The mark is saved, the email/push failed (see email and push logs) |
 | `OTA stay … verified by the host (channel dates applied: …)` | Information | Host cleared the mark (and maybe applied the channel's dates) |
 
-## Configuration (Railway variables, optional)
+## Configuration (Railway variables)
 
 | Variable | Meaning | Default |
 |---|---|---|
+| `App__ApiBaseUrl` | **Required for the export link**: the public https URL of this API (the Railway URL of this environment, different on test and production). The link given to hosts is `{App__ApiBaseUrl}/api/public/ical/{token}`. Without it the link would be built on `https://localhost:5001` and no channel would ever receive the calendar: `GET /api/health/ready` reports `api-url: degraded` (DEPLOY-CFG; the committed value used to be the production host, so the test environment published production links) | none |
 | `ICalImport__RecurrenceMonthsAhead` | Months after today (Europe/Rome) in which recurring events are expanded (1-60) | `18` |
 | `ICalImport__RecurrenceMonthsBack` | Months before today still expanded, for the calendar views (0-12) | `1` |
 | `ICalImport__MaxFeedsPerProperty` | Import feeds a property may link (1-50); each is downloaded every 15 minutes | `10` |

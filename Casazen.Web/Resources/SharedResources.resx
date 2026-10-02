@@ -1762,4 +1762,37 @@
   <data name="DomainIssue_vercel_rejected" xml:space="preserve">
     <value>Il fornitore del servizio non accetta questo dominio. Controlla che sia scritto correttamente.</value>
   </data>
+  <data name="SupplierAlreadySuspended" xml:space="preserve">
+    <value>Il fornitore è già sospeso.</value>
+  </data>
+  <data name="SupplierNotSuspended" xml:space="preserve">
+    <value>Il fornitore non è sospeso: non c'è nulla da riattivare.</value>
+  </data>
+  <data name="SupplierInviteNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="SupplierInviteNotPending" xml:space="preserve">
+    <value>Solo un invito in attesa può essere revocato: questo è già stato usato, è scaduto o è già stato revocato.</value>
+  </data>
+  <data name="SupplierInviteNotResendable" xml:space="preserve">
+    <value>Un invito già usato o revocato non si può reinviare: crea un nuovo invito.</value>
+  </data>
+  <data name="SupplierInviteDuplicate" xml:space="preserve">
+    <value>Esiste già un altro invito in attesa per questa email: revocalo prima di reinviare questo.</value>
+  </data>
+  <data name="SupplierInviteRevoked" xml:space="preserve">
+    <value>Questo invito è stato revocato. Chiedi al team CasaZen di inviartene uno nuovo.</value>
+  </data>
+  <data name="SupplierSuspended" xml:space="preserve">
+    <value>Il tuo account fornitore è sospeso: non puoi completare l'attivazione. Contatta il supporto CasaZen.</value>
+  </data>
+  <data name="ServiceRequestSupplierNotActive" xml:space="preserve">
+    <value>Il tuo account fornitore non è attivo (è sospeso o non ancora attivato): non puoi eseguire azioni sulle richieste. Contatta il supporto CasaZen.</value>
+  </data>
+  <data name="SupplierSuspendReasonRequired" xml:space="preserve">
+    <value>Indica il motivo della sospensione.</value>
+  </data>
+  <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
+    <value>Il motivo della sospensione può avere al massimo 500 caratteri.</value>
+  </data>
 </root>

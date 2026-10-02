@@ -32,6 +32,10 @@ public static partial class EmailTemplates
         return Push(culture, prefix, ServiceCategoryLabel(culture, category), propertyName);
     }
 
+    /// <summary>Service request marked as paid by the host, to the supplier (SU-09).</summary>
+    public static PushText ServiceRequestPaidPush(CultureInfo culture, string category, string propertyName) =>
+        Push(culture, "Push_ServiceRequestPaid", ServiceCategoryLabel(culture, category), propertyName);
+
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static PushText NewBookingPush(
         CultureInfo culture,
