@@ -270,6 +270,29 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal("Como", body.GetProperty("comuneName").GetString());
     }
 
+    [Fact]
+    public async Task FeaturedProperties_ComuneIstatCodeIsTheKey_CityTextOnlyFallsBackWhenThereIsNoCode()
+    {
+        var host = $"auth0|se04-relink-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(host);
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        // Chosen from the official list: found by the code even if the free-text city is spelled differently.
+        await SeedPropertyAsync(org, $"Con codice {tag}", "Lago di Como", p => p.ComuneIstatCode = "013075");
+        // Code of another comune wins over a city text that says Como: not listed under Como.
+        await SeedPropertyAsync(org, $"Codice altrove {tag}", "Como", p => p.ComuneIstatCode = "058091");
+        // No code yet: the city name is the documented fallback.
+        await SeedPropertyAsync(org, $"Solo citta {tag}", "como");
+        // No code and another city: not listed.
+        await SeedPropertyAsync(org, $"Altra citta {tag}", "Roma");
+        using var client = _factory.CreateClient();
+
+        var body = await client.GetFromJsonAsync<JsonElement>("/api/public/seo/como/featured-properties");
+
+        var names = body.GetProperty("properties").EnumerateArray()
+            .Select(p => p.GetProperty("name").GetString()!).Where(n => n.EndsWith(tag)).OrderBy(n => n).ToList();
+        Assert.Equal([$"Con codice {tag}", $"Solo citta {tag}"], names);
+    }
+
     private async Task<int> CountEventsAsync(string comuneCode)
     {
         using var scope = _factory.Services.CreateScope();
