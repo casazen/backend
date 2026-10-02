@@ -68,4 +68,26 @@ public class OrgSlugHelperTests
         Assert.Equal(first, OrgSlugHelper.NormalizeRequired(first));
         Assert.NotEqual(first, second);
     }
+
+    [Fact]
+    public void IsNeutral_GeneratedSlug_IsTrue()
+    {
+        // Every slug a new org gets (A1-23) is one the host has not chosen yet (PL-15, A1-37).
+        for (var i = 0; i < 50; i++)
+            Assert.True(OrgSlugHelper.IsNeutral(OrgSlugHelper.GenerateNeutral()));
+    }
+
+    [Theory]
+    [InlineData("villa-parco")]
+    [InlineData("casa-rossi")]
+    [InlineData("org-abc")]
+    [InlineData("org-abcd2345-extra")]
+    [InlineData("org-ABCD2345")]
+    [InlineData("org-abcd0123")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void IsNeutral_SlugTheHostChose_IsFalse(string? slug)
+    {
+        Assert.False(OrgSlugHelper.IsNeutral(slug));
+    }
 }
