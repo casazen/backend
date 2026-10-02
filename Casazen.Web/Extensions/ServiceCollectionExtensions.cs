@@ -273,6 +273,7 @@ public static class ServiceCollectionExtensions
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -302,6 +303,7 @@ public static class ServiceCollectionExtensions
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
+        services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
