@@ -395,7 +395,7 @@ public class SeoContentServiceTests
                 content ?? SeoGeneratedContentTests.ValidHtml($"risposta {++calls}"), 50, 500, AiModelTier.Economy, FromCache: false, providerConfigured));
         var cache = new AiResponseCache(Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.AiCacheOptions()));
         var service = new SeoContentService(
-            seoRepo.Object, QuoteService(), aiProvider.Object, EmailTestHelpers.Links(),
+            seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
             Mock.Of<ILogger<SeoContentService>>(), Today, cache);
         return (service, aiProvider, stored, cache);
     }
