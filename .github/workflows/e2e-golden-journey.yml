@@ -101,6 +101,26 @@ jobs:
       - name: Golden Journey L3 (stack up, suite, stack down)
         working-directory: frontend
         run: bash e2e/stack/ci-run.sh
+      - name: Show the failed tests and the stack logs
+        # Only on failure. The same files are uploaded as an artifact, but the job log is what is read first.
+        if: ${{ failure() }}
+        working-directory: frontend
+        run: |
+          strip() { sed 's/\x1b\[[0-9;]*[A-Za-z]//g'; }
+          echo "::group::Failed tests (playwright-report.json)"
+          if [ -f playwright-report.json ]; then
+            jq -r '.. | objects | select(has("results")) | select(any(.results[]; .status=="failed" or .status=="timedOut")) | "### \(.projectName // "") \(.status // "")", (.results[-1].error.message // "no error message")' playwright-report.json 2>/dev/null | strip | head -150 || true
+          else
+            echo "no playwright-report.json: the suite did not run to the end"
+          fi
+          echo "::endgroup::"
+          for f in e2e/.stack/*.log; do
+            [ -f "$f" ] || continue
+            echo "::group::Last 120 lines of $f"
+            tail -n 120 "$f" | strip
+            echo "::endgroup::"
+          done
+          ls -la e2e/.stack e2e/.auth 2>/dev/null || true
       - name: Upload logs and traces
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
