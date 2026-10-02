@@ -41,7 +41,6 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoContentRevision)] = "Revisions of platform SEO content managed by admins.",
         [typeof(SeoContentReviewEvent)] = "Review audit (approve / withdraw) of platform SEO content, written by admins.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
-        [typeof(PlatformBillingMetrics)] = "Platform-wide billing metrics (OSS threshold), not per org.",
         [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
         [typeof(DataProtectionKey)] = "ASP.NET Core Data Protection key ring of the whole application (FD-07), not tenant data.",

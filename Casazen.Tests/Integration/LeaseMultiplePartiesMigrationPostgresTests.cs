@@ -119,6 +119,12 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
             ALTER TABLE "Orgs" ADD COLUMN "DomainVercelTxtValue" character varying(500);
             ALTER TABLE "Orgs" ADD COLUMN "DomainVerifiedAt" timestamp with time zone;
             """);
+        // The "Orgs" billing columns of PL-13 (BillingTaxStripeTaxAndSdiProvider) come after this migration point too.
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Orgs" ADD COLUMN "BillingFiscalCode" character varying(16);
+            ALTER TABLE "Orgs" ADD COLUMN "BillingPecEmail" character varying(255);
+            ALTER TABLE "Orgs" ADD COLUMN "BillingSdiRecipientCode" character varying(7);
+            """);
         db.AddRange(org, property, single, twoLandlords);
         await db.SaveChangesAsync();
         await db.Database.ExecuteSqlRawAsync("""
@@ -136,6 +142,11 @@ public class LeaseMultiplePartiesMigrationPostgresTests : IAsyncLifetime
             ALTER TABLE "Orgs" DROP COLUMN "DomainVercelTxtHost";
             ALTER TABLE "Orgs" DROP COLUMN "DomainVercelTxtValue";
             ALTER TABLE "Orgs" DROP COLUMN "DomainVerifiedAt";
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Orgs" DROP COLUMN "BillingFiscalCode";
+            ALTER TABLE "Orgs" DROP COLUMN "BillingPecEmail";
+            ALTER TABLE "Orgs" DROP COLUMN "BillingSdiRecipientCode";
             """);
         return (single.Id, twoLandlords.Id);
     }

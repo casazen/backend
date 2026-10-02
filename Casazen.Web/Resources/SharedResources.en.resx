@@ -1495,6 +1495,27 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
   </data>
+  <data name="BillingSdiRecipientCodeInvalid" xml:space="preserve">
+    <value>Invalid SDI recipient code: use letters and digits only (at most 7).</value>
+  </data>
+  <data name="BillingFiscalCodeInvalid" xml:space="preserve">
+    <value>Invalid tax code: use letters and digits only (at most 16).</value>
+  </data>
+  <data name="BillingPecEmailInvalid" xml:space="preserve">
+    <value>Invalid PEC address.</value>
+  </data>
+  <data name="PlatformInvoiceSdiStatusUnknown" xml:space="preserve">
+    <value>Unknown e-invoice status.</value>
+  </data>
+  <data name="PlatformInvoiceSdiReferenceInvalid" xml:space="preserve">
+    <value>Enter the reference of the issued e-invoice (at most 255 characters).</value>
+  </data>
+  <data name="PlatformInvoiceNotFound" xml:space="preserve">
+    <value>Invoice not found.</value>
+  </data>
+  <data name="PlatformInvoiceSdiAlreadyIssued" xml:space="preserve">
+    <value>The e-invoice has already been submitted or issued.</value>
+  </data>
   <data name="PropertyPhotoNone" xml:space="preserve">
     <value>Select at least one photo to upload.</value>
   </data>

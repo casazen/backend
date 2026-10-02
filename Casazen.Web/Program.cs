@@ -186,6 +186,8 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
 builder.Services.Configure<ComuniOptions>(builder.Configuration.GetSection(ComuniOptions.SectionName));
 builder.Services.AddHostedService<ComuneSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
+// Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
+builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
 
 // API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())

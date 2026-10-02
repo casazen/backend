@@ -79,7 +79,26 @@ public class Org
     [MaxLength(32)]
     public string? VatId { get; set; }
 
+    /// <summary>
+    /// Legacy: set by the old VIES stub. Since PL-13 the VAT id that counts for the tax is the one on the Stripe customer,
+    /// verified by Stripe (VIES); this column is cleared when the VAT id changes and never set again.
+    /// </summary>
     public DateTime? VatIdValidatedAt { get; set; }
+
+    /// <summary>
+    /// Billing data for the Italian e-invoice of the CasaZen subscription (PL-13): SDI recipient code ("codice
+    /// destinatario"). Name, address and VAT id come from the Stripe customer (Checkout).
+    /// </summary>
+    [MaxLength(7)]
+    public string? BillingSdiRecipientCode { get; set; }
+
+    /// <summary>Certified e-mail (PEC) for the e-invoice, alternative to <see cref="BillingSdiRecipientCode"/>.</summary>
+    [MaxLength(255)]
+    public string? BillingPecEmail { get; set; }
+
+    /// <summary>Codice fiscale of the billed person or company. Distinct from the STR <see cref="FiscalCode"/>.</summary>
+    [MaxLength(16)]
+    public string? BillingFiscalCode { get; set; }
 
     public DateTime? PastDueSince { get; set; }
 

@@ -19,9 +19,7 @@ public class StripeWebhookHandler(
     AppDbContext dbContext,
     IStripeBillingService stripeBillingService,
     IEntitlementService entitlementService,
-    IVatCalculationService vatCalculationService,
-    IOssRevenueTracker ossRevenueTracker,
-    ISdiEInvoiceService sdiEInvoiceService,
+    IPlatformInvoiceService platformInvoices,
     IRentBillingService rentBillingService,
     IPaymentRefundService paymentRefundService,
     CheckoutPaymentSettlementService checkoutPayments,
@@ -70,6 +68,8 @@ public class StripeWebhookHandler(
         CheckoutPaymentSettlement? checkoutSettlement = null;
         // Deferred charge failed (BK-08): guest and host emails once the event is committed.
         DeferredChargeNotice? deferredChargeNotice = null;
+        // Platform invoice paid (PL-13): submitted to the configured SDI provider once the event is committed.
+        Guid? sdiSubmission = null;
         try
         {
             switch (stripeEvent.Type)
@@ -114,7 +114,7 @@ public class StripeWebhookHandler(
                     break;
                 case "invoice.paid":
                     if (source == WebhookSource.Platform)
-                        await HandleInvoicePaidAsync(stripeEvent.Data.Object as Invoice, stripeEvent.Id);
+                        sdiSubmission = await HandleInvoicePaidAsync(stripeEvent.Data.Object as Invoice, stripeEvent.Id);
                     break;
                 case "invoice.payment_failed":
                     if (source == WebhookSource.Platform)
@@ -158,6 +158,9 @@ public class StripeWebhookHandler(
 
         if (deferredChargeNotice is not null)
             await deferredCharges.CompleteAsync(deferredChargeNotice);
+
+        if (sdiSubmission is { } platformInvoiceId)
+            await platformInvoices.SubmitToSdiAsync(platformInvoiceId);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -329,70 +332,34 @@ public class StripeWebhookHandler(
     private static bool IsExistingSubscription(SubscriptionStatus status) =>
         IsPaidSubscription(status) || status == SubscriptionStatus.Incomplete;
 
-    private async Task HandleInvoicePaidAsync(Invoice? invoice, string eventId)
+    /// <summary>
+    /// Records a paid platform invoice with the tax Stripe Tax computed on it (PL-13, A1-08) and reactivates the org's
+    /// subscription. Returns the id of the invoice to submit to the SDI provider after commit, if one is configured.
+    /// </summary>
+    private async Task<Guid?> HandleInvoicePaidAsync(Invoice? invoice, string eventId)
     {
         if (invoice is null || string.IsNullOrWhiteSpace(invoice.Id))
-            return;
+            return null;
 
         if (await dbContext.PlatformInvoices.AnyAsync(i => i.StripeInvoiceId == invoice.Id))
-            return;
+            return null;
 
         var org = await ResolveOrgForInvoiceAsync(invoice);
         if (org is null)
         {
             logger.LogError("No org resolved for invoice {InvoiceId} (event {EventId})", invoice.Id, eventId);
-            return;
+            return null;
         }
 
         var subscriptionId = invoice.Parent?.SubscriptionDetails?.SubscriptionId;
         if (!string.IsNullOrWhiteSpace(subscriptionId))
             MarkSubscriptionPaid(org, subscriptionId, invoice.Id, eventId);
 
-        var amountExVat = ConvertCentsToDecimal(invoice.SubtotalExcludingTax ?? invoice.Subtotal);
-        var totalAmount = ConvertCentsToDecimal(invoice.Total);
-        var viesValidated = org.VatIdValidatedAt.HasValue;
-        var ossThreshold = await ossRevenueTracker.IsOssThresholdReachedAsync();
-        var vatResult = vatCalculationService.Calculate(
-            amountExVat,
-            org.BillingCountry ?? "IT",
-            org.VatId,
-            viesValidated,
-            ossThreshold);
-
-        if (vatResult.VatTreatment == VatTreatments.EuBelowThreshold &&
-            !string.IsNullOrWhiteSpace(org.BillingCountry) &&
-            !string.Equals(org.BillingCountry, "IT", StringComparison.OrdinalIgnoreCase))
-        {
-            await ossRevenueTracker.RecordEuB2cCrossBorderRevenueAsync(amountExVat);
-        }
-
-        var platformInvoice = new PlatformInvoice
-        {
-            OrgId = org.Id,
-            StripeInvoiceId = invoice.Id,
-            AmountExVat = amountExVat,
-            VatAmount = vatResult.VatAmount,
-            TotalAmount = totalAmount,
-            VatTreatment = vatResult.VatTreatment,
-            OssApplied = vatResult.OssApplied,
-            SdiStatus = "pending",
-            CreatedAt = DateTime.UtcNow,
-        };
-
-        dbContext.PlatformInvoices.Add(platformInvoice);
+        var platformInvoice = await platformInvoices.RecordPaidInvoiceAsync(invoice, org);
         await dbContext.SaveChangesAsync();
         await entitlementService.SyncFromSubscriptionAsync(org.Id);
 
-        if (string.Equals(org.BillingCountry, "IT", StringComparison.OrdinalIgnoreCase))
-        {
-            var transmissionId = await sdiEInvoiceService.TransmitInvoiceAsync(platformInvoice);
-            if (!string.IsNullOrWhiteSpace(transmissionId))
-            {
-                platformInvoice.SdiTransmissionId = transmissionId;
-                platformInvoice.SdiStatus = "sent";
-                await dbContext.SaveChangesAsync();
-            }
-        }
+        return platformInvoice.SdiStatus == PlatformInvoiceSdiStatuses.Pending ? platformInvoice.Id : null;
     }
 
     /// <summary>
@@ -526,9 +493,6 @@ public class StripeWebhookHandler(
 
         return null;
     }
-
-    private static decimal ConvertCentsToDecimal(long? cents) =>
-        cents.HasValue ? Math.Round(cents.Value / 100m, 2) : 0m;
 
     private async Task HandleAccountUpdatedAsync(Account? account)
     {

@@ -23,7 +23,7 @@ public class EmailTemplatesTests
 
     public static TheoryData<string> TemplateNames => new()
     {
-        "created", "taken", "completed", "rejected", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
+        "created", "taken", "completed", "rejected", "paid", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
         "late-payment-refunded", "rli-reminder", "rli-overdue", "questura-reminder", "questura-overdue", "onsite-received", "onsite-to-host",
         "onsite-declined", "onsite-expired", "booking-cancelled", "booking-confirmed-paid", "booking-confirmed-late",
         "booking-confirmed-deferred", "booking-confirmed-onsite", "host-booking-confirmed", "host-booking-confirmed-deferred",
@@ -501,6 +501,43 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void ServiceRequestPaid_Italian_TellsTheSupplierThatPaymentIsOutsideCasaZen()
+    {
+        var content = EmailTemplates.ServiceRequestPaid(
+            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Villa Rosa", Link);
+
+        Assert.Equal("Richiesta fornitore segnata come pagata — Villa Rosa", content.Subject);
+        Assert.Contains("Ciao Pulizie Srl,", content.HtmlBody);
+        Assert.Contains("L'host ha segnato come <strong>pagata</strong> la richiesta di <strong>Pulizie</strong> per <strong>Villa Rosa</strong>.", content.HtmlBody);
+        Assert.Contains("fuori da CasaZen", content.HtmlBody);
+        Assert.Contains($"href=\"{Link}\"", content.HtmlBody);
+        Assert.Contains("Apri la console fornitore", content.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestPaid_English_IsTranslated()
+    {
+        var content = EmailTemplates.ServiceRequestPaid(
+            CultureInfo.GetCultureInfo("en"), "Cleaners Ltd", "cleaning", "Villa Rosa", Link);
+
+        Assert.Equal("Supplier request marked as paid — Villa Rosa", content.Subject);
+        Assert.Contains("The host marked the request for <strong>Cleaning</strong> at <strong>Villa Rosa</strong> as <strong>paid</strong>.", content.HtmlBody);
+        Assert.Contains("outside CasaZen", content.HtmlBody);
+    }
+
+    [Fact]
+    public void ServiceRequestPaidPush_ItalianAndEnglish_NameCategoryAndPropertyOnly()
+    {
+        var italian = EmailTemplates.ServiceRequestPaidPush(EmailTemplates.DefaultCulture, "cleaning", "Villa Rosa");
+        var english = EmailTemplates.ServiceRequestPaidPush(CultureInfo.GetCultureInfo("en"), "cleaning", "Villa Rosa");
+
+        Assert.Equal("Richiesta segnata come pagata", italian.Title);
+        Assert.Equal("Pulizie presso Villa Rosa: l'host ha segnato il servizio come pagato.", italian.Body);
+        Assert.Equal("Request marked as paid", english.Title);
+        Assert.Equal("Cleaning at Villa Rosa: the host marked the service as paid.", english.Body);
+    }
+
+    [Fact]
     public void ServiceRequestStatusChanged_StatusWithoutEmail_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -606,6 +643,7 @@ public class EmailTemplatesTests
             "taken" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.PresoInCarico, value, value),
             "completed" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Completato, value, value),
             "rejected" => EmailTemplates.ServiceRequestStatusChanged(culture, ServiceRequestStatus.Rifiutato, value, value, value),
+            "paid" => EmailTemplates.ServiceRequestPaid(culture, value, value, value, Link),
             "invite" => EmailTemplates.SupplierInvite(culture, value, value, value, Link, DateTime.UtcNow),
             "checkin-link" => EmailTemplates.GuestCheckInLink(culture, value, value, CheckIn, Link, CheckIn.AddDays(-1)),
             "checkin-incomplete" => EmailTemplates.GuestCheckInIncomplete(culture, value, value, CheckIn),

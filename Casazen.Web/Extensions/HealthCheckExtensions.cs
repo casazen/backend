@@ -9,7 +9,7 @@ namespace Casazen.Web.Extensions;
 /// <list type="bullet">
 ///   <item><c>/api/health/live</c>: the process answers; no dependency is checked;</item>
 ///   <item><c>/api/health/ready</c>: database, Hangfire, the ISTAT comuni list and configuration of email, storage, Stripe, Auth0, the Vercel
-///   Domains API (custom domains, BK-17), the public API URL (iCal links) and the legal documents; 200 when
+///   Domains API (custom domains, BK-17), the public API URL (iCal links) and the publication of the legal documents (LEGAL-TEXTS, DEPLOY-CFG); 200 when
 ///   healthy or degraded (an optional integration is missing), 503 when unhealthy;</item>
 ///   <item><c>/api/health</c>: same as ready (kept for CI and the existing smoke scripts).</item>
 /// </list>
@@ -38,6 +38,7 @@ public static class HealthCheckExtensions
             .AddCheck<EmailConfigurationHealthCheck>("email", tags: [ReadyTag])
             .AddCheck<StorageConfigurationHealthCheck>("storage", tags: [ReadyTag])
             .AddCheck<StripeConfigurationHealthCheck>("stripe", tags: [ReadyTag])
+            .AddCheck<EInvoicingConfigurationHealthCheck>("einvoicing", tags: [ReadyTag])
             .AddCheck<Auth0ConfigurationHealthCheck>("auth0", tags: [ReadyTag])
             .AddCheck<VercelDomainsConfigurationHealthCheck>("vercel", tags: [ReadyTag])
             .AddCheck<ApiBaseUrlHealthCheck>("api-url", tags: [ReadyTag])

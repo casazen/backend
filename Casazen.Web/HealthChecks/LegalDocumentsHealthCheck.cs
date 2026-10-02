@@ -1,37 +1,26 @@
 using Casazen.Core.Models;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Casazen.Web.HealthChecks;
 
 /// <summary>
-/// Legal documents and subprocessor list (PL-14, D14, DEPLOY-CFG). The texts of Terms of Service, Privacy notice and DPA
-/// are provided by the product owner and never written by code; until they are, the public pages say "in preparazione"
-/// and the onboarding asks hosts to accept a version nobody can read. Nothing here stops the API (it works without the
-/// texts), so every gap is <c>degraded</c>: no text and no external copy for the configured version, no date in force,
-/// subprocessors with details still "in definizione" or without a date in force. The description names the
-/// configuration keys and the version, never a value. Runbook: <c>docs/runbooks/legal-documents.md</c>.
+/// Legal documents and subprocessor list (PL-14, LEGAL-TEXTS, DEPLOY-CFG, decision D9). A document is published only
+/// when the text of its configured version exists (or an external copy is linked) and every value it needs (the
+/// controller's data, the governing court) is configured: otherwise the public page stays "in preparation". Nothing
+/// here stops the API, so every gap is <c>degraded</c>: a document not published, no date in force, subprocessors with
+/// details still "in definizione" or without a date in force. The description (visible to platform admins only) names
+/// the configuration keys and the version, never a value. Runbook: <c>docs/runbooks/legal-documents.md</c>.
 /// </summary>
 public sealed class LegalDocumentsHealthCheck(ILegalDocumentService legalDocuments) : IHealthCheck
 {
-    private static readonly LegalDocumentKind[] Kinds = [LegalDocumentKind.Tos, LegalDocumentKind.Privacy, LegalDocumentKind.Dpa];
-
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var problems = new List<string>();
+        var problems = GetProblems(legalDocuments).ToList();
 
-        foreach (var kind in Kinds)
+        foreach (var kind in Enum.GetValues<LegalDocumentKind>())
         {
-            var meta = legalDocuments.Get(kind);
-            if (meta.DocumentUrl is null && legalDocuments.GetText(kind, LegalDocumentService.DefaultLanguage) is null)
-            {
-                problems.Add(
-                    $"{kind} {meta.Version}: no text (LegalDocuments/{kind.ToString().ToLowerInvariant()}/{meta.Version}.it.html) " +
-                    $"and no Legal__Documents__{kind}__DocumentUrl.");
-            }
-
-            if (meta.EffectiveAt is null)
+            if (legalDocuments.Get(kind).EffectiveAt is null)
                 problems.Add($"Legal__Documents__{kind}__EffectiveAt is not set.");
         }
 
@@ -49,6 +38,14 @@ public sealed class LegalDocumentsHealthCheck(ILegalDocumentService legalDocumen
 
         return Task.FromResult(problems.Count == 0
             ? HealthCheckResult.Healthy("Legal documents and subprocessor list published.")
-            : HealthCheckResult.Degraded("Legal documents incomplete: " + string.Join(" ", problems)));
+            : HealthCheckResult.Degraded("Legal documents incomplete: " + string.Join(" | ", problems)));
     }
+
+    /// <summary>One line per document that is not published (or has a text that cannot be); empty when all are.</summary>
+    public static IReadOnlyList<string> GetProblems(ILegalDocumentService legalDocuments) =>
+        Enum.GetValues<LegalDocumentKind>()
+            .Select(legalDocuments.GetPublication)
+            .Where(publication => !publication.IsPublished)
+            .Select(publication => publication.Describe())
+            .ToList();
 }

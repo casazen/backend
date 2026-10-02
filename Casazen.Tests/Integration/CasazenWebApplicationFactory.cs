@@ -101,11 +101,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
                 ["Billing:Prices:Scale"] = "price_test_scale",
-                ["Vies:StubMode"] = "true",
                 ["Seo:BootstrapOnStartup"] = "false",
-                ["Billing:Sdi:Enabled"] = "false",
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
-                ["Vies:Enabled"] = "false",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
                 // Base domain of the org subdomains: no default in code (D3, SE-03), the tests configure one.
                 ["PublicHost:BaseDomain"] = "casazen.it",

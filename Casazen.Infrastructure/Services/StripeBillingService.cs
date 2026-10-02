@@ -60,22 +60,52 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         };
 
         var service = new SessionService();
-        var session = await service.CreateAsync(new SessionCreateOptions
-        {
-            Customer = org.StripeCustomerId,
-            Mode = SubscriptionMode,
-            LineItems = [new SessionLineItemOptions { Price = priceId, Quantity = 1 }],
-            SuccessUrl = successUrl,
-            CancelUrl = cancelUrl,
-            Metadata = metadata,
-            SubscriptionData = new SessionSubscriptionDataOptions { Metadata = metadata },
-        }, cancellationToken: cancellationToken);
+        var session = await service.CreateAsync(
+            BuildCheckoutSessionOptions(org.StripeCustomerId, priceId, successUrl, cancelUrl, metadata),
+            cancellationToken: cancellationToken);
 
         return new StripeCheckoutSession(
             session.Id,
             session.Url ?? throw new InvalidOperationException("Stripe checkout session URL missing"),
             planTier);
     }
+
+    /// <summary>
+    /// Checkout Session of a plan with Stripe Tax (PL-13, A1-08). CasaZen applies no rate of its own: Stripe Tax computes
+    /// the VAT from the customer's billing address and tax id and from the tax registrations of the Stripe account
+    /// (Italian VAT, OSS, reverse charge for a non-domestic EU VAT id; fiscale.md S1-S4). Parameters (Stripe API
+    /// reference in the Stripe.net 50.1.0 docs, API 2025-12-15.clover):
+    /// <list type="bullet">
+    ///   <item><c>automatic_tax[enabled]</c>: tax computed for the session and for the resulting subscription and
+    ///   invoices, renewals included;</item>
+    ///   <item><c>billing_address_collection=required</c>: the full billing address is always asked;</item>
+    ///   <item><c>tax_id_collection[enabled]</c>: the customer can enter a VAT id, saved on the Stripe customer and
+    ///   verified by Stripe (VIES);</item>
+    ///   <item><c>customer_update[address|name]=auto</c>: the address and the (business) name collected are saved on
+    ///   the existing customer, otherwise Stripe Tax would not use them for the renewals.</item>
+    /// </list>
+    /// </summary>
+    public static SessionCreateOptions BuildCheckoutSessionOptions(
+        string? customerId,
+        string priceId,
+        string successUrl,
+        string cancelUrl,
+        Dictionary<string, string> metadata) => new()
+        {
+            Customer = customerId,
+            Mode = SubscriptionMode,
+            LineItems = [new SessionLineItemOptions { Price = priceId, Quantity = 1 }],
+            SuccessUrl = successUrl,
+            CancelUrl = cancelUrl,
+            Metadata = metadata,
+            SubscriptionData = new SessionSubscriptionDataOptions { Metadata = metadata },
+            AutomaticTax = new SessionAutomaticTaxOptions { Enabled = true },
+            BillingAddressCollection = "required",
+            TaxIdCollection = new SessionTaxIdCollectionOptions { Enabled = true },
+            CustomerUpdate = string.IsNullOrWhiteSpace(customerId)
+            ? null
+            : new SessionCustomerUpdateOptions { Address = "auto", Name = "auto" },
+        };
 
     public async Task<IReadOnlyList<StripeCheckoutSession>> ListOpenCheckoutSessionsAsync(
         string customerId,
@@ -147,6 +177,42 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         }, cancellationToken: cancellationToken);
 
         return session.Url ?? throw new InvalidOperationException("Stripe portal session URL missing");
+    }
+
+    public async Task<IReadOnlyList<StripeTaxRateSummary>> GetTaxRatesAsync(
+        IReadOnlyCollection<string> taxRateIds,
+        CancellationToken cancellationToken = default)
+    {
+        ConfigureStripeApiKey();
+
+        var service = new Stripe.TaxRateService();
+        var rates = new List<StripeTaxRateSummary>();
+        foreach (var id in taxRateIds.Distinct(StringComparer.Ordinal))
+        {
+            var rate = await service.GetAsync(id, cancellationToken: cancellationToken);
+            rates.Add(new StripeTaxRateSummary(rate.Id, rate.Country, rate.EffectivePercentage, rate.Jurisdiction));
+        }
+
+        return rates;
+    }
+
+    public async Task<IReadOnlyList<StripeCustomerTaxId>> ListCustomerTaxIdsAsync(
+        string customerId,
+        CancellationToken cancellationToken = default)
+    {
+        ConfigureStripeApiKey();
+
+        var service = new Stripe.CustomerTaxIdService();
+        var taxIds = new List<StripeCustomerTaxId>();
+        await foreach (var taxId in service.ListAutoPagingAsync(
+                           customerId,
+                           new Stripe.CustomerTaxIdListOptions { Limit = 100 },
+                           cancellationToken: cancellationToken))
+        {
+            taxIds.Add(new StripeCustomerTaxId(taxId.Type, taxId.Value, taxId.Verification?.Status));
+        }
+
+        return taxIds;
     }
 
     public PlanTier? MapPriceIdToTier(string? priceId) => BillingPrices.TierOf(configuration, priceId);
