@@ -57,9 +57,9 @@ public class CanoneConcordatoCoefficientMatrixTests
     public static IEnumerable<object[]> Cells()
     {
         foreach (var ((city, zone, band), _) in Tables)
-        foreach (var subFascia in new[] { 1, 2, 3 })
-        foreach (var (end, _) in Terms)
-            yield return [city, zone, band, subFascia, end];
+            foreach (var subFascia in new[] { 1, 2, 3 })
+                foreach (var (end, _) in Terms)
+                    yield return [city, zone, band, subFascia, end];
     }
 
     [Theory]
@@ -125,7 +125,7 @@ public class CanoneConcordatoCoefficientMatrixTests
     // Optional coefficients are cumulative and add (default CoefficientCombination): furniture +15 % and air conditioning
     // +5 % on the maximum only, on top of the 3-year term (no uplift). Seveso, sub-fascia 2, 65 sqm: 85 €/mq.
     [InlineData(false, false, 5525.00)]
-    [InlineData(true, false, 6354.75)]   // 85 x 65 x 1,15
+    [InlineData(true, false, 6353.75)]   // 85 x 65 x 1,15
     [InlineData(false, true, 5801.25)]   // 85 x 65 x 1,05
     [InlineData(true, true, 6630.00)]    // 85 x 65 x 1,20
     public async Task Calculate_FurnitureAndAirConditioning_AddOnTheMaximumOnly(bool furnished, bool airConditioning, double expectedMax)
@@ -152,8 +152,13 @@ public class CanoneConcordatoCoefficientMatrixTests
         // All A, 3 B, 3 C and 2 qualifying D: sub-fascia 3.
         _ => new RentBandCharacteristics
         {
-            Sqm = sqm, TypeAElementCount = 2, TypeBElementCount = 3, TypeCElementCount = 3,
-            TypeDElementCount = 2, QualifyingTypeDElementCount = 2, ZoneName = zone,
+            Sqm = sqm,
+            TypeAElementCount = 2,
+            TypeBElementCount = 3,
+            TypeCElementCount = 3,
+            TypeDElementCount = 2,
+            QualifyingTypeDElementCount = 2,
+            ZoneName = zone,
         },
     };
 
@@ -179,12 +184,26 @@ public class CanoneConcordatoCoefficientMatrixTests
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
         {
-            Id = orgId, Name = "Host", Slug = $"org-{orgId:N}"[..20], DisplayName = "Host", ContactEmail = "h@example.com",
+            Id = orgId,
+            Name = "Host",
+            Slug = $"org-{orgId:N}"[..20],
+            DisplayName = "Host",
+            ContactEmail = "h@example.com",
         });
         var property = new Property
         {
-            OrgId = orgId, OwnerId = "auth0|host", Name = "Alloggio", Address = "Via Test 1", City = city, PostalCode = "20822",
-            Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 0m, CinCode = $"IT-{Guid.NewGuid():N}"[..16], IsActive = true,
+            OrgId = orgId,
+            OwnerId = "auth0|host",
+            Name = "Alloggio",
+            Address = "Via Test 1",
+            City = city,
+            PostalCode = "20822",
+            Bedrooms = 1,
+            Bathrooms = 1,
+            MaxGuests = 2,
+            NightlyRate = 0m,
+            CinCode = $"IT-{Guid.NewGuid():N}"[..16],
+            IsActive = true,
         };
         db.Properties.Add(property);
         return property;
