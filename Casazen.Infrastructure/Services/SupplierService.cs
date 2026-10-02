@@ -361,6 +361,9 @@ public partial class SupplierService(
             throw InviteInvalid();
         if (invite.IsUsed)
             throw new DomainRuleException("supplier_invite_used", "SupplierInviteUsed");
+        // An admin revoked it (SU-12): the link no longer works.
+        if (invite.RevokedAt is not null)
+            throw new DomainRuleException("supplier_invite_revoked", "SupplierInviteRevoked");
         if (invite.ExpiresAt <= DateTime.UtcNow)
             throw new DomainRuleException("supplier_invite_expired", "SupplierInviteExpired");
     }
@@ -452,6 +455,10 @@ public partial class SupplierService(
     {
         var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken)
             ?? throw new KeyNotFoundException($"Supplier profile not found for org {orgId}");
+
+        // A suspended supplier does not lift its own suspension through the wizard: only an admin reactivates it (SU-12).
+        if (profile.Status == SupplierStatus.Suspended)
+            throw new DomainRuleException("supplier_suspended", "SupplierSuspended");
 
         // Only ToS gates activation. Categories, comuni, and bio can be completed later.
         if (!tosAccepted)
@@ -630,10 +637,11 @@ public partial class SupplierService(
         email = email.Trim();
         comuneCode = comuneCode.Trim();
 
-        // Invites created before SU-01 (no token hash) can no longer be accepted: they do not block a new one.
+        // Invites created before SU-01 (no token hash) can no longer be accepted, and a revoked one (SU-12) does not work
+        // anymore: neither blocks a new one.
         var existing = await db.SupplierInviteRecords
             .FirstOrDefaultAsync(
-                i => i.Email == email && i.TokenHash != null && !i.IsUsed && i.ExpiresAt > DateTime.UtcNow,
+                i => i.Email == email && i.TokenHash != null && !i.IsUsed && i.RevokedAt == null && i.ExpiresAt > DateTime.UtcNow,
                 cancellationToken);
 
         if (existing is not null)
@@ -655,7 +663,7 @@ public partial class SupplierService(
                 ? JsonSerializer.Serialize(categoryCodes, JsonOpts)
                 : null,
             Message = message,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = DateTime.UtcNow.Add(SupplierInviteTokens.Validity),
         };
 
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
@@ -937,22 +945,5 @@ public partial class SupplierService(
     }
 
     private EmailContent BuildInviteEmail(SupplierInviteRecord invite, string token) =>
-        EmailTemplates.SupplierInvite(
-            EmailTemplates.DefaultCulture,
-            invite.Email,
-            DescribeComune(invite.ComuneCode),
-            invite.Message,
-            publicSiteLinks.SupplierInviteSignup(token),
-            invite.ExpiresAt);
-
-    /// <summary>
-    /// "Name (code)" when the comune is a configured pilot comune, otherwise the code. <c>ItalianComuneRegistry</c> is
-    /// not used: it knows 12 comuni and maps F205 to Firenze while F205 is Milano (A4-12, SU-04).
-    /// </summary>
-    private string DescribeComune(string comuneCode)
-    {
-        var code = comuneCode.Trim();
-        var name = registrationOptions.Value.FindPilotComune(code)?.Name.Trim();
-        return string.IsNullOrEmpty(name) ? code : $"{name} ({code})";
-    }
+        SupplierInviteEmails.Build(publicSiteLinks, registrationOptions.Value, invite, token);
 }

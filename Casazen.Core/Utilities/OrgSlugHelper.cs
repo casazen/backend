@@ -89,6 +89,16 @@ public static partial class OrgSlugHelper
         return $"org-{suffix}";
     }
 
+    /// <summary>
+    /// The slug is one <see cref="GenerateNeutral"/> produced (<c>org-</c> plus 8 characters of its alphabet): the host
+    /// has not chosen a readable address yet (PL-15, A1-37). A host who picks a slug of exactly that shape by hand is
+    /// indistinguishable from the generated one: the checklist then keeps asking for the choice.
+    /// </summary>
+    public static bool IsNeutral(string? slug) => !string.IsNullOrEmpty(slug) && NeutralSlug().IsMatch(slug);
+
     [GeneratedRegex(@"[^a-z0-9]+")]
     private static partial Regex SlugSanitizer();
+
+    [GeneratedRegex("^org-[abcdefghijkmnpqrstuvwxyz23456789]{8}$")]
+    private static partial Regex NeutralSlug();
 }

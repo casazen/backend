@@ -131,7 +131,7 @@ public partial class OrgService(AppDbContext dbContext) : IOrgService
         }
 
         var slug = await AllocateNeutralSlugAsync(cancellationToken);
-        var orgName = string.IsNullOrWhiteSpace(displayName) ? "La mia organizzazione" : displayName.Trim();
+        var orgName = string.IsNullOrWhiteSpace(displayName) ? Org.PlaceholderName : displayName.Trim();
         var org = new Org
         {
             Name = orgName,

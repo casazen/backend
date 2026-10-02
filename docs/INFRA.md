@@ -395,6 +395,9 @@ Email__FromName=CasaZen
 # Public domain of the web app — REQUIRED, no default in code (D3): email links, SEO canonical URLs, sitemap, CORS
 # (docs/runbooks/seo-domain.md). Seo__PublicBaseUrl is only an alias: leave it unset.
 App__PublicSiteBaseUrl=[public URL of the web app for this environment]
+# Public URL of THIS API: base of the iCal export links hosts paste into Airbnb/Booking. The Railway URL of this
+# environment, different on test and production. No default in code (DEPLOY-CFG); without it health `api-url` is degraded.
+App__ApiBaseUrl=[https://<railway host of this environment>]
 # Optional: base domain of the org booking subdomains ({label}.<domain>), no default in code (D3, SE-03).
 # Unset = the "subdomain" publication mode is off (docs/runbooks/seo-domain.md).
 # PublicHost__BaseDomain=[domain with a wildcard DNS record to the web app]
@@ -442,6 +445,10 @@ Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__Kno
 
 ### Variables required in Production
 
+The complete list of the three repositories (backend, frontend, mobile), checked against the code, with the ordered pre-deploy
+blockers, the effect of each missing variable and the example files, is [`runbooks/deploy-checklist.md`](runbooks/deploy-checklist.md).
+The table below is the short backend version.
+
 The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the test environment with `ASPNETCORE_ENVIRONMENT=Staging` (see `secrets/railway.test.variables.example.json`; switch described in [`runbooks/stripe.md`](runbooks/stripe.md#switching-the-railway-test-environment-to-staging-one-time-product-owner)). Every check below runs outside Development and Testing, so everything applies to **test and production**, except the rows that name Production. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment; "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
 
 | Variable | Required | If missing | Runbook |
@@ -460,9 +467,10 @@ The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the te
 | `Billing__Prices__Starter`, `Billing__Prices__Pro`, `Billing__Prices__Scale` | Production: yes when `Stripe__SecretKey` is set; test: to sell the plans | Production: startup fails (missing, placeholder, not `price_…`, or the same id on two plans). Test: that plan answers 422 `billing_plan_unavailable`, ready `stripe: degraded` | [`stripe.md`](runbooks/stripe.md) § Environments |
 | `Billing__VatNumber`, `Sdi__ManualIssuanceAccepted` | Production: yes to sell the plans with live keys | the plan checkout answers 409 `billing_gate_closed`; ready `einvoicing: degraded` (no SDI provider in this build, PL-13). Stripe Tax must also be active on the Stripe account | [`billing-tax.md`](runbooks/billing-tax.md) |
 | `Cors__AllowedOrigins` | yes unless `App__PublicSiteBaseUrl` is the only web app origin (no origin in code) | startup fails when neither gives an origin; a malformed entry also stops the startup | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
+| `App__ApiBaseUrl` | yes for the iCal export links (https, no default in code) | ready `api-url: degraded`; the export links point to `https://localhost:5001` | [`deploy-checklist.md`](runbooks/deploy-checklist.md), [`ical.md`](runbooks/ical.md) |
 | `PublicHost__BaseDomain` | no (no default in code) | the "subdomain" publication mode answers 422 `subdomains_not_configured`; no host is resolved as an org subdomain | [`seo-domain.md`](runbooks/seo-domain.md) |
 | `Vercel__ApiToken`, `Vercel__ProjectId`, `Vercel__TeamId` | no (custom domains are an optional Pro feature; no default in code) | no custom domain can be activated: it stays `Pending` ("activation not available" in the console), ready `vercel: degraded` names the missing variable. `PublicHost__VercelCnameTarget`, `PublicHost__AcceptedCnameSuffixes__0`, `PublicHost__VercelAddresses__0` hold the DNS values Vercel recommends (defaults: the generic ones) | [`seo-domain.md`](runbooks/seo-domain.md) section 10 |
-| `Legal__Documents__{Tos,Privacy,Dpa}__{Version,EffectiveAt,DocumentUrl}`, `Legal__Documents__Subprocessors__*` | no (versions in `appsettings.json`) | pages `/legale/*` say "in preparazione"; subprocessor details shown as "in definizione" | [`legal-documents.md`](runbooks/legal-documents.md) |
+| `Legal__Documents__{Tos,Privacy,Dpa}__{Version,EffectiveAt,DocumentUrl}`, `Legal__Documents__Subprocessors__*` | no (versions in `appsettings.json`) | pages `/legale/*` say "in preparazione"; subprocessor details shown as "in definizione"; ready `legal: degraded` | [`legal-documents.md`](runbooks/legal-documents.md) |
 | `Cors__VercelPreviewPattern` | no (test only) | Vercel previews rejected by CORS | [`cors-security-headers.md`](runbooks/cors-security-headers.md) |
 | `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit`, `RateLimiting__{Policy}__PermitLimit` | no (safe defaults) | — | [`proxy-ip.md`](runbooks/proxy-ip.md) |
 | `Hangfire__DashboardEnabled` / `Hangfire__DashboardApiKey` | no (default off) | — | [`hangfire.md`](runbooks/hangfire.md) |
