@@ -54,11 +54,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: backend
+      - name: Pick the matching frontend ref
+        id: other
+        env:
+          OTHER_REPO: casazen/frontend
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          BASE_REF: ${{ github.base_ref || github.ref_name }}
+        run: |
+          # A change that spans both repos lives on the SAME branch name in each: use it when it exists, because the
+          # base branch does not have the other half of the change yet. Otherwise fall back to the base branch.
+          # (The token is a secret: GitHub masks it in the log.)
+          if git ls-remote --exit-code --heads "https://x-access-token:${FRONTEND_REPO_TOKEN}@github.com/${OTHER_REPO}.git" "refs/heads/${HEAD_REF}" > /dev/null 2>&1; then
+            echo "ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+            echo "Using ${OTHER_REPO} on the same branch: ${HEAD_REF}"
+          else
+            echo "ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+            echo "Branch ${HEAD_REF} does not exist in ${OTHER_REPO}: using its base branch ${BASE_REF}"
+          fi
       - uses: actions/checkout@v4
         with:
           repository: casazen/frontend
-          # Same line of development as this run: the PR base branch (develop / main) or the pushed branch.
-          ref: ${{ github.base_ref || github.ref_name }}
+          ref: ${{ steps.other.outputs.ref }}
           token: ${{ secrets.FRONTEND_REPO_TOKEN }}
           path: frontend
       - uses: actions/setup-dotnet@v4
