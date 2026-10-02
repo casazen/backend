@@ -851,6 +851,32 @@ be edited and upload photos. A Pending supplier edits freely. The `profile/photo
 
   and ask them to complete the profile (an active supplier cannot empty these fields any more).
 
+## 17. Error states and localized messages of the supplier pages — SU-06
+
+Audit A4-25 / A4-27 (web and API; the app's own texts are the mobile tasks).
+
+- **Web:** every supplier page that loads data shows an error state when the request fails, never an endless spinner
+  or an empty list: activation (a 403 on `GET /api/supplier/profile` no longer leaves "Caricamento…"), profile,
+  availability (a failed load used to show every day as available), dashboard, inbox, request detail, calendar
+  (these three already had it). The shared component is `components/shared/error-state.tsx` (`role="alert"`, the server's
+  localized message when there is one, *Riprova*). Each page has a test with a forced API error.
+- **API:** the supplier endpoints no longer answer `{ "error": "No supplier org found" }` / `"Supplier profile not found"`,
+  nor inline Italian or English text. They answer the FD-05 problem (`code` + localized `detail`, Italian by default, English
+  with `Accept-Language: en`) with keys of `SharedResources.resx` / `.en.resx`:
+
+  | Endpoint | Status / `code` | Key |
+  |---|---|---|
+  | any `api/supplier/*` without a supplier org or profile | 404 `not_found` | `SupplierProfileNotFound` |
+  | `GET /api/supplier/availability` `to` before `from` / range over 90 days | 400 `validation_error` | `SupplierAvailabilityRangeInvalid` / `SupplierAvailabilityRangeTooLong` |
+  | `POST /api/supplier/profile/photos` over 10 photos / invalid file / storage failure | 400 `validation_error` / 500 `server_error` | `SupplierPhotoLimit` / `SupplierPhotoInvalid` / `SupplierPhotoUploadFailed` |
+  | `GET /api/suppliers` without `comune` or `propertyId`; unknown property | 400 `validation_error`; 404 `not_found` | `SupplierSearchTargetRequired`; `PropertyNotFound` |
+  | `GET /api/public/suppliers/{slug}` unknown or not active | 404 `not_found` | `SupplierShowcaseNotFound` |
+  | `POST /api/admin/suppliers/invite` with a pending invite for the email | 409 `duplicate_invite` | `SupplierInviteDuplicate` |
+
+  The 409 `duplicate_invite` is thrown by the service (`DomainConflictException`); the message no longer echoes the email.
+  `SharedResourcesLocalizationTests` fails when a key misses one of the two languages.
+- No deploy step: no migration, no configuration.
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
