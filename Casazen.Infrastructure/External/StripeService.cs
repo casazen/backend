@@ -14,6 +14,19 @@ public interface IStripeService
     Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
 
     /// <summary>
+    /// Creates an on-session PaymentIntent on the connected account (direct charge, automatic payment methods), sent with
+    /// <paramref name="idempotencyKey"/> so a retry gets the same PaymentIntent (rent installments, LT-06).
+    /// </summary>
+    Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a refund of a PaymentIntent (BK-02). Direct charges live on the connected account, so the request carries
     /// its <c>Stripe-Account</c> header (<see cref="StripeRefundCreateRequest.ConnectedAccountId"/>); null only for a
     /// PaymentIntent of the platform account. Always sent with the idempotency key of the refund row.
@@ -180,6 +193,39 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             logger.LogError(ex, "Error creating connected-account payment intent for {AccountId}", connectedAccountId);
             throw;
         }
+    }
+
+    public async Task<PaymentIntent> CreateConnectedAccountPaymentIntentAsync(
+        string connectedAccountId,
+        long amountCents,
+        string currency,
+        Dictionary<string, string> metadata,
+        string idempotencyKey,
+        string? description,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectedAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
+        var options = new PaymentIntentCreateOptions
+        {
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+            Description = description,
+            // No application fee (A3-40): see CreateConnectedAccountPaymentIntentAsync above.
+            AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions { Enabled = true },
+        };
+
+        var paymentIntent = await new PaymentIntentService(Client).CreateAsync(
+            options,
+            RequestOptionsFor(connectedAccountId, idempotencyKey),
+            cancellationToken);
+        logger.LogInformation(
+            "Connected-account payment intent created: {PaymentIntentId} on {AccountId}",
+            paymentIntent.Id,
+            connectedAccountId);
+        return paymentIntent;
     }
 
     public async Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId)

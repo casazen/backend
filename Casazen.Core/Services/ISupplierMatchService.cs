@@ -10,7 +10,8 @@ public record SupplierMatchCandidate(
     string? Bio,
     int MatchScore,
     string MatchReason,
-    string Source);
+    string Source,
+    bool ReasonGeneratedByAi = false);
 
 public record ExternalSupplierSuggestion(
     string Name,

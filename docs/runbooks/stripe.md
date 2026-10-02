@@ -38,7 +38,8 @@ while its prices are being created. A value is a valid Price id when it starts w
 
 The billing entry gate (`BillingEntryGate`): with a test-mode secret key outside Production the checkout is open
 without the invoicing prerequisites (log `Billing entry gate bypassed for Stripe test secret key`); in Production it
-needs `Billing__VatNumber` and `Sdi__ProviderConfigured=true` (task PL-13).
+needs `Billing__VatNumber` and a decision on the e-invoices: an SDI provider (none in this build) or
+`Sdi__ManualIssuanceAccepted=true` (task PL-13, [billing-tax.md](billing-tax.md)). `Sdi__ProviderConfigured` is no longer read.
 
 ### Plan prices (`Billing__Prices__<Tier>`)
 
@@ -182,9 +183,10 @@ Logs carry the event id, type and source, and Stripe/org ids only: no names, e-m
 Stripe Dashboard labels may differ slightly between versions.
 
 1. **Webhook endpoints**: as in `docs/INFRA.md`. The platform endpoint must include `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
-2. **Restricted key** (only if `Stripe__SecretKey` is an `rk_…` key): besides the permissions already used, the checkout now needs **Checkout Sessions: write** (create, list, expire) and **Subscriptions: read** (list the customer's subscriptions). Without them the checkout answers 503 `payment_provider_error`.
+2. **Restricted key** (only if `Stripe__SecretKey` is an `rk_…` key): besides the permissions already used, the checkout now needs **Checkout Sessions: write** (create, list, expire) and **Subscriptions: read** (list the customer's subscriptions). Without them the checkout answers 503 `payment_provider_error`. The paid invoices (PL-13) also need **Tax rates: read** and **Customers: read** (tax ids).
 3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there. The web app (PL-12) sends every subscribed org to the portal to **change plan**: turn on the subscription update (plan switch) and list the Starter, Pro and Scale products with the same prices as `Billing__Prices__<Tier>`, otherwise "Cambia dal portale" opens a portal without the plan change.
 4. **Failed payments** (Settings → Billing → Subscriptions and emails → manage failed payments): at the end of the retries the subscription may be canceled or marked unpaid; both end paid access (Canceled / Unpaid).
+5. **Stripe Tax** (PL-13): head office, Italian registration and product tax codes, see [billing-tax.md](billing-tax.md) § Settings. Without them the checkout charges no VAT or fails with 503 `payment_provider_error`.
 
 ## Web app: plans, checkout, portal and billing profile (PL-12)
 
@@ -215,9 +217,10 @@ Error codes shown to the user: 409 `already_subscribed` (message with the portal
 503 `payment_provider_error`. The portal answers 400 while the org has no Stripe customer (never started a checkout):
 the web app says the portal is available after the first payment.
 
-VAT id: the web app only checks its shape (letters and digits, 4-20 characters, spaces, dots and dashes removed) and
-says it will be verified. The real check (VIES) and the VAT/OSS treatment are task PL-13: until then a VAT id of a
-country other than Italy is refused by the backend unless `Vies__StubMode=true`.
+VAT id: the web app and the backend only check its shape (letters and digits, 4-20 characters, spaces, dots and dashes
+removed) and store it as declared. Since PL-13 the VAT is computed by **Stripe Tax** on the checkout and the renewals;
+the VAT id that counts is the one entered in Stripe Checkout, verified by Stripe (VIES). `Vies__StubMode` no longer
+exists. Details, Stripe Tax settings and the e-invoices: [billing-tax.md](billing-tax.md).
 
 Return pages: the plan and billing pages send their own path as `returnPath` (checkout and portal), so Stripe brings the
 user back to the page and the shell it started from (PL-16); the backend accepts only the allow-listed pages.
@@ -495,6 +498,85 @@ result (no second email).
    is "Fallito", the guest receives "Pagamento non riuscito" and the host "Addebito non riuscito". Open the link, complete
    3-D Secure: after `payment_intent.succeeded` the payment is "Completato". Repeat with `4242 4242 4242 4242`: completed at
    the first run, no email. `4000 0000 0000 9995` (insufficient funds): failed, retried on the next days.
+
+## Recurring rent of long-term leases (LT-06)
+
+Task LT-06 (#269, audit defect A7-07, P1). Before it `NullRentBillingService` threw `NotImplementedException`, there was
+no job, endpoint or UI, and the `rent-charge` webhooks were claimed as processed and dropped. Code:
+`Casazen.Infrastructure/Services/RentBillingService.cs`, plan rules `Casazen.Core/Leases/RentInstallmentPlan.cs`,
+settings `Casazen.Core/Services/RentCharges.cs`, API `LeaseRentController` / `PublicRentPaymentsController`, job
+`RentCollectionJob` ([hangfire.md](hangfire.md) § 12).
+
+### How it works
+
+1. **Schedule** (`PUT /api/leases/{id}/rent/schedule`, lease signed by every party): cadence (monthly, bimonthly,
+   quarterly, semiannual), due day 1-28 (default: the start day of the lease) and installment amount (default: the
+   lease's monthly rent × the months of the cadence). Periods are anchored on the lease start; each installment is due on
+   the first due day on or after the start of its period. A final period shorter than the cadence gets **no installment**
+   (no pro rata rule is assumed): the page shows it to the landlord. The cadence cannot change once an installment is
+   paid or has a PaymentIntent.
+2. **Payment request**: the daily job emails the tenants (every tenant party with an email, not anonymized) a personal
+   link `/rent/pay/{installmentId}?token=…` `RentBilling:PaymentRequestDaysBeforeDue` days before the due date (only for
+   installments that were not already due when generated; older ones: the landlord marks them paid or sends the link
+   from the page). The landlord can (re)send the link of an installment at any time; a new link replaces the previous one.
+3. **Payment**: the tenant pays on the public page with the Stripe Payment Element, **direct charge on the org's
+   connected account** (like the direct checkout): `Stripe-Account` header, automatic payment methods, no application fee
+   (A3-40), `metadata.kind = rent-charge`, `metadata.rentLedgerEntryId`, `leaseId`, `orgId`, idempotency key
+   `rent-charge:{installmentId}:{n}`. One PaymentIntent per installment at a time: reused while payable with the same
+   amount, canceled (key `rent-charge-cancel:{installmentId}:{pi}`) when the amount changed.
+4. **Offline payment** (`POST …/installments/{id}/mark-paid`): the landlord declares a payment received outside CasaZen
+   (date not in the future, optional note). A payable PaymentIntent is canceled first; one paid or in flight meanwhile
+   wins and the declaration is refused (409).
+5. **Disable** (`POST …/schedule/disable`): unpaid installments become `Cancelled` (their payable PaymentIntents canceled);
+   paid ones are kept. Saving the schedule again re-enables it.
+
+States are honest: `Scheduled` (to collect, "overdue" computed on read), `Processing` (Stripe `processing`, e.g. SEPA),
+`Paid` (only from `succeeded` or the landlord's declaration), `Failed` (last online payment failed; the tenant can pay
+again), `Cancelled`.
+
+### Webhooks
+
+`StripeWebhookHandler` sends every `payment_intent.*` event with `metadata.kind = rent-charge` to `RentBillingService`,
+from the **Connect endpoint** and from the platform endpoint **when the event carries `account`**; an event of the
+platform account itself, or of an account other than the installment's, is ignored (logged). Exactly once like every
+event (PL-10); the lease's rent lock (`PostgresAdvisoryLocks.Scope.RentLease`) is taken in the event transaction.
+
+| Event | Effect |
+|---|---|
+| `payment_intent.succeeded` | installment `Paid` (via Stripe, `PaidOn` = Rome date); the landlords get "Canone ricevuto". A second payment of an installment already paid is logged as an error: refund it from the Stripe dashboard |
+| `payment_intent.processing` | `Processing` (add this event to the Connect endpoint; otherwise the daily job reads the status) |
+| `payment_intent.payment_failed` | `Failed` with the Stripe error code; when the payment was already in flight (SEPA returned) the tenants get a new link |
+| `payment_intent.canceled` | the current PaymentIntent is dropped; the tenant can start a new one |
+
+### Settings (Railway, optional)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RentBilling__PaymentRequestDaysBeforeDue` | `5` (**provisional technical default**, to be decided by the product owner) | days before the due date on which the payment link is emailed (0-31) |
+
+### Stripe settings to check (product owner)
+
+1. Connect endpoint: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled` (already
+   needed by the checkout) and `payment_intent.processing` (recommended for SEPA).
+2. Restricted key only (`rk_…`): **PaymentIntents: Write** on connected accounts (create, read, cancel).
+3. The landlord org must have completed the Connect onboarding (payments page `/app/short-rent/settings/payments`) with
+   charges enabled; otherwise the rent page offers only offline payments.
+
+### Not covered (open questions)
+
+Rent receipts and stamp duty, ISTAT updates, automatic off-session debit (SEPA mandate), reminders after the due date,
+pro rata of a partial final period, who receives the money when the org is an agency and not the landlord: see the
+DUBBI of LT-06.
+
+### Verification
+
+1. Automated: `RentInstallmentPlanTests`, `LeaseRentPostgresTests` (schedule, job request once, payment session reused,
+   webhook on the connected account, foreign account ignored, offline payment cancels the PaymentIntent, SEPA failure
+   emails a new link, disable).
+2. Test mode: sign a lease (offline upload), open the lease page, generate the schedule, press "Invia link di pagamento",
+   open the email link, pay with `4242 4242 4242 4242`: after `payment_intent.succeeded` the installment is "Pagata" and
+   the landlord receives "Canone ricevuto". With a SEPA test IBAN the installment is "Pagamento in corso" until Stripe
+   settles it.
 
 ## Connect onboarding: the linked account survives Stripe errors (BK-09)
 

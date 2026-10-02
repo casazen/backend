@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0`, `vercel`, `api-url`, `legal` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `einvoicing`, `auth0`, `vercel`, `api-url`, `legal` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -43,6 +43,7 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 | `email` | Resend key, sender and `App__PublicSiteBaseUrl` valid (FD-13) | something missing: emails are skipped. Outside Development/Testing this cannot happen: the app does not start | — |
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |
+| `einvoicing` | an SDI e-invoicing provider is configured and `Billing__VatNumber` is set (PL-13) | no SDI provider (always in this build: the e-invoices of the plans are issued by hand, [billing-tax.md](billing-tax.md)); the description says whether `Sdi__ManualIssuanceAccepted` is set and whether `Billing__VatNumber` is missing | — |
 | `vercel` | `Vercel__ApiToken` and `Vercel__ProjectId` set (BK-17): the platform can add a host's custom domain to the Vercel project | either missing: custom domains are not activated, the settings page says so ([`seo-domain.md`](seo-domain.md) section 10) | — |
 | `api-url` | `App__ApiBaseUrl` is an absolute https URL (DEPLOY-CFG): the base of the iCal export links | missing, a placeholder, not an absolute http(s) URL, or plain `http` outside Development/Testing: the export links hosts paste into Airbnb/Booking would point to `https://localhost:5001` | — |
 | `legal` | Terms, Privacy and DPA each have a text file (or an external copy URL) for the configured version, every value the text needs (company data, governing court: `Legal__Controller__*`, `Legal__Terms__GoverningCourt`) and a date in force, and the subprocessor list has its date and no entry "in definizione" (DEPLOY-CFG, PL-14, LEGAL-TEXTS D9) | any of those missing: pages stay "in preparazione" (fail-closed, never a placeholder), hosts accept a version nobody can read. The description names the missing file / variable / provider, never a value. Expected until the drafts are activated: [`legal-documents.md`](legal-documents.md) § 6 | — |

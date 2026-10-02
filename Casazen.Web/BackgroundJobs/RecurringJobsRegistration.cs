@@ -76,6 +76,13 @@ public static class RecurringJobsRegistration
             "0 6 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LT-06: payment requests of the rent installments coming due, payments in flight read again.
+        recurringJobManager.AddOrUpdate<RentCollectionJob>(
+            RentCollectionJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            RentCollectionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<CheckoutHoldExpiryJob>(
             CheckoutHoldExpiryJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
