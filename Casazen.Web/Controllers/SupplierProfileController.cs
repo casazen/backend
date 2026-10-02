@@ -237,6 +237,50 @@ public class SupplierProfileController(
         return Ok(dto);
     }
 
+    // ─── Public showcase (SU-13) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// The owner's preview of the public showcase (<c>/fornitori/{slug}</c>): the same content the public page shows, built
+    /// from the caller's own profile whatever its status, with where it is published. An active supplier without a slug
+    /// (activated before SU-13) gets one here. <c>published</c> is true only for an active supplier with a slug; a pending or
+    /// suspended supplier previews a page nobody else can open yet (<c>publicUrl</c> null).
+    /// </summary>
+    [HttpGet("showcase")]
+    [ProducesResponseType(typeof(SupplierShowcasePreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierShowcasePreviewDto>> GetShowcasePreview(
+        [FromServices] Casazen.Infrastructure.Email.PublicSiteLinks publicSiteLinks,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetOrProvisionSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        await supplierService.EnsureShowcaseSlugAsync(orgId.Value, cancellationToken);
+        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
+        if (profile is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var listed = await comuneDirectory.GetByIstatCodesAsync(SupplierComuniView.IstatCodes(profile), cancellationToken);
+        var today = TimeProvider.System.TodayInRomeAsDateOnly();
+        var availability = await supplierService.GetAvailabilityAsync(orgId.Value, today, today.AddDays(13), cancellationToken);
+
+        var path = string.IsNullOrEmpty(profile.ShowcaseSlug)
+            ? null
+            : Casazen.Infrastructure.Email.PublicSitePaths.SupplierShowcase(profile.ShowcaseSlug);
+        return Ok(new SupplierShowcasePreviewDto
+        {
+            Showcase = SupplierShowcaseMapper.ToDto(profile, listed, availability),
+            Status = profile.Status.ToString(),
+            Published = profile.Status == SupplierStatus.Active && path is not null,
+            Slug = profile.ShowcaseSlug,
+            PublicPath = path,
+            // The public base URL is configuration (App__PublicSiteBaseUrl), never written here (decision D3).
+            PublicUrl = path is null ? null : publicSiteLinks.TryPublicPage(path),
+            Indexable = false,
+        });
+    }
+
     // ─── Inbox ───────────────────────────────────────────────────────────────
 
     /// <summary>

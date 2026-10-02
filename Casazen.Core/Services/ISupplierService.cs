@@ -127,6 +127,14 @@ public interface ISupplierService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The slug of the supplier's public showcase (SU-13): the stored one, or, for an <see cref="SupplierStatus.Active"/>
+    /// profile without one (activated before SU-13), a new one generated from the business name
+    /// (<see cref="Casazen.Core.Suppliers.SupplierShowcaseSlug"/>), unique, never changed afterwards. Null for a profile
+    /// that was never activated (nothing public to link) and for an org without a profile.
+    /// </summary>
+    Task<string?> EnsureShowcaseSlugAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns availability entries for the supplier within an inclusive date range.
     /// </summary>
     Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(

@@ -417,6 +417,88 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal("[]", (await LoadProfileAsync(orgId)).CategoriesJson);
     }
 
+    // ─── SU-13: public showcase (A4-16) ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CompleteActivation_GeneratesTheShowcaseSlugAndThePublicPageShowsTheSupplier()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+        var activated = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
+            new { tosAccepted = true, tosVersion = await CurrentTosVersionAsync(client) });
+        Assert.Equal(HttpStatusCode.OK, activated.StatusCode);
+
+        var slug = (await LoadProfileAsync(orgId)).ShowcaseSlug;
+        Assert.StartsWith("test-supplier-srl", slug);
+
+        using var anonymous = _factory.CreateClient();
+        var response = await anonymous.GetAsync($"/api/public/suppliers/{slug!.ToUpperInvariant()}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("noindex", response.Headers.GetValues("X-Robots-Tag").Single());
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(slug, body.GetProperty("slug").GetString());
+        Assert.Equal("Test Supplier Srl", body.GetProperty("legalName").GetString());
+        Assert.Equal("Azienda di pulizie professionale.", body.GetProperty("bio").GetString());
+        Assert.Equal(["cleaning"], body.GetProperty("categories").EnumerateArray().Select(c => c.GetString()));
+        // Contact data and status stay private: hosts reach the supplier through a request.
+        var raw = body.GetRawText();
+        Assert.DoesNotContain("phone", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("email", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("status", raw, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetPublicShowcase_PendingOrSuspendedSupplierWithASlug_Returns404()
+    {
+        var (_, pendingOrg) = await SeedFullSupplierAsync();
+        var (_, suspendedOrg) = await SeedFullSupplierAsync();
+        await UpdateProfileAsync(pendingOrg, p => p.ShowcaseSlug = $"pending-{Guid.NewGuid():N}");
+        await UpdateProfileAsync(suspendedOrg, p => { p.ShowcaseSlug = $"suspended-{Guid.NewGuid():N}"; p.Status = SupplierStatus.Suspended; });
+        using var anonymous = _factory.CreateClient();
+
+        var pending = await anonymous.GetAsync($"/api/public/suppliers/{(await LoadProfileAsync(pendingOrg)).ShowcaseSlug}");
+        var suspended = await anonymous.GetAsync($"/api/public/suppliers/{(await LoadProfileAsync(suspendedOrg)).ShowcaseSlug}");
+
+        Assert.Equal(HttpStatusCode.NotFound, pending.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, suspended.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetShowcasePreview_PendingSupplier_PreviewsWithoutAnAddress()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var body = await (await client.GetAsync("/api/supplier/showcase")).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("Pending", body.GetProperty("status").GetString());
+        Assert.False(body.GetProperty("published").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("publicUrl").ValueKind);
+        Assert.False(body.GetProperty("indexable").GetBoolean());
+        Assert.Equal("Test Supplier Srl", body.GetProperty("showcase").GetProperty("legalName").GetString());
+        // Previewing never invents an address for a profile that is not public.
+        Assert.Null((await LoadProfileAsync(orgId)).ShowcaseSlug);
+    }
+
+    [Fact]
+    public async Task GetShowcasePreview_ActiveSupplierActivatedBeforeSu13_GetsASlugAndAConfiguredPublicUrl()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync(autoActivate: true);
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var body = await (await client.GetAsync("/api/supplier/showcase")).Content.ReadFromJsonAsync<JsonElement>();
+
+        var slug = (await LoadProfileAsync(orgId)).ShowcaseSlug;
+        Assert.NotNull(slug);
+        Assert.True(body.GetProperty("published").GetBoolean());
+        Assert.Equal($"/fornitori/{slug}", body.GetProperty("publicPath").GetString());
+        // The base URL is the configured App:PublicSiteBaseUrl, not a domain written in the code.
+        using var scope = _factory.Services.CreateScope();
+        var configured = scope.ServiceProvider.GetRequiredService<Casazen.Infrastructure.Email.PublicSiteLinks>().PublicPage($"/fornitori/{slug}");
+        Assert.Equal(configured, body.GetProperty("publicUrl").GetString());
+    }
+
     private static async Task<string> CurrentTosVersionAsync(HttpClient client)
     {
         var body = await (await client.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>();

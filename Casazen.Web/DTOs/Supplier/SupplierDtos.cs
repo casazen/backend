@@ -505,3 +505,50 @@ public class SupplierPhotoUploadResponse
 {
     public IEnumerable<string> Urls { get; set; } = [];
 }
+
+// ─── Public showcase (SU-13) ──────────────────────────────────────────────────
+
+/// <summary>
+/// What the public page <c>/fornitori/{slug}</c> shows of a supplier (<c>GET /api/public/suppliers/{slug}</c>) and what the
+/// owner previews (<c>GET /api/supplier/showcase</c>): never the phone, the email, the VAT number or the status.
+/// </summary>
+public class SupplierShowcaseDto
+{
+    /// <summary>Null in the preview of a profile that has no public address yet (never activated).</summary>
+    public string? Slug { get; set; }
+
+    public string LegalName { get; set; } = string.Empty;
+    public IReadOnlyList<string> Categories { get; set; } = [];
+
+    /// <summary>The comuni by name: the ones chosen from the official list, then what the supplier wrote.</summary>
+    public IReadOnlyList<string> Comuni { get; set; } = [];
+
+    public string? Bio { get; set; }
+    public IReadOnlyList<string> PhotoUrls { get; set; } = [];
+
+    /// <summary>The next 14 days (Europe/Rome) the supplier saved an availability for.</summary>
+    public IReadOnlyList<AvailabilityEntryDto> Availability { get; set; } = [];
+}
+
+/// <summary>The owner's preview of the public showcase and where it will be (or is) published.</summary>
+public class SupplierShowcasePreviewDto
+{
+    public SupplierShowcaseDto Showcase { get; set; } = new();
+
+    /// <summary><c>Pending</c>, <c>Active</c> or <c>Suspended</c>.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>True only for an active supplier with a slug: the public page answers 200.</summary>
+    public bool Published { get; set; }
+
+    public string? Slug { get; set; }
+
+    /// <summary>Path of the page in the web app (<c>/fornitori/{slug}</c>); null until the profile has a slug.</summary>
+    public string? PublicPath { get; set; }
+
+    /// <summary>Absolute URL on <c>App:PublicSiteBaseUrl</c>; null when the slug or the public URL is not configured.</summary>
+    public string? PublicUrl { get; set; }
+
+    /// <summary>Always false in v0: the public page is <c>noindex</c> and in <c>robots.txt</c>.</summary>
+    public bool Indexable { get; set; }
+}

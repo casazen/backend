@@ -926,6 +926,13 @@ public class AppDbContext(
             .IsUnique()
             .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
+        // SU-13: the slug of the public showcase is unique (profiles without one are not constrained).
+        modelBuilder.Entity<SupplierProfile>()
+            .HasIndex(sp => sp.ShowcaseSlug)
+            .IsUnique()
+            .HasFilter("\"ShowcaseSlug\" IS NOT NULL")
+            .HasDatabaseName("UIX_SupplierProfiles_ShowcaseSlug");
+
         // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
         // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
 

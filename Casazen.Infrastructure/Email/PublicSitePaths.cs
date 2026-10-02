@@ -11,6 +11,16 @@ public static class PublicSitePaths
     /// <summary>Sitemap index of the booking sites: one entry per org that has something to index (BK-15).</summary>
     public const string OrgSitemapIndex = "/sitemap-book.xml";
 
+    /// <summary>
+    /// Public showcase of a supplier (<c>/fornitori/{slug}</c>, SU-13): a page of the web app's own host, never of an org's
+    /// booking site. <c>noindex</c> in v0 (it is in <c>robots.txt</c> too).
+    /// </summary>
+    public static string SupplierShowcase(string slug)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(slug);
+        return $"/fornitori/{Uri.EscapeDataString(slug)}";
+    }
+
     /// <summary>Landing page of an org's booking site (<c>/book/{slug}</c>).</summary>
     public static string Org(string orgSlug)
     {

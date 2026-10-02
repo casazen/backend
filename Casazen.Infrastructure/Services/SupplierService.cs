@@ -534,7 +534,58 @@ public partial class SupplierService(
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Supplier {OrgId} activated (Terms {TosVersion})", orgId, accepted);
+
+        // The public showcase address (SU-13). The profile is active either way: a failure here is retried by the
+        // preview endpoint, which asks for the slug again.
+        try
+        {
+            await EnsureShowcaseSlugAsync(orgId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Could not generate the showcase slug of supplier {OrgId}", orgId);
+        }
+
         return profile;
+    }
+
+    public async Task<string?> EnsureShowcaseSlugAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var profile = await db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, cancellationToken);
+        if (profile is null)
+            return null;
+        if (!string.IsNullOrEmpty(profile.ShowcaseSlug))
+            return profile.ShowcaseSlug;
+        if (profile.Status != SupplierStatus.Active)
+            return null;
+
+        // The name, then the name with a number, then with a random suffix; the unique index decides under concurrency
+        // (23505: another supplier took it between the check and the save), and the next candidate is tried.
+        var baseSlug = SupplierShowcaseSlug.FromName(profile.LegalName);
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var candidate = attempt == 0 ? baseSlug
+                : attempt < 4 ? $"{baseSlug}-{attempt + 1}"
+                : $"{baseSlug}-{Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(3))}";
+
+            if (await db.SupplierProfiles.AsNoTracking().AnyAsync(sp => sp.ShowcaseSlug == candidate, cancellationToken))
+                continue;
+
+            profile.ShowcaseSlug = candidate;
+            profile.UpdatedAt = DateTime.UtcNow;
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogInformation("Supplier {OrgId} showcase slug {Slug}", orgId, candidate);
+                return candidate;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                profile.ShowcaseSlug = null;
+            }
+        }
+
+        throw new InvalidOperationException($"No free showcase slug found for supplier {orgId}.");
     }
 
     public async Task<SupplierProfile> AcceptTosAsync(
