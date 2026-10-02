@@ -16,8 +16,10 @@ namespace Casazen.Infrastructure.Services;
 /// Each transition runs in a READ COMMITTED transaction that takes the advisory lock of the host cancellation of the same
 /// booking (BK-02: an answer and a cancellation never interleave) and then the booking row (<c>FOR UPDATE</c>: the expiry
 /// job, which uses <c>SKIP LOCKED</c>, leaves it alone; a job already holding it makes the answer wait and then see the
-/// expired request). The booking is read again under the locks, so the second of two concurrent answers finds it no
-/// longer pending and gets 409. Without PostgreSQL (EF InMemory in unit tests) nothing is locked.
+/// expired request). Acceptance also takes the property's iCal-sync lock before the booking lock, so a feed sync cannot
+/// insert an OTA block between the final block check and the confirmation commit. The booking is read again under the
+/// locks, so the second of two concurrent answers finds it no longer pending and gets 409. Without PostgreSQL (EF InMemory
+/// in unit tests) nothing is locked.
 /// </remarks>
 public sealed class OnSiteBookingRequestService(
     AppDbContext db,
@@ -103,8 +105,15 @@ public sealed class OnSiteBookingRequestService(
 
     public async Task<Booking> AcceptAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
+        var propertyId = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == bookingId)
+            .Select(b => (Guid?)b.PropertyId)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException("Booking not found");
+
         Booking booking;
-        await using (var transaction = await BeginLockedAsync(bookingId, cancellationToken))
+        await using (var transaction = await BeginLockedForAcceptanceAsync(propertyId, bookingId, cancellationToken))
         {
             booking = await LoadAwaitingHostAsync(bookingId, cancellationToken);
 
@@ -199,6 +208,35 @@ public sealed class OnSiteBookingRequestService(
         var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
             cancellationToken,
+            (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")));
+        if (!db.Database.IsNpgsql())
+            return transaction;
+
+        try
+        {
+            await db.Database
+                .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Bookings" WHERE "Id" = {bookingId} FOR UPDATE""")
+                .ToListAsync(cancellationToken);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+            throw;
+        }
+
+        return transaction;
+    }
+
+    private async Task<IDbContextTransaction?> BeginLockedForAcceptanceAsync(
+        Guid propertyId,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()),
             (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")));
         if (!db.Database.IsNpgsql())
             return transaction;
