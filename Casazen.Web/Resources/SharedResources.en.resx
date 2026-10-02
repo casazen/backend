@@ -1948,4 +1948,85 @@
   <data name="SupplierShowcaseNotFound" xml:space="preserve">
     <value>This supplier showcase does not exist or is no longer available.</value>
   </data>
+  <data name="FirstNameRequired" xml:space="preserve">
+    <value>First name is required.</value>
+  </data>
+  <data name="LastNameRequired" xml:space="preserve">
+    <value>Last name is required.</value>
+  </data>
+  <data name="EmailRequired" xml:space="preserve">
+    <value>Email is required.</value>
+  </data>
+  <data name="PhoneRequired" xml:space="preserve">
+    <value>Phone is required.</value>
+  </data>
+  <data name="CountryRequired" xml:space="preserve">
+    <value>Country is required.</value>
+  </data>
+  <data name="ConsentVersionRequired" xml:space="preserve">
+    <value>Consent version is required.</value>
+  </data>
+  <data name="PropertyRequired" xml:space="preserve">
+    <value>Property is required.</value>
+  </data>
+  <data name="CheckInDateRequired" xml:space="preserve">
+    <value>Check-in date is required.</value>
+  </data>
+  <data name="CheckOutDateRequired" xml:space="preserve">
+    <value>Check-out date is required.</value>
+  </data>
+  <data name="AdultsMinimum" xml:space="preserve">
+    <value>At least one adult is required.</value>
+  </data>
+  <data name="ChildrenNotNegative" xml:space="preserve">
+    <value>Number of children cannot be negative.</value>
+  </data>
+  <data name="GuestInfoRequired" xml:space="preserve">
+    <value>Guest information is required.</value>
+  </data>
+  <data name="ConsentRequired" xml:space="preserve">
+    <value>Consent is required.</value>
+  </data>
+  <data name="InvalidPaymentOption" xml:space="preserve">
+    <value>Invalid payment option.</value>
+  </data>
+  <data name="FirstNameTooShort" xml:space="preserve">
+    <value>First name must be at least 2 characters.</value>
+  </data>
+  <data name="LastNameTooShort" xml:space="preserve">
+    <value>Last name must be at least 2 characters.</value>
+  </data>
+  <data name="PhoneTooShort" xml:space="preserve">
+    <value>Phone number must be at least 10 digits.</value>
+  </data>
+  <data name="GuestsCountRange" xml:space="preserve">
+    <value>Number of guests must be between 1 and 100.</value>
+  </data>
+  <data name="FirstNameTooLong" xml:space="preserve">
+    <value>First name cannot exceed 100 characters.</value>
+  </data>
+  <data name="LastNameTooLong" xml:space="preserve">
+    <value>Last name cannot exceed 100 characters.</value>
+  </data>
+  <data name="EmailTooLong" xml:space="preserve">
+    <value>Email cannot exceed 255 characters.</value>
+  </data>
+  <data name="PhoneTooLong" xml:space="preserve">
+    <value>Phone number cannot exceed 20 characters.</value>
+  </data>
+  <data name="AddressTooLong" xml:space="preserve">
+    <value>Address cannot exceed 500 characters.</value>
+  </data>
+  <data name="CityTooLong" xml:space="preserve">
+    <value>City cannot exceed 50 characters.</value>
+  </data>
+  <data name="PostalCodeTooLong" xml:space="preserve">
+    <value>Postal code cannot exceed 10 characters.</value>
+  </data>
+  <data name="CountryTooLong" xml:space="preserve">
+    <value>Country cannot exceed 100 characters.</value>
+  </data>
+  <data name="NotesTooLong" xml:space="preserve">
+    <value>Notes cannot exceed 1000 characters.</value>
+  </data>
 </root>
