@@ -423,9 +423,16 @@ public sealed class PublicSeoService(
         body.Append(SeoHtmlSanitizer.Sanitize(page.BodyHtml)).Append('\n');
         body.Append("<p><a href=\"").Append(SeoHtml.Encode(page.Cta.SignupUrl)).Append("\">")
             .Append(SeoHtml.Encode(T("SeoGuideCta"))).Append("</a></p>\n");
-        body.Append("<footer>\n<p>").Append(SeoHtml.Encode(page.Disclaimers.LastUpdated)).Append("</p>\n<p>")
-            .Append(SeoHtml.Encode(page.Disclaimers.NotLegalAdvice)).Append("</p>\n<p>")
-            .Append(SeoHtml.Encode(page.Disclaimers.AiGenerated)).Append("</p>\n</footer>\n</article>\n</main>\n");
+        var culture = CultureInfo.CurrentUICulture;
+        var lastUpdated = page.LastRefreshedAt.HasValue
+            ? T("SeoDisclaimerLastUpdated", page.LastRefreshedAt.Value.ToString("d MMMM yyyy", culture))
+            : T("SeoDisclaimerLastUpdatedUnknown");
+        body.Append("<footer>\n<p>").Append(SeoHtml.Encode(lastUpdated)).Append("</p>\n<p>")
+            .Append(SeoHtml.Encode(T("SeoDisclaimerNotLegalAdvice"))).Append("</p>\n");
+        // EU AI Act transparency (A8-27): only for text that the AI generated, never a constant.
+        if (page.AiGenerated)
+            body.Append("<p>").Append(SeoHtml.Encode(T("SeoDisclaimerAiGenerated"))).Append("</p>\n");
+        body.Append("</footer>\n</article>\n</main>\n");
 
         // Indexable under the same rule as the sitemap: it has text and, for a calculator, a tourist tax rate in force
         // (the page itself is only served with an approved revision, SE-01).

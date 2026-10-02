@@ -22,13 +22,15 @@ public class SeoContentService(
     IAiProvider aiProvider,
     PublicSiteLinks publicSiteLinks,
     ILogger<SeoContentService> logger,
-    TimeProvider? timeProvider = null) : ISeoContentService
+    TimeProvider? timeProvider = null,
+    IAiResponseCache? aiCache = null) : ISeoContentService
 {
+    /// <summary>Language of the generated pages: the prompt asks for Italian, the regulations are Italian.</summary>
+    public const string ContentLanguage = "it";
+
     public const int CounselRequiredBatchSize = 100;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-
-    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
     public async Task<SeoPagePublicDto?> GetComplianceGuideAsync(
         string regionSlug,
@@ -419,7 +421,7 @@ public class SeoContentService(
         var prompt = SeoContentPrompt.Build(comune, pageType, taxRates);
         // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
         // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
-        var aiResult = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+        var aiResult = await GenerateOrReuseAsync(prompt, cacheKey, forceRegenerate, cancellationToken);
         var (contentStatus, bodyHtml) = SeoGeneratedContent.Evaluate(aiResult);
         if (contentStatus != SeoContentStatus.Generated)
         {
@@ -459,6 +461,27 @@ public class SeoContentService(
         return true;
     }
 
+    /// <summary>
+    /// A8-25: an answer for the same data and prompt version is reused (a batch retried after a stop does not pay twice),
+    /// from a cache that is bounded and expires. "Regenerate" (<paramref name="forceRegenerate"/>) never reads it: it asks
+    /// the provider again and replaces the entry. Only a real answer is kept, never a placeholder or an empty text.
+    /// </summary>
+    private async Task<AiGenerationResult> GenerateOrReuseAsync(
+        string prompt,
+        string cacheKey,
+        bool forceRegenerate,
+        CancellationToken cancellationToken)
+    {
+        if (!forceRegenerate && aiCache is not null && aiCache.TryGet<AiGenerationResult>(null, cacheKey, out var cached) && cached is not null)
+            return cached with { FromCache = true };
+
+        var result = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+        if (aiCache is not null && result.ProviderConfigured && !string.IsNullOrWhiteSpace(result.Content))
+            aiCache.Set(null, cacheKey, result with { FromCache = false });
+
+        return result;
+    }
+
     private async Task<SeoPagePublicDto> MapPublicPageAsync(SeoContentPage page, CancellationToken cancellationToken)
     {
         var comune = await comuneCatalog.GetByCodeAsync(page.ComuneCode, cancellationToken)
@@ -487,7 +510,8 @@ public class SeoContentService(
             comune.ComuneSlug,
             BuildCanonicalUrl(comune, page.PageType),
             refreshedAt,
-            BuildDisclaimers(refreshedAt),
+            revision?.ContentStatus == SeoContentStatus.Generated,
+            ContentLanguage,
             BuildCta(comune, page.PageType),
             taxRates.Select(ToPublicSummary).ToList());
     }
@@ -631,18 +655,6 @@ public class SeoContentService(
     /// <summary>Canonical URL on App:PublicSiteBaseUrl (D3); null only when it is not configured (Development/Testing).</summary>
     private string? BuildCanonicalUrl(ComuneInfo comune, SeoPageType pageType) =>
         publicSiteLinks.TryPublicPage(SeoPagePaths.For(comune, pageType));
-
-    private static SeoDisclaimersDto BuildDisclaimers(DateTime? refreshedAt)
-    {
-        var dateText = refreshedAt.HasValue
-            ? refreshedAt.Value.ToString("d MMMM yyyy", ItalianCulture)
-            : "data non disponibile";
-
-        return new SeoDisclaimersDto(
-            $"Ultimo aggiornamento: {dateText}",
-            "Informazione generale, non consulenza legale. L'host resta responsabile degli adempimenti.",
-            "Contenuto generato con AI — verifica le fonti ufficiali");
-    }
 
     /// <summary>
     /// Signup CTA on App:PublicSiteBaseUrl (D3, SE-03); relative only when it is not configured (Development/Testing).

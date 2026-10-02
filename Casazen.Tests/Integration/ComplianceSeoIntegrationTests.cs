@@ -194,7 +194,7 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     }
 
     [Fact]
-    public async Task AC7_Disclaimers_AreReturnedOnPublicPage()
+    public async Task AC7_AiGeneratedFlagAndContentLanguage_AreReturnedOnPublicPage()
     {
         await SeedSeoPageAsync(LegalReviewStatus.Reviewed, SeoPageType.ComplianceGuide);
 
@@ -203,9 +203,11 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var disclaimers = doc.RootElement.GetProperty("disclaimers");
-        Assert.Contains("non consulenza legale", disclaimers.GetProperty("notLegalAdvice").GetString());
-        Assert.Contains("Contenuto generato con AI", disclaimers.GetProperty("aiGenerated").GetString());
+        // SE-05 (A8-19, A8-27): the disclaimers are texts of the client, in the visitor's language; the API says whether
+        // the text was AI-generated (to show the AI Act notice) and in which language it is written.
+        Assert.False(doc.RootElement.TryGetProperty("disclaimers", out _));
+        Assert.True(doc.RootElement.GetProperty("aiGenerated").GetBoolean());
+        Assert.Equal("it", doc.RootElement.GetProperty("contentLanguage").GetString());
     }
 
     [Fact]

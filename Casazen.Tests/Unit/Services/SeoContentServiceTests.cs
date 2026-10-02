@@ -381,6 +381,115 @@ public class SeoContentServiceTests
         Assert.Equal(SeoContentStatus.Generated, Assert.Single(stored).ContentStatus);
     }
 
+    // A8-25 (SE-05): the answers are cached in a bounded cache with a time to live; "regenerate" really regenerates.
+    private static (SeoContentService Service, Mock<IAiProvider> Provider, List<SeoContentRevision> Stored, AiResponseCache Cache) CachedService(
+        bool providerConfigured = true,
+        string? content = null)
+    {
+        var seoRepo = GenerationRepository(out var stored);
+        var calls = 0;
+        var aiProvider = new Mock<IAiProvider>();
+        aiProvider
+            .Setup(a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new AiGenerationResult(
+                content ?? SeoGeneratedContentTests.ValidHtml($"risposta {++calls}"), 50, 500, AiModelTier.Economy, FromCache: false, providerConfigured));
+        var cache = new AiResponseCache(Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.AiCacheOptions()));
+        var service = new SeoContentService(
+            seoRepo.Object, QuoteService(), aiProvider.Object, EmailTestHelpers.Links(),
+            Mock.Of<ILogger<SeoContentService>>(), Today, cache);
+        return (service, aiProvider, stored, cache);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_SameDataRetried_ReusesTheCachedAnswerWithoutPayingAgain()
+    {
+        var (service, provider, stored, _) = CachedService();
+
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        provider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Equal(2, stored.Count);
+        Assert.Equal(stored[0].BodyHtml, stored[1].BodyHtml);
+        // The second revision cost no tokens.
+        Assert.Equal(50, stored[0].PromptTokens);
+        Assert.Equal(0, stored[1].PromptTokens);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_ForceRegenerate_BypassesTheCacheAndReplacesTheEntry()
+    {
+        var (service, provider, stored, _) = CachedService();
+
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: true);
+        // The regenerated text is what the cache holds now.
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        provider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        Assert.Equal(3, stored.Count);
+        Assert.NotEqual(stored[0].BodyHtml, stored[1].BodyHtml);
+        Assert.Equal(stored[1].BodyHtml, stored[2].BodyHtml);
+        Assert.Equal(50, stored[1].PromptTokens);
+    }
+
+    [Fact]
+    public async Task GeneratePagesForComuneBatchAsync_PlaceholderAnswer_IsNeverCached()
+    {
+        // The stub provider (no API key) answers a placeholder: keeping it would only hide the missing configuration.
+        var (service, provider, _, cache) = CachedService(providerConfigured: false);
+
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+        await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
+
+        provider.Verify(
+            a => a.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        Assert.Equal(0, cache.Count);
+    }
+
+    [Fact]
+    public async Task GetComplianceGuideAsync_ApprovedGeneratedRevision_IsMarkedAiGeneratedAndItalian()
+    {
+        // SE-05 (A8-19, A8-27): the API tells the client to show the AI notice and the language of the text.
+        var revision = new SeoContentRevision { Id = Guid.NewGuid(), BodyHtml = "<p>Guida</p>", ContentStatus = SeoContentStatus.Generated };
+        var page = new SeoContentPage
+        {
+            Id = Guid.NewGuid(),
+            ComuneCode = "013075",
+            PageType = SeoPageType.ComplianceGuide,
+            LegalReviewStatus = LegalReviewStatus.Reviewed,
+            PublishedRevisionId = revision.Id,
+            PublishedRevision = revision,
+        };
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetPublishedPageAsync(SeoPageType.ComplianceGuide, "lombardia", "como", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(page);
+        var service = CreateService(seoRepo.Object, ComoRate());
+
+        var dto = await service.GetComplianceGuideAsync("lombardia", "como");
+
+        Assert.True(dto!.AiGenerated);
+        Assert.Equal("it", dto.ContentLanguage);
+    }
+
+    [Fact]
+    public async Task GetTouristTaxPageAsync_PageWithoutAnApprovedGeneratedRevision_IsNotMarkedAiGenerated()
+    {
+        var page = new SeoContentPage { Id = Guid.NewGuid(), ComuneCode = "013075", PageType = SeoPageType.TouristTaxCalc };
+        var seoRepo = new Mock<ISeoContentRepository>();
+        seoRepo.Setup(r => r.GetPublishedTouristTaxPageAsync("como", It.IsAny<CancellationToken>())).ReturnsAsync(page);
+        var service = CreateService(seoRepo.Object, ComoRate());
+
+        var dto = await service.GetTouristTaxPageAsync("como");
+
+        Assert.False(dto!.AiGenerated);
+    }
+
     /// <summary>A repository for a generation from scratch, collecting the stored revisions.</summary>
     private static Mock<ISeoContentRepository> GenerationRepository(out List<SeoContentRevision> stored)
     {
