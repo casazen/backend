@@ -76,27 +76,27 @@ public class Property : ITenantOwned
     /// <summary>WGS84 longitude in degrees, -180 to 180, same precision as <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
 
-    [Range(0, 100, ErrorMessage = "Bedrooms must be between 0 (studio) and 100")]
+    [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
     public int Bedrooms { get; set; }
 
-    [Range(1, 50, ErrorMessage = "Bathrooms must be between 1 and 50")]
+    [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
     /// <summary>Short-stay guests; <c>0</c> = not set (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
-    [Range(0, 100, ErrorMessage = "Max guests must be between 0 and 100")]
+    [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
     /// <summary>Short-stay nightly rate; <c>0</c> = none (long-term only property, see <c>CreatePropertyRequest</c>).</summary>
     [Precision(18, 2)]
-    [Range(0, 100000, ErrorMessage = "Nightly rate must be between €0 and €100,000")]
+    [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
     [Precision(18, 2)]
-    [Range(0, 10000, ErrorMessage = "Cleaning fee must be between €0 and €10,000")]
+    [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal CleaningFee { get; set; }
 
     [Precision(18, 2)]
-    [Range(0, 50000, ErrorMessage = "Damage deposit must be between €0 and €50,000")]
+    [Range(0, 50000, ErrorMessage = "PropertyDamageDepositRange")]
     public decimal DamageDeposit { get; set; }
 
     public List<PropertyAmenity> Amenities { get; set; } = new();

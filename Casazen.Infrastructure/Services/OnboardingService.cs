@@ -22,17 +22,17 @@ public class OnboardingService(
         if (consents is null)
         {
             if (requireConsents)
-                return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."));
+                return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "ConsentsIncomplete"));
 
             return (true, null);
         }
 
         var stale = ValidateVersions(consents);
         if (stale.Length > 0)
-            return (false, new ConsentValidationError(ConsentValidationErrorType.StaleVersion, "Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.", stale));
+            return (false, new ConsentValidationError(ConsentValidationErrorType.StaleVersion, "ConsentsStale", stale));
 
         if (!consents.TosAccepted || !consents.PrivacyAccepted || !consents.DpaAccepted || !consents.SubprocessorsAcknowledged)
-            return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "Tutti i consensi obbligatori devono essere accettati."));
+            return (false, new ConsentValidationError(ConsentValidationErrorType.Incomplete, "ConsentsIncomplete"));
 
         return (true, null);
     }

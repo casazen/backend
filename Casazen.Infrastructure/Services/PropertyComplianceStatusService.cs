@@ -90,9 +90,10 @@ public class PropertyComplianceStatusService(
                 "base-data",
                 "Dati base proprietà",
                 baseComplete ? "complete" : "pending",
-                true,
-                baseComplete ? null : "Completa nome, indirizzo, città e tariffe")
+                true)
             {
+                LabelKey = "ActivationStepBaseData",
+                MessageKey = baseComplete ? null : "ActivationBaseDataIncomplete",
                 Blockers = baseComplete ? [] : [new("activation_base_data_incomplete", "ActivationBaseDataIncomplete")],
                 Warnings = comuneMissing ? [new("comune_istat_missing", "ActivationComuneMissing")] : [],
             },
@@ -100,11 +101,15 @@ public class PropertyComplianceStatusService(
                 "cin",
                 "Codice CIN",
                 cinStatus == "valid" ? "complete" : "pending",
-                true,
-                cinStatus == "valid" ? null : cinStatus == "missing"
-                    ? $"Inserisci il CIN (guida: {cinGuidanceUrl})"
-                    : $"Formato CIN non valido (guida: {cinGuidanceUrl})")
+                true)
             {
+                LabelKey = "ActivationStepCin",
+                MessageKey = cinStatus switch
+                {
+                    "valid" => null,
+                    "missing" => "ActivationCinMissing",
+                    _ => "ActivationCinInvalid",
+                },
                 LinkUrl = cinGuidanceUrl,
                 Blockers = cinStatus switch
                 {
@@ -126,9 +131,11 @@ public class PropertyComplianceStatusService(
                 "documents",
                 "Documenti richiesti",
                 docsComplete ? "complete" : "pending",
-                true,
-                docsComplete ? null : $"Documenti mancanti: {string.Join(", ", missingDocs)}")
+                true)
             {
+                LabelKey = "ActivationStepDocuments",
+                MessageKey = docsComplete ? null : "ActivationDocumentsMissing",
+                MessageArgs = docsComplete ? null : [string.Join(", ", missingDocs)],
                 Blockers = docsComplete
                     ? []
                     : [new("activation_documents_missing", "ActivationDocumentsMissing", [string.Join(", ", missingDocs)])],
@@ -139,6 +146,7 @@ public class PropertyComplianceStatusService(
                 safetyComplete ? "complete" : "pending",
                 true)
             {
+                LabelKey = "ActivationStepSafety",
                 MessageKey = safetyComplete ? null : "ActivationSafetyIncomplete",
                 MessageArgs = safetyComplete ? null : [safety.Blockers.Count],
                 Blockers = safety.Blockers.Select(b => new ActivationBlocker(b.Code, b.MessageKey, b.MessageArgs)).ToList(),

@@ -28,12 +28,12 @@ public partial class OrgDomainService(
     IVercelDomainsClient vercelClient,
     TimeProvider timeProvider) : IOrgDomainService
 {
-    private const string DefaultDomainRequiredMessage = "Il dominio personalizzato è obbligatorio per questa modalità.";
-    private const string SubdomainRequiredMessage = "Il sottodominio è obbligatorio per questa modalità.";
-    private const string InvalidCustomDomainMessage = "Il dominio personalizzato non è valido.";
-    private const string InvalidSubdomainMessage = "Il sottodominio non è valido. Usa solo lettere minuscole, numeri e trattini.";
-    private const string ReservedSubdomainMessage = "Questo sottodominio è riservato e non può essere usato.";
-    private const string UnknownHostModeMessage = "Modalità di pubblicazione non valida.";
+    private const string DefaultDomainRequiredMessage = "OrgDomainRequired";
+    private const string SubdomainRequiredMessage = "OrgSubdomainRequired";
+    private const string InvalidCustomDomainMessage = "OrgDomainInvalid";
+    private const string InvalidSubdomainMessage = "OrgSubdomainInvalid";
+    private const string ReservedSubdomainMessage = "OrgSubdomainReserved";
+    private const string UnknownHostModeMessage = "OrgHostModeInvalid";
 
     public async Task<OrgDomainConfig?> GetDomainConfigAsync(Guid orgId, CancellationToken cancellationToken = default)
     {

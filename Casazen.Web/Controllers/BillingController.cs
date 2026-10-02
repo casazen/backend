@@ -24,6 +24,7 @@ public class BillingController(
 {
     /// <summary>503: the public URL of the web app, base of the Stripe return pages, is not configured (PL-11).</summary>
     private const string ReturnUrlNotConfiguredCode = "billing_return_url_not_configured";
+    private const string NoStripeCustomerCode = "billing_no_customer";
 
     /// <summary>
     /// Plans of the catalogue. <c>purchasable</c> is false for a plan whose Stripe Price id is not configured in this
@@ -178,14 +179,14 @@ public class BillingController(
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var org = await orgService.GetByIdAsync(orgId.Value, ct);
         if (org is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         if (string.IsNullOrEmpty(org.StripeCustomerId))
-            return BadRequest(new { error = "No Stripe customer" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, NoStripeCustomerCode, "BillingNoStripeCustomer");
 
         return Ok(new PortalSessionResponse
         {
@@ -202,11 +203,11 @@ public class BillingController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var org = await orgService.GetByIdAsync(orgId.Value, ct);
         return org is null
-            ? NotFound(new { error = "No organization assigned" })
+            ? this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned")
             : Ok(Map(org));
     }
 

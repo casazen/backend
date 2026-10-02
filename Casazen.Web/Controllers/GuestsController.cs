@@ -166,7 +166,7 @@ public class GuestsController(
     public async Task<ActionResult<GuestDto>> Create([FromBody] CreateGuestRequest request)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+            return ValidationProblem(ModelState);
 
         logger.LogInformation("Creating guest");
 
@@ -201,7 +201,7 @@ public class GuestsController(
     public async Task<ActionResult<GuestDto>> Update(Guid id, [FromBody] UpdateGuestRequest request)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+            return ValidationProblem(ModelState);
 
         logger.LogInformation("Updating guest: {GuestId}", id);
 

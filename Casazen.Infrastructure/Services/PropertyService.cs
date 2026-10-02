@@ -564,7 +564,7 @@ public class PropertyService(
         {
             var normalized = PropertySlugHelper.NormalizeOptional(requestedSlug);
             if (await repository.SlugExistsInOrgAsync(orgId, normalized, null))
-                throw new InvalidOperationException("Slug already in use within this organization.");
+                throw new DomainConflictException("duplicate_property_slug", "PropertySlugTaken");
             return normalized;
         }
 

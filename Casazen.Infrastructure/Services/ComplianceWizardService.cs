@@ -380,8 +380,11 @@ public class ComplianceWizardService(
                 "ical",
                 "Sincronizzazione calendario",
                 icalComplete ? "complete" : "warning",
-                false,
-                icalComplete ? null : "Consigliato: collega feed iCal OTA"),
+                false)
+            {
+                LabelKey = "ActivationStepIcal",
+                MessageKey = icalComplete ? null : "ActivationIcalRecommended",
+            },
         ];
     }
 
@@ -397,6 +400,7 @@ public class ComplianceWizardService(
             touristTax.Rate is null ? "warning" : "complete",
             false)
         {
+            LabelKey = "ActivationStepTouristTax",
             TouristTax = touristTax,
         };
 

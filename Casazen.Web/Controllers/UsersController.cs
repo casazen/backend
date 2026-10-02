@@ -34,6 +34,8 @@ public class UsersController(
     /// created only together with the legal consents. The client answers it with the consents step (A1-01).
     /// </summary>
     public const string ConsentsRequiredCode = "consents_required";
+    public const string ConsentsIncompleteCode = "consents_incomplete";
+    public const string StaleDocumentsCode = "stale_documents";
 
     // ─── Admin endpoints ────────────────────────────────────────────────────
 
@@ -335,7 +337,7 @@ public class UsersController(
 
         // The requested plan is only validated: the org starts on Starter, paid tiers come from Stripe (#274).
         if (!string.IsNullOrWhiteSpace(dto.PlanTier) && !PlanCatalog.TryParseTier(dto.PlanTier, out _))
-            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         var sub = GetSub();
         if (sub == null)
@@ -376,7 +378,7 @@ public class UsersController(
             sub, rentalType, email, firstName, lastName);
 
         if (user.OrgId is not Guid orgId)
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Org provisioning failed." });
+            return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
 
         // TN-4: the rest of this request (consent records, tenant filter) is scoped to the org just created or linked.
         tenantContext.SetOrgId(orgId);
@@ -407,14 +409,21 @@ public class UsersController(
     private ActionResult<OnboardingResponseDto> ToConsentError(ConsentValidationError? error) =>
         error?.Type switch
         {
-            ConsentValidationErrorType.Incomplete => BadRequest(new { error = error.Message }),
-            ConsentValidationErrorType.StaleVersion => BadRequest(new
-            {
-                error = error.Message,
-                staleDocuments = error.StaleDocuments,
-            }),
-            _ => BadRequest(new { error = error?.Message ?? "Invalid consents." }),
+            // The clients recognize a stale legal document by the `staleDocuments` field, kept next to the stable code.
+            ConsentValidationErrorType.StaleVersion => StaleDocumentsProblem(error),
+            _ => this.ApiProblem(StatusCodes.Status400BadRequest, ConsentsIncompleteCode, "ConsentsIncomplete"),
         };
+
+    private ObjectResult StaleDocumentsProblem(ConsentValidationError error)
+    {
+        var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status400BadRequest, StaleDocumentsCode, "ConsentsStale");
+        problem.Extensions["staleDocuments"] = error.StaleDocuments ?? [];
+        return new ObjectResult(problem)
+        {
+            StatusCode = StatusCodes.Status400BadRequest,
+            ContentTypes = { ApiProblemDetails.ContentType },
+        };
+    }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 

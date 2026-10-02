@@ -223,6 +223,9 @@ public class OrgDomainActivationIntegrationTests : IClassFixture<CasazenWebAppli
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("org_domain_invalid", problem.GetProperty("code").GetString());
+        Assert.Equal("Il dominio personalizzato non è valido.", problem.GetProperty("detail").GetString());
     }
 
     // ─── Arrange ───────────────────────────────────────────────────────────────────────────────────

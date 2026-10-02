@@ -60,10 +60,11 @@ public enum SetOrgDomainOutcome
     SubdomainsNotConfigured,
 }
 
+/// <param name="ErrorKey">Resource key (<c>SharedResources</c>) of the validation message, localized by the controller.</param>
 public sealed record SetOrgDomainResult(
     SetOrgDomainOutcome Outcome,
     OrgDomainConfig? Config,
-    string? ErrorMessage = null);
+    string? ErrorKey = null);
 
 public enum VerifyOrgDomainOutcome
 {

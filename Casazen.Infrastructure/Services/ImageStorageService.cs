@@ -1,3 +1,4 @@
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
@@ -79,7 +80,7 @@ public class ImageStorageService(
     public async Task<string> UploadDocumentAsync(IFormFile file, Guid propertyId)
     {
         if (!ValidateDocument(file))
-            throw new InvalidOperationException("Invalid document file");
+            throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
 
         var key = StorageKeys.PropertyDocument(propertyId, StorageKeys.NewFileName(file.FileName));
         try
@@ -157,7 +158,7 @@ public class ImageStorageService(
     private async Task<string> UploadPublicImageAsync(IFormFile file, string key, Guid ownerId)
     {
         if (!ValidateImage(file))
-            throw new InvalidOperationException("Invalid image file");
+            throw new DomainRuleException("invalid_image_file", "ImageFileInvalid");
 
         try
         {
