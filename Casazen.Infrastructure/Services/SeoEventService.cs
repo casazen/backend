@@ -17,6 +17,7 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class SeoEventService(
     AppDbContext db,
+    ISeoComuneCatalog comuneCatalog,
     IOptions<SeoEventOptions> options,
     ILogger<SeoEventService> logger,
     TimeProvider? timeProvider = null) : ISeoEventService
@@ -46,7 +47,7 @@ public sealed class SeoEventService(
         if (type is null)
             throw new DomainRuleException(ISeoEventService.UnknownEventCode, "SeoEventUnknown");
 
-        var comune = SignupAttributionRules.ResolveComune(SignupAttributionRules.Normalize(input.Comune));
+        var comune = await comuneCatalog.ResolveSlugOrCodeAsync(SignupAttributionRules.Normalize(input.Comune), cancellationToken);
         if (comune is null)
             throw new DomainRuleException(ISeoEventService.UnknownComuneCode, SignupAttributionRules.UnknownComuneKey);
 
@@ -92,6 +93,7 @@ public sealed class SeoEventService(
                 .ToListAsync(cancellationToken))
             .ToDictionary(x => x.ComuneCode, x => x.Count);
 
+        var comuni = await comuneCatalog.GetByCodesAsync(events.Select(e => e.ComuneCode), cancellationToken);
         var items = events
             .Where(e => e.CtaClicks > 0)
             .OrderByDescending(e => e.CtaClicks)
@@ -100,7 +102,7 @@ public sealed class SeoEventService(
             .Take(limit)
             .Select(e => new SeoTopComune(
                 e.ComuneCode,
-                SignupAttributionRules.ResolveComune(e.ComuneCode)?.Name ?? e.ComuneCode,
+                comuni.TryGetValue(e.ComuneCode, out var comune) ? comune.Name : e.ComuneCode,
                 e.CtaClicks,
                 e.SignupStarts,
                 signups.GetValueOrDefault(e.ComuneCode)))

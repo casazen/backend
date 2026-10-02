@@ -19,11 +19,14 @@ public class SeoEventServiceTests
 
     private readonly FakeTimeProvider _clock = new(Now);
 
+    private static readonly ISeoComuneCatalog Catalog = new StaticSeoComuneCatalog(
+        ComuneTestData.ComoInfo, ComuneTestData.BellagioInfo, ComuneTestData.MenaggioInfo, ComuneTestData.PalermoInfo);
+
     private AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
     private SeoEventService CreateService(AppDbContext db, int retentionDays = 90) =>
-        new(db, Options.Create(new SeoEventOptions { RetentionDays = retentionDays }), NullLogger<SeoEventService>.Instance, _clock);
+        new(db, Catalog, Options.Create(new SeoEventOptions { RetentionDays = retentionDays }), NullLogger<SeoEventService>.Instance, _clock);
 
     private static SeoEventInput Click(string comune = "como") => new("cta_click", comune, null, null, null, null);
 
