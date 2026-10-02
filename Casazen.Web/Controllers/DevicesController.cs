@@ -41,12 +41,12 @@ public class DevicesController(
 
         var platform = request.Platform.Trim().ToLowerInvariant();
         if (platform is not ("ios" or "android"))
-            return BadRequest(new { error = "Platform must be ios or android." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "DevicePlatformInvalid");
 
         var deviceId = request.DeviceId.Trim();
         var pushToken = request.PushToken.Trim();
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(pushToken))
-            return BadRequest(new { error = "DeviceId and PushToken are required." });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "DeviceFieldsRequired");
 
         DeviceRegistration registration;
         try

@@ -2029,4 +2029,103 @@
   <data name="NotesTooLong" xml:space="preserve">
     <value>Notes cannot exceed 1000 characters.</value>
   </data>
+  <data name="OrgDomainRequired" xml:space="preserve">
+    <value>A custom domain is required for this mode.</value>
+  </data>
+  <data name="OrgSubdomainRequired" xml:space="preserve">
+    <value>A subdomain is required for this mode.</value>
+  </data>
+  <data name="OrgDomainInvalid" xml:space="preserve">
+    <value>The custom domain is not valid.</value>
+  </data>
+  <data name="OrgSubdomainInvalid" xml:space="preserve">
+    <value>The subdomain is not valid. Use only lowercase letters, numbers and hyphens.</value>
+  </data>
+  <data name="OrgSubdomainReserved" xml:space="preserve">
+    <value>This subdomain is reserved and cannot be used.</value>
+  </data>
+  <data name="OrgHostModeInvalid" xml:space="preserve">
+    <value>Invalid publishing mode.</value>
+  </data>
+  <data name="OrgDomainInUse" xml:space="preserve">
+    <value>Domain or subdomain already in use.</value>
+  </data>
+  <data name="OrgDomainNotConfigured" xml:space="preserve">
+    <value>No custom domain is configured for this organization.</value>
+  </data>
+  <data name="OrgDomainVerificationFailed" xml:space="preserve">
+    <value>Domain verification failed.</value>
+  </data>
+  <data name="OrgAccessDenied" xml:space="preserve">
+    <value>Access denied for this organization.</value>
+  </data>
+  <data name="ApeRequired" xml:space="preserve">
+    <value>The APE document is required before creating a lease contract.</value>
+  </data>
+  <data name="ImuNotificationNotReady" xml:space="preserve">
+    <value>The IMU notification can only be exported for registered canone concordato contracts.</value>
+  </data>
+  <data name="PropertyCityLockedByLease" xml:space="preserve">
+    <value>The property city cannot be changed after a canone concordato lease has been submitted for registration.</value>
+  </data>
+  <data name="DocumentTypeInvalid" xml:space="preserve">
+    <value>Invalid document type.</value>
+  </data>
+  <data name="DocumentFileInvalid" xml:space="preserve">
+    <value>Invalid file type or size for this document.</value>
+  </data>
+  <data name="CinStatusUnknown" xml:space="preserve">
+    <value>Unknown CIN status value.</value>
+  </data>
+  <data name="ConsentsIncomplete" xml:space="preserve">
+    <value>All required consents must be accepted.</value>
+  </data>
+  <data name="ConsentsStale" xml:space="preserve">
+    <value>Some legal documents have been updated. Please accept the current versions.</value>
+  </data>
+  <data name="BillingNoStripeCustomer" xml:space="preserve">
+    <value>No billing customer is linked to this organization.</value>
+  </data>
+  <data name="DevicePlatformInvalid" xml:space="preserve">
+    <value>The platform must be ios or android.</value>
+  </data>
+  <data name="DeviceFieldsRequired" xml:space="preserve">
+    <value>Device id and push token are required.</value>
+  </data>
+  <data name="HostQueryRequired" xml:space="preserve">
+    <value>The host query parameter is required.</value>
+  </data>
+  <data name="OtaPropertyIdMismatch" xml:space="preserve">
+    <value>The property ID in the URL must match the one in the request body.</value>
+  </data>
+  <data name="ImageFileInvalid" xml:space="preserve">
+    <value>The image file is not valid.</value>
+  </data>
+  <data name="NoOrganizationContext" xml:space="preserve">
+    <value>No organization context for the current user.</value>
+  </data>
+  <data name="TouristTaxRateNotFound" xml:space="preserve">
+    <value>No tourist tax rate found for city: {0}</value>
+  </data>
+  <data name="ActivationStepBaseData" xml:space="preserve">
+    <value>Property basic data</value>
+  </data>
+  <data name="ActivationStepCin" xml:space="preserve">
+    <value>CIN code</value>
+  </data>
+  <data name="ActivationStepDocuments" xml:space="preserve">
+    <value>Required documents</value>
+  </data>
+  <data name="ActivationStepSafety" xml:space="preserve">
+    <value>Safety checklist</value>
+  </data>
+  <data name="ActivationStepIcal" xml:space="preserve">
+    <value>Calendar sync</value>
+  </data>
+  <data name="ActivationStepTouristTax" xml:space="preserve">
+    <value>Tourist tax</value>
+  </data>
+  <data name="ActivationIcalRecommended" xml:space="preserve">
+    <value>Recommended: connect an OTA iCal feed.</value>
+  </data>
 </root>

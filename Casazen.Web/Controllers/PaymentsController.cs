@@ -66,7 +66,7 @@ public class PaymentsController(
     {
         var booking = await bookingService.GetBookingAsync(request.BookingId);
         if (booking == null)
-            return NotFound("Booking not found");
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
 
         if (!await CanOnPropertyAsync(booking.PropertyId, PaymentOperations.Write, booking.OrgId))
             return NotFound();

@@ -145,7 +145,7 @@ public class OrgsController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
-            return NotFound(new { error = "No organization assigned to the current user" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId.Value, cancellationToken);
@@ -181,7 +181,7 @@ public class OrgsController(
         CancellationToken cancellationToken)
     {
         if (!PlanCatalog.TryParseTier(dto.PlanTier, out var planTier))
-            return BadRequest(new { error = $"Unknown planTier: {dto.PlanTier}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)

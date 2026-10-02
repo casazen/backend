@@ -153,11 +153,7 @@ public class PropertiesController(
         if (orgId is null)
         {
             logger.LogWarning("Property creation blocked: user {UserId} has no org context", userId);
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                error = "No organization context",
-                code = "no_org_context"
-            });
+            return this.ApiProblem(StatusCodes.Status403Forbidden, "no_org_context", "NoOrganizationContext");
         }
 
         logger.LogInformation("Creating property for user: {UserId}", userId);
@@ -193,10 +189,10 @@ public class PropertiesController(
             logger.LogInformation("Property created: {PropertyId} in org {OrgId}", created.Id, created.OrgId);
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
-        catch (InvalidOperationException ex)
+        catch (DomainConflictException ex)
         {
-            logger.LogWarning(ex, "Property creation conflict for user {UserId}", userId);
-            return Conflict(new { error = ex.Message, code = "duplicate_property_slug" });
+            logger.LogWarning(ex, "Property creation conflict ({Code}) for user {UserId}", ex.Code, userId);
+            return this.ApiProblem(StatusCodes.Status409Conflict, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
         }
     }
 
@@ -248,10 +244,7 @@ public class PropertiesController(
 
         if (request.City is { } city && IsCityChange(existing.City, city) && await HasSubmittedCanoneConcordatoLeaseAsync(id))
         {
-            return Conflict(new
-            {
-                message = "Property city cannot be changed after a canone concordato lease has been submitted for registration."
-            });
+            return this.ApiProblem(StatusCodes.Status409Conflict, CityLockedCode, "PropertyCityLockedByLease");
         }
 
         // The comune of the official ISTAT list (SU-04): checked only when it changes (a comune merged away later does not
@@ -393,39 +386,35 @@ public class PropertiesController(
         if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
+        if (!string.IsNullOrWhiteSpace(cinStatus) && cinStatus is not ("valid" or "missing" or "invalid"))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "CinStatusUnknown");
+
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 200) pageSize = 50;
 
-        try
+        var result = await propertyService.GetCinComplianceAsync(scope, cinStatus, page, pageSize);
+        return Ok(new CinComplianceResponse
         {
-            var result = await propertyService.GetCinComplianceAsync(scope, cinStatus, page, pageSize);
-            return Ok(new CinComplianceResponse
+            Items = result.Items.Select(i => new CinComplianceItemResponse
             {
-                Items = result.Items.Select(i => new CinComplianceItemResponse
-                {
-                    PropertyId = i.PropertyId,
-                    PropertyName = i.PropertyName,
-                    CinCode = i.CinCode,
-                    CinStatus = i.CinStatus,
-                    City = i.City,
-                }).ToList(),
-                TotalCount = result.TotalCount,
-                Summary = new CinComplianceSummaryResponse
-                {
-                    Valid = result.Summary.Valid,
-                    Missing = result.Summary.Missing,
-                    Invalid = result.Summary.Invalid,
-                    DaysUntilDeadline = result.Summary.Deadline.DaysUntilDeadline,
-                    Deadline = result.Summary.Deadline.Deadline?.ToString(CinOptions.DateFormat, CultureInfo.InvariantCulture),
-                    DeadlineStatus = result.Summary.Deadline.PhaseApiValue,
-                    HasNonCompliant = result.Summary.HasNonCompliant,
-                },
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+                PropertyId = i.PropertyId,
+                PropertyName = i.PropertyName,
+                CinCode = i.CinCode,
+                CinStatus = i.CinStatus,
+                City = i.City,
+            }).ToList(),
+            TotalCount = result.TotalCount,
+            Summary = new CinComplianceSummaryResponse
+            {
+                Valid = result.Summary.Valid,
+                Missing = result.Summary.Missing,
+                Invalid = result.Summary.Invalid,
+                DaysUntilDeadline = result.Summary.Deadline.DaysUntilDeadline,
+                Deadline = result.Summary.Deadline.Deadline?.ToString(CinOptions.DateFormat, CultureInfo.InvariantCulture),
+                DeadlineStatus = result.Summary.Deadline.PhaseApiValue,
+                HasNonCompliant = result.Summary.HasNonCompliant,
+            },
+        });
     }
 
     [HttpPut("{id}/cin")]
@@ -843,7 +832,7 @@ public class PropertiesController(
         // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "99"), which would
         // otherwise reach storage and the DB as an undefined document type (PL-07, A1-35, A7-31).
         if (!EnumNames.TryParseDefined<DocumentType>(documentType, out var docType))
-            return BadRequest(new { error = $"Invalid document type: {documentType}" });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "DocumentTypeInvalid");
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.Upload");
 
@@ -854,11 +843,14 @@ public class PropertiesController(
         }
         catch (ApeComplianceException ex)
         {
-            return BadRequest(new { error = ex.Message, code = ex.Code });
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest,
+                ex.Code,
+                ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
         }
-        catch (InvalidOperationException ex)
+        catch (DomainRuleException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
         }
     }
 
@@ -1334,7 +1326,7 @@ public class PropertiesController(
         IStringLocalizer<SharedResources> localizer) => new()
         {
             Id = step.Id,
-            Label = step.Label,
+            Label = step.LabelKey is null ? step.Label : localizer[step.LabelKey].Value,
             Status = step.Status,
             Blocker = step.Blocker,
             Message = step.MessageKey is null
@@ -1605,4 +1597,5 @@ public class PropertiesController(
 
     /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
     internal const string PlanLimitReachedCode = "plan_limit_reached";
+    internal const string CityLockedCode = "property_city_locked";
 }

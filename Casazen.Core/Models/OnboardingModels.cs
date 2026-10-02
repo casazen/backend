@@ -21,4 +21,4 @@ public record OnboardingActivationStatus(bool RoleChosen, bool OrgProvisioned, b
 public record ActivationChecklistStep(string Key, string State, string? Reason = null, int? Done = null, int? Total = null);
 
 public enum ConsentValidationErrorType { Incomplete, StaleVersion }
-public record ConsentValidationError(ConsentValidationErrorType Type, string Message, string[]? StaleDocuments = null);
+public record ConsentValidationError(ConsentValidationErrorType Type, string MessageKey, string[]? StaleDocuments = null);

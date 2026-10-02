@@ -2029,4 +2029,103 @@
   <data name="NotesTooLong" xml:space="preserve">
     <value>Le note non possono superare 1000 caratteri.</value>
   </data>
+  <data name="OrgDomainRequired" xml:space="preserve">
+    <value>Il dominio personalizzato è obbligatorio per questa modalità.</value>
+  </data>
+  <data name="OrgSubdomainRequired" xml:space="preserve">
+    <value>Il sottodominio è obbligatorio per questa modalità.</value>
+  </data>
+  <data name="OrgDomainInvalid" xml:space="preserve">
+    <value>Il dominio personalizzato non è valido.</value>
+  </data>
+  <data name="OrgSubdomainInvalid" xml:space="preserve">
+    <value>Il sottodominio non è valido. Usa solo lettere minuscole, numeri e trattini.</value>
+  </data>
+  <data name="OrgSubdomainReserved" xml:space="preserve">
+    <value>Questo sottodominio è riservato e non può essere usato.</value>
+  </data>
+  <data name="OrgHostModeInvalid" xml:space="preserve">
+    <value>Modalità di pubblicazione non valida.</value>
+  </data>
+  <data name="OrgDomainInUse" xml:space="preserve">
+    <value>Dominio o sottodominio già in uso.</value>
+  </data>
+  <data name="OrgDomainNotConfigured" xml:space="preserve">
+    <value>Per questa organizzazione non è configurato alcun dominio personalizzato.</value>
+  </data>
+  <data name="OrgDomainVerificationFailed" xml:space="preserve">
+    <value>Verifica del dominio non riuscita.</value>
+  </data>
+  <data name="OrgAccessDenied" xml:space="preserve">
+    <value>Accesso negato a questa organizzazione.</value>
+  </data>
+  <data name="ApeRequired" xml:space="preserve">
+    <value>Prima di creare un contratto di locazione serve il documento APE.</value>
+  </data>
+  <data name="ImuNotificationNotReady" xml:space="preserve">
+    <value>La comunicazione IMU è esportabile solo per contratti a canone concordato registrati.</value>
+  </data>
+  <data name="PropertyCityLockedByLease" xml:space="preserve">
+    <value>La città dell'immobile non può essere modificata dopo l'invio di un contratto a canone concordato per la registrazione.</value>
+  </data>
+  <data name="DocumentTypeInvalid" xml:space="preserve">
+    <value>Tipo di documento non valido.</value>
+  </data>
+  <data name="DocumentFileInvalid" xml:space="preserve">
+    <value>Tipo o dimensione del file non validi per questo documento.</value>
+  </data>
+  <data name="CinStatusUnknown" xml:space="preserve">
+    <value>Valore di stato CIN non valido.</value>
+  </data>
+  <data name="ConsentsIncomplete" xml:space="preserve">
+    <value>Tutti i consensi obbligatori devono essere accettati.</value>
+  </data>
+  <data name="ConsentsStale" xml:space="preserve">
+    <value>Alcuni documenti legali sono stati aggiornati. Accetta le versioni correnti.</value>
+  </data>
+  <data name="BillingNoStripeCustomer" xml:space="preserve">
+    <value>Nessun cliente di fatturazione associato a questa organizzazione.</value>
+  </data>
+  <data name="DevicePlatformInvalid" xml:space="preserve">
+    <value>La piattaforma deve essere ios o android.</value>
+  </data>
+  <data name="DeviceFieldsRequired" xml:space="preserve">
+    <value>Identificativo del dispositivo e token push sono obbligatori.</value>
+  </data>
+  <data name="HostQueryRequired" xml:space="preserve">
+    <value>Il parametro host è obbligatorio.</value>
+  </data>
+  <data name="OtaPropertyIdMismatch" xml:space="preserve">
+    <value>L'ID dell'immobile nell'URL deve coincidere con quello nel corpo della richiesta.</value>
+  </data>
+  <data name="ImageFileInvalid" xml:space="preserve">
+    <value>Il file immagine non è valido.</value>
+  </data>
+  <data name="NoOrganizationContext" xml:space="preserve">
+    <value>Nessun contesto organizzativo per l'utente corrente.</value>
+  </data>
+  <data name="TouristTaxRateNotFound" xml:space="preserve">
+    <value>Nessuna aliquota dell'imposta di soggiorno trovata per la città: {0}</value>
+  </data>
+  <data name="ActivationStepBaseData" xml:space="preserve">
+    <value>Dati base proprietà</value>
+  </data>
+  <data name="ActivationStepCin" xml:space="preserve">
+    <value>Codice CIN</value>
+  </data>
+  <data name="ActivationStepDocuments" xml:space="preserve">
+    <value>Documenti richiesti</value>
+  </data>
+  <data name="ActivationStepSafety" xml:space="preserve">
+    <value>Checklist sicurezza</value>
+  </data>
+  <data name="ActivationStepIcal" xml:space="preserve">
+    <value>Sincronizzazione calendario</value>
+  </data>
+  <data name="ActivationStepTouristTax" xml:space="preserve">
+    <value>Imposta di soggiorno</value>
+  </data>
+  <data name="ActivationIcalRecommended" xml:space="preserve">
+    <value>Consigliato: collega un feed iCal delle OTA.</value>
+  </data>
 </root>

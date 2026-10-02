@@ -23,6 +23,10 @@ public class OrgDomainController(
 {
     /// <summary>422: subdomain mode requested while <c>PublicHost__BaseDomain</c> is not configured (D3, no default).</summary>
     public const string SubdomainsNotConfiguredCode = "subdomains_not_configured";
+    public const string DomainInvalidCode = "org_domain_invalid";
+    public const string DomainInUseCode = "org_domain_in_use";
+    public const string DomainNotConfiguredCode = "org_domain_not_configured";
+    public const string DomainVerificationFailedCode = "org_domain_verification_failed";
 
     [HttpGet]
     [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
@@ -71,13 +75,15 @@ public class OrgDomainController(
             SetOrgDomainOutcome.PlanRequired => StatusCode(
                 StatusCodes.Status403Forbidden,
                 new { code = "plan_required", requiredPlan = "Pro" }),
-            SetOrgDomainOutcome.Conflict => Conflict(new { error = "Domain or subdomain already in use" }),
-            SetOrgDomainOutcome.ValidationError => BadRequest(new { error = result.ErrorMessage }),
+            SetOrgDomainOutcome.Conflict => this.ApiProblem(
+                StatusCodes.Status409Conflict, DomainInUseCode, "OrgDomainInUse"),
+            SetOrgDomainOutcome.ValidationError => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainInvalidCode, result.ErrorKey ?? "OrgDomainInvalid"),
             SetOrgDomainOutcome.SubdomainsNotConfigured => this.ApiProblem(
                 StatusCodes.Status422UnprocessableEntity,
                 SubdomainsNotConfiguredCode,
                 "OrgDomainSubdomainsNotConfigured"),
-            _ => BadRequest(new { error = result.ErrorMessage ?? "Invalid domain configuration" }),
+            _ => this.ApiProblem(StatusCodes.Status400BadRequest, DomainInvalidCode, result.ErrorKey ?? "OrgDomainInvalid"),
         };
     }
 
@@ -112,11 +118,10 @@ public class OrgDomainController(
             VerifyOrgDomainOutcome.PlanRequired => StatusCode(
                 StatusCodes.Status403Forbidden,
                 new { code = "plan_required", requiredPlan = "Pro" }),
-            VerifyOrgDomainOutcome.NotConfigured => BadRequest(new
-            {
-                error = "Custom domain is not configured for this organization",
-            }),
-            _ => BadRequest(new { error = "Domain verification failed" }),
+            VerifyOrgDomainOutcome.NotConfigured => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainNotConfiguredCode, "OrgDomainNotConfigured"),
+            _ => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainVerificationFailedCode, "OrgDomainVerificationFailed"),
         };
     }
 
@@ -124,10 +129,10 @@ public class OrgDomainController(
     {
         var callerOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (callerOrgId is null)
-            return NotFound(new { error = "No organization assigned to the current user" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 
         if (callerOrgId.Value != orgId)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Access denied for this organization" });
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "OrgAccessDenied");
 
         return null;
     }
