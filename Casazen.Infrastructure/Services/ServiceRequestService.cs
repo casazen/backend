@@ -245,6 +245,8 @@ public class ServiceRequestService(
             r => r.PaidAt = DateTime.UtcNow,
             cancellationToken);
 
+        // SU-09: the supplier learns that the host marked the request as paid (the payment itself is outside CasaZen).
+        await NotifySupplierPaidAsync(request, cancellationToken);
         return request;
     }
 
@@ -478,6 +480,58 @@ public class ServiceRequestService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Push notification for new service request {Id} could not be queued", request.Id);
+        }
+    }
+
+    /// <summary>
+    /// Email and push to the supplier after the host marked a request as paid (SU-09): queued on Hangfire, never sent inside
+    /// the host's request. The status is already saved, so a failure here is logged and never turned into an error for the
+    /// host. Called only by the winner of the transition (SU-10), and the push key is the transition, so the supplier gets
+    /// one push. The supplier is notified whatever its status: a suspended supplier is still owed what it completed.
+    /// </summary>
+    private async Task NotifySupplierPaidAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
+            var supplier = await db.SupplierProfiles
+                .AsNoTracking()
+                .Where(sp => sp.OrgId == request.SupplierOrgId)
+                .Select(sp => new { sp.Email, sp.LegalName })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (supplier is not null)
+            {
+                var email = EmailTemplates.ServiceRequestPaid(
+                    EmailTemplates.DefaultCulture,
+                    supplier.LegalName,
+                    request.Category,
+                    request.Property.Name,
+                    publicSiteLinks.SupplierInbox());
+                emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestPaid);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "ServiceRequest {Id} paid: supplier {SupplierOrgId} has no profile, no email queued",
+                    request.Id, request.SupplierOrgId);
+            }
+
+            var push = EmailTemplates.ServiceRequestPaidPush(EmailTemplates.DefaultCulture, request.Category, request.Property.Name);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestStatus(request.Id, request.Status),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title,
+                    push.Body,
+                    PushTypes.ServiceRequestPaid,
+                    BookingId: null,
+                    PushRoutes.Properties,
+                    request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Supplier notification for paid service request {Id} could not be queued", request.Id);
         }
     }
 

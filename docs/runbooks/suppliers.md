@@ -8,6 +8,8 @@ service request is tied to (task SU-07, decision D2). Section 10: supplier jobs 
 KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
 host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15). Section 14:
 the platform admin's supplier list, suspension and invites (SU-12, A4-29).
+Section 15: what the host sees of a request (timeline, rejection reason, "Segna pagato" with confirmation, asking another supplier)
+and the payment notification to the supplier (SU-09, A4-28).
 
 ## 1. How a supplier joins
 
@@ -710,12 +712,73 @@ the reason.
 - [ ] *Inviti*: *Reinvia* on an expired invite → the email arrives with a new link that works; the old link does not.
       *Revoca* on a pending invite → its link shows "Questo invito è stato revocato".
 
+## 15. Host: timeline, rejection reason, "Segna pagato", another supplier — SU-09
+
+### 15.1 The timeline of a request
+
+Every request the host reads (`GET /api/service-requests`, `GET /api/service-requests/{id}`, and the long-rent twins
+under `/api/long-rent/service-requests`) carries `history`: one step per transition of the state machine, oldest
+first, rebuilt from the dates the request keeps (the same builder as the supplier console, section 11.3, so host and
+supplier read the same story and no column was added):
+
+| Step | Party | Date |
+|---|---|---|
+| `Richiesto` | `Host` | `createdAt` |
+| `PresoInCarico` | `Supplier` | `takenAt` |
+| `Completato` | `Supplier` | `completedAt` |
+| `Pagato` | `Host` | `paidAt` |
+| `Rifiutato` | `Supplier` | `updatedAt` (a rejection is final, nothing updates the request afterwards), with the reason in `reason` |
+
+- **Who:** the web shows the host's steps as "Il tuo team" and the supplier's steps with the supplier's business name
+  (`supplierName`). A **member of the supplier's team is never named to the host**: `actorName` is always null in
+  the host answer (the supplier console names the member to the supplier's own team, section 11).
+- **Dates** are UTC instants; the web shows them in Europe/Rome.
+- The web (`ServiceRequestTimeline`, used by the booking, the property, the long-rent property and the marketplace
+  pages) also says what the request is waiting for ("In attesa che il fornitore accetti o rifiuti", ...).
+  Loading, load error with *Riprova* and empty states are in the cards and in the marketplace page.
+
+### 15.2 "Segna pagato" and the payment notification
+
+- Payment of the supplier stays a **manual flag** (DECISIONI.md, undecided points: no Stripe integration towards the
+  supplier): CasaZen does not pay the supplier and there is no transfer to it. The web asks for an explicit confirmation before the call ("Confermi di aver pagato ...?
+  CasaZen non effettua il pagamento: questo segna solo che l'hai già fatto. L'operazione non si può annullare"). The
+  buttons *Segna pagato* and *Richiedi ad altro fornitore* need `property.write` of the context (short-rent or
+  long-rent) and are hidden otherwise; the API checks it anyway. A 409 or 422 (the request changed meanwhile, for
+  example paid from another tab) reloads the list.
+- When the host marks a request as paid the **supplier is notified**, on Hangfire and never inside the host's
+  request: an email to the supplier profile's address (template `service-request-paid`, `EmailTexts.resx` IT/EN, says
+  that the payment is made outside CasaZen and links the supplier console, from `App:PublicSiteBaseUrl`) and one push
+  to the supplier org's devices (`service-request-paid`, delivery key `service-request:{id}:Pagato`, opens the app's
+  property list like the "new request" push). A failure to queue them is logged and never an error for the host.
+  A supplier suspended after completing the work (SU-12) is notified too: it is still owed what it completed.
+- The host is told of a rejection (email with the reason, and push) since A6-08; the reason is never on the lock screen.
+
+### 15.3 Asking another supplier after a rejection
+
+*Richiedi ad altro fornitore* appears on a rejected request (not when a newer, not rejected request for the same job
+already exists: then the row says "Già richiesto a un altro fornitore"). It opens the normal request form for the same
+property (short-rent: the same stay, **D2**; long-rent: the property) with the same category and notes, and without the
+suppliers that already rejected that job (same property, stay and category) in the list. The API does not forbid asking
+a supplier that rejected again: the exclusion is only the default of the form. The result is an ordinary new request
+(`POST /api/service-requests` or `/api/long-rent/service-requests`), linked to the old one only by the stay.
+
+### 15.4 After a deploy
+
+- [ ] Reject a new request as the supplier with a reason → on the booking, the property and the marketplace page the
+      host sees *Rifiutato*, the date and "Motivo del rifiuto: ...", and the button *Richiedi ad altro fornitore*.
+- [ ] The button opens the form with the stay, category and notes filled in, without the supplier that rejected; the
+      new request appears in the supplier's inbox and the old row says "Già richiesto a un altro fornitore".
+- [ ] Take and complete a request → the timeline shows each step with the date in Italian time, then *Segna pagato*
+      asks for confirmation; cancelling calls nothing; confirming marks it *Pagato* and the supplier gets an email and
+      a push ("Richiesta segnata come pagata").
+- [ ] As a user without `property.write` (read-only role): the timeline is readable, with no buttons.
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
 - The activation requirements (only the ToS today) are task SU-05.
-- Service requests: host timeline, rejection reason and "paid" confirmation are SU-09 (the history of section 11.3
-  can be reused there); the app's supplier choice (today the first result) is MO-10 and its
-  error states MO-07. `chargeToGuest` is still always refused, also for long-rent (open product point).
+- Service requests: the host timeline, rejection reason and "paid" confirmation are in section 14 (SU-09), but only on
+  the web: the app's supplier choice (today the first result) is MO-10 and its error states MO-07. `chargeToGuest` is
+  still always refused, also for long-rent (open product point).
