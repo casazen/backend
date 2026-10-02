@@ -444,7 +444,7 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         var supplier = await SeedSupplierAsync($"{NewTag()} Srl", SupplierStatus.Suspended);
         using var client = factory.CreateAuthenticatedClient(supplier.UserId, Supplier);
 
-        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete", new { tosAccepted = true });
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete", new { tosAccepted = true, tosVersion = "2026-10-v1" });
 
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_suspended");
         Assert.Equal(SupplierStatus.Suspended, (await ReadProfileAsync(supplier.OrgId)).Status);

@@ -801,8 +801,9 @@ Otherwise 409 `supplier_activation_blocked` with `blockers: [codes]` and the loc
 without one is not refused: product decision to confirm, see the open questions).
 
 `PUT /api/supplier/profile` of an **Active** supplier cannot take a requirement away (empty categories, comuni or
-description, blank name or invalid phone): 422 `supplier_profile_requirements`, nothing saved. A Pending supplier edits
-freely. The `profile/photos` upload and the admin repairs are unaffected.
+description, blank name or invalid phone): 422 `supplier_profile_requirements`, nothing saved. Only a requirement the
+edit newly takes away counts: a profile activated before SU-05 that already lacks one (say, the description) can still
+be edited and upload photos. A Pending supplier edits freely. The `profile/photos` upload and the admin repairs are unaffected.
 
 ### 16.2 The wizard is saved by the server
 
@@ -848,7 +849,7 @@ freely. The `profile/photos` upload and the admin repairs are unaffected.
   WHERE "Status" = 1 AND ("CategoriesJson" = '[]' OR ("ComuniJson" = '[]' AND "ComuneIstatCodesJson" = '[]'));
   ```
 
-  and ask them to complete the profile (the supplier cannot empty these fields any more once active).
+  and ask them to complete the profile (an active supplier cannot empty these fields any more).
 
 ## Known limits (other tasks)
 

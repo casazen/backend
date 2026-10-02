@@ -391,6 +391,21 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     }
 
     [Fact]
+    public async Task UpdateProfile_ActiveSupplierActivatedBeforeSu05WithoutBio_CanStillEditOtherFields()
+    {
+        // A profile activated when the Terms alone sufficed has no description: editing something else (or uploading a
+        // photo) must keep working; the edit just cannot take one more requirement away.
+        var (supplierId, orgId) = await SeedFullSupplierAsync(autoActivate: true);
+        await UpdateProfileAsync(orgId, p => p.Bio = null);
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PutAsJsonAsync("/api/supplier/profile", new { phone = "+39 06 7654321" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("+39 06 7654321", (await LoadProfileAsync(orgId)).Phone);
+    }
+
+    [Fact]
     public async Task UpdateProfile_PendingSupplierEmptiesTheCategories_IsSaved()
     {
         var (supplierId, orgId) = await SeedFullSupplierAsync();

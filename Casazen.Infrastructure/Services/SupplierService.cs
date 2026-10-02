@@ -437,6 +437,10 @@ public partial class SupplierService(
         if (profile is null)
             return null;
 
+        // Requirements already missing before this edit (a profile activated before SU-05): the edit may leave them missing,
+        // it just cannot take one more away.
+        var missingBefore = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).ToHashSet();
+
         if (legalName is not null) profile.LegalName = legalName;
         if (vatNumber is not null) profile.VatNumber = vatNumber.Length == 0 ? null : vatNumber;
         if (phone is not null) profile.Phone = phone;
@@ -451,8 +455,8 @@ public partial class SupplierService(
         // (empty categories, comuni or description would leave an "Active" profile that no host can find).
         if (profile.Status == SupplierStatus.Active)
         {
-            var missing = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).ToList();
-            if (missing.Count > 0)
+            var removed = SupplierActivationRules.ProfileBlockers(profile).Select(b => b.Code).Where(c => !missingBefore.Contains(c)).ToList();
+            if (removed.Count > 0)
             {
                 db.Entry(profile).State = EntityState.Detached;
                 throw new DomainRuleException(
