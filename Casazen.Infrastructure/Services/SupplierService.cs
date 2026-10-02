@@ -767,7 +767,8 @@ public partial class SupplierService(
                 cancellationToken);
 
         if (existing is not null)
-            throw new InvalidOperationException($"Pending invite already exists for {email}");
+            throw new DomainConflictException(
+                SupplierAdminErrorCodes.DuplicateInvite, SupplierAdminErrorCodes.DuplicateInviteMessageKey);
 
         // Accepting the invite creates a profile with this email: with a profile already there it could never succeed
         // (SU-14). The owner of that profile links it with the claim instead.

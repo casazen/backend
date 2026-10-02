@@ -1927,4 +1927,25 @@
   <data name="SupplierActivationStepInvalid" xml:space="preserve">
     <value>The activation step must be between 1 and {0}.</value>
   </data>
+  <data name="SupplierAvailabilityRangeInvalid" xml:space="preserve">
+    <value>The end date must be on or after the start date.</value>
+  </data>
+  <data name="SupplierAvailabilityRangeTooLong" xml:space="preserve">
+    <value>The maximum range is {0} days.</value>
+  </data>
+  <data name="SupplierPhotoLimit" xml:space="preserve">
+    <value>At most {0} photos are allowed: you already have {1} and are uploading {2}.</value>
+  </data>
+  <data name="SupplierPhotoInvalid" xml:space="preserve">
+    <value>Invalid file: {0}. Accepted formats: JPEG, PNG, WebP. Maximum size: 10 MB.</value>
+  </data>
+  <data name="SupplierPhotoUploadFailed" xml:space="preserve">
+    <value>The photo upload failed. Try again shortly.</value>
+  </data>
+  <data name="SupplierSearchTargetRequired" xml:space="preserve">
+    <value>Provide the municipality or the property to search for suppliers.</value>
+  </data>
+  <data name="SupplierShowcaseNotFound" xml:space="preserve">
+    <value>This supplier showcase does not exist or is no longer available.</value>
+  </data>
 </root>

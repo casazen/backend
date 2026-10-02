@@ -35,7 +35,7 @@ public class PublicSupplierController : ControllerBase
             .FirstOrDefaultAsync(sp => sp.ShowcaseSlug == slug && sp.Status == Core.Entities.Enums.SupplierStatus.Active, ct);
 
         if (profile is null)
-            return NotFound(new { error = "Supplier not found" });
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierShowcaseNotFound");
 
         // The comuni chosen from the official list are shown by name (SU-04), then what the supplier wrote.
         var listed = await _comuneDirectory.GetByIstatCodesAsync(SupplierComuniView.IstatCodes(profile), ct);

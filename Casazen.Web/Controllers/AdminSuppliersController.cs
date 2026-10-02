@@ -176,29 +176,22 @@ public class AdminSuppliersController(
         [FromBody] AdminInviteSupplierRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var invite = await supplierService.CreateInviteAsync(
-                request.Email,
-                request.ComuneCode,
-                request.Categories,
-                request.Message,
-                cancellationToken);
+        var invite = await supplierService.CreateInviteAsync(
+            request.Email,
+            request.ComuneCode,
+            request.Categories,
+            request.Message,
+            cancellationToken);
 
-            logger.LogInformation(
-                "Admin supplier invite created: {InviteId} for {MaskedEmail} in {Comune}",
-                invite.InviteId, LogRedaction.MaskEmail(request.Email), request.ComuneCode);
+        logger.LogInformation(
+            "Admin supplier invite created: {InviteId} for {MaskedEmail} in {Comune}",
+            invite.InviteId, LogRedaction.MaskEmail(request.Email), request.ComuneCode);
 
-            return CreatedAtAction(nameof(InviteSupplier), new AdminInviteResponse
-            {
-                InviteId = invite.InviteId,
-                ExpiresAt = invite.ExpiresAt,
-            });
-        }
-        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Pending invite", StringComparison.Ordinal))
+        return CreatedAtAction(nameof(InviteSupplier), new AdminInviteResponse
         {
-            return Conflict(new { error = ex.Message, code = "duplicate_invite" });
-        }
+            InviteId = invite.InviteId,
+            ExpiresAt = invite.ExpiresAt,
+        });
     }
 
     /// <summary>

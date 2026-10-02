@@ -1927,4 +1927,25 @@
   <data name="SupplierActivationStepInvalid" xml:space="preserve">
     <value>Il passo dell'attivazione deve essere compreso tra 1 e {0}.</value>
   </data>
+  <data name="SupplierAvailabilityRangeInvalid" xml:space="preserve">
+    <value>La data finale deve essere uguale o successiva alla data iniziale.</value>
+  </data>
+  <data name="SupplierAvailabilityRangeTooLong" xml:space="preserve">
+    <value>L'intervallo massimo è di {0} giorni.</value>
+  </data>
+  <data name="SupplierPhotoLimit" xml:space="preserve">
+    <value>Massimo {0} foto consentite: ne hai già {1} e ne stai caricando {2}.</value>
+  </data>
+  <data name="SupplierPhotoInvalid" xml:space="preserve">
+    <value>File non valido: {0}. Formati accettati: JPEG, PNG, WebP. Dimensione massima: 10 MB.</value>
+  </data>
+  <data name="SupplierPhotoUploadFailed" xml:space="preserve">
+    <value>Caricamento delle foto non riuscito. Riprova tra poco.</value>
+  </data>
+  <data name="SupplierSearchTargetRequired" xml:space="preserve">
+    <value>Indica il comune oppure l'immobile per cercare i fornitori.</value>
+  </data>
+  <data name="SupplierShowcaseNotFound" xml:space="preserve">
+    <value>Questa vetrina fornitore non esiste o non è più disponibile.</value>
+  </data>
 </root>
