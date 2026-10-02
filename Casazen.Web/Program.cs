@@ -183,6 +183,8 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
     .Validate(o => o.IsValid(), "ShortStayFiscal: threshold, nights and rates must be positive (rates below 1) and every source set.")
     .ValidateOnStart();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
+// Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
+builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
 
 // API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())

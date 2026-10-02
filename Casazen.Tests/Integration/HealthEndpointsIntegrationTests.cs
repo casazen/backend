@@ -71,6 +71,7 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         // BK-17 (D9): no Vercel token and project, so custom domains cannot be activated.
         Assert.Equal("degraded", checks["vercel"]);
         Assert.Equal("degraded", checks["storage"]);
+        // LEGAL-TEXTS (D9): the versions in force (2026-06-v1) have no text, so the legal documents are not published.
         // DEPLOY-CFG: the factory sets App:ApiBaseUrl (https) but publishes no legal text and no date in force.
         Assert.Equal("healthy", checks["api-url"]);
         Assert.Equal("degraded", checks["legal"]);
