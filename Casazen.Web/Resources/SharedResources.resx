@@ -1816,4 +1816,55 @@
   <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
     <value>Il motivo della sospensione può avere al massimo 500 caratteri.</value>
   </data>
+  <data name="RentLeaseNotSigned" xml:space="preserve">
+    <value>Il canone può essere impostato solo per un contratto firmato da tutte le parti.</value>
+  </data>
+  <data name="RentLeaseDatesInvalid" xml:space="preserve">
+    <value>Le date del contratto non permettono di generare lo scadenziario.</value>
+  </data>
+  <data name="RentBillingDayInvalid" xml:space="preserve">
+    <value>Il giorno di scadenza deve essere compreso tra {0} e {1}.</value>
+  </data>
+  <data name="RentAmountInvalid" xml:space="preserve">
+    <value>L'importo della rata deve essere maggiore di zero, con al massimo due decimali.</value>
+  </data>
+  <data name="RentCadenceLocked" xml:space="preserve">
+    <value>La periodicità non può essere cambiata: ci sono rate già pagate o con un pagamento avviato.</value>
+  </data>
+  <data name="RentScheduleNotFound" xml:space="preserve">
+    <value>Lo scadenziario del canone non è ancora stato impostato.</value>
+  </data>
+  <data name="RentInstallmentNotFound" xml:space="preserve">
+    <value>Rata del canone non trovata.</value>
+  </data>
+  <data name="RentInstallmentAlreadyPaid" xml:space="preserve">
+    <value>La rata risulta già pagata.</value>
+  </data>
+  <data name="RentInstallmentInFlight" xml:space="preserve">
+    <value>Un pagamento online della rata è in corso: attendi l'esito da Stripe.</value>
+  </data>
+  <data name="RentInstallmentNotPayable" xml:space="preserve">
+    <value>La rata non può più essere pagata online: contatta il locatore.</value>
+  </data>
+  <data name="RentOnlinePaymentsUnavailable" xml:space="preserve">
+    <value>Per chiedere il pagamento online collega un account Stripe abilitato agli incassi (Impostazioni > Pagamenti).</value>
+  </data>
+  <data name="RentNoTenantEmail" xml:space="preserve">
+    <value>Nessun conduttore ha un indirizzo email a cui inviare la richiesta di pagamento.</value>
+  </data>
+  <data name="RentPaymentRequestNotSent" xml:space="preserve">
+    <value>La richiesta di pagamento non è stata inviata: il servizio email non è disponibile. Riprova più tardi.</value>
+  </data>
+  <data name="RentPaidOnInvalid" xml:space="preserve">
+    <value>Indica una data di pagamento valida, non futura (nota di al massimo 500 caratteri).</value>
+  </data>
+  <data name="RentPaymentLinkInvalid" xml:space="preserve">
+    <value>Il link di pagamento non è valido o è stato sostituito da uno più recente.</value>
+  </data>
+  <data name="RentCadenceRequired" xml:space="preserve">
+    <value>Indica la periodicità del canone (mensile, bimestrale, trimestrale o semestrale).</value>
+  </data>
+  <data name="RentBillingDayRange" xml:space="preserve">
+    <value>Il giorno di scadenza deve essere compreso tra 1 e 28.</value>
+  </data>
 </root>
