@@ -49,11 +49,15 @@ public interface IOrgService
 
     Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stores the billing country and the declared VAT id (PL-13: the VAT id is verified by Stripe at checkout, not
+    /// here). <paramref name="eInvoice"/> updates the e-invoice data when given; null leaves it unchanged.
+    /// </summary>
     Task<Org?> UpdateBillingProfileAsync(
         Guid orgId,
         string billingCountry,
         string? vatId,
-        DateTime? vatValidatedAt,
+        BillingEInvoiceDetails? eInvoice = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<Guid, Org>> GetByIdsAsync(
@@ -89,3 +93,9 @@ public interface IOrgService
 
 /// <summary>Result of <see cref="IOrgService.CheckSlugAvailabilityAsync"/>.</summary>
 public sealed record OrgSlugAvailability(string Slug, bool Available, string? Code);
+
+/// <summary>
+/// Data for the Italian e-invoice of the CasaZen subscription (PL-13). Per field: null leaves the stored value unchanged,
+/// an empty string clears it.
+/// </summary>
+public sealed record BillingEInvoiceDetails(string? SdiRecipientCode, string? PecEmail, string? FiscalCode);

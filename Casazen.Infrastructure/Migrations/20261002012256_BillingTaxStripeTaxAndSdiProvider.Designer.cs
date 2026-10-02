@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002012256_BillingTaxStripeTaxAndSdiProvider")]
+    partial class BillingTaxStripeTaxAndSdiProvider
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2221,11 +2224,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<string>("AddressKey")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("text")
-                        .HasComputedColumnSql("lower(regexp_replace(btrim(\"Address\"), '\\s+', ' ', 'g')) || '|' || lower(regexp_replace(btrim(\"City\"), '\\s+', ' ', 'g')) || '|' || lower(btrim(\"PostalCode\")) || '|' || lower(regexp_replace(btrim(coalesce(\"Unit\", '')), '\\s+', ' ', 'g'))", true);
-
                     b.PrimitiveCollection<int[]>("Amenities")
                         .IsRequired()
                         .HasColumnType("integer[]");
@@ -2317,12 +2315,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<decimal>("Latitude")
-                        .HasPrecision(9, 6)
-                        .HasColumnType("numeric(9,6)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("Longitude")
-                        .HasPrecision(9, 6)
-                        .HasColumnType("numeric(9,6)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<int>("MaxGuests")
                         .HasColumnType("integer");
@@ -2369,10 +2367,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<string>("Unit")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2384,15 +2378,14 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OwnerId");
 
-                    b.HasIndex("OrgId", "AddressKey")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_Properties_OrgId_AddressKey")
-                        .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
-
                     b.HasIndex("OrgId", "Slug")
                         .IsUnique()
                         .HasDatabaseName("UIX_Properties_OrgId_Slug")
                         .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false");
+
+                    b.HasIndex("Address", "City", "PostalCode", "IsActive")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
 
                     b.ToTable("Properties");
                 });
