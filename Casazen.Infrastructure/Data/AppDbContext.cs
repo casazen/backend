@@ -88,6 +88,7 @@ public class AppDbContext(
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
+    public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<ServiceRequest> ServiceRequests { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
@@ -896,6 +897,11 @@ public class AppDbContext(
             .HasIndex(i => i.TokenHash)
             .IsUnique()
             .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
+
+        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
+        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
+        modelBuilder.Entity<SupplierAdminAuditEntry>()
+            .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
 
         // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         modelBuilder.Entity<ServiceRequest>()

@@ -1291,6 +1291,42 @@
   <data name="OtaStayBlockNotFound" xml:space="preserve">
     <value>Blocco del calendario non trovato.</value>
   </data>
+  <data name="CalendarBlockNotFound" xml:space="preserve">
+    <value>Blocco del calendario non trovato.</value>
+  </data>
+  <data name="CalendarBlockInvalidRange" xml:space="preserve">
+    <value>La data di fine deve essere successiva alla data di inizio.</value>
+  </data>
+  <data name="CalendarBlockInPast" xml:space="preserve">
+    <value>Non puoi bloccare date già passate: il blocco deve iniziare da oggi in poi.</value>
+  </data>
+  <data name="CalendarBlockTooLong" xml:space="preserve">
+    <value>Un blocco può durare al massimo {0} notti. Per chiudere l'immobile più a lungo mettilo in pausa.</value>
+  </data>
+  <data name="CalendarBlockInvalidReason" xml:space="preserve">
+    <value>Scegli il motivo del blocco: soggiorno del proprietario, manutenzione o altro.</value>
+  </data>
+  <data name="CalendarBlockNoteTooLong" xml:space="preserve">
+    <value>La nota è troppo lunga (massimo 200 caratteri).</value>
+  </data>
+  <data name="CalendarBlockOverlapsBooking" xml:space="preserve">
+    <value>Una prenotazione occupa già una di queste notti: annullala o scegli altre date.</value>
+  </data>
+  <data name="CalendarBlockOverlapsBlock" xml:space="preserve">
+    <value>Hai già bloccato una di queste notti: elimina quel blocco o scegli altre date.</value>
+  </data>
+  <data name="CalendarBlockNotManual" xml:space="preserve">
+    <value>Questo blocco arriva dal calendario di un canale (iCal): si toglie dal canale o scollegando il calendario, non da qui.</value>
+  </data>
+  <data name="CalendarBlockStartRequired" xml:space="preserve">
+    <value>Indica la data di inizio del blocco.</value>
+  </data>
+  <data name="CalendarBlockEndRequired" xml:space="preserve">
+    <value>Indica la data di fine del blocco.</value>
+  </data>
+  <data name="CalendarBlockReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del blocco.</value>
+  </data>
   <data name="OtaStayBlockNotImported" xml:space="preserve">
     <value>Solo un blocco importato da un calendario OTA collegato può diventare un soggiorno.</value>
   </data>
@@ -1710,6 +1746,39 @@
   </data>
   <data name="DomainIssue_vercel_rejected" xml:space="preserve">
     <value>Il fornitore del servizio non accetta questo dominio. Controlla che sia scritto correttamente.</value>
+  </data>
+  <data name="SupplierAlreadySuspended" xml:space="preserve">
+    <value>Il fornitore è già sospeso.</value>
+  </data>
+  <data name="SupplierNotSuspended" xml:space="preserve">
+    <value>Il fornitore non è sospeso: non c'è nulla da riattivare.</value>
+  </data>
+  <data name="SupplierInviteNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="SupplierInviteNotPending" xml:space="preserve">
+    <value>Solo un invito in attesa può essere revocato: questo è già stato usato, è scaduto o è già stato revocato.</value>
+  </data>
+  <data name="SupplierInviteNotResendable" xml:space="preserve">
+    <value>Un invito già usato o revocato non si può reinviare: crea un nuovo invito.</value>
+  </data>
+  <data name="SupplierInviteDuplicate" xml:space="preserve">
+    <value>Esiste già un altro invito in attesa per questa email: revocalo prima di reinviare questo.</value>
+  </data>
+  <data name="SupplierInviteRevoked" xml:space="preserve">
+    <value>Questo invito è stato revocato. Chiedi al team CasaZen di inviartene uno nuovo.</value>
+  </data>
+  <data name="SupplierSuspended" xml:space="preserve">
+    <value>Il tuo account fornitore è sospeso: non puoi completare l'attivazione. Contatta il supporto CasaZen.</value>
+  </data>
+  <data name="ServiceRequestSupplierNotActive" xml:space="preserve">
+    <value>Il tuo account fornitore non è attivo (è sospeso o non ancora attivato): non puoi eseguire azioni sulle richieste. Contatta il supporto CasaZen.</value>
+  </data>
+  <data name="SupplierSuspendReasonRequired" xml:space="preserve">
+    <value>Indica il motivo della sospensione.</value>
+  </data>
+  <data name="SupplierSuspendReasonTooLong" xml:space="preserve">
+    <value>Il motivo della sospensione può avere al massimo 500 caratteri.</value>
   </data>
   <data name="RentLeaseNotSigned" xml:space="preserve">
     <value>Il canone può essere impostato solo per un contratto firmato da tutte le parti.</value>
