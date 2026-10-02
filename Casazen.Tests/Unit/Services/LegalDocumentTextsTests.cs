@@ -683,13 +683,12 @@ public class LegalDocumentTextsTests
     // ─── Health check: degraded, with the variables to set and never their values ─────────────────
 
     [Fact]
-    public async Task CheckHealthAsync_AllDocumentsPublished_IsHealthy()
+    public void GetProblems_AllDocumentsPublished_IsEmpty()
     {
-        var check = new LegalDocumentsHealthCheck(Service(LegalTextFixtures.CompleteConfiguration()));
+        // The health check adds the dates in force and the subprocessor details (DEPLOY-CFG): not part of the texts.
+        var problems = LegalDocumentsHealthCheck.GetProblems(Service(LegalTextFixtures.CompleteConfiguration()));
 
-        var result = await check.CheckHealthAsync(new HealthCheckContext());
-
-        Assert.Equal(HealthStatus.Healthy, result.Status);
+        Assert.Empty(problems);
     }
 
     [Fact]
