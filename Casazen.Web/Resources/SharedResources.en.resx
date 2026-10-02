@@ -1779,6 +1779,7 @@
   </data>
   <data name="SeoDisclaimerAiGenerated" xml:space="preserve">
     <value>Text generated with the help of AI and approved by a CasaZen administrator before publication: always check the official sources.</value>
+  </data>
   <data name="SupplierAlreadySuspended" xml:space="preserve">
     <value>The supplier is already suspended.</value>
   </data>
