@@ -58,6 +58,16 @@ public class SupplierProfile
 
     public DateTime? TosAcceptedAt { get; set; }
 
+    /// <summary>UTC moment a platform admin suspended the profile (SU-12); null while it is not suspended.</summary>
+    public DateTime? SuspendedAt { get; set; }
+
+    /// <summary>
+    /// Why the admin suspended the profile (SU-12): an internal note, shown to admins only. Null while it is not
+    /// suspended; the full history is in <see cref="SupplierAdminAuditEntry"/>.
+    /// </summary>
+    [MaxLength(500)]
+    public string? SuspensionReason { get; set; }
+
     // Calendar sync
     public CalendarSyncType CalendarSyncType { get; set; } = CalendarSyncType.None;
 

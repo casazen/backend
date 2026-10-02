@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0`, `vercel`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `auth0`, `vercel`, `api-url`, `legal`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -45,6 +45,8 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |
 | `vercel` | `Vercel__ApiToken` and `Vercel__ProjectId` set (BK-17): the platform can add a host's custom domain to the Vercel project | either missing: custom domains are not activated, the settings page says so ([`seo-domain.md`](seo-domain.md) section 10) | — |
+| `api-url` | `App__ApiBaseUrl` is an absolute https URL (DEPLOY-CFG): the base of the iCal export links | missing, a placeholder, not an absolute http(s) URL, or plain `http` outside Development/Testing: the export links hosts paste into Airbnb/Booking would point to `https://localhost:5001` | — |
+| `legal` | Terms, Privacy and DPA each have a text file (or an external copy URL) for the configured version and a date in force, and the subprocessor list has its date and no entry "in definizione" (DEPLOY-CFG, PL-14) | any of those missing: pages say "in preparazione", hosts accept a version nobody can read. The description names the missing file / variable / provider | — |
 | `auth0` | `Auth0__Domain`, `Auth0__Audience` and the Management API client (M2M) configured | M2M client missing (role sync off) or the deprecated static `Auth0__ManagementApiToken` in use; in Development/Testing also `Auth0__Domain` / `Auth0__Audience` missing | `Auth0__Domain` / `Auth0__Audience` missing: nobody can sign in. Outside Development/Testing the app does not even start |
 
 `degraded` means "an optional integration is not configured": the deploy is accepted, CI prints a warning for each
@@ -69,7 +71,7 @@ running and the deploy log shows the list of problems.
 | `Storage__*` | FD-07 | `OptionsValidationException: Storage:S3:… is required.` |
 
 Stripe and the Auth0 Management client are **not** validated at startup: they are optional and reported as `degraded`.
-The full list of variables is in [`docs/INFRA.md`](../INFRA.md#variables-required-in-production).
+The full list of variables is in [`deploy-checklist.md`](deploy-checklist.md) (and the short version in [`docs/INFRA.md`](../INFRA.md#variables-required-in-production)).
 
 ## Commit of the running build
 
@@ -124,4 +126,6 @@ Product owner setup (once):
 | `stripe: degraded` | Set the missing Stripe variables and create both webhook endpoints: [`docs/INFRA.md` § Stripe](../INFRA.md#stripe-keys-and-webhooks). |
 | `auth0: degraded` | Configure the M2M client ([`auth0.md`](auth0.md) §4-5). |
 | `vercel: degraded` | Set `Vercel__ApiToken` and `Vercel__ProjectId` (and `Vercel__TeamId` for a team project): [`seo-domain.md`](seo-domain.md) section 10. Until then no custom domain is activated. |
+| `api-url: degraded` | Set `App__ApiBaseUrl` to the Railway URL of this environment ([`deploy-checklist.md`](deploy-checklist.md) § 1 step 10). |
+| `legal: degraded` | Provide the texts and dates, and complete the subprocessor details: [`legal-documents.md`](legal-documents.md). Expected until the product owner supplies the texts (D14). |
 | `email: degraded` / `storage: degraded` | Only in Development/Testing: see [`email.md`](email.md) and [`storage.md`](storage.md). |

@@ -16,6 +16,7 @@ namespace Casazen.Infrastructure.Services;
 /// shows the stay only.
 /// </param>
 /// <param name="Convertible">"Crea soggiorno OTA" is offered (<see cref="Core.Services.OtaStays.IsConvertible"/>).</param>
+/// <param name="ManualReason">Why the host closed the dates (manual block only, PC-09).</param>
 public sealed record HostCalendarBlock(
     Guid Id,
     Guid PropertyId,
@@ -28,4 +29,5 @@ public sealed record HostCalendarBlock(
     Guid? FeedId = null,
     Guid? StayId = null,
     bool RepresentedByStay = false,
-    bool Convertible = false);
+    bool Convertible = false,
+    CalendarBlockReason? ManualReason = null);

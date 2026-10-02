@@ -165,7 +165,7 @@ public class ServiceRequestService(
         string userId,
         CancellationToken cancellationToken = default)
     {
-        var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -188,7 +188,7 @@ public class ServiceRequestService(
         string? notes,
         CancellationToken cancellationToken = default)
     {
-        var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -214,7 +214,7 @@ public class ServiceRequestService(
     {
         // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        var request = await GetSupplierRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -353,7 +353,14 @@ public class ServiceRequestService(
         CancellationToken cancellationToken = default) =>
         repository.ListForSupplierAsync(supplierOrgId, openOnly, page, pageSize, cancellationToken);
 
-    private async Task<ServiceRequest> GetSupplierRequestOrThrow(
+    /// <summary>
+    /// The request for a supplier action (take, complete, reject): 404 when it does not exist, 403 when it was sent to
+    /// another supplier, 422 <see cref="ServiceRequestErrorCodes.SupplierNotActive"/> when the acting supplier is not
+    /// <see cref="SupplierStatus.Active"/> (SU-12, A4-29): a suspended supplier performs no action, and the check comes
+    /// before the state machine so it is told why instead of "invalid transition". The host's own action
+    /// (<see cref="MarkPaidAsync"/>) is not a supplier action and does not depend on the supplier's status.
+    /// </summary>
+    private async Task<ServiceRequest> GetRequestForActiveSupplierOrThrow(
         Guid id,
         Guid supplierOrgId,
         CancellationToken cancellationToken)
@@ -363,6 +370,21 @@ public class ServiceRequestService(
         // 403 (FD-05): the request exists but was sent to another supplier.
         if (request.SupplierOrgId != supplierOrgId)
             throw new UnauthorizedAccessException($"Service request {id} belongs to another supplier");
+
+        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
+        var status = await db.SupplierProfiles
+            .AsNoTracking()
+            .Where(sp => sp.OrgId == supplierOrgId)
+            .Select(sp => (SupplierStatus?)sp.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (status != SupplierStatus.Active)
+        {
+            logger.LogInformation(
+                "ServiceRequest {Id}: action refused, supplier {SupplierOrgId} is {SupplierStatus}",
+                id, supplierOrgId, status?.ToString() ?? "without a profile");
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.SupplierNotActive, ServiceRequestErrorCodes.SupplierNotActiveMessageKey);
+        }
 
         return request;
     }

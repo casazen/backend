@@ -273,6 +273,7 @@ public static class ServiceCollectionExtensions
         // Host changes to a booking: edit, confirm, check-out (PC-07).
         services.AddScoped<IHostBookingService, HostBookingService>();
         services.AddScoped<IOtaStayService, OtaStayService>();
+        services.AddScoped<ICalendarBlockService, CalendarBlockService>();
         services.AddScoped<IStayLifecycleService, StayLifecycleService>();
         services.AddScoped<IPaymentRefundRetryScheduler, PaymentRefundRetryScheduler>();
         services.AddScoped<PaymentRefundSubmitJob>();
@@ -388,6 +389,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOnboardingService, OnboardingService>();
         services.AddScoped<ISignupAttributionService, SignupAttributionService>();
         services.AddScoped<ISupplierService, Casazen.Infrastructure.Services.SupplierService>();
+        // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
+        services.AddScoped<ISupplierAdminService, SupplierAdminService>();
 
         // Official ISTAT comuni list (SU-04): read side, import (admin upload and the seed file of the deploy), the SEO view,
         // the supplier matching by ISTAT code and the validated pilot comuni of the supplier registration.

@@ -297,6 +297,7 @@ public class BookingsController(
             FeedId = block.FeedId,
             BookingId = block.StayId,
             Convertible = block.Convertible,
+            BlockReason = block.ManualReason?.ToString(),
         }));
 
         var response = new CalendarResponseDto

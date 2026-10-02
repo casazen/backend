@@ -104,6 +104,12 @@ public class CalendarItemDto
     /// <summary><c>ical-block</c> only: <c>ICalImport</c> or <c>Manual</c> (CO-21).</summary>
     public string? BlockSource { get; set; }
 
+    /// <summary>
+    /// <c>ical-block</c> with <see cref="BlockSource"/> <c>Manual</c> only: why the host closed the dates (<c>Owner</c>,
+    /// <c>Maintenance</c>, <c>Other</c>, PC-09); <see cref="Summary"/> is then the host's note.
+    /// </summary>
+    public string? BlockReason { get; set; }
+
     /// <summary><c>ical-block</c> only: its import feed (CO-21).</summary>
     public Guid? FeedId { get; set; }
 
