@@ -154,16 +154,16 @@ public class PlatformInvoiceServiceTests
         long taxAmount = 1738,
         string reason = "standard_rated",
         string country = "IT") => new()
-    {
-        Id = $"in_test_{Guid.NewGuid():N}",
-        CustomerId = org.StripeCustomerId,
-        CustomerAddress = new Address { Country = country },
-        Currency = "eur",
-        Number = "CZ-0001",
-        TotalExcludingTax = 7900,
-        Total = 7900 + taxAmount,
-        AutomaticTax = new InvoiceAutomaticTax { Enabled = true, Status = "complete" },
-        TotalTaxes =
+        {
+            Id = $"in_test_{Guid.NewGuid():N}",
+            CustomerId = org.StripeCustomerId,
+            CustomerAddress = new Address { Country = country },
+            Currency = "eur",
+            Number = "CZ-0001",
+            TotalExcludingTax = 7900,
+            Total = 7900 + taxAmount,
+            AutomaticTax = new InvoiceAutomaticTax { Enabled = true, Status = "complete" },
+            TotalTaxes =
         [
             new InvoiceTotalTax
             {
@@ -174,7 +174,7 @@ public class PlatformInvoiceServiceTests
                 TaxRateDetails = taxRateId is null ? null : new InvoiceTotalTaxTaxRateDetails { TaxRate = taxRateId },
             },
         ],
-    };
+        };
 
     private async Task<OrgEntity> SeedOrgAsync()
     {

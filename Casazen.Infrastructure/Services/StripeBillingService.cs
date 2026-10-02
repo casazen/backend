@@ -91,21 +91,21 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         string successUrl,
         string cancelUrl,
         Dictionary<string, string> metadata) => new()
-    {
-        Customer = customerId,
-        Mode = SubscriptionMode,
-        LineItems = [new SessionLineItemOptions { Price = priceId, Quantity = 1 }],
-        SuccessUrl = successUrl,
-        CancelUrl = cancelUrl,
-        Metadata = metadata,
-        SubscriptionData = new SessionSubscriptionDataOptions { Metadata = metadata },
-        AutomaticTax = new SessionAutomaticTaxOptions { Enabled = true },
-        BillingAddressCollection = "required",
-        TaxIdCollection = new SessionTaxIdCollectionOptions { Enabled = true },
-        CustomerUpdate = string.IsNullOrWhiteSpace(customerId)
+        {
+            Customer = customerId,
+            Mode = SubscriptionMode,
+            LineItems = [new SessionLineItemOptions { Price = priceId, Quantity = 1 }],
+            SuccessUrl = successUrl,
+            CancelUrl = cancelUrl,
+            Metadata = metadata,
+            SubscriptionData = new SessionSubscriptionDataOptions { Metadata = metadata },
+            AutomaticTax = new SessionAutomaticTaxOptions { Enabled = true },
+            BillingAddressCollection = "required",
+            TaxIdCollection = new SessionTaxIdCollectionOptions { Enabled = true },
+            CustomerUpdate = string.IsNullOrWhiteSpace(customerId)
             ? null
             : new SessionCustomerUpdateOptions { Address = "auto", Name = "auto" },
-    };
+        };
 
     public async Task<IReadOnlyList<StripeCheckoutSession>> ListOpenCheckoutSessionsAsync(
         string customerId,

@@ -160,16 +160,16 @@ public class PlatformInvoiceTaxClassifierTests
         List<InvoiceTotalTax> taxes,
         bool automaticTax = true,
         string automaticTaxStatus = "complete") => new()
-    {
-        Id = $"in_test_{Guid.NewGuid():N}",
-        CustomerId = "cus_test",
-        CustomerAddress = new Address { Country = country },
-        Currency = "eur",
-        TotalExcludingTax = totalExcludingTax,
-        Total = totalExcludingTax + taxes.Sum(t => t.Amount),
-        TotalTaxes = taxes,
-        AutomaticTax = new InvoiceAutomaticTax { Enabled = automaticTax, Status = automaticTax ? automaticTaxStatus : null },
-    };
+        {
+            Id = $"in_test_{Guid.NewGuid():N}",
+            CustomerId = "cus_test",
+            CustomerAddress = new Address { Country = country },
+            Currency = "eur",
+            TotalExcludingTax = totalExcludingTax,
+            Total = totalExcludingTax + taxes.Sum(t => t.Amount),
+            TotalTaxes = taxes,
+            AutomaticTax = new InvoiceAutomaticTax { Enabled = automaticTax, Status = automaticTax ? automaticTaxStatus : null },
+        };
 
     private static InvoiceTotalTax Tax(long amount, string reason, string? taxRateId) => new()
     {
