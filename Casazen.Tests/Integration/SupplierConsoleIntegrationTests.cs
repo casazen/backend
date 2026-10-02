@@ -157,44 +157,274 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     }
 
     [Fact]
-    public async Task CompleteActivation_WithoutTos_Returns409()
+    public async Task CompleteActivation_WithoutTos_Returns409WithTheTosBlocker()
     {
-        var (supplierId, _) = await SeedSupplierAsync();
+        var (supplierId, _) = await SeedFullSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
         var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
-            new { tosAccepted = false });
+            new { tosAccepted = false, tosVersion = await CurrentTosVersionAsync(client) });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("supplier_activation_blocked", problem.GetProperty("code").GetString());
+        Assert.Equal(["tos_not_accepted"], Blockers(problem));
     }
 
     [Fact]
-    public async Task CompleteActivation_MinimalProfileWithTos_Returns200Active()
+    public async Task CompleteActivation_NoCategoriesNoBio_Returns409AndStaysPending()
     {
-        // Only ToS should gate activation. Categories, bio, comuni can be added later.
-        var (supplierId, _) = await SeedSupplierAsync();
+        // A4-09: before SU-05 the Terms alone activated a profile with no category and no description.
+        var (supplierId, orgId) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
         var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
-            new { tosAccepted = true });
+            new { tosAccepted = true, tosVersion = await CurrentTosVersionAsync(client) });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(["categories_missing", "bio_missing"], Blockers(problem));
+        Assert.Equal(SupplierStatus.Pending, (await LoadProfileAsync(orgId)).Status);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_NoComuni_Returns409WithComuniMissing()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync();
+        await UpdateProfileAsync(orgId, p => { p.ComuniJson = "[]"; p.ComuneIstatCodesJson = "[]"; });
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
+            new { tosAccepted = true, tosVersion = await CurrentTosVersionAsync(client) });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(["comuni_missing"], Blockers(await response.Content.ReadFromJsonAsync<JsonElement>()));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not a phone")]
+    [InlineData("123")]
+    public async Task CompleteActivation_PhoneNotPlausible_Returns409WithPhoneInvalid(string phone)
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync();
+        await UpdateProfileAsync(orgId, p => p.Phone = phone);
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
+            new { tosAccepted = true, tosVersion = await CurrentTosVersionAsync(client) });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(["phone_invalid"], Blockers(await response.Content.ReadFromJsonAsync<JsonElement>()));
+    }
+
+    [Fact]
+    public async Task CompleteActivation_AllRequirementsMet_ActivatesAndRecordsTheTermsVersion()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+        var version = await CurrentTosVersionAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
+            new { tosAccepted = true, tosVersion = version });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Active", body.GetProperty("status").GetString());
+
+        var profile = await LoadProfileAsync(orgId);
+        Assert.Equal(version, profile.TosVersion);
+        Assert.NotNull(profile.TosAcceptedAt);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var consent = await db.ConsentRecords.IgnoreQueryFilters() // proof of the acceptance of a supplier org, read across tenants by the test
+            .SingleAsync(c => c.OrgId == orgId && c.Type == ConsentType.Tos);
+        Assert.Equal(version, consent.Version);
+        Assert.Equal(supplierId, consent.UserId);
     }
 
     [Fact]
-    public async Task CompleteActivation_AllStepsMet_Returns200Active()
+    public async Task CompleteActivation_StaleTermsVersion_Returns409AndStaysPending()
     {
         var (supplierId, orgId) = await SeedFullSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
         var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete",
-            new { tosAccepted = true });
+            new { tosAccepted = true, tosVersion = "1999-01-v1" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("supplier_tos_version_stale", problem.GetProperty("code").GetString());
+        var profile = await LoadProfileAsync(orgId);
+        Assert.Equal(SupplierStatus.Pending, profile.Status);
+        Assert.Null(profile.TosVersion);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_WithoutTermsVersion_Returns400()
+    {
+        var (supplierId, _) = await SeedFullSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/activation/complete", new { tosAccepted = true });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetActivation_ProfileMissingRequirements_ReportsEachStepWithItsBlocker()
+    {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var body = await (await client.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>();
+
+        var steps = body.GetProperty("steps").EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        Assert.Equal(["identity", "services", "showcase", "profile", "terms"], steps.Keys);
+        Assert.Equal("completed", steps["identity"].GetProperty("status").GetString());
+        Assert.Equal("categories_missing", steps["services"].GetProperty("blocker").GetString());
+        Assert.False(steps["showcase"].GetProperty("required").GetBoolean());
+        Assert.Equal("bio_missing", steps["profile"].GetProperty("blocker").GetString());
+        Assert.Equal("tos_not_accepted", steps["terms"].GetProperty("blocker").GetString());
+        // Nothing saved yet: the wizard opens at the first incomplete required step.
+        Assert.Equal(2, body.GetProperty("currentStep").GetInt32());
+    }
+
+    [Fact]
+    public async Task SetActivationStep_SavesTheStepAndTheWizardResumesThere()
+    {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var put = await client.PutAsJsonAsync("/api/supplier/profile/activation/step", new { step = 4 });
+
+        Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
+        // Another device / session of the same supplier.
+        using var other = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+        var body = await (await other.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(4, body.GetProperty("currentStep").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(6)]
+    public async Task SetActivationStep_OutsideTheFiveSteps_Returns400(int step)
+    {
+        var (supplierId, _) = await SeedSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var put = await client.PutAsJsonAsync("/api/supplier/profile/activation/step", new { step });
+
+        Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetActivation_ActiveSupplierThatAcceptedAnOlderVersion_AsksToAcceptAgainAndBlocksActions()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync(autoActivate: true);
+        await UpdateProfileAsync(orgId, p => p.TosVersion = "2025-01-v1");
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var tos = (await (await client.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("tos");
+
+        Assert.True(tos.GetProperty("reacceptanceRequired").GetBoolean());
+        Assert.True(tos.GetProperty("blocksActions").GetBoolean());
+        Assert.Equal("2025-01-v1", tos.GetProperty("acceptedVersion").GetString());
+    }
+
+    [Fact]
+    public async Task GetActivation_ActiveSupplierThatAcceptedBeforeVersionsWereRecorded_AsksToAcceptWithoutBlocking()
+    {
+        var (supplierId, _) = await SeedFullSupplierAsync(autoActivate: true);
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var tos = (await (await client.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("tos");
+
+        Assert.True(tos.GetProperty("reacceptanceRequired").GetBoolean());
+        Assert.False(tos.GetProperty("blocksActions").GetBoolean());
+    }
+
+    [Fact]
+    public async Task AcceptTos_CurrentVersion_ClearsTheReacceptanceAndKeepsTheStatus()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync(autoActivate: true);
+        await UpdateProfileAsync(orgId, p => p.TosVersion = "2025-01-v1");
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+        var version = await CurrentTosVersionAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/tos/accept", new { tosVersion = version });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var tos = (await (await client.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("tos");
+        Assert.False(tos.GetProperty("reacceptanceRequired").GetBoolean());
+        Assert.False(tos.GetProperty("blocksActions").GetBoolean());
+        Assert.Equal(SupplierStatus.Active, (await LoadProfileAsync(orgId)).Status);
+    }
+
+    [Fact]
+    public async Task AcceptTos_StaleVersion_Returns409()
+    {
+        var (supplierId, _) = await SeedFullSupplierAsync(autoActivate: true);
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PostAsJsonAsync("/api/supplier/profile/tos/accept", new { tosVersion = "1999-01-v1" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateProfile_ActiveSupplierEmptiesTheCategories_Returns422AndKeepsThem()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync(autoActivate: true);
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PutAsJsonAsync("/api/supplier/profile", new { categories = Array.Empty<string>() });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("supplier_profile_requirements", problem.GetProperty("code").GetString());
+        Assert.Equal("[\"cleaning\"]", (await LoadProfileAsync(orgId)).CategoriesJson);
+    }
+
+    [Fact]
+    public async Task UpdateProfile_PendingSupplierEmptiesTheCategories_IsSaved()
+    {
+        var (supplierId, orgId) = await SeedFullSupplierAsync();
+        using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
+
+        var response = await client.PutAsJsonAsync("/api/supplier/profile", new { categories = Array.Empty<string>() });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Active", body.GetProperty("status").GetString());
+        Assert.Equal("[]", (await LoadProfileAsync(orgId)).CategoriesJson);
+    }
+
+    private static async Task<string> CurrentTosVersionAsync(HttpClient client)
+    {
+        var body = await (await client.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("tos").GetProperty("currentVersion").GetString()!;
+    }
+
+    private static string[] Blockers(JsonElement problem) =>
+        problem.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()!).ToArray();
+
+    private async Task<SupplierProfile> LoadProfileAsync(Guid orgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.SupplierProfiles.AsNoTracking().SingleAsync(p => p.OrgId == orgId);
+    }
+
+    private async Task UpdateProfileAsync(Guid orgId, Action<SupplierProfile> change)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var profile = await db.SupplierProfiles.SingleAsync(p => p.OrgId == orgId);
+        change(profile);
+        await db.SaveChangesAsync();
     }
 
     // ─── AC4/Profile ─────────────────────────────────────────────────────────

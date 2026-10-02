@@ -101,6 +101,49 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
+    public async Task TakeAsync_SupplierAcceptedAnOlderTermsVersion_RefusesUntilItAcceptsTheCurrentOne()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        var profile = await db.SupplierProfiles.SingleAsync(sp => sp.OrgId == supplierOrgId);
+        profile.TosAcceptedAt = DateTime.UtcNow;
+        profile.TosVersion = "2025-01-v1";
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.TakeAsync(created.Id, supplierOrgId, "auth0|supplier-member"));
+
+        Assert.Equal(SupplierActivation.TosReacceptanceRequiredCode, ex.Code);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == created.Id)).Status);
+
+        profile.TosVersion = LegalTestServices.TosVersion;
+        await db.SaveChangesAsync();
+        var taken = await service.TakeAsync(created.Id, supplierOrgId, "auth0|supplier-member");
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
+    }
+
+    [Fact]
+    public async Task TakeAsync_SupplierAcceptedBeforeVersionsWereRecorded_IsNotBlocked()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, bookingId, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false));
+        (await db.SupplierProfiles.SingleAsync(sp => sp.OrgId == supplierOrgId)).TosAcceptedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var taken = await service.TakeAsync(created.Id, supplierOrgId, "auth0|supplier-member");
+
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
+    }
+
+    [Fact]
     public async Task CreateAsync_ShortRentWithStayOfTheProperty_StoresBookingAndShortRent()
     {
         await using var db = CreateDb();
