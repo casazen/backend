@@ -60,6 +60,7 @@ Rules enforced by the app and by the EAS build:
 
 - every variable is required outside `__DEV__`; `EXPO_PUBLIC_AUTH0_CLIENT_ID` is required in `__DEV__` too
   (the login configuration error `AUTH_CONFIG_INVALID` is shown without it);
+- `EXPO_PUBLIC_E2E_BUILD` / `EXPO_PUBLIC_E2E_PUSH_TOKEN` / `APP_VARIANT=e2e` belong to the local Maestro build ([`mobile-e2e.md`](mobile-e2e.md)): never put them in an EAS environment, the build fails if they are there.
 - `EXPO_PUBLIC_E2E_DEMO` is ignored outside `__DEV__`: a preview / production build never shows the demo
   button, and the demo code is not in the release bundle (mobile CI checks it);
 - URLs must be absolute `https://` URLs without query string, and must not point to `localhost`, `127.x`, `10.0.2.2` (Android emulator) or `0.0.0.0`. Android release builds block cleartext http anyway;
