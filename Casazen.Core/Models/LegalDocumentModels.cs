@@ -67,7 +67,9 @@ public record LegalDocumentPublication(
     {
         var reasons = new List<string>();
         if (!TextFileFound && !HasExternalCopy)
-            reasons.Add("no text file for this version");
+            reasons.Add(
+                $"no text file for this version (LegalDocuments/{Kind.ToString().ToLowerInvariant()}/{Version}.it.html) " +
+                $"and no Legal__Documents__{Kind}__DocumentUrl");
         if (MissingConfiguration.Count > 0)
             reasons.Add($"missing or invalid {string.Join(", ", MissingConfiguration)}");
         reasons.AddRange(Problems);

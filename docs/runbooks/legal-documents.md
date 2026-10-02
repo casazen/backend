@@ -98,18 +98,55 @@ The list is computed from the configuration in use, never typed by hand:
 
 A location read from the provider's own configuration wins over a configured one (it is what the code talks to).
 
-Legal details that the code cannot deduce are configured by the product owner, per provider (Railway variables or
-`appsettings.json`):
+Legal details that the code cannot deduce are configured, per provider (Railway variables or `appsettings.json`):
 
 ```
 Legal__Documents__Subprocessors__Providers__{Supabase|Auth0|Stripe|Resend|Expo|Railway|Vercel}__Entity             legal entity and registered office
 Legal__Documents__Subprocessors__Providers__{…}__Region                                                            processing location, when not deduced
 Legal__Documents__Subprocessors__Providers__{…}__TransferMechanism                                                 legal basis of a transfer outside the EEA (GDPR chapter V), or the statement that there is none
+Legal__Documents__Subprocessors__Providers__{…}__Source                                                            official URL(s) of the three details above and the consultation date (not shown to users)
 ```
 
 While `Entity`, the location or `TransferMechanism` is missing the entry has `detailsPending: true`: the page shows
 "in definizione" and the onboarding "sede e base giuridica del trasferimento in corso di definizione". Take these
-facts only from the provider's official documents (DPA, subprocessor and data-location pages) or from the contract.
+facts only from the provider's official documents (DPA, subprocessor and data-location pages) or from the contract,
+and cite them in `Source` (a test, `SubprocessorDetailsConfigurationTests`, fails for a committed detail without an
+official URL and a consultation date).
+
+### Public facts committed in `appsettings.json` (PL14-SUBP, consulted 2026-10-01)
+
+The defaults of `Casazen.Web/appsettings.json` carry what each provider **publicly declares** about its contracting
+entity, the location of the processing and its transfer mechanism. Nothing that depends on a choice of the product
+owner is written there: the project region of Supabase, the tenant region of Auth0 and the service region of Railway
+stay empty and are read from the running configuration (see the table above); until they can be read the entry stays
+"in definizione". A Railway variable overrides any committed value (e.g. after a change of contract).
+
+| Provider | Contracting entity and registered office (as declared) | Location (as declared) | Transfer mechanism (as declared) | Official sources |
+|---|---|---|---|---|
+| Supabase | Supabase Pte. Ltd., 65 Chulia Street #38-02/03, OCBC Centre, Singapore 049513 (Terms of Service; data importer of the DPA) | **Not written**: Postgres, Auth and Storage objects stay in the region chosen for the project | EU SCCs (Implementing Decision (EU) 2021/914, modules 2 and 3) incorporated in the DPA; a Transfer Impact Assessment is published | [DPA](https://supabase.com/legal/customer-resources/data-processing-addendum), [Terms](https://supabase.com/terms), [Regions](https://supabase.com/docs/guides/platform/regions), [TIA](https://supabase.com/downloads/docs/Supabase+TIA+250314.pdf) |
+| Auth0 | Okta, Inc. (Delaware), 100 First Street, San Francisco, California 94105: Auth0 is sold under the Okta Master Subscription Agreement and the Okta DPA covers Auth0 | **Not written**: the tenant region, read from the tenant domain (`{tenant}.eu.auth0.com` → `EU`) | EU-U.S. Data Privacy Framework (Okta, Inc. and Auth0 LLC) plus EU SCCs incorporated in the DPA | [Okta DPA](https://www.okta.com/dpa), [Okta privacy policy](https://www.okta.com/legal/privacy-policy/), [Okta MSA](https://www.okta.com/sites/default/files/2025-02/MSA_Q1FY26_Online_Terms.pdf) |
+| Stripe | Stripe Payments Europe, Limited, 1 Grand Canal Street Lower, Grand Canal Dock, Dublin, D02 H210, Ireland (contracts and processes for Europe) | Global: Stripe, LLC in the United States and affiliates/sub-processors in other jurisdictions | EU-U.S. Data Privacy Framework (Stripe, LLC) and EEA SCCs modules 1, 2 and 3 in the Data Transfers Addendum | [DPA](https://stripe.com/legal/dpa), [Data Transfers Addendum](https://stripe.com/legal/dta), [Legal entities](https://stripe.com/legal/stel), [Service providers](https://stripe.com/legal/service-providers) |
+| Resend | Plus Five Five, Inc. (Resend), 2261 Market Street #5039, San Francisco, CA 94114 | United States: message content, delivery logs, webhook payloads and account records, whatever the sending region of the domain (it routes the mail, it does not move the stored data) | EU SCCs (modules 2 and 3) incorporated in the DPA, plus participation in the EU-U.S. Data Privacy Framework | [DPA](https://resend.com/legal/dpa), [GDPR page](https://resend.com/security/gdpr), [Terms](https://resend.com/legal/terms-of-service), [Regions](https://resend.com/docs/dashboard/domains/regions) |
+| Expo | 650 Industries, Inc. (Expo), 624 University Ave, FL1, Palo Alto, CA 94301 | United States (Expo states it transfers EU data to the US) | EU-U.S. Data Privacy Framework (self-certified) and EU SCCs module 2 as stated in its GDPR page | [Privacy policy](https://expo.dev/privacy), [GDPR](https://docs.expo.dev/regulatory-compliance/gdpr/), [DPF](https://expo.dev/changelog/2024-12-17-dpf-replaces-privacy-shield) |
+| Railway | Railway Corporation (Delaware), 548 Market St PMB 68956, San Francisco, California 94104 (data importer of the DPA) | **Not written**: the deploy region of the service (US West, US East, EU West Amsterdam, Southeast Asia); volumes follow the region of their service | EU SCCs (modules 2 and 3) incorporated in the DPA, disputes before the courts of Ireland (clause 18) | [DPA](https://railway.com/legal/dpa), [Terms](https://railway.com/legal/terms), [Regions](https://docs.railway.com/deployments/regions) |
+| Vercel | Vercel Inc. (Delaware), 340 S Lemon Ave #4133, Walnut, CA 91789 | United States for the primary processing facilities, and anywhere Vercel or its sub-processors operate | EU-U.S. Data Privacy Framework (certified) and EU SCCs plus UK Addendum in the DPA | [DPA](https://vercel.com/legal/dpa), [Compliance](https://vercel.com/docs/security/compliance), [DPF](https://vercel.com/kb/guide/is-vercel-certified-under-dpf) |
+| DeepSeek (only with `Ai__Provider=DeepSeek` and a key, [`ai.md`](ai.md)) | Hangzhou DeepSeek Artificial Intelligence Co., Ltd. and Beijing DeepSeek Artificial Intelligence Co., Ltd., registered in China (street address not stated in the text consulted) | People's Republic of China (personal data collected, processed and stored there) | **None declared**: only "appropriate safeguards … where required". Left empty on purpose | [Privacy policy](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html), [Terms](https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html) |
+
+**How these were verified, and what the product owner still has to do.** The agent session that prepared this table could
+not open the providers' own domains (`supabase.com`, `stripe.com`, `okta.com`, `resend.com`, `expo.dev`, `railway.com`,
+`vercel.com`: blocked by the network egress proxy, not worked around). The facts were taken from the excerpts of the same
+official pages returned by a web search restricted to those domains; the page URLs are the ones listed. Before setting
+`Legal__Documents__Subprocessors__EffectiveAt`:
+
+1. Open each linked page and compare entity, address, location and transfer mechanism with the table (the providers
+   revise their DPAs: each page carries its own "last updated" date, to be noted next to the consultation date).
+2. Decide the choices that the table deliberately leaves open: the region of the Supabase project (and of its Storage
+   buckets), of the Auth0 tenant, of the Railway service, and the Vercel Function region; the sending region of the
+   Resend domain only changes where mail is routed from.
+3. If the list changes with respect to what hosts already acknowledged, increase `Legal:Documents:Subprocessors:Version`
+   (section 3, "Changing the list"). The Italian text of the DPA / privacy notice stays with the product owner (D14).
+4. Check `GET /api/legal/subprocessors` on test: no entry is `detailsPending` except the ones whose region could not be
+   read.
 
 ### Changing the list
 
