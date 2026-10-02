@@ -13,7 +13,10 @@ namespace Casazen.Infrastructure.Services;
 /// deduced (Auth0 tenant domain, Supabase pooler host or storage region, Railway replica region). The legal details
 /// that cannot be deduced (legal entity, location, transfer basis) come from
 /// <c>Legal:Documents:Subprocessors:Providers:{Key}</c> and are never written by code: while one is missing the entry
-/// is marked <see cref="SubprocessorItem.DetailsPending"/>. Runbook: <c>docs/runbooks/legal-documents.md</c>.
+/// is marked <see cref="SubprocessorItem.DetailsPending"/>. The committed values are the providers' own public
+/// declarations, each with its <c>Source</c> (official URL and consultation date); what depends on a choice of the
+/// product owner (project, tenant or service region) is read from the configuration, never written. Runbook:
+/// <c>docs/runbooks/legal-documents.md</c>.
 /// </summary>
 public static partial class LegalSubprocessorCatalog
 {

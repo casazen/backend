@@ -113,6 +113,8 @@ and delivered by a Hangfire job, never inside the request.
 Outside Development and Testing a missing or invalid value stops the app at startup. Domain verification (SPF/DKIM),
 Railway variables and send test: [`docs/runbooks/email.md`](docs/runbooks/email.md).
 
+Every variable of the three repositories, with where to set it and what happens without it: [`docs/runbooks/deploy-checklist.md`](docs/runbooks/deploy-checklist.md).
+
 > ⚠️ **Never commit** real credentials. Set them via **Railway environment variables** or `appsettings.Development.json` (gitignored).
 
 ## 🌐 OTA Integrations

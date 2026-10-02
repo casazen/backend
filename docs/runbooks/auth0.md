@@ -64,7 +64,6 @@ users and their passwords where they are; the test environment then gets a new, 
    | `Auth0__Domain` | login domain of the tenant (or its custom domain) |
    | `Auth0__ManagementApiDomain` | canonical `*.auth0.com` domain of the tenant (only with a custom domain) |
    | `Auth0__ManagementClientId`, `Auth0__ManagementClientSecret` | M2M application of this tenant (section 4) |
-   | `Auth0__ClientId` | SPA client id of this tenant |
    | `Auth0__Audience` | unchanged (`https://casazen-api`), unless the API of the new tenant has another identifier |
 
 4. **Vercel** — Settings → Environment Variables, one value per environment (never "All environments"), then redeploy
@@ -132,7 +131,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
 |---|---|---|
 | `Auth0__Domain` | login domain of the tenant (or its custom domain) | JWT issuer, already set |
 | `Auth0__Audience` | API identifier | already set |
-| `Auth0__ClientId` | SPA client id | used by the supplier registration page |
+| `Auth0__ClientId` | — | **not read by the API** (DEPLOY-CFG): the SPA client id lives in Vercel (`VITE_AUTH0_CLIENT_ID`) and the Native one in EAS; do not set it |
 | `Auth0__ManagementApiDomain` | canonical `*.auth0.com` domain of the tenant (Auth0 Dashboard → Settings → the tenant domain) | **required when `Auth0__Domain` is a custom domain**: the Management API audience is always the canonical domain |
 | `Auth0__ManagementClientId` | M2M client id | secret |
 | `Auth0__ManagementClientSecret` | M2M client secret | secret |
