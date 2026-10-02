@@ -309,24 +309,41 @@ public class AppDbContext(
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
 
-        // Precision for GPS coordinates
+        // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
+        // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
         modelBuilder.Entity<Property>()
             .Property(p => p.Latitude)
-            .HasPrecision(18, 2);
+            .HasPrecision(9, PropertyAddress.CoordinateScale);
 
         modelBuilder.Entity<Property>()
             .Property(p => p.Longitude)
-            .HasPrecision(18, 2);
+            .HasPrecision(9, PropertyAddress.CoordinateScale);
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
-        // Unique constraint on property address for active properties only.
+        // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
+        // the same building could not create the second, and a host whose address was already used by ANOTHER org got a
+        // 409 that revealed a datum of that tenant. "AddressKey" is a stored generated column (shadow property): street,
+        // city, postal code and unit with case and runs of spaces ignored, so "Via Roma  1" and "via roma 1" are the same
+        // address; it is computed by the database, so every writer of the table is covered and the application never
+        // builds the key (never check-then-insert: the loser of two parallel creates gets 23505 on this index).
         // A soft-deleted property (PC-05, IsDeleted) frees its address, so it can be re-created there. A paused one
         // (PC-03, IsPaused) keeps it: pausing is temporary and the property stays the host's.
         modelBuilder.Entity<Property>()
-            .HasIndex(p => new { p.Address, p.City, p.PostalCode, p.IsActive })
+            .Property<string>("AddressKey")
+            .HasColumnType("text")
+            .HasComputedColumnSql(
+                "lower(regexp_replace(btrim(\"Address\"), '\\s+', ' ', 'g')) || '|' || "
+                + "lower(regexp_replace(btrim(\"City\"), '\\s+', ' ', 'g')) || '|' || "
+                + "lower(btrim(\"PostalCode\")) || '|' || "
+                + "lower(regexp_replace(btrim(coalesce(\"Unit\", '')), '\\s+', ' ', 'g'))",
+                stored: true);
+
+        modelBuilder.Entity<Property>()
+            .HasIndex("OrgId", "AddressKey")
             .IsUnique()
+            .HasDatabaseName(PropertyAddress.UniqueIndexName)
             .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
 
         modelBuilder.Entity<Property>()
