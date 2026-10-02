@@ -1747,4 +1747,16 @@
   <data name="DomainIssue_vercel_rejected" xml:space="preserve">
     <value>The service provider does not accept this domain. Check that it is spelled correctly.</value>
   </data>
+  <data name="SeoDisclaimerLastUpdated" xml:space="preserve">
+    <value>Last updated: {0}</value>
+  </data>
+  <data name="SeoDisclaimerLastUpdatedUnknown" xml:space="preserve">
+    <value>Update date not available</value>
+  </data>
+  <data name="SeoDisclaimerNotLegalAdvice" xml:space="preserve">
+    <value>General information, not legal advice. The host remains responsible for compliance.</value>
+  </data>
+  <data name="SeoDisclaimerAiGenerated" xml:space="preserve">
+    <value>Text generated with the help of AI and approved by a CasaZen administrator before publication: always check the official sources.</value>
+  </data>
 </root>
