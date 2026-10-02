@@ -5,6 +5,7 @@ using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -41,7 +42,12 @@ public class OtaIntegrationsControllerTests
         var identity = new ClaimsIdentity(claims, "TestAuth");
         _controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(identity),
+                // ApiProblem localizes the detail through SharedResources.
+                RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
+            }
         };
     }
 
@@ -201,7 +207,9 @@ public class OtaIntegrationsControllerTests
         var request = new CreateOtaIntegrationRequest { PropertyId = Guid.NewGuid() };
         var result = await _controller.Create(propertyId, request);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.StatusCode);
+        Assert.Equal("validation_error", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
     // ─── Update ──────────────────────────────────────────────────────────────────

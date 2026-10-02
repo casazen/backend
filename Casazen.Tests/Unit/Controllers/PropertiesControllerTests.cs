@@ -599,7 +599,9 @@ public class PropertiesControllerTests
         var result = await _controller.Update(propertyId, request);
 
         // Assert
-        Assert.IsType<ConflictObjectResult>(result);
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, problem.StatusCode);
+        Assert.Equal("property_city_locked", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
         Assert.Equal("Cesano Maderno", existingProperty.City);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
@@ -1642,26 +1644,6 @@ public class PropertiesControllerTests
     }
 
     [Fact]
-    public async Task UploadDocument_InvalidFile_ReturnsBadRequestProblemWithTheServiceCode()
-    {
-        var userId = "auth0|owner_user_123";
-        SetupUserClaims(userId);
-        AllowAuthorization();
-
-        var propertyId = Guid.NewGuid();
-        _mockService.Setup(x => x.GetPropertyAsync(propertyId))
-            .ReturnsAsync(new Property { Id = propertyId, OwnerId = userId });
-        var mockFile = CreateMockFormFile("doc.exe", "application/octet-stream", 1024);
-        _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.FloorPlan, userId))
-            .ThrowsAsync(new DomainRuleException("invalid_document_file", "DocumentFileInvalid"));
-
-        var result = await _controller.UploadDocument(propertyId, mockFile, "FloorPlan");
-
-        var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
-        Assert.Equal("invalid_document_file", problem.Extensions["code"]);
-    }
-
-    [Fact]
     public async Task UploadDocument_ApeNotOfficial_ReturnsBadRequestProblemKeepingTheApeCode()
     {
         var userId = "auth0|owner_user_123";
@@ -2006,11 +1988,12 @@ public class PropertiesControllerTests
 
         var mockFile = CreateMockFormFile("virus.exe", "application/octet-stream", 1024);
         _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.Other, userId))
-            .ThrowsAsync(new InvalidOperationException("Invalid document file type or size"));
+            .ThrowsAsync(new DomainRuleException("invalid_document_file", "DocumentFileInvalid"));
 
         var result = await _controller.UploadDocument(propertyId, mockFile, "Other");
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
+        Assert.Equal("invalid_document_file", problem.Extensions["code"]);
     }
 
     private void SetupUserClaims(string userId, IEnumerable<string>? roles = null)
