@@ -29,7 +29,7 @@ dotnet run --project Casazen.Web
 
 **API Swagger:** https://localhost:5001/swagger
 
-Local PostgreSQL and the deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md` (hosting in revisione: Railway è stato cancellato dal PO il 2026-10-02, vedi `docs/runbooks/free-hosting-analysis.md` quando il task HOSTING la pubblica).
+Local PostgreSQL and the deploy use the root `Dockerfile` (no `docker-compose.yml`). See `docs/INFRA.md` (hosting in revisione: Railway è stato cancellato dal PO il 2026-10-02, vedi [`docs/runbooks/free-hosting-analysis.md`](docs/runbooks/free-hosting-analysis.md)).
 
 ---
 

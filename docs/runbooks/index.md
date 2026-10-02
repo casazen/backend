@@ -1,8 +1,8 @@
 # Indice dei runbook
 
-Un runbook per tema, creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
+Un runbook per tema (44 file, oltre a questo indice), creato o aggiornato dai task del piano di risanamento (decisione D9: codice più runbook, la configurazione dei servizi esterni la applica il product owner). Nessun runbook esisteva alla base dell'audit (`develop@4cbaeaa`, 2026-09-23): tutti i file qui sotto, tranne `free-hosting-analysis.md` (task HOSTING, 2026-10-02), sono stati introdotti dal piano. La colonna *Task* elenca i task che citano il runbook (dettaglio in [`Sessions/risanamento/PIANO-ESECUZIONE.md`](../../Sessions/risanamento/PIANO-ESECUZIONE.md)).
 
-> **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi in corso (task HOSTING, `free-hosting-analysis.md`, non ancora presente in questa cartella). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
+> **Hosting in revisione (2026-10-02):** il PO ha cancellato Railway. Nei runbook "Railway" indica l'host del backend così com'era configurato: va riletto alla luce dell'analisi del task HOSTING ([`free-hosting-analysis.md`](free-hosting-analysis.md); raccomandazione: VM Oracle Cloud Always Free, decisione del PO ancora da prendere). Il database resta su Supabase. Le variabili e le procedure non legate all'host restano valide.
 
 Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.md): ogni variabile, dove si imposta e cosa succede se manca; `DeployChecklistConsistencyTests` la tiene allineata al codice.
 
@@ -40,6 +40,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | Runbook | Argomento | Task |
 |---|---|---|
 | [`deploy-checklist.md`](deploy-checklist.md) | deploy checklist (every variable, where it goes, what happens without it) | BK-06, BK-08, BK-11, BK-17, BK-21, CO-06, CO-09, CO-10 |
+| [`free-hosting-analysis.md`](free-hosting-analysis.md) | Analisi: hosting gratuito del backend dopo la chiusura di Railway | HOSTING |
 | [`mobile-release.md`](mobile-release.md) | mobile app release (EAS Build) | BK-10, CO-10, FD-13, MO-02, MO-03, MO-04, MO-05, MO-11 |
 
 ## Proprietà, calendario e prenotazioni
