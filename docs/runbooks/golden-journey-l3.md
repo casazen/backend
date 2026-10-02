@@ -11,9 +11,9 @@ Suite `frontend/e2e/gj-l3/golden-journey.spec.ts` (Playwright project `gj-l3`), 
 
 | Step | Actor (own browser context) | UI action | Oracle (API, read only) |
 |---|---|---|---|
-| 1 | Platform admin | invites the supplier by email (`/app/admin/suppliers/invite`) | invite mail in the mail catcher |
+| 1 | Platform admin | invites the supplier by email for Roma, chosen from the official ISTAT list (`/app/admin/suppliers/invite`, SU-04) | invite mail in the mail catcher |
 | 2 | Supplier (phone viewport 375x812) | opens the mail link, signs in, registers, completes the activation wizard | `GET /supplier/profile` = `Active` |
-| 3 | Host | onboarding (type, consents, plan), creates the property, compliance activation wizard (documents, D.L. 145/2023 safety checklist, terms) | public site lists the property |
+| 3 | Host | onboarding (type, consents, plan), creates the property (comune from the ISTAT list: city, code and region), compliance activation wizard (documents, D.L. 145/2023 safety checklist, terms) | public site lists the property |
 | 4 | Host | Stripe Connect linked (see 4) | |
 | 5 | Guest (anonymous) | public site `/book/{org}/property/{slug}`: relative dates (today, +2 nights), summary, checkout, pays (card, or "Paga in struttura") | booking dates, `Confirmed`, total = nights x rate |
 | 5b | Guest + host | pay at the property only: the guest confirms the email, the host accepts the request in the console (BK-06, D5) | |
@@ -109,6 +109,7 @@ With Stripe test keys: export `STRIPE_TEST_SECRET_KEY` / `STRIPE_TEST_PUBLISHABL
 | Symptom | Cause / fix |
 |---|---|
 | `Ephemeral stack not running` | start `up.sh` first (`e2e/.stack/env.json` is missing) |
+| The comune picker offers nothing | the ISTAT list is seeded at backend startup (`Comuni__SeedOnStartup`, [comuni-istat.md](comuni-istat.md)); check the log of the seed |
 | `TIMEOUT waiting for backend` | `e2e/.stack/backend.log`: migration or configuration error (the stack is `Development`; `Storage` needs `App__ApiBaseUrl`, set by `up.sh`) |
 | The app shows "Autenticazione..." forever / 401 on every call | the backend does not trust the mock certificate: `SSL_CERT_FILE` must be `e2e/.stack/trust-bundle.pem`; the browser context needs `ignoreHTTPSErrors` |
 | An email never arrives | Hangfire server not running, or `Email__ApiUrl` not set; `curl http://localhost:9444/__outbox` |
