@@ -6,7 +6,8 @@ A4-22). The code is in place; the product owner sets the pilot comuni (section 3
 checks the Auth0 claims (section 2.3) and the web app URLs (section 4) on each environment. Section 7: what a
 service request is tied to (task SU-07, decision D2). Section 10: supplier jobs and QR check-in removed, dashboard
 KPIs from the service requests (SU-11, decision D12). Section 11: what the supplier sees of a request (address, date,
-host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15).
+host contact), request detail page and inbox history (SU-08, A4-14). Section 12: iCal calendar sync (SU-15). Section 14:
+the platform admin's supplier list, suspension and invites (SU-12, A4-29).
 
 ## 1. How a supplier joins
 
@@ -652,6 +653,62 @@ new org): at most one notification lost per open request.
 - [ ] Register as a supplier (self-serve or invite), then complete the host onboarding with the same account:
       `GET /api/users/me` has an `orgId` different from `supplierOrgId`, a property created then is in the host org,
       and the supplier console still works.
+
+## 14. Admin: supplier list, suspension and invites — SU-12
+
+Everything here is behind the policy `AdminOnly` (Auth0 role `Admin`); the web page is `/app/admin/suppliers` (menu
+*Fornitori*, permission `admin.users.manage`), with the tabs **Fornitori** and **Inviti** and a button to the existing
+invite form. No manual database work is needed to suspend a supplier or to handle an invite.
+
+### 14.1 API
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/admin/suppliers?search=&status=&page=&pageSize=` | Suppliers, newest first, **paginated in SQL** (`pageSize` 1-100, `page` at least 1; out of range values are clamped). `search` matches the legal name or the email, case-insensitive, LIKE wildcards escaped. `status` is `Pending`, `Active` or `Suspended`. Each item has the status, categories, comuni, the suspension date and note, and `openRequests` (new, taken, in progress). |
+| `POST /api/admin/suppliers/{orgId}/suspend` | Body `{ "reason": "…" }`, required, at most 500 characters (400 `validation_error` otherwise). 404 `supplier_not_found`, 409 `supplier_already_suspended`. |
+| `POST /api/admin/suppliers/{orgId}/reactivate` | 404 `supplier_not_found`, 409 `supplier_not_suspended`. |
+| `GET /api/admin/suppliers/{orgId}/audit` | Audit trail of the supplier, newest first (at most 50 lines): action, admin (name or email, from `Users`), time, reason, status before and after. |
+| `GET /api/admin/suppliers/invites?search=&state=&page=&pageSize=` | Invites, newest first, paginated in SQL. `state` is `Pending`, `Used`, `Expired` or `Revoked`; `search` matches the invited email. The link token is never returned (only its hash is stored, section 1). |
+| `POST /api/admin/suppliers/invites/{id}/resend` | A **new token** (the old link stops working), a new 7-day expiry, the invite email queued on Hangfire. Allowed for a pending or expired invite (also one created before SU-01, which had no token hash). 409 `supplier_invite_not_resendable` (used or revoked), 409 `duplicate_invite` (another invite for the email is pending), 409 `supplier_email_taken` (a profile with the email exists since), 404 `supplier_invite_not_found`. |
+| `DELETE /api/admin/suppliers/invites/{id}` | Revokes a pending invite (204): the row is kept with `RevokedAt`, and the link answers 422 `supplier_invite_revoked` in the lookup and in the registration. 409 `supplier_invite_not_pending` (used, expired or already revoked), 404 `supplier_invite_not_found`. A revoked invite does not block a new invite for the same email. |
+
+The invite state is computed on read: `Used` (accepted), `Revoked`, `Expired` (past its expiry, or no token hash), otherwise
+`Pending`.
+
+### 14.2 What a suspended supplier can and cannot do (A4-29)
+
+| | Suspended supplier |
+|---|---|
+| Receives new requests | No: it is not in the host search (only `Active` suppliers are) and a request addressed to it is refused with 422 `service_request_supplier_inactive` |
+| Take, complete or reject a request | **No**: 422 `service_request_supplier_not_active`, checked before the state machine, after the 404 and the 403 for another supplier's request. Nothing is saved and nobody is notified. The same applies to a supplier that is still `Pending` |
+| Lift the suspension with the activation wizard | No: `POST /api/supplier/profile/activation/complete` answers 422 `supplier_suspended`. Only an admin reactivates it |
+| Sign in, read the inbox, the detail and the history, edit the profile | Yes (read access stays): the console shows a banner *Account fornitore sospeso* and disables the buttons of the requests. The reason of the suspension is an internal note and is **never** sent to the supplier |
+| Be paid for work already done | Yes: *Segna pagato* is the host's action and does not depend on the supplier's status |
+| Open requests (new, taken, in progress) | They stay as they are. The list shows how many each supplier has open, and the suspend dialog warns about them. What to do with them is a product question (see the open questions of SU-12) |
+
+Reactivation sets the status back to `Active` if the supplier had accepted the terms (it was active before),
+otherwise to `Pending`: a reactivation never skips the activation wizard.
+
+### 14.3 Audit trail
+
+Table `SupplierAdminAuditEntries` (migration `SupplierAdminSuspension`): one row per admin action, written in the same
+transaction as the change, never updated: `Suspended`, `Reactivated`, `InviteResent`, `InviteRevoked` with the admin's Auth0
+subject, the time (UTC), the reason (suspension) and the status before and after. The rows of a supplier are shown in
+the page (*Storico*); the invite rows (`InviteId`) can be read in the database. There is no foreign key: the trail
+survives the deletion of an org by `fix-orphaned` (section 9). The logs carry only ids and the masked email, never
+the reason.
+
+### 14.4 After a deploy
+
+- [ ] As admin: `/app/admin/suppliers` lists the suppliers with their status; the filter *Sospeso* and the search by
+      name or email work, 20 per page.
+- [ ] *Sospendi* on an active supplier without a reason is not possible; with a reason the badge becomes *Sospeso*,
+      the row shows the note, *Storico* shows who did it and when.
+- [ ] As that supplier: the console shows the suspension banner, the buttons of the requests are disabled, and the
+      supplier is no longer offered to hosts (marketplace and request creation).
+- [ ] *Riattiva* brings it back (*Attivo* if it had accepted the terms).
+- [ ] *Inviti*: *Reinvia* on an expired invite → the email arrives with a new link that works; the old link does not.
+      *Revoca* on a pending invite → its link shows "Questo invito è stato revocato".
 
 ## Known limits (other tasks)
 

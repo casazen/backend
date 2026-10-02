@@ -30,6 +30,16 @@ public static class OnboardingMapping
         FirstBookingTaken = status.FirstBookingTaken,
         Activated = status.Activated,
         PublicBookingUrl = status.PublicBookingUrl,
+        Steps = status.Steps
+            .Select(step => new ActivationStepDto
+            {
+                Key = step.Key,
+                State = step.State,
+                Reason = step.Reason,
+                Done = step.Done,
+                Total = step.Total,
+            })
+            .ToList(),
     };
 
     public static LegalDocumentDto ToDto(this LegalDocumentMeta meta, LegalDocumentKind kind, LegalDocumentText? text) => new()
