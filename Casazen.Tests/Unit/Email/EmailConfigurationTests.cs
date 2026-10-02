@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Resend;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
@@ -123,6 +124,38 @@ public class EmailConfigurationTests
 
         Assert.IsType<ResendEmailService>(Assert.Single(services));
         Assert.IsType<HangfireEmailQueue>(scope.ServiceProvider.GetRequiredService<IEmailQueue>());
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public void Startup_OutsideDevelopmentWithTestMailCatcherUrl_Fails(string environment)
+    {
+        var configuration = new Dictionary<string, string?>(CompleteConfiguration) { ["Email:ApiUrl"] = "http://localhost:9444" };
+        using var provider = BuildProvider(environment, configuration);
+
+        var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+
+        Assert.Contains(ex.Failures, f => f.Contains("Email__ApiUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Resend_DevelopmentWithMailCatcherUrl_PointsTheClientAtIt()
+    {
+        var configuration = new Dictionary<string, string?>(CompleteConfiguration) { ["Email:ApiUrl"] = "http://localhost:9444/" };
+        using var provider = BuildProvider(Environments.Development, configuration);
+
+        provider.GetRequiredService<IStartupValidator>().Validate();
+
+        Assert.Equal("http://localhost:9444", provider.GetRequiredService<IOptions<ResendClientOptions>>().Value.ApiUrl);
+    }
+
+    [Fact]
+    public void Resend_WithoutMailCatcherUrl_KeepsTheRealResendApi()
+    {
+        using var provider = BuildProvider(Environments.Production, CompleteConfiguration);
+
+        Assert.Equal("https://api.resend.com", provider.GetRequiredService<IOptions<ResendClientOptions>>().Value.ApiUrl);
     }
 
     private static ServiceProvider BuildProvider(string environmentName, Dictionary<string, string?> values)

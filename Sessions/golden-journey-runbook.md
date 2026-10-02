@@ -66,9 +66,8 @@ After steps 7–10, `GET /api/bookings/{id}` and `GET /api/service-requests/{id}
 # Frontend — L2 demo (no real API)
 npm run test:e2e -- golden-journey-web
 
-# Frontend — L3 real local API
-E2E_LOCAL=1 npm run test:e2e:local -- golden-journey-web
-E2E_LOCAL=1 npm run test:e2e:local -- golden-journey-supplier-mobile
+# Frontend — L3 from the UI on the ephemeral stack (CI job; locally: docs/runbooks/golden-journey-l3.md section 4)
+bash e2e/stack/up.sh && E2E_GJ_L3=1 npx playwright test --project=gj-l3; bash e2e/stack/down.sh
 
 # Mobile (requires Maestro + simulator)
 maestro test e2e/m1-calendar.yaml

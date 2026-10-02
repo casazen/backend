@@ -89,6 +89,7 @@ CasaZen uses **native deploys** from each provider’s GitHub app. GitHub Action
 | `ci-cd.yml` | PR, push `develop` / `main` | NuGet vulnerability gate (High/Critical fail, transitive included), build, tests on PostgreSQL, format — `docs/runbooks/ci-backend.md` |
 | `ci-cd.yml` → `verify-test` | Push `develop` | Poll `GET /api/health/ready` until the test API runs **this commit** and answers 200, then smoke (fails if `RAILWAY_TEST_URL` is missing) |
 | `ci-cd.yml` → `verify-prod` | Push `main` | Same on production (`RAILWAY_PROD_URL`), then smoke |
+| `e2e-golden-journey.yml` | PR, push `develop` / `main`, nightly | Golden Journey from the UI on an ephemeral stack (throw-away PostgreSQL, mock IdP and mail, Stripe test mode with secrets) — `docs/runbooks/golden-journey-l3.md` |
 | `deploy-preview.yml` | PR | Comment with BE/FE URLs (no deploy) |
 | `supabase-keepalive.yml` | Weekly cron | Optional Supabase ping: fails when a configured ping fails, skips with a warning when not configured |
 

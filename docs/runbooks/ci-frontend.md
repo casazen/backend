@@ -7,9 +7,10 @@ Workflows in `casazen/frontend/.github/workflows/` (task FD-01, audit defects A9
 | `ci.yml` | `Lint, typecheck, unit tests, build` | PR and push to `develop` / `main` | **Required**: `npm ci`, `npm run lint` (0 errors), `npm run typecheck`, `npm test` (vitest), `npm run build` |
 | `e2e.yml` | `E2E L2 (demo)` | PR, push `develop` / `main`, nightly | Playwright L2 demo suite (`page.route` mocks) |
 | `e2e.yml` | `E2E staging smoke + GJ` | push `develop`, nightly, manual | L3 against the Railway test API; skipped with a warning when `E2E_AUTH0_EMAIL` is not set |
-| `e2e-golden-journey.yml` | `GJ web suite` | PR, push `develop` / `main`, nightly | Golden Journey L2 demo; no `continue-on-error`, no placeholder jobs |
+| `e2e-golden-journey.yml` | `GJ web suite` | PR, push `develop` / `main`, nightly | Golden Journey L2 demo shell checks (mocks); no `continue-on-error`, no placeholder jobs |
+| `e2e-golden-journey.yml` | `GJ L3 (UI, ephemeral stack)` | PR, push `develop` / `main`, nightly, manual | **The Golden Journey gate** (FN-03): admin, host, supplier (phone, F1-F2) and guest driven from the UI against a real backend + throw-away PostgreSQL + mock IdP/mail; Stripe test mode with the secrets, otherwise that variant is SKIPPED loudly. [golden-journey-l3.md](golden-journey-l3.md) |
 
-Not in CI yet: the real Golden Journey L3 from the UI on an ephemeral stack (task FN-03) and the Maestro app suite on an emulator (task FN-04). The former Maestro job only ran `echo` and was removed so it can no longer show a fake green check.
+Not in CI yet: the Maestro app suite on an emulator (task FN-04). The real Golden Journey L3 from the UI on an ephemeral stack is the job `GJ L3 (UI, ephemeral stack)` (FN-03, secrets `BACKEND_REPO_TOKEN`, `STRIPE_TEST_SECRET_KEY`, `STRIPE_TEST_PUBLISHABLE_KEY`: see golden-journey-l3.md section 3). The former Maestro job only ran `echo` and was removed so it can no longer show a fake green check.
 
 ## 1. Make the CI check required (one-time, repo admin)
 
@@ -29,7 +30,7 @@ for b in develop main; do
 done
 ```
 
-Add `E2E L2 (demo)` and `GJ web suite` to the required checks only after they have been green on `develop` for a few runs: before FD-01, `e2e.yml` was rejected by GitHub at parse time (`secrets.*` inside a step `if:`): all its runs failed with 0 jobs, so the L2 suite never actually ran in CI and its current state on a runner is unknown.
+Add `E2E L2 (demo)`, `GJ web suite` and `GJ L3 (UI, ephemeral stack)` to the required checks only after they have been green on `develop` for a few runs: before FD-01, `e2e.yml` was rejected by GitHub at parse time (`secrets.*` inside a step `if:`): all its runs failed with 0 jobs, so the L2 suite never actually ran in CI and its current state on a runner is unknown.
 
 ## 2. Secrets and variables for `E2E staging smoke + GJ`
 
