@@ -1,12 +1,14 @@
 # Runbook: iCal import and export (property OTA calendars, supplier calendars)
 
 Tasks PC-10 (audit defects A2-10, A2-12, A2-23, A9-13), PC-11 (A2-11, A2-20), PC-12 (A2-22), SU-15 (A4-11, A9-14:
-supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)) and CO-21 (GC-AC9, decision D7). The
+supplier sync in Hangfire, [Supplier calendars](#supplier-calendars-su-15)), CO-21 (GC-AC9, decision D7) and PC-09
+(A2-25, manual blocks). The
 download of the feed (anti-SSRF client, size and time limits, error codes) is described in
 [external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
 encrypted), what happens after the download (how a feed is read, when it is an error), how the sync job isolates feeds,
-the export feed read by the OTAs ([Export feed](#export-feed-pc-12)) and the OTA stays the host creates from imported
-blocks ([OTA stays from iCal blocks](#ota-stays-from-ical-blocks-co-21)).
+the export feed read by the OTAs ([Export feed](#export-feed-pc-12)), the OTA stays the host creates from imported
+blocks ([OTA stays from iCal blocks](#ota-stays-from-ical-blocks-co-21)) and the dates the host closes by hand
+([Manual blocks](#manual-blocks-pc-09), PC-09).
 
 Nothing has to be configured: the defaults below apply when the `ICalImport` section is missing. The encryption of the
 import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07), already required by the OTA secrets.
@@ -159,7 +161,7 @@ other channel so that they close the dates taken on CasaZen. It is built by `ICa
 |---|---|
 | Confirmed, checked-in and checked-out bookings of CasaZen: host bookings (`Manual`, PC-01), direct checkout, accepted "pay at the property" requests | Cancelled bookings |
 | Checkout holds still valid (Pending with a PaymentIntent/SetupIntent inside the hold TTL, or already paying): they take their dates on the booking site too (BK-05, BK-21) | Expired holds (TTL passed, even before the expiry job cancels them) |
-| Manual blocks of the host (`CalendarBlocks.Source = Manual`) | Pending "pay at the property" requests (BK-06: an anonymous request must not close the OTAs before the host accepts it) |
+| Manual blocks of the host (`CalendarBlocks.Source = Manual`, owner stay / maintenance / other, PC-09: see [Manual blocks](#manual-blocks-pc-09)) | Pending "pay at the property" requests (BK-06: an anonymous request must not close the OTAs before the host accepts it) |
 | | **Every block imported from an iCal feed** (`Source = ICalImport`, any channel) |
 | | Bookings whose source is an OTA channel (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`: `FiscalCopy.IsOtaBookingSource`) |
 
@@ -323,6 +325,71 @@ SELECT count(*) FROM "CalendarBlocks" WHERE "BookingId" IS NOT NULL;
 2. From the stay: "Copia link" of the check-in works; on the arrival day the cockpit lists it.
 3. Remove the reservation from the test calendar and "Sincronizza ora": the stay stays confirmed with "Da verificare",
    the org's contact address receives "Soggiorno … da verificare"; "Segna come verificato" clears it.
+
+## Manual blocks (PC-09)
+
+The host closes dates by hand (audit A2-25): the owner stays there, maintenance, anything else. Before PC-09 the only way
+was a fake booking. A manual block is a row of `CalendarBlocks` with `Source = Manual` (1), no feed (`FeedId` null, no
+`ExternalUid`), the reason in `ManualReason` and an optional note in `Summary`. Code: `Core/Services/ICalendarBlockService.cs`
+(rules and error codes), `Infrastructure/Services/CalendarBlockService.cs`, `Web/Controllers/ManualBlocksController.cs`.
+
+### API (TN-3: `PropertyRead` to list, `PropertyWrite` to create or remove, plus the resource check; another org gets 404)
+
+| Request | Answer |
+|---|---|
+| `GET /api/properties/{id}/blocks?from=&to=` | Manual blocks with a night in [`from`, `to`) (stay dates), by start date; without `from`, the blocks not over yet (today in Europe/Rome). Items: `id`, `propertyId`, `startDate`, `endDate` (stay dates `2026-10-10T00:00:00`), `nights`, `reason`, `note` |
+| `POST /api/properties/{id}/blocks` `{ startDate, endDate, reason, note? }` | 201 with the block. `startDate` is the first closed night, `endDate` the first free day (excluded, like a check-out). `reason`: `Owner`, `Maintenance`, `Other`. `note`: max 200 characters, host only |
+| `DELETE /api/properties/{id}/blocks/{blockId}` | 204: the nights are free again at once (site, bookings, export) |
+
+Errors (ProblemDetails, FD-05, messages IT/EN in `SharedResources`):
+
+| Status | Code | When |
+|---|---|---|
+| 400 | validation | `startDate`, `endDate` or `reason` missing, unknown `reason`, note longer than 200 characters |
+| 404 | `property_not_found` | Property not visible (other org) |
+| 404 | `calendar_block_not_found` | Block not visible, or of another property |
+| 409 | `calendar_block_overlaps_booking` | A booking not cancelled takes one of the nights (expired checkout holds of those dates are released first, as for a host booking) |
+| 409 | `calendar_block_overlaps_block` | Another manual block closes one of the nights (also stops a double click) |
+| 422 | `calendar_block_invalid_range` | `endDate` not after `startDate` |
+| 422 | `calendar_block_in_past` | `startDate` before today (Europe/Rome) |
+| 422 | `calendar_block_too_long` | More than 366 nights (`ManualBlocks.MaxNights`): longer closures are a property put on pause |
+| 422 | `calendar_block_not_manual` | `DELETE` of a block imported from a feed: it goes with the feed or when the channel frees the dates |
+
+A night already closed by an **imported** block may be closed by hand too: when the channel frees it, it stays closed.
+
+### Occupancy, bookings, calendar and export
+
+- **Occupancy**: no code of its own. `PropertyOccupancy.BlockTakesNightIn` already reads every block of the property,
+  so the booking site (`bookedDates`), the host and public booking checks and the dashboard (nights "closed by the
+  host", PC-16) count the manual blocks.
+- **Concurrency**: the block is written under the dates lock of the property (`BookingRepository.LockPropertyDatesAsync`,
+  `pg_advisory_xact_lock(bigint)` keyed on the property id, the lock of BK-05/BK-04; no new key). The final check of a
+  new booking under the same lock (`BookingRepository.AddAsync`) now reads the blocks too (not only the callers'
+  pre-check), and a host changing the dates of a booking takes it before its block check (`HostBookingService`). A
+  booking and a manual block never take the same night. Stays of an OTA channel (CO-21) are the channel's reservations:
+  blocks never refuse them there.
+- **Host calendar** (`GET /api/bookings/calendar`): an `ical-block` item with `blockSource: "Manual"`, `blockReason`
+  (`Owner`, `Maintenance`, `Other`), `summary` = the note, `channel` null.
+- **Export to the OTAs** (decision of PC-09 on the PC-12 contract): **manual blocks are exported**, as busy all-day
+  events `block-{id}` with the neutral SUMMARY (`Occupato` / `Booked`), never the reason or the note. The export exists
+  to close on Airbnb and Booking.com the nights that are not sellable on CasaZen: a night closed for the owner or for
+  maintenance must be closed on the channels too, otherwise a channel sells it (overbooking). They are not an echo:
+  no channel sent them. Removing the block removes the event at the next read of the export.
+- **Guests** never see the reason: the booking site only shows the night as taken.
+
+### Migration `AddManualCalendarBlockReason`
+
+Adds the nullable column `CalendarBlocks.ManualReason` (integer: 0 `Owner`, 1 `Maintenance`, 2 `Other`). No data is
+changed: before PC-09 no manual block existed (`Source = Manual` was never written). Rollback drops the column; the
+manual blocks stay as blocks (nights still taken), without reason.
+
+### Checks after a deploy
+
+1. On the test environment, as a host: calendar → "Blocca date", 2 nights, reason "Manutenzione": the block appears in
+   the calendar with its reason.
+2. `GET /api/public/bookings/property/{id}/availability?...` lists the two nights; the export link
+   (`GET /api/properties/{id}/ical/export-url`) contains `UID:block-{id}` with `SUMMARY:Occupato` and no note.
+3. A host booking on those nights answers 409 `booking_dates_unavailable`; deleting the block frees them.
 
 ## When a feed is valid
 
