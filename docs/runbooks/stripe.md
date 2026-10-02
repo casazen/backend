@@ -38,7 +38,8 @@ while its prices are being created. A value is a valid Price id when it starts w
 
 The billing entry gate (`BillingEntryGate`): with a test-mode secret key outside Production the checkout is open
 without the invoicing prerequisites (log `Billing entry gate bypassed for Stripe test secret key`); in Production it
-needs `Billing__VatNumber` and `Sdi__ProviderConfigured=true` (task PL-13).
+needs `Billing__VatNumber` and a decision on the e-invoices: an SDI provider (none in this build) or
+`Sdi__ManualIssuanceAccepted=true` (task PL-13, [billing-tax.md](billing-tax.md)). `Sdi__ProviderConfigured` is no longer read.
 
 ### Plan prices (`Billing__Prices__<Tier>`)
 
@@ -182,9 +183,10 @@ Logs carry the event id, type and source, and Stripe/org ids only: no names, e-m
 Stripe Dashboard labels may differ slightly between versions.
 
 1. **Webhook endpoints**: as in `docs/INFRA.md`. The platform endpoint must include `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
-2. **Restricted key** (only if `Stripe__SecretKey` is an `rk_…` key): besides the permissions already used, the checkout now needs **Checkout Sessions: write** (create, list, expire) and **Subscriptions: read** (list the customer's subscriptions). Without them the checkout answers 503 `payment_provider_error`.
+2. **Restricted key** (only if `Stripe__SecretKey` is an `rk_…` key): besides the permissions already used, the checkout now needs **Checkout Sessions: write** (create, list, expire) and **Subscriptions: read** (list the customer's subscriptions). Without them the checkout answers 503 `payment_provider_error`. The paid invoices (PL-13) also need **Tax rates: read** and **Customers: read** (tax ids).
 3. **Customer portal** (Settings → Billing → Customer portal): enabled, with payment method update and invoice history, so an org answered with `already_subscribed` can change plan, update its card and pay an open invoice there. The web app (PL-12) sends every subscribed org to the portal to **change plan**: turn on the subscription update (plan switch) and list the Starter, Pro and Scale products with the same prices as `Billing__Prices__<Tier>`, otherwise "Cambia dal portale" opens a portal without the plan change.
 4. **Failed payments** (Settings → Billing → Subscriptions and emails → manage failed payments): at the end of the retries the subscription may be canceled or marked unpaid; both end paid access (Canceled / Unpaid).
+5. **Stripe Tax** (PL-13): head office, Italian registration and product tax codes, see [billing-tax.md](billing-tax.md) § Settings. Without them the checkout charges no VAT or fails with 503 `payment_provider_error`.
 
 ## Web app: plans, checkout, portal and billing profile (PL-12)
 
@@ -215,9 +217,10 @@ Error codes shown to the user: 409 `already_subscribed` (message with the portal
 503 `payment_provider_error`. The portal answers 400 while the org has no Stripe customer (never started a checkout):
 the web app says the portal is available after the first payment.
 
-VAT id: the web app only checks its shape (letters and digits, 4-20 characters, spaces, dots and dashes removed) and
-says it will be verified. The real check (VIES) and the VAT/OSS treatment are task PL-13: until then a VAT id of a
-country other than Italy is refused by the backend unless `Vies__StubMode=true`.
+VAT id: the web app and the backend only check its shape (letters and digits, 4-20 characters, spaces, dots and dashes
+removed) and store it as declared. Since PL-13 the VAT is computed by **Stripe Tax** on the checkout and the renewals;
+the VAT id that counts is the one entered in Stripe Checkout, verified by Stripe (VIES). `Vies__StubMode` no longer
+exists. Details, Stripe Tax settings and the e-invoices: [billing-tax.md](billing-tax.md).
 
 Return pages: the plan and billing pages send their own path as `returnPath` (checkout and portal), so Stripe brings the
 user back to the page and the shell it started from (PL-16); the backend accepts only the allow-listed pages.
