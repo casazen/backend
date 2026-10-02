@@ -777,12 +777,84 @@ a supplier that rejected again: the exclusion is only the default of the form. T
       a push ("Richiesta segnata come pagata").
 - [ ] As a user without `property.write` (read-only role): the timeline is readable, with no buttons.
 
+## 16. Activation: real requirements, 5-step wizard saved by the server, versioned Terms — SU-05
+
+Audit A4-09 / A4-31. Before SU-05 the Terms alone activated a profile: a supplier with no category and no comune showed
+as "Active, visible to hosts" and appeared in no search; the step of the wizard lived in the browser; the acceptance
+stored only a date, with no version and no link to the text.
+
+### 16.1 Requirements (checked on the stored profile, never on what the client says)
+
+`POST /api/supplier/profile/activation/complete` `{ tosAccepted, tosVersion }` activates only when the stored profile has:
+
+| Blocker code (`blockers` of the 409) | Requirement | Wizard step |
+|---|---|---|
+| `legal_name_missing` | business name not blank | 1 `identity` |
+| `phone_invalid` | 6 to 15 digits, optional leading `+`, separators ` - . ( )` only (E.164 max 15). It is a format check: no SMS verification exists | 1 |
+| `categories_missing` | at least one **known** category code (`ServiceCategories`) | 2 `services` |
+| `comuni_missing` | at least one comune (ISTAT code or the old text) | 2 |
+| `bio_missing` | description not blank | 4 `profile` |
+| `tos_not_accepted` | `tosAccepted: true` | 5 `terms` |
+
+Otherwise 409 `supplier_activation_blocked` with `blockers: [codes]` and the localized `detail`; nothing is saved. Steps 3
+(`showcase`, photos) and the calendar of step 5 are optional and never block. The VAT number is optional (a supplier
+without one is not refused: product decision to confirm, see the open questions).
+
+`PUT /api/supplier/profile` of an **Active** supplier cannot take a requirement away (empty categories, comuni or
+description, blank name or invalid phone): 422 `supplier_profile_requirements`, nothing saved. A Pending supplier edits
+freely. The `profile/photos` upload and the admin repairs are unaffected.
+
+### 16.2 The wizard is saved by the server
+
+- `GET /api/supplier/profile/activation` answers `{ status, currentStep, steps[{ id, status, blocker, required }], tos }`.
+  `status` is the real one: `Pending` (never activated), `Active`, `Suspended` (the wizard only says an admin must
+  reactivate it). Each step derives from the stored profile.
+- `PUT /api/supplier/profile/activation/step` `{ step: 1-5 }` saves the step reached (`SupplierProfiles.ActivationStep`,
+  null until saved: the first incomplete required step is opened). Any device resumes there; a step outside 1-5 is 400.
+- The web wizard saves each step's data with `PUT /api/supplier/profile` and then the step number; the last step lists
+  what is still missing (with a link to its step) and keeps *Attiva profilo* disabled until nothing is.
+
+### 16.3 Versioned Terms of Service and re-acceptance
+
+- The supplier accepts the **Terms of Service** (`Legal:Documents:Tos`, the same document the hosts accept; the drafts
+  `2026-10-v1` already cover the marketplace suppliers, [`legal-documents.md`](legal-documents.md)). The checkbox names
+  the version and links `/legale/termini` in a new tab.
+- `tosVersion` must be the version in force: otherwise 409 `supplier_tos_version_stale` (the page reloads and shows the
+  new one). The server stores `SupplierProfiles.TosVersion` + `TosAcceptedAt` and a `ConsentRecords` row of the supplier
+  org (`Type = Tos`, user, version, IP, time): the history of every acceptance (like the host consents).
+- A new version (`Legal__Documents__Tos__Version`) makes `tos.reacceptanceRequired` true for every active supplier
+  that accepted another one. From then on **take, complete and reject** answer 422
+  `supplier_tos_reacceptance_required` (`tos.blocksActions`) until the supplier accepts: the dashboard shows a banner and
+  `/app/supplier/activation` shows the acceptance (`POST /api/supplier/profile/tos/accept` `{ tosVersion }`, 204,
+  status unchanged). Hosts still see the supplier and can still send requests; the supplier answers once it accepts.
+- **Existing suppliers** (accepted before SU-05): `TosVersion` is null. They are asked to accept (banner,
+  `reacceptanceRequired: true`) but **are not blocked** (`blocksActions: false`): they accepted a text nobody could
+  read, and blocking every working supplier at deploy was judged too harsh without the product owner's say. Decision to
+  confirm; to block them too, treat a null version as stale in `SupplierActivationRules.TosState`.
+- Before changing the version tell the suppliers (it blocks them) and publish the text first (`legal-documents.md` §2).
+
+### 16.4 After a deploy
+
+- [ ] Migration `SupplierActivationTosVersion` is in `__EFMigrationsHistory` (two nullable columns).
+- [ ] New supplier: `GET …/activation` → `currentStep` 2 (or 1), `tos.currentVersion` = the configured version.
+- [ ] `POST …/activation/complete` on a profile without categories → 409 with `blockers: ["categories_missing", …]`.
+- [ ] Complete the 5 steps on the web, reload in the middle: the wizard resumes at the same step on another browser.
+- [ ] After activation: `SupplierProfiles.TosVersion` is set and a `ConsentRecords` row (`Type = 0`, supplier org) exists.
+- [ ] Raise the Terms version on test: an active supplier sees the banner, take/reject answer 422 until it accepts.
+- [ ] Suppliers that are `Active` with no category or no comune (activated before SU-05) are not touched; list them with
+
+  ```sql
+  SELECT "OrgId", "LegalName" FROM "SupplierProfiles"
+  WHERE "Status" = 1 AND ("CategoriesJson" = '[]' OR ("ComuniJson" = '[]' AND "ComuneIstatCodesJson" = '[]'));
+  ```
+
+  and ask them to complete the profile (the supplier cannot empty these fields any more once active).
+
 ## Known limits (other tasks)
 
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
-- The activation requirements (only the ToS today) are task SU-05.
 - Service requests: the host timeline, rejection reason and "paid" confirmation are in section 14 (SU-09), but only on
   the web: the app's supplier choice (today the first result) is MO-10 and its error states MO-07. `chargeToGuest` is
   still always refused, also for long-rent (open product point).
