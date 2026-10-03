@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
@@ -39,6 +40,9 @@ public class AlloggiatiWebService(
     /// <summary>Error code of a communication already sent or declared sent.</summary>
     public const string AlreadySentCode = "alloggiati_already_sent";
 
+    /// <summary>Error code of a manual declaration attempted before every guest record is complete.</summary>
+    public const string GuestDataIncompleteCode = "alloggiati_guest_data_incomplete";
+
     /// <summary>
     /// A report still waiting for its job this long after the scheduled time is considered lost (e.g. Hangfire
     /// storage reset) and can be scheduled again.
@@ -73,13 +77,16 @@ public class AlloggiatiWebService(
         return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 
-    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid orgId, Guid? propertyId)
+    public async Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId)
     {
         var query = context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => b.OrgId == orgId && ActiveBookingStatuses.Contains(b.Status));
+            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status));
+
+        if (!scope.IsOrgWide)
+            query = query.Where(b => b.Property.OwnerId == scope.OwnerId);
 
         if (propertyId.HasValue)
             query = query.Where(b => b.PropertyId == propertyId.Value);
@@ -309,6 +316,10 @@ public class AlloggiatiWebService(
         if (report is not null && AlloggiatiStatusRules.IsSent(report.Status))
             throw new DomainConflictException(AlreadySentCode, "AlloggiatiAlreadySent");
 
+        var dataComplete = await IsDataCompleteAsync(booking);
+        if (!dataComplete)
+            throw new DomainRuleException(GuestDataIncompleteCode, "AlloggiatiGuestDataIncomplete");
+
         if (report is null)
         {
             report = new AlloggiatiWebReport
@@ -330,7 +341,7 @@ public class AlloggiatiWebService(
         await context.SaveChangesAsync();
 
         logger.LogInformation("Alloggiati report of booking {BookingId} declared sent manually by the host", bookingId);
-        return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
+        return BuildStatusInfo(booking, report, dataComplete);
     }
 
     public bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus) =>

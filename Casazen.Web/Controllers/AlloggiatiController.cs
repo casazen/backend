@@ -51,13 +51,13 @@ public class AlloggiatiController(
     public async Task<ActionResult<IEnumerable<AlloggiatiSummaryDto>>> GetSummary([FromQuery] Guid? propertyId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
             return Unauthorized();
 
         if (propertyId.HasValue && !await CanAccessPropertyAsync(propertyId.Value))
             return Forbid();
 
-        var summaries = await alloggiatiWebService.GetSummaryAsync(orgId.Value, propertyId);
+        var summaries = await alloggiatiWebService.GetSummaryAsync(scope, propertyId);
         return Ok(summaries.Select(MapSummary));
     }
 
