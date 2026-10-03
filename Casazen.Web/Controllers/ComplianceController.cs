@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Compliance;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -23,10 +24,10 @@ public class ComplianceController(
     public async Task<ActionResult<ComplianceSummaryDto>> GetSummary(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null)
+        if (orgId is null || User.GetHostScope(orgId.Value) is not { } scope)
             return Unauthorized();
 
-        var summary = await complianceWizardService.GetSummaryAsync(orgId.Value, cancellationToken);
+        var summary = await complianceWizardService.GetSummaryAsync(scope, cancellationToken);
         return Ok(MapSummary(summary));
     }
 

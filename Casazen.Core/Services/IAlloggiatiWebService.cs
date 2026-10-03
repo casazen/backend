@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
@@ -20,7 +21,7 @@ public interface IAlloggiatiWebService
     /// <summary>Status of the communication of a booking. Throws <c>NotFoundException</c> for an unknown booking.</summary>
     Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId);
 
-    Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(Guid orgId, Guid? propertyId);
+    Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId);
 
     /// <summary>
     /// Per-guest data the host copies on the portal, in the order of the record. Throws <c>NotFoundException</c>

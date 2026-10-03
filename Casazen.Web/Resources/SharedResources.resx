@@ -463,6 +463,9 @@
   <data name="AlloggiatiAlreadySent" xml:space="preserve">
     <value>La comunicazione Alloggiati di questa prenotazione risulta già inviata.</value>
   </data>
+  <data name="AlloggiatiGuestDataIncomplete" xml:space="preserve">
+    <value>Completa i dati Alloggiati di tutti gli ospiti prima di segnare la comunicazione come inviata manualmente.</value>
+  </data>
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen non trasmette ancora ad Alloggiati Web: invia la schedina dal portale della Questura con il riepilogo dati e segna l'invio come manuale.</value>
   </data>
